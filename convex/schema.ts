@@ -12,6 +12,13 @@ export const nodeValidator = v.object({
 
 export const edgeValidator = v.object({ id: v.string(), source: v.string(), target: v.string() });
 
+const fileTypeValidator = v.union(
+  v.literal("any"),
+  v.literal("video"),
+  v.literal("audio"),
+  v.literal("image"),
+);
+
 export const triggerValidator = v.union(
   v.object({ kind: v.literal("manual") }),
   v.object({ kind: v.literal("webhook") }),
@@ -24,8 +31,10 @@ export const triggerValidator = v.union(
   }),
   v.object({
     kind: v.literal("upload"),
-    fileType: v.union(v.literal("any"), v.literal("video"), v.literal("audio"), v.literal("image")),
+    fileType: fileTypeValidator,
   }),
+  // A folder in the team's own bucket, checked every minute for new files.
+  v.object({ kind: v.literal("folder"), prefix: v.string(), fileType: fileTypeValidator }),
 );
 
 // Users, sessions, organizations (teams), members and invitations live in the
@@ -99,11 +108,22 @@ export default defineSchema({
     hookToken: v.string(),
     // For a schedule trigger: when it next fires. Null otherwise.
     nextRunAt: v.union(v.null(), v.number()),
+    // For a watched folder: only files added after this moment start a run, so
+    // switching it on never reprocesses what was already there.
+    watchFrom: v.optional(v.number()),
     createdBy: v.string(),
     updatedAt: v.number(),
   })
     .index("by_organization", ["organizationId"])
-    .index("by_enabled_and_nextRunAt", ["enabled", "nextRunAt"]),
+    .index("by_enabled_and_nextRunAt", ["enabled", "nextRunAt"])
+    .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"]),
+
+  // Files a watched folder has already started a run for, so each starts only one.
+  watchedFiles: defineTable({
+    automationId: v.id("automations"),
+    key: v.string(),
+    etag: v.string(),
+  }).index("by_automation_and_key", ["automationId", "key"]),
 
   // One run of an automation. It keeps its own copy of the steps, so editing the
   // automation never changes a run that is already under way.
@@ -123,6 +143,7 @@ export default defineSchema({
       v.literal("webhook"),
       v.literal("schedule"),
       v.literal("upload"),
+      v.literal("folder"),
     ),
     // What the trigger handed over: file_url, the webhook body, the upload's details.
     trigger: v.any(),

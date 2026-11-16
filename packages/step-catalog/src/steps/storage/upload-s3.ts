@@ -13,8 +13,12 @@ export const storageUploadS3 = defineStep({
   primaryInput: "file_url",
   input: z.object({
     file_url: z.string().url().describe("URL of the file to upload to S3"),
-    bucket_name: z.string().optional().describe("Target S3 bucket name"),
-    file_name: z.string().optional().describe("Custom filename for the uploaded file"),
+    filename: z.string().optional().describe("Name to give the uploaded file"),
+    public: z.boolean().optional().describe("Make the uploaded file readable by anyone"),
+    download_headers: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe("Headers to send when fetching the file, for a source that needs sign-in"),
     webhook_url: z.string().url().optional(),
     id: z.string().optional(),
   }),

@@ -1,11 +1,7 @@
-import type { AutomationNode, Schedule } from "@ncat-dash/automation-core";
+import type { AutomationNode, StarterTrigger } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 
-export type Trigger =
-  | { kind: "manual" }
-  | { kind: "webhook" }
-  | { kind: "schedule"; schedule: Schedule }
-  | { kind: "upload"; fileType: "any" | "video" | "audio" | "image" };
+export type Trigger = StarterTrigger;
 
 export type TriggerKind = Trigger["kind"];
 
@@ -14,6 +10,7 @@ export const TRIGGER_LABELS: Record<TriggerKind, string> = {
   webhook: "Webhook",
   schedule: "Schedule",
   upload: "New upload",
+  folder: "Watched folder",
 };
 
 /** One line saying when the automation starts, for lists and the canvas. */
@@ -27,6 +24,8 @@ export function triggerSummary(trigger: Trigger): string {
       return trigger.fileType === "any"
         ? "Starts when a file is uploaded"
         : `Starts when ${trigger.fileType === "image" ? "an" : "a"} ${trigger.fileType} file is uploaded`;
+    case "folder":
+      return `Starts when a file lands in ${trigger.prefix || "your bucket"}`;
     case "schedule": {
       const { schedule } = trigger;
       if (schedule.mode === "daily") return `Every day at ${schedule.time} (${schedule.timeZone})`;

@@ -25,6 +25,7 @@ function unitOf(minutes: number): Unit {
 function defaultFor(kind: TriggerKind): Trigger {
   if (kind === "schedule") return { kind, schedule: { mode: "interval", minutes: 60 } };
   if (kind === "upload") return { kind, fileType: "video" };
+  if (kind === "folder") return { kind, prefix: "incoming/", fileType: "video" };
   return { kind };
 }
 
@@ -110,13 +111,35 @@ export function TriggerPanel({
         </Field>
       )}
 
-      {trigger.kind === "upload" && (
+      {trigger.kind === "folder" && (
+        <Field>
+          <FieldLabel htmlFor="trigger-folder">Folder</FieldLabel>
+          <Input
+            id="trigger-folder"
+            value={trigger.prefix}
+            placeholder="incoming/"
+            maxLength={500}
+            onChange={(event) =>
+              onChange({ ...trigger, prefix: event.target.value.replace(/^\/+/, "") })
+            }
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <FieldDescription>
+            A folder in the bucket you connected on the Uploads page. It is checked every minute.
+            Files already there when you switch the automation on are left alone. Leave it empty to
+            watch the whole bucket.
+          </FieldDescription>
+        </Field>
+      )}
+
+      {(trigger.kind === "upload" || trigger.kind === "folder") && (
         <Field>
           <FieldLabel htmlFor="trigger-file-type">Which files</FieldLabel>
           <Select
             value={trigger.fileType}
             onValueChange={(fileType) =>
-              onChange({ kind: "upload", fileType: fileType as typeof trigger.fileType })
+              onChange({ ...trigger, fileType: fileType as typeof trigger.fileType })
             }
           >
             <SelectTrigger id="trigger-file-type" className="w-full">
@@ -130,7 +153,9 @@ export function TriggerPanel({
             </SelectContent>
           </Select>
           <FieldDescription>
-            Each matching file added on the Uploads page starts a run on that file.
+            {trigger.kind === "upload"
+              ? "Each matching file added on the Uploads page starts a run on that file."
+              : "Each matching file that lands in the folder starts a run on that file."}
           </FieldDescription>
         </Field>
       )}

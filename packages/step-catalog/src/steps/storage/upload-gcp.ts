@@ -12,8 +12,12 @@ export const storageUploadGcp = defineStep({
   primaryInput: "file_url",
   input: z.object({
     file_url: z.string().url().describe("URL of the file to upload to GCS"),
-    bucket_name: z.string().optional(),
-    file_name: z.string().optional(),
+    filename: z.string().optional().describe("Name to give the uploaded file"),
+    public: z.boolean().optional().describe("Make the uploaded file readable by anyone"),
+    download_headers: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe("Headers to send when fetching the file, for a source that needs sign-in"),
     webhook_url: z.string().url().optional(),
     id: z.string().optional(),
   }),

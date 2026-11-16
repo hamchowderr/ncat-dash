@@ -37,8 +37,8 @@ export const mediaDownload = defineStep({
       .object({
         download: z.boolean().optional(),
         download_all: z.boolean().optional(),
-        formats: z.string().optional(),
-        convert: z.string().optional(),
+        formats: z.array(z.string()).optional(),
+        convert: z.boolean().optional(),
         embed_in_audio: z.boolean().optional(),
       })
       .optional()
@@ -46,7 +46,7 @@ export const mediaDownload = defineStep({
     subtitles: z
       .object({
         download: z.boolean().optional(),
-        languages: z.string().optional(),
+        languages: z.array(z.string()).optional(),
         format: z.enum(["srt", "vtt", "json3"]).optional(),
         cloud_upload: z.boolean().optional(),
       })
@@ -54,9 +54,9 @@ export const mediaDownload = defineStep({
       .describe("Subtitle download options"),
     download: z
       .object({
-        max_filesize: z.string().optional(),
+        max_filesize: z.number().int().optional(),
         rate_limit: z.string().optional(),
-        retries: z.number().optional(),
+        retries: z.number().int().optional(),
       })
       .optional()
       .describe("Download behavior options"),

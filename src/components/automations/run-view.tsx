@@ -27,6 +27,7 @@ import { RunStatusBadge } from "./run-status";
 function runTrigger(kind: TriggerKind): Trigger {
   if (kind === "schedule") return { kind, schedule: { mode: "interval", minutes: 60 } };
   if (kind === "upload") return { kind, fileType: "any" };
+  if (kind === "folder") return { kind, prefix: "", fileType: "any" };
   return { kind };
 }
 

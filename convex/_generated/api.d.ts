@@ -26,6 +26,7 @@ import type * as storage from "../storage.js";
 import type * as teamSettings from "../teamSettings.js";
 import type * as teams from "../teams.js";
 import type * as toolkitConnections from "../toolkitConnections.js";
+import type * as watch from "../watch.js";
 
 import type {
   ApiFromModules,
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   teamSettings: typeof teamSettings;
   teams: typeof teams;
   toolkitConnections: typeof toolkitConnections;
+  watch: typeof watch;
 }>;
 
 /**
