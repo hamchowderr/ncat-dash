@@ -1,0 +1,62 @@
+import type { AutomationNode, Schedule } from "@ncat-dash/automation-core";
+import { getStep } from "@ncat-dash/step-catalog";
+
+export type Trigger =
+  | { kind: "manual" }
+  | { kind: "webhook" }
+  | { kind: "schedule"; schedule: Schedule }
+  | { kind: "upload"; fileType: "any" | "video" | "audio" | "image" };
+
+export type TriggerKind = Trigger["kind"];
+
+export const TRIGGER_LABELS: Record<TriggerKind, string> = {
+  manual: "Run by hand",
+  webhook: "Webhook",
+  schedule: "Schedule",
+  upload: "New upload",
+};
+
+/** One line saying when the automation starts, for lists and the canvas. */
+export function triggerSummary(trigger: Trigger): string {
+  switch (trigger.kind) {
+    case "manual":
+      return "Starts when you press Run now";
+    case "webhook":
+      return "Starts when its address is called";
+    case "upload":
+      return trigger.fileType === "any"
+        ? "Starts when a file is uploaded"
+        : `Starts when ${trigger.fileType === "image" ? "an" : "a"} ${trigger.fileType} file is uploaded`;
+    case "schedule": {
+      const { schedule } = trigger;
+      if (schedule.mode === "daily") return `Every day at ${schedule.time} (${schedule.timeZone})`;
+      const { minutes } = schedule;
+      if (minutes % 1440 === 0)
+        return minutes === 1440 ? "Every day" : `Every ${minutes / 1440} days`;
+      if (minutes % 60 === 0) return minutes === 60 ? "Every hour" : `Every ${minutes / 60} hours`;
+      return `Every ${minutes} minutes`;
+    }
+  }
+}
+
+export function nodeTitle(node: Pick<AutomationNode, "kind" | "stepId" | "label">): string {
+  if (node.label) return node.label;
+  if (node.kind === "approval") return "Approval";
+  return getStep(node.stepId ?? "")?.title ?? node.stepId ?? "Step";
+}
+
+/** A short readable id such as "caption_2", used in {{steps.caption_2.url}}. */
+export function newNodeId(existing: { id: string }[], base: string): string {
+  const stem = (base.split("-").pop() ?? "step").replace(/[^a-z0-9]/gi, "").toLowerCase() || "step";
+  const taken = new Set(existing.map((node) => node.id));
+  for (let n = 1; ; n++) {
+    const id = `${stem}_${n}`;
+    if (!taken.has(id)) return id;
+  }
+}
+
+/** The address that starts a webhook automation. */
+export function hookUrl(automationId: string, token: string): string {
+  const base = process.env.NEXT_PUBLIC_CONVEX_SITE_URL ?? "";
+  return `${base}/automations/hook?id=${automationId}&token=${token}`;
+}
