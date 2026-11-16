@@ -7,13 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "pnpm -r test"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@convex-dev/better-auth": "^0.13.0",
     "@ncat-dash/step-catalog": "workspace:*",
+    "aws4fetch": "^1.0.20",
     "better-auth": "^1.7.25",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",

@@ -10,10 +10,14 @@
 
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
+import type * as jobs from "../jobs.js";
 import type * as lib_authz from "../lib/authz.js";
 import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_edition from "../lib/edition.js";
+import type * as lib_outputs from "../lib/outputs.js";
+import type * as lib_s3 from "../lib/s3.js";
 import type * as settings from "../settings.js";
+import type * as storage from "../storage.js";
 import type * as teams from "../teams.js";
 import type * as toolkitConnections from "../toolkitConnections.js";
 
@@ -26,10 +30,14 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   http: typeof http;
+  jobs: typeof jobs;
   "lib/authz": typeof lib_authz;
   "lib/crypto": typeof lib_crypto;
   "lib/edition": typeof lib_edition;
+  "lib/outputs": typeof lib_outputs;
+  "lib/s3": typeof lib_s3;
   settings: typeof settings;
+  storage: typeof storage;
   teams: typeof teams;
   toolkitConnections: typeof toolkitConnections;
 }>;
