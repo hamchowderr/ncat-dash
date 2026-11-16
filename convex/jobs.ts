@@ -1,4 +1,4 @@
-import { callStep, getStep, ToolkitError, userInputSchema } from "@ncat-dash/step-catalog";
+import { callStep, getStep, ToolkitError } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -12,10 +12,11 @@ import {
 import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
 import { collectUrls } from "./lib/outputs";
+import { enqueueJob, pump } from "./lib/queue";
+import { onJobFinished } from "./lib/runner";
 
-// A job with no answer after this long is marked failed, so nothing waits forever.
+// A Convex document holds at most 1 MB, so a larger result is kept as its links only.
 const MAX_RESULT_CHARS = 700_000;
-const GIVE_UP_AFTER_MS = 6 * 60 * 60 * 1000;
 
 /** What the browser may see: everything except the webhook token. */
 function toPublic(job: Doc<"jobs">) {
@@ -33,10 +34,6 @@ function toPublic(job: Doc<"jobs">) {
   };
 }
 
-function randomToken(): string {
-  return `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
-}
-
 /**
  * Runs one catalog step on the team's toolkit. The input is checked against the step's
  * schema before anything is sent. Returns the job id; the job then updates live.
@@ -46,45 +43,15 @@ export const run = mutation({
   returns: v.id("jobs"),
   handler: async (ctx, args) => {
     const { userId } = await requireMember(ctx, args.organizationId);
-
-    const step = getStep(args.stepId);
-    if (!step) throw new ConvexError({ code: "not_found", message: "Unknown step." });
-
-    const parsed = userInputSchema(step).safeParse(args.input);
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      throw new ConvexError({
-        code: "invalid_input",
-        message: `${issue.path.join(".") || "Input"}: ${issue.message}`,
-      });
-    }
-
-    const connections = await ctx.db
-      .query("toolkitConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .take(50);
-    const connection = connections.find((candidate) => candidate.status === "ok") ?? connections[0];
-    if (!connection) {
-      throw new ConvexError({ code: "no_toolkit", message: "Connect a toolkit first." });
-    }
-
-    const jobId = await ctx.db.insert("jobs", {
+    const queued = await enqueueJob(ctx, {
       organizationId: args.organizationId,
-      connectionId: connection._id,
-      stepId: step.id,
-      input: parsed.data,
-      status: "queued",
-      webhookToken: randomToken(),
-      toolkitJobId: null,
-      outputs: [],
-      error: null,
+      stepId: args.stepId,
+      input: args.input,
       createdBy: userId,
-      startedAt: null,
-      finishedAt: null,
     });
-    await ctx.scheduler.runAfter(0, internal.jobs.dispatch, { jobId });
-    await ctx.scheduler.runAfter(GIVE_UP_AFTER_MS, internal.jobs.giveUp, { jobId });
-    return jobId;
+    if (!queued.ok) throw new ConvexError({ code: queued.code, message: queued.message });
+    await pump(ctx, args.organizationId);
+    return queued.jobId;
   },
 });
 
@@ -245,6 +212,8 @@ export const finish = internalMutation({
       startedAt: job.startedAt ?? now,
       finishedAt: now,
     });
+    if (job.runStepId) await onJobFinished(ctx, job.runStepId);
+    await pump(ctx, job.organizationId);
     return "recorded";
   },
 });
@@ -259,5 +228,7 @@ export const giveUp = internalMutation({
       error: "The toolkit never reported a result for this job.",
       finishedAt: Date.now(),
     });
+    if (job.runStepId) await onJobFinished(ctx, job.runStepId);
+    await pump(ctx, job.organizationId);
   },
 });

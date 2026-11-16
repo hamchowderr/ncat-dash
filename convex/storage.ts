@@ -147,7 +147,12 @@ export const finishUpload = mutation({
     const upload = await ctx.db.get(args.uploadId);
     if (!upload) return;
     await requireMember(ctx, upload.organizationId);
+    if (upload.status === "ready") return;
     await ctx.db.patch(args.uploadId, { status: "ready" });
+    // Starts any automation set to run when a file is uploaded.
+    await ctx.scheduler.runAfter(0, internal.automations.uploadFinished, {
+      uploadId: args.uploadId,
+    });
   },
 });
 
