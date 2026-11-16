@@ -21,6 +21,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -30,15 +31,23 @@ import {
 import { NavUser, type ShellUser } from "./nav-user";
 
 // The agent joins this list when its phase lands.
-export const navMain: { title: string; url: string; icon: LucideIcon }[] = [
+type NavItem = { title: string; url: string; icon: LucideIcon };
+
+const navEveryday: NavItem[] = [
   { title: "Home", url: "/", icon: Home },
   { title: "Automations", url: "/automations", icon: Workflow },
-  { title: "Steps", url: "/steps", icon: SquareFunction },
-  { title: "Jobs", url: "/jobs", icon: ListChecks },
   { title: "Outputs", url: "/outputs", icon: FolderOutput },
   { title: "Uploads", url: "/uploads", icon: UploadCloud },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
+
+// For building and testing automations: single steps run by hand, and every job sent.
+const navBuilder: NavItem[] = [
+  { title: "Steps", url: "/steps", icon: SquareFunction },
+  { title: "Jobs", url: "/jobs", icon: ListChecks },
+];
+
+export const navMain: NavItem[] = [...navEveryday, ...navBuilder];
 
 /** The nav entry a path belongs to: "/steps/video-trim" belongs to Steps. */
 export function navItemFor(pathname: string) {
@@ -77,26 +86,32 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navMain.map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton
-                    asChild
-                    tooltip={item.title}
-                    isActive={navItemFor(pathname).url === item.url}
-                  >
-                    <Link href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {[
+          { label: null, items: navEveryday },
+          { label: "Builder", items: navBuilder },
+        ].map((group) => (
+          <SidebarGroup key={group.label ?? "everyday"}>
+            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.url}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={item.title}
+                      isActive={navItemFor(pathname).url === item.url}
+                    >
+                      <Link href={item.url}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={user} />

@@ -1,8 +1,11 @@
 /** One box on the canvas. */
 export interface AutomationNode {
   id: string;
-  /** "step" runs a catalog step on the toolkit; "approval" waits for a person. */
-  kind: "step" | "approval";
+  /**
+   * "step" runs a catalog step on the toolkit; "approval" waits for a person; "clips"
+   * cuts each incoming video into clips that fit the platform in `input.platform`.
+   */
+  kind: "step" | "approval" | "clips";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */

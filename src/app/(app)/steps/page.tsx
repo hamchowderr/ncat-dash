@@ -17,7 +17,8 @@ export default function StepsPage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Steps</h1>
         <p className="text-muted-foreground text-sm">
-          Everything your toolkit can do. Open a step to try it on a sample file.
+          A workbench for building automations: every single thing your toolkit can do, to try by
+          hand on a sample file. Day to day, an automation runs these for you.
         </p>
       </div>
       {CATEGORY_ORDER.filter((category) => grouped[category]?.length).map((category) => (

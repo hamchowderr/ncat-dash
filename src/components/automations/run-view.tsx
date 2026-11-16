@@ -4,7 +4,7 @@ import "@xyflow/react/style.css";
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import type { AutomationNode } from "@ncat-dash/automation-core";
+import { type AutomationNode, readClipsSetup } from "@ncat-dash/automation-core";
 import { Background, Controls, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Check, CircleStop, X } from "lucide-react";
@@ -21,6 +21,7 @@ import { nodeTitle, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib
 import { errorMessage, formatDuration } from "@/lib/catalog";
 
 import { type FlowNode, nodeTypes, TRIGGER_ID, triggerEdges, triggerPosition } from "./flow-nodes";
+import { ClipsRun } from "./clips-run";
 import { RunStatusBadge } from "./run-status";
 
 /** A run only records which kind of trigger started it, which is all the canvas shows. */
@@ -46,6 +47,7 @@ export function RunView({
   const cancel = useMutation(api.runs.cancel);
   const { resolvedTheme } = useTheme();
   const [busy, setBusy] = useState(false);
+  const [showSteps, setShowSteps] = useState(false);
 
   const flow = useMemo(() => {
     if (!run) return null;
@@ -87,6 +89,7 @@ export function RunView({
   }
 
   const active = run.status === "running" || run.status === "waiting";
+  const clipsSetup = readClipsSetup(run.nodes as AutomationNode[], run.edges);
 
   async function act(work: () => Promise<unknown>, fallback: string) {
     setBusy(true);
@@ -117,6 +120,11 @@ export function RunView({
         </div>
         <div className="ml-auto flex items-center gap-3">
           <RunStatusBadge status={run.status} />
+          {clipsSetup && (
+            <Button variant="ghost" size="sm" onClick={() => setShowSteps((shown) => !shown)}>
+              {showSteps ? "Show clips" : "Show steps"}
+            </Button>
+          )}
           {active && (
             <Button
               variant="outline"
@@ -131,106 +139,119 @@ export function RunView({
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-6">
-        <div className="bg-muted/30 h-[28rem] overflow-hidden rounded-xl border lg:h-[calc(100vh-12rem)]">
-          <ReactFlowProvider>
-            <ReactFlow
-              nodes={flow.nodes}
-              edges={flow.edges}
-              nodeTypes={nodeTypes}
-              nodesDraggable={false}
-              nodesConnectable={false}
-              elementsSelectable={false}
-              forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
-              fitView
-              fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Background gap={20} />
-              <Controls showInteractive={false} fitViewOptions={{ maxZoom: 1, padding: 0.3 }} />
-            </ReactFlow>
-          </ReactFlowProvider>
-        </div>
+      {clipsSetup && !showSteps && (
+        <ClipsRun
+          run={run}
+          setup={clipsSetup}
+          busy={busy}
+          onDecide={(runStepId, approved) =>
+            act(() => decide({ runStepId, approved }), "The decision could not be saved.")
+          }
+        />
+      )}
 
-        <ol className="flex flex-col gap-3 lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
-          {(run.nodes as AutomationNode[]).map((node) => {
-            const step = flow.byNode.get(node.id);
-            if (!step) return null;
-            const finished = step.jobs.filter((job) => job.status === "done").length;
-            return (
-              <li
-                key={node.id}
-                data-step={node.id}
-                className="bg-card flex flex-col gap-3 rounded-xl border p-4"
+      {(!clipsSetup || showSteps) && (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-6">
+          <div className="bg-muted/30 h-[28rem] overflow-hidden rounded-xl border lg:h-[calc(100vh-12rem)]">
+            <ReactFlowProvider>
+              <ReactFlow
+                nodes={flow.nodes}
+                edges={flow.edges}
+                nodeTypes={nodeTypes}
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable={false}
+                forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
+                fitView
+                fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
+                proOptions={{ hideAttribution: true }}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="truncate text-sm font-medium">{nodeTitle(node)}</h2>
-                  <RunStatusBadge status={step.status} />
-                </div>
-                {step.status === "running" && step.jobs.length > 1 && (
-                  <p className="text-muted-foreground text-sm tabular-nums">
-                    {finished} of {step.jobs.length} files finished
-                  </p>
-                )}
-                {step.error && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{step.error}</AlertDescription>
-                  </Alert>
-                )}
-                {step.status === "waiting_approval" && (
-                  <div className="flex flex-col gap-3">
-                    <p className="text-muted-foreground text-sm">
-                      Check the files from the step before, then decide. Approving sends them on.
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        disabled={busy}
-                        onClick={() =>
-                          act(
-                            () => decide({ runStepId: step._id, approved: true }),
-                            "The approval could not be saved.",
-                          )
-                        }
-                      >
-                        <Check />
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() =>
-                          act(
-                            () => decide({ runStepId: step._id, approved: false }),
-                            "The decision could not be saved.",
-                          )
-                        }
-                      >
-                        <X />
-                        Reject
-                      </Button>
-                    </div>
+                <Background gap={20} />
+                <Controls showInteractive={false} fitViewOptions={{ maxZoom: 1, padding: 0.3 }} />
+              </ReactFlow>
+            </ReactFlowProvider>
+          </div>
+
+          <ol className="flex flex-col gap-3 lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
+            {(run.nodes as AutomationNode[]).map((node) => {
+              const step = flow.byNode.get(node.id);
+              if (!step) return null;
+              const finished = step.jobs.filter((job) => job.status === "done").length;
+              return (
+                <li
+                  key={node.id}
+                  data-step={node.id}
+                  className="bg-card flex flex-col gap-3 rounded-xl border p-4"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="truncate text-sm font-medium">{nodeTitle(node)}</h2>
+                    <RunStatusBadge status={step.status} />
                   </div>
-                )}
-                {node.kind === "step" &&
-                  step.outputs
-                    .slice(0, 6)
-                    .map((url, index) => <MediaPreview key={`${index}-${url}`} url={url} />)}
-                {node.kind === "step" && step.outputs.length > 6 && (
-                  <p className="text-muted-foreground text-sm">
-                    And {step.outputs.length - 6} more in{" "}
-                    <Link href="/outputs" className="underline underline-offset-4">
-                      Outputs
-                    </Link>
-                    .
-                  </p>
-                )}
-              </li>
-            );
-          })}
-        </ol>
-      </div>
+                  {step.status === "running" && step.jobs.length > 1 && (
+                    <p className="text-muted-foreground text-sm tabular-nums">
+                      {finished} of {step.jobs.length} files finished
+                    </p>
+                  )}
+                  {step.error && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{step.error}</AlertDescription>
+                    </Alert>
+                  )}
+                  {step.status === "waiting_approval" && (
+                    <div className="flex flex-col gap-3">
+                      <p className="text-muted-foreground text-sm">
+                        Check the files from the step before, then decide. Approving sends them on.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          disabled={busy}
+                          onClick={() =>
+                            act(
+                              () => decide({ runStepId: step._id, approved: true }),
+                              "The approval could not be saved.",
+                            )
+                          }
+                        >
+                          <Check />
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() =>
+                            act(
+                              () => decide({ runStepId: step._id, approved: false }),
+                              "The decision could not be saved.",
+                            )
+                          }
+                        >
+                          <X />
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {node.kind === "step" &&
+                    step.outputs
+                      .slice(0, 6)
+                      .map((url, index) => <MediaPreview key={`${index}-${url}`} url={url} />)}
+                  {node.kind === "step" && step.outputs.length > 6 && (
+                    <p className="text-muted-foreground text-sm">
+                      And {step.outputs.length - 6} more in{" "}
+                      <Link href="/outputs" className="underline underline-offset-4">
+                        Outputs
+                      </Link>
+                      .
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
     </>
   );
 }
