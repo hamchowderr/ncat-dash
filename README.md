@@ -6,4 +6,4 @@ Working name: NCA Toolkit Dashboard. Under active development.
 
 ## Licence
 
-GPL-2.0, the same licence as the NCA Toolkit. See [LICENSE](LICENSE).
+GPL-2.0-or-later, the same licence as the NCA Toolkit. See [LICENSE](LICENSE).
