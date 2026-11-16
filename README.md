@@ -7,7 +7,7 @@ Working name: NCA Toolkit Dashboard. Under active development.
 ## What is here
 
 - `src/` is the Next.js app: sign-in, onboarding and the dashboard shell (open-source shadcn/ui).
-- `convex/` is the backend: Better Auth with teams (`convex/betterAuth`), toolkit connections, and the edition setting.
+- `convex/` is the backend: Better Auth with teams (`convex/betterAuth`), toolkit connections, jobs (one run of one step, finished by the toolkit's webhook), storage and uploads, and the edition setting.
 - `packages/step-catalog/` describes every toolkit endpoint once (inputs, outputs, how to call it). The app, the automation runner and the agent all read from it.
 - `.agents/skills/` holds the official agent skills for Convex, Better Auth, Mastra, Vercel and shadcn.
 
@@ -37,6 +37,12 @@ pnpm dev
 Open http://localhost:3000, create an account, name your team, then paste your toolkit's address and API key. The key is tested before it is saved and stored encrypted.
 
 `CONNECTIONS_SECRET` encrypts saved toolkit keys. If it changes, teams reconnect their toolkit.
+
+### Trying steps
+
+Steps lists everything the toolkit can do. Each step has a form built from its schema in the catalog; running it creates a job that updates live when the toolkit posts the result back to `<your Convex site URL>/toolkit/webhook`. Jobs keeps every run and Outputs collects the files.
+
+Uploads sends files straight from the browser to a bucket you own (Cloudflare R2, AWS S3, DigitalOcean Spaces, MinIO). The bucket needs a CORS rule that allows `PUT` from the dashboard's address.
 
 ### Editions
 

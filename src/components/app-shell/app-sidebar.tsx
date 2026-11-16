@@ -1,7 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Clapperboard, Home, type LucideIcon } from "lucide-react";
+import {
+  Clapperboard,
+  FolderOutput,
+  Home,
+  ListChecks,
+  type LucideIcon,
+  SquareFunction,
+  UploadCloud,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -19,10 +27,19 @@ import {
 
 import { NavUser, type ShellUser } from "./nav-user";
 
-// Media, automations, the agent and settings join this list as each phase lands.
-const navMain: { title: string; url: string; icon: LucideIcon }[] = [
+// Automations, the agent and settings join this list as each phase lands.
+export const navMain: { title: string; url: string; icon: LucideIcon }[] = [
   { title: "Home", url: "/", icon: Home },
+  { title: "Steps", url: "/steps", icon: SquareFunction },
+  { title: "Jobs", url: "/jobs", icon: ListChecks },
+  { title: "Outputs", url: "/outputs", icon: FolderOutput },
+  { title: "Uploads", url: "/uploads", icon: UploadCloud },
 ];
+
+/** The nav entry a path belongs to: "/steps/video-trim" belongs to Steps. */
+export function navItemFor(pathname: string) {
+  return navMain.find((item) => item.url !== "/" && pathname.startsWith(item.url)) ?? navMain[0];
+}
 
 export function AppSidebar({
   teamName,
@@ -61,7 +78,11 @@ export function AppSidebar({
             <SidebarMenu>
               {navMain.map((item) => (
                 <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton asChild tooltip={item.title} isActive={pathname === item.url}>
+                  <SidebarMenuButton
+                    asChild
+                    tooltip={item.title}
+                    isActive={navItemFor(pathname).url === item.url}
+                  >
                     <Link href={item.url}>
                       <item.icon />
                       <span>{item.title}</span>
