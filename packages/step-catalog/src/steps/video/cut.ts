@@ -13,8 +13,10 @@ export const videoCut = defineStep({
   primaryInput: "video_url",
   input: z.object({
     video_url: z.string().url().describe("URL of the video to cut"),
-    start: z.string().optional().describe("Start timestamp of segment to remove (e.g. '00:00:05')"),
-    end: z.string().optional().describe("End timestamp of segment to remove (e.g. '00:01:30')"),
+    cuts: z
+      .array(z.object({ start: z.string(), end: z.string() }))
+      .min(1)
+      .describe("Segments to remove, each with a start and end time (e.g. '00:00:05')"),
     video_codec: z.string().optional().describe("Video codec (e.g. 'libx264')"),
     video_preset: z.string().optional().describe("Encoding preset (e.g. 'medium')"),
     video_crf: z.number().min(0).max(51).optional().describe("Constant rate factor (0-51)"),

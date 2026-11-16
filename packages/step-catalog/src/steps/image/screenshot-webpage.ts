@@ -44,7 +44,7 @@ export const imageScreenshotWebpage = defineStep({
     timeout: z.number().int().min(100).optional().describe("Timeout in milliseconds"),
     wait_until: z.enum(["load", "domcontentloaded", "networkidle", "networkidle2"]).optional(),
     wait_for_selector: z.string().optional(),
-    emulate: z.object({ color_scheme: z.enum(["light", "dark"]) }).optional(),
+    emulate: z.object({ color_scheme: z.enum(["light", "dark"]).optional() }).optional(),
     omit_background: z.boolean().optional(),
     selector: z.string().optional().describe("CSS selector to screenshot specific element"),
     js: z.string().optional().describe("JavaScript to inject before screenshot"),

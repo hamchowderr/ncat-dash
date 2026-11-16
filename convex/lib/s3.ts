@@ -56,3 +56,59 @@ export async function checkBucket(
     return { ok: false, detail: "The storage address could not be reached." };
   }
 }
+
+export interface BucketObject {
+  key: string;
+  etag: string;
+  size: number;
+  lastModified: number;
+}
+
+function unescapeXml(text: string): string {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+/** Reads the objects out of a ListObjectsV2 answer. */
+export function parseListing(xml: string): { objects: BucketObject[]; next: string | null } {
+  const tag = (block: string, name: string) =>
+    unescapeXml(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(block)?.[1] ?? "");
+  const objects = [...xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)].map(([, block]) => ({
+    key: tag(block, "Key"),
+    etag: tag(block, "ETag").replace(/"/g, ""),
+    size: Number(tag(block, "Size")) || 0,
+    lastModified: Date.parse(tag(block, "LastModified")) || 0,
+  }));
+  const truncated = tag(xml, "IsTruncated") === "true";
+  return { objects, next: truncated ? tag(xml, "NextContinuationToken") || null : null };
+}
+
+/** Lists what is under a prefix, up to `maxPages` thousand objects. Throws if the bucket refuses. */
+export async function listObjects(
+  config: BucketConfig,
+  prefix: string,
+  maxPages = 5,
+): Promise<BucketObject[]> {
+  const found: BucketObject[] = [];
+  let token: string | null = null;
+  for (let page = 0; page < maxPages; page++) {
+    const url = new URL(`${config.endpoint.replace(/\/+$/, "")}/${config.bucket}`);
+    url.searchParams.set("list-type", "2");
+    if (prefix) url.searchParams.set("prefix", prefix);
+    if (token) url.searchParams.set("continuation-token", token);
+    const res = await client(config).fetch(url.toString(), {
+      method: "GET",
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) throw new Error(`The storage service answered ${res.status}.`);
+    const { objects, next } = parseListing(await res.text());
+    found.push(...objects);
+    if (!next) break;
+    token = next;
+  }
+  return found;
+}

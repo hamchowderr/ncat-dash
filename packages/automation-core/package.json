@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@ncat-dash/step-catalog": "workspace:*",
     "typescript": "^5",
     "vitest": "^3.2.0"
   }

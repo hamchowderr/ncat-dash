@@ -2,6 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { STARTERS } from "@ncat-dash/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import { Hourglass, MoreHorizontal, Plus, Workflow } from "lucide-react";
 import Link from "next/link";
@@ -55,6 +56,7 @@ export function AutomationsView() {
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [starterId, setStarterId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [removing, setRemoving] = useState<{ id: Id<"automations">; name: string } | null>(null);
 
@@ -62,7 +64,11 @@ export function AutomationsView() {
     event.preventDefault();
     setPending(true);
     try {
-      const id = await create({ organizationId: team.id, name });
+      const id = await create({
+        organizationId: team.id,
+        name,
+        starterId: starterId ?? undefined,
+      });
       router.push(`/automations/${id}`);
     } catch (caught) {
       toast.error(errorMessage(caught, "The automation could not be created. Try again."));
@@ -222,14 +228,48 @@ export function AutomationsView() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <form onSubmit={onCreate} className="flex flex-col gap-4">
             <DialogHeader>
               <DialogTitle>New automation</DialogTitle>
               <DialogDescription>
-                Name it after what it does. You can change the name later.
+                Start from a ready-made one or from an empty canvas. Everything can be changed
+                afterwards.
               </DialogDescription>
             </DialogHeader>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-2 text-sm font-medium">Start from</legend>
+              {[
+                {
+                  id: null,
+                  name: "Empty canvas",
+                  description: "Add your own steps one at a time.",
+                },
+                ...STARTERS,
+              ].map((option) => (
+                <label
+                  key={option.id ?? "blank"}
+                  className="has-checked:border-ring has-checked:bg-muted/50 has-focus-visible:ring-ring/50 flex cursor-pointer gap-3 rounded-lg border p-3 has-focus-visible:ring-3"
+                >
+                  <input
+                    type="radio"
+                    name="starter"
+                    className="accent-primary mt-1"
+                    checked={starterId === option.id}
+                    onChange={() => {
+                      setStarterId(option.id);
+                      if (!name || STARTERS.some((starter) => starter.name === name)) {
+                        setName(option.id ? option.name : "");
+                      }
+                    }}
+                  />
+                  <span className="grid gap-0.5">
+                    <span className="text-sm font-medium">{option.name}</span>
+                    <span className="text-muted-foreground text-sm">{option.description}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
             <Field>
               <FieldLabel htmlFor="automation-name">Name</FieldLabel>
               <Input

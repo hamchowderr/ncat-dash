@@ -13,6 +13,13 @@ export const codeExecutePython = defineStep({
   primaryInput: null,
   input: z.object({
     code: z.string().describe("Python code to execute"),
+    timeout: z
+      .number()
+      .int()
+      .min(1)
+      .max(300)
+      .optional()
+      .describe("Seconds the code may run before it is stopped (1 to 300)"),
     webhook_url: z.string().url().optional(),
     id: z.string().optional(),
   }),

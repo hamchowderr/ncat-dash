@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { getStep } from "@ncat-dash/step-catalog";
 import {
+  fileFamily,
+  STARTERS,
   type AutomationEdge,
   type AutomationNode,
   downstreamOf,
@@ -141,5 +144,27 @@ describe("schedule", () => {
       /time zone/,
     );
     expect(scheduleProblem({ mode: "daily", time: "09:30", timeZone: "Europe/London" })).toBeNull();
+  });
+});
+
+describe("files", () => {
+  it("sorts names into families by their ending", () => {
+    expect(fileFamily("incoming/Episode 4.MP4")).toBe("video");
+    expect(fileFamily("a.b.wav")).toBe("audio");
+    expect(fileFamily("cover.jpeg")).toBe("image");
+    expect(fileFamily("notes.txt")).toBe("other");
+    expect(fileFamily("no-ending")).toBe("other");
+  });
+});
+
+describe("starters", () => {
+  it("are complete automations built from steps the catalog has", () => {
+    expect(new Set(STARTERS.map((starter) => starter.id)).size).toBe(STARTERS.length);
+    for (const starter of STARTERS) {
+      expect(graphProblem(starter.nodes, starter.edges), starter.id).toBeNull();
+      for (const node of starter.nodes) {
+        if (node.kind === "step") expect(getStep(node.stepId!), node.stepId).toBeDefined();
+      }
+    }
   });
 });
