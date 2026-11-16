@@ -100,10 +100,16 @@ export async function testConnection(
       detail: `HTTP ${res.status}: ${text.slice(0, 300)}`,
     };
   }
+  // The toolkit answers {"response": "Authorized", "build_number": ...}. Anything else that
+  // returns 200 (a login page, another API) is not a toolkit.
+  let json: { response?: unknown; build_number?: unknown } | null = null;
   try {
-    const json = JSON.parse(text) as { build_number?: unknown };
-    return { ok: true, buildNumber: json.build_number == null ? null : String(json.build_number) };
+    json = JSON.parse(text);
   } catch {
+    json = null;
+  }
+  if (!json || typeof json !== "object" || json.response !== "Authorized") {
     return { ok: false, reason: "not_a_toolkit", detail: text.slice(0, 300) };
   }
+  return { ok: true, buildNumber: json.build_number == null ? null : String(json.build_number) };
 }

@@ -1,3 +1,4 @@
+import type { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   callStep,
@@ -31,7 +32,8 @@ describe("catalog", () => {
   it("names a primary input that exists and is required", () => {
     for (const step of steps) {
       if (!step.primaryInput) continue;
-      const field = step.input.shape[step.primaryInput];
+      const shape: Record<string, z.ZodType> = step.input.shape;
+      const field = shape[step.primaryInput];
       expect(field, `${step.id}.${step.primaryInput}`).toBeDefined();
       expect(field.safeParse(undefined).success, step.id).toBe(false);
     }
@@ -92,12 +94,12 @@ describe("callStep", () => {
 
   it("throws ToolkitError with status and body on a failure", async () => {
     const { fn } = fakeFetch(500, "boom");
-    const error = await callStep(
+    const error = (await callStep(
       connection,
       trim,
       { video_url: "https://x.test/a.mp4" },
       { fetch: fn },
-    ).catch((e) => e);
+    ).catch((e: unknown) => e)) as ToolkitError;
     expect(error).toBeInstanceOf(ToolkitError);
     expect(error.status).toBe(500);
     expect(error.body).toBe("boom");
@@ -125,6 +127,11 @@ describe("testConnection", () => {
   it("reports a URL that is not a toolkit", async () => {
     const html = fakeFetch(200, "<html>hello</html>");
     expect(await testConnection(connection, { fetch: html.fn })).toMatchObject({
+      ok: false,
+      reason: "not_a_toolkit",
+    });
+    const otherApi = fakeFetch(200, { status: "ok" });
+    expect(await testConnection(connection, { fetch: otherApi.fn })).toMatchObject({
       ok: false,
       reason: "not_a_toolkit",
     });
