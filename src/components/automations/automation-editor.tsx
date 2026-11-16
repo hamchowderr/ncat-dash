@@ -307,8 +307,11 @@ function Editor({ automation }: { automation: Loaded }) {
         </TabsList>
 
         <TabsContent value="build">
-          <div className="grid h-[calc(100vh-13.5rem)] min-h-[32rem] overflow-hidden rounded-xl border lg:grid-cols-[15rem_minmax(0,1fr)_20rem]">
-            <aside className="hidden flex-col border-r lg:flex" aria-label="Steps you can add">
+          <div className="grid overflow-hidden rounded-xl border lg:h-[calc(100vh-13.5rem)] lg:min-h-[32rem] lg:grid-cols-[15rem_minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)]">
+            <aside
+              className="hidden min-h-0 flex-col border-r lg:flex"
+              aria-label="Steps you can add"
+            >
               <div className="relative border-b p-2">
                 <Search
                   className="text-muted-foreground pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2"
@@ -375,7 +378,7 @@ function Editor({ automation }: { automation: Loaded }) {
               </div>
             </aside>
 
-            <div className="bg-muted/30 relative min-h-64" data-testid="canvas">
+            <div className="bg-muted/30 relative h-96 min-h-0 lg:h-auto" data-testid="canvas">
               <ReactFlow
                 nodes={nodes}
                 edges={shownEdges}
@@ -398,7 +401,7 @@ function Editor({ automation }: { automation: Loaded }) {
               )}
             </div>
 
-            <aside className="overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
+            <aside className="min-h-0 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
               {selected?.type === "step" ? (
                 <>
                   <h2 className="mb-4 text-sm font-semibold">Step settings</h2>
