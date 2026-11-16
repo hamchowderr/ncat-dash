@@ -6,9 +6,11 @@ import {
   FolderOutput,
   Home,
   ListChecks,
+  Settings,
   type LucideIcon,
   SquareFunction,
   UploadCloud,
+  Workflow,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -27,13 +29,15 @@ import {
 
 import { NavUser, type ShellUser } from "./nav-user";
 
-// Automations, the agent and settings join this list as each phase lands.
+// The agent joins this list when its phase lands.
 export const navMain: { title: string; url: string; icon: LucideIcon }[] = [
   { title: "Home", url: "/", icon: Home },
+  { title: "Automations", url: "/automations", icon: Workflow },
   { title: "Steps", url: "/steps", icon: SquareFunction },
   { title: "Jobs", url: "/jobs", icon: ListChecks },
   { title: "Outputs", url: "/outputs", icon: FolderOutput },
   { title: "Uploads", url: "/uploads", icon: UploadCloud },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 /** The nav entry a path belongs to: "/steps/video-trim" belongs to Steps. */

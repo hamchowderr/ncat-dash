@@ -34,3 +34,14 @@ export async function requireMember(
   }
   return { userId: user._id, role };
 }
+
+/** Whether the caller is on the team, for queries that would rather show "not found". */
+export async function isMember(ctx: QueryCtx | MutationCtx, organizationId: string) {
+  try {
+    await requireMember(ctx, organizationId);
+    return true;
+  } catch (error) {
+    if (error instanceof ConvexError) return false;
+    throw error;
+  }
+}

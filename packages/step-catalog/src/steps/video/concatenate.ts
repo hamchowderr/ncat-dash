@@ -11,6 +11,7 @@ export const videoConcatenate = defineStep({
   method: "POST",
   output: "file",
   primaryInput: null,
+  listInput: { field: "video_urls", itemKey: "video_url" },
   input: z.object({
     video_urls: z
       .array(

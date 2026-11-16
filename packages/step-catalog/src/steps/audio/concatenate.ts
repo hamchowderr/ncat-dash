@@ -10,6 +10,7 @@ export const audioConcatenate = defineStep({
   method: "POST",
   output: "file",
   primaryInput: null,
+  listInput: { field: "audio_urls", itemKey: "audio_url" },
   input: z.object({
     audio_urls: z
       .array(z.object({ audio_url: z.string().url() }))

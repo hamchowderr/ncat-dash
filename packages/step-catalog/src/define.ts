@@ -27,6 +27,8 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
   output: StepOutputKind;
   /** The field that takes the previous step's output URL, when there is exactly one. */
   primaryInput: string | null;
+  /** A list field that takes every incoming file, such as video_urls on "Join videos". */
+  listInput?: { field: string; itemKey: string };
   /** The toolkit's full request schema, including the runner fields. */
   input: TInput;
 }
