@@ -1,4 +1,4 @@
-import { getStep, steps } from "@ncat-dash/step-catalog";
+import { allSteps, getStep } from "@ncat-dash/step-catalog";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,7 +10,7 @@ export const instant = false;
 
 // The catalog is fixed at build time, so every step page is known ahead of time.
 export function generateStaticParams() {
-  return steps.map((step) => ({ stepId: step.id }));
+  return allSteps.map((step) => ({ stepId: step.id }));
 }
 
 export async function generateMetadata(props: PageProps<"/steps/[stepId]">): Promise<Metadata> {

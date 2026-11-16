@@ -48,7 +48,9 @@ export async function callStep(
   options: CallOptions = {},
 ): Promise<unknown> {
   const parsed = userInputSchema(step).parse(input);
-  const body = compact(parsed as Record<string, unknown>);
+  const body = compact(
+    step.toRequest ? step.toRequest(parsed) : (parsed as Record<string, unknown>),
+  );
   if (options.webhookUrl) body[RUNNER_FIELDS[0]] = options.webhookUrl;
   if (options.id) body[RUNNER_FIELDS[1]] = options.id;
 

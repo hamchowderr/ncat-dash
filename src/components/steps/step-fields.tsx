@@ -32,6 +32,7 @@ type JsonSchema = {
   format?: string;
   enum?: string[];
   description?: string;
+  default?: string | number | boolean;
   properties?: Record<string, JsonSchema>;
   items?: JsonSchema;
   required?: string[];
@@ -184,7 +185,13 @@ export function StepFields({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {!isRequired && <SelectItem value={UNSET}>Toolkit default</SelectItem>}
+                  {!isRequired && (
+                    <SelectItem value={UNSET}>
+                      {field.default !== undefined
+                        ? `Default (${field.default})`
+                        : "Toolkit default"}
+                    </SelectItem>
+                  )}
                   {(kind === "yesno" ? ["true", "false"] : (field.enum ?? [])).map((option) => (
                     <SelectItem key={option} value={option}>
                       {kind === "yesno" ? (option === "true" ? "Yes" : "No") : option}
@@ -210,7 +217,13 @@ export function StepFields({
                 step={field.type === "integer" ? 1 : "any"}
                 inputMode={kind === "url" ? "url" : undefined}
                 placeholder={
-                  filledForYou ? "From the step before" : kind === "url" ? "https://" : undefined
+                  filledForYou
+                    ? "From the step before"
+                    : field.default !== undefined
+                      ? String(field.default)
+                      : kind === "url"
+                        ? "https://"
+                        : undefined
                 }
                 value={values[name] ?? ""}
                 onChange={(event) => onChange(name, event.target.value)}

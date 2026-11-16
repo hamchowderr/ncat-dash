@@ -13,6 +13,7 @@ import {
   Shapes,
   Terminal,
   UserCheck,
+  Wand2,
   Zap,
 } from "lucide-react";
 
@@ -29,6 +30,7 @@ export const CATEGORY_ICONS: Record<StepCategory, LucideIcon> = {
   audio: Music,
   media: Shapes,
   image: ImageIcon,
+  recipe: Wand2,
   ffmpeg: Terminal,
   code: Code,
   storage: HardDriveUpload,
