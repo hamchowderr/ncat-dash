@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { defineStep } from "../../define";
 
+export const ffmpegOption = z.object({
+  option: z.string().describe("An FFmpeg flag such as -c:v"),
+  argument: z.union([z.string(), z.number(), z.null()]).optional().describe("Its value"),
+});
+
 export const ffmpegCompose = defineStep({
   id: "ffmpeg-compose",
   category: "ffmpeg",
@@ -13,15 +18,28 @@ export const ffmpegCompose = defineStep({
   primaryInput: null,
   input: z.object({
     inputs: z
-      .array(z.object({ file_url: z.string().url() }))
+      .array(z.object({ file_url: z.string().url(), options: z.array(ffmpegOption).optional() }))
       .min(1)
-      .describe("Array of input file URLs"),
-    filters: z.array(z.string()).optional().describe("FFmpeg filter strings"),
-    output_format: z.string().optional().describe("Output format"),
-    options: z
-      .record(z.string(), z.unknown())
+      .describe("Input files, each with optional FFmpeg flags"),
+    filters: z
+      .array(z.object({ filter: z.string() }))
       .optional()
-      .describe("Arbitrary FFmpeg flags as key-value pairs"),
+      .describe("FFmpeg filter graphs"),
+    outputs: z
+      .array(z.object({ options: z.array(ffmpegOption) }))
+      .min(1)
+      .describe("One entry per output file, each with its FFmpeg flags"),
+    global_options: z.array(ffmpegOption).optional().describe("Flags for the whole command"),
+    metadata: z
+      .object({
+        thumbnail: z.boolean().optional(),
+        filesize: z.boolean().optional(),
+        duration: z.boolean().optional(),
+        bitrate: z.boolean().optional(),
+        encoder: z.boolean().optional(),
+      })
+      .optional()
+      .describe("Extra details to report about each output"),
     webhook_url: z.string().url().optional(),
     id: z.string().optional(),
   }),

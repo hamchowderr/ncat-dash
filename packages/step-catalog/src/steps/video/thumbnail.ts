@@ -12,10 +12,7 @@ export const videoThumbnail = defineStep({
   primaryInput: "video_url",
   input: z.object({
     video_url: z.string().url().describe("URL of the video to extract thumbnail from"),
-    timestamp: z
-      .string()
-      .optional()
-      .describe("Timestamp to extract thumbnail at (e.g. '00:00:10')"),
+    second: z.number().min(0).optional().describe("How many seconds in to take the picture"),
     webhook_url: z.string().url().optional().describe("Webhook URL for async notification"),
     id: z.string().optional().describe("Custom job ID"),
   }),

@@ -1,0 +1,1172 @@
+{
+  "/v1/BETA/media/download": {
+    "additionalProperties": false,
+    "properties": {
+      "audio": {
+        "properties": {
+          "extract": {
+            "type": "boolean"
+          },
+          "format": {
+            "type": "string"
+          },
+          "quality": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "cloud_upload": {
+        "type": "boolean"
+      },
+      "cookie": {
+        "description": "Path to cookie file, URL to cookie file, or cookie string in Netscape format",
+        "type": "string"
+      },
+      "download": {
+        "properties": {
+          "max_filesize": {
+            "type": "integer"
+          },
+          "rate_limit": {
+            "type": "string"
+          },
+          "retries": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "format": {
+        "properties": {
+          "audio_codec": {
+            "type": "string"
+          },
+          "format_id": {
+            "type": "string"
+          },
+          "quality": {
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string"
+          },
+          "video_codec": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "id": {
+        "type": "string"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "subtitles": {
+        "properties": {
+          "cloud_upload": {
+            "type": "boolean"
+          },
+          "download": {
+            "type": "boolean"
+          },
+          "format": {
+            "enum": ["srt", "vtt", "json3"],
+            "type": "string"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "thumbnails": {
+        "properties": {
+          "convert": {
+            "type": "boolean"
+          },
+          "download": {
+            "type": "boolean"
+          },
+          "download_all": {
+            "type": "boolean"
+          },
+          "embed_in_audio": {
+            "type": "boolean"
+          },
+          "formats": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["media_url"],
+    "type": "object"
+  },
+  "/v1/audio/concatenate": {
+    "additionalProperties": false,
+    "properties": {
+      "audio_urls": {
+        "items": {
+          "properties": {
+            "audio_url": {
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "required": ["audio_url"],
+          "type": "object"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "id": {
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["audio_urls"],
+    "type": "object"
+  },
+  "/v1/code/execute/python": {
+    "additionalProperties": false,
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "timeout": {
+        "maximum": 300,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["code"],
+    "type": "object"
+  },
+  "/v1/ffmpeg/compose": {
+    "additionalProperties": false,
+    "properties": {
+      "filters": {
+        "items": {
+          "properties": {
+            "filter": {
+              "type": "string"
+            }
+          },
+          "required": ["filter"],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "global_options": {
+        "items": {
+          "properties": {
+            "argument": {
+              "type": ["string", "number", "null"]
+            },
+            "option": {
+              "type": "string"
+            }
+          },
+          "required": ["option"],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "id": {
+        "type": "string"
+      },
+      "inputs": {
+        "items": {
+          "properties": {
+            "file_url": {
+              "format": "uri",
+              "type": "string"
+            },
+            "options": {
+              "items": {
+                "properties": {
+                  "argument": {
+                    "type": ["string", "number", "null"]
+                  },
+                  "option": {
+                    "type": "string"
+                  }
+                },
+                "required": ["option"],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["file_url"],
+          "type": "object"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "metadata": {
+        "properties": {
+          "bitrate": {
+            "type": "boolean"
+          },
+          "duration": {
+            "type": "boolean"
+          },
+          "encoder": {
+            "type": "boolean"
+          },
+          "filesize": {
+            "type": "boolean"
+          },
+          "thumbnail": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "outputs": {
+        "items": {
+          "properties": {
+            "options": {
+              "items": {
+                "properties": {
+                  "argument": {
+                    "type": ["string", "number", "null"]
+                  },
+                  "option": {
+                    "type": "string"
+                  }
+                },
+                "required": ["option"],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["options"],
+          "type": "object"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["inputs", "outputs"],
+    "type": "object"
+  },
+  "/v1/gcp/upload": {
+    "additionalProperties": false,
+    "properties": {
+      "download_headers": {
+        "type": "object"
+      },
+      "file_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "filename": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "public": {
+        "type": "boolean"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["file_url"],
+    "type": "object"
+  },
+  "/v1/image/screenshot/webpage": {
+    "additionalProperties": false,
+    "not": {
+      "required": ["url", "html"]
+    },
+    "oneOf": [
+      {
+        "required": ["url"]
+      },
+      {
+        "required": ["html"]
+      }
+    ],
+    "properties": {
+      "clip": {
+        "properties": {
+          "height": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "width": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          }
+        },
+        "required": ["x", "y", "width", "height"],
+        "type": "object"
+      },
+      "cookies": {
+        "items": {
+          "additionalProperties": true,
+          "properties": {
+            "domain": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "default": "/",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": ["name", "value", "domain"],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "css": {
+        "type": "string"
+      },
+      "delay": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "device_scale_factor": {
+        "minimum": 0.1,
+        "type": "number"
+      },
+      "emulate": {
+        "properties": {
+          "color_scheme": {
+            "enum": ["light", "dark"],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "format": {
+        "default": "png",
+        "enum": ["png", "jpeg"],
+        "type": "string"
+      },
+      "full_page": {
+        "default": false,
+        "type": "boolean"
+      },
+      "headers": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
+      "html": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "js": {
+        "type": "string"
+      },
+      "omit_background": {
+        "default": false,
+        "type": "boolean"
+      },
+      "quality": {
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "selector": {
+        "type": "string"
+      },
+      "timeout": {
+        "minimum": 100,
+        "type": "integer"
+      },
+      "url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "user_agent": {
+        "type": "string"
+      },
+      "viewport_height": {
+        "minimum": 1,
+        "type": "integer"
+      },
+      "viewport_width": {
+        "minimum": 1,
+        "type": "integer"
+      },
+      "wait_for_selector": {
+        "type": "string"
+      },
+      "wait_until": {
+        "default": "load",
+        "enum": ["load", "domcontentloaded", "networkidle", "networkidle2"],
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "/v1/image/transform/video": {
+    "additionalProperties": false,
+    "properties": {
+      "frame_rate": {
+        "maximum": 60,
+        "minimum": 15,
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "image_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "length": {
+        "maximum": 400,
+        "minimum": 0.1,
+        "type": "number"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "zoom_speed": {
+        "maximum": 100,
+        "minimum": 0,
+        "type": "number"
+      }
+    },
+    "required": ["image_url"],
+    "type": "object"
+  },
+  "/v1/media/convert": {
+    "additionalProperties": false,
+    "properties": {
+      "audio_bitrate": {
+        "type": "string"
+      },
+      "audio_codec": {
+        "type": "string"
+      },
+      "format": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "video_codec": {
+        "type": "string"
+      },
+      "video_crf": {
+        "maximum": 51,
+        "minimum": 0,
+        "type": "number"
+      },
+      "video_preset": {
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["media_url", "format"],
+    "type": "object"
+  },
+  "/v1/media/generate/ass": {
+    "additionalProperties": false,
+    "oneOf": [
+      {
+        "required": ["canvas_width", "canvas_height"]
+      },
+      {
+        "not": {
+          "anyOf": [
+            {
+              "required": ["canvas_width"]
+            },
+            {
+              "required": ["canvas_height"]
+            }
+          ]
+        }
+      }
+    ],
+    "properties": {
+      "canvas_height": {
+        "minimum": 1,
+        "type": "integer"
+      },
+      "canvas_width": {
+        "minimum": 1,
+        "type": "integer"
+      },
+      "exclude_time_ranges": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "type": "string"
+            },
+            "start": {
+              "type": "string"
+            }
+          },
+          "required": ["start", "end"],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "id": {
+        "type": "string"
+      },
+      "language": {
+        "type": "string"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "replace": {
+        "items": {
+          "properties": {
+            "find": {
+              "type": "string"
+            },
+            "replace": {
+              "type": "string"
+            }
+          },
+          "required": ["find", "replace"],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "settings": {
+        "additionalProperties": false,
+        "properties": {
+          "alignment": {
+            "enum": ["left", "center", "right"],
+            "type": "string"
+          },
+          "all_caps": {
+            "type": "boolean"
+          },
+          "angle": {
+            "type": "integer"
+          },
+          "bold": {
+            "type": "boolean"
+          },
+          "font_family": {
+            "type": "string"
+          },
+          "font_size": {
+            "type": "integer"
+          },
+          "italic": {
+            "type": "boolean"
+          },
+          "line_color": {
+            "type": "string"
+          },
+          "max_words_per_line": {
+            "type": "integer"
+          },
+          "outline_color": {
+            "type": "string"
+          },
+          "outline_width": {
+            "type": "integer"
+          },
+          "position": {
+            "enum": [
+              "bottom_left",
+              "bottom_center",
+              "bottom_right",
+              "middle_left",
+              "middle_center",
+              "middle_right",
+              "top_left",
+              "top_center",
+              "top_right"
+            ],
+            "type": "string"
+          },
+          "shadow_offset": {
+            "type": "integer"
+          },
+          "spacing": {
+            "type": "integer"
+          },
+          "strikeout": {
+            "type": "boolean"
+          },
+          "style": {
+            "enum": ["classic", "karaoke", "highlight", "underline", "word_by_word"],
+            "type": "string"
+          },
+          "underline": {
+            "type": "boolean"
+          },
+          "word_color": {
+            "type": "string"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["media_url"],
+    "type": "object"
+  },
+  "/v1/media/metadata": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["media_url"],
+    "type": "object"
+  },
+  "/v1/media/silence": {
+    "additionalProperties": false,
+    "properties": {
+      "duration": {
+        "minimum": 0.1,
+        "type": "number"
+      },
+      "end": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "mono": {
+        "type": "boolean"
+      },
+      "noise": {
+        "type": "string"
+      },
+      "start": {
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["media_url", "duration"],
+    "type": "object"
+  },
+  "/v1/media/transcribe": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "include_segments": {
+        "type": "boolean"
+      },
+      "include_srt": {
+        "type": "boolean"
+      },
+      "include_text": {
+        "type": "boolean"
+      },
+      "language": {
+        "type": "string"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "response_type": {
+        "enum": ["direct", "cloud"],
+        "type": "string"
+      },
+      "task": {
+        "enum": ["transcribe", "translate"],
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "word_timestamps": {
+        "type": "boolean"
+      },
+      "words_per_line": {
+        "minimum": 1,
+        "type": "integer"
+      }
+    },
+    "required": ["media_url"],
+    "type": "object"
+  },
+  "/v1/media/transform/mp3": {
+    "additionalProperties": false,
+    "properties": {
+      "bitrate": {
+        "pattern": "^[0-9]+k$",
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "sample_rate": {
+        "type": "number"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["media_url"],
+    "type": "object"
+  },
+  "/v1/s3/upload": {
+    "additionalProperties": false,
+    "properties": {
+      "download_headers": {
+        "type": "object"
+      },
+      "file_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "filename": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "public": {
+        "type": "boolean"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["file_url"],
+    "type": "object"
+  },
+  "/v1/toolkit/job/status": {
+    "properties": {
+      "job_id": {
+        "type": "string"
+      }
+    },
+    "required": ["job_id"],
+    "type": "object"
+  },
+  "/v1/video/caption": {
+    "additionalProperties": false,
+    "properties": {
+      "captions": {
+        "type": "string"
+      },
+      "exclude_time_ranges": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "type": "string"
+            },
+            "start": {
+              "type": "string"
+            }
+          },
+          "required": ["start", "end"],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "id": {
+        "type": "string"
+      },
+      "language": {
+        "type": "string"
+      },
+      "replace": {
+        "items": {
+          "properties": {
+            "find": {
+              "type": "string"
+            },
+            "replace": {
+              "type": "string"
+            }
+          },
+          "required": ["find", "replace"],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "settings": {
+        "additionalProperties": false,
+        "properties": {
+          "alignment": {
+            "enum": ["left", "center", "right"],
+            "type": "string"
+          },
+          "all_caps": {
+            "type": "boolean"
+          },
+          "angle": {
+            "type": "integer"
+          },
+          "bold": {
+            "type": "boolean"
+          },
+          "font_family": {
+            "type": "string"
+          },
+          "font_size": {
+            "type": "integer"
+          },
+          "italic": {
+            "type": "boolean"
+          },
+          "line_color": {
+            "type": "string"
+          },
+          "max_words_per_line": {
+            "type": "integer"
+          },
+          "outline_color": {
+            "type": "string"
+          },
+          "outline_width": {
+            "type": "integer"
+          },
+          "position": {
+            "enum": [
+              "bottom_left",
+              "bottom_center",
+              "bottom_right",
+              "middle_left",
+              "middle_center",
+              "middle_right",
+              "top_left",
+              "top_center",
+              "top_right"
+            ],
+            "type": "string"
+          },
+          "shadow_offset": {
+            "type": "integer"
+          },
+          "spacing": {
+            "type": "integer"
+          },
+          "strikeout": {
+            "type": "boolean"
+          },
+          "style": {
+            "enum": ["classic", "karaoke", "highlight", "underline", "word_by_word"],
+            "type": "string"
+          },
+          "underline": {
+            "type": "boolean"
+          },
+          "word_color": {
+            "type": "string"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "video_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["video_url"],
+    "type": "object"
+  },
+  "/v1/video/concatenate": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "video_urls": {
+        "items": {
+          "properties": {
+            "video_url": {
+              "format": "uri",
+              "type": "string"
+            }
+          },
+          "required": ["video_url"],
+          "type": "object"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["video_urls"],
+    "type": "object"
+  },
+  "/v1/video/cut": {
+    "additionalProperties": false,
+    "properties": {
+      "audio_bitrate": {
+        "type": "string"
+      },
+      "audio_codec": {
+        "type": "string"
+      },
+      "cuts": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "type": "string"
+            },
+            "start": {
+              "type": "string"
+            }
+          },
+          "required": ["start", "end"],
+          "type": "object"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "id": {
+        "type": "string"
+      },
+      "video_codec": {
+        "type": "string"
+      },
+      "video_crf": {
+        "maximum": 51,
+        "minimum": 0,
+        "type": "number"
+      },
+      "video_preset": {
+        "type": "string"
+      },
+      "video_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["video_url", "cuts"],
+    "type": "object"
+  },
+  "/v1/video/split": {
+    "additionalProperties": false,
+    "properties": {
+      "audio_bitrate": {
+        "type": "string"
+      },
+      "audio_codec": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "splits": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "type": "string"
+            },
+            "start": {
+              "type": "string"
+            }
+          },
+          "required": ["start", "end"],
+          "type": "object"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "video_codec": {
+        "type": "string"
+      },
+      "video_crf": {
+        "maximum": 51,
+        "minimum": 0,
+        "type": "number"
+      },
+      "video_preset": {
+        "type": "string"
+      },
+      "video_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["video_url", "splits"],
+    "type": "object"
+  },
+  "/v1/video/thumbnail": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "second": {
+        "minimum": 0,
+        "type": "number"
+      },
+      "video_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["video_url"],
+    "type": "object"
+  },
+  "/v1/video/trim": {
+    "additionalProperties": false,
+    "properties": {
+      "audio_bitrate": {
+        "type": "string"
+      },
+      "audio_codec": {
+        "type": "string"
+      },
+      "end": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "start": {
+        "type": "string"
+      },
+      "video_codec": {
+        "type": "string"
+      },
+      "video_crf": {
+        "maximum": 51,
+        "minimum": 0,
+        "type": "number"
+      },
+      "video_preset": {
+        "type": "string"
+      },
+      "video_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["video_url"],
+    "type": "object"
+  }
+}

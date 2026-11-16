@@ -4,6 +4,7 @@ import {
   graphProblem,
   nextRunAt,
   scheduleProblem,
+  STARTERS,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
@@ -42,6 +43,33 @@ async function loadForMember(
   return { automation, ...member };
 }
 
+/** A watched folder starts counting from the moment it is switched on. */
+function watchStart(
+  automation: Doc<"automations">,
+  trigger: Doc<"automations">["trigger"],
+  enabled: boolean,
+): number | undefined {
+  if (!enabled || trigger.kind !== "folder") return undefined;
+  const same =
+    automation.enabled &&
+    automation.trigger.kind === "folder" &&
+    automation.trigger.prefix === trigger.prefix;
+  return same ? (automation.watchFrom ?? Date.now()) : Date.now();
+}
+
+async function storageProblem(
+  ctx: Parameters<typeof requireMember>[0],
+  organizationId: string,
+  trigger: Doc<"automations">["trigger"],
+): Promise<string | null> {
+  if (trigger.kind !== "folder" && trigger.kind !== "upload") return null;
+  const storage = await ctx.db
+    .query("storageConnections")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .first();
+  return storage ? null : "Connect your storage on the Uploads page first.";
+}
+
 function scheduledNext(trigger: Doc<"automations">["trigger"], enabled: boolean): number | null {
   return enabled && trigger.kind === "schedule" ? nextRunAt(trigger.schedule, Date.now()) : null;
 }
@@ -60,6 +88,8 @@ function automationProblem(
     }
   }
   if (trigger.kind === "schedule") return scheduleProblem(trigger.schedule);
+  if (trigger.kind === "folder" && trigger.prefix.length > 500)
+    return "That folder name is too long.";
   return null;
 }
 
@@ -120,19 +150,21 @@ export const get = query({
 });
 
 export const create = mutation({
-  args: { organizationId: v.string(), name: v.string() },
+  args: { organizationId: v.string(), name: v.string(), starterId: v.optional(v.string()) },
   returns: v.id("automations"),
   handler: async (ctx, args) => {
     const { userId } = await requireMember(ctx, args.organizationId);
-    const name = args.name.trim().slice(0, 80);
+    const starter = args.starterId ? STARTERS.find((s) => s.id === args.starterId) : undefined;
+    if (args.starterId && !starter) fail("not_found", "Unknown starter.");
+    const name = (args.name.trim() || starter?.name || "").slice(0, 80);
     if (!name) fail("invalid_input", "Give the automation a name.");
     return await ctx.db.insert("automations", {
       organizationId: args.organizationId,
       name,
       enabled: false,
-      trigger: { kind: "manual" },
-      nodes: [],
-      edges: [],
+      trigger: starter?.trigger ?? { kind: "manual" },
+      nodes: starter?.nodes ?? [],
+      edges: starter?.edges ?? [],
       hookToken: randomToken(),
       nextRunAt: null,
       createdBy: userId,
@@ -161,7 +193,9 @@ export const save = mutation({
     if (JSON.stringify(args.nodes).length > 400_000) {
       fail("invalid_input", "This automation's settings are too large to save.");
     }
-    const problem = automationProblem(args.trigger, args.nodes, args.edges);
+    const problem =
+      automationProblem(args.trigger, args.nodes, args.edges) ??
+      (await storageProblem(ctx, automation.organizationId, args.trigger));
     const enabled = automation.enabled && problem === null;
     await ctx.db.patch(args.automationId, {
       name,
@@ -170,6 +204,7 @@ export const save = mutation({
       edges: args.edges,
       enabled,
       nextRunAt: scheduledNext(args.trigger, enabled),
+      watchFrom: watchStart(automation, args.trigger, enabled),
       updatedAt: Date.now(),
     });
     return { enabled, problem };
@@ -181,12 +216,15 @@ export const setEnabled = mutation({
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
     if (args.enabled) {
-      const problem = automationProblem(automation.trigger, automation.nodes, automation.edges);
+      const problem =
+        automationProblem(automation.trigger, automation.nodes, automation.edges) ??
+        (await storageProblem(ctx, automation.organizationId, automation.trigger));
       if (problem) fail("invalid_input", problem);
     }
     await ctx.db.patch(args.automationId, {
       enabled: args.enabled,
       nextRunAt: scheduledNext(automation.trigger, args.enabled),
+      watchFrom: watchStart(automation, automation.trigger, args.enabled),
     });
   },
 });
