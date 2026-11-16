@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated code and installed agent skills.
+    "convex/_generated/**",
+    "convex/betterAuth/_generated/**",
+    ".agents/**",
+    ".claude/**",
   ]),
 ]);
 
