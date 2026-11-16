@@ -55,8 +55,8 @@ export function AutomationsView() {
   const remove = useMutation(api.automations.remove);
 
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [starterId, setStarterId] = useState<string | null>(null);
+  const [name, setName] = useState(STARTERS[0].name);
+  const [starterId, setStarterId] = useState<string | null>(STARTERS[0].id);
   const [pending, setPending] = useState(false);
   const [removing, setRemoving] = useState<{ id: Id<"automations">; name: string } | null>(null);
 
@@ -240,12 +240,12 @@ export function AutomationsView() {
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-2 text-sm font-medium">Start from</legend>
               {[
+                ...STARTERS,
                 {
                   id: null,
                   name: "Empty canvas",
-                  description: "Add your own steps one at a time.",
+                  description: "For builders: add your own steps one at a time.",
                 },
-                ...STARTERS,
               ].map((option) => (
                 <label
                   key={option.id ?? "blank"}

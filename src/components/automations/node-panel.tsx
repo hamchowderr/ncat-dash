@@ -1,6 +1,7 @@
 "use client";
 
 import type { AutomationNode } from "@ncat-dash/automation-core";
+import { getPlatform } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -12,6 +13,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { nodeTitle } from "@/lib/automations";
 
+import { PlatformPicker } from "./platform-picker";
 import { CopyButton } from "./trigger-panel";
 
 type NodeContent = Omit<AutomationNode, "position">;
@@ -57,9 +59,22 @@ export function NodePanel({
         <FieldDescription>
           {node.kind === "approval"
             ? "The run stops here until someone on the team approves. The files it was shown carry on to the next step."
-            : step?.description}
+            : node.kind === "clips"
+              ? "Cuts each video at pauses in speech into the fewest clips that fit the platform, and reframes them for it."
+              : step?.description}
         </FieldDescription>
       </Field>
+
+      {node.kind === "clips" && (
+        <Field>
+          <FieldLabel>Platform</FieldLabel>
+          <PlatformPicker
+            compact
+            value={getPlatform(node.input.platform)?.name}
+            onChange={(platform) => onChange({ input: { ...node.input, platform } })}
+          />
+        </Field>
+      )}
 
       {node.kind === "step" && fields && (
         <StepFields

@@ -41,6 +41,7 @@ export function triggerSummary(trigger: Trigger): string {
 export function nodeTitle(node: Pick<AutomationNode, "kind" | "stepId" | "label">): string {
   if (node.label) return node.label;
   if (node.kind === "approval") return "Approval";
+  if (node.kind === "clips") return "Clips for a platform";
   return getStep(node.stepId ?? "")?.title ?? node.stepId ?? "Step";
 }
 

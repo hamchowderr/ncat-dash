@@ -1,9 +1,14 @@
 import {
   type AutomationEdge,
   type AutomationNode,
+  clipRequest,
   downstreamOf,
+  durationOf,
+  getPlatform,
   graphProblem,
   type NodeStatus,
+  parseSilences,
+  planClips,
   planJobs,
   readyNodes,
   type TemplateContext,
@@ -118,6 +123,11 @@ async function startNode(
     return;
   }
 
+  if (node.kind === "clips") {
+    await startClips(ctx, run, node, step, byNode, inputs);
+    return;
+  }
+
   const definition = node.stepId ? getStep(node.stepId) : undefined;
   if (!definition) {
     await failStep(ctx, run, step, byNode, "This step is no longer in the catalog.");
@@ -156,24 +166,173 @@ async function startNode(
     return;
   }
 
+  const queued = await enqueueAll(
+    ctx,
+    run,
+    step,
+    planned.map((input) => ({ stepId: definition.id, input })),
+  );
+  if (!queued.ok) {
+    await failStep(ctx, run, step, byNode, queued.message);
+    return;
+  }
+  const { jobIds } = queued;
+  await ctx.db.patch(step._id, { status: "running", jobIds, startedAt: now });
+}
+
+// A pause must last this long, and be this quiet, to count as a place to cut.
+const PAUSE_SECONDS = 0.4;
+const PAUSE_NOISE = "-30dB";
+// One "clips" step takes this many videos at most.
+const MAX_VIDEOS_PER_CLIPS_STEP = 10;
+
+/** Queues jobs for a step, all or nothing. Returns their ids, or the reason it failed. */
+async function enqueueAll(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  wanted: { stepId: string; input: unknown }[],
+): Promise<{ ok: true; jobIds: Id<"jobs">[] } | { ok: false; message: string }> {
   const jobIds: Id<"jobs">[] = [];
-  for (const input of planned) {
+  for (const { stepId, input } of wanted) {
     const queued = await enqueueJob(ctx, {
       organizationId: run.organizationId,
-      stepId: definition.id,
+      stepId,
       input,
       createdBy: run.startedBy ?? "automation",
       runStepId: step._id,
     });
     if (!queued.ok) {
-      // Take back the jobs already queued for this step; none has been sent yet.
+      // Take back the jobs already queued; none has been sent yet.
       for (const jobId of jobIds) await ctx.db.delete(jobId);
-      await failStep(ctx, run, step, byNode, queued.message);
-      return;
+      return { ok: false, message: queued.message };
     }
     jobIds.push(queued.jobId);
   }
-  await ctx.db.patch(step._id, { status: "running", jobIds, startedAt: now });
+  return { ok: true, jobIds };
+}
+
+/** First stage of a "clips" step: read each video's length and find its pauses. */
+async function startClips(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  node: AutomationNode,
+  step: Doc<"runSteps">,
+  byNode: Map<string, Doc<"runSteps">>,
+  inputs: string[],
+) {
+  if (!getPlatform(node.input.platform)) {
+    await failStep(ctx, run, step, byNode, "Pick a platform for the clips.");
+    return;
+  }
+  if (inputs.length === 0) {
+    await failStep(ctx, run, step, byNode, "No video reached this step.");
+    return;
+  }
+  if (inputs.length > MAX_VIDEOS_PER_CLIPS_STEP) {
+    await failStep(
+      ctx,
+      run,
+      step,
+      byNode,
+      `${inputs.length} videos reached this step; the most it takes at once is ${MAX_VIDEOS_PER_CLIPS_STEP}.`,
+    );
+    return;
+  }
+  const queued = await enqueueAll(
+    ctx,
+    run,
+    step,
+    inputs.flatMap((url) => [
+      { stepId: "media-metadata", input: { media_url: url } },
+      {
+        stepId: "media-silence-detect",
+        input: { media_url: url, duration: PAUSE_SECONDS, noise: PAUSE_NOISE },
+      },
+    ]),
+  );
+  if (!queued.ok) {
+    await failStep(ctx, run, step, byNode, queued.message);
+    return;
+  }
+  await ctx.db.patch(step._id, {
+    status: "running",
+    stage: "probe",
+    jobIds: queued.jobIds,
+    startedAt: Date.now(),
+  });
+}
+
+/** Second stage of a "clips" step: plan the cuts and queue one job per clip. */
+async function cutClips(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  probes: Doc<"jobs">[],
+) {
+  const steps = await ctx.db
+    .query("runSteps")
+    .withIndex("by_run", (q) => q.eq("runId", run._id))
+    .take(200);
+  const byNode = new Map(steps.map((other) => [other.nodeId, other]));
+  const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
+  const platform = getPlatform(node?.input.platform);
+  if (!platform) {
+    await failStep(ctx, run, step, byNode, "Pick a platform for the clips.");
+    return;
+  }
+
+  const plan: NonNullable<Doc<"runSteps">["plan"]> = [];
+  // Probes come in pairs per video: its metadata, then its pauses.
+  for (let i = 0; i + 1 < probes.length; i += 2) {
+    const [metadata, silence] = [probes[i], probes[i + 1]];
+    const source = (metadata.input as { media_url: string }).media_url;
+    const duration = metadata.status === "done" ? durationOf(metadata.result) : null;
+    if (duration === null) {
+      await failStep(
+        ctx,
+        run,
+        step,
+        byNode,
+        metadata.error ?? "Could not read how long the video is.",
+      );
+      return;
+    }
+    // Without the pauses the video is still cut, just evenly.
+    const pauses = silence.status === "done" ? parseSilences(silence.result) : [];
+    for (const clip of planClips(duration, pauses, platform.maxSeconds)) {
+      plan.push({ source, ...clip });
+    }
+  }
+  if (plan.length === 0) {
+    await failStep(ctx, run, step, byNode, "The video is too short to cut.");
+    return;
+  }
+  if (plan.length > MAX_JOBS_PER_STEP) {
+    await failStep(
+      ctx,
+      run,
+      step,
+      byNode,
+      `That would make ${plan.length} clips; the most one step makes is ${MAX_JOBS_PER_STEP}.`,
+    );
+    return;
+  }
+
+  const queued = await enqueueAll(
+    ctx,
+    run,
+    step,
+    plan.map((clip) => ({
+      stepId: "ffmpeg-compose",
+      input: clipRequest(clip.source, clip, platform.frame),
+    })),
+  );
+  if (!queued.ok) {
+    await failStep(ctx, run, step, byNode, queued.message);
+    return;
+  }
+  await ctx.db.patch(step._id, { stage: "cut", jobIds: queued.jobIds, plan });
 }
 
 /**
@@ -239,6 +398,12 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
     if (job) jobs.push(job);
   }
   if (jobs.some((job) => job.status === "queued" || job.status === "running")) return;
+
+  if (step.stage === "probe") {
+    await cutClips(ctx, run, step, jobs);
+    await advance(ctx, run._id);
+    return;
+  }
 
   const failed = jobs.find((job) => job.status === "failed");
   if (failed) {

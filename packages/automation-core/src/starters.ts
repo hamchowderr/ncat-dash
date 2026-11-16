@@ -1,5 +1,6 @@
 import type { AutomationEdge, AutomationNode } from "./graph";
 import type { Schedule } from "./schedule";
+import { clipsGraph } from "./setup";
 
 type FileType = "any" | "video" | "audio" | "image";
 
@@ -28,41 +29,16 @@ const step = (id: string, stepId: string, position: { x: number; y: number }): A
   input: {},
   position,
 });
-const link = (source: string, target: string): AutomationEdge => ({
-  id: `${source}>${target}`,
-  source,
-  target,
-});
 
 /** Ready-made automations a team can start from and then change. */
 export const STARTERS: Starter[] = [
   {
-    id: "clips-from-folder",
-    name: "Captioned clips from a watched folder",
+    id: "social-clips",
+    name: "Clips for social",
     description:
-      "Drop a long video into a folder in your bucket. It is cut into the clips you set, each clip is captioned, and you approve them before a thumbnail is made for each.",
-    trigger: { kind: "folder", prefix: "incoming/", fileType: "video" },
-    nodes: [
-      {
-        ...step("split_1", "video-split", at(1)),
-        // A first guess to change: three one-minute clips from the start.
-        input: {
-          splits: [
-            { start: "00:00:00", end: "00:01:00" },
-            { start: "00:01:00", end: "00:02:00" },
-            { start: "00:02:00", end: "00:03:00" },
-          ],
-        },
-      },
-      step("caption_1", "video-caption", at(2)),
-      { id: "approval_1", kind: "approval", input: {}, position: at(3) },
-      step("thumbnail_1", "video-thumbnail", at(4)),
-    ],
-    edges: [
-      link("split_1", "caption_1"),
-      link("caption_1", "approval_1"),
-      link("approval_1", "thumbnail_1"),
-    ],
+      "Every long video that arrives is cut at pauses in speech into clips that fit the platform you pick, reframed for it, and captioned.",
+    trigger: { kind: "upload", fileType: "video" },
+    ...clipsGraph({ platform: "Instagram Reels", captions: true, approve: false }),
   },
   {
     id: "caption-uploads",

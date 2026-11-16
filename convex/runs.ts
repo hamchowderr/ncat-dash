@@ -63,7 +63,9 @@ export const get = query({
             finishedAt: step.finishedAt,
             jobs: jobs
               .filter((job) => job !== null)
-              .map((job) => ({ _id: job._id, status: job.status })),
+              .map((job) => ({ _id: job._id, status: job.status, outputs: job.outputs })),
+            stage: step.stage,
+            plan: step.plan,
           };
         }),
       ),
