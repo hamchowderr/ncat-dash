@@ -6,13 +6,15 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 
 const copy = {
   "sign-in": {
     title: "Sign in to your account",
+    description: "Enter your email and password to get back to your team.",
     submit: "Sign in",
     pending: "Signing in",
     switchText: "New here?",
@@ -21,6 +23,7 @@ const copy = {
   },
   "sign-up": {
     title: "Create your account",
+    description: "You will name your team and connect your toolkit next.",
     submit: "Create account",
     pending: "Creating account",
     switchText: "Already have an account?",
@@ -74,61 +77,60 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
   }
 
   return (
-    <section className="flex min-h-screen w-full items-center justify-center px-4 py-4 lg:py-20">
-      <div className="w-full max-w-sm space-y-6">
-        <h1 className="mt-6 text-3xl font-bold">{text.title}</h1>
-        <form onSubmit={onSubmit} className="space-y-6">
-          {mode === "sign-up" && (
-            <div className="space-y-2">
-              <Label htmlFor="name">Your name</Label>
-              <Input id="name" name="name" autoComplete="name" required className="mt-1" />
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email address</Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              className="mt-1"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
-              minLength={8}
-              required
-              className="mt-1"
-            />
-            {mode === "sign-up" && (
-              <p className="text-muted-foreground text-sm">At least 8 characters.</p>
-            )}
-          </div>
-
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? text.pending : text.submit}
-          </Button>
-        </form>
-
-        <p className="text-muted-foreground text-sm">
-          {text.switchText}{" "}
-          <Link href={text.switchHref} className="text-foreground font-medium hover:underline">
-            {text.switchLabel}
-          </Link>
-        </p>
+    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+      <div className="w-full max-w-sm">
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <h1>{text.title}</h1>
+            </CardTitle>
+            <CardDescription>{text.description}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={onSubmit}>
+              <FieldGroup>
+                {mode === "sign-up" && (
+                  <Field>
+                    <FieldLabel htmlFor="name">Your name</FieldLabel>
+                    <Input id="name" name="name" autoComplete="name" required />
+                  </Field>
+                )}
+                <Field>
+                  <FieldLabel htmlFor="email">Email address</FieldLabel>
+                  <Input id="email" name="email" type="email" autoComplete="email" required />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="password">Password</FieldLabel>
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
+                    minLength={8}
+                    required
+                  />
+                  {mode === "sign-up" && (
+                    <FieldDescription>At least 8 characters.</FieldDescription>
+                  )}
+                </Field>
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+                <Field>
+                  <Button type="submit" disabled={pending}>
+                    {pending ? text.pending : text.submit}
+                  </Button>
+                  <FieldDescription className="text-center">
+                    {text.switchText} <Link href={text.switchHref}>{text.switchLabel}</Link>
+                  </FieldDescription>
+                </Field>
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
       </div>
-    </section>
+    </div>
   );
 }
