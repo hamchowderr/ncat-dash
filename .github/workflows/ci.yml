@@ -29,6 +29,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The recipe tests run every recipe through a real FFmpeg.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test

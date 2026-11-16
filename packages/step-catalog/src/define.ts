@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export type StepCategory = "video" | "audio" | "media" | "image" | "ffmpeg" | "code" | "storage";
+export type StepCategory =
+  "video" | "audio" | "media" | "image" | "recipe" | "ffmpeg" | "code" | "storage";
 
 /**
  * What a finished step hands to the next one.
@@ -29,8 +30,13 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
   primaryInput: string | null;
   /** A list field that takes every incoming file, such as video_urls on "Join videos". */
   listInput?: { field: string; itemKey: string };
-  /** The toolkit's full request schema, including the runner fields. */
+  /**
+   * The toolkit's full request schema, including the runner fields. For a recipe it is
+   * the blanks a person fills in, and `toRequest` turns them into the toolkit's request.
+   */
   input: TInput;
+  /** Builds the toolkit request from the filled-in blanks. Only recipes have one. */
+  toRequest?: (input: z.output<TInput>) => Record<string, unknown>;
 }
 
 export function defineStep<TInput extends z.ZodObject>(
@@ -48,5 +54,6 @@ export function userInputSchema(step: StepDefinition): z.ZodObject {
 
 /** JSON Schema for building a form or describing the step to a model. */
 export function userInputJsonSchema(step: StepDefinition) {
-  return z.toJSONSchema(userInputSchema(step));
+  // "input" so a blank with a default is shown as optional, with its default.
+  return z.toJSONSchema(userInputSchema(step), { io: "input" });
 }
