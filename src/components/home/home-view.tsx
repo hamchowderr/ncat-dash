@@ -26,7 +26,6 @@ const checkedAt = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", time
 export function HomeView() {
   const team = useActiveTeam();
   const connections = useQuery(api.toolkitConnections.list, { organizationId: team.id });
-  const settings = useQuery(api.settings.get);
   const recheck = useAction(api.toolkitConnections.recheck);
   const [checking, setChecking] = useState<Id<"toolkitConnections"> | null>(null);
 
@@ -48,9 +47,7 @@ export function HomeView() {
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">{team.name}</h1>
         <p className="text-muted-foreground text-sm">
-          {settings?.edition === "hosted"
-            ? "Hosted edition."
-            : "Self-hosted edition. Everything runs on your own toolkit and keys."}
+          Your toolkit connection and, soon, your media and automations.
         </p>
       </div>
 

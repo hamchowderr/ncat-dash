@@ -6,7 +6,7 @@ Working name: NCA Toolkit Dashboard. Under active development.
 
 ## What is here
 
-- `src/` is the Next.js app: sign-in, onboarding and the dashboard shell (shadcn/ui with blocks from shadcnuikit).
+- `src/` is the Next.js app: sign-in, onboarding and the dashboard shell (open-source shadcn/ui).
 - `convex/` is the backend: Better Auth with teams (`convex/betterAuth`), toolkit connections, and the edition setting.
 - `packages/step-catalog/` describes every toolkit endpoint once (inputs, outputs, how to call it). The app, the automation runner and the agent all read from it.
 - `.agents/skills/` holds the official agent skills for Convex, Better Auth, Mastra, Vercel and shadcn.
@@ -51,12 +51,12 @@ pnpm test
 pnpm build
 ```
 
-### UI blocks
+### UI
 
-Blocks come from the shadcnuikit registry, which needs a licence key in `SHADCNUIKIT_API_KEY`:
+Everything is built on open-source [shadcn/ui](https://ui.shadcn.com) components and blocks, so the whole codebase can be passed on under the GPL.
 
 ```bash
-npx shadcn add @shadcnuikit/<block-name>
+npx shadcn add <component-or-block>
 ```
 
 ## Licence
