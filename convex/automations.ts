@@ -1,6 +1,7 @@
 import {
   type AutomationEdge,
   type AutomationNode,
+  getPlatform,
   graphProblem,
   nextRunAt,
   scheduleProblem,
@@ -85,6 +86,9 @@ function automationProblem(
   for (const node of nodes) {
     if (node.kind === "step" && !getStep(node.stepId ?? "")) {
       return "One of the steps is no longer in the catalog.";
+    }
+    if (node.kind === "clips" && !getPlatform(node.input.platform)) {
+      return "Pick a platform for the clips.";
     }
   }
   if (trigger.kind === "schedule") return scheduleProblem(trigger.schedule);

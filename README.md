@@ -45,6 +45,8 @@ Steps lists everything the toolkit can do. Each step has a form built from its s
 
 Recipes are ready-made FFmpeg jobs with a few blanks to fill in, such as cropping to vertical, adding a logo, or text with an outline. Each one builds a request for the toolkit's `/v1/ffmpeg/compose` route, so nobody writes a filter graph by hand. They live in `packages/step-catalog/src/recipes.ts`, come from the compose examples in the toolkit's Postman collection, and work as steps in automations too. The tests run every recipe through a real FFmpeg when one is installed.
 
+"Clips for social" is the first automation with a setup page instead of a canvas. You choose where videos arrive (the Uploads page, a folder in your bucket, or only when you run it), the platform, and whether to caption, then switch it on. From then on every video is cut at pauses in speech into the fewest clips that fit the platform's length limit, reframed for it, and captioned, with nobody there. The cut planner and the FFmpeg request are in `packages/automation-core/src/clips.ts`; `setup.ts` turns the setup into the steps you see on the Steps tab, and back. The Steps and Jobs pages, under Builder in the sidebar, are a workbench for trying single steps and are not how the product is meant to be used day to day.
+
 Uploads sends files straight from the browser to a bucket you own (Cloudflare R2, AWS S3, DigitalOcean Spaces, MinIO). The bucket needs a CORS rule that allows `PUT` from the dashboard's address.
 
 ### Automations

@@ -10,6 +10,7 @@ import {
   Image as ImageIcon,
   type LucideIcon,
   Music,
+  Scissors,
   Shapes,
   Terminal,
   UserCheck,
@@ -54,7 +55,14 @@ const handle = "!size-2.5 !border-2 !border-background !bg-muted-foreground";
 function StepNode({ data, selected }: NodeProps<StepFlowNode>) {
   const { node, status, jobCount } = data;
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
-  const Icon = node.kind === "approval" ? UserCheck : step ? CATEGORY_ICONS[step.category] : Shapes;
+  const Icon =
+    node.kind === "approval"
+      ? UserCheck
+      : node.kind === "clips"
+        ? Scissors
+        : step
+          ? CATEGORY_ICONS[step.category]
+          : Shapes;
   return (
     <div
       className={cn(
@@ -73,11 +81,15 @@ function StepNode({ data, selected }: NodeProps<StepFlowNode>) {
         <span className="text-muted-foreground truncate text-xs">
           {node.kind === "approval"
             ? "Waits for a person"
-            : step
-              ? jobCount && jobCount > 1
-                ? `${jobCount} files`
-                : CATEGORY_LABELS[step.category]
-              : "No longer in the catalog"}
+            : node.kind === "clips"
+              ? jobCount && jobCount > 1 && status !== "pending"
+                ? `${jobCount} clips`
+                : String(node.input.platform ?? "No platform picked")
+              : step
+                ? jobCount && jobCount > 1
+                  ? `${jobCount} files`
+                  : CATEGORY_LABELS[step.category]
+                : "No longer in the catalog"}
         </span>
       </div>
       {status && <StatusIcon status={status} />}

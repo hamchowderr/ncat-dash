@@ -3,7 +3,7 @@ import { v } from "convex/values";
 
 export const nodeValidator = v.object({
   id: v.string(),
-  kind: v.union(v.literal("step"), v.literal("approval")),
+  kind: v.union(v.literal("step"), v.literal("approval"), v.literal("clips")),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
   input: v.record(v.string(), v.any()),
@@ -176,6 +176,22 @@ export default defineSchema({
     // The file URLs this step hands to the next ones.
     outputs: v.array(v.string()),
     error: v.union(v.null(), v.string()),
+    // For a "clips" step, which works in two stages: first it reads each video's length
+    // and pauses ("probe"), then it cuts the clips ("cut"). jobIds holds the current
+    // stage's jobs.
+    stage: v.optional(v.union(v.literal("probe"), v.literal("cut"))),
+    // The planned clips, in the same order as the cut jobs.
+    plan: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          part: v.number(),
+          parts: v.number(),
+          start: v.number(),
+          seconds: v.number(),
+        }),
+      ),
+    ),
     // Who approved or rejected, for an approval step.
     decidedBy: v.optional(v.string()),
     startedAt: v.union(v.null(), v.number()),

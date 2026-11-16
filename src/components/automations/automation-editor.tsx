@@ -4,7 +4,14 @@ import "@xyflow/react/style.css";
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { type AutomationEdge, type AutomationNode, graphProblem } from "@ncat-dash/automation-core";
+import {
+  type AutomationEdge,
+  type AutomationNode,
+  type ClipsSetup,
+  clipsGraph,
+  graphProblem,
+  readClipsSetup,
+} from "@ncat-dash/automation-core";
 import { stepsByCategory } from "@ncat-dash/step-catalog";
 import {
   Background,
@@ -17,24 +24,14 @@ import {
   useNodesState,
 } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Play, Save, Search, UserCheck } from "lucide-react";
+import { ArrowLeft, Play, Save, Scissors, Search, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { UploadPicker } from "@/components/steps/step-fields";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,6 +40,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { newNodeId, type Trigger } from "@/lib/automations";
 import { CATEGORY_LABELS, CATEGORY_ORDER, errorMessage } from "@/lib/catalog";
 
+import { ClipsSetupPanel } from "./clips-setup";
 import {
   CATEGORY_ICONS,
   type FlowNode,
@@ -53,6 +51,7 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { NodePanel } from "./node-panel";
+import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
 import { TriggerPanel } from "./trigger-panel";
 
@@ -108,7 +107,6 @@ function Editor({ automation }: { automation: Loaded }) {
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
-  const [fileUrl, setFileUrl] = useState("");
 
   const stepNodes = nodes.filter((node): node is StepFlowNode => node.type === "step");
   const selected = nodes.find((node) => node.selected);
@@ -138,6 +136,21 @@ function Editor({ automation }: { automation: Loaded }) {
   );
   const dirty = JSON.stringify(draft) !== savedJson;
 
+  // The few choices behind a clips automation, when the steps are still in that shape.
+  const setup = useMemo(() => readClipsSetup(draft.nodes, draft.edges), [draft]);
+  const [tab, setTab] = useState(() =>
+    readClipsSetup(automation.nodes as AutomationNode[], automation.edges) ? "setup" : "build",
+  );
+
+  function applySetup(next: ClipsSetup) {
+    const graph = clipsGraph(next);
+    setNodes((current) => [
+      ...current.filter((node) => node.type === "trigger"),
+      ...graph.nodes.map(toFlowNode),
+    ]);
+    setEdges(graph.edges);
+  }
+
   const shownEdges = useMemo(
     () => [
       ...triggerEdges(
@@ -158,8 +171,8 @@ function Editor({ automation }: { automation: Loaded }) {
     );
   }
 
-  function addNode(kind: "step" | "approval", stepId?: string) {
-    const id = newNodeId(stepNodes, stepId ?? "approval");
+  function addNode(kind: AutomationNode["kind"], stepId?: string) {
+    const id = newNodeId(stepNodes, stepId ?? kind);
     const after = selected?.type === "step" ? selected : undefined;
     const lowest = stepNodes.reduce<StepFlowNode | undefined>(
       (low, node) => (!low || node.position.y > low.position.y ? node : low),
@@ -176,7 +189,14 @@ function Editor({ automation }: { automation: Loaded }) {
         type: "step" as const,
         position,
         selected: true,
-        data: { node: { id, kind, stepId, input: {} } },
+        data: {
+          node: {
+            id,
+            kind,
+            stepId,
+            input: kind === "clips" ? { platform: "Instagram Reels" } : {},
+          },
+        },
       },
     ]);
     if (after) {
@@ -246,19 +266,11 @@ function Editor({ automation }: { automation: Loaded }) {
       }
     });
 
-  const onRun = () =>
-    withBusy(async () => {
-      if (!(await persist())) return;
-      try {
-        const runId = await runNow({
-          automationId: automation._id,
-          fileUrl: fileUrl.trim() || undefined,
-        });
-        router.push(`/automations/${automation._id}/runs/${runId}`);
-      } catch (caught) {
-        toast.error(errorMessage(caught, "The run could not be started."));
-      }
-    });
+  async function onRun(fileUrl?: string) {
+    if (!(await persist())) return;
+    const runId = await runNow({ automationId: automation._id, fileUrl });
+    router.push(`/automations/${automation._id}/runs/${runId}`);
+  }
 
   const grouped = stepsByCategory();
   const query = search.trim().toLowerCase();
@@ -300,11 +312,33 @@ function Editor({ automation }: { automation: Loaded }) {
         </div>
       </div>
 
-      <Tabs defaultValue="build" className="flex-1">
+      <Tabs
+        value={tab === "setup" && !setup ? "build" : tab}
+        onValueChange={setTab}
+        className="flex-1"
+      >
         <TabsList>
-          <TabsTrigger value="build">Build</TabsTrigger>
+          {setup && <TabsTrigger value="setup">Setup</TabsTrigger>}
           <TabsTrigger value="runs">Runs</TabsTrigger>
+          <TabsTrigger value="build">{setup ? "Steps" : "Build"}</TabsTrigger>
         </TabsList>
+
+        {setup && (
+          <TabsContent value="setup" className="pt-2">
+            <ClipsSetupPanel
+              setup={setup}
+              onSetup={applySetup}
+              trigger={trigger}
+              onTrigger={changeTrigger}
+              enabled={automation.enabled}
+              dirty={dirty}
+              busy={busy}
+              onToggle={onToggle}
+              onSave={onSave}
+              onTry={() => setRunOpen(true)}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="build">
           <div className="grid overflow-hidden rounded-xl border lg:h-[calc(100vh-13.5rem)] lg:min-h-[32rem] lg:grid-cols-[15rem_minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)]">
@@ -326,6 +360,25 @@ function Editor({ automation }: { automation: Loaded }) {
                 />
               </div>
               <div className="flex-1 overflow-y-auto p-2">
+                {(!query || "clips for a platform".includes(query)) && (
+                  <div className="mb-3">
+                    <h3 className="text-muted-foreground px-2 py-1 text-xs font-medium">
+                      Ready-made
+                    </h3>
+                    <button
+                      type="button"
+                      title="Cuts each video at pauses in speech into clips that fit a platform, and reframes them for it."
+                      onClick={() => addNode("clips")}
+                      className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
+                    >
+                      <Scissors
+                        className="text-muted-foreground size-4 shrink-0"
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">Clips for a platform</span>
+                    </button>
+                  </div>
+                )}
                 {CATEGORY_ORDER.map((category) => {
                   const Icon = CATEGORY_ICONS[category];
                   const matches = (grouped[category] ?? []).filter(
@@ -457,46 +510,17 @@ function Editor({ automation }: { automation: Loaded }) {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={runOpen} onOpenChange={setRunOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Run now</DialogTitle>
-            <DialogDescription>
-              Starts one run straight away{dirty ? ", after saving your changes" : ""}.
-            </DialogDescription>
-          </DialogHeader>
-          <Field>
-            <div className="flex items-center justify-between gap-2">
-              <FieldLabel htmlFor="run-file">
-                File to work on
-                <span className="text-muted-foreground font-normal">optional</span>
-              </FieldLabel>
-              <UploadPicker onPick={setFileUrl} />
-            </div>
-            <Input
-              id="run-file"
-              type="url"
-              inputMode="url"
-              placeholder="https://"
-              value={fileUrl}
-              onChange={(event) => setFileUrl(event.target.value)}
-              autoComplete="off"
-            />
-            <FieldDescription>
-              Handed to the first step, the way a trigger would hand over a new file.
-            </FieldDescription>
-          </Field>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRunOpen(false)}>
-              Cancel
-            </Button>
-            <Button disabled={busy} onClick={onRun}>
-              <Play />
-              {busy ? "Starting" : "Start run"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RunDialog
+        open={runOpen}
+        onOpenChange={setRunOpen}
+        startsOnUpload={automation.enabled && !dirty && trigger.kind === "upload"}
+        start={onRun}
+        onUploadedOnly={() => {
+          setRunOpen(false);
+          setTab("runs");
+          toast.success("Uploaded. The run starts in a moment.");
+        }}
+      />
     </>
   );
 }
