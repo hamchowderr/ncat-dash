@@ -1,3 +1,5 @@
+import { getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
+
 /** One box on the canvas. */
 export interface AutomationNode {
   id: string;
@@ -22,6 +24,25 @@ export interface AutomationEdge {
 }
 
 export const MAX_NODES = 50;
+/** How far apart steps sit on the canvas, which reads left to right. */
+export const NODE_GAP = 220;
+
+/**
+ * The settings a step still needs before it can run: required blanks that are empty and
+ * that the step before does not fill in.
+ */
+export function missingSettings(node: AutomationNode): string[] {
+  if (node.kind !== "step") return [];
+  const step = getStep(node.stepId ?? "");
+  if (!step) return [];
+  const schema = userInputJsonSchema(step) as { required?: string[] };
+  const automatic = step.primaryInput ?? step.listInput?.field;
+  return (schema.required ?? []).filter((name) => {
+    if (name === automatic) return false;
+    const value = node.input[name];
+    return value === undefined || value === null || value === "";
+  });
+}
 
 export type NodeStatus = "pending" | "running" | "waiting_approval" | "done" | "failed" | "skipped";
 

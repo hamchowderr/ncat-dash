@@ -2,12 +2,12 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { STARTERS } from "@ncat-dash/automation-core";
+import type { AutomationNode, Starter } from "@ncat-dash/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import { Hourglass, MoreHorizontal, Plus, Workflow } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -25,8 +25,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -41,7 +39,9 @@ import { triggerSummary } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
+import { FlowStrip } from "./flow-strip";
 import { RunStatusBadge } from "./run-status";
+import { TemplateGallery } from "./template-gallery";
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -55,19 +55,16 @@ export function AutomationsView() {
   const remove = useMutation(api.automations.remove);
 
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState(STARTERS[0].name);
-  const [starterId, setStarterId] = useState<string | null>(STARTERS[0].id);
   const [pending, setPending] = useState(false);
   const [removing, setRemoving] = useState<{ id: Id<"automations">; name: string } | null>(null);
 
-  async function onCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function onPick(starter: Starter | null) {
     setPending(true);
     try {
       const id = await create({
         organizationId: team.id,
-        name,
-        starterId: starterId ?? undefined,
+        name: starter?.name ?? "New automation",
+        starterId: starter?.id,
       });
       router.push(`/automations/${id}`);
     } catch (caught) {
@@ -124,21 +121,20 @@ export function AutomationsView() {
       {automations === undefined ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : automations.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-12 text-center">
-          <div className="bg-muted flex size-10 items-center justify-center rounded-lg">
-            <Workflow className="size-5" aria-hidden="true" />
+        <div className="grid gap-5">
+          <div className="flex items-center gap-3">
+            <div className="bg-muted flex size-10 shrink-0 items-center justify-center rounded-lg">
+              <Workflow className="size-5" aria-hidden="true" />
+            </div>
+            <div className="grid gap-0.5">
+              <h2 className="font-medium">Start from a template</h2>
+              <p className="text-muted-foreground text-sm">
+                Pick one to open it on the canvas. Change it there, switch it on, and it runs by
+                itself.
+              </p>
+            </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <h2 className="font-medium">No automations yet</h2>
-            <p className="text-muted-foreground max-w-sm text-sm">
-              Build one from the steps you have already tried, then switch it on and leave it
-              running.
-            </p>
-          </div>
-          <Button size="sm" onClick={() => setOpen(true)}>
-            <Plus />
-            New automation
-          </Button>
+          <TemplateGallery recipes={false} disabled={pending} onPick={onPick} />
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border">
@@ -147,7 +143,7 @@ export function AutomationsView() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Starts</TableHead>
-                <TableHead>Steps</TableHead>
+                <TableHead>Flow</TableHead>
                 <TableHead>Last run</TableHead>
                 <TableHead>On</TableHead>
                 <TableHead>
@@ -166,8 +162,13 @@ export function AutomationsView() {
                   <TableCell className="text-muted-foreground">
                     {triggerSummary(automation.trigger)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground tabular-nums">
-                    {automation.stepCount}
+                  <TableCell>
+                    <FlowStrip
+                      size="sm"
+                      trigger={automation.trigger}
+                      nodes={automation.nodes as AutomationNode[]}
+                      edges={automation.edges}
+                    />
                   </TableCell>
                   <TableCell>
                     {automation.lastRun ? (
@@ -228,69 +229,14 @@ export function AutomationsView() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
-          <form onSubmit={onCreate} className="flex flex-col gap-4">
-            <DialogHeader>
-              <DialogTitle>New automation</DialogTitle>
-              <DialogDescription>
-                Start from a ready-made one or from an empty canvas. Everything can be changed
-                afterwards.
-              </DialogDescription>
-            </DialogHeader>
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-2 text-sm font-medium">Start from</legend>
-              {[
-                ...STARTERS,
-                {
-                  id: null,
-                  name: "Empty canvas",
-                  description: "For builders: add your own steps one at a time.",
-                },
-              ].map((option) => (
-                <label
-                  key={option.id ?? "blank"}
-                  className="has-checked:border-ring has-checked:bg-muted/50 has-focus-visible:ring-ring/50 flex cursor-pointer gap-3 rounded-lg border p-3 has-focus-visible:ring-3"
-                >
-                  <input
-                    type="radio"
-                    name="starter"
-                    className="accent-primary mt-1"
-                    checked={starterId === option.id}
-                    onChange={() => {
-                      setStarterId(option.id);
-                      if (!name || STARTERS.some((starter) => starter.name === name)) {
-                        setName(option.id ? option.name : "");
-                      }
-                    }}
-                  />
-                  <span className="grid gap-0.5">
-                    <span className="text-sm font-medium">{option.name}</span>
-                    <span className="text-muted-foreground text-sm">{option.description}</span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-            <Field>
-              <FieldLabel htmlFor="automation-name">Name</FieldLabel>
-              <Input
-                id="automation-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Caption new uploads"
-                maxLength={80}
-                required
-                autoComplete="off"
-              />
-            </Field>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={pending}>
-                {pending ? "Creating" : "Create"}
-              </Button>
-            </DialogFooter>
-          </form>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>New automation</DialogTitle>
+            <DialogDescription>
+              Pick a template to open it on the canvas. Everything can be changed there.
+            </DialogDescription>
+          </DialogHeader>
+          <TemplateGallery disabled={pending} onPick={onPick} />
         </DialogContent>
       </Dialog>
 

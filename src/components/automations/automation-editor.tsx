@@ -7,10 +7,8 @@ import type { Id } from "@convex/_generated/dataModel";
 import {
   type AutomationEdge,
   type AutomationNode,
-  type ClipsSetup,
-  clipsGraph,
   graphProblem,
-  readClipsSetup,
+  NODE_GAP,
 } from "@ncat-dash/automation-core";
 import { stepsByCategory } from "@ncat-dash/step-catalog";
 import {
@@ -22,13 +20,14 @@ import {
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useReactFlow,
 } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Play, Save, Scissors, Search, UserCheck } from "lucide-react";
+import { ArrowLeft, Play, Plus, Save, Scissors, Search, UserCheck, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -39,11 +38,13 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { newNodeId, type Trigger } from "@/lib/automations";
 import { CATEGORY_LABELS, CATEGORY_ORDER, errorMessage } from "@/lib/catalog";
+import { cn } from "@/lib/utils";
 
-import { ClipsSetupPanel } from "./clips-setup";
 import {
+  AddAfterContext,
   CATEGORY_ICONS,
   type FlowNode,
+  lastNodeIds,
   nodeTypes,
   type StepFlowNode,
   TRIGGER_ID,
@@ -54,6 +55,8 @@ import { NodePanel } from "./node-panel";
 import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
 import { TriggerPanel } from "./trigger-panel";
+
+const FIT = { maxZoom: 1, padding: 0.25, duration: 200 };
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.automations.get>>>;
 
@@ -136,19 +139,34 @@ function Editor({ automation }: { automation: Loaded }) {
   );
   const dirty = JSON.stringify(draft) !== savedJson;
 
-  // The few choices behind a clips automation, when the steps are still in that shape.
-  const setup = useMemo(() => readClipsSetup(draft.nodes, draft.edges), [draft]);
-  const [tab, setTab] = useState(() =>
-    readClipsSetup(automation.nodes as AutomationNode[], automation.edges) ? "setup" : "build",
-  );
+  const [tab, setTab] = useState("editor");
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
-  function applySetup(next: ClipsSetup) {
-    const graph = clipsGraph(next);
-    setNodes((current) => [
-      ...current.filter((node) => node.type === "trigger"),
-      ...graph.nodes.map(toFlowNode),
-    ]);
-    setEdges(graph.edges);
+  // Keep the whole automation in view when it opens and whenever a step is added or removed.
+  const { fitView } = useReactFlow();
+  const nodeCount = nodes.length;
+  const panelShown = nodes.some((node) => node.selected);
+  useEffect(() => {
+    if (tab !== "editor") return;
+    // Twice: once straight away, once after the settings panel has taken its space.
+    const timers = [60, 350].map((delay) => setTimeout(() => void fitView(FIT), delay));
+    return () => timers.forEach(clearTimeout);
+  }, [fitView, nodeCount, tab, panelShown]);
+
+  // Each step nothing follows offers a "+" to carry on from it.
+  const shownNodes = useMemo(() => {
+    const last = lastNodeIds(
+      stepNodes.map((node) => node.id),
+      edges,
+    );
+    return nodes.map((node) =>
+      node.type === "step" ? { ...node, data: { ...node.data, last: last.has(node.id) } } : node,
+    );
+  }, [nodes, stepNodes, edges]);
+
+  function addAfter(nodeId: string) {
+    setNodes((current) => current.map((node) => ({ ...node, selected: node.id === nodeId })));
+    setPaletteOpen(true);
   }
 
   const shownEdges = useMemo(
@@ -174,14 +192,14 @@ function Editor({ automation }: { automation: Loaded }) {
   function addNode(kind: AutomationNode["kind"], stepId?: string) {
     const id = newNodeId(stepNodes, stepId ?? kind);
     const after = selected?.type === "step" ? selected : undefined;
-    const lowest = stepNodes.reduce<StepFlowNode | undefined>(
-      (low, node) => (!low || node.position.y > low.position.y ? node : low),
+    const rightmost = stepNodes.reduce<StepFlowNode | undefined>(
+      (far, node) => (!far || node.position.x > far.position.x ? node : far),
       undefined,
     );
-    const anchor = after ?? lowest;
+    const anchor = after ?? rightmost;
     const position = anchor
-      ? { x: anchor.position.x, y: anchor.position.y + 130 }
-      : { x: 0, y: 130 };
+      ? { x: anchor.position.x + NODE_GAP, y: anchor.position.y }
+      : { x: 0, y: 0 };
     setNodes((current) => [
       ...current.map((node) => ({ ...node, selected: false })),
       {
@@ -199,6 +217,8 @@ function Editor({ automation }: { automation: Loaded }) {
         },
       },
     ]);
+    setPaletteOpen(false);
+    setSearch("");
     if (after) {
       setEdges((current) => [
         ...current,
@@ -312,196 +332,204 @@ function Editor({ automation }: { automation: Loaded }) {
         </div>
       </div>
 
-      <Tabs
-        value={tab === "setup" && !setup ? "build" : tab}
-        onValueChange={setTab}
-        className="flex-1"
-      >
+      <Tabs value={tab} onValueChange={setTab} className="flex-1">
         <TabsList>
-          {setup && <TabsTrigger value="setup">Setup</TabsTrigger>}
+          <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
-          <TabsTrigger value="build">{setup ? "Steps" : "Build"}</TabsTrigger>
         </TabsList>
 
-        {setup && (
-          <TabsContent value="setup" className="pt-2">
-            <ClipsSetupPanel
-              setup={setup}
-              onSetup={applySetup}
-              trigger={trigger}
-              onTrigger={changeTrigger}
-              enabled={automation.enabled}
-              dirty={dirty}
-              busy={busy}
-              onToggle={onToggle}
-              onSave={onSave}
-              onTry={() => setRunOpen(true)}
-            />
-          </TabsContent>
-        )}
-
-        <TabsContent value="build">
-          <div className="grid overflow-hidden rounded-xl border lg:h-[calc(100vh-13.5rem)] lg:min-h-[32rem] lg:grid-cols-[15rem_minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)]">
-            <aside
-              className="hidden min-h-0 flex-col border-r lg:flex"
-              aria-label="Steps you can add"
-            >
-              <div className="relative border-b p-2">
-                <Search
-                  className="text-muted-foreground pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2"
-                  aria-hidden="true"
-                />
-                <Input
-                  aria-label="Search steps"
-                  placeholder="Search steps"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  className="pl-8"
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto p-2">
-                {(!query || "clips for a platform".includes(query)) && (
-                  <div className="mb-3">
-                    <h3 className="text-muted-foreground px-2 py-1 text-xs font-medium">
-                      Ready-made
-                    </h3>
-                    <button
-                      type="button"
-                      title="Cuts each video at pauses in speech into clips that fit a platform, and reframes them for it."
-                      onClick={() => addNode("clips")}
-                      className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
-                    >
-                      <Scissors
-                        className="text-muted-foreground size-4 shrink-0"
-                        aria-hidden="true"
-                      />
-                      <span className="truncate">Clips for a platform</span>
-                    </button>
-                  </div>
-                )}
-                {CATEGORY_ORDER.map((category) => {
-                  const Icon = CATEGORY_ICONS[category];
-                  const matches = (grouped[category] ?? []).filter(
-                    (step) =>
-                      !query ||
-                      step.title.toLowerCase().includes(query) ||
-                      step.description.toLowerCase().includes(query),
-                  );
-                  if (matches.length === 0) return null;
-                  return (
-                    <div key={category} className="mb-3">
+        <TabsContent value="editor">
+          <div
+            className={cn(
+              "relative grid overflow-hidden rounded-xl border lg:h-[calc(100vh-13.5rem)] lg:min-h-[32rem] lg:grid-rows-[minmax(0,1fr)]",
+              selected && "lg:grid-cols-[minmax(0,1fr)_20rem]",
+            )}
+          >
+            {paletteOpen && (
+              <aside
+                className="bg-card absolute inset-y-0 left-0 z-10 flex w-72 min-h-0 flex-col border-r shadow-lg"
+                aria-label="Steps you can add"
+              >
+                <div className="relative flex items-center gap-1 border-b p-2">
+                  <Search
+                    className="text-muted-foreground pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2"
+                    aria-hidden="true"
+                  />
+                  <Input
+                    autoFocus
+                    aria-label="Search steps"
+                    placeholder="Search steps"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    className="pl-8"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={() => setPaletteOpen(false)}
+                  >
+                    <X />
+                    <span className="sr-only">Close the list of steps</span>
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-2">
+                  {(!query || "clips for a platform".includes(query)) && (
+                    <div className="mb-3">
                       <h3 className="text-muted-foreground px-2 py-1 text-xs font-medium">
-                        {CATEGORY_LABELS[category]}
+                        Ready-made
                       </h3>
-                      {matches.map((step) => (
-                        <button
-                          key={step.id}
-                          type="button"
-                          title={step.description}
-                          onClick={() => addNode("step", step.id)}
-                          className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
-                        >
-                          <Icon
-                            className="text-muted-foreground size-4 shrink-0"
-                            aria-hidden="true"
-                          />
-                          <span className="truncate">{step.title}</span>
-                        </button>
-                      ))}
+                      <button
+                        type="button"
+                        title="Cuts each video at pauses in speech into clips that fit a platform, and reframes them for it."
+                        onClick={() => addNode("clips")}
+                        className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
+                      >
+                        <Scissors
+                          className="text-muted-foreground size-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">Clips for a platform</span>
+                      </button>
                     </div>
-                  );
-                })}
-                {(!query || "approval".includes(query)) && (
-                  <div className="mb-3">
-                    <h3 className="text-muted-foreground px-2 py-1 text-xs font-medium">People</h3>
-                    <button
-                      type="button"
-                      title="Stops the run until someone on the team approves."
-                      onClick={() => addNode("approval")}
-                      className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
-                    >
-                      <UserCheck
-                        className="text-muted-foreground size-4 shrink-0"
-                        aria-hidden="true"
-                      />
-                      <span className="truncate">Approval</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </aside>
+                  )}
+                  {CATEGORY_ORDER.map((category) => {
+                    const Icon = CATEGORY_ICONS[category];
+                    const matches = (grouped[category] ?? []).filter(
+                      (step) =>
+                        !query ||
+                        step.title.toLowerCase().includes(query) ||
+                        step.description.toLowerCase().includes(query),
+                    );
+                    if (matches.length === 0) return null;
+                    return (
+                      <div key={category} className="mb-3">
+                        <h3 className="text-muted-foreground px-2 py-1 text-xs font-medium">
+                          {CATEGORY_LABELS[category]}
+                        </h3>
+                        {matches.map((step) => (
+                          <button
+                            key={step.id}
+                            type="button"
+                            title={step.description}
+                            onClick={() => addNode("step", step.id)}
+                            className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
+                          >
+                            <Icon
+                              className="text-muted-foreground size-4 shrink-0"
+                              aria-hidden="true"
+                            />
+                            <span className="truncate">{step.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })}
+                  {(!query || "approval".includes(query)) && (
+                    <div className="mb-3">
+                      <h3 className="text-muted-foreground px-2 py-1 text-xs font-medium">
+                        People
+                      </h3>
+                      <button
+                        type="button"
+                        title="Stops the run until someone on the team approves."
+                        onClick={() => addNode("approval")}
+                        className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
+                      >
+                        <UserCheck
+                          className="text-muted-foreground size-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">Approval</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </aside>
+            )}
 
             <div className="bg-muted/30 relative h-96 min-h-0 lg:h-auto" data-testid="canvas">
-              <ReactFlow
-                nodes={nodes}
-                edges={shownEdges}
-                nodeTypes={nodeTypes}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
-                fitView
-                fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
-                proOptions={{ hideAttribution: true }}
-              >
-                <Background gap={20} />
-                <Controls showInteractive={false} fitViewOptions={{ maxZoom: 1, padding: 0.3 }} />
-              </ReactFlow>
+              {!paletteOpen && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="bg-card absolute top-3 left-3 z-10 shadow-xs"
+                  onClick={() => setPaletteOpen(true)}
+                >
+                  <Plus />
+                  Add step
+                </Button>
+              )}
+              <AddAfterContext value={addAfter}>
+                <ReactFlow
+                  nodes={shownNodes}
+                  edges={shownEdges}
+                  nodeTypes={nodeTypes}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
+                  fitView
+                  fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
+                  proOptions={{ hideAttribution: true }}
+                >
+                  <Background gap={20} />
+                  <Controls showInteractive={false} fitViewOptions={{ maxZoom: 1, padding: 0.3 }} />
+                </ReactFlow>
+              </AddAfterContext>
               {stepNodes.length === 0 && (
                 <p className="text-muted-foreground pointer-events-none absolute inset-x-0 bottom-6 text-center text-sm">
-                  Pick a step on the left to add it.
+                  Press Add step to put the first step after the trigger.
                 </p>
               )}
             </div>
 
-            <aside className="min-h-0 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
-              {selected?.type === "step" ? (
-                <>
-                  <h2 className="mb-4 text-sm font-semibold">Step settings</h2>
-                  <NodePanel
-                    key={selected.id}
-                    node={selected.data.node}
-                    others={stepNodes
-                      .filter((node) => node.id !== selected.id && node.data.node.kind === "step")
-                      .map((node) => node.data.node)}
-                    onChange={(patch) =>
-                      setNodes((current) =>
-                        current.map((node) =>
-                          node.id === selected.id && node.type === "step"
-                            ? {
-                                ...node,
-                                data: { ...node.data, node: { ...node.data.node, ...patch } },
-                              }
-                            : node,
-                        ),
-                      )
-                    }
-                    onRemove={() => {
-                      setNodes((current) => current.filter((node) => node.id !== selected.id));
-                      setEdges((current) =>
-                        current.filter(
-                          (edge) => edge.source !== selected.id && edge.target !== selected.id,
-                        ),
-                      );
-                    }}
-                  />
-                </>
-              ) : (
-                <>
-                  <h2 className="mb-4 text-sm font-semibold">Trigger</h2>
-                  <TriggerPanel
-                    trigger={trigger}
-                    onChange={changeTrigger}
-                    automationId={automation._id}
-                    hookToken={automation.hookToken}
-                  />
-                  <p className="text-muted-foreground mt-6 text-sm">
-                    Select a step on the canvas to change its settings. Drag from the dot under one
-                    step to the dot above another to connect them.
-                  </p>
-                </>
-              )}
-            </aside>
+            {selected && (
+              <aside className="min-h-0 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
+                {selected.type === "step" ? (
+                  <>
+                    <h2 className="mb-4 text-sm font-semibold">Step settings</h2>
+                    <NodePanel
+                      key={selected.id}
+                      node={selected.data.node}
+                      others={stepNodes
+                        .filter((node) => node.id !== selected.id && node.data.node.kind === "step")
+                        .map((node) => node.data.node)}
+                      onChange={(patch) =>
+                        setNodes((current) =>
+                          current.map((node) =>
+                            node.id === selected.id && node.type === "step"
+                              ? {
+                                  ...node,
+                                  data: { ...node.data, node: { ...node.data.node, ...patch } },
+                                }
+                              : node,
+                          ),
+                        )
+                      }
+                      onRemove={() => {
+                        setNodes((current) => current.filter((node) => node.id !== selected.id));
+                        setEdges((current) =>
+                          current.filter(
+                            (edge) => edge.source !== selected.id && edge.target !== selected.id,
+                          ),
+                        );
+                      }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <h2 className="mb-4 text-sm font-semibold">Trigger</h2>
+                    <TriggerPanel
+                      trigger={trigger}
+                      onChange={changeTrigger}
+                      automationId={automation._id}
+                      hookToken={automation.hookToken}
+                    />
+                  </>
+                )}
+              </aside>
+            )}
           </div>
         </TabsContent>
 
