@@ -1,8 +1,11 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 
 import { api } from "./_generated/api";
-import { encryptSecret } from "./lib/crypto";
 import { addPerson, addTeam, backend } from "./test.setup";
+import { connectToolkit, fakeToolkitStorage } from "./test.toolkit";
+
+let toolkit: ReturnType<typeof fakeToolkitStorage> | null = null;
+afterEach(() => toolkit?.restore());
 
 /**
  * Trying an automation on an upload, which the agent does before it offers to switch one
@@ -25,7 +28,7 @@ async function studio({ storage = true } = {}) {
       { op: "add", type: "clips", id: "clips", settings: { platform: "Instagram Reels" } },
     ],
   });
-  const secretCipher = await encryptSecret("secret-secret");
+  toolkit = fakeToolkitStorage();
   const upload = (fileName: string, contentType: string, extra: Record<string, unknown> = {}) =>
     t.run((ctx) =>
       ctx.db.insert("uploads", {
@@ -39,19 +42,8 @@ async function studio({ storage = true } = {}) {
         ...extra,
       }),
     );
-  if (storage) {
-    await t.run((ctx) =>
-      ctx.db.insert("storageConnections", {
-        organizationId: team,
-        endpoint: "http://127.0.0.1:8098",
-        region: "auto",
-        bucket: "test-bucket",
-        accessKeyId: "AKIATEST",
-        secretCipher,
-        createdBy: maya.id,
-      }),
-    );
-  }
+  // Files go to the toolkit's own bucket, so connecting the toolkit is all there is to it.
+  if (storage) await connectToolkit(t, team, maya.id);
   return { t, team, maya, outsider, automationId, upload };
 }
 
@@ -73,9 +65,12 @@ describe("trying an automation on an upload", () => {
     expect(run?.startedBy).toBe(maya.id);
     const trigger = run?.trigger as { file_url: string; file_name: string };
     expect(trigger.file_name).toBe("newest.mp4");
-    expect(trigger.file_url).toMatch(
-      /^http:\/\/127\.0\.0\.1:8098\/test-bucket\/uploads\/newest\.mp4\?/,
-    );
+    // A read link the toolkit signed, made for the toolkit's own bucket.
+    expect(trigger.file_url).toMatch(/^https:\/\/r2\.example\/test-bucket\/uploads\/newest\.mp4\?/);
+    expect(toolkit?.calls).toContainEqual({
+      request: "sign",
+      body: { key: "uploads/newest.mp4", method: "GET", expires_in: 604800 },
+    });
   });
 
   test("runs while the automation is still switched off", async () => {
@@ -110,11 +105,11 @@ describe("trying an automation on an upload", () => {
     );
   });
 
-  test("needs the team's storage connected", async () => {
+  test("needs the team's toolkit connected", async () => {
     const { maya, automationId, upload } = await studio({ storage: false });
     await upload("talk.mp4", "video/mp4");
     await expect(maya.as.action(api.automations.tryOnUpload, { automationId })).rejects.toThrow(
-      /Connect your storage/,
+      /Connect your toolkit/,
     );
   });
 

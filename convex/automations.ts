@@ -53,8 +53,7 @@ import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
 import { deleteVersions, recordVersion } from "./lib/versions";
 import { deleteNotes, notesOf } from "./notes";
-import { presign } from "./lib/s3";
-import { decryptSecret } from "./lib/crypto";
+import { bucketOf, presign, storageConnection } from "./lib/bucket";
 import { edgeValidator, nodeValidator, operationValidator, triggerValidator } from "./schema";
 
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
@@ -108,11 +107,8 @@ async function storageProblem(
   trigger: Doc<"automations">["trigger"],
 ): Promise<string | null> {
   if (trigger.kind !== "folder" && trigger.kind !== "upload") return null;
-  const storage = await ctx.db
-    .query("storageConnections")
-    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
-    .first();
-  return storage ? null : "Connect your storage on the Uploads page first.";
+  const storage = await storageConnection(ctx, organizationId);
+  return storage ? null : "Connect your toolkit in Settings first.";
 }
 
 function scheduledNext(trigger: Doc<"automations">["trigger"], enabled: boolean): number | null {
@@ -697,11 +693,8 @@ export const tryTarget = internalQuery({
       .take(100);
     const upload = pickUpload(uploads, workingCopy(automation).trigger, args.uploadId);
     if (typeof upload === "string") fail("invalid_input", upload);
-    const storage = await ctx.db
-      .query("storageConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
-      .first();
-    if (!storage) fail("no_storage", "Connect your storage first.");
+    const storage = await storageConnection(ctx, automation.organizationId);
+    if (!storage) fail("no_storage", "Connect your toolkit first.");
     return { upload, storage };
   },
 });
@@ -734,18 +727,7 @@ export const tryOnUpload = action({
   returns: v.object({ runId: v.id("runs"), fileName: v.string() }),
   handler: async (ctx, args): Promise<{ runId: Id<"runs">; fileName: string }> => {
     const { upload, storage } = await ctx.runQuery(internal.automations.tryTarget, args);
-    const fileUrl = await presign(
-      {
-        endpoint: storage.endpoint,
-        region: storage.region,
-        bucket: storage.bucket,
-        accessKeyId: storage.accessKeyId,
-        secretAccessKey: await decryptSecret(storage.secretCipher),
-      },
-      "GET",
-      upload.key,
-      READ_LINK_SECONDS,
-    );
+    const fileUrl = await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
     const runId: Id<"runs"> = await ctx.runMutation(internal.automations.startTry, {
       automationId: args.automationId,
       trigger: {
@@ -894,10 +876,7 @@ export const loadUploadForTrigger = internalQuery({
         withinLength(automation.trigger, upload.details),
     );
     if (matching.length === 0) return null;
-    const storage = await ctx.db
-      .query("storageConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", upload.organizationId))
-      .first();
+    const storage = await storageConnection(ctx, upload.organizationId);
     if (!storage) return null;
     return { upload, storage, automationIds: matching.map((automation) => automation._id) };
   },
@@ -910,18 +889,7 @@ export const uploadFinished = internalAction({
     const found = await ctx.runQuery(internal.automations.loadUploadForTrigger, args);
     if (!found) return;
     const { upload, storage } = found;
-    const fileUrl = await presign(
-      {
-        endpoint: storage.endpoint,
-        region: storage.region,
-        bucket: storage.bucket,
-        accessKeyId: storage.accessKeyId,
-        secretAccessKey: await decryptSecret(storage.secretCipher),
-      },
-      "GET",
-      upload.key,
-      READ_LINK_SECONDS,
-    );
+    const fileUrl = await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
     await ctx.runMutation(internal.automations.startFromUpload, {
       automationIds: found.automationIds,
       trigger: {

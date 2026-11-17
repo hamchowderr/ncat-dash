@@ -1,5 +1,5 @@
 // Stand-ins for the browser tests: a file server that supports seeking, and a toolkit
-// that answers every job at once. Nothing here is used by the product itself. The agent
+// (the fork, with its storage requests) that answers every job at once. Nothing here is used by the product itself. The agent
 // server is the real one, with its model played back (see playwright.config.ts).
 //
 // Two toolkit jobs run for real, as the toolkit runs them, so the agent sees and measures
@@ -132,6 +132,22 @@ createServer((request, response) => {
     response.writeHead(200, { "Content-Type": "application/json" });
     if (request.url.startsWith("/v1/toolkit/authenticate")) {
       response.end(JSON.stringify({ code: 200, response: "Authorized", build_number: "204" }));
+      return;
+    }
+    // The fork's storage requests: its bucket is the file server above.
+    if (request.url.startsWith("/v1/storage/")) {
+      const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      const answers = {
+        info: { provider: "s3", bucket: "stand-in", endpoint: FILES, public_url: null },
+        sign: { url: `${FILES}/${body.key}`, method: body.method ?? "GET" },
+        list: { files: [], folders: [], next_token: null },
+        exists: { exists: false },
+        copy: { key: body.destination, etag: "stand-in" },
+        delete: { deleted: body.keys ?? [], failed: [] },
+        folder: { prefix: body.prefix },
+      };
+      const answer = answers[request.url.slice("/v1/storage/".length)];
+      response.end(JSON.stringify({ code: 200, response: answer ?? null, message: "success" }));
       return;
     }
     // A split answers with its clips, a thumbnail with a still; anything else with one file.

@@ -13,116 +13,36 @@ import {
   query,
 } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
-import { decryptSecret, encryptSecret } from "./lib/crypto";
-import { type BucketConfig, checkBucket, presign } from "./lib/s3";
+import { bucketOf, presign, storageConnection } from "./lib/bucket";
 import { fileDetailsValidator } from "./schema";
 
 const UPLOAD_LINK_SECONDS = 60 * 60;
-// The longest a presigned link may live (SigV4 limit). Long enough for a job to fetch it.
+// The longest a signed link may live (SigV4 limit). Long enough for a job to fetch it.
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
 
-async function toBucketConfig(storage: Doc<"storageConnections">): Promise<BucketConfig> {
-  return {
-    endpoint: storage.endpoint,
-    region: storage.region,
-    bucket: storage.bucket,
-    accessKeyId: storage.accessKeyId,
-    secretAccessKey: await decryptSecret(storage.secretCipher),
-  };
-}
+const NO_STORAGE = "Connect your toolkit first, so there is somewhere for your files to go.";
 
 function safeName(fileName: string): string {
   const cleaned = fileName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "");
   return cleaned.slice(-120) || "file";
 }
 
-/** The team's bucket settings, without the secret. Null when none is set up. */
+/**
+ * The team's bucket, as its toolkit reports it. Null until a toolkit is connected: files
+ * go to the toolkit's own bucket, so there is nothing else to set up.
+ */
 export const get = query({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId);
-    const storage = await ctx.db
-      .query("storageConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .first();
-    if (!storage) return null;
+    const connection = await storageConnection(ctx, args.organizationId);
+    if (!connection?.storage) return null;
     return {
-      endpoint: storage.endpoint,
-      region: storage.region,
-      bucket: storage.bucket,
-      publicUrl: storage.publicUrl ?? null,
-      accessKeyHint: storage.accessKeyId.slice(-4),
+      bucket: connection.storage.bucket,
+      publicUrl: connection.storage.publicUrl,
+      baseUrl: connection.baseUrl,
     };
-  },
-});
-
-/** Tests the bucket settings and saves them when the test passes. */
-export const connect = action({
-  args: {
-    organizationId: v.string(),
-    endpoint: v.string(),
-    region: v.string(),
-    bucket: v.string(),
-    accessKeyId: v.string(),
-    secretAccessKey: v.string(),
-    // Optional: the public address the toolkit hands files out under (its S3_PUBLIC_URL).
-    publicUrl: v.optional(v.string()),
-  },
-  returns: v.union(
-    v.object({ ok: v.literal(true) }),
-    v.object({ ok: v.literal(false), detail: v.string() }),
-  ),
-  handler: async (ctx, args) => {
-    const { userId } = await ctx.runQuery(internal.storage.authorize, {
-      organizationId: args.organizationId,
-      managersOnly: true,
-    });
-
-    let endpoint: string;
-    try {
-      const url = new URL(args.endpoint.trim());
-      if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("protocol");
-      endpoint = `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
-    } catch {
-      return { ok: false as const, detail: "Enter the storage address, starting with https://" };
-    }
-    const config: BucketConfig = {
-      endpoint,
-      region: args.region.trim() || "auto",
-      bucket: args.bucket.trim(),
-      accessKeyId: args.accessKeyId.trim(),
-      secretAccessKey: args.secretAccessKey.trim(),
-    };
-    if (!config.bucket || !config.accessKeyId || !config.secretAccessKey) {
-      return { ok: false as const, detail: "Fill in the bucket name and both keys." };
-    }
-
-    let publicUrl: string | undefined;
-    if (args.publicUrl?.trim()) {
-      try {
-        const url = new URL(args.publicUrl.trim());
-        if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("protocol");
-        publicUrl = `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
-      } catch {
-        return { ok: false as const, detail: "Enter the public address, starting with https://" };
-      }
-    }
-
-    const check = await checkBucket(config);
-    if (!check.ok) return check;
-
-    await ctx.runMutation(internal.storage.save, {
-      organizationId: args.organizationId,
-      endpoint: config.endpoint,
-      region: config.region,
-      bucket: config.bucket,
-      accessKeyId: config.accessKeyId,
-      secretCipher: await encryptSecret(config.secretAccessKey),
-      ...(publicUrl ? { publicUrl } : {}),
-      createdBy: userId,
-    });
-    return { ok: true as const };
   },
 });
 
@@ -151,11 +71,9 @@ export const startUpload = action({
     const storage = await ctx.runQuery(internal.storage.load, {
       organizationId: args.organizationId,
     });
-    if (!storage) {
-      throw new ConvexError({ code: "no_storage", message: "Connect your storage first." });
-    }
+    if (!storage) throw new ConvexError({ code: "no_storage", message: NO_STORAGE });
     const key = `uploads/${args.organizationId}/${crypto.randomUUID()}/${safeName(args.fileName)}`;
-    const uploadUrl = await presign(await toBucketConfig(storage), "PUT", key, UPLOAD_LINK_SECONDS);
+    const uploadUrl = await presign(await bucketOf(storage), "PUT", key, UPLOAD_LINK_SECONDS);
     const uploadId = await ctx.runMutation(internal.storage.recordUpload, {
       organizationId: args.organizationId,
       key,
@@ -225,10 +143,8 @@ export const linkFor = action({
     const storage = await ctx.runQuery(internal.storage.load, {
       organizationId: upload.organizationId,
     });
-    if (!storage) {
-      throw new ConvexError({ code: "no_storage", message: "Connect your storage first." });
-    }
-    return await presign(await toBucketConfig(storage), "GET", upload.key, READ_LINK_SECONDS);
+    if (!storage) throw new ConvexError({ code: "no_storage", message: NO_STORAGE });
+    return await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
   },
 });
 
@@ -245,13 +161,11 @@ export const authorize = internalQuery({
   },
 });
 
+/** The toolkit connection the team's files go through, or null. */
 export const load = internalQuery({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("storageConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .first();
+    return await storageConnection(ctx, args.organizationId);
   },
 });
 
@@ -265,25 +179,13 @@ export const loadUpload = internalQuery({
   },
 });
 
-/** What `readDetails` needs: the upload, the team's storage and a toolkit to ask. */
+/** What `readDetails` needs: the upload and the toolkit that keeps it and reads it. */
 export const loadForDetails = internalQuery({
   args: { uploadId: v.id("uploads") },
   handler: async (ctx, args) => {
     const upload = await ctx.db.get(args.uploadId);
     if (!upload || upload.status !== "ready") return null;
-    const storage = await ctx.db
-      .query("storageConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", upload.organizationId))
-      .first();
-    const connections = await ctx.db
-      .query("toolkitConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", upload.organizationId))
-      .take(10);
-    return {
-      upload,
-      storage,
-      connection: connections.find((one) => one.status === "ok") ?? connections[0] ?? null,
-    };
+    return { upload, connection: await storageConnection(ctx, upload.organizationId) };
   },
 });
 
@@ -306,21 +208,15 @@ export const readDetails = internalAction({
   handler: async (ctx, args) => {
     const found = await ctx.runQuery(internal.storage.loadForDetails, args);
     if (!found) return;
-    const { upload, storage, connection } = found;
+    const { upload, connection } = found;
     const step = getStep("media-metadata");
     try {
-      if (storage && connection && step) {
+      if (connection && step) {
+        const bucket = await bucketOf(connection);
         const answer = (await callStep(
-          { baseUrl: connection.baseUrl, apiKey: await decryptSecret(connection.apiKeyCipher) },
+          bucket,
           step,
-          {
-            media_url: await presign(
-              await toBucketConfig(storage),
-              "GET",
-              upload.key,
-              READ_LINK_SECONDS,
-            ),
-          },
+          { media_url: await presign(bucket, "GET", upload.key, READ_LINK_SECONDS) },
           { signal: AbortSignal.timeout(60_000) },
         )) as { response?: unknown } | null;
         const details = readFileDetails(answer?.response);
@@ -369,8 +265,8 @@ export async function withUploadLinks(
   if (ids.size === 0) return input;
 
   const storage = await ctx.runQuery(internal.storage.load, { organizationId });
-  if (!storage) throw new UploadLinkError("Connect your storage first.");
-  const config = await toBucketConfig(storage);
+  if (!storage) throw new UploadLinkError(NO_STORAGE);
+  const config = await bucketOf(storage);
   const links = new Map<string, string>();
   for (const uploadId of ids) {
     const upload = await ctx.runQuery(internal.storage.uploadForTeam, { uploadId, organizationId });
@@ -391,27 +287,6 @@ export async function withUploadLinks(
   return swap(input);
 }
 
-export const save = internalMutation({
-  args: {
-    organizationId: v.string(),
-    endpoint: v.string(),
-    region: v.string(),
-    bucket: v.string(),
-    accessKeyId: v.string(),
-    secretCipher: v.string(),
-    publicUrl: v.optional(v.string()),
-    createdBy: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("storageConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .first();
-    if (existing) await ctx.db.replace(existing._id, args);
-    else await ctx.db.insert("storageConnections", args);
-  },
-});
-
 export const recordUpload = internalMutation({
   args: {
     organizationId: v.string(),
@@ -424,5 +299,25 @@ export const recordUpload = internalMutation({
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("uploads", { ...args, status: "uploading" });
+  },
+});
+
+/**
+ * Deletes the bucket settings teams used to enter here (storage keys included), now that
+ * files go through the toolkit. Run once per deployment:
+ * `npx convex run storage:forgetOldStorageSettings`. The table is no longer in the schema,
+ * so it is reached by name.
+ */
+export const forgetOldStorageSettings = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const db = ctx.db as unknown as {
+      query: (table: string) => { take: (n: number) => Promise<{ _id: string }[]> };
+      delete: (id: string) => Promise<void>;
+    };
+    const rows = await db.query("storageConnections").take(500);
+    for (const row of rows) await db.delete(row._id);
+    return rows.length;
   },
 });
