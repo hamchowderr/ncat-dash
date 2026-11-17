@@ -6,7 +6,7 @@ import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/s
 import { authComponent } from "./auth";
 import { notify } from "./lib/alerts";
 import { isMember, requireMember } from "./lib/authz";
-import { CLIP_LIMIT, openReview, VERSION_LIMIT } from "./lib/reviews";
+import { CLIP_LIMIT, openReview, shareOf, VERSION_LIMIT } from "./lib/reviews";
 import { decideApproval } from "./lib/runner";
 
 // A review shows this many comments at most; a room is for one round of notes.
@@ -79,6 +79,8 @@ export const get = query({
       createdAt: review._creationTime,
       decidedBy: review.decidedBy ?? null,
       decidedAt: review.decidedAt ?? null,
+      // What the client said through the share link, if they have.
+      clientVerdict: review.clientVerdict ?? null,
       // An automation is paused on this room and carries on when it is approved.
       holdsRun: step?.status === "waiting_approval",
       fromRun: review.runStepId !== undefined,
@@ -133,6 +135,7 @@ export const comments = query({
       authorName: comment.authorName,
       createdAt: comment._creationTime,
       resolved: comment.resolved,
+      client: comment.client === true,
       mine: (comment.agent ? comment.agent.askedBy : comment.authorId) === userId,
       agent: comment.agent ?? null,
     }));
@@ -223,7 +226,13 @@ export const reopen = mutation({
     const review = await ctx.db.get(args.reviewId);
     if (!review) throw gone();
     await requireMember(ctx, review.organizationId);
-    await ctx.db.patch(review._id, { status: "open", decidedBy: undefined, decidedAt: undefined });
+    // A client with the link can give a fresh verdict on the new round.
+    await ctx.db.patch(review._id, {
+      status: "open",
+      decidedBy: undefined,
+      decidedAt: undefined,
+      clientVerdict: undefined,
+    });
   },
 });
 
@@ -247,6 +256,8 @@ export const remove = mutation({
       .withIndex("by_review", (q) => q.eq("reviewId", review._id))
       .take(CLIP_LIMIT);
     for (const clip of clips) await ctx.db.delete(clip._id);
+    const share = await shareOf(ctx, review._id);
+    if (share) await ctx.db.delete(share._id);
     await ctx.db.delete(review._id);
   },
 });

@@ -123,6 +123,17 @@ describe("the review room", () => {
     NOTES.clip_b.pop();
   });
 
+  test("shows what the client said, and marks a client's comment", () => {
+    NOTES.clip_a = [note({ id: "c", body: "Bigger logo", authorId: "guest:x", client: true })];
+    const { container } = open(room({ clientVerdict: { name: "Riley", approved: false, at: 1 } }));
+    expect(container.querySelector("[data-client-verdict=changes]")).toHaveTextContent(
+      "Riley wants changes",
+    );
+    expect(screen.getByText("Client")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Share" })).toBeVisible();
+    NOTES.clip_a = [];
+  });
+
   test("a link to a comment that is gone still opens the room", () => {
     const { container } = open(room(), { clip: "clip_b", comment: "gone" });
     expect(screen.getByRole("heading", { name: /Clip 2 of 2/ })).toBeInTheDocument();

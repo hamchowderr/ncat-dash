@@ -8,6 +8,7 @@ import {
   approvalTimedOutEmail,
   digestEmail,
   type DigestItem,
+  clientFeedbackEmail,
   mentionEmail,
   sendEmail,
   senderProblem,
@@ -281,7 +282,19 @@ export const sendAlert = internalAction({
                 },
                 branding,
               )
-            : runFailedEmail(
+            : alert.kind === "client_feedback"
+              ? clientFeedbackEmail(
+                  {
+                    teamName,
+                    from: alert.from ?? "A client",
+                    reviewTitle: alert.automationName,
+                    feedback: alert.message,
+                    reviewUrl: link,
+                    settingsUrl,
+                  },
+                  branding,
+                )
+              : runFailedEmail(
                 {
                   teamName,
                   automationName: alert.automationName,
@@ -415,6 +428,11 @@ function digestLine(alert: Doc<"alerts">): Omit<DigestItem, "url"> {
     case "mention":
       return {
         title: `${alert.from ?? "Someone"} mentioned you in ${alert.automationName}`,
+        detail: alert.message,
+      };
+    case "client_feedback":
+      return {
+        title: `${alert.from ?? "A client"} left feedback on ${alert.automationName}`,
         detail: alert.message,
       };
     case "approval_timed_out":

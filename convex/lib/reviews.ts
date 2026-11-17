@@ -1,6 +1,6 @@
 import { clipTitleFrom, TITLE_LIMIT } from "@ncat-dash/review-core";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 /** The most clips one review holds, and the most versions one clip keeps. */
 export const CLIP_LIMIT = 50;
@@ -78,4 +78,12 @@ export async function closeReviewForStep(
     decidedBy: userId ?? undefined,
     decidedAt: Date.now(),
   });
+}
+
+/** A review's share link, if it has one switched on. */
+export async function shareOf(ctx: QueryCtx | MutationCtx, reviewId: Id<"reviews">) {
+  return await ctx.db
+    .query("reviewShares")
+    .withIndex("by_review", (q) => q.eq("reviewId", reviewId))
+    .first();
 }

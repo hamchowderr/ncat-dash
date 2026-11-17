@@ -55,6 +55,8 @@ test.describe.configure({ mode: "serial" });
 let jordan: Page;
 let maya: Page;
 let roomUrl: string;
+let shareUrl: string;
+let client: Page;
 
 test.beforeAll(async ({ browser }) => {
   jordan = await signUp(browser, "Jordan Lee", jordanEmail);
@@ -82,6 +84,7 @@ test.beforeAll(async ({ browser }) => {
 test.afterAll(async () => {
   await jordan?.context().close();
   await maya?.context().close();
+  await client?.context().close();
 });
 
 test("Review starts empty and says how a review begins", async () => {
@@ -267,10 +270,79 @@ test("tagging @Agent gets the agent's answer in the thread, for everyone", async
   await expect(thread.getByRole("button", { name: "Delete this answer" })).toHaveCount(1);
 });
 
+test("a teammate shares the room, and a client opens it with no account", async ({ browser }) => {
+  await jordan.getByRole("button", { name: "Share" }).click();
+  const dialog = jordan.getByRole("dialog", { name: "Share with a client" });
+  await expect(dialog.getByRole("switch", { name: "Let them approve" })).toBeChecked();
+  await expect(dialog.getByRole("switch", { name: "Show the team's comments" })).not.toBeChecked();
+  await dialog.getByRole("button", { name: "Create link" }).click();
+  const link = dialog.getByRole("textbox", { name: "Share link" });
+  await expect(link).toHaveValue(/\/share\/[a-f0-9]{64}$/);
+  shareUrl = await link.inputValue();
+  await jordan.keyboard.press("Escape");
+
+  // A fresh browser: nobody is signed in.
+  client = await (await browser.newContext()).newPage();
+  await client.goto(shareUrl);
+  await expect(client.getByRole("heading", { name: "Before you start" })).toBeVisible();
+  await expect(client.getByText("Salt House will see this name beside your comments.")).toBeVisible();
+  await client.getByLabel("Your name").fill("Riley Client");
+  await client.getByRole("button", { name: "Continue" }).click();
+  await expect(client.getByText("From Salt House")).toBeVisible();
+  await expect(client.getByText("Reviewing as Riley Client")).toBeVisible();
+  await expect(
+    client.getByRole("navigation", { name: "Clips in this review" }).getByRole("button"),
+  ).toHaveCount(2);
+  // The team's own threads stay with the team.
+  await expect(comments(client).getByText(/Pause where something needs a change/)).toBeVisible();
+  await expect(comments(client).getByText("The logo covers the mission patch here.")).toHaveCount(0);
+});
+
+test("the client's comment reaches the team marked as theirs, with an alert", async () => {
+  await seek(client, 1);
+  await commentBox(client).fill("Can the end card stay up a little longer?");
+  await commentBox(client).press("Enter");
+  await expect(comments(client).getByRole("listitem").first()).toContainText("Riley Client");
+
+  await jordan
+    .getByRole("navigation", { name: "Clips in this review" })
+    .getByRole("button", { name: /Opening hello/ })
+    .click();
+  await stage(jordan).getByRole("button", { name: "Version 2" }).click();
+  const thread = comments(jordan).getByRole("listitem").first();
+  await expect(thread).toContainText("Can the end card stay up a little longer?");
+  await expect(thread.getByText("Client", { exact: true })).toBeVisible();
+
+  await jordan.locator("[data-alerts-bell]").click();
+  const alert = jordan.locator('[data-alert-kind="client_feedback"]').first();
+  await expect(alert).toContainText("Riley Client left feedback on Weekly clips");
+  await jordan.keyboard.press("Escape");
+
+  // A reply from the team shows up on the client's side.
+  await thread.getByRole("button", { name: "Reply" }).click();
+  await jordan.getByRole("textbox", { name: "Reply" }).fill("Sure, two more seconds.");
+  await jordan.getByRole("textbox", { name: "Reply" }).press("Enter");
+  await expect(comments(client).getByText("Sure, two more seconds.")).toBeVisible();
+});
+
+test("the client approves, and the team sees it before making the call", async () => {
+  await client.getByRole("button", { name: "Approve" }).click();
+  await expect(client.getByRole("status")).toHaveText("Riley Client approved");
+  await expect(jordan.locator("[data-client-verdict]")).toHaveText("Riley Client approved");
+  await expect(jordan.locator("[data-client-verdict]")).toHaveAttribute(
+    "data-client-verdict",
+    "approved",
+  );
+  // Only a teammate decides: the automation is still waiting.
+  await expect(jordan.getByText(/An automation is paused on this review/)).toBeVisible();
+});
+
 test("approving the room lets the automation finish", async () => {
   await jordan.getByRole("button", { name: "Approve", exact: true }).click();
   await expect(jordan.getByText("Approved by Jordan Lee")).toBeVisible();
   await expect(maya.getByText("Approved by Jordan Lee")).toBeVisible();
+  await expect(client.getByText("Approved by the team")).toBeVisible();
+  await expect(client.getByRole("button", { name: "Approve" })).toHaveCount(0);
   await expect(jordan.getByText(/An automation is paused on this review/)).toBeHidden();
 
   await jordan.goto("/review");

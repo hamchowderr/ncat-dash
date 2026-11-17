@@ -238,6 +238,35 @@ export function mentionEmail(
   );
 }
 
+/** A client said something through a review's share link: a comment or their verdict. */
+export function clientFeedbackEmail(
+  args: {
+    teamName?: string;
+    from: string;
+    reviewTitle: string;
+    feedback: string;
+    reviewUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const from = oneLine(args.from, 60);
+  const review = oneLine(args.reviewTitle, 80);
+  return compose(
+    `${from} left feedback on ${review}`,
+    {
+      heading: `${from} left feedback`,
+      paragraphs: [
+        `${from} opened the link to the review "${review}"${args.teamName ? ` from ${oneLine(args.teamName, 60)}` : ""}:`,
+        `"${oneLine(args.feedback, 600)}"`,
+      ],
+      button: { label: "Open the review", url: args.reviewUrl },
+      footnote: `To stop these emails, change your notification settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
 /** One line in a daily summary. */
 export type DigestItem = { title: string; detail?: string; url: string };
 

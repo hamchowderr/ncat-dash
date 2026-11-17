@@ -45,6 +45,7 @@ import { cn } from "@/lib/utils";
 import { ClipStage, isStill, type Mark } from "./clip-stage";
 import { CommentPanel } from "./comment-panel";
 import { AGENT_PERSON, Face, type Person } from "./person";
+import { ShareDialog } from "./share-dialog";
 
 type Review = NonNullable<ReturnType<typeof useQuery<typeof api.reviews.get>>>;
 type Clip = Review["clips"][number];
@@ -349,12 +350,21 @@ function ClipWorkspace({
   );
 }
 
-function ClipList({
+/** A clip as the list shows it; the team's view also counts its comments. */
+type Listed = {
+  _id: Id<"reviewClips">;
+  title: string;
+  versions: { url: string }[];
+  comments?: number;
+  open?: number;
+};
+
+export function ClipList({
   clips,
   selected,
   onSelect,
 }: {
-  clips: Clip[];
+  clips: Listed[];
   selected: string;
   onSelect: (id: Id<"reviewClips">) => void;
 }) {
@@ -395,13 +405,15 @@ function ClipList({
                   <span className="line-clamp-2 text-sm leading-snug font-medium">
                     {clip.title}
                   </span>
-                  <span className="text-muted-foreground text-xs">
-                    {clip.comments === 0
-                      ? "No comments"
-                      : clip.open === 0
-                        ? "All resolved"
-                        : `${clip.open} to resolve`}
-                  </span>
+                  {clip.comments !== undefined && (
+                    <span className="text-muted-foreground text-xs">
+                      {clip.comments === 0
+                        ? "No comments"
+                        : clip.open === 0
+                          ? "All resolved"
+                          : `${clip.open} to resolve`}
+                    </span>
+                  )}
                 </span>
               </button>
             </li>
@@ -495,7 +507,23 @@ export function ReviewRoom({
 
         {roster && <HereNow reviewId={reviewId} me={roster.me} people={people} />}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {review.clientVerdict && (
+            <Badge
+              variant="outline"
+              data-client-verdict={review.clientVerdict.approved ? "approved" : "changes"}
+              className={
+                review.clientVerdict.approved
+                  ? "border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
+                  : "border-amber-600/40 text-amber-700 dark:text-amber-400"
+              }
+            >
+              {review.clientVerdict.approved ? <Check /> : <Undo2 />}
+              {review.clientVerdict.name}{" "}
+              {review.clientVerdict.approved ? "approved" : "wants changes"}
+            </Badge>
+          )}
+          <ShareDialog reviewId={reviewId} />
           {review.status === "open" ? (
             <>
               <Button
