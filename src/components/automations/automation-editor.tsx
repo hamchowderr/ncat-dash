@@ -14,7 +14,10 @@ import { stepsByCategory } from "@ncat-dash/step-catalog";
 import {
   Background,
   type Connection,
+  ControlButton,
   Controls,
+  MiniMap,
+  type OnConnectEnd,
   type Edge,
   ReactFlow,
   ReactFlowProvider,
@@ -23,7 +26,17 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Play, Plus, Save, Scissors, Search, UserCheck, X } from "lucide-react";
+import {
+  ArrowLeft,
+  LayoutGrid,
+  Play,
+  Plus,
+  Save,
+  Scissors,
+  Search,
+  UserCheck,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -43,10 +56,15 @@ import { cn } from "@/lib/utils";
 import {
   AddAfterContext,
   CATEGORY_ICONS,
+  edgeTypes,
+  FIT_VIEW,
+  flowEdge,
   type FlowNode,
+  InsertOnEdgeContext,
   lastNodeIds,
   nodeTypes,
   type StepFlowNode,
+  tidyPositions,
   TRIGGER_ID,
   triggerEdges,
   triggerPosition,
@@ -56,7 +74,7 @@ import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
 import { TriggerPanel } from "./trigger-panel";
 
-const FIT = { maxZoom: 1, padding: 0.25, duration: 200 };
+const FIT = { ...FIT_VIEW, duration: 200 };
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.automations.get>>>;
 
@@ -164,9 +182,71 @@ function Editor({ automation }: { automation: Loaded }) {
     );
   }, [nodes, stepNodes, edges]);
 
+  // The line a new step is being put on, when it was started from a plus on a line.
+  const [insertOn, setInsertOn] = useState<{ source: string; target: string } | null>(null);
+
+  function openPalette() {
+    setInsertOn(null);
+    setPaletteOpen(true);
+  }
+
   function addAfter(nodeId: string) {
     setNodes((current) => current.map((node) => ({ ...node, selected: node.id === nodeId })));
+    openPalette();
+  }
+
+  function insertOnEdge(source: string, target: string) {
+    setInsertOn({ source, target });
     setPaletteOpen(true);
+  }
+
+  // Letting go of a connection over empty canvas offers a step to put there.
+  const onConnectEnd: OnConnectEnd = (_event, connection) => {
+    if (connection.isValid || connection.fromHandle?.type !== "source") return;
+    const from = connection.fromNode?.id;
+    if (from && from !== TRIGGER_ID) addAfter(from);
+  };
+
+  /** Removes a step and joins what fed it to what it fed, so the flow stays in one piece. */
+  function bridge(removed: string[], current: Edge[]): Edge[] {
+    let next = current;
+    for (const id of removed) {
+      const sources = next.filter((edge) => edge.target === id).map((edge) => edge.source);
+      const targets = next.filter((edge) => edge.source === id).map((edge) => edge.target);
+      next = next.filter((edge) => edge.source !== id && edge.target !== id);
+      for (const source of sources) {
+        for (const target of targets) {
+          if (!next.some((edge) => edge.source === source && edge.target === target)) {
+            next = [...next, { id: `${source}>${target}`, source, target }];
+          }
+        }
+      }
+    }
+    return next;
+  }
+
+  function removeSteps(ids: string[]) {
+    const all = edges;
+    setNodes((current) => current.filter((node) => !ids.includes(node.id)));
+    setEdges(bridge(ids, all));
+  }
+
+  function tidy() {
+    const positions = tidyPositions(
+      stepNodes.map((node) => node.id),
+      edges,
+    );
+    setNodes((current) => {
+      const steps = current
+        .filter((node) => node.type === "step")
+        .map((node) => ({ ...node, position: positions.get(node.id) ?? node.position }));
+      return current.map((node) =>
+        node.type === "trigger"
+          ? { ...node, position: triggerPosition(steps) }
+          : (steps.find((step) => step.id === node.id) ?? node),
+      );
+    });
+    setTimeout(() => void fitView(FIT), 60);
   }
 
   const shownEdges = useMemo(
@@ -175,7 +255,7 @@ function Editor({ automation }: { automation: Loaded }) {
         stepNodes.map((node) => node.id),
         edges,
       ),
-      ...edges,
+      ...edges.map(flowEdge),
     ],
     [stepNodes, edges],
   );
@@ -191,6 +271,44 @@ function Editor({ automation }: { automation: Loaded }) {
 
   function addNode(kind: AutomationNode["kind"], stepId?: string) {
     const id = newNodeId(stepNodes, stepId ?? kind);
+    const content = {
+      id,
+      kind,
+      stepId,
+      input: kind === "clips" ? { platform: "Instagram Reels" } : {},
+    };
+    setPaletteOpen(false);
+    setSearch("");
+    const onLine = insertOn && stepNodes.find((node) => node.id === insertOn.target);
+    if (insertOn && onLine) {
+      // The new step takes the place of the one after it, and everything from there moves along.
+      const { source, target } = insertOn;
+      const from = onLine.position.x;
+      setNodes((current) => [
+        ...current.map((node) => ({
+          ...node,
+          selected: false,
+          position:
+            node.type === "step" && node.position.x >= from
+              ? { ...node.position, x: node.position.x + NODE_GAP }
+              : node.position,
+        })),
+        {
+          id,
+          type: "step" as const,
+          position: { ...onLine.position },
+          selected: true,
+          data: { node: content },
+        },
+      ]);
+      setEdges((current) => [
+        ...current.filter((edge) => !(edge.source === source && edge.target === target)),
+        ...(source === TRIGGER_ID ? [] : [{ id: `${source}>${id}`, source, target: id }]),
+        { id: `${id}>${target}`, source: id, target },
+      ]);
+      setInsertOn(null);
+      return;
+    }
     const after = selected?.type === "step" ? selected : undefined;
     const rightmost = stepNodes.reduce<StepFlowNode | undefined>(
       (far, node) => (!far || node.position.x > far.position.x ? node : far),
@@ -207,18 +325,9 @@ function Editor({ automation }: { automation: Loaded }) {
         type: "step" as const,
         position,
         selected: true,
-        data: {
-          node: {
-            id,
-            kind,
-            stepId,
-            input: kind === "clips" ? { platform: "Instagram Reels" } : {},
-          },
-        },
+        data: { node: content },
       },
     ]);
-    setPaletteOpen(false);
-    setSearch("");
     if (after) {
       setEdges((current) => [
         ...current,
@@ -454,28 +563,54 @@ function Editor({ automation }: { automation: Loaded }) {
                   variant="outline"
                   size="sm"
                   className="bg-card absolute top-3 left-3 z-10 shadow-xs"
-                  onClick={() => setPaletteOpen(true)}
+                  onClick={openPalette}
                 >
                   <Plus />
                   Add step
                 </Button>
               )}
               <AddAfterContext value={addAfter}>
-                <ReactFlow
-                  nodes={shownNodes}
-                  edges={shownEdges}
-                  nodeTypes={nodeTypes}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onConnect={onConnect}
-                  forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
-                  fitView
-                  fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
-                  proOptions={{ hideAttribution: true }}
-                >
-                  <Background gap={20} />
-                  <Controls showInteractive={false} fitViewOptions={{ maxZoom: 1, padding: 0.3 }} />
-                </ReactFlow>
+                <InsertOnEdgeContext value={insertOnEdge}>
+                  <ReactFlow
+                    nodes={shownNodes}
+                    edges={shownEdges}
+                    nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
+                    minZoom={0.25}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onConnect={onConnect}
+                    onConnectEnd={onConnectEnd}
+                    onBeforeDelete={async ({ nodes: doomed, edges: cut }) => {
+                      // Deleting steps with the keyboard goes the same way as Remove step.
+                      if (doomed.length === 0) return { nodes: doomed, edges: cut };
+                      removeSteps(doomed.map((node) => node.id));
+                      return false;
+                    }}
+                    forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
+                    fitView
+                    fitViewOptions={FIT_VIEW}
+                  >
+                    <Background gap={20} />
+                    <Controls showInteractive={false} fitViewOptions={FIT_VIEW}>
+                      <ControlButton onClick={tidy} title="Tidy up" aria-label="Tidy up">
+                        <LayoutGrid />
+                      </ControlButton>
+                    </Controls>
+                    {stepNodes.length > 5 && (
+                      <MiniMap
+                        pannable
+                        zoomable
+                        position="top-right"
+                        className="!bg-card overflow-hidden rounded-lg border shadow-sm"
+                        style={{ width: 168, height: 96 }}
+                        nodeColor="var(--muted-foreground)"
+                        nodeBorderRadius={12}
+                        maskColor="color-mix(in oklab, var(--muted) 70%, transparent)"
+                      />
+                    )}
+                  </ReactFlow>
+                </InsertOnEdgeContext>
               </AddAfterContext>
               {stepNodes.length === 0 && (
                 <p className="text-muted-foreground pointer-events-none absolute inset-x-0 bottom-6 text-center text-sm">
@@ -507,14 +642,7 @@ function Editor({ automation }: { automation: Loaded }) {
                           ),
                         )
                       }
-                      onRemove={() => {
-                        setNodes((current) => current.filter((node) => node.id !== selected.id));
-                        setEdges((current) =>
-                          current.filter(
-                            (edge) => edge.source !== selected.id && edge.target !== selected.id,
-                          ),
-                        );
-                      }}
+                      onRemove={() => removeSteps([selected.id])}
                     />
                   </>
                 ) : (
