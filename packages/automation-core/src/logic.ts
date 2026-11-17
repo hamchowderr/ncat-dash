@@ -6,17 +6,33 @@
  * details.ts), so it can sit anywhere in an automation, also after a step that made a new
  * file. Its settings are a few words and a number that the canvas shows as a sentence.
  */
+import { approvalProblem } from "./approval";
 import { detailsKind, type FileDetails, formatDuration } from "./details";
 
 /** The ways out of an If. Files that pass leave by "yes", the rest by "no". */
 export const IF_BRANCHES = ["yes", "no"] as const;
 export type IfBranch = (typeof IF_BRANCHES)[number];
 
-export const BRANCH_LABELS: Record<string, string> = { yes: "Yes", no: "No" };
+/**
+ * The way a step's files go when the step fails, if anything hangs off it. Steps that do
+ * work have it besides their usual way out; it is used only when they fail.
+ */
+export const FAILURE_WAY = "failed";
+
+export const BRANCH_LABELS: Record<string, string> = {
+  yes: "Yes",
+  no: "No",
+  [FAILURE_WAY]: "If it fails",
+};
 
 /** The ways out of a node of this kind. Empty for every kind with a single way out. */
 export function branchesOfKind(kind: string | undefined): readonly string[] {
   return kind === "if" ? IF_BRANCHES : [];
+}
+
+/** Whether a node of this kind can have a way for when it fails: steps that do work. */
+export function canFailOver(kind: string | undefined): boolean {
+  return kind === "step" || kind === "clips" || kind === "export";
 }
 
 export type Check = "length" | "type" | "shape" | "size" | "sound";
@@ -248,5 +264,6 @@ export function logicProblem(node: {
 }): string | null {
   if (node.kind === "if") return conditionProblem(node.input);
   if (node.kind === "wait") return waitProblem(node.input);
+  if (node.kind === "approval") return approvalProblem(node.input);
   return null;
 }

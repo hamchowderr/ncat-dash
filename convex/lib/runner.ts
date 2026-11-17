@@ -1,10 +1,16 @@
 import {
+  approvalLimitMs,
+  approvalSettings,
+  askedToDecide,
   type AutomationEdge,
   type AutomationNode,
   branchesToward,
+  limitWords,
+  mayDecide,
   chooseFiles,
   clipRequest,
   downstreamOf,
+  failsOver,
   durationOf,
   type FileKind,
   getPlatform,
@@ -32,9 +38,11 @@ import {
   withBrand,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
-import { internal } from "../_generated/api";
+import { ConvexError } from "convex/values";
+import { components, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { notify } from "./alerts";
 import { cutListOf } from "./exports";
 import { finishCheck, startIf, startWait } from "./logic";
 import { brandOf, enqueueJob, pump } from "./queue";
@@ -55,6 +63,7 @@ export async function startRun(
   triggerKind: TriggerKind,
   trigger: Record<string, unknown>,
   startedBy: string | null,
+  options: { test?: string } = {},
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
   if (problem) return { ok: false, message: problem };
@@ -71,6 +80,7 @@ export async function startRun(
     error: null,
     startedBy,
     finishedAt: null,
+    ...(options.test ? { test: options.test } : {}),
   });
   for (const node of automation.nodes) {
     await ctx.db.insert("runSteps", {
@@ -147,6 +157,11 @@ export async function failStep(
   error: string,
 ) {
   const now = Date.now();
+  const edges = run.edges as AutomationEdge[];
+  const node = (run.nodes as AutomationNode[]).find((other) => other.id === step.nodeId);
+  // With a way for when it fails, the files it was given go that way instead, so a step
+  // hung there can try something else with them. advance() passes over the usual way.
+  const handled = node !== undefined && failsOver(node.id, edges);
   await ctx.db.patch(step._id, {
     status: "failed",
     error,
@@ -154,7 +169,9 @@ export async function failStep(
     finishedAt: now,
     retryAt: undefined,
     retryError: undefined,
+    ...(handled ? { outputs: incomingFiles(node, run, byNode) } : {}),
   });
+  if (handled) return;
   // Whatever this step fed can no longer run. Other branches carry on.
   for (const nodeId of downstreamOf(step.nodeId, run.edges as AutomationEdge[])) {
     const below = byNode.get(nodeId);
@@ -173,9 +190,19 @@ async function startNode(
 ) {
   const now = Date.now();
 
+  // A step that is turned off does none of its work and hands its files straight on.
+  if (node.off && node.kind !== "if") {
+    await ctx.db.patch(step._id, {
+      status: "done",
+      outputs: incomingFiles(node, run, byNode),
+      startedAt: now,
+      finishedAt: now,
+    });
+    return;
+  }
+
   if (node.kind === "approval") {
-    await ctx.db.patch(step._id, { status: "waiting_approval", startedAt: now });
-    await openReviewForApproval(ctx, run, step, incomingFiles(node, run, byNode));
+    await startApproval(ctx, run, node, step, incomingFiles(node, run, byNode));
     return;
   }
 
@@ -508,7 +535,10 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
         ["pending", "running", "waiting_approval"].includes(step.status),
       );
       if (open.length === 0) {
-        const failed = steps.find((step) => step.status === "failed");
+        // A step that failed with a way for when it fails was dealt with; the run is fine.
+        const failed = steps.find(
+          (step) => step.status === "failed" && !failsOver(step.nodeId, edges),
+        );
         await ctx.db.patch(runId, {
           status: failed ? "failed" : "done",
           error: failed?.error ?? null,
@@ -516,8 +546,10 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
         });
         // A person who rejects at an approval step already knows; anything else that
         // ends a run is something the team should hear about.
-        const broken = steps.find((step) => step.status === "failed" && !step.decidedBy);
-        if (broken) await alertTeam(ctx, run, broken);
+        const broken = steps.find(
+          (step) => step.status === "failed" && !step.decidedBy && !failsOver(step.nodeId, edges),
+        );
+        if (broken && !run.test) await alertTeam(ctx, run, broken);
       } else {
         const working = open.some((step) => step.status === "running");
         const next = working ? "running" : "waiting";
@@ -534,12 +566,61 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
 }
 
 /**
+ * Pauses the run at an approval step: opens a review room with the files, tells the
+ * people asked to decide (in the bell and by email), and books the time limit if it has
+ * one.
+ */
+async function startApproval(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  node: AutomationNode,
+  step: Doc<"runSteps">,
+  files: string[],
+) {
+  const now = Date.now();
+  const { reviewers, limit, whenTimeUp } = approvalSettings(node.input);
+  const limitMs = approvalLimitMs(node.input);
+  const decideBy = limitMs === null ? undefined : now + limitMs;
+  await ctx.db.patch(step._id, {
+    status: "waiting_approval",
+    startedAt: now,
+    reviewers,
+    decideBy,
+  });
+  if (decideBy !== undefined) {
+    await ctx.scheduler.runAt(decideBy, internal.runs.approvalTimeUp, { runStepId: step._id });
+  }
+  await openReviewForApproval(ctx, run, step, files);
+
+  const team = await ctx.runQuery(components.betterAuth.members.contactsFor, {
+    organizationId: run.organizationId,
+  });
+  const named = askedToDecide(reviewers, team.members);
+  // With nobody named, or nobody named still on the team, the whole team is asked.
+  const everyone = !team.members.some((member) => reviewers.includes(member.userId));
+  await notify(ctx, {
+    organizationId: run.organizationId,
+    kind: "approval_waiting",
+    recipients: everyone ? undefined : named.map((member) => member.userId),
+    runStepId: step._id,
+    runId: run._id,
+    automationId: run.automationId,
+    automationName: run.automationName,
+    stepName: node.label ?? nodeTypeOf(node)?.title,
+    message: limit
+      ? `If nobody decides within ${limitWords(limit)}, it is ${whenTimeUp === "approve" ? "approved" : "rejected"} by itself.`
+      : "It waits until someone approves or rejects it.",
+    retries: 0,
+  });
+}
+
+/**
  * Tells the team a run has failed. Every member sees it under the bell until they open
  * it, and gets an email when email is set up.
  */
 async function alertTeam(ctx: MutationCtx, run: Doc<"runs">, step: Doc<"runSteps">) {
   const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
-  const alertId = await ctx.db.insert("alerts", {
+  await notify(ctx, {
     organizationId: run.organizationId,
     kind: "run_failed",
     runId: run._id,
@@ -548,11 +629,7 @@ async function alertTeam(ctx: MutationCtx, run: Doc<"runs">, step: Doc<"runSteps
     stepName: node ? (node.label ?? nodeTypeOf(node)?.title) : undefined,
     message: step.error ?? "The step failed.",
     retries: step.retries ?? 0,
-    seenBy: [],
   });
-  // The same news by email, for members who have not switched it off. Sending is an
-  // action of its own, so a problem with email never touches the run.
-  await ctx.scheduler.runAfter(0, internal.email.sendRunFailed, { alertId });
 }
 
 /** How many times a failed step tries again for this team. */
@@ -692,34 +769,78 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
   await advance(ctx, run._id);
 }
 
-/** Records a person's decision on an approval step and moves the run on. */
+/**
+ * Records the decision on an approval step and moves the run on. `userId` is the person
+ * deciding, who must be one of the reviewers it named or a team owner or admin; null when
+ * the time limit ran out and the step decided by itself.
+ */
 export async function decideApproval(
   ctx: MutationCtx,
   step: Doc<"runSteps">,
   approved: boolean,
-  userId: string,
+  userId: string | null,
 ): Promise<void> {
   const run = await ctx.db.get(step.runId);
   if (!run) return;
+  if (userId !== null) {
+    const team = await ctx.runQuery(components.betterAuth.members.contactsFor, {
+      organizationId: run.organizationId,
+    });
+    const reviewers = step.reviewers ?? [];
+    if (!mayDecide(reviewers, team.members, userId)) {
+      const names = askedToDecide(reviewers, team.members).map((member) => member.name);
+      throw new ConvexError({
+        code: "forbidden",
+        message: `Only ${names.join(" or ")}, or a team owner or admin, can decide this.`,
+      });
+    }
+  }
   const steps = await ctx.db
     .query("runSteps")
     .withIndex("by_run", (q) => q.eq("runId", run._id))
     .take(200);
   const byNode = new Map(steps.map((other) => [other.nodeId, other]));
   const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
+  const decided = userId === null ? { decidedAutomatically: true } : { decidedBy: userId };
 
   if (approved && node) {
     // An approval hands on exactly the files it was shown.
     await ctx.db.patch(step._id, {
       status: "done",
       outputs: incomingFiles(node, run, byNode),
-      decidedBy: userId,
       finishedAt: Date.now(),
+      ...decided,
     });
   } else {
-    await failStep(ctx, run, step, byNode, "Rejected at the approval step.");
-    await ctx.db.patch(step._id, { decidedBy: userId });
+    const limit = node ? approvalSettings(node.input).limit : null;
+    await failStep(
+      ctx,
+      run,
+      step,
+      byNode,
+      userId === null
+        ? `Nobody decided${limit ? ` within ${limitWords(limit)}` : " in time"}, so it was rejected.`
+        : "Rejected at the approval step.",
+    );
+    await ctx.db.patch(step._id, decided);
   }
+  // The reviewers no longer need the alert asking them to decide.
+  const waiting = await ctx.db
+    .query("alerts")
+    .withIndex("by_runStep", (q) => q.eq("runStepId", step._id))
+    .take(10);
+  for (const alert of waiting) await ctx.db.delete(alert._id);
   await closeReviewForStep(ctx, step._id, approved, userId);
   await advance(ctx, run._id);
+}
+
+/** Decides an approval step nobody decided in time, the way its settings say. */
+export async function approvalTimeUp(ctx: MutationCtx, runStepId: Id<"runSteps">): Promise<void> {
+  const step = await ctx.db.get(runStepId);
+  if (!step || step.status !== "waiting_approval") return;
+  const run = await ctx.db.get(step.runId);
+  if (!run || (run.status !== "running" && run.status !== "waiting")) return;
+  const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
+  const approve = node ? approvalSettings(node.input).whenTimeUp === "approve" : false;
+  await decideApproval(ctx, step, approve, null);
 }

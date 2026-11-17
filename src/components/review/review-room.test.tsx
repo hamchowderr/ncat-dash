@@ -59,6 +59,7 @@ const note = (over: Record<string, unknown>) => ({
   createdAt: 1_700_000_000_000,
   resolved: false,
   mine: false,
+  agent: null,
   ...over,
 });
 
@@ -70,14 +71,14 @@ const NOTES: Record<string, unknown[]> = {
   ],
 };
 
-function open(review: unknown = room()) {
+function open(review: unknown = room(), focus?: { clip?: string; comment?: string }) {
   answerQuery(api.reviews.get, review);
   answerQuery(api.reviews.people, { me: "u1", people });
   answerQuery(
     api.reviews.comments,
     (args: Record<string, unknown>) => NOTES[args.clipId as string] ?? [],
   );
-  const view = renderInApp(<ReviewRoom reviewId={REVIEW} />);
+  const view = renderInApp(<ReviewRoom reviewId={REVIEW} focus={focus} />);
   return { ...view, user: userEvent.setup() };
 }
 
@@ -102,6 +103,30 @@ describe("the review room", () => {
     expect(video(container)).toHaveAttribute("src", "https://files.example/a.mp4");
     // One version: nothing to switch between.
     expect(screen.queryByRole("group", { name: "Version" })).not.toBeInTheDocument();
+  });
+
+  test("a link to a comment opens its clip, at its version and moment, with its thread marked", async () => {
+    const reply = note({ id: "r1", parentId: "n1", version: 1, time: 2, body: "A reply" });
+    NOTES.clip_b.push(reply);
+    const { container } = open(room(), { clip: "clip_b", comment: "r1" });
+    expect(screen.getByRole("heading", { name: /Clip 2 of 2/ })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(video(container)).toHaveAttribute("src", "https://files.example/b.mp4"),
+    );
+    expect(screen.getByRole("button", { name: "Version 1" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await waitFor(() => expect(video(container).currentTime).toBe(2));
+    expect(container.querySelector("#thread-n1")).toHaveClass("bg-muted/60");
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    NOTES.clip_b.pop();
+  });
+
+  test("a link to a comment that is gone still opens the room", () => {
+    const { container } = open(room(), { clip: "clip_b", comment: "gone" });
+    expect(screen.getByRole("heading", { name: /Clip 2 of 2/ })).toBeInTheDocument();
+    expect(video(container)).toHaveAttribute("src", "https://files.example/b-v2.mp4");
   });
 
   test("the clip list shows what is open on each and switches the clip", async () => {
@@ -172,6 +197,33 @@ describe("the review room", () => {
     });
     await user.click(screen.getByRole("button", { name: "Delete your comment" }));
     expect(mutationOf(api.reviews.removeComment)).toHaveBeenCalledWith({ commentId: "mine" });
+    NOTES.clip_a = [];
+  });
+
+  test("the agent can be tagged from the comment box, and asked again when no answer came", async () => {
+    NOTES.clip_a = [
+      note({ id: "q", time: 2, body: "@Agent is it sharp?", authorId: "u1", mine: true }),
+      note({
+        id: "a",
+        parentId: "q",
+        time: 2,
+        authorId: "agent",
+        authorName: "Agent",
+        body: "The agent could not be reached. Ask again in a moment.",
+        agent: { askedBy: "u1", state: "failed" },
+        mine: true,
+      }),
+    ];
+    const { user } = open();
+    const box = screen.getByRole("textbox", { name: /^Comment at this moment/ });
+    await user.type(box, "@ag");
+    await user.click(screen.getByRole("option", { name: /Agent/ }));
+    await user.type(box, "what do you think?{Enter}");
+    expect(mutationOf(api.reviews.comment)).toHaveBeenCalledWith(
+      expect.objectContaining({ clipId: "clip_a", body: "@Agent what do you think?" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Ask again" }));
+    expect(mutationOf(api.reviews.askAgentAgain)).toHaveBeenCalledWith({ commentId: "a" });
     NOTES.clip_a = [];
   });
 

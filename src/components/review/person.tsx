@@ -1,4 +1,5 @@
-import { initialsOf } from "@ncat-dash/review-core";
+import { AGENT, initialsOf } from "@ncat-dash/review-core";
+import { Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -23,7 +24,10 @@ function colourOf(id: string): string {
   return COLOURS[sum % COLOURS.length];
 }
 
-/** A person's picture, or their initials on their colour. */
+/** The agent, offered after "@" and shown beside its answers like a teammate. */
+export const AGENT_PERSON: Person = { ...AGENT, image: null };
+
+/** A person's picture, or their initials on their colour. The agent has its own mark. */
 export function Face({
   id,
   name,
@@ -35,16 +39,19 @@ export function Face({
   image?: string | null;
   className?: string;
 }) {
+  const agent = id === AGENT.id;
   return (
     <span
       aria-hidden="true"
       className={cn(
         "inline-flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-[0.65rem] font-semibold text-white select-none",
-        colourOf(id),
+        agent ? "bg-primary text-primary-foreground" : colourOf(id),
         className,
       )}
     >
-      {image ? (
+      {agent ? (
+        <Sparkles className="size-[55%]" />
+      ) : image ? (
         // Profile pictures can sit on any address the person chose.
         // eslint-disable-next-line @next/next/no-img-element
         <img src={image} alt="" className="size-full object-cover" />

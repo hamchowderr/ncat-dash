@@ -2,6 +2,23 @@
   "fixtures": [
     {
       "match": {
+        "userMessage": "@Agent is the logo too small here?"
+      },
+      "response": {
+        "content": "At 0:02 the logo sits in the bottom right at about a tenth of the frame width, and against the bright sky it is hard to read. I would make it larger and give it a dark backing. That lives in the automation: in the Add logo step, raise the size and turn on the shadow, or ask me in the agent chat on that automation to make the change."
+      },
+      "_comment": "NCAT REVIEW ROOM (src/mastra/ncat/review.ts). Someone tagged @Agent in a comment on a clip."
+    },
+    {
+      "match": {
+        "userMessage": "@Agent does the opening hold attention?"
+      },
+      "response": {
+        "content": "The first frame at 0:00 is a wide shot with no face and no text, so nothing tells a scroller why to stay. Starting on the speaker, or putting the hook line on screen in the first second, would hold more people. In the automation, the Clips step's start can move to where the speaker first talks."
+      }
+    },
+    {
+      "match": {
         "userMessage": "List my automations and say which are switched on.",
         "hasToolResult": false
       },

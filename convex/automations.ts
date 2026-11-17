@@ -30,18 +30,23 @@ import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { authComponent } from "./auth";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
+  action,
   internalAction,
   internalMutation,
   internalQuery,
   mutation,
   type MutationCtx,
   query,
+  type QueryCtx,
 } from "./_generated/server";
+import { membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
+import { deleteVersions, recordVersion } from "./lib/versions";
+import { deleteNotes, notesOf } from "./notes";
 import { presign } from "./lib/s3";
 import { decryptSecret } from "./lib/crypto";
 import { edgeValidator, nodeValidator, operationValidator, triggerValidator } from "./schema";
@@ -196,6 +201,8 @@ export const get = query({
       // The version triggers run, when the canvas is showing a draft of something else.
       // Null when what is above is the live version.
       live: draft ? versionOf(automation) : null,
+      // When the draft began as an earlier version brought back, that version's number.
+      restoredFrom: draft?.restoredFrom ?? null,
       // Team members need the full address to give to whatever calls it.
       hookToken: automation.hookToken,
       nextRunAt: automation.nextRunAt,
@@ -213,18 +220,26 @@ export const create = mutation({
     if (args.starterId && !starter) fail("not_found", "Unknown starter.");
     const name = (args.name.trim() || starter?.name || "").slice(0, 80);
     if (!name) fail("invalid_input", "Give the automation a name.");
-    return await ctx.db.insert("automations", {
-      organizationId: args.organizationId,
+    const content = {
       name,
-      enabled: false,
-      trigger: starter?.trigger ?? { kind: "manual" },
+      trigger: starter?.trigger ?? ({ kind: "manual" } as const),
       nodes: starter?.nodes ?? [],
       edges: starter?.edges ?? [],
+    };
+    const automationId = await ctx.db.insert("automations", {
+      organizationId: args.organizationId,
+      ...content,
+      enabled: false,
       hookToken: randomToken(),
       nextRunAt: null,
       createdBy: userId,
       updatedAt: Date.now(),
     });
+    await recordVersion(ctx, { _id: automationId, organizationId: args.organizationId }, content, {
+      userId,
+      source: "created",
+    });
+    return automationId;
   },
 });
 
@@ -245,7 +260,10 @@ export const exportFile = query({
   returns: v.object({ fileName: v.string(), file: v.any(), notes: v.array(v.string()) }),
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
-    const { file, notes } = exportAutomation(automation as AutomationDraft);
+    const { file, notes } = exportAutomation(
+      automation as AutomationDraft,
+      await notesOf(ctx, automation._id),
+    );
     return { fileName: automationFileName(automation.name), file, notes };
   },
 });
@@ -277,6 +295,21 @@ export const importFile = mutation({
       createdBy: userId,
       updatedAt: Date.now(),
     });
+    await recordVersion(
+      ctx,
+      { _id: automationId, organizationId: args.organizationId },
+      read.draft,
+      { userId, source: "imported" },
+    );
+    for (const note of read.canvasNotes) {
+      await ctx.db.insert("automationNotes", {
+        organizationId: args.organizationId,
+        automationId,
+        ...note,
+        createdBy: userId,
+        updatedAt: Date.now(),
+      });
+    }
     return { automationId, notes: read.notes };
   },
 });
@@ -337,21 +370,36 @@ async function storeChanges(
 ): Promise<{ enabled: boolean; problem: string | null; draft: boolean }> {
   const version = checked(changed);
   if (!automation.enabled && !automation.draft) {
-    return { ...(await storeLive(ctx, automation, version)), draft: false };
+    const stored = await storeLive(ctx, automation, version, { userId, source: "saved" });
+    return { ...stored, draft: false };
   }
   const problem = await problemOf(ctx, automation.organizationId, version);
   const same = canonical(version) === canonical(versionOf(automation));
   await ctx.db.patch(automation._id, {
-    draft: same ? undefined : { ...version, updatedBy: userId, updatedAt: Date.now() },
+    draft: same
+      ? undefined
+      : {
+          ...version,
+          updatedBy: userId,
+          updatedAt: Date.now(),
+          // Still based on the version it was brought back from, after more edits.
+          ...(automation.draft?.restoredFrom !== undefined
+            ? { restoredFrom: automation.draft.restoredFrom }
+            : {}),
+        },
   });
   return { enabled: automation.enabled, problem, draft: !same };
 }
 
-/** Writes the live version, switching the automation off when it can no longer run. */
+/**
+ * Writes the live version, switching the automation off when it can no longer run, and
+ * keeps it as a numbered version so it can be brought back later.
+ */
 async function storeLive(
   ctx: MutationCtx,
   automation: Doc<"automations">,
   version: Version,
+  by: Parameters<typeof recordVersion>[3],
 ): Promise<{ enabled: boolean; problem: string | null }> {
   const problem = await problemOf(ctx, automation.organizationId, version);
   const enabled = automation.enabled && problem === null;
@@ -363,6 +411,7 @@ async function storeLive(
     watchFrom: watchStart(automation, version.trigger, enabled),
     updatedAt: Date.now(),
   });
+  await recordVersion(ctx, automation, version, by);
   return { enabled, problem };
 }
 
@@ -374,14 +423,18 @@ export const publish = mutation({
   args: { automationId: v.id("automations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { automation } = await loadForMember(ctx, args.automationId);
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
     if (!automation.draft) return null;
     const version = checked(automation.draft);
     if (automation.enabled) {
       const problem = await problemOf(ctx, automation.organizationId, version);
       if (problem) fail("invalid_input", problem);
     }
-    await storeLive(ctx, automation, version);
+    await storeLive(ctx, automation, version, {
+      userId,
+      source: "published",
+      restoredFrom: automation.draft.restoredFrom,
+    });
     return null;
   },
 });
@@ -409,6 +462,9 @@ const describedValidator = v.object({
   // True when what is described is a draft: the live version is different and keeps
   // running until `automations.publish`.
   draft: v.optional(v.boolean()),
+  // The team, when the automation has an Approval step: put user ids in its `reviewers`
+  // setting to name who decides. Owners and admins can always decide.
+  team: v.optional(v.array(v.object({ userId: v.string(), name: v.string(), role: v.string() }))),
 });
 
 /**
@@ -428,9 +484,19 @@ export const describe = query({
       enabled: automation.enabled,
       draft: automation.draft !== undefined,
       music: music.map((track) => ({ name: track.name, value: track.file })),
+      ...(await teamFor(ctx, automation.organizationId, draft)),
     };
   },
 });
+
+/** The team for an automation with an Approval step, so the agent can name reviewers. */
+async function teamFor(ctx: QueryCtx, organizationId: string, draft: AutomationDraft) {
+  if (!draft.nodes.some((node) => node.kind === "approval")) return {};
+  const members = await membersOf(ctx, organizationId);
+  return {
+    team: members.map(({ userId, name, role }) => ({ userId, name, role })),
+  };
+}
 
 /**
  * Makes changes to an automation, in order, and saves the result. All of them are made or
@@ -486,6 +552,8 @@ export const remove = mutation({
   args: { automationId: v.id("automations") },
   handler: async (ctx, args) => {
     await loadForMember(ctx, args.automationId);
+    await deleteVersions(ctx, args.automationId);
+    await deleteNotes(ctx, args.automationId);
     await ctx.db.delete(args.automationId);
   },
 });
@@ -519,6 +587,164 @@ export const runNow = mutation({
     return started.runId;
   },
 });
+
+/**
+ * The file a try run works on: the upload asked for, or else the team's newest upload the
+ * automation's trigger would take. Brand files (a logo, music) are never picked.
+ */
+function pickUpload(
+  uploads: Doc<"uploads">[],
+  trigger: Doc<"automations">["trigger"],
+  uploadId: string | undefined,
+): Doc<"uploads"> | string {
+  const ready = uploads.filter((upload) => upload.status === "ready" && !upload.purpose);
+  if (uploadId) {
+    const asked = ready.find((upload) => upload._id === uploadId);
+    return asked ?? "That file is not in your team's uploads.";
+  }
+  const wants = trigger.kind === "upload" ? trigger : null;
+  const fits = ready.filter(
+    (upload) =>
+      !wants ||
+      ((wants.fileType === "any" || upload.contentType.split("/")[0] === wants.fileType) &&
+        withinLength(wants, upload.details)),
+  );
+  if (fits.length > 0) return fits[0];
+  return ready.length === 0
+    ? "There are no uploads to try it on. Upload a file on the Uploads page first."
+    : "None of your uploads is the kind of file this automation starts with.";
+}
+
+/** The upload a try run would use, and the team's storage to make its link. Members only. */
+export const tryTarget = internalQuery({
+  args: { automationId: v.id("automations"), uploadId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    const uploads = await ctx.db
+      .query("uploads")
+      .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+      .order("desc")
+      .take(100);
+    const upload = pickUpload(uploads, workingCopy(automation).trigger, args.uploadId);
+    if (typeof upload === "string") fail("invalid_input", upload);
+    const storage = await ctx.db
+      .query("storageConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+      .first();
+    if (!storage) fail("no_storage", "Connect your storage first.");
+    return { upload, storage };
+  },
+});
+
+/** Starts the try run. Members only, checked again here. */
+export const startTry = internalMutation({
+  args: { automationId: v.id("automations"), trigger: v.any() },
+  returns: v.id("runs"),
+  handler: async (ctx, args) => {
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
+    const started = await startRun(
+      ctx,
+      { ...automation, ...workingCopy(automation) },
+      "manual",
+      args.trigger as Record<string, unknown>,
+      userId,
+    );
+    if (!started.ok) fail("invalid_input", started.message);
+    return started.runId;
+  },
+});
+
+/**
+ * Tries an automation on one of the team's uploads, as that upload would start it,
+ * whether or not the automation is on. Runs what the canvas shows. With no upload named,
+ * takes the newest one the automation's trigger would take.
+ */
+export const tryOnUpload = action({
+  args: { automationId: v.id("automations"), uploadId: v.optional(v.string()) },
+  returns: v.object({ runId: v.id("runs"), fileName: v.string() }),
+  handler: async (ctx, args): Promise<{ runId: Id<"runs">; fileName: string }> => {
+    const { upload, storage } = await ctx.runQuery(internal.automations.tryTarget, args);
+    const fileUrl = await presign(
+      {
+        endpoint: storage.endpoint,
+        region: storage.region,
+        bucket: storage.bucket,
+        accessKeyId: storage.accessKeyId,
+        secretAccessKey: await decryptSecret(storage.secretCipher),
+      },
+      "GET",
+      upload.key,
+      READ_LINK_SECONDS,
+    );
+    const runId: Id<"runs"> = await ctx.runMutation(internal.automations.startTry, {
+      automationId: args.automationId,
+      trigger: {
+        file_url: fileUrl,
+        file_name: upload.fileName,
+        content_type: upload.contentType,
+        size: upload.size,
+        details: upload.details ?? null,
+      },
+    });
+    return { runId, fileName: upload.fileName };
+  },
+});
+
+/**
+ * Tests one step on its own, as it stands in the editor (saved or not), on one file.
+ * Settings that point at an earlier step's file take the chosen file instead, since the
+ * steps before do not run. Returns the run, which then updates live like any other.
+ */
+export const testStep = mutation({
+  args: {
+    automationId: v.id("automations"),
+    node: nodeValidator,
+    fileUrl: v.optional(v.string()),
+  },
+  returns: v.id("runs"),
+  handler: async (ctx, args) => {
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
+    if (args.node.kind !== "step" && args.node.kind !== "clips") {
+      fail("invalid_input", "Only steps that do work on a file can be tested on their own.");
+    }
+    const fileUrl = args.fileUrl?.trim();
+    if (fileUrl && !/^https?:\/\//.test(fileUrl)) {
+      fail("invalid_input", "The file address must start with http:// or https://.");
+    }
+    // A test is for trying the step's work, so it runs even while the step is turned off.
+    const { off: _off, ...rest } = args.node;
+    const node = { ...rest, input: standAlone(args.node.input) };
+    const started = await startRun(
+      ctx,
+      { ...automation, nodes: [node], edges: [] },
+      "manual",
+      fileUrl ? { file_url: fileUrl } : {},
+      userId,
+      { test: node.id },
+    );
+    if (!started.ok) fail("invalid_input", started.message);
+    return started.runId;
+  },
+});
+
+/**
+ * A step's settings with nothing pointing back at earlier steps: a file from one becomes
+ * the file the test runs on, and anything else read from one is left for the step to
+ * work out, as it does when nothing is set.
+ */
+export function standAlone(input: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value === "string" && /\{\{\s*steps\./.test(value)) {
+      if (/^\{\{\s*steps\.[A-Za-z0-9_]+\.url\s*\}\}$/.test(value)) {
+        out[key] = "{{trigger.file_url}}";
+      }
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
 
 // Internal: the triggers that start runs with nobody logged in.
 
@@ -656,6 +882,20 @@ export const startFromUpload = internalMutation({
  * of trigger and step; with a type, that one in full, including the settings it accepts.
  * Served from here so the agent always sees what this deployment really has.
  */
+/**
+ * `value` without keys that start with "$", which Convex cannot send. A step's settings
+ * are described by a JSON Schema, and those carry "$schema".
+ */
+function withoutReservedKeys<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(withoutReservedKeys) as T;
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !key.startsWith("$"))
+      .map(([key, inner]) => [key, withoutReservedKeys(inner)]),
+  ) as T;
+}
+
 export const nodeTypes = query({
   args: { type: v.optional(v.string()) },
   returns: v.object({ index: v.optional(v.string()), type: v.optional(v.any()) }),
@@ -665,6 +905,6 @@ export const nodeTypes = query({
     if (!args.type) return { index: nodeTypeIndex() };
     const found = getNodeType(args.type);
     if (!found) fail("not_found", `There is no step type called ${args.type}.`);
-    return { type: found };
+    return { type: withoutReservedKeys(found) };
   },
 });

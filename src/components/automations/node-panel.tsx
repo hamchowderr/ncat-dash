@@ -10,7 +10,7 @@ import {
   writeSource,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
-import { ChevronRight, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -23,12 +23,14 @@ import {
 } from "@/components/steps/step-fields";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { nodeTitle } from "@/lib/automations";
 import { fieldLabel } from "@/lib/catalog";
 
+import { TeamApprovalSettings } from "./approval-panel";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { PlatformPicker } from "./platform-picker";
@@ -45,6 +47,13 @@ function isBlank(value: unknown): boolean {
  * Only what the step cannot work out is asked for up front. What it takes care of by
  * itself is listed in one short block, and everything else sits under "More options".
  */
+/** "A", "A and B", "A, B and C". */
+function joinNames(names: string[]): string {
+  return names.length < 2
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 export function NodePanel({
   node,
   before,
@@ -54,6 +63,10 @@ export function NodePanel({
   music,
   onChange,
   onRemove,
+  onDuplicate,
+  failSteps,
+  onAddOnFailure,
+  waitsFor,
 }: {
   node: NodeContent;
   /** The steps that run before this one, nearest first. Their files can be used here. */
@@ -68,6 +81,14 @@ export function NodePanel({
   music: { name: string; file: string }[];
   onChange: (patch: Partial<NodeContent>) => void;
   onRemove: () => void;
+  /** Puts a copy of the step beside it. */
+  onDuplicate?: () => void;
+  /** The names of the steps that run when this one fails. */
+  failSteps?: string[];
+  /** Adds a step that runs when this one fails. Absent for steps that cannot fail over. */
+  onAddOnFailure?: () => void;
+  /** The names of the steps straight before this one. With two or more, it joins them. */
+  waitsFor?: string[];
 }) {
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
   const nodeType = nodeTypeOf(node);
@@ -169,6 +190,28 @@ export function NodePanel({
             {nodeType?.description ?? "This step is no longer in the catalog."}
           </p>
         </div>
+        {node.kind !== "if" && (
+          <Switch
+            className="mt-0.5 shrink-0"
+            checked={!node.off}
+            onCheckedChange={(on) => onChange({ off: on ? undefined : true })}
+            aria-label={node.off ? "Turn this step on" : "Turn this step off"}
+            title={node.off ? "Turned off. Turn it on" : "Turn off without removing it"}
+          />
+        )}
+        {onDuplicate && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground -mt-1 shrink-0"
+            title="Duplicate (Ctrl+D)"
+            onClick={onDuplicate}
+          >
+            <Copy />
+            <span className="sr-only">Duplicate step</span>
+          </Button>
+        )}
         <Button
           type="button"
           variant="ghost"
@@ -180,6 +223,23 @@ export function NodePanel({
           <span className="sr-only">Remove step</span>
         </Button>
       </div>
+
+      {waitsFor && waitsFor.length > 1 && (
+        <p className="text-muted-foreground rounded-lg border px-3 py-2 text-xs text-pretty">
+          Waits for {joinNames(waitsFor)} to finish, then runs once with the files from{" "}
+          {waitsFor.length === 2 ? "both" : "all of them"}. A side an If did not send files down is
+          not waited for.
+        </p>
+      )}
+
+      {node.off && (
+        <Alert>
+          <AlertDescription>
+            Turned off. Runs skip this step&apos;s work and hand its files straight to the next
+            step. Its settings are kept for when you turn it back on.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {unset.length > 0 && (
         <Alert>
@@ -217,6 +277,8 @@ export function NodePanel({
           />
         </Field>
       )}
+
+      {node.kind === "approval" && <TeamApprovalSettings node={node} onChange={onChange} />}
 
       {(node.kind === "if" || node.kind === "wait") && (
         <LogicSettings node={node} onChange={onChange} />
@@ -304,6 +366,32 @@ export function NodePanel({
           </FieldGroup>
         </CollapsibleContent>
       </Collapsible>
+
+      {onAddOnFailure && (
+        <section
+          aria-label="If it fails"
+          className="flex items-center justify-between gap-2 border-t pt-4"
+        >
+          <div className="grid min-w-0">
+            <h3 className="text-sm font-medium">If it fails</h3>
+            <p className="text-muted-foreground text-xs text-pretty">
+              {failSteps && failSteps.length > 0
+                ? `Its files go to ${joinNames(failSteps)} instead, and the run carries on.`
+                : "The run stops here. Add a step to try something else with its files."}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={onAddOnFailure}
+          >
+            <Plus />
+            {failSteps && failSteps.length > 0 ? "Add another" : "Add a step"}
+          </Button>
+        </section>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 import type { Brand, BrandKey } from "./brand";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
+import { TIME_LIMIT_UNITS, TIME_UP_CHOICES } from "./approval";
 import {
   CHECK_NAMES,
   CHECKS,
@@ -59,6 +60,11 @@ export interface NodeType {
   fills?: Record<string, string>;
   /** Settings filled from the team's brand in Settings when left empty. */
   brand?: Record<string, BrandKey>;
+  /**
+   * Settings only the person can decide, such as which platform clips are for. The agent
+   * asks for these before building rather than picking them itself.
+   */
+  ask?: string[];
   /**
    * The ways out of it, when it has more than one. Every connection from it names one,
    * and each way hands on only the files that went that way.
@@ -225,10 +231,34 @@ const APPROVAL: NodeType = {
   group: "people",
   title: "Approval",
   description:
-    "Stops the run until someone on the team approves. The files it was shown carry on to the next step.",
+    "Stops the run until a reviewer approves. The files it was shown carry on to the next step. Reviewers are told in the bell and by email; it can decide by itself when nobody does in time.",
   takes: "files",
   gives: "files",
-  settings: { type: "object", properties: {} },
+  settings: {
+    type: "object",
+    properties: {
+      reviewers: {
+        type: "array",
+        items: { type: "string" },
+        default: [],
+        description:
+          "The user ids of the team members asked to approve. Empty means anyone on the team. Team owners and admins can always decide.",
+      },
+      timeLimit: {
+        type: "number",
+        exclusiveMinimum: 0,
+        description:
+          "How long to wait for a decision, in timeLimitUnit. Leave it out to wait until someone decides. 6 days at most.",
+      },
+      timeLimitUnit: { type: "string", enum: [...TIME_LIMIT_UNITS], default: "hours" },
+      whenTimeUp: {
+        type: "string",
+        enum: [...TIME_UP_CHOICES],
+        default: "reject",
+        description: "What happens when the time limit passes with no decision.",
+      },
+    },
+  },
   automatic: null,
 };
 
@@ -253,6 +283,7 @@ const CLIPS: NodeType = {
     },
     required: ["platform"],
   },
+  ask: ["platform"],
   automatic: null,
 };
 
@@ -488,6 +519,8 @@ export function nodeTypeIndex(): string {
           : ""
       }${
         nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""
-      }${nodeType.branches ? `, ways out: ${nodeType.branches.join(" and ")}` : ""}): ${nodeType.title}. ${nodeType.description}`,
+      }${nodeType.branches ? `, ways out: ${nodeType.branches.join(" and ")}` : ""}${
+        nodeType.ask ? `, ask the person for its ${nodeType.ask.join(" and ")}` : ""
+      }): ${nodeType.title}. ${nodeType.description}`,
   ).join("\n");
 }

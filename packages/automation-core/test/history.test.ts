@@ -6,6 +6,7 @@ import {
   canRedo,
   canUndo,
   canonical,
+  missingSettings,
   draftChanges,
   HISTORY_LIMIT,
   HISTORY_MERGE_MS,
@@ -151,5 +152,38 @@ describe("draftChanges", () => {
       { op: "connect", source: "transcribe_1", target: "approval_2" },
     ]);
     expect(draftChanges(three, rejoined)).toEqual(["Changed how the steps are joined"]);
+  });
+});
+
+describe("turning a step off", () => {
+  const live = applyOperations(empty, [
+    { op: "add", type: "step:video-caption", id: "caption_1" },
+    { op: "add", type: "if", id: "if_1", after: "caption_1" },
+  ]);
+
+  it("keeps the step and its settings, and says so as its own change", () => {
+    const off = applyOperations(live, [{ op: "switch", id: "caption_1", on: false }]);
+    const caption = off.nodes.find((node) => node.id === "caption_1")!;
+    expect(caption.off).toBe(true);
+    expect(caption.input).toEqual(live.nodes.find((node) => node.id === "caption_1")!.input);
+    const changes = draftChanges(live, off);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatch(/^Turned off /);
+
+    const back = applyOperations(off, [{ op: "switch", id: "caption_1", on: true }]);
+    expect(back.nodes.find((node) => node.id === "caption_1")!.off).toBeUndefined();
+    expect(draftChanges(off, back)[0]).toMatch(/^Turned on /);
+    expect(draftChanges(live, back)).toEqual([]);
+  });
+
+  it("needs no settings while off", () => {
+    const off = applyOperations(live, [{ op: "switch", id: "caption_1", on: false }]);
+    expect(missingSettings(off.nodes.find((node) => node.id === "caption_1")!)).toEqual([]);
+  });
+
+  it("will not turn an If off", () => {
+    expect(() => applyOperations(live, [{ op: "switch", id: "if_1", on: false }])).toThrow(
+      /An If cannot be turned off/,
+    );
   });
 });

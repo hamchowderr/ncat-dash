@@ -182,22 +182,41 @@ async function withTurnContextMessages<M extends CoreMessage>(
   promptCache: boolean,
 ): Promise<(M | CoreSystemMessage)[]> {
   const { stable, volatile } = await turnContextParts(sections, args);
+  // A later step in the same run is handed the system messages this one returned, so drop
+  // the turn context added before. Without this, each step added another date message, the
+  // previous one became "the last message" and got a breakpoint too, and by the fourth step
+  // Anthropic refused the call (it allows four breakpoints).
+  const own = prefix.filter((message) => !isTurnContext(message));
   if (!promptCache) {
     const content = [stable, volatile].filter(Boolean).join('\n\n');
-    return content ? [...prefix, { role: 'system' as const, content }] : [...prefix];
+    return content ? [...own, turnContextMessage(content)] : [...own];
   }
-  const last = prefix.length - 1;
+  const last = own.length - 1;
   return [
-    ...prefix.map((message, i) => (i === last ? withBreakpoint(message) : message)),
-    ...(stable ? [withBreakpoint<CoreSystemMessage>({ role: 'system', content: stable })] : []),
-    ...(volatile ? [{ role: 'system' as const, content: volatile }] : []),
+    ...own.map((message, i) => (i === last ? withBreakpoint(message) : message)),
+    ...(stable ? [withBreakpoint(turnContextMessage(stable))] : []),
+    ...(volatile ? [turnContextMessage(volatile)] : []),
   ];
 }
 
 /**
+ * Marks the messages this file adds, in their provider options, so a later step can find
+ * and replace them. Model providers read only their own key there, so none of them sees it.
+ */
+const TURN_CONTEXT_KEY = 'turnContext';
+
+function turnContextMessage(content: string): CoreSystemMessage {
+  return { role: 'system', content, providerOptions: { [TURN_CONTEXT_KEY]: { added: true } } };
+}
+
+function isTurnContext(message: CoreMessage): boolean {
+  return message.role === 'system' && !!message.providerOptions?.[TURN_CONTEXT_KEY];
+}
+
+/**
  * Adds the turn context after the agent's own system messages, on every model step,
- * with the cache breakpoints above. System messages are reset at the start of each
- * step, so nothing is duplicated.
+ * with the cache breakpoints above. Each step replaces the turn context the step before
+ * it added, so nothing is duplicated.
  */
 export class TurnContextProcessor implements Processor<'turn-context'> {
   readonly id = 'turn-context' as const;

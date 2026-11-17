@@ -31,6 +31,9 @@ export function RunDialog({
   startsOnUpload,
   start,
   onUploadedOnly,
+  title = "Try it on one file",
+  description = "Starts one run straight away, the same way it will run by itself.",
+  withoutFile = true,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -39,6 +42,10 @@ export function RunDialog({
   start: (fileUrl?: string) => Promise<void>;
   /** Called when a dropped file started the run through the upload trigger. */
   onUploadedOnly: () => void;
+  title?: string;
+  description?: string;
+  /** Offers to run with no file at all. */
+  withoutFile?: boolean;
 }) {
   const team = useActiveTeam();
   const storage = useQuery(api.storage.get, open ? { organizationId: team.id } : "skip");
@@ -112,10 +119,8 @@ export function RunDialog({
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Try it on one file</DialogTitle>
-          <DialogDescription>
-            Starts one run straight away, the same way it will run by itself.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         {storage === undefined ? (
@@ -218,17 +223,19 @@ export function RunDialog({
           </>
         )}
 
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => run(() => start(), "The run could not be started.")}
-          >
-            <Play />
-            Run without a file
-          </Button>
-        </div>
+        {withoutFile && (
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() => run(() => start(), "The run could not be started.")}
+            >
+              <Play />
+              Run without a file
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

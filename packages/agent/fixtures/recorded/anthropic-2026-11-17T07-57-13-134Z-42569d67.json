@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Maya Ortiz: @Agent does this part move too fast?",
+        "model": "claude-sonnet-5-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "usage": {
+          "input_tokens": 6167,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 773
+        },
+        "content": "Yes, it moves quickly. It's one continuous shot with no cuts, but the picture changes a lot every half second. The rainbow diagonal at 0:02 is mid-sweep, and it crosses the full height of the frame in about 1.5 seconds. It bounces back and forth through the clip, and the gray shape in the lower left changes from a bar to a plus to a square about every 0.5 seconds. There's also no audio track, so nothing gives the eye a rest.\n\nThe \"Weekly clips\" automation only cuts the source into 0:00-0:06 and 0:06-0:12 in the video-split step, so it doesn't control this speed. If the motion comes from the source footage, slowing it would mean adding a step. You can open the automation and ask me in the agent chat to look at that."
+      },
+      "metadata": {
+        "systemHash": "9a0cdc7c"
+      }
+    }
+  ]
+}

@@ -176,3 +176,15 @@ export function statusLabel(status: ReviewStatus): string {
       ? "Changes needed"
       : "In review";
 }
+
+/** The dashboard's agent, offered after "@" beside the team. */
+export const AGENT: Mentionable = { id: "agent", name: "Agent" };
+
+/** Whether a comment asks the agent for an answer. */
+export function asksAgent(body: string): boolean {
+  return mentionedIn(body, [AGENT]).length > 0;
+}
+
+/** The longest an answer from the agent may be, as it is kept with the comments. */
+export const AGENT_ANSWER_LIMIT = 4000;
+export * from "./sense";
