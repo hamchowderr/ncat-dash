@@ -67,6 +67,16 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords | 
       return { title: "Reading the automation", question: "", lines: [] };
     case "list_step_types":
       return { title: "Checking the steps available", question: "", lines: [] };
+    case "platform_guide": {
+      const asked = Array.isArray(given?.platforms) ? given.platforms.filter(isText) : [];
+      return {
+        title: asked.length
+          ? `Checking what ${listWords(asked)} ${asked.length === 1 ? "takes" : "take"}`
+          : "Checking what each platform takes",
+        question: "",
+        lines: [],
+      };
+    }
     case "change_automation": {
       const changes = Array.isArray(given?.operations) ? given.operations : [];
       const lines = changes
@@ -136,6 +146,10 @@ export function resultWords(name: string | undefined, result: unknown): string[]
       ? ["Still needed before it can run:", ...lines.filter(Boolean)]
       : ["Nothing is stopping it from running."];
   }
+  if (name === "platform_guide") {
+    const unknown = Array.isArray(value.unknown) ? value.unknown.filter(isText) : [];
+    return unknown.length ? [`Not in the guide: ${unknown.join(", ")}`] : [];
+  }
   if (name === "list_uploads") {
     const rows = Array.isArray(value.uploads) ? value.uploads : [];
     return rows.length === 0 ? ["No uploads yet."] : [count(rows.length, "file", "files")];
@@ -186,4 +200,12 @@ export function errorWords(error: string): string {
     return "The agent's model is busy right now. Wait a minute and send your message again.";
   }
   return "Something went wrong and the agent stopped. Send your message again; if it keeps happening, whoever runs the agent server can see why in its log.";
+}
+
+const isText = (item: unknown): item is string => typeof item === "string" && item.length > 0;
+
+/** "TikTok", "TikTok and X", "TikTok, X and LinkedIn". */
+function listWords(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }

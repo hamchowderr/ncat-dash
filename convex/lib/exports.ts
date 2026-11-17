@@ -1,4 +1,9 @@
-import { type AutomationNode, getPlatform, readFileDetails } from "@ncat-dash/automation-core";
+import {
+  type AutomationNode,
+  frameSize,
+  getPlatform,
+  readFileDetails,
+} from "@ncat-dash/automation-core";
 import {
   type Cue,
   type CutList,
@@ -13,9 +18,6 @@ import {
 } from "@ncat-dash/timeline-export";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-
-// The picture size of a vertical clip, as the clips step makes it.
-const VERTICAL = { width: 1080, height: 1920 };
 
 /**
  * What is known about the file that started a run, when it was an upload whose details
@@ -55,7 +57,7 @@ export async function cutListOf(
   for (const step of steps) {
     const node = nodes.find((candidate) => candidate.id === step.nodeId);
     if (step.plan && step.sources) {
-      const frame = getPlatform(node?.input.platform)?.frame === "9:16" ? VERTICAL : undefined;
+      const frame = frameSize(getPlatform(node?.input.platform)?.frame) ?? undefined;
       const sources: Record<string, CutSource> = Object.fromEntries(
         step.sources.map((source) => [source.url, source]),
       );

@@ -18,6 +18,7 @@ import {
   withinLength,
   missingSettings,
   nextRunAt,
+  platformGuideText,
   nodeTypeIndex,
   nodeTypeOf,
   OperationError,
@@ -906,5 +907,20 @@ export const nodeTypes = query({
     const found = getNodeType(args.type);
     if (!found) fail("not_found", `There is no step type called ${args.type}.`);
     return { type: withoutReservedKeys(found) };
+  },
+});
+
+/**
+ * What the agent knows about each place content goes (automation-core's platform guide):
+ * lengths, shapes, files, text limits and tips. Kept here, not in the agent, so it is
+ * always the running dashboard's own.
+ */
+export const platformGuide = query({
+  args: { platforms: v.optional(v.array(v.string())) },
+  returns: v.object({ text: v.string(), unknown: v.array(v.string()) }),
+  handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) fail("unauthenticated", "Sign in first.");
+    return platformGuideText(args.platforms?.slice(0, 30));
   },
 });

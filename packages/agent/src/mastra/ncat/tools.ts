@@ -137,6 +137,32 @@ export const listStepTypes = createTool({
   },
 });
 
+export const platformGuide = createTool({
+  id: "platform_guide",
+  description:
+    'What each platform takes: video length, shape and picture size, file format and size, caption and title limits, cover, and what works there, from the platforms\' own published specs. Pass the platforms you are building for (names as in the Clips step, such as "Instagram Reels" or "YouTube"), or nothing for all of them.',
+  inputSchema: z.object({
+    platforms: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Platform names, such as ["TikTok", "YouTube Shorts"]. Leave out for every platform.',
+      ),
+  }),
+  outputSchema: z.object({ text: z.string(), unknown: z.array(z.string()) }),
+  execute: async ({ platforms }, ctx) => {
+    const { client } = dashFor(userOf(ctx));
+    try {
+      return (await client.query(
+        dash.automations.platformGuide,
+        platforms?.length ? { platforms } : {},
+      )) as { text: string; unknown: string[] };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
 const operation = z.discriminatedUnion("op", [
   z.object({
     op: z.literal("add"),
@@ -472,6 +498,7 @@ export const ncatTools = {
   dash_overview: dashOverview,
   describe_automation: describeAutomation,
   list_step_types: listStepTypes,
+  platform_guide: platformGuide,
   change_automation: changeAutomation,
   create_automation: createAutomation,
   switch_automation: switchAutomation,
@@ -485,6 +512,7 @@ export const NCAT_READ_TOOLS = [
   "dash_overview",
   "describe_automation",
   "list_step_types",
+  "platform_guide",
   "list_uploads",
   "check_run",
 ] as const;
@@ -498,6 +526,7 @@ How to work:
 - Start with dash_overview when you don't know what the person has open, then describe_automation before changing anything.
 - Before you build, make sure you know what only the person can decide. Whenever the automation makes clips or reshapes video, that is where it is going: which platforms (TikTok, Instagram Reels, YouTube Shorts and so on). It is also what starts it, if they did not say, and any setting list_step_types says to ask the person for. If any of these is missing, ask with ask_user before building anything, one question at a time. For platforms, offer the common ones as options with selectionMode multi_select so the person can pick several. Do not pick a platform for them, unless the team has default platforms (you are told them with the team's settings after these instructions): then use those without asking. The team's house rules, when it has some, come with them too: follow them. Choices that only shape the look, such as caption style, you may pick yourself; say what you picked.
 - For several platforms, give each its own Clips for a platform step from the same start, with its own steps after it.
+- You know each platform's formats: read platform_guide for the platforms you are building for before you build, and build to fit them. The Clips step already cuts to each platform's length and makes its shape (vertical 9:16 for Reels, TikTok, Shorts, Stories, Spotlight; portrait 4:5 for the Instagram and Facebook feeds; wide 16:9 for YouTube; the video's own shape for LinkedIn and X, scaled down to fit X). When something else in the automation has to fit too, use it: an If step on length to send videos too short for a platform another way, captions burned in where people watch with the sound off, and keeping music clips on YouTube Shorts under 1 min. When the person asks what a platform takes, answer from platform_guide, and say plainly when it marks a figure as not confirmed.
 - Build with change_automation. Look up type names with list_step_types, and a type's settings by passing its name, before you add a step you have not used in this conversation.
 - Never ask the person to type addresses, file links or placeholders. Leave file settings empty so each step takes the nearest fitting file before it; logo, colour, font and music come from the team's brand in Settings.
 - An Approval step asks anyone on the team unless you name reviewers (user ids from the team that describe_automation lists). It waits until someone decides, or set timeLimit, timeLimitUnit and whenTimeUp so it decides by itself; 6 days at most.

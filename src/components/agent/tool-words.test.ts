@@ -177,3 +177,26 @@ describe("trying an automation", () => {
     ).toEqual(["The run is waiting.", "Approve clips: waiting for someone to approve"]);
   });
 });
+
+describe("platform guide", () => {
+  test("names the platforms it is checking, in plain words", () => {
+    expect(toolWords("platform_guide", { platforms: ["TikTok"] })?.title).toBe(
+      "Checking what TikTok takes",
+    );
+    expect(toolWords("platform_guide", { platforms: ["TikTok", "X", "LinkedIn"] })?.title).toBe(
+      "Checking what TikTok, X and LinkedIn take",
+    );
+    expect(toolWords("platform_guide", {})).toEqual({
+      title: "Checking what each platform takes",
+      question: "",
+      lines: [],
+    });
+  });
+
+  test("shows only the platforms it did not know, never the guide itself", () => {
+    expect(resultWords("platform_guide", { text: "## TikTok", unknown: [] })).toEqual([]);
+    expect(resultWords("platform_guide", { text: "", unknown: ["Myspace"] })).toEqual([
+      "Not in the guide: Myspace",
+    ]);
+  });
+});

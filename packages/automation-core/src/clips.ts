@@ -1,31 +1,90 @@
 /**
  * Cutting one long video into clips that fit a platform: where to cut, and the FFmpeg
- * request that makes each clip. The platform list and the behaviour (cut at pauses in
- * speech, vertical clips keep the full frame on a blurred background) follow the
- * Social Clips app.
+ * request that makes each clip. The behaviour (cut at pauses in speech, a reshaped clip
+ * keeps the full picture on a blurred background) follows the Social Clips app.
+ *
+ * Each platform's limits come from its own published specs; platform-guide.ts holds the
+ * full set, with sources, and is what the agent reads.
  */
 
+/** The shape a clip is made in. "original" keeps the video's own shape. */
+export type Frame = "9:16" | "4:5" | "1:1" | "16:9" | "original";
+
+/** The picture size each shape is made at. */
+export const FRAME_SIZES: Record<Exclude<Frame, "original">, { width: number; height: number }> = {
+  "9:16": { width: 1080, height: 1920 },
+  "4:5": { width: 1080, height: 1350 },
+  "1:1": { width: 1080, height: 1080 },
+  "16:9": { width: 1920, height: 1080 },
+};
+
+/** The picture size a frame is made at, or null when the clip keeps the video's own. */
+export function frameSize(frame: Frame | undefined): { width: number; height: number } | null {
+  return frame && frame !== "original" ? FRAME_SIZES[frame] : null;
+}
+
+/** "Vertical 9:16", "Portrait 4:5", "Square 1:1", "Wide 16:9", "Its own shape". */
+export function frameName(frame: Frame): string {
+  switch (frame) {
+    case "9:16":
+      return "Vertical 9:16";
+    case "4:5":
+      return "Portrait 4:5";
+    case "1:1":
+      return "Square 1:1";
+    case "16:9":
+      return "Wide 16:9";
+    default:
+      return "Its own shape";
+  }
+}
+
+interface PlatformSpec {
+  readonly name: string;
+  /** The longest clip the Clips step makes for it. */
+  readonly maxSeconds: number;
+  /** The shortest video the platform takes, when it has a minimum. */
+  readonly minSeconds?: number;
+  readonly frame: Frame;
+  /** For "original": the largest picture the platform takes; bigger videos are scaled down. */
+  readonly box?: { readonly width: number; readonly height: number };
+}
+
 export const PLATFORMS = [
-  { name: "Instagram Stories", maxSeconds: 60, frame: "9:16" },
-  { name: "Instagram Reels", maxSeconds: 180, frame: "9:16" },
-  { name: "Facebook Stories", maxSeconds: 60, frame: "9:16" },
-  { name: "Facebook Reels", maxSeconds: 90, frame: "9:16" },
+  { name: "Instagram Stories", maxSeconds: 60, minSeconds: 3, frame: "9:16" },
+  { name: "Instagram Reels", maxSeconds: 180, minSeconds: 3, frame: "9:16" },
+  { name: "Instagram feed", maxSeconds: 180, minSeconds: 3, frame: "4:5" },
+  { name: "Facebook Stories", maxSeconds: 60, minSeconds: 3, frame: "9:16" },
+  { name: "Facebook Reels", maxSeconds: 90, minSeconds: 3, frame: "9:16" },
+  { name: "Facebook feed", maxSeconds: 180, minSeconds: 1, frame: "4:5" },
   { name: "TikTok", maxSeconds: 180, frame: "9:16" },
   { name: "YouTube Shorts", maxSeconds: 180, frame: "9:16" },
-  { name: "Snapchat Spotlight", maxSeconds: 60, frame: "9:16" },
+  { name: "YouTube", maxSeconds: 900, frame: "16:9" },
+  { name: "Snapchat Spotlight", maxSeconds: 60, minSeconds: 5, frame: "9:16" },
   { name: "Snapchat Stories", maxSeconds: 60, frame: "9:16" },
   { name: "Threads", maxSeconds: 300, frame: "9:16" },
-  { name: "Pinterest", maxSeconds: 900, frame: "9:16" },
-  { name: "LinkedIn", maxSeconds: 900, frame: "original" },
-  { name: "X", maxSeconds: 140, frame: "original" },
-] as const;
+  { name: "Pinterest", maxSeconds: 900, minSeconds: 4, frame: "9:16" },
+  { name: "LinkedIn", maxSeconds: 900, minSeconds: 3, frame: "original" },
+  {
+    name: "X",
+    maxSeconds: 140,
+    minSeconds: 0.5,
+    frame: "original",
+    box: { width: 1280, height: 1024 },
+  },
+] as const satisfies readonly PlatformSpec[];
 
-export type Platform = (typeof PLATFORMS)[number];
-export type PlatformName = Platform["name"];
-export type Frame = Platform["frame"];
+export type Platform = (typeof PLATFORMS)[number] & PlatformSpec;
+export type PlatformName = (typeof PLATFORMS)[number]["name"];
 
 export function getPlatform(name: unknown): Platform | undefined {
-  return PLATFORMS.find((platform) => platform.name === name);
+  return (PLATFORMS as readonly Platform[]).find((platform) => platform.name === name);
+}
+
+/** Why a video is too short for a platform, or null when it is long enough. */
+export function tooShortFor(platform: Platform, duration: number): string | null {
+  if (platform.minSeconds === undefined || duration >= platform.minSeconds) return null;
+  return `The video is ${round(duration)} s long; ${platform.name} needs at least ${platform.minSeconds} s.`;
 }
 
 /** "60 s", "3 min", "2 min 20 s". */
@@ -113,18 +172,27 @@ type Option = { option: string; argument?: string | number };
 const opt = (option: string, argument?: string | number): Option =>
   argument === undefined ? { option } : { option, argument };
 
-// Vertical: the whole picture, scaled to fit, over a blurred copy that fills the frame.
-const VERTICAL =
-  "[0:v]split=2[bg][fg];" +
-  "[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[blurred];" +
-  "[fg]scale=1080:1920:force_original_aspect_ratio=decrease[sharp];" +
-  "[blurred][sharp]overlay=(W-w)/2:(H-h)/2,setsar=1[v]";
+// A new shape: the whole picture, scaled to fit, over a blurred copy that fills the frame.
+function fillFilter({ width, height }: { width: number; height: number }): string {
+  return (
+    "[0:v]split=2[bg][fg];" +
+    `[bg]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=20:5[blurred];` +
+    `[fg]scale=${width}:${height}:force_original_aspect_ratio=decrease[sharp];` +
+    "[blurred][sharp]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
+  );
+}
+
+// Its own shape, scaled down only when bigger than the platform takes.
+function shrinkFilter({ width, height }: { width: number; height: number }): string {
+  return `[0:v]scale=w='min(iw,${width})':h='min(ih,${height})':force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1[v]`;
+}
 
 /** The request for the toolkit's /v1/ffmpeg/compose that makes one clip. */
 export function clipRequest(
   fileUrl: string,
   clip: Pick<ClipPlan, "start" | "seconds">,
   frame: Frame,
+  box?: { width: number; height: number },
 ): Record<string, unknown> {
   const encode = [
     opt("-c:v", "libx264"),
@@ -136,13 +204,15 @@ export function clipRequest(
     opt("-movflags", "+faststart"),
     opt("-f", "mp4"),
   ];
+  const size = frameSize(frame);
+  const filter = size ? fillFilter(size) : box ? shrinkFilter(box) : null;
   return {
     // Seeking on the input is fast and, because the clip is re-encoded, exact.
     inputs: [{ file_url: fileUrl, options: [opt("-ss", clip.start), opt("-t", clip.seconds)] }],
-    ...(frame === "9:16" ? { filters: [{ filter: VERTICAL }] } : {}),
+    ...(filter ? { filters: [{ filter }] } : {}),
     outputs: [
       {
-        options: frame === "9:16" ? [opt("-map", "[v]"), opt("-map", "0:a?"), ...encode] : encode,
+        options: filter ? [opt("-map", "[v]"), opt("-map", "0:a?"), ...encode] : encode,
       },
     ],
   };
