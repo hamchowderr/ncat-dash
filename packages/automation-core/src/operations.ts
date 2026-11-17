@@ -16,6 +16,14 @@ import {
 } from "./registry";
 import { scheduleProblem } from "./schedule";
 import type { StarterTrigger } from "./starters";
+import {
+  fileFields,
+  referencedSteps,
+  type Source,
+  stepsBefore,
+  withoutReferencesTo,
+  writeSource,
+} from "./wiring";
 
 export interface AutomationDraft {
   name: string;
@@ -42,6 +50,11 @@ export type Operation =
   | { op: "disconnect"; source: string; target: string }
   /** Merges into a step's settings. A value of null clears that setting. */
   | { op: "set"; id: string; settings: Record<string, unknown> }
+  /**
+   * Says where a file field gets its file: "auto" (the nearest fitting file before the
+   * step), "trigger" (the file that started the run), or the id of an earlier step.
+   */
+  | { op: "use"; id: string; field: string; from: string }
   | { op: "rename"; id: string; label: string }
   | { op: "trigger"; trigger: StarterTrigger }
   | { op: "name"; name: string }
@@ -195,7 +208,10 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
       for (const id of op.ids) need(draft, id);
       return {
         ...draft,
-        nodes: draft.nodes.filter((node) => !op.ids.includes(node.id)),
+        // A setting that pointed at a removed step goes back to being filled in by itself.
+        nodes: draft.nodes
+          .filter((node) => !op.ids.includes(node.id))
+          .map((node) => ({ ...node, input: withoutReferencesTo(node.input, op.ids) })),
         edges: bridgeEdges(op.ids, draft.edges),
       };
     }
@@ -227,6 +243,44 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
         if (value === null) delete input[name];
         else input[name] = value;
       }
+      return {
+        ...draft,
+        nodes: draft.nodes.map((other) => (other.id === op.id ? { ...other, input } : other)),
+      };
+    }
+    case "use": {
+      const node = need(draft, op.id);
+      const nodeType = nodeTypeOf(node);
+      const title = node.label ?? nodeType?.title ?? "This step";
+      if (!nodeType || !fileFields(nodeType).includes(op.field)) {
+        throw new OperationError(`"${op.field}" is not a file setting of ${title}.`);
+      }
+      let source: Source;
+      if (op.from === "auto") {
+        if (nodeType.automatic !== op.field) {
+          throw new OperationError(
+            `${title} cannot find "${op.field}" by itself. Point it at a step, the start, or set a fixed address.`,
+          );
+        }
+        source = { from: "auto" };
+      } else if (op.from === "trigger") {
+        if (triggerTypeOf(draft.trigger).gives !== "file") {
+          throw new OperationError("This automation's start hands over no file.");
+        }
+        source = { from: "trigger" };
+      } else {
+        const other = need(draft, op.from);
+        if (!stepsBefore(node.id, draft.edges).flat().includes(other.id)) {
+          throw new OperationError(
+            `${other.label ?? nodeTypeOf(other)?.title ?? other.id} does not run before ${title}. Connect it first.`,
+          );
+        }
+        source = { from: "step", id: other.id };
+      }
+      const input = { ...node.input };
+      const value = writeSource(source);
+      if (value === undefined) delete input[op.field];
+      else input[op.field] = value;
       return {
         ...draft,
         nodes: draft.nodes.map((other) => (other.id === op.id ? { ...other, input } : other)),
@@ -307,6 +361,22 @@ export function draftProblems(draft: AutomationDraft): DraftProblem[] {
     if (!nodeType) {
       problems.push({ nodeId: node.id, message: `"${typeNameOf(node)}" is not a known step.` });
       continue;
+    }
+    const before = stepsBefore(node.id, draft.edges).flat();
+    for (const id of referencedSteps(node.input)) {
+      const other = draft.nodes.find((candidate) => candidate.id === id);
+      const title = node.label ?? nodeType.title;
+      if (!other) {
+        problems.push({
+          nodeId: node.id,
+          message: `${title} uses a file from a step that is no longer there. Choose where it comes from again.`,
+        });
+      } else if (!before.includes(id)) {
+        problems.push({
+          nodeId: node.id,
+          message: `${title} uses a file from ${other.label ?? nodeTypeOf(other)?.title ?? id}, which does not run before it. Connect them, or choose another.`,
+        });
+      }
     }
     const missing = missingSettingsOf(nodeType, node.input);
     if (missing.length > 0) {

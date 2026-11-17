@@ -14,6 +14,8 @@ import {
   newNodeId,
   type Operation,
   OperationError,
+  stepsBefore,
+  triggerTypeOf,
 } from "@ncat-dash/automation-core";
 import {
   Background,
@@ -577,9 +579,11 @@ function Editor({ automation }: { automation: Loaded }) {
                     <NodePanel
                       key={selected.id}
                       node={selected.data.node}
-                      others={stepNodes
-                        .filter((node) => node.id !== selected.id && node.data.node.kind === "step")
+                      before={stepsBefore(selected.id, draft.edges)
+                        .flat()
+                        .flatMap((id) => stepNodes.find((node) => node.id === id) ?? [])
                         .map((node) => node.data.node)}
+                      startGivesFile={triggerTypeOf(trigger).gives === "file"}
                       onChange={(patch) =>
                         setNodes((current) =>
                           current.map((node) =>
