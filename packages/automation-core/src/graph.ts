@@ -6,9 +6,10 @@ export interface AutomationNode {
   id: string;
   /**
    * "step" runs a catalog step on the toolkit; "approval" waits for a person; "clips"
-   * cuts each incoming video into clips that fit the platform in `input.platform`.
+   * cuts each incoming video into clips that fit the platform in `input.platform`;
+   * "export" makes the timeline files that open the run's cuts in a video editor.
    */
-  kind: "step" | "approval" | "clips";
+  kind: "step" | "approval" | "clips" | "export";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */

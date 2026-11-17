@@ -42,6 +42,7 @@ export function nodeTitle(node: Pick<AutomationNode, "kind" | "stepId" | "label"
   if (node.label) return node.label;
   if (node.kind === "approval") return "Approval";
   if (node.kind === "clips") return "Clips for a platform";
+  if (node.kind === "export") return "Export for editors";
   return getStep(node.stepId ?? "")?.title ?? node.stepId ?? "Step";
 }
 

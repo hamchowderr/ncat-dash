@@ -32,6 +32,7 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { ClipsRun } from "./clips-run";
+import { EditorExport } from "./editor-export";
 import { RunStatusBadge, shownStatus } from "./run-status";
 
 /** A run only records which kind of trigger started it, which is all the canvas shows. */
@@ -144,6 +145,7 @@ export function RunView({
         </div>
         <div className="ml-auto flex items-center gap-3">
           <RunStatusBadge status={run.status} />
+          {run.hasCuts && <EditorExport runId={runId} />}
           {clipsSetup && (
             <Button variant="ghost" size="sm" onClick={() => setShowClips((shown) => !shown)}>
               {showClips ? "Show the canvas" : "Show clips"}
