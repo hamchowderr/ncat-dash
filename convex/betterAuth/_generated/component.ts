@@ -2127,11 +2127,43 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       >;
     };
     members: {
+      contact: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
+        null | { email: string; name: string },
+        Name
+      >;
+      contactsFor: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string },
+        {
+          members: Array<{ email: string; name: string; userId: string }>;
+          teamName: null | string;
+        },
+        Name
+      >;
       people: FunctionReference<
         "query",
         "internal",
         { organizationId: string },
         Array<{ id: string; image: null | string; name: string }>,
+        Name
+      >;
+      peopleFor: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string },
+        {
+          invitations: Array<{ email: string; id: string; role: string }>;
+          members: Array<{
+            email: string;
+            id: string;
+            name: string;
+            role: string;
+          }>;
+        },
         Name
       >;
       roleFor: FunctionReference<

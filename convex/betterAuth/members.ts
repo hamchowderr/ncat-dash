@@ -41,6 +41,86 @@ export const teamsFor = query({
   },
 });
 
+/** Everyone on a team with their email address, and the team's name. For sending email. */
+export const contactsFor = query({
+  args: { organizationId: v.string() },
+  returns: v.object({
+    teamName: v.union(v.null(), v.string()),
+    members: v.array(v.object({ userId: v.string(), email: v.string(), name: v.string() })),
+  }),
+  handler: async (ctx, args) => {
+    const organizationId = ctx.db.normalizeId("organization", args.organizationId);
+    const organization = organizationId ? await ctx.db.get(organizationId) : null;
+    const memberships = await ctx.db
+      .query("member")
+      .withIndex("organizationId", (q) => q.eq("organizationId", args.organizationId))
+      .take(200);
+    const members = [];
+    for (const membership of memberships) {
+      const userId = ctx.db.normalizeId("user", membership.userId);
+      const user = userId ? await ctx.db.get(userId) : null;
+      if (user) members.push({ userId: user._id, email: user.email, name: user.name });
+    }
+    return { teamName: organization?.name ?? null, members };
+  },
+});
+
+/** A user's email address and name, or null. */
+export const contact = query({
+  args: { userId: v.string() },
+  returns: v.union(v.null(), v.object({ email: v.string(), name: v.string() })),
+  handler: async (ctx, args) => {
+    const userId = ctx.db.normalizeId("user", args.userId);
+    const user = userId ? await ctx.db.get(userId) : null;
+    return user ? { email: user.email, name: user.name } : null;
+  },
+});
+
+/** Everyone on a team with their role, and the invitations nobody has answered yet. */
+export const peopleFor = query({
+  args: { organizationId: v.string() },
+  returns: v.object({
+    members: v.array(
+      v.object({ id: v.string(), role: v.string(), name: v.string(), email: v.string() }),
+    ),
+    invitations: v.array(v.object({ id: v.string(), email: v.string(), role: v.string() })),
+  }),
+  handler: async (ctx, args) => {
+    const memberships = await ctx.db
+      .query("member")
+      .withIndex("organizationId", (q) => q.eq("organizationId", args.organizationId))
+      .take(200);
+    const members = [];
+    for (const membership of memberships) {
+      const userId = ctx.db.normalizeId("user", membership.userId);
+      const user = userId ? await ctx.db.get(userId) : null;
+      if (user) {
+        members.push({
+          id: membership._id,
+          role: membership.role,
+          name: user.name,
+          email: user.email,
+        });
+      }
+    }
+    const invitations = await ctx.db
+      .query("invitation")
+      .withIndex("organizationId", (q) => q.eq("organizationId", args.organizationId))
+      .take(200);
+    const now = Date.now();
+    return {
+      members,
+      invitations: invitations
+        .filter((invitation) => invitation.status === "pending" && invitation.expiresAt > now)
+        .map((invitation) => ({
+          id: invitation._id,
+          email: invitation.email,
+          role: invitation.role ?? "member",
+        })),
+    };
+  },
+});
+
 /** The people on a team, with the name and picture to show for each. */
 export const people = query({
   args: { organizationId: v.string() },
