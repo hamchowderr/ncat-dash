@@ -9,7 +9,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "dev:mock": "aimock --config aimock.json",
-    "setup:browser": "playwright-core install chromium"
+    "dev:record": "aimock --config aimock.record.json",
+    "dev:replay": "aimock --config aimock.replay.json",
+    "setup:browser": "playwright-core install chromium",
+    "eval": "tsx scripts/eval.ts",
+    "measure:cache": "tsx scripts/measure-cache.ts",
+    "test:ui": "vitest --ui",
+    "test:watch": "vitest"
   },
   "license": "GPL-2.0-or-later",
   "type": "module",

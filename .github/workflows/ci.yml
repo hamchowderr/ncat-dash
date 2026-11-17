@@ -33,6 +33,35 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core libxml2-utils
       # The timeline export tests read every file back with OpenTimelineIO, an independent reader.
       - run: pip install opentimelineio==0.18.1 OpenTimelineIO-Plugins otio-fcpx-xml-adapter
+      # The agent's tests build a Memory, which wants a small embedding model (~130MB).
+      # It is fetched once here, in one process, and only a good copy is kept for later
+      # runs: test files that fetch it at the same time can leave it broken. If the
+      # fetch fails the tests still run, since none of them depends on the embeddings.
+      - name: Restore the embedding model
+        id: fastembed-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/mastra/fastembed-models
+          key: fastembed-${{ runner.os }}-bge-small-en-v1.5-hf-v3
+      - name: Fetch the embedding model
+        id: fastembed-warm
+        continue-on-error: true
+        working-directory: packages/agent
+        run: |
+          node --input-type=module -e "
+            import { fastembed } from '@mastra/fastembed';
+            import { embed } from 'ai';
+            const { embedding } = await embed({ model: fastembed, value: 'warm the model' });
+            if (!Array.isArray(embedding) || embedding.length !== 384) {
+              throw new Error('expected 384 dimensions, got ' + embedding?.length);
+            }
+          "
+      - name: Keep the embedding model
+        if: steps.fastembed-warm.outcome == 'success' && steps.fastembed-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/mastra/fastembed-models
+          key: fastembed-${{ runner.os }}-bge-small-en-v1.5-hf-v3
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test

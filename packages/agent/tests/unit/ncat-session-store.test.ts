@@ -5,7 +5,7 @@ import {
   rememberSession,
   sessionOf,
   workingAutomationOf,
-} from '../src/mastra/ncat/session-store';
+} from '../../src/mastra/ncat/session-store';
 
 const hand = (automationId: string | null) => ({
   convexToken: 'token',

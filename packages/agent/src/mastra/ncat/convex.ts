@@ -12,6 +12,22 @@ export const dash = anyApi;
 
 export class NotConnected extends Error {}
 
+/** The two calls the tools make. ConvexHttpClient has both; a test can stand in for it. */
+export type DashClient = Pick<ConvexHttpClient, "query" | "mutation">;
+
+function realClient(url: string, token: string): DashClient {
+  const client = new ConvexHttpClient(url);
+  client.setAuth(token);
+  return client;
+}
+
+let makeClient: (url: string, token: string) => DashClient = realClient;
+
+/** For tests: answer the tools' Convex calls without a deployment. Pass nothing to undo. */
+export function useDashClientForTests(make?: (url: string, token: string) => DashClient): void {
+  makeClient = make ?? realClient;
+}
+
 export function dashFor(userId: string | undefined) {
   const session = sessionOf(userId);
   if (!session) {
@@ -19,11 +35,10 @@ export function dashFor(userId: string | undefined) {
       "The dashboard has not said who is asking yet. Ask the person to send their message again from the dashboard.",
     );
   }
-  if (!env.CONVEX_URL) {
+  if (!env.CONVEX_URL && makeClient === realClient) {
     throw new NotConnected("CONVEX_URL is not set on the agent server.");
   }
-  const client = new ConvexHttpClient(env.CONVEX_URL);
-  client.setAuth(session.convexToken);
+  const client = makeClient(env.CONVEX_URL ?? "", session.convexToken);
   return { client, session };
 }
 
