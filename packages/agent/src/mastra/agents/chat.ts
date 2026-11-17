@@ -335,7 +335,14 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
       requestContext.get('webSearch') === true
         ? baseInstructions + searchInstructions
         : baseInstructions,
-    model: env.CHAT_MODEL,
+    // The model the session has chosen (the composer's pick, or the team's own from
+    // Settings → Agent, switched in routes/controller.ts), else the server's.
+    model: ({ requestContext }) => {
+      const controller = requestContext.get('controller') as
+        | { session?: { modelId?: string } }
+        | undefined;
+      return controller?.session?.modelId || env.CHAT_MODEL;
+    },
     // Native goal mechanism (flagship controller demo). Configuring `goal` auto-registers
     // the goal signal provider + the in-loop goal step: an objective set via
     // `agent.setObjective({ threadId })` is judged after each turn by this judge model,
