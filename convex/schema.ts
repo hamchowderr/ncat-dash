@@ -502,6 +502,15 @@ export default defineSchema({
     authorName: v.string(),
     parentId: v.optional(v.id("reviewComments")),
     resolved: v.boolean(),
+    // Set on the agent's answer to an "@Agent" comment. The answer is written by the
+    // agent server through Convex itself, never by the person who asked.
+    agent: v.optional(
+      v.object({
+        // Who asked: their name is shown beside the answer, and only they can ask again.
+        askedBy: v.string(),
+        state: v.union(v.literal("thinking"), v.literal("answered"), v.literal("failed")),
+      }),
+    ),
   })
     .index("by_clip", ["clipId"])
     .index("by_review", ["reviewId"]),
