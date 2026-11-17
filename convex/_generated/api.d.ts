@@ -31,6 +31,7 @@ import type * as lib_runner from "../lib/runner.js";
 import type * as lib_s3 from "../lib/s3.js";
 import type * as lib_versions from "../lib/versions.js";
 import type * as notes from "../notes.js";
+import type * as outputs from "../outputs.js";
 import type * as presence from "../presence.js";
 import type * as reviewAgent from "../reviewAgent.js";
 import type * as reviews from "../reviews.js";
@@ -73,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   "lib/s3": typeof lib_s3;
   "lib/versions": typeof lib_versions;
   notes: typeof notes;
+  outputs: typeof outputs;
   presence: typeof presence;
   reviewAgent: typeof reviewAgent;
   reviews: typeof reviews;

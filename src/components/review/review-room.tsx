@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { fileNameOf } from "@/components/jobs/media-preview";
@@ -177,6 +177,9 @@ function ClipWorkspace({
   version,
   people,
   onVersion,
+  focus = null,
+  highlight = null,
+  onFocused,
 }: {
   review: Review;
   clip: Clip;
@@ -184,6 +187,11 @@ function ClipWorkspace({
   version: number;
   people: Person[];
   onVersion: (version: number) => void;
+  /** A comment to open at, such as one a notification links to. */
+  focus?: string | null;
+  /** The thread marked when the room was opened at a comment. */
+  highlight?: string | null;
+  onFocused?: (threadId: string | null) => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const [time, setTime] = useState(0);
@@ -214,6 +222,26 @@ function ClipWorkspace({
     player.currentTime = seconds;
     setTime(seconds);
   }
+
+  // Opening at a comment: its version, its moment, and its thread in view.
+  useEffect(() => {
+    if (!focus || all === undefined) return;
+    const found = all.find((entry) => entry.id === focus);
+    const root = found?.parentId ? all.find((entry) => entry.id === found.parentId) : found;
+    if (root && root.version !== version) {
+      onVersion(root.version);
+      return;
+    }
+    if (root) {
+      seek(root.time);
+      document
+        .getElementById(`thread-${root.id}`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+    onFocused?.(root?.id ?? null);
+    // Runs once the comments arrive; the handlers change on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus, all, version]);
 
   return (
     <div className="grid min-h-0 min-w-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_23rem]">
@@ -277,7 +305,7 @@ function ClipWorkspace({
         people={people}
         timed={timed}
         moment={time}
-        active={active}
+        active={active ?? highlight}
         onActive={setActive}
         onSeek={(seconds) => {
           video.current?.pause();
@@ -340,6 +368,7 @@ function ClipList({
               <button
                 type="button"
                 aria-current={clip._id === selected}
+                data-clip-id={clip._id}
                 onClick={() => onSelect(clip._id)}
                 className={cn(
                   "hover:bg-muted/70 focus-visible:ring-ring/50 flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left outline-none focus-visible:ring-3",
@@ -383,7 +412,17 @@ function ClipList({
   );
 }
 
-export function ReviewRoom({ reviewId }: { reviewId: Id<"reviews"> }) {
+/**
+ * One review. `focus` opens it at a clip and a comment, as a link from a notification does
+ * (/review/<id>?clip=<clipId>&comment=<commentId>).
+ */
+export function ReviewRoom({
+  reviewId,
+  focus,
+}: {
+  reviewId: Id<"reviews">;
+  focus?: { clip?: string; comment?: string };
+}) {
   const team = useActiveTeam();
   const router = useRouter();
   const review = useQuery(api.reviews.get, { reviewId });
@@ -391,7 +430,11 @@ export function ReviewRoom({ reviewId }: { reviewId: Id<"reviews"> }) {
   const decide = useMutation(api.reviews.decide);
   const reopen = useMutation(api.reviews.reopen);
   const remove = useMutation(api.reviews.remove);
-  const [clipId, setClipId] = useState<Id<"reviewClips"> | null>(null);
+  const [clipId, setClipId] = useState<Id<"reviewClips"> | null>(
+    (focus?.clip as Id<"reviewClips"> | undefined) ?? null,
+  );
+  const [focusComment, setFocusComment] = useState<string | null>(focus?.comment ?? null);
+  const [highlight, setHighlight] = useState<string | null>(null);
   // The version on screen for each clip; the newest until someone picks another.
   const [versions, setVersions] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
@@ -525,7 +568,15 @@ export function ReviewRoom({ reviewId }: { reviewId: Id<"reviews"> }) {
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
         {review.clips.length > 1 && (
-          <ClipList clips={review.clips} selected={clip._id} onSelect={setClipId} />
+          <ClipList
+            clips={review.clips}
+            selected={clip._id}
+            onSelect={(id) => {
+              setFocusComment(null);
+              setHighlight(null);
+              setClipId(id);
+            }}
+          />
         )}
         <ClipWorkspace
           key={`${clip._id}:${version}`}
@@ -535,6 +586,12 @@ export function ReviewRoom({ reviewId }: { reviewId: Id<"reviews"> }) {
           version={version}
           people={[AGENT_PERSON, ...people]}
           onVersion={(next) => setVersions((current) => ({ ...current, [clip._id]: next }))}
+          focus={focusComment}
+          highlight={highlight}
+          onFocused={(threadId) => {
+            setFocusComment(null);
+            setHighlight(threadId);
+          }}
         />
       </div>
     </div>
