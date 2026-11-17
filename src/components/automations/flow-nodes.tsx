@@ -199,15 +199,17 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
   const nodeType = nodeTypeOf(node);
   const missing = status ? [] : missingSettings({ ...node, position: { x: 0, y: 0 } }, brand);
   const missingBrand = status || !nodeType ? [] : missingBrandOf(nodeType, node.input, brand);
-  const second = note
-    ? note
-    : jobCount && jobCount > 1 && status && status !== "pending" && ways.length === 0
-      ? `${jobCount} ${node.kind === "clips" ? "clips" : "files"}`
-      : missingBrand.length > 0
-        ? `Needs your ${BRAND_WORDS[missingBrand[0]]}`
-        : missing.length > 0
-          ? "Needs settings"
-          : look.kind;
+  const second = node.off
+    ? "Turned off"
+    : note
+      ? note
+      : jobCount && jobCount > 1 && status && status !== "pending" && ways.length === 0
+        ? `${jobCount} ${node.kind === "clips" ? "clips" : "files"}`
+        : missingBrand.length > 0
+          ? `Needs your ${BRAND_WORDS[missingBrand[0]]}`
+          : missing.length > 0
+            ? "Needs settings"
+            : look.kind;
   return (
     <div className="relative" data-node={id}>
       <div
@@ -220,6 +222,7 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
           status === "done" && "border-emerald-600/60",
           status === "failed" && "border-destructive",
           status === "skipped" && "opacity-50",
+          node.off && "border-dashed opacity-50",
         )}
       >
         <Handle type="target" position={Position.Left} className={handle} />
@@ -358,8 +361,11 @@ function FlowEdge({
   targetPosition,
   markerEnd,
   style,
+  data,
 }: EdgeProps) {
   const insert = useContext(InsertOnEdgeContext);
+  // On a run: how many files went along this line, once the step before has finished.
+  const passed = (data as { passed?: number } | undefined)?.passed;
   const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -382,6 +388,20 @@ function FlowEdge({
           >
             <Plus className="size-3" aria-hidden="true" />
           </button>
+        </EdgeLabelRenderer>
+      )}
+      {!insert && passed !== undefined && (
+        <EdgeLabelRenderer>
+          <span
+            data-passed={passed}
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            className={cn(
+              "bg-card absolute rounded-full border px-1.5 py-px font-mono text-[10px] leading-4 tabular-nums",
+              passed === 0 ? "text-muted-foreground border-dashed" : "text-foreground",
+            )}
+          >
+            {passed === 0 ? "none" : passed === 1 ? "1 file" : `${passed} files`}
+          </span>
         </EdgeLabelRenderer>
       )}
     </>
