@@ -1,0 +1,54 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Add captions to the clips before they go for approval.",
+        "model": "claude-sonnet-5-5",
+        "turnIndex": 3,
+        "hasToolResult": true
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "name": "change_automation",
+            "arguments": "{\"operations\": [{\"op\":\"add\",\"type\":\"approval\",\"id\":\"approve\",\"label\":\"Approve clips\",\"after\":\"caption\"}]}",
+            "id": "toolu_015yHdWGaPW4W3ZJZh55bkA6"
+          }
+        ],
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 336,
+          "cache_read_input_tokens": 18371,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 336,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 85
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 789,
+        "interChunkDelaysMs": [
+          0,
+          0,
+          0,
+          565,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          2,
+          0
+        ],
+        "totalDurationMs": 1357
+      },
+      "metadata": {
+        "systemHash": "8c98bf41",
+        "toolsHash": "49fe857c"
+      }
+    }
+  ]
+}

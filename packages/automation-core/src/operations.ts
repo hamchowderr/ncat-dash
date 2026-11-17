@@ -202,7 +202,12 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
   if (draft.nodes.length >= MAX_NODES) {
     throw new OperationError(`An automation can have at most ${MAX_NODES} steps.`);
   }
-  const after = op.after ? need(draft, op.after) : undefined;
+  // "after the trigger" is what a step with no `after` already does, so take it that way
+  // rather than as a step called "trigger" (unless there really is one).
+  const afterTrigger =
+    (op.after === "trigger" || op.after === "__trigger") &&
+    !draft.nodes.some((node) => node.id === op.after);
+  const after = op.after && !afterTrigger ? need(draft, op.after) : undefined;
   const before = op.before ? need(draft, op.before) : undefined;
   const taken = op.id && draft.nodes.some((node) => node.id === op.id);
   const id =
