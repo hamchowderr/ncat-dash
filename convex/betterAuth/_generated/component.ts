@@ -2139,7 +2139,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { organizationId: string },
         {
-          members: Array<{ email: string; name: string; userId: string }>;
+          members: Array<{
+            email: string;
+            name: string;
+            role: string;
+            userId: string;
+          }>;
           teamName: null | string;
         },
         Name

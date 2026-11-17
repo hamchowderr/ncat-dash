@@ -37,7 +37,7 @@ export async function addTeam(t: Backend, name: string): Promise<string> {
  * Makes a signed-in person, on the given teams, and returns their id and a handle
  * that calls functions as them.
  */
-export async function addPerson(t: Backend, name: string, teams: string[] = []) {
+export async function addPerson(t: Backend, name: string, teams: string[] = [], role = "member") {
   const now = Date.now();
   const { userId, sessionId } = await t.run(async (ctx) => {
     const create = (model: string, data: Record<string, unknown>) =>
@@ -60,7 +60,7 @@ export async function addPerson(t: Backend, name: string, teams: string[] = []) 
       updatedAt: now,
     });
     for (const organizationId of teams) {
-      await create("member", { organizationId, userId: user._id, role: "member", createdAt: now });
+      await create("member", { organizationId, userId: user._id, role, createdAt: now });
     }
     return { userId: user._id as string, sessionId: session._id as string };
   });

@@ -38,7 +38,9 @@ import {
   mutation,
   type MutationCtx,
   query,
+  type QueryCtx,
 } from "./_generated/server";
+import { membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
@@ -446,6 +448,9 @@ const describedValidator = v.object({
   // True when what is described is a draft: the live version is different and keeps
   // running until `automations.publish`.
   draft: v.optional(v.boolean()),
+  // The team, when the automation has an Approval step: put user ids in its `reviewers`
+  // setting to name who decides. Owners and admins can always decide.
+  team: v.optional(v.array(v.object({ userId: v.string(), name: v.string(), role: v.string() }))),
 });
 
 /**
@@ -465,9 +470,19 @@ export const describe = query({
       enabled: automation.enabled,
       draft: automation.draft !== undefined,
       music: music.map((track) => ({ name: track.name, value: track.file })),
+      ...(await teamFor(ctx, automation.organizationId, draft)),
     };
   },
 });
+
+/** The team for an automation with an Approval step, so the agent can name reviewers. */
+async function teamFor(ctx: QueryCtx, organizationId: string, draft: AutomationDraft) {
+  if (!draft.nodes.some((node) => node.kind === "approval")) return {};
+  const members = await membersOf(ctx, organizationId);
+  return {
+    team: members.map(({ userId, name, role }) => ({ userId, name, role })),
+  };
+}
 
 /**
  * Makes changes to an automation, in order, and saves the result. All of them are made or
@@ -557,6 +572,60 @@ export const runNow = mutation({
     return started.runId;
   },
 });
+
+/**
+ * Tests one step on its own, as it stands in the editor (saved or not), on one file.
+ * Settings that point at an earlier step's file take the chosen file instead, since the
+ * steps before do not run. Returns the run, which then updates live like any other.
+ */
+export const testStep = mutation({
+  args: {
+    automationId: v.id("automations"),
+    node: nodeValidator,
+    fileUrl: v.optional(v.string()),
+  },
+  returns: v.id("runs"),
+  handler: async (ctx, args) => {
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
+    if (args.node.kind !== "step" && args.node.kind !== "clips") {
+      fail("invalid_input", "Only steps that do work on a file can be tested on their own.");
+    }
+    const fileUrl = args.fileUrl?.trim();
+    if (fileUrl && !/^https?:\/\//.test(fileUrl)) {
+      fail("invalid_input", "The file address must start with http:// or https://.");
+    }
+    const node = { ...args.node, input: standAlone(args.node.input) };
+    const started = await startRun(
+      ctx,
+      { ...automation, nodes: [node], edges: [] },
+      "manual",
+      fileUrl ? { file_url: fileUrl } : {},
+      userId,
+      { test: node.id },
+    );
+    if (!started.ok) fail("invalid_input", started.message);
+    return started.runId;
+  },
+});
+
+/**
+ * A step's settings with nothing pointing back at earlier steps: a file from one becomes
+ * the file the test runs on, and anything else read from one is left for the step to
+ * work out, as it does when nothing is set.
+ */
+export function standAlone(input: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value === "string" && /\{\{\s*steps\./.test(value)) {
+      if (/^\{\{\s*steps\.[A-Za-z0-9_]+\.url\s*\}\}$/.test(value)) {
+        out[key] = "{{trigger.file_url}}";
+      }
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
 
 // Internal: the triggers that start runs with nobody logged in.
 

@@ -6,6 +6,7 @@
  * details.ts), so it can sit anywhere in an automation, also after a step that made a new
  * file. Its settings are a few words and a number that the canvas shows as a sentence.
  */
+import { approvalProblem } from "./approval";
 import { detailsKind, type FileDetails, formatDuration } from "./details";
 
 /** The ways out of an If. Files that pass leave by "yes", the rest by "no". */
@@ -248,5 +249,6 @@ export function logicProblem(node: {
 }): string | null {
   if (node.kind === "if") return conditionProblem(node.input);
   if (node.kind === "wait") return waitProblem(node.input);
+  if (node.kind === "approval") return approvalProblem(node.input);
   return null;
 }

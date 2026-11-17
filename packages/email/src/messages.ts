@@ -152,6 +152,35 @@ export function runFailedEmail(
   );
 }
 
+export function approvalWaitingEmail(
+  args: {
+    teamName?: string;
+    automationName: string;
+    stepName?: string;
+    /** What the run is waiting for, such as when it decides by itself. */
+    note: string;
+    runUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const automation = oneLine(args.automationName, 80);
+  const step = args.stepName ? oneLine(args.stepName, 80) : "Approval";
+  return compose(
+    `Waiting for your approval: ${automation}`,
+    {
+      heading: `${automation} is waiting for you`,
+      paragraphs: [
+        `A run reached the step "${step}"${args.teamName ? ` in ${oneLine(args.teamName, 60)}` : ""} and is paused until someone approves or rejects it.`,
+        oneLine(args.note, 300),
+      ],
+      button: { label: "Review it", url: args.runUrl },
+      footnote: `You get this because you were asked to review. To stop these emails, switch them off in Settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
 export function testEmail(args: { teamName?: string }, branding: Branding) {
   return compose(
     "Email is working",

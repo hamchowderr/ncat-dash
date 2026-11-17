@@ -16,3 +16,4 @@ export * from "./transfer";
 export * from "./history";
 export * from "./structured";
 export * from "./retry";
+export * from "./approval";

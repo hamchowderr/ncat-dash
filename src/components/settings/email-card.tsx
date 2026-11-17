@@ -84,9 +84,9 @@ export function EmailCard() {
     }
   }
 
-  async function onToggle(enabled: boolean) {
+  async function onToggle(enabled: boolean, kind?: "approval_waiting") {
     try {
-      await setAlertEmails({ organizationId: team.id, enabled });
+      await setAlertEmails({ organizationId: team.id, enabled, kind });
     } catch (caught) {
       toast.error(errorMessage(caught, "The setting could not be saved. Try again."));
     }
@@ -99,8 +99,8 @@ export function EmailCard() {
           <h2>Email</h2>
         </CardTitle>
         <CardDescription>
-          Failed-run alerts, password resets, address confirmations and team invitations are sent
-          through{" "}
+          Failed-run alerts, approval requests, password resets, address confirmations and team
+          invitations are sent through{" "}
           <a href="https://tosend.com" target="_blank" rel="noreferrer" className="underline">
             toSend
           </a>
@@ -240,6 +240,24 @@ export function EmailCard() {
             checked={email.alertEmails}
             onCheckedChange={onToggle}
             aria-label="Email me when a run fails"
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t pt-4">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="approval-emails" className="text-sm font-medium">
+              Email me when an approval is waiting for me
+            </label>
+            <p className="text-muted-foreground text-sm">
+              Sent when a run reaches an Approval step that asks you to review. The alert under the
+              bell stays either way.
+            </p>
+          </div>
+          <Switch
+            id="approval-emails"
+            checked={email.approvalEmails}
+            onCheckedChange={(enabled) => onToggle(enabled, "approval_waiting")}
+            aria-label="Email me when an approval is waiting for me"
           />
         </div>
       </CardContent>
