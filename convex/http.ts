@@ -140,4 +140,20 @@ http.route({
   }),
 });
 
+// Slack events the dashboard passes on from /api/slack/events: replies in a review's
+// Slack thread. Checked with the workspace's own signing secret, not the agent token.
+http.route({
+  path: "/slack/events",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const status = await ctx.runAction(internal.slackReview.takeEvent, {
+      body: await request.text(),
+      timestamp: request.headers.get("x-slack-request-timestamp") ?? "",
+      signature: request.headers.get("x-slack-signature") ?? "",
+      now: Date.now(),
+    });
+    return new Response(null, { status });
+  }),
+});
+
 export default http;

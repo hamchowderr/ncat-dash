@@ -2,13 +2,20 @@ import { AGENT, asksAgent, cleanDrawing, COMMENT_LIMIT, mentionedIn } from "@nca
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
+import {
+  internalMutation,
+  mutation,
+  type MutationCtx,
+  query,
+  type QueryCtx,
+} from "./_generated/server";
 import { authComponent } from "./auth";
 import { notify } from "./lib/alerts";
 import { isMember, requireMember } from "./lib/authz";
 import { drawingValidator } from "./lib/drawing";
 import { CLIP_LIMIT, openReview, shareOf, VERSION_LIMIT } from "./lib/reviews";
 import { decideApproval } from "./lib/runner";
+import { toSlack } from "./lib/slackPosts";
 
 // A review shows this many comments at most; a room is for one round of notes.
 const COMMENTS_SHOWN = 500;
@@ -278,102 +285,206 @@ export const comment = mutation({
     const clip = await ctx.db.get(args.clipId);
     if (!clip) throw gone();
     const { userId } = await requireMember(ctx, clip.organizationId);
-    const body = args.body.trim();
-    if (body === "") {
-      throw new ConvexError({ code: "invalid", message: "Write something first." });
-    }
-    if (body.length > COMMENT_LIMIT) {
-      throw new ConvexError({ code: "invalid", message: "That comment is too long." });
-    }
-    const existing = await ctx.db
-      .query("reviewComments")
-      .withIndex("by_review", (q) => q.eq("reviewId", clip.reviewId))
-      .take(COMMENTS_SHOWN);
-    if (existing.length >= COMMENTS_SHOWN) {
-      throw new ConvexError({ code: "limit", message: "This review has too many comments." });
-    }
-
-    let time = Math.max(0, Number.isFinite(args.time) ? args.time : 0);
-    let version = Math.min(clip.versions.length, Math.max(1, Math.round(args.version)));
-    let parentId: Id<"reviewComments"> | undefined;
-    if (args.parentId) {
-      const parent = await ctx.db.get(args.parentId);
-      if (!parent || parent.clipId !== clip._id) {
-        throw new ConvexError({ code: "not_found", message: "That comment is gone." });
-      }
-      // Threads are one level deep: a reply to a reply joins the same thread.
-      parentId = parent.parentId ?? parent._id;
-      time = parent.time;
-      version = parent.version;
-      // A reply brings a resolved thread back.
-      const root = parent.parentId ? await ctx.db.get(parent.parentId) : parent;
-      if (root?.resolved) await ctx.db.patch(root._id, { resolved: false });
-    }
-
     const user = await authComponent.safeGetAuthUser(ctx);
-    const id = await ctx.db.insert("reviewComments", {
-      reviewId: clip.reviewId,
-      clipId: clip._id,
-      organizationId: clip.organizationId,
-      version,
-      time,
-      body,
-      authorId: userId,
-      authorName: user?.name?.trim() || "Someone",
-      parentId,
-      resolved: false,
-      // A drawing belongs to the moment a thread is about, so a reply carries none.
-      drawing: parentId ? undefined : (cleanDrawing(args.drawing) ?? undefined),
-    });
+    return await writeTeamComment(
+      ctx,
+      clip,
+      { userId, name: user?.name?.trim() || "Someone" },
+      args,
+      "room",
+    );
+  },
+});
 
-    // Teammates named after "@" hear about it, under the bell and by email as they chose.
+/**
+ * A teammate's reply written in the Slack thread for a review thread. Slack can send the
+ * same message twice; it is written once.
+ */
+export const commentFromSlack = internalMutation({
+  args: {
+    commentId: v.id("reviewComments"),
+    userId: v.string(),
+    authorName: v.string(),
+    body: v.string(),
+    slackTeamId: v.string(),
+    channelId: v.string(),
+    ts: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const seen = await ctx.db
+      .query("slackReplies")
+      .withIndex("by_message", (q) =>
+        q.eq("slackTeamId", args.slackTeamId).eq("channelId", args.channelId).eq("ts", args.ts),
+      )
+      .first();
+    if (seen) return null;
+    const root = await ctx.db.get(args.commentId);
+    const clip = root ? await ctx.db.get(root.clipId) : null;
+    if (!root || !clip) return null;
     const team = await ctx.runQuery(components.betterAuth.members.people, {
       organizationId: clip.organizationId,
     });
-    const mentioned = mentionedIn(body, team).filter((id) => id !== userId);
-    if (mentioned.length > 0) {
-      const review = await ctx.db.get(clip.reviewId);
-      await notify(ctx, {
-        organizationId: clip.organizationId,
-        kind: "mention",
-        recipients: mentioned,
-        automationName: review?.title || clip.title,
-        message: body,
-        retries: 0,
-        reviewId: clip.reviewId,
-        clipId: clip._id,
-        commentId: parentId ?? id,
-        from: user?.name?.trim() || "Someone",
-      });
-    }
-
-    // "@Agent" asks for an answer in the same thread. It shows as thinking at once, and
-    // the agent server fills it in (convex/reviewAgent.ts).
-    if (asksAgent(body)) {
-      const root = parentId ?? id;
-      const thinking = existing.some(
-        (other) => other.agent?.state === "thinking" && (other.parentId ?? other._id) === root,
-      );
-      if (!thinking) {
-        const answerId = await ctx.db.insert("reviewComments", {
-          reviewId: clip.reviewId,
-          clipId: clip._id,
-          organizationId: clip.organizationId,
-          version,
-          time,
-          body: "",
-          authorId: AGENT.id,
-          authorName: AGENT.name,
-          parentId: root,
-          resolved: false,
-          agent: { askedBy: userId, state: "thinking" },
-        });
-        await ctx.scheduler.runAfter(0, internal.reviewAgent.answer, { answerId });
-      }
-    }
+    if (!team.some((person) => person.id === args.userId)) return null;
+    const id = await writeTeamComment(
+      ctx,
+      clip,
+      { userId: args.userId, name: args.authorName },
+      {
+        body: args.body.slice(0, COMMENT_LIMIT),
+        time: root.time,
+        version: root.version,
+        parentId: root._id,
+      },
+      "slack",
+    );
+    await ctx.db.insert("slackReplies", {
+      slackTeamId: args.slackTeamId,
+      channelId: args.channelId,
+      ts: args.ts,
+      commentId: id,
+    });
     return id;
   },
 });
+
+/**
+ * Writes a teammate's comment or reply, wherever it was written: tells the people it
+ * mentions, asks the agent when it says "@Agent", and keeps the team's Slack thread for
+ * it up to date.
+ */
+async function writeTeamComment(
+  ctx: MutationCtx,
+  clip: Doc<"reviewClips">,
+  author: { userId: string; name: string },
+  args: {
+    body: string;
+    time: number;
+    version: number;
+    parentId?: Id<"reviewComments">;
+    drawing?: Doc<"reviewComments">["drawing"];
+  },
+  from: "room" | "slack",
+): Promise<Id<"reviewComments">> {
+  const { userId } = author;
+  const body = args.body.trim();
+  if (body === "") {
+    throw new ConvexError({ code: "invalid", message: "Write something first." });
+  }
+  if (body.length > COMMENT_LIMIT) {
+    throw new ConvexError({ code: "invalid", message: "That comment is too long." });
+  }
+  const existing = await ctx.db
+    .query("reviewComments")
+    .withIndex("by_review", (q) => q.eq("reviewId", clip.reviewId))
+    .take(COMMENTS_SHOWN);
+  if (existing.length >= COMMENTS_SHOWN) {
+    throw new ConvexError({ code: "limit", message: "This review has too many comments." });
+  }
+
+  let time = Math.max(0, Number.isFinite(args.time) ? args.time : 0);
+  let version = Math.min(clip.versions.length, Math.max(1, Math.round(args.version)));
+  let parentId: Id<"reviewComments"> | undefined;
+  if (args.parentId) {
+    const parent = await ctx.db.get(args.parentId);
+    if (!parent || parent.clipId !== clip._id) {
+      throw new ConvexError({ code: "not_found", message: "That comment is gone." });
+    }
+    // Threads are one level deep: a reply to a reply joins the same thread.
+    parentId = parent.parentId ?? parent._id;
+    time = parent.time;
+    version = parent.version;
+    // A reply brings a resolved thread back.
+    const root = parent.parentId ? await ctx.db.get(parent.parentId) : parent;
+    if (root?.resolved) await ctx.db.patch(root._id, { resolved: false });
+  }
+
+  const id = await ctx.db.insert("reviewComments", {
+    reviewId: clip.reviewId,
+    clipId: clip._id,
+    organizationId: clip.organizationId,
+    version,
+    time,
+    body,
+    authorId: userId,
+    authorName: author.name,
+    parentId,
+    resolved: false,
+    // A drawing belongs to the moment a thread is about, so a reply carries none.
+    drawing: parentId ? undefined : (cleanDrawing(args.drawing) ?? undefined),
+    slack: from === "slack" ? true : undefined,
+  });
+
+  // Teammates named after "@" hear about it, under the bell and by email as they chose.
+  const team = await ctx.runQuery(components.betterAuth.members.people, {
+    organizationId: clip.organizationId,
+  });
+  const mentioned = mentionedIn(body, team).filter((id) => id !== userId);
+  if (mentioned.length > 0) {
+    const review = await ctx.db.get(clip.reviewId);
+    await notify(ctx, {
+      organizationId: clip.organizationId,
+      kind: "mention",
+      recipients: mentioned,
+      automationName: review?.title || clip.title,
+      message: body,
+      retries: 0,
+      reviewId: clip.reviewId,
+      clipId: clip._id,
+      commentId: parentId ?? id,
+      from: author.name,
+    });
+  }
+
+  // "@Agent" asks for an answer in the same thread. It shows as thinking at once, and
+  // the agent server fills it in (convex/reviewAgent.ts).
+  if (asksAgent(body)) {
+    const root = parentId ?? id;
+    const thinking = existing.some(
+      (other) => other.agent?.state === "thinking" && (other.parentId ?? other._id) === root,
+    );
+    if (!thinking) {
+      const answerId = await ctx.db.insert("reviewComments", {
+        reviewId: clip.reviewId,
+        clipId: clip._id,
+        organizationId: clip.organizationId,
+        version,
+        time,
+        body: "",
+        authorId: AGENT.id,
+        authorName: AGENT.name,
+        parentId: root,
+        resolved: false,
+        agent: { askedBy: userId, state: "thinking" },
+      });
+      await ctx.scheduler.runAfter(0, internal.reviewAgent.answer, { answerId });
+    }
+  }
+
+  // The team's Slack channel hears about mentions, and a reply written here goes to the
+  // Slack thread when the conversation is already there. One written in Slack is there.
+  if (from === "room") {
+    const review = await ctx.db.get(clip.reviewId);
+    if (review && mentioned.length > 0) {
+      await toSlack(ctx, clip.organizationId, {
+        kind: "mention",
+        reviewId: review._id,
+        commentId: parentId ?? id,
+        from: author.name,
+        body,
+        mentioned,
+      });
+    } else if (review && parentId) {
+      await toSlack(ctx, clip.organizationId, {
+        kind: "team_reply",
+        reviewId: review._id,
+        commentId: parentId,
+        from: author.name,
+        body,
+      });
+    }
+  }
+  return id;
+}
 
 /** Asks the agent again after an answer that did not come. Only the person who asked can. */
 export const askAgentAgain = mutation({

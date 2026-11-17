@@ -1,4 +1,5 @@
 const SERVER_URL = process.env.MASTRA_SERVER_URL ?? "http://localhost:4111";
+const CONVEX_SITE_URL = process.env.NEXT_PUBLIC_CONVEX_SITE_URL ?? "";
 
 /** Where the agent server takes Slack requests (Mastra's route for the chat controller). */
 export const SLACK_WEBHOOK_PATH =
@@ -13,26 +14,72 @@ const PASSED = [
   "x-slack-retry-reason",
 ];
 
-export async function forwardSlack(request: Request, serverUrl = SERVER_URL): Promise<Response> {
+/**
+ * Whether a Slack event is someone's reply inside a thread: what the dashboard brings
+ * into a review when the thread is one of its review threads.
+ */
+export function isThreadReply(body: string): boolean {
+  try {
+    const parsed = JSON.parse(body) as {
+      type?: string;
+      event?: { type?: string; subtype?: string; bot_id?: string; ts?: string; thread_ts?: string };
+    };
+    const event = parsed.event;
+    return (
+      parsed.type === "event_callback" &&
+      event?.type === "message" &&
+      !event.subtype &&
+      !event.bot_id &&
+      typeof event.thread_ts === "string" &&
+      event.thread_ts !== event.ts
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Passes a Slack request on to the agent server, and a reply in a thread also to the
+ * dashboard's backend, which writes it into the review that thread belongs to. Slack is
+ * answered with what the agent server says.
+ */
+export async function forwardSlack(
+  request: Request,
+  serverUrl = SERVER_URL,
+  convexSiteUrl = CONVEX_SITE_URL,
+): Promise<Response> {
   const body = await request.text();
   const headers = new Headers();
   for (const name of PASSED) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
-  try {
-    const answer = await fetch(`${serverUrl}${SLACK_WEBHOOK_PATH}`, {
-      method: "POST",
-      headers,
-      body,
-      signal: AbortSignal.timeout(10_000),
-    });
-    return new Response(await answer.text(), {
-      status: answer.status,
-      headers: { "content-type": answer.headers.get("content-type") ?? "text/plain" },
-    });
-  } catch {
-    // Slack tries again when it gets no answer, so say plainly that we are not there.
-    return new Response("The agent server is not reachable.", { status: 503 });
-  }
+  const toReview =
+    convexSiteUrl && isThreadReply(body)
+      ? fetch(`${convexSiteUrl.replace(/\/$/, "")}/slack/events`, {
+          method: "POST",
+          headers,
+          body,
+          signal: AbortSignal.timeout(10_000),
+        }).catch(() => null)
+      : Promise.resolve(null);
+  const toAgent = (async () => {
+    try {
+      const answer = await fetch(`${serverUrl}${SLACK_WEBHOOK_PATH}`, {
+        method: "POST",
+        headers,
+        body,
+        signal: AbortSignal.timeout(10_000),
+      });
+      return new Response(await answer.text(), {
+        status: answer.status,
+        headers: { "content-type": answer.headers.get("content-type") ?? "text/plain" },
+      });
+    } catch {
+      // Slack tries again when it gets no answer, so say plainly that we are not there.
+      return new Response("The agent server is not reachable.", { status: 503 });
+    }
+  })();
+  const [answer] = await Promise.all([toAgent, toReview]);
+  return answer;
 }

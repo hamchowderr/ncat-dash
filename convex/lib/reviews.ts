@@ -1,6 +1,7 @@
 import { clipTitleFrom, TITLE_LIMIT } from "@ncat-dash/review-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { toSlack } from "./slackPosts";
 
 /** The most clips one review holds, and the most versions one clip keeps. */
 export const CLIP_LIMIT = 50;
@@ -37,6 +38,7 @@ export async function openReview(
       versions: [{ url, addedBy: review.createdBy, addedAt: now }],
     });
   }
+  await toSlack(ctx, review.organizationId, { kind: "review_opened", reviewId });
   return reviewId;
 }
 

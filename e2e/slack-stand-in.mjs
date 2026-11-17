@@ -5,6 +5,7 @@
 // posted so a test can read it back. Nothing here is used by the product.
 //
 //   GET  /stand-in/posted          messages the bot posted, oldest first
+//   GET  /stand-in/joined          the channels the bot joined
 //   POST /stand-in/users           {id, email, name} a Slack user users.info will know
 //   POST /stand-in/reset           forget posted messages
 import { createServer } from "node:http";
@@ -27,6 +28,13 @@ export function teamOfToken(token) {
 // The bot itself, as Slack knows it: no email address, so the dashboard never matches it.
 const users = new Map([[BOT_USER, { email: null, name: "Agent", bot: true }]]);
 let posted = [];
+// The channels the workspace has, and the ones the bot was asked to join.
+const CHANNELS = [
+  { id: "C0VIDEOTEAM", name: "video-team", is_private: false },
+  { id: "C0GENERAL", name: "general", is_private: false },
+  { id: "G0CLIENTX", name: "client-x", is_private: true },
+];
+const joined = new Set();
 let ts = 1_700_000_000;
 
 function read(request) {
@@ -94,6 +102,7 @@ function method(name, params, token) {
       const message = {
         method: name,
         channel: params.channel,
+        user: params.user ?? null,
         thread_ts: params.thread_ts ?? null,
         text: params.text ?? "",
         markdown_text: params.markdown_text ?? null,
@@ -114,6 +123,24 @@ function method(name, params, token) {
     case "conversations.replies":
     case "conversations.history":
       return { ok: true, messages: [], has_more: false };
+    case "conversations.list":
+      return {
+        ok: true,
+        channels: CHANNELS.map((channel) => ({ ...channel, is_archived: false })),
+        response_metadata: { next_cursor: "" },
+      };
+    case "conversations.join": {
+      const channel = CHANNELS.find((one) => one.id === params.channel);
+      if (!channel) return { ok: false, error: "channel_not_found" };
+      joined.add(channel.id);
+      return { ok: true, channel };
+    }
+    case "users.lookupByEmail": {
+      const found = [...users].find(([, user]) => user.email && user.email === params.email);
+      return found
+        ? { ok: true, user: { id: found[0], name: found[1].name } }
+        : { ok: false, error: "users_not_found" };
+    }
     case "conversations.info":
       return { ok: true, channel: { id: params.channel, name: "video-team", is_im: false } };
     default:
@@ -126,6 +153,9 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${SLACK_PORT}`);
   if (request.method === "GET" && url.pathname === "/stand-in/posted") {
     return send(response, 200, posted);
+  }
+  if (request.method === "GET" && url.pathname === "/stand-in/joined") {
+    return send(response, 200, [...joined]);
   }
   if (request.method === "POST" && url.pathname === "/stand-in/users") {
     const user = await read(request);
