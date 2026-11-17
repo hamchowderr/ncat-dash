@@ -65,7 +65,8 @@ export async function closeReviewForStep(
   ctx: MutationCtx,
   runStepId: Id<"runSteps">,
   approved: boolean,
-  userId: string,
+  /** Null when the step decided by itself because its time ran out. */
+  userId: string | null,
 ): Promise<void> {
   const review = await ctx.db
     .query("reviews")
@@ -74,7 +75,7 @@ export async function closeReviewForStep(
   if (!review || review.status !== "open") return;
   await ctx.db.patch(review._id, {
     status: approved ? "approved" : "rejected",
-    decidedBy: userId,
+    decidedBy: userId ?? undefined,
     decidedAt: Date.now(),
   });
 }

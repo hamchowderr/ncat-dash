@@ -28,3 +28,21 @@ export const people = query({
     });
   },
 });
+
+/**
+ * Everyone on a team as an Approval step names them: user id, name and role. For the
+ * reviewer picker and the agent.
+ */
+export const members = query({
+  args: { organizationId: v.string() },
+  returns: v.array(
+    v.object({ userId: v.string(), name: v.string(), email: v.string(), role: v.string() }),
+  ),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const team = await ctx.runQuery(components.betterAuth.members.contactsFor, {
+      organizationId: args.organizationId,
+    });
+    return team.members;
+  },
+});

@@ -11,6 +11,8 @@ import { fileNameOf } from "@/components/jobs/media-preview";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+import { ApprovalWaitingNote } from "./approval-status";
+
 type Run = NonNullable<FunctionReturnType<typeof api.runs.get>>;
 type Step = Run["steps"][number];
 
@@ -167,17 +169,24 @@ export function ClipsRun({
         )}
         {approval?.status === "waiting_approval" && (
           <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-            <p className="text-muted-foreground mr-auto text-sm">
-              Happy with them? Approving finishes the run.
-            </p>
-            <Button size="sm" disabled={busy} onClick={() => onDecide(approval._id, true)}>
+            <div className="mr-auto flex flex-col gap-0.5">
+              <p className="text-muted-foreground text-sm">
+                Happy with them? Approving finishes the run.
+              </p>
+              {approval.approval && <ApprovalWaitingNote view={approval.approval} />}
+            </div>
+            <Button
+              size="sm"
+              disabled={busy || approval.approval?.mayDecide === false}
+              onClick={() => onDecide(approval._id, true)}
+            >
               <Check />
               Approve
             </Button>
             <Button
               size="sm"
               variant="outline"
-              disabled={busy}
+              disabled={busy || approval.approval?.mayDecide === false}
               onClick={() => onDecide(approval._id, false)}
             >
               <X />

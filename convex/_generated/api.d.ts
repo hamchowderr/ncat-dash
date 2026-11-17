@@ -16,6 +16,8 @@ import type * as email from "../email.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as jobs from "../jobs.js";
+import type * as lib_alerts from "../lib/alerts.js";
+import type * as lib_approvals from "../lib/approvals.js";
 import type * as lib_authz from "../lib/authz.js";
 import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_edition from "../lib/edition.js";
@@ -55,6 +57,8 @@ declare const fullApi: ApiFromModules<{
   files: typeof files;
   http: typeof http;
   jobs: typeof jobs;
+  "lib/alerts": typeof lib_alerts;
+  "lib/approvals": typeof lib_approvals;
   "lib/authz": typeof lib_authz;
   "lib/crypto": typeof lib_crypto;
   "lib/edition": typeof lib_edition;
