@@ -49,7 +49,7 @@ export function JobsView() {
       {jobs === undefined ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : jobs.length === 0 ? (
-        <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-6">
+        <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
           <p className="text-muted-foreground text-sm">
             Nothing has run yet. Pick a step and try it on a sample file.
           </p>
@@ -58,7 +58,7 @@ export function JobsView() {
           </Button>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border">
+        <div className="overflow-hidden rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>
@@ -114,7 +114,7 @@ export function JobsView() {
                 <JobResult jobId={open._id} />
                 <div className="flex flex-col gap-2">
                   <h3 className="text-sm font-medium">Input</h3>
-                  <pre className="bg-muted/40 max-h-72 overflow-auto rounded-lg border p-3 text-xs">
+                  <pre className="bg-surface max-h-72 overflow-auto rounded-lg p-3 text-xs">
                     {JSON.stringify(open.input, null, 2)}
                   </pre>
                 </div>

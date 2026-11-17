@@ -126,7 +126,7 @@ export function RunDialog({
         {storage === undefined ? (
           <div className="bg-muted h-36 animate-pulse rounded-xl" />
         ) : storage === null ? (
-          <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-5">
+          <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-5">
             <p className="text-muted-foreground text-sm">
               Connect your storage first, so there is somewhere for your files to go.
             </p>

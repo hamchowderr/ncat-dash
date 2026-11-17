@@ -34,7 +34,7 @@ export function DraftBar({
   return (
     <div
       role="status"
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-amber-500/10 px-3 py-2"
     >
       <PencilLine
         className="size-4 shrink-0 text-amber-700 dark:text-amber-400"

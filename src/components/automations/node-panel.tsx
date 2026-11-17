@@ -180,52 +180,57 @@ export function NodePanel({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-3">
-        <span className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
-          <look.icon className={`size-5 ${look.tint}`} aria-hidden="true" />
-        </span>
-        <div className="grid min-w-0 flex-1 gap-0.5">
-          <h2 className="truncate text-sm font-semibold">{nodeTitle(node)}</h2>
-          <p className="text-muted-foreground text-xs text-pretty">
-            {nodeType?.description ?? "This step is no longer in the catalog."}
-          </p>
-        </div>
-        {node.kind !== "if" && (
-          <Switch
-            className="mt-0.5 shrink-0"
-            checked={!node.off}
-            onCheckedChange={(on) => onChange({ off: on ? undefined : true })}
-            aria-label={node.off ? "Turn this step on" : "Turn this step off"}
-            title={node.off ? "Turned off. Turn it on" : "Turn off without removing it"}
-          />
-        )}
-        {onDuplicate && (
+      {/* The step's name and its buttons share one line; what it does reads across the
+          whole panel underneath instead of being squeezed beside the buttons. */}
+      <div className="grid gap-2">
+        <div className="flex items-center gap-3">
+          <span className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
+            <look.icon className={`size-5 ${look.tint}`} aria-hidden="true" />
+          </span>
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold" title={nodeTitle(node)}>
+            {nodeTitle(node)}
+          </h2>
+          {node.kind !== "if" && (
+            <Switch
+              className="shrink-0"
+              checked={!node.off}
+              onCheckedChange={(on) => onChange({ off: on ? undefined : true })}
+              aria-label={node.off ? "Turn this step on" : "Turn this step off"}
+              title={node.off ? "Turned off. Turn it on" : "Turn off without removing it"}
+            />
+          )}
+          {onDuplicate && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground shrink-0"
+              title="Duplicate (Ctrl+D)"
+              onClick={onDuplicate}
+            >
+              <Copy />
+              <span className="sr-only">Duplicate step</span>
+            </Button>
+          )}
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="text-muted-foreground -mt-1 shrink-0"
-            title="Duplicate (Ctrl+D)"
-            onClick={onDuplicate}
+            className="text-muted-foreground -mr-1 shrink-0"
+            title="Remove step"
+            onClick={onRemove}
           >
-            <Copy />
-            <span className="sr-only">Duplicate step</span>
+            <Trash2 />
+            <span className="sr-only">Remove step</span>
           </Button>
-        )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground -mt-1 -mr-1 shrink-0"
-          onClick={onRemove}
-        >
-          <Trash2 />
-          <span className="sr-only">Remove step</span>
-        </Button>
+        </div>
+        <p className="text-muted-foreground text-xs text-pretty">
+          {nodeType?.description ?? "This step is no longer in the catalog."}
+        </p>
       </div>
 
       {waitsFor && waitsFor.length > 1 && (
-        <p className="text-muted-foreground rounded-lg border px-3 py-2 text-xs text-pretty">
+        <p className="text-muted-foreground bg-background rounded-lg px-3 py-2 text-xs text-pretty">
           Waits for {joinNames(waitsFor)} to finish, then runs once with the files from{" "}
           {waitsFor.length === 2 ? "both" : "all of them"}. A side an If did not send files down is
           not waited for.
@@ -302,7 +307,7 @@ export function NodePanel({
       )}
 
       {handled.length > 0 && (
-        <div className="bg-muted/40 rounded-lg border p-3">
+        <div className="bg-background rounded-lg p-3">
           <p className="mb-1.5 text-xs font-medium">Handled for you</p>
           <ul className="text-muted-foreground flex flex-col gap-1 text-xs">
             {handled.map((item) => (
@@ -368,10 +373,7 @@ export function NodePanel({
       </Collapsible>
 
       {onAddOnFailure && (
-        <section
-          aria-label="If it fails"
-          className="flex items-center justify-between gap-2 border-t pt-4"
-        >
+        <section aria-label="If it fails" className="flex items-center justify-between gap-2 pt-2">
           <div className="grid min-w-0">
             <h3 className="text-sm font-medium">If it fails</h3>
             <p className="text-muted-foreground text-xs text-pretty">

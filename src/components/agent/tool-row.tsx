@@ -20,7 +20,7 @@ export function ToolRow({
   const failed = result?.isError === true;
   const facts = result && !failed ? resultWords(call.name, result.result) : [];
   return (
-    <div className="rounded-md border px-3 py-2 text-sm" data-tool={call.name}>
+    <div className="rounded-md bg-surface px-3 py-2 text-sm" data-tool={call.name}>
       <div className="flex items-center gap-2">
         {!result ? (
           <Spinner className="text-muted-foreground size-4" />

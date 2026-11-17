@@ -33,8 +33,6 @@ import {
 import {
   Background,
   type Connection,
-  ControlButton,
-  Controls,
   MiniMap,
   type OnConnectEnd,
   type Edge,
@@ -63,7 +61,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -100,6 +98,7 @@ import {
 } from "./flow-nodes";
 import { isNoteId, notePlace, useCanvasNotes } from "./canvas-notes";
 import { DraftBar } from "./draft-bar";
+import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 import { LiveRunBadge, useLiveRun } from "./live-run";
 import { NodePanel } from "./node-panel";
 import { type NoteFlowNode, noteNodeTypes } from "./note-node";
@@ -137,7 +136,7 @@ export function AutomationEditor({ automationId }: { automationId: Id<"automatio
   if (automation === undefined) return <Skeleton className="h-[70vh] rounded-xl" />;
   if (automation === null) {
     return (
-      <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-6">
+      <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
         <p className="text-muted-foreground text-sm">This automation no longer exists.</p>
         <Button asChild size="sm" variant="outline">
           <Link href="/automations">Back to automations</Link>
@@ -279,7 +278,7 @@ function Editor({ automation }: { automation: Loaded }) {
     // Twice: once straight away, once after the settings panel has taken its space.
     const timers = [60, 350].map((delay) => setTimeout(() => void fitView(FIT), delay));
     return () => timers.forEach(clearTimeout);
-  }, [fitView, nodeCount, tab, panelShown]);
+  }, [fitView, nodeCount, tab, panelShown, paletteOpen]);
 
   // Each step nothing follows offers a "+" to carry on from it, and so does each way out
   // of an If that nothing hangs off yet.
@@ -320,10 +319,14 @@ function Editor({ automation }: { automation: Loaded }) {
   // The way out of an If a new step is being hung on, when it was started from that way's plus.
   const [onWay, setOnWay] = useState<string | undefined>(undefined);
 
+  const searchRef = useRef<HTMLInputElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   function openPalette() {
     setInsertOn(null);
     setOnWay(undefined);
     setPaletteOpen(true);
+    // The list is always there, only hidden: focus its search once it is shown.
+    requestAnimationFrame(() => searchRef.current?.focus());
   }
 
   function addAfter(nodeId: string, way?: string) {
@@ -690,34 +693,48 @@ function Editor({ automation }: { automation: Loaded }) {
         />
       )}
 
-      <Tabs value={tab} onValueChange={setTab} className="flex-1">
+      <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1">
         <TabsList>
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
           <TabsTrigger value="versions">Versions</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="editor">
+        <TabsContent value="editor" className="flex min-h-0 flex-col">
           <div
             className={cn(
-              "relative grid overflow-hidden rounded-xl border lg:min-h-[32rem] lg:grid-rows-[minmax(0,1fr)]",
-              // The draft bar takes a row of its own above the canvas.
-              draftShown ? "lg:h-[calc(100vh-17.5rem)]" : "lg:h-[calc(100vh-13.5rem)]",
-              selected && "lg:grid-cols-[minmax(0,1fr)_20rem]",
+              "grid overflow-hidden rounded-xl bg-surface lg:min-h-[28rem] lg:flex-[1_1_0px]",
+              // Three columns that are always there: the list of steps, the canvas and a
+              // step's settings. A side column opens by growing from nothing, so the canvas
+              // makes room for it instead of anything being drawn over the steps.
+              "lg:grid-cols-[var(--palette-width)_minmax(0,1fr)_var(--panel-width)] lg:grid-rows-[minmax(0,1fr)]",
+              "motion-safe:transition-[grid-template-columns] motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)]",
             )}
+            style={
+              {
+                "--palette-width": paletteOpen ? "18rem" : "0rem",
+                "--panel-width": selected ? "22rem" : "0rem",
+              } as CSSProperties
+            }
           >
-            {paletteOpen && (
-              <aside
-                className="bg-card absolute inset-y-0 left-0 z-10 flex w-72 min-h-0 flex-col border-r shadow-lg"
-                aria-label="Steps you can add"
-              >
-                <div className="relative flex items-center gap-1 border-b p-2">
+            <aside
+              className={cn(
+                "min-h-0 overflow-hidden lg:col-start-1 lg:row-start-1",
+                paletteOpen ? "" : "hidden lg:block",
+              )}
+              aria-label="Steps you can add"
+              aria-hidden={!paletteOpen}
+              inert={!paletteOpen}
+            >
+              {/* A fixed width, so the list slides into view instead of reflowing. */}
+              <div className="flex h-full min-h-0 flex-col lg:w-72">
+                <div className="relative flex items-center gap-1 p-2">
                   <Search
                     className="text-muted-foreground pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2"
                     aria-hidden="true"
                   />
                   <Input
-                    autoFocus
+                    ref={searchRef}
                     aria-label="Search steps"
                     placeholder="Search steps"
                     value={search}
@@ -734,7 +751,7 @@ function Editor({ automation }: { automation: Loaded }) {
                     <span className="sr-only">Close the list of steps</span>
                   </Button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-2">
+                <div className="max-h-80 flex-1 overflow-y-auto p-2 lg:max-h-none">
                   {actionTypesByGroup().map(({ group, label, types }) => {
                     const matches = types.filter(
                       (nodeType) =>
@@ -757,7 +774,7 @@ function Editor({ automation }: { automation: Loaded }) {
                               type="button"
                               title={nodeType.description}
                               onClick={() => addNode(nodeType.type)}
-                              className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
+                              className="hover:bg-background focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
                             >
                               <Icon
                                 className="text-muted-foreground size-4 shrink-0"
@@ -771,203 +788,218 @@ function Editor({ automation }: { automation: Loaded }) {
                     );
                   })}
                 </div>
-              </aside>
-            )}
+              </div>
+            </aside>
 
-            <div className="bg-muted/30 relative h-96 min-h-0 lg:h-auto" data-testid="canvas">
-              <LiveRunBadge
-                automationId={automation._id}
-                latest={running.latest}
-                active={running.active}
-              />
-              {!paletteOpen && (
-                <div className="absolute top-3 left-3 z-10 flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="bg-card shadow-xs"
-                    onClick={openPalette}
-                  >
-                    <Plus />
-                    {joining > 1 ? `Add a step after these ${joining}` : "Add step"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="bg-card shadow-xs"
-                    onClick={(event) => {
-                      const canvas = event.currentTarget
-                        .closest("[data-testid=canvas]")
-                        ?.getBoundingClientRect();
-                      if (!canvas) return;
-                      const middle = screenToFlowPosition({
-                        x: canvas.left + canvas.width / 2,
-                        y: canvas.top + canvas.height / 2,
-                      });
-                      void notes.addNote(notePlace(middle, [...notes.noteNodes, ...nodes]));
-                    }}
-                  >
-                    <StickyNote />
-                    Add note
-                  </Button>
+            <div data-canvas-cell className="flex min-h-0 flex-col lg:col-start-2 lg:row-start-1">
+              <CanvasBar>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-expanded={paletteOpen}
+                  onClick={() => (paletteOpen ? setPaletteOpen(false) : openPalette())}
+                >
+                  <Plus />
+                  {joining > 1 ? `Add a step after these ${joining}` : "Add step"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(event) => {
+                    const canvas = event.currentTarget
+                      .closest("[data-canvas-cell]")
+                      ?.querySelector("[data-testid=canvas]")
+                      ?.getBoundingClientRect();
+                    if (!canvas) return;
+                    const middle = screenToFlowPosition({
+                      x: canvas.left + canvas.width / 2,
+                      y: canvas.top + canvas.height / 2,
+                    });
+                    void notes.addNote(notePlace(middle, [...notes.noteNodes, ...nodes]));
+                  }}
+                >
+                  <StickyNote />
+                  Add note
+                </Button>
+                <div className="flex min-w-0 flex-1 justify-center @max-xl:order-last @max-xl:basis-full">
+                  <LiveRunBadge
+                    automationId={automation._id}
+                    latest={running.latest}
+                    active={running.active}
+                  />
                 </div>
-              )}
-              <BrandContext value={brand}>
-                <AddAfterContext value={addAfter}>
-                  <InsertOnEdgeContext value={insertOnEdge}>
-                    <ReactFlow
-                      nodes={[...notes.noteNodes, ...shownNodes]}
-                      edges={shownEdges}
-                      nodeTypes={canvasNodeTypes}
-                      edgeTypes={edgeTypes}
-                      minZoom={0.25}
-                      onNodesChange={(changes) => {
-                        // Notes are kept apart from the steps: they are saved as they change.
-                        const all = changes.toArray();
-                        const forNotes = all.filter((change) => isNoteId(change.id));
-                        const forSteps = all.filter((change) => !isNoteId(change.id));
-                        if (forNotes.length > 0) {
-                          notes.onNoteChanges(forNotes as NodeChange<NoteFlowNode>[]);
-                        }
-                        if (forSteps.length > 0) {
-                          onNodesChange(new NodeChangeset(forSteps as NodeChange<FlowNode>[]));
-                        }
-                      }}
-                      onNodeDragStop={(_event, _node, moved) => {
-                        for (const node of moved) {
-                          if (isNoteId(node.id)) notes.onNoteDragStop(node.id, node.position);
-                        }
-                      }}
-                      onEdgesChange={onEdgesChange}
-                      onConnect={onConnect}
-                      onConnectEnd={onConnectEnd}
-                      onBeforeDelete={async ({ nodes: doomed, edges: cut }) => {
-                        // Deleting steps with the keyboard goes the same way as Remove step.
-                        if (doomed.length === 0) return { nodes: doomed, edges: cut };
-                        const doomedNotes = doomed.filter((node) => isNoteId(node.id));
-                        if (doomedNotes.length > 0) {
-                          void notes.removeNotes(doomedNotes.map((node) => node.id));
-                        }
-                        const doomedSteps = doomed.filter((node) => !isNoteId(node.id));
-                        if (doomedSteps.length > 0) removeSteps(doomedSteps.map((node) => node.id));
-                        return false;
-                      }}
-                      forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
-                      fitView
-                      fitViewOptions={FIT_VIEW}
-                    >
-                      <Background gap={20} />
-                      <Controls showInteractive={false} fitViewOptions={FIT_VIEW}>
-                        <ControlButton onClick={tidy} title="Tidy up" aria-label="Tidy up">
-                          <LayoutGrid />
-                        </ControlButton>
-                      </Controls>
-                      {stepNodes.length > 5 && (
-                        <MiniMap
-                          pannable
-                          zoomable
-                          position="top-right"
-                          className="!bg-card overflow-hidden rounded-lg border shadow-sm"
-                          style={{ width: 168, height: 96 }}
-                          nodeColor="var(--muted-foreground)"
-                          nodeBorderRadius={12}
-                          maskColor="color-mix(in oklab, var(--muted) 70%, transparent)"
-                        />
-                      )}
-                    </ReactFlow>
-                  </InsertOnEdgeContext>
-                </AddAfterContext>
-              </BrandContext>
-              {stepNodes.length === 0 && (
-                <p className="text-muted-foreground pointer-events-none absolute inset-x-0 bottom-6 text-center text-sm">
-                  Press Add step to put the first step after the trigger.
-                </p>
-              )}
+                <CanvasZoom fitViewOptions={FIT_VIEW}>
+                  <Button variant="ghost" size="icon-sm" title="Tidy up" onClick={tidy}>
+                    <LayoutGrid />
+                    <span className="sr-only">Tidy up</span>
+                  </Button>
+                </CanvasZoom>
+                <FitOnResize canvasRef={canvasRef} fitViewOptions={FIT} />
+              </CanvasBar>
+              <div
+                ref={canvasRef}
+                className="bg-background relative mx-2 mb-2 h-96 min-h-0 overflow-hidden rounded-lg lg:h-auto lg:flex-1"
+                data-testid="canvas"
+              >
+                <BrandContext value={brand}>
+                  <AddAfterContext value={addAfter}>
+                    <InsertOnEdgeContext value={insertOnEdge}>
+                      <ReactFlow
+                        nodes={[...notes.noteNodes, ...shownNodes]}
+                        edges={shownEdges}
+                        nodeTypes={canvasNodeTypes}
+                        edgeTypes={edgeTypes}
+                        minZoom={0.25}
+                        onNodesChange={(changes) => {
+                          // Notes are kept apart from the steps: they are saved as they change.
+                          const all = changes.toArray();
+                          const forNotes = all.filter((change) => isNoteId(change.id));
+                          const forSteps = all.filter((change) => !isNoteId(change.id));
+                          if (forNotes.length > 0) {
+                            notes.onNoteChanges(forNotes as NodeChange<NoteFlowNode>[]);
+                          }
+                          if (forSteps.length > 0) {
+                            onNodesChange(new NodeChangeset(forSteps as NodeChange<FlowNode>[]));
+                          }
+                        }}
+                        onNodeDragStop={(_event, _node, moved) => {
+                          for (const node of moved) {
+                            if (isNoteId(node.id)) notes.onNoteDragStop(node.id, node.position);
+                          }
+                        }}
+                        onEdgesChange={onEdgesChange}
+                        onConnect={onConnect}
+                        onConnectEnd={onConnectEnd}
+                        onBeforeDelete={async ({ nodes: doomed, edges: cut }) => {
+                          // Deleting steps with the keyboard goes the same way as Remove step.
+                          if (doomed.length === 0) return { nodes: doomed, edges: cut };
+                          const doomedNotes = doomed.filter((node) => isNoteId(node.id));
+                          if (doomedNotes.length > 0) {
+                            void notes.removeNotes(doomedNotes.map((node) => node.id));
+                          }
+                          const doomedSteps = doomed.filter((node) => !isNoteId(node.id));
+                          if (doomedSteps.length > 0)
+                            removeSteps(doomedSteps.map((node) => node.id));
+                          return false;
+                        }}
+                        forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
+                        fitView
+                        fitViewOptions={FIT_VIEW}
+                      >
+                        <Background gap={20} />
+                        {stepNodes.length > 5 && (
+                          <MiniMap
+                            pannable
+                            zoomable
+                            position="bottom-right"
+                            className="!bg-card overflow-hidden rounded-lg shadow-md"
+                            style={{ width: 168, height: 96 }}
+                            nodeColor="var(--muted-foreground)"
+                            nodeBorderRadius={12}
+                            maskColor="color-mix(in oklab, var(--muted) 70%, transparent)"
+                          />
+                        )}
+                      </ReactFlow>
+                    </InsertOnEdgeContext>
+                  </AddAfterContext>
+                </BrandContext>
+                {stepNodes.length === 0 && (
+                  <p className="text-muted-foreground pointer-events-none absolute inset-x-0 bottom-6 text-center text-sm">
+                    Press Add step to put the first step after the trigger.
+                  </p>
+                )}
+              </div>
             </div>
 
             {selected && (
-              <aside className="min-h-0 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
-                {selected.type === "step" ? (
-                  <>
-                    <NodePanel
-                      brand={brand}
-                      music={music}
-                      key={`${selected.id}:${revision}`}
-                      node={selected.data.node}
-                      before={stepsBefore(selected.id, draft.edges)
-                        .flat()
-                        .flatMap((id) => stepNodes.find((node) => node.id === id) ?? [])
-                        .map((node) => node.data.node)}
-                      startGivesFile={triggerTypeOf(trigger).gives === "file"}
-                      filled={Object.fromEntries(
-                        valueSources(
-                          { ...selected.data.node, position: selected.position },
-                          draft.nodes,
-                          draft.edges,
-                        ).map(({ field, value, from }) => [
-                          field,
-                          `Automatic. Uses the ${value} from ${nodeTitle(from)}. Fill it in to use your own instead.`,
-                        ]),
-                      )}
-                      onChange={(patch) =>
-                        setNodes((current) =>
-                          current.map((node) =>
-                            node.id === selected.id && node.type === "step"
-                              ? {
-                                  ...node,
-                                  data: { ...node.data, node: { ...node.data.node, ...patch } },
-                                }
-                              : node,
-                          ),
-                        )
-                      }
-                      onRemove={() => removeSteps([selected.id])}
-                      onDuplicate={() => duplicateSelected([selected.id])}
-                      waitsFor={draft.edges
-                        .filter((edge) => edge.target === selected.id)
-                        .flatMap((edge) => {
-                          const source = draft.nodes.find((n) => n.id === edge.source);
-                          return source ? [nodeTitle(source)] : [];
-                        })}
-                      {...(canFailOver(selected.data.node.kind)
-                        ? {
-                            failSteps: draft.edges
-                              .filter(
-                                (edge) =>
-                                  edge.source === selected.id && edge.branch === FAILURE_WAY,
-                              )
-                              .flatMap((edge) => {
-                                const target = draft.nodes.find((n) => n.id === edge.target);
-                                return target ? [nodeTitle(target)] : [];
-                              }),
-                            onAddOnFailure: () => addAfter(selected.id, FAILURE_WAY),
-                          }
-                        : {})}
-                    />
-                    {(selected.data.node.kind === "step" ||
-                      selected.data.node.kind === "clips") && (
-                      <StepTest
-                        key={selected.id}
-                        automationId={automation._id}
+              <aside
+                key={selected.id}
+                aria-label="Settings for this step"
+                className="min-h-0 overflow-y-auto lg:col-start-3 lg:row-start-1 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+              >
+                <div className="p-4 lg:w-[22rem]">
+                  {selected.type === "step" ? (
+                    <>
+                      <NodePanel
+                        brand={brand}
+                        music={music}
+                        key={`${selected.id}:${revision}`}
                         node={selected.data.node}
-                        runId={tests[selected.id]}
-                        onStarted={(runId) =>
-                          setTests((current) => ({ ...current, [selected.id]: runId }))
+                        before={stepsBefore(selected.id, draft.edges)
+                          .flat()
+                          .flatMap((id) => stepNodes.find((node) => node.id === id) ?? [])
+                          .map((node) => node.data.node)}
+                        startGivesFile={triggerTypeOf(trigger).gives === "file"}
+                        filled={Object.fromEntries(
+                          valueSources(
+                            { ...selected.data.node, position: selected.position },
+                            draft.nodes,
+                            draft.edges,
+                          ).map(({ field, value, from }) => [
+                            field,
+                            `Automatic. Uses the ${value} from ${nodeTitle(from)}. Fill it in to use your own instead.`,
+                          ]),
+                        )}
+                        onChange={(patch) =>
+                          setNodes((current) =>
+                            current.map((node) =>
+                              node.id === selected.id && node.type === "step"
+                                ? {
+                                    ...node,
+                                    data: { ...node.data, node: { ...node.data.node, ...patch } },
+                                  }
+                                : node,
+                            ),
+                          )
                         }
+                        onRemove={() => removeSteps([selected.id])}
+                        onDuplicate={() => duplicateSelected([selected.id])}
+                        waitsFor={draft.edges
+                          .filter((edge) => edge.target === selected.id)
+                          .flatMap((edge) => {
+                            const source = draft.nodes.find((n) => n.id === edge.source);
+                            return source ? [nodeTitle(source)] : [];
+                          })}
+                        {...(canFailOver(selected.data.node.kind)
+                          ? {
+                              failSteps: draft.edges
+                                .filter(
+                                  (edge) =>
+                                    edge.source === selected.id && edge.branch === FAILURE_WAY,
+                                )
+                                .flatMap((edge) => {
+                                  const target = draft.nodes.find((n) => n.id === edge.target);
+                                  return target ? [nodeTitle(target)] : [];
+                                }),
+                              onAddOnFailure: () => addAfter(selected.id, FAILURE_WAY),
+                            }
+                          : {})}
                       />
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <h2 className="mb-4 text-sm font-semibold">Trigger</h2>
-                    <TriggerPanel
-                      trigger={trigger}
-                      onChange={changeTrigger}
-                      automationId={automation._id}
-                      hookToken={automation.hookToken}
-                    />
-                  </>
-                )}
+                      {(selected.data.node.kind === "step" ||
+                        selected.data.node.kind === "clips") && (
+                        <StepTest
+                          key={selected.id}
+                          automationId={automation._id}
+                          node={selected.data.node}
+                          runId={tests[selected.id]}
+                          onStarted={(runId) =>
+                            setTests((current) => ({ ...current, [selected.id]: runId }))
+                          }
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="mb-4 text-sm font-semibold">Trigger</h2>
+                      <TriggerPanel
+                        trigger={trigger}
+                        onChange={changeTrigger}
+                        automationId={automation._id}
+                        hookToken={automation.hookToken}
+                      />
+                    </>
+                  )}
+                </div>
               </aside>
             )}
           </div>
@@ -977,10 +1009,9 @@ function Editor({ automation }: { automation: Loaded }) {
           <RunsList automationId={automation._id} />
         </TabsContent>
 
-        <TabsContent value="versions">
+        <TabsContent value="versions" className="flex min-h-0 flex-col">
           <VersionsPanel
             automationId={automation._id}
-            draftShown={draftShown}
             // Unsaved work goes, as when a draft is discarded. Undo brings it back.
             beforeRestore={() => {
               if (dirty) show(JSON.parse(savedJson) as AutomationDraft);

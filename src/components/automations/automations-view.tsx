@@ -153,7 +153,7 @@ export function AutomationsView() {
       </div>
 
       {approvals && approvals.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-xl border p-4">
+        <div className="flex flex-col gap-2 rounded-xl bg-surface p-4">
           <h2 className="flex items-center gap-2 text-sm font-medium">
             <Hourglass className="size-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
             Waiting for approval
@@ -211,7 +211,7 @@ export function AutomationsView() {
           <TemplateGallery recipes={false} disabled={pending} onPick={onPick} />
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border">
+        <div className="overflow-hidden rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>
@@ -326,14 +326,17 @@ export function AutomationsView() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+        {/* The heading and close button stay put; only the templates scroll beneath them. */}
+        <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>New automation</DialogTitle>
             <DialogDescription>
               Pick a template to open it on the canvas. Everything can be changed there.
             </DialogDescription>
           </DialogHeader>
-          <TemplateGallery disabled={pending} onPick={onPick} />
+          <div className="-mx-4 min-h-0 overflow-y-auto px-4 pb-1">
+            <TemplateGallery disabled={pending} onPick={onPick} />
+          </div>
         </DialogContent>
       </Dialog>
 

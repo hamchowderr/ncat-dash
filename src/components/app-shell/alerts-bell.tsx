@@ -118,7 +118,7 @@ export function AlertsBell() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96 max-w-[calc(100vw-2rem)] gap-0 p-0">
-        <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+        <div className="flex items-center justify-between gap-2 px-4 py-3">
           <h2 className="text-sm font-medium">Alerts</h2>
           {unseen > 0 && (
             <Button
@@ -147,7 +147,7 @@ export function AlertsBell() {
         ) : (
           <ul className="max-h-96 overflow-y-auto">
             {data.alerts.map((alert) => (
-              <li key={alert._id} className="border-b last:border-b-0">
+              <li key={alert._id} className="">
                 <Link
                   href={alert.href}
                   data-alert={alert.seen ? "seen" : "new"}

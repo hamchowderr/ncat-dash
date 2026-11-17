@@ -159,7 +159,7 @@ function RunCard({ run, review }: { run: RunOutputs; review: ReturnType<typeof u
   return (
     <section
       aria-label={`${run.automationName}, ${when.format(run.startedAt)}`}
-      className="bg-card flex flex-col gap-4 rounded-xl border p-4"
+      className="flex flex-col gap-4 rounded-xl bg-surface p-4"
     >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
@@ -261,7 +261,7 @@ function ByHand() {
           <section
             key={job.jobId}
             aria-label={stepTitle(job.stepId)}
-            className="bg-card flex flex-col gap-3 rounded-xl border p-4"
+            className="flex flex-col gap-3 rounded-xl bg-surface p-4"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-medium">
@@ -312,7 +312,7 @@ function More({ status, onMore }: { status: string; onMore: () => void }) {
 
 function Empty({ text, href, action }: { text: string; href: string; action: string }) {
   return (
-    <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-6">
+    <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
       <p className="text-muted-foreground text-sm">{text}</p>
       <Button asChild size="sm">
         <Link href={href}>{action}</Link>

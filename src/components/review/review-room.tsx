@@ -442,7 +442,7 @@ export function ReviewRoom({
   if (review === undefined) return <Skeleton className="h-[70svh] rounded-xl" />;
   if (review === null || review.clips.length === 0) {
     return (
-      <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-6">
+      <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
         <p className="text-muted-foreground text-sm">
           This review is gone, or it belongs to another team.
         </p>

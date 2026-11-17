@@ -39,7 +39,7 @@ export function StepTest({
   const going = step !== undefined && (step.status === "running" || step.status === "pending");
 
   return (
-    <section aria-label="Test this step" className="flex flex-col gap-3 border-t pt-4">
+    <section aria-label="Test this step" className="flex flex-col gap-3 pt-2">
       <div className="flex items-center justify-between gap-2">
         <div className="grid">
           <h3 className="text-sm font-medium">Test this step</h3>

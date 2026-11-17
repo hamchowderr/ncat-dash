@@ -167,7 +167,7 @@ export function UploadsView() {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         data-dragging={dragging}
-        className="data-[dragging=true]:border-primary data-[dragging=true]:bg-accent/50 flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center transition-colors"
+        className="data-[dragging=true]:border-primary data-[dragging=true]:bg-accent/50 flex flex-col items-center gap-3 rounded-xl bg-surface p-8 text-center transition-colors"
       >
         <UploadCloud className="text-muted-foreground size-8" aria-hidden="true" />
         <p className="text-sm">Drop files here, or choose them from your computer.</p>
@@ -196,7 +196,7 @@ export function UploadsView() {
       {active.length > 0 && (
         <ul className="flex flex-col gap-3" aria-live="polite">
           {active.map(([id, upload]) => (
-            <li key={id} className="flex flex-col gap-1.5 rounded-lg border p-3">
+            <li key={id} className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="truncate font-medium">{upload.name}</span>
                 <span className="text-muted-foreground tabular-nums">{upload.percent}%</span>
@@ -210,7 +210,7 @@ export function UploadsView() {
       {ready === undefined ? (
         <Skeleton className="h-32 rounded-xl" />
       ) : ready.length === 0 ? null : (
-        <div className="overflow-hidden rounded-xl border">
+        <div className="overflow-hidden rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>

@@ -10,13 +10,13 @@ import {
   failsOver,
   readClipsSetup,
 } from "@ncat-dash/automation-core";
-import { Background, Controls, ReactFlow, ReactFlowProvider } from "@xyflow/react";
+import { Background, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft, CircleStop, RotateCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ import {
   triggerEdges,
   triggerPosition,
 } from "./flow-nodes";
+import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 import { ClipsRun } from "./clips-run";
 import { logicNote, passedAlong, RunSteps } from "./run-steps";
 import { EditorExport } from "./editor-export";
@@ -65,6 +66,7 @@ export function RunView({
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const [busy, setBusy] = useState(false);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const [showClips, setShowClips] = useState(false);
   const [highlighted, setHighlighted] = useState<string | null>(null);
 
@@ -214,25 +216,33 @@ export function RunView({
 
       {(!clipsSetup || !showClips) && (
         <div className="grid gap-4">
-          <div className="bg-muted/30 h-80 overflow-hidden rounded-xl border">
+          <div className="flex h-80 flex-col overflow-hidden rounded-xl bg-surface">
             <ReactFlowProvider>
-              <ReactFlow
-                nodes={flow.nodes}
-                edges={flow.edges}
-                nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
-                minZoom={0.25}
-                nodesDraggable={false}
-                nodesConnectable={false}
-                elementsSelectable={false}
-                forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
-                onNodeClick={(_, node) => showStep(node.id)}
-                fitView
-                fitViewOptions={FIT_VIEW}
+              <CanvasBar>
+                <CanvasZoom fitViewOptions={FIT_VIEW} />
+                <FitOnResize canvasRef={canvasRef} fitViewOptions={FIT_VIEW} />
+              </CanvasBar>
+              <div
+                ref={canvasRef}
+                className="bg-background relative mx-2 mb-2 min-h-0 flex-1 overflow-hidden rounded-lg"
               >
-                <Background gap={20} />
-                <Controls showInteractive={false} fitViewOptions={FIT_VIEW} />
-              </ReactFlow>
+                <ReactFlow
+                  nodes={flow.nodes}
+                  edges={flow.edges}
+                  nodeTypes={nodeTypes}
+                  edgeTypes={edgeTypes}
+                  minZoom={0.25}
+                  nodesDraggable={false}
+                  nodesConnectable={false}
+                  elementsSelectable={false}
+                  forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
+                  onNodeClick={(_, node) => showStep(node.id)}
+                  fitView
+                  fitViewOptions={FIT_VIEW}
+                >
+                  <Background gap={20} />
+                </ReactFlow>
+              </div>
             </ReactFlowProvider>
           </div>
 

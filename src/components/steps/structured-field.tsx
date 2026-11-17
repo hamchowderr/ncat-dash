@@ -273,7 +273,7 @@ function ListEditor({ schema, name, value, onChange, id }: EditorProps) {
             />
           </div>
         ) : (
-          <div key={index} className="bg-muted/40 flex flex-col gap-2 rounded-md border p-2.5">
+          <div key={index} className="bg-surface flex flex-col gap-2 rounded-md p-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium capitalize">
                 {word} {index + 1}
