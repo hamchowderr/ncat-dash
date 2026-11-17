@@ -226,14 +226,16 @@ export const recipes: StepDefinition[] = [
     blanks: {
       video_url: url("The video"),
       logo_url: url("The logo image, ideally a PNG with a clear background"),
-      logo_size: whole("Logo width and height in pixels", 8, 4000).default(150),
+      logo_size: whole("Logo size in pixels, along its longest side", 8, 4000).default(150),
       margin: whole("Gap from the edges in pixels", 0, 4000).default(50),
     },
     toRequest: (b) =>
       request(
         [b.video_url, b.logo_url],
         [
-          `[1:v]scale=${b.logo_size}:${b.logo_size}[logo];[0:v][logo]overlay=x=${b.margin}:y=main_h-overlay_h-${b.margin}`,
+          // Fits the logo in a square of that size and keeps its own shape, so a wide logo
+          // is not squashed.
+          `[1:v]scale=w=${b.logo_size}:h=${b.logo_size}:force_original_aspect_ratio=decrease[logo];[0:v][logo]overlay=x=${b.margin}:y=main_h-overlay_h-${b.margin}`,
         ],
         [opt("-f", "mp4"), opt("-c:v", "libx264")],
       ),

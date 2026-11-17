@@ -173,6 +173,7 @@ describe.skipIf(!hasFfmpeg)("recipes on a real FFmpeg", () => {
       ]);
     still("picture.png", "2000x1414");
     still("logo.png", "300x300");
+    still("wide-logo.png", "600x200");
     ffmpeg([
       ...["-f", "lavfi", "-i", "sine=frequency=220:duration=1"],
       path.join(dir, "music.mp3"),
@@ -207,6 +208,22 @@ describe.skipIf(!hasFfmpeg)("recipes on a real FFmpeg", () => {
     },
     60_000,
   );
+
+  it("fits a logo in its size without squashing it", () => {
+    const recipe = getStep("recipe-logo")!;
+    const request = toRequest(recipe, { ...minimalInput(recipe), logo_size: 150 });
+    // Only the part that resizes the logo, run on a logo three times wider than tall.
+    const scale = request.filters[0].filter.match(/\[1:v\](scale=[^[]+)\[logo\]/)![1];
+    const out = path.join(dir, "wide-logo-scaled.png");
+    ffmpeg(["-i", path.join(dir, "wide-logo.png"), "-vf", scale, out]);
+    const size = execFileSync("ffprobe", [
+      ...["-v", "error", "-select_streams", "v:0"],
+      ...["-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", out],
+    ])
+      .toString()
+      .trim();
+    expect(size).toBe("150x50");
+  }, 60_000);
 
   it("draws awkward text exactly as typed", () => {
     // FFmpeg reads a text file without any of the escaping, so it is the reference.
