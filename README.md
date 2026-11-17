@@ -174,6 +174,18 @@ Everything is built on open-source [shadcn/ui](https://ui.shadcn.com) components
 npx shadcn add <component-or-block>
 ```
 
+## Issues
+
+Work is tracked in Beads (`bd`), not GitHub issues. The issues live in a Dolt database on DoltHub, `chowderr/ncat-dash` (private), and `.beads/issues.jsonl` is a read-only export of it. Every piece of work starts as a bead, and its PR names the bead it closes (for example "Closes dash-0y4").
+
+To get the issues in a new clone, run:
+
+```bash
+pnpm setup:beads
+```
+
+Dolt does not sign in with a DoltHub API token; it needs a credential key file in `~/.dolt/creds`. When `DOLT_CREDS_KEY_ID` and `DOLT_CREDS_JWK` are set (as they are in cloud sessions), the script writes that file, runs `dolt creds use`, and then clones the issues (or pulls them if this clone already has them). Without those variables it uses whatever key Dolt already has from `dolt login`. After that, `bd ready` lists open work, and `bd dolt push` sends your changes to DoltHub.
+
 ## Licence
 
 GPL-2.0-or-later, the same licence as the NCA Toolkit. See [LICENSE](LICENSE).
