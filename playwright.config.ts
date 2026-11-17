@@ -39,7 +39,8 @@ export default defineConfig({
       timeout: 180_000,
     },
     {
-      command: "pnpm dev",
+      // On CI the built app is used: pages open at once instead of compiling on first visit.
+      command: process.env.CI ? "pnpm build && pnpm start" : "pnpm dev",
       env: {
         NEXT_PUBLIC_CONVEX_URL: CONVEX,
         NEXT_PUBLIC_CONVEX_SITE_URL: CONVEX_SITE,
@@ -47,7 +48,7 @@ export default defineConfig({
       },
       url: `${APP}/sign-in`,
       reuseExistingServer: true,
-      timeout: 180_000,
+      timeout: 300_000,
     },
   ],
 });

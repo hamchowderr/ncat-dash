@@ -27,6 +27,7 @@ export function mutationOf(mutation: FunctionReference<"mutation">) {
 
 export const pushed = vi.fn();
 export const toastError = vi.fn();
+export const toastInfo = vi.fn();
 /** Who the presence hook says is in the room. */
 export const present: { userId: string; online: boolean; lastDisconnected: number }[] = [];
 
@@ -35,6 +36,7 @@ export function resetConvex() {
   mutations.clear();
   pushed.mockReset();
   toastError.mockReset();
+  toastInfo.mockReset();
   present.length = 0;
 }
 
@@ -54,4 +56,4 @@ export const nextNavigation = {
   useRouter: () => ({ push: pushed }),
   usePathname: () => "/review",
 };
-export const sonner = { toast: { error: toastError } };
+export const sonner = { toast: { error: toastError, info: toastInfo } };

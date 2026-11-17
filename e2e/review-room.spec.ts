@@ -20,7 +20,7 @@ async function signUp(browser: Browser, name: string, email: string): Promise<Pa
   await page.locator("#email").fill(email);
   await page.locator("#password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page).toHaveURL(/\/onboarding/);
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   return page;
 }
 
@@ -223,7 +223,8 @@ test("approving the room lets the automation finish", async () => {
     .getByRole("link", { name: /Weekly clips/ })
     .first()
     .click();
-  await expect(jordan.getByText("Done").first()).toBeVisible();
+  // Pages left behind stay in the document, hidden, so only what is on screen counts.
+  await expect(jordan.getByText("Done").filter({ visible: true }).first()).toBeVisible();
 });
 
 test("Send to review on Outputs opens a room with that step's files", async () => {

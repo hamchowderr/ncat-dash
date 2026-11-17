@@ -16,6 +16,7 @@
     "@convex-dev/better-auth": "^0.13.0",
     "@convex-dev/presence": "0.4.0",
     "@ncat-dash/automation-core": "workspace:*",
+    "@ncat-dash/email": "workspace:*",
     "@ncat-dash/review-core": "workspace:*",
     "@ncat-dash/step-catalog": "workspace:*",
     "@ncat-dash/timeline-export": "workspace:*",

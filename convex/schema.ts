@@ -355,6 +355,30 @@ export default defineSchema({
     seenBy: v.array(v.string()),
   }).index("by_organization", ["organizationId"]),
 
+  // The toSend account this dashboard sends email through: failed-run alerts, sign-in
+  // emails and team invitations. One for the whole deployment, set once in Settings by
+  // the team named here. TOSEND_API_KEY and EMAIL_FROM on the deployment win over it.
+  emailConnections: defineTable({
+    organizationId: v.string(),
+    // AES-GCM ciphertext of the toSend API key.
+    apiKeyCipher: v.string(),
+    apiKeyHint: v.string(),
+    fromEmail: v.string(),
+    fromName: v.optional(v.string()),
+    createdBy: v.string(),
+    status: v.union(v.literal("ok"), v.literal("failing")),
+    // Why the last email could not be sent, in plain words.
+    lastError: v.union(v.null(), v.string()),
+  }),
+
+  // A member who has switched off emails about failed runs for a team. No row means
+  // they get them.
+  emailPreferences: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    runFailed: v.boolean(),
+  }).index("by_organization_and_user", ["organizationId", "userId"]),
+
   // A team's own S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces).
   storageConnections: defineTable({
     organizationId: v.string(),
