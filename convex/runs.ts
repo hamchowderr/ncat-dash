@@ -4,7 +4,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
 import { pump } from "./lib/queue";
 import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
-import { cutListOf, editorsOf } from "./lib/exports";
+import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
 import { decideApproval, retriesFor, retryStepNow, startRun } from "./lib/runner";
 
 function summary(run: Doc<"runs">) {
@@ -52,7 +52,7 @@ export const get = query({
     return {
       ...summary(run),
       // Whether the run's cuts can be opened in a video editor.
-      hasCuts: cutListOf(run, steps) !== null,
+      hasCuts: (await cutListOf(ctx, run, steps)) !== null,
       trigger: run.trigger,
       // How many times a failed step tries again for this team.
       retryLimit: await retriesFor(ctx, run.organizationId),
@@ -98,14 +98,17 @@ export const editorFiles = query({
       .query("runSteps")
       .withIndex("by_run", (q) => q.eq("runId", args.runId))
       .take(200);
-    const cuts = cutListOf(run, steps);
+    const cuts = await cutListOf(ctx, run, steps);
     if (!cuts) return null;
     const editors = await editorsOf(ctx, run.organizationId);
     return {
       timelines: cuts.timelines.length,
       editors: EDITORS.filter((editor) => editors.includes(editor.id)).map((editor) => editor.name),
       usesCapCut: editors.includes("capcut"),
-      files: filesForEditors(cuts, editors),
+      files: filesForEditors(cuts, editors, await captionsOf(ctx, run, steps)),
+      // The finished clips, for editors that open no timeline and for anyone who wants
+      // everything in one folder.
+      clips: finishedFiles(run, steps),
     };
   },
 });
