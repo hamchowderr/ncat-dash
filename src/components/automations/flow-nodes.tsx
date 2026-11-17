@@ -1,14 +1,19 @@
 "use client";
 
 import {
+  type AutomationEdge,
   type AutomationNode,
   type Brand,
+  BRANCH_LABELS,
   BRAND_WORDS,
+  branchesOfKind,
+  conditionSentence,
   missingBrandOf,
   missingSettings,
   NODE_GAP,
   type NodeGroup,
   nodeTypeOf,
+  waitSentence,
 } from "@ncat-dash/automation-core";
 import { getStep, type StepCategory } from "@ncat-dash/step-catalog";
 import {
@@ -25,6 +30,7 @@ import {
 } from "@xyflow/react";
 import {
   CalendarClock,
+  Clock,
   Code,
   Film,
   FolderInput,
@@ -37,10 +43,12 @@ import {
   Plus,
   Scissors,
   Shapes,
+  Signpost,
   Terminal,
   TriangleAlert,
   Upload,
   UserCheck,
+  Waypoints,
   Webhook,
   Zap,
 } from "lucide-react";
@@ -78,6 +86,7 @@ export const GROUP_ICONS: Record<NodeGroup, LucideIcon> = {
   ...CATEGORY_ICONS,
   trigger: Zap,
   "ready-made": Scissors,
+  logic: Waypoints,
   people: UserCheck,
 };
 
@@ -101,6 +110,7 @@ const CATEGORY_TINTS: Record<StepCategory, string> = {
   storage: "text-blue-600 dark:text-blue-400",
 };
 export const TRIGGER_TINT = "text-rose-600 dark:text-rose-400";
+const LOGIC_TINT = "text-indigo-600 dark:text-indigo-400";
 
 /** The icon, colour and second line for a step, shared by the canvas and the small previews. */
 export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">): {
@@ -122,6 +132,12 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
       kind: String(node.input.platform ?? "No platform picked"),
     };
   }
+  if (node.kind === "if") {
+    return { icon: Signpost, tint: LOGIC_TINT, kind: conditionSentence(node.input) };
+  }
+  if (node.kind === "wait") {
+    return { icon: Clock, tint: LOGIC_TINT, kind: waitSentence(node.input) };
+  }
   const step = getStep(node.stepId ?? "");
   if (!step)
     return { icon: Shapes, tint: "text-muted-foreground", kind: "No longer in the catalog" };
@@ -139,6 +155,10 @@ export type StepNodeData = {
   jobCount?: number;
   /** Nothing follows this step yet, so it offers to add one. */
   last?: boolean;
+  /** For an If in the editor: the ways out nothing hangs off yet. Each offers to add a step. */
+  openWays?: string[];
+  /** In a run: what happened here in a few words, shown in place of the usual second line. */
+  note?: string;
 };
 export type TriggerNodeData = { trigger: Trigger; summary?: string };
 export type StepFlowNode = Node<StepNodeData, "step">;
@@ -149,24 +169,30 @@ export type FlowNode = StepFlowNode | TriggerFlowNode;
 /** The team's brand, so a step knows whether Settings already supplies its logo or font. */
 export const BrandContext = createContext<Brand>({});
 
-export const AddAfterContext = createContext<((nodeId: string) => void) | null>(null);
+export const AddAfterContext = createContext<((nodeId: string, way?: string) => void) | null>(null);
 
 const tile =
   "bg-card relative flex size-20 items-center justify-center border shadow-sm transition-[box-shadow,border-color]";
 const caption =
   "pointer-events-none absolute top-full left-1/2 mt-2 grid w-44 -translate-x-1/2 text-center leading-tight";
 const handle = "!size-2.5 !border-2 !border-background !bg-muted-foreground";
+const plus =
+  "nodrag bg-card text-muted-foreground hover:text-foreground hover:border-foreground/40 focus-visible:ring-ring/50 absolute left-full ml-10 flex -translate-y-1/2 items-center justify-center rounded-md border outline-none before:absolute before:right-full before:h-px before:w-10 before:bg-[var(--xy-edge-stroke-default,#b1b1b7)] focus-visible:ring-3";
+/** How far down the tile each way out of an If sits, in percent: Yes above, No below. */
+const WAY_TOP = [28, 72];
 
 function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
-  const { node, status, jobCount, last } = data;
+  const { node, status, jobCount, last, openWays, note } = data;
+  const ways = branchesOfKind(node.kind);
   const look = nodeLook({ ...node, input: node.input });
   const addAfter = useContext(AddAfterContext);
   const brand = useContext(BrandContext);
   const nodeType = nodeTypeOf(node);
   const missing = status ? [] : missingSettings({ ...node, position: { x: 0, y: 0 } }, brand);
   const missingBrand = status || !nodeType ? [] : missingBrandOf(nodeType, node.input, brand);
-  const second =
-    jobCount && jobCount > 1 && status && status !== "pending"
+  const second = note
+    ? note
+    : jobCount && jobCount > 1 && status && status !== "pending" && ways.length === 0
       ? `${jobCount} ${node.kind === "clips" ? "clips" : "files"}`
       : missingBrand.length > 0
         ? `Needs your ${BRAND_WORDS[missingBrand[0]]}`
@@ -187,7 +213,11 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
         )}
       >
         <Handle type="target" position={Position.Left} className={handle} />
-        <look.icon className={cn("size-8", look.tint)} strokeWidth={1.6} aria-hidden="true" />
+        <look.icon
+          className={cn("size-8", look.tint, ways.length > 0 && "-translate-x-2")}
+          strokeWidth={1.6}
+          aria-hidden="true"
+        />
         {status && status !== "pending" && (
           <span className="bg-card absolute -right-1.5 -bottom-1.5 rounded-full p-0.5">
             <StatusIcon status={status} />
@@ -205,9 +235,30 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
             <TriangleAlert className="size-4" aria-hidden="true" />
           </span>
         )}
-        <Handle type="source" position={Position.Right} className={handle} />
+        {ways.length === 0 ? (
+          <Handle type="source" position={Position.Right} className={handle} />
+        ) : (
+          // An If has a way out for the files that pass and one for the rest, each named.
+          ways.map((way, index) => (
+            <span key={way}>
+              <span
+                className="text-muted-foreground pointer-events-none absolute right-2 -translate-y-1/2 text-[10px] leading-none font-medium"
+                style={{ top: `${WAY_TOP[index]}%` }}
+              >
+                {BRANCH_LABELS[way] ?? way}
+              </span>
+              <Handle
+                id={way}
+                type="source"
+                position={Position.Right}
+                className={handle}
+                style={{ top: `${WAY_TOP[index]}%` }}
+              />
+            </span>
+          ))
+        )}
       </div>
-      {last && addAfter && (
+      {last && addAfter && ways.length === 0 && (
         <button
           type="button"
           aria-label={`Add a step after ${nodeTitle(node)}`}
@@ -215,11 +266,30 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
             event.stopPropagation();
             addAfter(id);
           }}
-          className="nodrag bg-card text-muted-foreground hover:text-foreground hover:border-foreground/40 focus-visible:ring-ring/50 absolute top-1/2 left-full ml-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-md border outline-none before:absolute before:right-full before:h-px before:w-10 before:bg-[var(--xy-edge-stroke-default,#b1b1b7)] focus-visible:ring-3"
+          className={cn(plus, "top-1/2 size-7")}
         >
           <Plus className="size-4" aria-hidden="true" />
         </button>
       )}
+      {addAfter &&
+        ways.map(
+          (way, index) =>
+            openWays?.includes(way) && (
+              <button
+                key={way}
+                type="button"
+                aria-label={`Add a step after ${nodeTitle(node)}, on ${BRANCH_LABELS[way] ?? way}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  addAfter(id, way);
+                }}
+                className={cn(plus, "size-6")}
+                style={{ top: `${WAY_TOP[index]}%` }}
+              >
+                <Plus className="size-3.5" aria-hidden="true" />
+              </button>
+            ),
+        )}
       <div className={caption}>
         <span className="truncate text-sm font-medium">{nodeTitle(node)}</span>
         <span
@@ -322,6 +392,36 @@ export const edgeTypes = { flow: FlowEdge };
 /** How every line on the canvas is drawn: with an arrow showing which way files go. */
 export function flowEdge<T extends { id: string; source: string; target: string }>(edge: T) {
   return { ...edge, type: "flow" as const, markerEnd: { type: MarkerType.ArrowClosed } };
+}
+
+/** A saved connection as the canvas holds it. The way out of an If becomes the handle it leaves by. */
+export function canvasEdge({ id, source, target, branch }: AutomationEdge): Edge {
+  return { id, source, target, ...(branch ? { sourceHandle: branch } : {}) };
+}
+
+/** A connection on the canvas as it is saved. */
+export function savedEdge(edge: Edge): AutomationEdge {
+  return {
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    ...(edge.sourceHandle ? { branch: edge.sourceHandle } : {}),
+  };
+}
+
+/** The ways out of each If that nothing hangs off yet, by step id. */
+export function openWaysOf(
+  nodes: { id: string; kind: string }[],
+  edges: AutomationEdge[],
+): Map<string, string[]> {
+  return new Map(
+    nodes.flatMap((node) => {
+      const ways = branchesOfKind(node.kind);
+      if (ways.length === 0) return [];
+      const used = edges.filter((edge) => edge.source === node.id).map((edge) => edge.branch);
+      return [[node.id, ways.filter((way) => !used.includes(way))]];
+    }),
+  );
 }
 
 /** Where the trigger sits: one place to the left of the first step. */

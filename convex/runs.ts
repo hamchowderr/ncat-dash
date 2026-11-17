@@ -1,7 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
+import { finishWait } from "./lib/logic";
 import { pump } from "./lib/queue";
 import { decideApproval } from "./lib/runner";
 
@@ -66,6 +67,9 @@ export const get = query({
               .map((job) => ({ _id: job._id, status: job.status, outputs: job.outputs })),
             stage: step.stage,
             plan: step.plan,
+            // For an If: the files that left by each way. For a Wait: when it carries on.
+            branches: step.branches,
+            resumeAt: step.resumeAt,
           };
         }),
       ),
@@ -147,5 +151,13 @@ export const cancel = mutation({
     }
     await ctx.db.patch(args.runId, { status: "cancelled", finishedAt: now });
     await pump(ctx, run.organizationId);
+  },
+});
+
+/** Fires when a Wait step's time is up, and lets the run carry on. */
+export const wake = internalMutation({
+  args: { runStepId: v.id("runSteps") },
+  handler: async (ctx, args) => {
+    await finishWait(ctx, args.runStepId);
   },
 });

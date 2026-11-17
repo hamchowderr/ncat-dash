@@ -1,13 +1,17 @@
 import {
   applyOperations,
   type AutomationDraft,
+  automationFileName,
   type AutomationEdge,
   type AutomationNode,
   type Brand,
   BRAND_WORDS,
   draftProblems,
+  exportAutomation,
   getPlatform,
   graphProblem,
+  logicProblem,
+  MAX_AUTOMATION_FILE_CHARS,
   missingBrandOf,
   withinLength,
   missingSettings,
@@ -15,6 +19,7 @@ import {
   nodeTypeOf,
   OperationError,
   outline,
+  readAutomationFile,
   scheduleProblem,
   STARTERS,
 } from "@ncat-dash/automation-core";
@@ -113,6 +118,8 @@ function automationProblem(
     if (missingSettings(node, brand).length > 0) {
       return `${title} still needs its settings. Select it on the canvas.`;
     }
+    const logic = logicProblem(node);
+    if (logic) return `${title}: ${logic}`;
   }
   if (trigger.kind === "schedule") return scheduleProblem(trigger.schedule);
   if (trigger.kind === "folder" && trigger.prefix.length > 500)
@@ -199,6 +206,51 @@ export const create = mutation({
       createdBy: userId,
       updatedAt: Date.now(),
     });
+  },
+});
+
+/**
+ * An automation as a file: its name, what starts it, its steps and their connections.
+ * Settings that point at the team's own uploads are left out, and `notes` says so.
+ */
+export const exportFile = query({
+  args: { automationId: v.id("automations") },
+  returns: v.object({ fileName: v.string(), file: v.any(), notes: v.array(v.string()) }),
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    const { file, notes } = exportAutomation(automation as AutomationDraft);
+    return { fileName: automationFileName(automation.name), file, notes };
+  },
+});
+
+/**
+ * Makes a new automation from the contents of an exported file. Nothing in the file is
+ * trusted: it is checked and rebuilt, and the automation starts switched off. `notes`
+ * says what was changed or left out on the way.
+ */
+export const importFile = mutation({
+  args: { organizationId: v.string(), file: v.any() },
+  returns: v.object({ automationId: v.id("automations"), notes: v.array(v.string()) }),
+  handler: async (ctx, args) => {
+    const { userId } = await requireMember(ctx, args.organizationId);
+    if (JSON.stringify(args.file ?? null).length > MAX_AUTOMATION_FILE_CHARS) {
+      fail("invalid_input", "This file is too large to be an automation.");
+    }
+    const read = readAutomationFile(args.file);
+    if (!read.ok) fail("invalid_input", read.message);
+    const automationId = await ctx.db.insert("automations", {
+      organizationId: args.organizationId,
+      name: read.draft.name,
+      enabled: false,
+      trigger: read.draft.trigger,
+      nodes: read.draft.nodes,
+      edges: read.draft.edges,
+      hookToken: randomToken(),
+      nextRunAt: null,
+      createdBy: userId,
+      updatedAt: Date.now(),
+    });
+    return { automationId, notes: read.notes };
   },
 });
 

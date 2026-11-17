@@ -3,14 +3,26 @@ import { v } from "convex/values";
 
 export const nodeValidator = v.object({
   id: v.string(),
-  kind: v.union(v.literal("step"), v.literal("approval"), v.literal("clips")),
+  kind: v.union(
+    v.literal("step"),
+    v.literal("approval"),
+    v.literal("clips"),
+    v.literal("if"),
+    v.literal("wait"),
+  ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
   input: v.record(v.string(), v.any()),
   position: v.object({ x: v.number(), y: v.number() }),
 });
 
-export const edgeValidator = v.object({ id: v.string(), source: v.string(), target: v.string() });
+export const edgeValidator = v.object({
+  id: v.string(),
+  source: v.string(),
+  target: v.string(),
+  // Which way out of an If the connection leaves by: "yes" or "no".
+  branch: v.optional(v.string()),
+});
 
 const fileTypeValidator = v.union(
   v.literal("any"),
@@ -51,11 +63,17 @@ export const operationValidator = v.union(
     id: v.optional(v.string()),
     after: v.optional(v.string()),
     before: v.optional(v.string()),
+    branch: v.optional(v.string()),
     settings: v.optional(v.record(v.string(), v.any())),
     label: v.optional(v.string()),
   }),
   v.object({ op: v.literal("remove"), ids: v.array(v.string()) }),
-  v.object({ op: v.literal("connect"), source: v.string(), target: v.string() }),
+  v.object({
+    op: v.literal("connect"),
+    source: v.string(),
+    target: v.string(),
+    branch: v.optional(v.string()),
+  }),
   v.object({ op: v.literal("disconnect"), source: v.string(), target: v.string() }),
   v.object({ op: v.literal("set"), id: v.string(), settings: v.record(v.string(), v.any()) }),
   v.object({ op: v.literal("use"), id: v.string(), field: v.string(), from: v.string() }),
@@ -240,7 +258,15 @@ export default defineSchema({
     // For a "clips" step, which works in two stages: first it reads each video's length
     // and pauses ("probe"), then it cuts the clips ("cut"). jobIds holds the current
     // stage's jobs.
-    stage: v.optional(v.union(v.literal("probe"), v.literal("cut"))),
+    // An "if" step reading its files' details is at "check"; a "wait" step is at "wait".
+    stage: v.optional(
+      v.union(v.literal("probe"), v.literal("cut"), v.literal("check"), v.literal("wait")),
+    ),
+    // For a finished "if" step: the files that left by each way out. `outputs` holds all
+    // of them; a later step is handed only those of the way that leads to it.
+    branches: v.optional(v.record(v.string(), v.array(v.string()))),
+    // For a "wait" step: when it lets the run carry on.
+    resumeAt: v.optional(v.number()),
     // The planned clips, in the same order as the cut jobs.
     plan: v.optional(
       v.array(
