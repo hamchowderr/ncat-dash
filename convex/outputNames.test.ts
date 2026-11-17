@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import { openReviewForApproval } from "./lib/reviews";
 import { addPerson, addTeam, backend } from "./test.setup";
+import { connectToolkit } from "./test.toolkit";
 
 const PAGE = { numItems: 10, cursor: null };
 const BUCKET = "https://s3.example.com/media";
@@ -67,17 +68,9 @@ async function team() {
     await step("cut", [made(0), made(1)]);
     await step("caps", [captioned(0), captioned(1)]);
     const okStep = await step("ok", [captioned(0), captioned(1)]);
-    await ctx.db.insert("storageConnections", {
-      organizationId: teamId,
-      endpoint: "https://s3.example.com",
-      region: "auto",
-      bucket: "media",
-      accessKeyId: "key",
-      secretCipher: "x",
-      createdBy: olu.id,
-    });
     return { automationId, runId, okStep };
   });
+  await connectToolkit(t, teamId, olu.id, { bucket: "media", endpoint: "https://s3.example.com" });
   return { t, teamId, olu, ...ids };
 }
 
