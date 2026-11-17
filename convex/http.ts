@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { fromAgent } from "./lib/agentToken";
+import { toolkitMessageText } from "./lib/toolkitMessage";
 
 const http = httpRouter();
 
@@ -35,7 +36,7 @@ http.route({
         token,
         ok,
         result: ok ? payload.response : undefined,
-        error: ok ? undefined : String(payload.message ?? "The step failed.").slice(0, 2000),
+        error: ok ? undefined : toolkitMessageText(payload.message).slice(0, 2000),
       });
     } catch {
       // A job id that is not an id at all.
@@ -48,7 +49,7 @@ http.route({
 
 // Starts an automation whose trigger is "webhook". The address carries the automation's
 // id and its secret token. A JSON body is optional; "file_url" in it becomes the file
-// the run works on, and the rest can be read with {{trigger.body.<name>}}.
+// the run works on, and the rest of the body is kept with the run for its steps.
 http.route({
   path: "/automations/hook",
   method: "POST",
