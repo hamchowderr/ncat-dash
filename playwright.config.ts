@@ -11,6 +11,7 @@ const CONVEX_SITE = "http://127.0.0.1:3211";
 const APP = "http://localhost:3000";
 const AGENT = "http://127.0.0.1:4111";
 const AIMOCK = "http://127.0.0.1:4010";
+const RECORD = process.env.RECORD_AGENT === "1";
 /** Shared by the agent server and Convex, which signs its questions to the agent with it. */
 export const AGENT_SECRET = "browser-tests-agent-secret-at-least-32-characters";
 
@@ -46,13 +47,16 @@ export default defineConfig({
       timeout: 180_000,
     },
     {
-      // The agent's stand-in model: scripted answers from packages/agent/fixtures/chat.json.
-      command: "pnpm --filter @ncat-dash/agent dev:mock",
+      // The agent's model, played back from answers Sonnet 5.5 really gave
+      // (packages/agent/fixtures/recorded), so the run is free and needs no key. With
+      // RECORD_AGENT=1 and ANTHROPIC_API_KEY set, a question not recorded yet goes to the
+      // real model and its answer is saved there.
+      command: `pnpm --filter @ncat-dash/agent ${RECORD ? "dev:record" : "dev:replay"}`,
       url: `${AIMOCK}/health`,
       reuseExistingServer: true,
     },
     {
-      // The real agent server, answering "@Agent" with the stand-in model.
+      // The real agent server, answering "@Agent" through the model above.
       command: "pnpm --filter @ncat-dash/agent dev",
       env: {
         APP_SECRET: "browser-tests-app-secret-at-least-32-characters",
@@ -62,7 +66,8 @@ export default defineConfig({
         AIMOCK_URL: AIMOCK,
         ANTHROPIC_BASE_URL: `${AIMOCK}/v1`,
         OPENAI_BASE_URL: `${AIMOCK}/v1`,
-        ANTHROPIC_API_KEY: "stand-in",
+        CHAT_MODEL: "anthropic/claude-sonnet-5-5",
+        ANTHROPIC_API_KEY: (RECORD && process.env.ANTHROPIC_API_KEY) || "stand-in",
         OPENAI_API_KEY: "stand-in",
         // test-results/ is emptied by Playwright as it starts, so the database lives elsewhere.
         TURSO_DATABASE_URL: `file:${path.join(os.tmpdir(), "ncat-dash-e2e-agent.db")}`,
