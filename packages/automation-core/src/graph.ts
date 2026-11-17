@@ -16,6 +16,12 @@ export interface AutomationNode {
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */
   label?: string;
+  /**
+   * Turned off: a run does not do this step's work and hands the files that reached it
+   * straight on, so it can be switched back on later with its settings intact. An If
+   * cannot be turned off, since it has no one way to hand files on.
+   */
+  off?: boolean;
   /** The step's settings. Text may hold {{placeholders}}; see templates.ts. */
   input: Record<string, unknown>;
   position: { x: number; y: number };
@@ -36,8 +42,11 @@ export const NODE_GAP = 220;
 /**
  * The settings a step still needs before it can run: required blanks that are empty and
  * that the step before does not fill in. Reads the node's description in registry.ts.
+ * Nothing for a step that is turned off.
  */
 export function missingSettings(node: AutomationNode, brand?: Brand): string[] {
+  // A step that is turned off does no work, so it needs nothing.
+  if (node.off) return [];
   const nodeType = nodeTypeOf(node);
   return nodeType ? missingSettingsOf(nodeType, node.input, brand) : [];
 }

@@ -171,6 +171,15 @@ const operation = z.discriminatedUnion("op", [
   }),
   z.object({ op: z.literal("rename"), id: z.string(), label: z.string() }),
   z.object({
+    op: z.literal("switch"),
+    id: z.string(),
+    on: z
+      .boolean()
+      .describe(
+        "false turns a step off: runs skip its work and hand its files straight on, keeping its settings. true turns it back on. An If cannot be turned off.",
+      ),
+  }),
+  z.object({
     op: z.literal("trigger"),
     trigger: z
       .object({ kind: z.string() })

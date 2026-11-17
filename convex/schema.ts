@@ -13,6 +13,8 @@ export const nodeValidator = v.object({
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
+  // Turned off: runs hand its files straight on without doing its work.
+  off: v.optional(v.boolean()),
   input: v.record(v.string(), v.any()),
   position: v.object({ x: v.number(), y: v.number() }),
 });
@@ -86,6 +88,7 @@ export const operationValidator = v.union(
   v.object({ op: v.literal("set"), id: v.string(), settings: v.record(v.string(), v.any()) }),
   v.object({ op: v.literal("use"), id: v.string(), field: v.string(), from: v.string() }),
   v.object({ op: v.literal("rename"), id: v.string(), label: v.string() }),
+  v.object({ op: v.literal("switch"), id: v.string(), on: v.boolean() }),
   v.object({ op: v.literal("trigger"), trigger: triggerValidator }),
   v.object({ op: v.literal("name"), name: v.string() }),
   v.object({ op: v.literal("tidy") }),

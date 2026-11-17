@@ -175,6 +175,17 @@ async function startNode(
 ) {
   const now = Date.now();
 
+  // A step that is turned off does none of its work and hands its files straight on.
+  if (node.off && node.kind !== "if") {
+    await ctx.db.patch(step._id, {
+      status: "done",
+      outputs: incomingFiles(node, run, byNode),
+      startedAt: now,
+      finishedAt: now,
+    });
+    return;
+  }
+
   if (node.kind === "approval") {
     await ctx.db.patch(step._id, { status: "waiting_approval", startedAt: now });
     await openReviewForApproval(ctx, run, step, incomingFiles(node, run, byNode));

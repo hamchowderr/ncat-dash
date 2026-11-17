@@ -23,6 +23,7 @@ import {
 } from "@/components/steps/step-fields";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -169,6 +170,15 @@ export function NodePanel({
             {nodeType?.description ?? "This step is no longer in the catalog."}
           </p>
         </div>
+        {node.kind !== "if" && (
+          <Switch
+            className="mt-0.5 shrink-0"
+            checked={!node.off}
+            onCheckedChange={(on) => onChange({ off: on ? undefined : true })}
+            aria-label={node.off ? "Turn this step on" : "Turn this step off"}
+            title={node.off ? "Turned off. Turn it on" : "Turn off without removing it"}
+          />
+        )}
         <Button
           type="button"
           variant="ghost"
@@ -180,6 +190,15 @@ export function NodePanel({
           <span className="sr-only">Remove step</span>
         </Button>
       </div>
+
+      {node.off && (
+        <Alert>
+          <AlertDescription>
+            Turned off. Runs skip this step&apos;s work and hand its files straight to the next
+            step. Its settings are kept for when you turn it back on.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {unset.length > 0 && (
         <Alert>

@@ -80,6 +80,7 @@ function stepSentence(node: AutomationNode, step: RunStep, runStatus: string): s
     return runStatus === "cancelled" ? "The run was stopped first." : "No files came this way.";
   }
   if (step.status === "pending") return "Not reached yet.";
+  if (node.off) return "Turned off, so its files went straight on.";
   if (node.kind === "if" && step.branches) return sortedSentence(step.branches);
   if (node.kind === "wait" && step.resumeAt) {
     return step.status === "done"

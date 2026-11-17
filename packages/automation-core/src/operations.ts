@@ -64,6 +64,8 @@ export type Operation =
    */
   | { op: "use"; id: string; field: string; from: string }
   | { op: "rename"; id: string; label: string }
+  /** Turns a step off (its files go straight on) or back on. */
+  | { op: "switch"; id: string; on: boolean }
   | { op: "trigger"; trigger: StarterTrigger }
   | { op: "name"; name: string }
   /** Lays the steps out left to right. */
@@ -349,6 +351,21 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
       return {
         ...draft,
         nodes: draft.nodes.map((other) => (other.id === op.id ? { ...other, input } : other)),
+      };
+    }
+    case "switch": {
+      const node = need(draft, op.id);
+      if (!op.on && node.kind === "if") {
+        throw new OperationError("An If cannot be turned off. Remove it instead.");
+      }
+      return {
+        ...draft,
+        nodes: draft.nodes.map((other) => {
+          if (other.id !== op.id) return other;
+          const rest = { ...other };
+          delete rest.off;
+          return op.on ? rest : { ...rest, off: true };
+        }),
       };
     }
     case "rename": {
