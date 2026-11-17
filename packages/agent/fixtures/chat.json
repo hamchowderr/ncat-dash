@@ -1,0 +1,218 @@
+{
+  "fixtures": [
+    {
+      "_comment": "The stand-in model for development and tests (AIMock): no model key, no cost. Each entry answers one request word for word. A thread title request comes first so it never matches a later entry.",
+      "match": {
+        "systemMessage": "3-6 word title"
+      },
+      "response": {
+        "content": "Automation help"
+      }
+    },
+    {
+      "match": {
+        "userMessage": "List my automations and say which are switched on.",
+        "hasToolResult": false
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "id": "toolu_ncat_overview",
+            "name": "dash_overview",
+            "arguments": {}
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "toolCallId": "toolu_ncat_overview"
+      },
+      "response": {
+        "content": "Those are the automations your team has. The ones marked on start by themselves; the rest wait until you switch them on."
+      }
+    },
+    {
+      "match": {
+        "userMessage": "Explain what this automation does, step by step.",
+        "hasToolResult": false
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "id": "toolu_ncat_describe",
+            "name": "describe_automation",
+            "arguments": {}
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "toolCallId": "toolu_ncat_describe"
+      },
+      "response": {
+        "content": "That is how it reads today: what starts it comes first, then each step in the order it runs. Tell me what you want changed and I will make the change for you to approve."
+      }
+    },
+    {
+      "match": {
+        "userMessage": "Check this automation for anything missing or wrong.",
+        "hasToolResult": false
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "id": "toolu_ncat_check",
+            "name": "describe_automation",
+            "arguments": {}
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "toolCallId": "toolu_ncat_check"
+      },
+      "response": {
+        "content": "I read it through. Anything that would stop it running is listed in the result above; if nothing is listed, it is ready to switch on."
+      }
+    },
+    {
+      "match": {
+        "userMessage": "Add captions to the clips before they go for approval.",
+        "hasToolResult": false
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "id": "toolu_ncat_add_captions",
+            "name": "change_automation",
+            "arguments": {
+              "operations": [
+                {
+                  "op": "add",
+                  "type": "step:video-caption",
+                  "id": "captions",
+                  "before": "approve"
+                },
+                {
+                  "op": "tidy"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "_comment": "Follows the build below: it names the steps that build made (clips, approve)."
+    },
+    {
+      "match": {
+        "toolCallId": "toolu_ncat_add_captions",
+        "toolResultContains": "not approved"
+      },
+      "response": {
+        "content": "I left it as it was, since you declined the change."
+      }
+    },
+    {
+      "match": {
+        "toolCallId": "toolu_ncat_add_captions"
+      },
+      "response": {
+        "content": "Done. Each clip now gets captions burned in before it waits for approval."
+      }
+    },
+    {
+      "match": {
+        "userMessage": "Build an automation that makes short clips with captions from each new recording I upload.",
+        "hasToolResult": false
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "id": "toolu_ncat_create",
+            "name": "create_automation",
+            "arguments": {
+              "name": "Clips from new recordings"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "toolCallId": "toolu_ncat_create",
+        "toolResultContains": "not approved"
+      },
+      "response": {
+        "content": "I did not make it, since you declined."
+      }
+    },
+    {
+      "match": {
+        "toolCallId": "toolu_ncat_create"
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "id": "toolu_ncat_build",
+            "name": "change_automation",
+            "arguments": {
+              "operations": [
+                {
+                  "op": "trigger",
+                  "trigger": {
+                    "kind": "upload",
+                    "fileType": "video"
+                  }
+                },
+                {
+                  "op": "add",
+                  "type": "clips",
+                  "id": "clips",
+                  "settings": {
+                    "platform": "Instagram Reels"
+                  }
+                },
+                {
+                  "op": "add",
+                  "type": "approval",
+                  "id": "approve",
+                  "after": "clips"
+                },
+                {
+                  "op": "tidy"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "toolCallId": "toolu_ncat_build",
+        "toolResultContains": "not approved"
+      },
+      "response": {
+        "content": "I made the automation but left it empty, since you declined the steps. It is in [Automations](/automations)."
+      }
+    },
+    {
+      "match": {
+        "toolCallId": "toolu_ncat_build"
+      },
+      "response": {
+        "content": "It is built and switched off for now. Each new video your team uploads starts it, it cuts the video into clips sized for Instagram Reels, then it waits for someone to approve them. Find it in [Automations](/automations), and tell me when you want it switched on."
+      }
+    },
+    {
+      "_comment": "Catch-all. MUST be last.",
+      "match": {},
+      "response": {
+        "content": "This is the stand-in model used for development, so it only knows a few set requests. Try \"List my automations and say which are switched on.\" or, with an automation open, after it has built one, \"Add captions to the clips before they go for approval.\" Set a real model key on the agent server for everything else."
+      }
+    }
+  ]
+}

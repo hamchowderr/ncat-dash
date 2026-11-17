@@ -10,6 +10,7 @@ Working name: NCA Toolkit Dashboard. Under active development.
 - `convex/` is the backend: Better Auth with teams (`convex/betterAuth`), toolkit connections, jobs (one run of one step, finished by the toolkit's webhook), storage and uploads, the automation runner (`convex/lib/runner.ts`, with its triggers in `convex/automations.ts`), and the edition setting.
 - `packages/automation-core/` holds the rules an automation follows: what makes a valid graph, which steps are ready, placeholders, schedules. It also holds the node registry and the building operations, described under Automations.
 - `packages/step-catalog/` describes every toolkit endpoint once (inputs, outputs, how to call it). The app, the automation runner and the agent all read from it. Its tests compare every step with `test/toolkit-schemas.json`, the request schemas read out of the toolkit's own routes, because the toolkit rejects fields it does not know.
+- `packages/agent/` is the agent server: a Mastra server that chats with a signed-in person and builds automations for them. See The agent.
 - `.agents/skills/` holds the official agent skills for Convex, Better Auth, Mastra, Vercel and shadcn.
 
 ## Run it locally
@@ -64,6 +65,35 @@ Things a team sets once live in Settings, under Brand (`brand.ts`): its logo, br
 Step settings that are lists or groups (cuts, clips to make, find-and-replace pairs, caption styling, headers) are edited as rows and fields (`structured-field.tsx`, with the screen-free parts in `automation-core/src/structured.ts`); nobody types raw data, and a time typed as `1:30` or `90` is tidied to `00:01:30`.
 
 Every upload is read once it finishes (`storage.readDetails`): the toolkit's `/v1/media/metadata` runs FFprobe on the file, and what it finds (`FileDetails` in `details.ts`: length, picture size, frame rate, codecs, whether it has sound, format, bitrate) is kept with the upload and shown on the Uploads page in the same columns for every file (`fileDetailColumns`), with a dash where one does not apply; clicking a file name lists everything that was read (`fileDetailRows`). The automations waiting for an upload start only after that, so a run begins with the details in its trigger data (`trigger.details`), and an upload trigger can be limited to files of a certain length (`minSeconds`, `maxSeconds`). A file the toolkit cannot read still starts automations that set no limit.
+
+### The agent
+
+The Agent button in the top bar opens a chat beside whatever is on screen. Describe what should run by itself and the agent builds the automation; ask for a change to the one that is open and it makes it on the canvas. It asks before it makes, changes or switches on anything, on a card that lists the change in plain words.
+
+It is two parts, both from [mastra-chat-kit](https://github.com/hamchowderr/mastra-chat-kit) (MIT, see `packages/agent/LICENSE-mastra-chat-kit`):
+
+- `packages/agent/` is the kit's server at commit `2aef2da`, a Mastra `AgentController` server on port 4111. What is ours is in `src/mastra/ncat/`: the tools (`tools.ts`: look at the team's automations, read one, list step types, change one, make one, switch one on or off), the instructions, and the hand-over described below. Kit files changed: `agents/chat.ts` (our tools and instructions), `lib/tool-categories.ts` (reading never asks, changing asks, switching on always asks), `lib/env.ts` (`CONVEX_URL`), `mastra/index.ts` (our route), and `fixtures/chat.json`. The kit's own tests are not copied.
+- The chat panel is the kit's `chat-panel`, installed with shadcn into `src/components/chat*`, `src/components/ai-elements`, `src/lib/agent-controller`, `src/lib/mastra-proxy.ts` and the proxy routes under `src/app/api/`. It was installed from the registry built at that same commit, because the published registry was older than the server and the two did not agree on approvals. One change to it: `ChatPanel` takes `renderTool`. Ours is `src/components/agent/`: the panel's wording, what each approval card and tool line says (`tool-words.ts`), and the Agent button in the shell.
+
+The agent has no access of its own. On every chat request the web app (`src/lib/agent-session.ts`, wired in `src/instrumentation.ts`) hands the agent server the signed-in person's own Convex token and the team and automation on their screen, in a request signed with `MASTRA_JWT_SECRET`. The tools then call the same Convex functions the dashboard does, as that person, so the agent can see and change what they can and nothing else. The hand-over is kept in memory only. A new automation the agent makes becomes "this automation" until another is on screen. An open editor shows the agent's change as it happens, unless the person has unsaved work of their own.
+
+To run it locally, add to `.env.local`:
+
+```bash
+MASTRA_SERVER_URL=http://127.0.0.1:4111
+MASTRA_JWT_SECRET=<openssl rand -base64 32>
+```
+
+Copy `packages/agent/.env.example` to `packages/agent/.env` and set `APP_SECRET`, the same `MASTRA_JWT_SECRET`, `CONVEX_URL` (your `NEXT_PUBLIC_CONVEX_URL`), and either a model key with `CHAT_MODEL`, or `USE_AIMOCK=true` for the stand-in model. Then:
+
+```bash
+pnpm --filter @ncat-dash/agent dev        # the agent server
+pnpm --filter @ncat-dash/agent dev:mock   # only with USE_AIMOCK=true
+```
+
+The stand-in model costs nothing and needs no key. It answers a few set requests word for word (`packages/agent/fixtures/chat.json`): "List my automations and say which are switched on.", "Build an automation that makes short clips with captions from each new recording I upload." and then "Add captions to the clips before they go for approval." A test in `automation-core` makes its scripted changes against the real rules. Nothing here has run against a real model yet.
+
+On first start the agent server downloads a small text-embedding model (fastembed) for recalling earlier conversations.
 
 ### Editions
 
