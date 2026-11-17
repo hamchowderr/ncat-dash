@@ -4,49 +4,48 @@
       "match": {
         "userMessage": "Build an automation that makes short clips with captions from each new recording I upload.",
         "model": "claude-sonnet-5-5",
-        "turnIndex": 5,
+        "turnIndex": 6,
         "hasToolResult": true
       },
       "response": {
         "toolCalls": [
           {
             "name": "check_run",
-            "arguments": "{\"runId\": \"jx79ghgnw5wn2cwz4shvj7wn3d8jdqfr\", \"waitSeconds\": 120}",
-            "id": "toolu_01VtC6JBsWcv3Zre9WJrVesT"
+            "arguments": "{\"runId\": \"jx7czpk25gbnmnc09vt13tx29d8jc118\", \"waitSeconds\": 120}",
+            "id": "toolu_018tnFSuKtx6pe1zBFXDphqh"
           }
         ],
         "usage": {
           "input_tokens": 2,
-          "cache_creation_input_tokens": 203,
-          "cache_read_input_tokens": 20886,
+          "cache_creation_input_tokens": 217,
+          "cache_read_input_tokens": 21828,
           "cache_creation": {
-            "ephemeral_5m_input_tokens": 203,
+            "ephemeral_5m_input_tokens": 217,
             "ephemeral_1h_input_tokens": 0
           },
-          "output_tokens": 103
+          "output_tokens": 98
         }
       },
       "recordedTimings": {
-        "ttftMs": 1003,
+        "ttftMs": 1027,
         "interChunkDelaysMs": [
-          1,
-          0,
-          0,
-          616,
           0,
           0,
           0,
+          566,
           0,
           0,
-          5,
           0,
-          1,
+          0,
+          3,
+          0,
+          0,
           0
         ],
-        "totalDurationMs": 1626
+        "totalDurationMs": 1596
       },
       "metadata": {
-        "systemHash": "c86be00d",
+        "systemHash": "ab37c40a",
         "toolsHash": "7ea793fd"
       }
     }

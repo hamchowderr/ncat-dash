@@ -4,7 +4,7 @@
       "match": {
         "userMessage": "Build an automation that makes short clips with captions from each new recording I upload.",
         "model": "claude-sonnet-5-5",
-        "turnIndex": 2,
+        "turnIndex": 3,
         "hasToolResult": true
       },
       "response": {
@@ -12,42 +12,39 @@
           {
             "name": "create_automation",
             "arguments": "{\"name\": \"Captioned short clips from new uploads\"}",
-            "id": "toolu_01DqP9cJXKuhScmmYqEq2RCy"
+            "id": "toolu_01XYbBWkoPESufNa5rj5bLkL"
           }
         ],
         "usage": {
           "input_tokens": 2,
-          "cache_creation_input_tokens": 1963,
-          "cache_read_input_tokens": 18239,
+          "cache_creation_input_tokens": 1972,
+          "cache_read_input_tokens": 18801,
           "cache_creation": {
-            "ephemeral_5m_input_tokens": 1963,
+            "ephemeral_5m_input_tokens": 1972,
             "ephemeral_1h_input_tokens": 0
           },
-          "output_tokens": 99
+          "output_tokens": 59
         }
       },
       "recordedTimings": {
-        "ttftMs": 780,
+        "ttftMs": 865,
         "interChunkDelaysMs": [
-          404,
-          472,
+          0,
+          0,
+          0,
+          377,
           0,
           0,
           0,
           0,
           0,
           0,
-          0,
-          0,
-          1,
-          0,
-          1,
-          0
+          1
         ],
-        "totalDurationMs": 1658
+        "totalDurationMs": 1243
       },
       "metadata": {
-        "systemHash": "c86be00d",
+        "systemHash": "ab37c40a",
         "toolsHash": "7ea793fd"
       }
     }

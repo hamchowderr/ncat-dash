@@ -10,60 +10,50 @@
       "response": {
         "toolCalls": [
           {
-            "name": "list_step_types",
-            "arguments": "{\"type\": \"clips\"}",
-            "id": "toolu_017pt7gykifL9rMtCStSKumU"
-          },
-          {
-            "name": "list_step_types",
-            "arguments": "{\"type\": \"step:video-caption\"}",
-            "id": "toolu_01TBY5qRgDomaD2FwLFGBfWk"
-          },
-          {
-            "name": "list_step_types",
-            "arguments": "{\"type\": \"trigger:upload\"}",
-            "id": "toolu_011Mtt8sPq8xir7Ysc3Dc4nF"
+            "name": "ask_user",
+            "arguments": "{\"question\": \"Which platforms should the clips be made for?\", \"options\": [{\"label\":\"TikTok\"},{\"label\":\"Instagram Reels\"},{\"label\":\"YouTube Shorts\"},{\"label\":\"LinkedIn\"}], \"selectionMode\": \"multi_select\"}",
+            "id": "toolu_01FsPQ6SvX24WQu9SAE2hXUH"
           }
         ],
         "usage": {
           "input_tokens": 2,
-          "cache_creation_input_tokens": 4745,
-          "cache_read_input_tokens": 13494,
+          "cache_creation_input_tokens": 3875,
+          "cache_read_input_tokens": 14727,
           "cache_creation": {
-            "ephemeral_5m_input_tokens": 4745,
+            "ephemeral_5m_input_tokens": 3875,
             "ephemeral_1h_input_tokens": 0
           },
-          "output_tokens": 152
+          "output_tokens": 163
         }
       },
       "recordedTimings": {
-        "ttftMs": 939,
+        "ttftMs": 942,
         "interChunkDelaysMs": [
+          0,
+          0,
+          0,
+          431,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
           1,
           0,
           0,
-          435,
+          458,
           0,
           0,
-          0,
-          0,
-          0,
+          3,
           0,
           1,
-          0,
-          0,
-          0,
-          344,
-          0,
-          0,
-          0,
-          2,
           0
         ],
-        "totalDurationMs": 1722
+        "totalDurationMs": 1836
       },
       "metadata": {
-        "systemHash": "c86be00d",
+        "systemHash": "22c270a1",
         "toolsHash": "7ea793fd"
       }
     }

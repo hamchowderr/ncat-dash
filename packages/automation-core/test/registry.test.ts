@@ -256,6 +256,18 @@ describe("team brand", () => {
     expect(withBrand(logoStep, {}, {})).toEqual({});
   });
 
+  it("tells the agent to ask the person which platform clips are for", () => {
+    expect(nodeTypeIndex()).toMatch(/^clips .*ask the person for its platform\)/m);
+  });
+
+  it("only asks for settings the step really has", () => {
+    for (const nodeType of NODE_TYPES) {
+      for (const key of nodeType.ask ?? []) {
+        expect(Object.keys(nodeType.settings.properties ?? {}), nodeType.type).toContain(key);
+      }
+    }
+  });
+
   it("tells the agent which steps take the brand from Settings", () => {
     expect(nodeTypeIndex()).toMatch(/step:recipe-logo .*takes the team's logo from Settings/);
   });

@@ -28,22 +28,40 @@ function asSent(op: Operation): Operation {
   return { ...op, trigger: { ...op.trigger, kind: op.trigger.kind.slice(8) } } as Operation;
 }
 
-function changesFor(request: string): Operation[][] {
-  return recordings
-    .filter((fixture) => fixture.match.userMessage === request)
-    .sort((a, b) => (a.match.turnIndex ?? 0) - (b.match.turnIndex ?? 0))
-    .flatMap((fixture) => fixture.response.toolCalls ?? [])
-    .filter((call) => call.name === "change_automation")
-    .map((call) =>
-      (JSON.parse(call.arguments) as { operations: Operation[] }).operations.map(asSent),
-    );
-}
+const ASK =
+  "Build an automation that makes short clips with captions from each new recording I upload.";
+
+/** The tool calls of the recorded conversation, in order. The person's pick of platforms
+ * reaches the model as the answer to ask_user, inside the same conversation. */
+const calls = recordings
+  .filter((fixture) => fixture.match.userMessage === ASK)
+  .sort((a, b) => (a.match.turnIndex ?? 0) - (b.match.turnIndex ?? 0))
+  .flatMap((fixture) => fixture.response.toolCalls ?? []);
+const names = calls.map((call) => call.name);
 
 describe("the real model's recorded changes", () => {
-  it("build an automation that can run", () => {
-    const build = changesFor(
-      "Build an automation that makes short clips with captions from each new recording I upload.",
+  it("ask which platforms before building anything, letting the person pick several", () => {
+    const asked = names.indexOf("ask_user");
+    expect(asked).toBeGreaterThanOrEqual(0);
+    for (const change of ["create_automation", "change_automation", "try_automation"]) {
+      expect(names.indexOf(change)).toBeGreaterThan(asked);
+    }
+    const question = JSON.parse(calls[asked]?.arguments ?? "{}") as {
+      options?: { label: string }[];
+      selectionMode?: string;
+    };
+    expect(question.selectionMode).toBe("multi_select");
+    expect(question.options?.map((option) => option.label)).toEqual(
+      expect.arrayContaining(["TikTok", "YouTube Shorts"]),
     );
+  });
+
+  it("build one clips step for each platform the person picked", () => {
+    const build = calls
+      .filter((call) => call.name === "change_automation")
+      .map((call) =>
+        (JSON.parse(call.arguments) as { operations: Operation[] }).operations.map(asSent),
+      );
     expect(build.length).toBeGreaterThan(0);
 
     let draft: AutomationDraft = {
@@ -54,19 +72,17 @@ describe("the real model's recorded changes", () => {
     };
     for (const operations of build) draft = applyOperations(draft, operations);
     expect(draft.trigger.kind).toBe("upload");
-    expect(draft.nodes.map((node) => node.kind)).toEqual(expect.arrayContaining(["clips", "step"]));
-    expect(draft.nodes.some((node) => node.stepId === "video-caption")).toBe(true);
+    const platforms = draft.nodes
+      .filter((node) => node.kind === "clips")
+      .map((node) => String(node.input.platform));
+    expect(platforms.sort()).toEqual(["TikTok", "YouTube Shorts"]);
+    expect(draft.nodes.filter((node) => node.stepId === "video-caption")).toHaveLength(2);
     expect(draftProblems(draft)).toEqual([]);
   });
 
   it("try what they built before saying it is done", () => {
-    const calls = recordings
-      .filter((fixture) => fixture.match.userMessage?.startsWith("Build an automation"))
-      .sort((a, b) => (a.match.turnIndex ?? 0) - (b.match.turnIndex ?? 0))
-      .flatMap((fixture) => fixture.response.toolCalls ?? [])
-      .map((call) => call.name);
-    expect(calls).toContain("try_automation");
-    expect(calls.indexOf("try_automation")).toBeGreaterThan(calls.lastIndexOf("change_automation"));
-    expect(calls.lastIndexOf("check_run")).toBeGreaterThan(calls.indexOf("try_automation"));
+    expect(names).toContain("try_automation");
+    expect(names.indexOf("try_automation")).toBeGreaterThan(names.lastIndexOf("change_automation"));
+    expect(names.lastIndexOf("check_run")).toBeGreaterThan(names.indexOf("try_automation"));
   });
 });
