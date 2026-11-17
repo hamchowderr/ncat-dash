@@ -85,6 +85,7 @@ export function LiveRunBadge({
   return (
     <Link
       href={`/automations/${automationId}/runs/${latest._id}`}
+      transitionTypes={["nav-forward"]}
       role="status"
       aria-live="polite"
       data-live-run={active ? "running" : latest.status}

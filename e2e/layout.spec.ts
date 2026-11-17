@@ -123,4 +123,24 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
     await agent.getByRole("button", { name: /Close/ }).click();
     await expect(agent).toBeHidden();
   }
+
+  // On a screen too narrow for a column beside the page, the agent takes the page's place
+  // instead of lying over it, and closing it brings the page back.
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.goto(editor);
+  await page.getByRole("button", { name: "Agent" }).click();
+  const agent = page.getByRole("complementary", { name: "Agent" });
+  await expect(agent).toBeVisible();
+  await expect(page.locator("[data-page-frame]")).toBeHidden();
+  expect(await covered(page), "agent on a narrow screen").toEqual([]);
+  await agent.getByRole("button", { name: /Close/ }).click();
+  await expect(page.locator("[data-page-frame]")).toBeVisible();
+
+  // Starting an automation is a page of its own, not a window over the list.
+  await page.setViewportSize(SIZES[0]);
+  await page.goto("/automations");
+  await page.getByRole("link", { name: "New automation", exact: true }).click();
+  await expect(page).toHaveURL(/\/automations\/new$/);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await covered(page), "new automation page").toEqual([]);
 });

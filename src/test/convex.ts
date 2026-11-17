@@ -31,6 +31,7 @@ export function actionOf(action: FunctionReference<"action">) {
 }
 
 export const pushed = vi.fn();
+export const replaced = vi.fn();
 /** The stand-in behind "load more" on a paginated query. */
 export const loadMore = vi.fn();
 export const toastError = vi.fn();
@@ -43,6 +44,7 @@ export function resetConvex() {
   queries.clear();
   mutations.clear();
   pushed.mockReset();
+  replaced.mockReset();
   loadMore.mockReset();
   toastError.mockReset();
   toastInfo.mockReset();
@@ -78,7 +80,7 @@ export const convexReact = {
 
 export const presenceReact = { default: () => present };
 export const nextNavigation = {
-  useRouter: () => ({ push: pushed }),
+  useRouter: () => ({ push: pushed, replace: replaced }),
   usePathname: () => "/review",
 };
 export const sonner = { toast: { error: toastError, info: toastInfo, success: toastSuccess } };
