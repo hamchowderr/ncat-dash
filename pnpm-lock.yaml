@@ -17,6 +17,9 @@ importers:
       '@ncat-dash/automation-core':
         specifier: workspace:*
         version: link:packages/automation-core
+      '@ncat-dash/email':
+        specifier: workspace:*
+        version: link:packages/email
       '@ncat-dash/step-catalog':
         specifier: workspace:*
         version: link:packages/step-catalog
@@ -105,6 +108,15 @@ importers:
       '@ncat-dash/step-catalog':
         specifier: workspace:*
         version: link:../step-catalog
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)
+
+  packages/email:
+    devDependencies:
       typescript:
         specifier: ^5
         version: 5.9.3
