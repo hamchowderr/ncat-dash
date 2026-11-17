@@ -15,6 +15,7 @@ import {
   canonical,
   canRedo,
   canUndo,
+  copySteps,
   exportAutomation,
   newNodeId,
   type Operation,
@@ -69,6 +70,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { nodeTitle, type Trigger } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
 import { downloadJson } from "@/lib/download";
+import { copiedSteps, holdSteps } from "@/lib/step-clipboard";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
@@ -219,20 +221,6 @@ function Editor({ automation }: { automation: Loaded }) {
   const onUndo = () => step(undo);
   const onRedo = () => step(redo);
 
-  const onKey = useEffectEvent((event: KeyboardEvent) => {
-    if (!(event.metaKey || event.ctrlKey) || event.altKey || isTyping(event.target)) return;
-    const key = event.key.toLowerCase();
-    if (key !== "z" && key !== "y") return;
-    event.preventDefault();
-    if (key === "y" || event.shiftKey) onRedo();
-    else onUndo();
-  });
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => onKey(event);
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
-  }, []);
-
   // The automation as the server has it. It changes under an open editor when the agent
   // or a teammate edits it.
   const incomingDraft: AutomationDraft = {
@@ -348,6 +336,9 @@ function Editor({ automation }: { automation: Loaded }) {
       toast.error(caught instanceof OperationError ? caught.message : "That could not be done.");
       return null;
     }
+    // A change to the steps themselves (adding, pasting, removing) is undone on its own,
+    // even straight after another; typing in a setting is undone a run of keys at a time.
+    setHistory((current) => record(current, next, Date.now(), { merge: false }));
     setNodes((current) => {
       const known = new Map(current.map((node) => [node.id, node]));
       const steps = next.nodes.map((node): FlowNode => {
@@ -376,6 +367,72 @@ function Editor({ automation }: { automation: Loaded }) {
   function removeSteps(ids: string[]) {
     change([{ op: "remove", ids }]);
   }
+
+  const chosenSteps = () =>
+    nodes.filter((node) => node.selected && node.type === "step").map((node) => node.id);
+
+  /** Makes a paste or duplicate, then selects what it made. */
+  function addCopy(op: Operation, said: string) {
+    const before = new Set(draft.nodes.map((node) => node.id));
+    const next = change([op]);
+    if (!next) return;
+    const made = new Set(next.nodes.filter((node) => !before.has(node.id)).map((node) => node.id));
+    setNodes((current) => current.map((node) => ({ ...node, selected: made.has(node.id) })));
+    toast.success(said);
+  }
+
+  function copySelected() {
+    const ids = chosenSteps();
+    if (ids.length === 0) return;
+    holdSteps(copySteps(draft, ids));
+    toast.success(ids.length === 1 ? "Copied the step." : `Copied ${ids.length} steps.`);
+  }
+
+  function pasteHere() {
+    const steps = copiedSteps();
+    if (!steps || steps.nodes.length === 0) {
+      toast.error("Copy a step first. Select it and press Ctrl+C.");
+      return;
+    }
+    const ids = chosenSteps();
+    // One step chosen: the copy carries on from it. Otherwise it starts from the start.
+    const after = ids.length === 1 ? ids[0] : undefined;
+    addCopy(
+      { op: "paste", steps, after },
+      after
+        ? `Pasted after ${nodeTitle(draft.nodes.find((node) => node.id === after)!)}.`
+        : "Pasted.",
+    );
+  }
+
+  function duplicateSelected(ids = chosenSteps()) {
+    if (ids.length === 0) return;
+    addCopy(
+      { op: "duplicate", ids },
+      ids.length === 1 ? "Duplicated the step." : `Duplicated ${ids.length} steps.`,
+    );
+  }
+
+  const onKey = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || isTyping(event.target)) return;
+    // Leave copying text the person has highlighted on the page alone.
+    if (window.getSelection()?.toString()) return;
+    const key = event.key.toLowerCase();
+    if (tab !== "editor" && key !== "z" && key !== "y") return;
+    if (key === "c") copySelected();
+    else if (key === "v") pasteHere();
+    else if (key === "d") duplicateSelected();
+    else if (key === "z" || key === "y") {
+      if (key === "y" || event.shiftKey) onRedo();
+      else onUndo();
+    } else return;
+    event.preventDefault();
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onKey(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
 
   function tidy() {
     change([{ op: "tidy" }], { moveTrigger: true });
@@ -793,6 +850,7 @@ function Editor({ automation }: { automation: Loaded }) {
                         )
                       }
                       onRemove={() => removeSteps([selected.id])}
+                      onDuplicate={() => duplicateSelected([selected.id])}
                     />
                     {(selected.data.node.kind === "step" ||
                       selected.data.node.kind === "clips") && (

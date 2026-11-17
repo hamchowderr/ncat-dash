@@ -594,7 +594,9 @@ export const testStep = mutation({
     if (fileUrl && !/^https?:\/\//.test(fileUrl)) {
       fail("invalid_input", "The file address must start with http:// or https://.");
     }
-    const node = { ...args.node, input: standAlone(args.node.input) };
+    // A test is for trying the step's work, so it runs even while the step is turned off.
+    const { off: _off, ...rest } = args.node;
+    const node = { ...rest, input: standAlone(args.node.input) };
     const started = await startRun(
       ctx,
       { ...automation, nodes: [node], edges: [] },
