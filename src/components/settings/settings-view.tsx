@@ -14,6 +14,8 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
 import { BrandCard } from "./brand-card";
+import { EmailCard } from "./email-card";
+import { TeamCard } from "./team-card";
 
 export function SettingsView() {
   const team = useActiveTeam();
@@ -122,7 +124,7 @@ export function SettingsView() {
               <CardDescription>
                 A step that fails in an automation waits a little and tries again, a bit longer each
                 time. If it still fails, the run stops and everyone on the team gets an alert under
-                the bell at the top of the page.
+                the bell at the top of the page, and by email once email is set up below.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -163,6 +165,8 @@ export function SettingsView() {
               </form>
             </CardContent>
           </Card>
+          <EmailCard />
+          <TeamCard canEdit={settings.canEdit} />
         </>
       )}
     </>

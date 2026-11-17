@@ -1,7 +1,9 @@
 "use client";
 
+import { api } from "@convex/_generated/api";
+import { useQuery } from "convex/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -35,7 +37,15 @@ const copy = {
 export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
   const router = useRouter();
   const session = authClient.useSession();
+  const email = useQuery(api.email.status);
+  // Where to go once signed in: an invitation link sends people here first. Only paths
+  // inside this app are followed.
+  const wanted = useSearchParams().get("next");
+  const next = wanted && wanted.startsWith("/") && !wanted.startsWith("//") ? wanted : "/";
+  const withNext = (href: string) =>
+    next === "/" ? href : `${href}?next=${encodeURIComponent(next)}`;
   const [error, setError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const text = copy[mode];
 
@@ -46,12 +56,12 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
     // Checked against the server first: a page returning from the background can
     // briefly hold an old session.
     void authClient.getSession().then((fresh) => {
-      if (!cancelled && fresh.data) router.replace("/");
+      if (!cancelled && fresh.data) router.replace(next);
     });
     return () => {
       cancelled = true;
     };
-  }, [signedIn, router]);
+  }, [signedIn, router, next]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -66,6 +76,8 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
             name: String(form.get("name") ?? "").trim(),
             email,
             password,
+            // Where the link in the confirmation email ends up.
+            callbackURL: "/",
           })
         : await authClient.signIn.email({ email, password });
     setPending(false);
@@ -73,7 +85,13 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
       setError(result.error.message ?? "That did not work. Check your details and try again.");
       return;
     }
-    router.replace("/");
+    // With confirmation required, a new account is not signed in until its address is
+    // confirmed from the email.
+    if (mode === "sign-up" && !(result.data as { token?: string | null }).token) {
+      setConfirm(email);
+      return;
+    }
+    router.replace(next);
   }
 
   return (
@@ -118,13 +136,27 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
+                {confirm && (
+                  <Alert>
+                    <AlertDescription>
+                      We sent a link to {confirm}. Open it to confirm your address and you will be
+                      signed in.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <Field>
                   <Button type="submit" disabled={pending}>
                     {pending ? text.pending : text.submit}
                   </Button>
                   <FieldDescription className="text-center">
-                    {text.switchText} <Link href={text.switchHref}>{text.switchLabel}</Link>
+                    {text.switchText}{" "}
+                    <Link href={withNext(text.switchHref)}>{text.switchLabel}</Link>
                   </FieldDescription>
+                  {mode === "sign-in" && email?.configured && (
+                    <FieldDescription className="text-center">
+                      <Link href="/forgot-password">Forgot your password?</Link>
+                    </FieldDescription>
+                  )}
                 </Field>
               </FieldGroup>
             </form>

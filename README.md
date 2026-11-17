@@ -9,6 +9,7 @@ Working name: NCA Toolkit Dashboard. Under active development.
 - `src/` is the Next.js app: sign-in, onboarding and the dashboard shell (open-source shadcn/ui).
 - `convex/` is the backend: Better Auth with teams (`convex/betterAuth`), toolkit connections, jobs (one run of one step, finished by the toolkit's webhook), storage and uploads, the automation runner (`convex/lib/runner.ts`, with its triggers in `convex/automations.ts`), and the edition setting.
 - `packages/automation-core/` holds the rules an automation follows: what makes a valid graph, which steps are ready, placeholders, schedules. It also holds the node registry and the building operations, described under Automations.
+- `packages/email/` holds the emails the app sends (as plain data) and a small client for toSend, the service that delivers them.
 - `packages/step-catalog/` describes every toolkit endpoint once (inputs, outputs, how to call it). The app, the automation runner and the agent all read from it. Its tests compare every step with `test/toolkit-schemas.json`, the request schemas read out of the toolkit's own routes, because the toolkit rejects fields it does not know.
 - `.agents/skills/` holds the official agent skills for Convex, Better Auth, Mastra, Vercel and shadcn.
 
@@ -69,7 +70,34 @@ Step settings that are lists or groups (cuts, clips to make, find-and-replace pa
 
 Every upload is read once it finishes (`storage.readDetails`): the toolkit's `/v1/media/metadata` runs FFprobe on the file, and what it finds (`FileDetails` in `details.ts`: length, picture size, frame rate, codecs, whether it has sound, format, bitrate) is kept with the upload and shown on the Uploads page in the same columns for every file (`fileDetailColumns`), with a dash where one does not apply; clicking a file name lists everything that was read (`fileDetailRows`). The automations waiting for an upload start only after that, so a run begins with the details in its trigger data (`trigger.details`), and an upload trigger can be limited to files of a certain length (`minSeconds`, `maxSeconds`). A file the toolkit cannot read still starts automations that set no limit.
 
-A step that fails in a run tries again before the run is given up on (`retry.ts`, and `bookRetry` in the runner). Only the jobs that failed are sent again, exactly as they were, after a wait that grows each time: 30 seconds, then 2, 5, 10 and 15 minutes. `/settings` sets how many times, from 0 to 5; a team that has not chosen gets 2. A failure that would end the same way every time is not tried again: a request the toolkit refuses (HTTP 4xx other than 408 and 429), a file that is gone, a step that is no longer in the catalog. A run shows the step as "Trying again" with the time left and why the last try failed, and the list of runs says how often a run tried again. When a run still fails, every member of the team gets an alert (`convex/alerts.ts`): a notice on screen straight away and an entry under the bell at the top of every page, which links to the run and stays marked until that person has seen it. Rejecting at an approval step or stopping a run alerts nobody. A finished run has "Run again", which starts it over with the same file and data and the automation as it is now. Alerts are in the app only; there is no email yet.
+A step that fails in a run tries again before the run is given up on (`retry.ts`, and `bookRetry` in the runner). Only the jobs that failed are sent again, exactly as they were, after a wait that grows each time: 30 seconds, then 2, 5, 10 and 15 minutes. `/settings` sets how many times, from 0 to 5; a team that has not chosen gets 2. A failure that would end the same way every time is not tried again: a request the toolkit refuses (HTTP 4xx other than 408 and 429), a file that is gone, a step that is no longer in the catalog. A run shows the step as "Trying again" with the time left and why the last try failed, and the list of runs says how often a run tried again. When a run still fails, every member of the team gets an alert (`convex/alerts.ts`): a notice on screen straight away and an entry under the bell at the top of every page, which links to the run and stays marked until that person has seen it. Rejecting at an approval step or stopping a run alerts nobody. A finished run has "Run again", which starts it over with the same file and data and the automation as it is now. The same alert goes out by email once email is set up (below).
+
+### Email
+
+Email goes out through [toSend](https://tosend.com), a hosted email delivery service: failed-run alerts, password resets, address confirmations and team invitations. It is set up once and everything uses it.
+
+1. Create a toSend account, add your sending domain there and add the DNS records it shows (DKIM, SPF and MX) until the domain reads Verified. toSend only sends from a verified domain.
+2. Create a sending API key in toSend (it starts with `tsend_`).
+3. In the dashboard open Settings, Email. Paste the key, enter the address to send from (on the verified domain) and the sender name, then "Check and save". The key and the domain are checked with toSend before anything is saved, and the key is stored encrypted. "Send me a test email" proves it end to end.
+
+Whoever runs the deployment can set it from the outside instead, which wins over Settings and is how the hosted edition is set up:
+
+```bash
+npx convex env set TOSEND_API_KEY tsend_...
+npx convex env set EMAIL_FROM alerts@yourdomain.com
+npx convex env set EMAIL_FROM_NAME "Your Company"   # optional
+```
+
+What uses it:
+
+- **Failed runs.** When a run still fails after its tries, every member of the team gets an email with the step, the reason and a link to the run (`email.sendRunFailed`, scheduled from `alertTeam` in the runner). Each member can switch these off for themselves in Settings ("Email me when a run fails"); the alert under the bell stays.
+- **Password reset.** The sign-in page shows "Forgot your password?" once email is set up. The link works once, for one hour.
+- **Address confirmation.** A new account is sent a link to confirm its address. Signing in does not wait for it unless you set `npx convex env set REQUIRE_EMAIL_VERIFICATION true`; only do that once email works, or nobody new can sign in.
+- **Team invitations.** Settings, Team invites someone by email as a member or admin. The link (`/accept-invitation/<id>`) works for 48 hours and takes the person through signing in or creating an account first. With no email set up the invitation is still made and its link can be copied and sent by hand.
+
+With no email set up nothing is sent and nothing breaks. If toSend refuses to send (a wrong key, an unpaid account, an unverified domain), Settings says so in plain words. There is one sending account per deployment because sign-in emails go out before anyone is on a team; in the self-hosted edition it belongs to the team that set it up. The messages and the toSend client are in `packages/email` (fetch only, no SDK); the functions are in `convex/email.ts`.
+
+Two things in toSend's own rules matter here: it is for email people expect (alerts, account email, invitations), not cold outreach, and it needs a paid toSend plan once its trial ends.
 
 ### Editions
 
