@@ -46,6 +46,7 @@ import { isMember, requireMember } from "./lib/authz";
 import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
 import { deleteVersions, recordVersion } from "./lib/versions";
+import { deleteNotes } from "./notes";
 import { presign } from "./lib/s3";
 import { decryptSecret } from "./lib/crypto";
 import { edgeValidator, nodeValidator, operationValidator, triggerValidator } from "./schema";
@@ -540,6 +541,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     await loadForMember(ctx, args.automationId);
     await deleteVersions(ctx, args.automationId);
+    await deleteNotes(ctx, args.automationId);
     await ctx.db.delete(args.automationId);
   },
 });
