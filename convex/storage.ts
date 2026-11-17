@@ -51,6 +51,7 @@ export const get = query({
       endpoint: storage.endpoint,
       region: storage.region,
       bucket: storage.bucket,
+      publicUrl: storage.publicUrl ?? null,
       accessKeyHint: storage.accessKeyId.slice(-4),
     };
   },
@@ -65,6 +66,8 @@ export const connect = action({
     bucket: v.string(),
     accessKeyId: v.string(),
     secretAccessKey: v.string(),
+    // Optional: the public address the toolkit hands files out under (its S3_PUBLIC_URL).
+    publicUrl: v.optional(v.string()),
   },
   returns: v.union(
     v.object({ ok: v.literal(true) }),
@@ -95,6 +98,17 @@ export const connect = action({
       return { ok: false as const, detail: "Fill in the bucket name and both keys." };
     }
 
+    let publicUrl: string | undefined;
+    if (args.publicUrl?.trim()) {
+      try {
+        const url = new URL(args.publicUrl.trim());
+        if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("protocol");
+        publicUrl = `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+      } catch {
+        return { ok: false as const, detail: "Enter the public address, starting with https://" };
+      }
+    }
+
     const check = await checkBucket(config);
     if (!check.ok) return check;
 
@@ -105,6 +119,7 @@ export const connect = action({
       bucket: config.bucket,
       accessKeyId: config.accessKeyId,
       secretCipher: await encryptSecret(config.secretAccessKey),
+      ...(publicUrl ? { publicUrl } : {}),
       createdBy: userId,
     });
     return { ok: true as const };
@@ -384,6 +399,7 @@ export const save = internalMutation({
     bucket: v.string(),
     accessKeyId: v.string(),
     secretCipher: v.string(),
+    publicUrl: v.optional(v.string()),
     createdBy: v.string(),
   },
   handler: async (ctx, args) => {

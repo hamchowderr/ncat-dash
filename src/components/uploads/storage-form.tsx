@@ -37,6 +37,7 @@ export function StorageForm({
         bucket: read("bucket"),
         accessKeyId: read("accessKeyId"),
         secretAccessKey: read("secretAccessKey"),
+        ...(read("publicUrl").trim() ? { publicUrl: read("publicUrl") } : {}),
       });
       if (result.ok) {
         toast.success("Your storage is connected.");
@@ -91,6 +92,20 @@ export function StorageForm({
             required
           />
           <FieldDescription>Stored encrypted and never shown again.</FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="publicUrl">Public address (optional)</FieldLabel>
+          <Input
+            id="publicUrl"
+            name="publicUrl"
+            type="url"
+            placeholder="https://files.example.com"
+            autoComplete="off"
+          />
+          <FieldDescription>
+            Only if your toolkit hands out file links under its own address (its S3_PUBLIC_URL
+            setting). With it here, those links keep working when you rename or move a file.
+          </FieldDescription>
         </Field>
 
         {failure && (
