@@ -26,7 +26,7 @@ import { nodeTitle, RUN_TRIGGER_LABELS } from "@/lib/automations";
 import { errorMessage, stepTitle } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
-import { MediaPreview } from "./media-preview";
+import { MediaPreview, OutputNamesProvider } from "./media-preview";
 
 type RunOutputs = FunctionReturnType<typeof api.outputs.byRun>["page"][number];
 type FileGroup = RunOutputs["finished"][number];
@@ -52,10 +52,10 @@ function useSendToReview() {
   const createReview = useMutation(api.reviews.create);
   const router = useRouter();
   const [sending, setSending] = useState<string | null>(null);
-  async function send(key: string, title: string, urls: string[]) {
+  async function send(key: string, title: string, urls: string[], names: Record<string, string>) {
     setSending(key);
     try {
-      const reviewId = await createReview({ organizationId: team.id, title, urls });
+      const reviewId = await createReview({ organizationId: team.id, title, urls, names });
       router.push(`/review/${reviewId}`, { transitionTypes: ["nav-forward"] });
     } catch (error) {
       toast.error(errorMessage(error, "The review could not be opened."));
@@ -157,77 +157,80 @@ function RunCard({ run, review }: { run: RunOutputs; review: ReturnType<typeof u
   const toReview = run.finished.flatMap((group) => group.files);
 
   return (
-    <section
-      aria-label={`${run.automationName}, ${when.format(run.startedAt)}`}
-      className="flex flex-col gap-4 rounded-xl bg-surface p-4"
-    >
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-base font-semibold">
-              <Link
-                href={`/automations/${run.automationId}`}
-                transitionTypes={["nav-forward"]}
-                className="hover:underline"
-              >
-                {run.automationName}
-              </Link>
-            </h2>
-            {run.status !== "done" && <RunStatusBadge status={run.status} />}
+    <OutputNamesProvider names={run.names}>
+      <section
+        aria-label={`${run.automationName}, ${when.format(run.startedAt)}`}
+        className="flex flex-col gap-4 rounded-xl bg-surface p-4"
+      >
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold">
+                <Link
+                  href={`/automations/${run.automationId}`}
+                  transitionTypes={["nav-forward"]}
+                  className="hover:underline"
+                >
+                  {run.automationName}
+                </Link>
+              </h2>
+              {run.status !== "done" && <RunStatusBadge status={run.status} />}
+            </div>
+            <p className="text-muted-foreground text-sm">
+              {run.startedWith ? (
+                <>
+                  From <span className="text-foreground font-medium">{run.startedWith}</span>
+                  {" · "}
+                </>
+              ) : null}
+              {how} · {when.format(run.startedAt)} · {files(finishedCount + alongCount)}
+            </p>
           </div>
-          <p className="text-muted-foreground text-sm">
-            {run.startedWith ? (
-              <>
-                From <span className="text-foreground font-medium">{run.startedWith}</span>
-                {" · "}
-              </>
-            ) : null}
-            {how} · {when.format(run.startedAt)} · {files(finishedCount + alongCount)}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild size="sm" variant="ghost">
-            <Link
-              href={`/automations/${run.automationId}/runs/${run.runId}`}
-              transitionTypes={["nav-forward"]}
-            >
-              See the run
-            </Link>
-          </Button>
-          {toReview.length > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={review.sending !== null}
-              onClick={() => review.send(run.runId, title, toReview)}
-            >
-              <MessagesSquare />
-              Send to review
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="ghost">
+              <Link
+                href={`/automations/${run.automationId}/runs/${run.runId}`}
+                transitionTypes={["nav-forward"]}
+              >
+                See the run
+              </Link>
             </Button>
-          )}
-        </div>
-      </header>
+            {toReview.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={review.sending !== null}
+                onClick={() => review.send(run.runId, title, toReview, run.names)}
+              >
+                <MessagesSquare />
+                Send to review
+              </Button>
+            )}
+          </div>
+        </header>
 
-      {run.finished.map((group) => (
-        <Group key={group.nodeId} group={group} />
-      ))}
+        {run.finished.map((group) => (
+          <Group key={group.nodeId} group={group} />
+        ))}
 
-      {alongCount > 0 && (
-        <Collapsible className="flex flex-col gap-3">
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="group w-fit px-2">
-              <ChevronRight className="transition-transform group-data-[state=open]:rotate-90" />
-              {run.finished.length > 0 ? "Made along the way" : "Made so far"} ({files(alongCount)})
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="flex flex-col gap-4">
-            {run.along.map((group) => (
-              <Group key={group.nodeId} group={group} />
-            ))}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-    </section>
+        {alongCount > 0 && (
+          <Collapsible className="flex flex-col gap-3">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="group w-fit px-2">
+                <ChevronRight className="transition-transform group-data-[state=open]:rotate-90" />
+                {run.finished.length > 0 ? "Made along the way" : "Made so far"} (
+                {files(alongCount)})
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="flex flex-col gap-4">
+              {run.along.map((group) => (
+                <Group key={group.nodeId} group={group} />
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+      </section>
+    </OutputNamesProvider>
   );
 }
 
@@ -286,17 +289,19 @@ function ByHand() {
                 size="sm"
                 variant="outline"
                 disabled={review.sending !== null}
-                onClick={() => review.send(job.jobId, stepTitle(job.stepId), job.urls)}
+                onClick={() => review.send(job.jobId, stepTitle(job.stepId), job.urls, job.names)}
               >
                 <MessagesSquare />
                 Send to review
               </Button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {job.urls.map((url) => (
-                <MediaPreview key={url} url={url} />
-              ))}
-            </div>
+            <OutputNamesProvider names={job.names}>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {job.urls.map((url) => (
+                  <MediaPreview key={url} url={url} />
+                ))}
+              </div>
+            </OutputNamesProvider>
           </section>
         ))
       )}

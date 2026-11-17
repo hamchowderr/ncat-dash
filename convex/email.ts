@@ -1,3 +1,4 @@
+import { explainFailure } from "@ncat-dash/automation-core";
 import {
   checkKey,
   DEFAULT_APP_NAME,
@@ -295,17 +296,17 @@ export const sendAlert = internalAction({
                   branding,
                 )
               : runFailedEmail(
-                {
-                  teamName,
-                  automationName: alert.automationName,
-                  stepName: alert.stepName,
-                  message: alert.message,
-                  retries: alert.retries,
-                  runUrl: link,
-                  settingsUrl,
-                },
-                branding,
-              );
+                  {
+                    teamName,
+                    automationName: alert.automationName,
+                    stepName: alert.stepName,
+                    message: explainFailure(alert.message).reason,
+                    retries: alert.retries,
+                    runUrl: link,
+                    settingsUrl,
+                  },
+                  branding,
+                );
     for (const to of found.recipients) {
       const result = await deliver(ctx, sending, { to, ...composed });
       // A bad key, an unpaid account or an unverified domain fails for everyone alike.
@@ -448,7 +449,7 @@ function digestLine(alert: Doc<"alerts">): Omit<DigestItem, "url"> {
     default:
       return {
         title: `${alert.automationName} failed`,
-        detail: alert.stepName ? `${alert.stepName}: ${alert.message}` : alert.message,
+        detail: `${alert.stepName ? `${alert.stepName}: ` : ""}${explainFailure(alert.message).reason}`,
       };
   }
 }

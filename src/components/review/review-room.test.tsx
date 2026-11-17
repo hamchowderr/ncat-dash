@@ -420,6 +420,24 @@ describe("who is here and new versions", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
+  test("New version lists files by their readable names", async () => {
+    const made = "https://files.example/ca4934e3-5b1f-4c3e-9a77-0d2f1b6e8a10_output_0.mp4";
+    answerQuery(api.jobs.outputs, [
+      {
+        jobId: "j3",
+        stepId: "video-split",
+        finishedAt: 1_700_000_100_000,
+        urls: [made],
+        names: { [made]: "Space interviews clip 1" },
+      },
+    ]);
+    const { user } = open();
+    await user.click(screen.getByRole("button", { name: "New version" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a new version" });
+    expect(within(dialog).getByRole("button", { name: /Space interviews clip 1/ })).toBeTruthy();
+    expect(dialog.textContent).not.toContain("ca4934e3");
+  });
+
   test("New version says so when there is nothing to pick", async () => {
     answerQuery(api.jobs.outputs, []);
     const { user } = open();

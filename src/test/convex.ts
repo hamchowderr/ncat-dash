@@ -37,6 +37,7 @@ export const loadMore = vi.fn();
 export const toastError = vi.fn();
 export const toastInfo = vi.fn();
 export const toastSuccess = vi.fn();
+export const toastDismiss = vi.fn();
 /** Who the presence hook says is in the room. */
 export const present: {
   userId: string;
@@ -54,6 +55,7 @@ export function resetConvex() {
   toastError.mockReset();
   toastInfo.mockReset();
   toastSuccess.mockReset();
+  toastDismiss.mockReset();
   present.length = 0;
 }
 
@@ -88,4 +90,6 @@ export const nextNavigation = {
   useRouter: () => ({ push: pushed, replace: replaced }),
   usePathname: () => "/review",
 };
-export const sonner = { toast: { error: toastError, info: toastInfo, success: toastSuccess } };
+export const sonner = {
+  toast: { error: toastError, info: toastInfo, success: toastSuccess, dismiss: toastDismiss },
+};

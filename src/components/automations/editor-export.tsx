@@ -32,21 +32,29 @@ function saveBlob(name: string, blob: Blob) {
 const save = (name: string, text: string) =>
   saveBlob(name, new Blob([text], { type: "application/octet-stream" }));
 
-/** A finished clip's file name, numbered so the clips sort in the order they were made. */
-const clipName = (url: string, index: number) =>
-  `${String(index + 1).padStart(2, "0")} ${fileNameOf(url)}`;
+/**
+ * A finished clip's file name, numbered so the clips sort in the order they were made, and
+ * under its readable name ("Space interviews clip 1.mp4") when it has one.
+ */
+export function clipName(url: string, index: number, names: Record<string, string> = {}): string {
+  const own = fileNameOf(url);
+  const readable = names[url];
+  const ending = own.match(/\.[a-z0-9]{2,5}$/i)?.[0] ?? "";
+  const name = readable ? (readable.endsWith(ending) ? readable : `${readable}${ending}`) : own;
+  return `${String(index + 1).padStart(2, "0")} ${name.replace(/[\\/:*?"<>|]/g, "_")}`;
+}
 
 /**
  * Saves the finished clips one after another. Where the storage will not let the page
  * read a clip, the clip opens in a new tab so it can still be saved from there.
  */
-async function saveClips(clips: string[]) {
+async function saveClips(clips: string[], names: Record<string, string>) {
   let opened = 0;
   for (const [index, url] of clips.entries()) {
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error(String(response.status));
-      saveBlob(clipName(url, index), await response.blob());
+      saveBlob(clipName(url, index, names), await response.blob());
     } catch {
       window.open(url, "_blank", "noopener");
       opened++;
@@ -93,7 +101,7 @@ export function EditorExport({ runId }: { runId: Id<"runs"> }) {
     if (everything) result.files.forEach((file) => save(file.name, file.text));
     setSaving(true);
     try {
-      await saveClips(result.clips);
+      await saveClips(result.clips, result.clipNames);
     } finally {
       setSaving(false);
     }

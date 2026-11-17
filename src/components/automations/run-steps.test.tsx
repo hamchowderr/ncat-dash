@@ -122,6 +122,22 @@ describe("what happened in a run", () => {
     expect(dialog.querySelector("video[controls]")?.getAttribute("src")).toBe(CLIP);
   });
 
+  test("files the toolkit named after a job id show by readable names", () => {
+    renderInApp(
+      <RunSteps
+        run={run({ outputNames: { [CLIP]: "Long interview clip 1" } })}
+        highlighted={null}
+        busy={false}
+        onDecide={vi.fn()}
+      />,
+    );
+    const files = screen.getByRole("list", { name: "Files from Caption video" });
+    fireEvent.click(within(files).getByRole("button", { name: /Long interview clip 1/ }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Long interview clip 1" })).toBeTruthy();
+    expect(document.body.textContent).not.toContain("video-caption-29.mp4");
+  });
+
   test("past eight files, the rest are in Outputs", () => {
     const many = Array.from({ length: 11 }, (_, i) => `https://files.example/out/clip-${i}.mp4`);
     renderInApp(

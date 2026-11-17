@@ -1,7 +1,19 @@
+import { fileNameOfLink, plainName } from "@ncat-dash/automation-core";
 import { clipTitleFrom, TITLE_LIMIT } from "@ncat-dash/review-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { outputNamesOf } from "./outputs";
 import { toSlack } from "./slackPosts";
+
+/**
+ * A clip's title: its readable name when one is known ("Space interviews clip 1"), else
+ * its file name said plainly, else "Clip 2" for a file named after a toolkit job id.
+ */
+export function clipTitle(url: string, at: number, names: Record<string, string> = {}): string {
+  const known = names[url]?.trim();
+  if (known) return known.replace(/\.[a-z0-9]{2,5}$/i, "").slice(0, TITLE_LIMIT);
+  return plainName(fileNameOfLink(url)) ? clipTitleFrom(url) : `Clip ${at + 1}`;
+}
 
 /** The most clips one review holds, and the most versions one clip keeps. */
 export const CLIP_LIMIT = 50;
@@ -17,24 +29,26 @@ export async function openReview(
     createdBy: string | null;
     runId?: Id<"runs">;
     runStepId?: Id<"runSteps">;
+    /** Readable names for the files, by link. */
+    names?: Record<string, string>;
   },
 ): Promise<Id<"reviews"> | null> {
   const urls = [...new Set(review.urls)].slice(0, CLIP_LIMIT);
   if (urls.length === 0) return null;
   const reviewId = await ctx.db.insert("reviews", {
     organizationId: review.organizationId,
-    title: review.title.trim().slice(0, TITLE_LIMIT) || clipTitleFrom(urls[0]),
+    title: review.title.trim().slice(0, TITLE_LIMIT) || clipTitle(urls[0], 0, review.names),
     status: "open",
     runId: review.runId,
     runStepId: review.runStepId,
     createdBy: review.createdBy,
   });
   const now = Date.now();
-  for (const url of urls) {
+  for (const [at, url] of urls.entries()) {
     await ctx.db.insert("reviewClips", {
       reviewId,
       organizationId: review.organizationId,
-      title: clipTitleFrom(url),
+      title: clipTitle(url, at, review.names),
       versions: [{ url, addedBy: review.createdBy, addedAt: now }],
     });
   }
@@ -52,6 +66,10 @@ export async function openReviewForApproval(
   step: Doc<"runSteps">,
   files: string[],
 ): Promise<void> {
+  const steps = await ctx.db
+    .query("runSteps")
+    .withIndex("by_run", (q) => q.eq("runId", run._id))
+    .take(200);
   await openReview(ctx, {
     organizationId: run.organizationId,
     title: run.automationName,
@@ -59,6 +77,7 @@ export async function openReviewForApproval(
     createdBy: null,
     runId: run._id,
     runStepId: step._id,
+    names: outputNamesOf(run, steps),
   });
 }
 

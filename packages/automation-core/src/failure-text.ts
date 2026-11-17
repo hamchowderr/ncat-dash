@@ -69,6 +69,100 @@ function friendlyReason(text: string): string | null {
   return null;
 }
 
+/** The address in a network error ("connect ECONNREFUSED 127.0.0.1:8080"), if it names one. */
+function addressIn(text: string): string | null {
+  return (
+    text.match(/\b(?:ECONNREFUSED|ETIMEDOUT|ECONNRESET|EHOSTUNREACH)\s+([\w.:[\]-]+)/)?.[1] ?? null
+  );
+}
+
+/**
+ * Errors from code rather than from the toolkit's media work: a server that did not
+ * answer, a refused key, a crash. People get what happened and what to do about it.
+ */
+function developerReason(text: string): string | null {
+  if (
+    /ECONNREFUSED|Connection refused|NewConnectionError|Failed to establish a new connection/i.test(
+      text,
+    )
+  ) {
+    const address = addressIn(text);
+    const local = address !== null && /^(127\.|localhost|0\.0\.0\.0|\[?::1)/.test(address);
+    return local
+      ? "The toolkit could not be reached. It is set to an address on this computer, so check the toolkit's address in Settings."
+      : "The toolkit could not be reached. Check that it is running and that its address in Settings is right.";
+  }
+  if (
+    /ENOTFOUND|EAI_AGAIN|getaddrinfo|Name or service not known|nodename nor servname/i.test(text)
+  ) {
+    return "That address could not be found. Check the toolkit's address in Settings.";
+  }
+  if (/ETIMEDOUT|timed? ?out|TimeoutError|AbortError|operation was aborted/i.test(text)) {
+    return "This took too long and was stopped. Try again in a moment.";
+  }
+  if (
+    /ECONNRESET|socket hang up|EPIPE|fetch failed|network ?error|Max retries exceeded/i.test(text)
+  ) {
+    return "The connection to the toolkit dropped. Try again in a moment.";
+  }
+  if (/CERT_|certificate|SSL|self[- ]signed/i.test(text)) {
+    return "The toolkit's secure connection could not be trusted. Check its address uses a valid certificate.";
+  }
+  if (
+    /(HTTP|status|code|answered)\W{0,3}401\b|Unauthori[sz]ed|Invalid API key|invalid.?api.?key/i.test(
+      text,
+    )
+  ) {
+    return "The toolkit did not accept the API key. Check it in Settings.";
+  }
+  if (
+    /(HTTP|status|code|answered)\W{0,3}50[0234]\b|Internal Server Error|Bad Gateway|Service Unavailable/i.test(
+      text,
+    )
+  ) {
+    return "The toolkit ran into a problem of its own. Try again in a moment.";
+  }
+  if (
+    /(HTTP|status|code|answered)\W{0,3}413\b|Payload Too Large|Request Entity Too Large/i.test(text)
+  ) {
+    return "The file is too large for the toolkit to take.";
+  }
+  if (/(HTTP|status|code|answered)\W{0,3}429\b|Too Many Requests|queue (is )?full/i.test(text)) {
+    return "The toolkit is busy with other work. This will try again shortly.";
+  }
+  return null;
+}
+
+/** Text that reads like code talking: an error class, a stack, an errno or raw data. */
+function looksLikeCode(text: string): boolean {
+  return (
+    /^(Uncaught\s+)?[A-Z]\w*(Error|Exception)\b/.test(text) ||
+    /^Error:\s/.test(text) ||
+    /Traceback \(most recent call last\)|\n\s+at\s+\S+.*\(|\berrno\b/.test(text) ||
+    /\bE(NOENT|ACCES|PERM|ADDRINUSE|ADDRNOTAVAIL|NETUNREACH|PROTO|INVAL)\b/.test(text) ||
+    /^[{[]/.test(text.trim()) ||
+    /\[object Object\]|Cannot read propert|is not a function|is not defined/.test(text)
+  );
+}
+
+/** The useful words a refusal carries in its body: `{"message": "..."}` and the like. */
+function messageInBody(text: string): string | null {
+  const json = text.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) return null;
+  try {
+    const body = JSON.parse(json) as Record<string, unknown>;
+    for (const key of ["message", "error", "detail", "reason"]) {
+      const value = body[key];
+      if (typeof value === "string" && value.trim() && !looksLikeCode(value.trim())) {
+        return value.trim();
+      }
+    }
+  } catch {
+    // Not data after all.
+  }
+  return null;
+}
+
 function clip(line: string): string {
   return line.length > MAX_REASON ? `${line.slice(0, MAX_REASON - 1).trimEnd()}…` : line;
 }
@@ -102,7 +196,24 @@ export function explainFailure(text: string | null | undefined): ExplainedFailur
     return { reason: clip(reason), details: full };
   }
 
+  const developer = developerReason(full);
+  if (developer) return { reason: developer, details: full };
+
+  // "The toolkit refused the job (HTTP 400). {"message": "..."}": say what it said.
+  const said = messageInBody(full);
+  if (said) {
+    const lead = full.match(/^The toolkit[^.]*?(?= \(HTTP|\.)/)?.[0];
+    return { reason: clip(lead ? `${lead}: ${said}` : said), details: full };
+  }
+
   const firstLine = full.split(/\r?\n/)[0].trim();
+  if (looksLikeCode(firstLine) || looksLikeCode(full)) {
+    return {
+      reason:
+        "Something went wrong in this step. Try it again, and if it keeps failing, show the details to whoever runs your toolkit.",
+      details: full,
+    };
+  }
   if (firstLine === full && full.length <= MAX_REASON) return { reason: full, details: null };
   return { reason: clip(firstLine), details: full };
 }

@@ -8,6 +8,7 @@ import { ArrowRight, Play } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
+import { FailureText } from "@/components/failure-text";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { formatDuration } from "@/lib/catalog";
@@ -79,7 +80,9 @@ export function StepTest({
           )}
           {step.error && (
             <Alert variant="destructive">
-              <AlertDescription>{step.error}</AlertDescription>
+              <AlertDescription>
+                <FailureText text={step.error} />
+              </AlertDescription>
             </Alert>
           )}
           <StepFacts facts={step.facts} />
