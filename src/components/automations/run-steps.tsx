@@ -17,6 +17,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { fileNameOf, MediaPreview } from "@/components/jobs/media-preview";
+import { FailureText } from "@/components/failure-text";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -448,9 +449,11 @@ export function RunSteps({
                     {Math.max(run.retryLimit, step.retries) + 1}
                   </p>
                   {step.retryError && (
-                    <p className="text-muted-foreground break-words">
-                      The last try failed: {step.retryError}
-                    </p>
+                    <FailureText
+                      className="text-muted-foreground"
+                      lead="The last try failed: "
+                      text={step.retryError}
+                    />
                   )}
                 </div>
               )}
@@ -465,7 +468,9 @@ export function RunSteps({
               )}
               {step.error && (
                 <Alert variant="destructive">
-                  <AlertDescription>{step.error}</AlertDescription>
+                  <AlertDescription>
+                    <FailureText text={step.error} />
+                  </AlertDescription>
                 </Alert>
               )}
               {step.approval &&

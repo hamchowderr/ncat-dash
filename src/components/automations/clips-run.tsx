@@ -2,7 +2,12 @@
 
 import type { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { type ClipsSetup, type Frame, getPlatform } from "@ncat-dash/automation-core";
+import {
+  type ClipsSetup,
+  explainFailure,
+  type Frame,
+  getPlatform,
+} from "@ncat-dash/automation-core";
 import type { FunctionReturnType } from "convex/server";
 import { Check, CircleAlert, Copy, Download, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -108,7 +113,9 @@ export function ClipsRun({
 
   const label =
     run.status === "failed"
-      ? (run.error ?? "The run failed.")
+      ? run.error
+        ? explainFailure(run.error).reason
+        : "The run failed."
       : run.status === "cancelled"
         ? "The run was stopped."
         : plan.length === 0
