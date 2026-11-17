@@ -12,6 +12,7 @@ import { TeamContext } from "@/lib/team-context";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
 
+import { AlertsBell } from "./alerts-bell";
 import { AppSidebar, navItemFor } from "./app-sidebar";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -42,6 +43,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               className="mr-2 data-vertical:h-4 data-vertical:self-center"
             />
             <span className="text-sm font-medium">{navItemFor(pathname).title}</span>
+            <div className="ml-auto">
+              <AlertsBell />
+            </div>
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">{children}</div>
         </SidebarInset>
