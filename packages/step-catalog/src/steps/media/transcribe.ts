@@ -11,6 +11,8 @@ export const mediaTranscribe = defineStep({
   method: "POST",
   output: "json",
   primaryInput: "media_url",
+  values: { transcript: "text", captions: "srt" },
+  valueSettings: { captions: { include_srt: true } },
   input: z.object({
     media_url: z.string().url().describe("URL of the audio or video file to transcribe"),
     task: z

@@ -165,6 +165,8 @@ export function StepFields({
     field: string | null;
     /** Where a file setting can come from besides a fixed file: the start, earlier steps. */
     sources?: { value: string; label: string }[];
+    /** Settings an earlier step fills in when left empty, with a line saying from where. */
+    filled?: Record<string, string>;
   };
   idPrefix?: string;
 }) {
@@ -300,11 +302,13 @@ export function StepFields({
                 placeholder={
                   filledForYou
                     ? "From the step before"
-                    : field.default !== undefined
-                      ? String(field.default)
-                      : kind === "url"
-                        ? "https://"
-                        : undefined
+                    : automatic?.filled?.[name]
+                      ? "Automatic"
+                      : field.default !== undefined
+                        ? String(field.default)
+                        : kind === "url"
+                          ? "https://"
+                          : undefined
                 }
                 value={values[name] ?? ""}
                 onChange={(event) => onChange(name, event.target.value)}
@@ -317,6 +321,8 @@ export function StepFields({
                 Leave empty to use each file from the step before. Fill it in to use one fixed file
                 instead.
               </FieldDescription>
+            ) : automatic?.filled?.[name] && !values[name] ? (
+              <FieldDescription>{automatic.filled[name]}</FieldDescription>
             ) : (
               field.description && <FieldDescription>{field.description}</FieldDescription>
             )}
