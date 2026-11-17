@@ -325,7 +325,9 @@ test("a teammate shares the room, and a client opens it with no account", async 
   client = await (await browser.newContext()).newPage();
   await client.goto(shareUrl);
   await expect(client.getByRole("heading", { name: "Before you start" })).toBeVisible();
-  await expect(client.getByText("Salt House will see this name beside your comments.")).toBeVisible();
+  await expect(
+    client.getByText("Salt House will see this name beside your comments."),
+  ).toBeVisible();
   await client.getByLabel("Your name").fill("Riley Client");
   await client.getByRole("button", { name: "Continue" }).click();
   await expect(client.getByText("From Salt House")).toBeVisible();
@@ -335,7 +337,9 @@ test("a teammate shares the room, and a client opens it with no account", async 
   ).toHaveCount(2);
   // The team's own threads stay with the team.
   await expect(comments(client).getByText(/Pause where something needs a change/)).toBeVisible();
-  await expect(comments(client).getByText("The logo covers the mission patch here.")).toHaveCount(0);
+  await expect(comments(client).getByText("The logo covers the mission patch here.")).toHaveCount(
+    0,
+  );
 });
 
 test("the team and the client see each other in the room", async () => {
