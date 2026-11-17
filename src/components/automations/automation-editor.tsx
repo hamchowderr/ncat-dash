@@ -293,9 +293,13 @@ function Editor({ automation }: { automation: Loaded }) {
           status: now?.status,
           jobCount: now?.jobCount,
           note: now?.note,
-          failWay:
-            node.selected ||
-            draft.edges.some((edge) => edge.source === node.id && edge.branch === FAILURE_WAY),
+          failWay: draft.edges.some(
+            (edge) => edge.source === node.id && edge.branch === FAILURE_WAY,
+          )
+            ? ("used" as const)
+            : node.selected
+              ? ("offered" as const)
+              : undefined,
         },
       };
     });

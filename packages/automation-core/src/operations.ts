@@ -402,11 +402,6 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
       link(id, before.id, branchesOfKind(kind.kind)[0]),
     ];
   } else {
-    const rightmost = nodes.reduce<AutomationNode | undefined>(
-      (far, node) => (!far || node.position.x > far.position.x ? node : far),
-      undefined,
-    );
-    const anchor = after ?? rightmost;
     const branch = after ? wayOut(draft, after, op.branch) : undefined;
     // The two ways out of an If fan apart, "yes" above and "no" below; what runs when a
     // step fails hangs a row below it.
@@ -416,9 +411,18 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
         : branch === FAILURE_WAY
           ? ROW_GAP
           : (branch === "no" ? 1 : -1) * (ROW_GAP / 2);
-    position = anchor
-      ? { x: anchor.position.x + NODE_GAP, y: anchor.position.y + lift }
-      : { x: 0, y: 0 };
+    if (after) {
+      position = { x: after.position.x + NODE_GAP, y: after.position.y + lift };
+    } else if (nodes.length === 0) {
+      position = { x: 0, y: 0 };
+    } else {
+      // A step joined to nothing starts from the start, so it goes in the first column,
+      // below everything else.
+      position = {
+        x: Math.min(...nodes.map((node) => node.position.x)),
+        y: Math.max(...nodes.map((node) => node.position.y)) + ROW_GAP,
+      };
+    }
     if (after) edges = [...edges, link(after.id, id, branch)];
   }
 

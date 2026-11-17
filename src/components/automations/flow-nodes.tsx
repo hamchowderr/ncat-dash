@@ -170,8 +170,11 @@ export type StepNodeData = {
   openWays?: string[];
   /** In a run: what happened here in a few words, shown in place of the usual second line. */
   note?: string;
-  /** Show the way out for when this step fails: it has one, or it is chosen in the editor. */
-  failWay?: boolean;
+  /**
+   * The way out for when this step fails: "used" when something hangs off it, "offered"
+   * when the step is chosen in the editor, so a line can be drawn from it.
+   */
+  failWay?: "used" | "offered";
 };
 export type TriggerNodeData = { trigger: Trigger; summary?: string };
 export type StepFlowNode = Node<StepNodeData, "step">;
@@ -258,12 +261,14 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
           // The way out for when the step fails, low on its right, in the colour of an error.
           // Always there, so lines can attach to it; seen only when it is used or chosen.
           <span className={cn(!failWay && "pointer-events-none opacity-0")} aria-hidden={!failWay}>
-            <span
-              className="text-destructive pointer-events-none absolute right-2 -translate-y-1/2 text-[10px] leading-none font-medium"
-              style={{ top: `${FAIL_TOP}%` }}
-            >
-              Fails
-            </span>
+            {failWay === "used" && (
+              <span
+                className="text-destructive pointer-events-none absolute right-2 -translate-y-1/2 text-[10px] leading-none font-medium"
+                style={{ top: `${FAIL_TOP}%` }}
+              >
+                Fails
+              </span>
+            )}
             <Handle
               id={FAILURE_WAY}
               type="source"

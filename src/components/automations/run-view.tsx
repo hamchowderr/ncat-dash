@@ -100,7 +100,9 @@ export function RunView({
           status: byNode.has(node.id) ? shownStatus(byNode.get(node.id)!) : undefined,
           jobCount: byNode.get(node.id)?.jobs.length,
           note: logicNote(byNode.get(node.id) ?? { status: "pending" }) ?? undefined,
-          failWay: failsOver(node.id, run.edges as AutomationEdge[]),
+          failWay: failsOver(node.id, run.edges as AutomationEdge[])
+            ? ("used" as const)
+            : undefined,
         },
       })),
     ];

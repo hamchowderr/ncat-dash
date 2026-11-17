@@ -11,6 +11,12 @@ const sides = applyOperations(empty, [
   { op: "add", type: "step:video-trim", id: "trim_2" },
 ]);
 
+it("a step joined to nothing goes below, in the first column, ready to be joined", () => {
+  const at = (id: string) => sides.nodes.find((node) => node.id === id)!.position;
+  expect(at("trim_2").x).toBe(at("trim_1").x);
+  expect(at("trim_2").y).toBeGreaterThan(at("caption_1").y);
+});
+
 describe("joining two sides back together", () => {
   const joined = applyOperations(sides, [
     {
