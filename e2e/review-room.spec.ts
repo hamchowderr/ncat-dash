@@ -194,6 +194,30 @@ test("a changed file is added as version 2 and version 1 keeps its comments", as
   await expect(comments(jordan).getByText("The logo covers the mission patch here.")).toBeVisible();
 });
 
+test("a link to a comment opens the room at it, as a notification will", async () => {
+  const clipId = await jordan
+    .getByRole("navigation", { name: "Clips in this review" })
+    .getByRole("button", { name: /Opening hello/ })
+    .getAttribute("data-clip-id");
+  const thread = comments(jordan).getByRole("listitem").first();
+  const commentId = (await thread.getAttribute("id"))?.replace("thread-", "");
+  expect(clipId && commentId).toBeTruthy();
+
+  const page = await jordan.context().newPage();
+  try {
+    await page.goto(`${roomUrl}?clip=${clipId}&comment=${commentId}`);
+    // Version 2 is the newest, but the comment is on version 1.
+    await expect(stage(page).getByRole("button", { name: "Version 1" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(stage(page).getByText("0:02 / 0:06")).toBeVisible();
+    await expect(page.locator(`#thread-${commentId}`)).toHaveClass(/bg-muted\/60/);
+  } finally {
+    await page.close();
+  }
+});
+
 test("resolving a thread shows for everyone", async () => {
   await comments(jordan).getByRole("button", { name: "Resolve", exact: true }).click();
   await expect(comments(jordan).getByText("All resolved")).toBeVisible();
