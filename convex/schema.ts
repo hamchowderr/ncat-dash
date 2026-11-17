@@ -445,6 +445,33 @@ export default defineSchema({
   // The toSend account this dashboard sends email through: failed-run alerts, sign-in
   // emails and team invitations. One for the whole deployment, set once in Settings by
   // the team named here. TOSEND_API_KEY and EMAIL_FROM on the deployment win over it.
+  // A team's own Slack app, so its people can talk to the agent in Slack. One Slack
+  // workspace belongs to one team. The token and signing secret are stored encrypted and
+  // never leave the server.
+  slackConnections: defineTable({
+    organizationId: v.string(),
+    slackTeamId: v.string(),
+    slackTeamName: v.string(),
+    botUserId: v.string(),
+    botTokenCipher: v.string(),
+    signingSecretCipher: v.string(),
+    connectedBy: v.string(),
+    connectedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_slack_team", ["slackTeamId"]),
+
+  // Who a Slack user is on the dashboard, found by their email address, and the
+  // sign-in the agent uses to act as them. Rows go when the connection goes.
+  slackPeople: defineTable({
+    slackTeamId: v.string(),
+    slackUserId: v.string(),
+    organizationId: v.string(),
+    userId: v.string(),
+    sessionToken: v.string(),
+    sessionExpiresAt: v.number(),
+  }).index("by_slack_user", ["slackTeamId", "slackUserId"]),
+
   emailConnections: defineTable({
     organizationId: v.string(),
     // AES-GCM ciphertext of the toSend API key.

@@ -29,3 +29,12 @@ the clip. The model said it is one continuous shot with no cuts and described th
 across the frames. The browser tests play this answer back. Its match was cut down to the
 question line, so the replay still works when the automation outline or FFmpeg's numbers
 shift a little; the Convex tests check what is sent.
+
+One Slack answer, recorded 2026-11-17 by the browser tests (`RECORD_AGENT=1 pnpm test:e2e
+e2e/slack.spec.ts`), against the Slack stand-in (`e2e/slack-stand-in.mjs`): Jordan tags the
+agent in a channel with "How many automations does our team have, and what are they
+called? Answer in one short sentence." The agent looked it up in the dashboard as Jordan
+and said the team has one automation, called "New automation", switched off with no steps
+yet. There are three files: the answer itself and the thread title, which a smaller model
+writes. Each match was cut down to the question, because Slack shows the bot's tag as
+"@Agent" and each run gets its own message id.

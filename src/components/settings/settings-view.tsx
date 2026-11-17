@@ -18,6 +18,7 @@ import { BrandCard } from "./brand-card";
 import { EditorsCard } from "./editors-card";
 import { EmailCard } from "./email-card";
 import { NotificationsCard } from "./notifications-card";
+import { SlackCard } from "./slack-card";
 import { TeamCard } from "./team-card";
 
 export function SettingsView() {
@@ -177,6 +178,7 @@ export function SettingsView() {
           </Card>
           <NotificationsCard />
           <EmailCard />
+          <SlackCard />
           <TeamCard canEdit={settings.canEdit} />
         </>
       )}
