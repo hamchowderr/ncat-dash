@@ -129,7 +129,7 @@ export function RunView({
     return { nodes, edges, byNode };
   }, [run]);
 
-  if (run === undefined) return <Skeleton className="h-[70vh] rounded-xl" />;
+  if (run === undefined) return <RunSkeleton />;
   if (run === null || !flow) {
     return <p className="text-muted-foreground text-sm">This run no longer exists.</p>;
   }
@@ -149,10 +149,10 @@ export function RunView({
   }
 
   return (
-    <>
+    <div className="reveal flex flex-col gap-4 md:gap-6">
       <div className="flex flex-wrap items-center gap-3">
         <Button asChild variant="ghost" size="icon" className="-ml-2">
-          <Link href={`/automations/${automationId}`}>
+          <Link href={`/automations/${automationId}`} transitionTypes={["nav-back"]}>
             <ArrowLeft />
             <span className="sr-only">Back to the automation</span>
           </Link>
@@ -259,6 +259,28 @@ export function RunView({
           />
         </div>
       )}
-    </>
+    </div>
+  );
+}
+
+/** The run page's own shape in grey, so the run arrives in place. */
+function RunSkeleton() {
+  return (
+    <div className="flex flex-col gap-4 md:gap-6" aria-busy="true" aria-label="Loading">
+      <div className="flex items-center gap-3">
+        <Skeleton className="-ml-2 size-9 rounded-md" />
+        <div className="grid gap-1.5">
+          <Skeleton className="h-5 w-40 rounded-md" />
+          <Skeleton className="h-4 w-64 rounded-md" />
+        </div>
+        <Skeleton className="ml-auto h-7 w-36 rounded-full" />
+      </div>
+      <div className="bg-surface h-80 rounded-xl" />
+      <div className="bg-surface flex flex-col gap-3 rounded-xl p-4">
+        <Skeleton className="h-4 w-32 rounded-md" />
+        <Skeleton className="h-10 w-full rounded-md" />
+        <Skeleton className="h-10 w-full rounded-md" />
+      </div>
+    </div>
   );
 }

@@ -7,9 +7,10 @@ const stamp = Date.now().toString(36);
 
 async function newAutomation(page: Page, name: string) {
   await page.goto("/automations");
-  await page.getByRole("button", { name: "New automation", exact: true }).click();
+  await page.getByRole("link", { name: "New automation", exact: true }).click();
+  await expect(page).toHaveURL(/\/automations\/new$/);
   await page.getByRole("button", { name: "Empty canvas" }).first().click();
-  await expect(page).toHaveURL(/\/automations\/[a-z0-9]+$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
   await page.getByLabel("Automation name").fill(name);
 }
 

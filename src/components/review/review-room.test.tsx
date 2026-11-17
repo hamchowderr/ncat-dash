@@ -289,7 +289,9 @@ describe("deciding a review", () => {
     const { user } = open();
     await user.click(screen.getByRole("button", { name: "More" }));
     await user.click(await screen.findByRole("menuitem", { name: "Delete review" }));
-    await waitFor(() => expect(pushed).toHaveBeenCalledWith("/review"));
+    await waitFor(() =>
+      expect(pushed).toHaveBeenCalledWith("/review", { transitionTypes: ["nav-back"] }),
+    );
     expect(mutationOf(api.reviews.remove)).toHaveBeenCalledWith({ reviewId: REVIEW });
 
     pushed.mockClear();

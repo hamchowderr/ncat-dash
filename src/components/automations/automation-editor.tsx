@@ -133,13 +133,15 @@ function toFlowNode(node: AutomationNode): StepFlowNode {
 
 export function AutomationEditor({ automationId }: { automationId: Id<"automations"> }) {
   const automation = useQuery(api.automations.get, { automationId });
-  if (automation === undefined) return <Skeleton className="h-[70vh] rounded-xl" />;
+  if (automation === undefined) return <EditorSkeleton />;
   if (automation === null) {
     return (
       <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
         <p className="text-muted-foreground text-sm">This automation no longer exists.</p>
         <Button asChild size="sm" variant="outline">
-          <Link href="/automations">Back to automations</Link>
+          <Link href="/automations" transitionTypes={["nav-back"]}>
+            Back to automations
+          </Link>
         </Button>
       </div>
     );
@@ -148,6 +150,29 @@ export function AutomationEditor({ automationId }: { automationId: Id<"automatio
     <ReactFlowProvider>
       <Editor key={automation._id} automation={automation} />
     </ReactFlowProvider>
+  );
+}
+
+/** The editor's own shape in grey, so the real editor arrives in place instead of over a blob. */
+function EditorSkeleton() {
+  return (
+    <>
+      <div className="flex items-center gap-3" aria-hidden="true">
+        <Skeleton className="-ml-2 size-9 rounded-md" />
+        <Skeleton className="h-9 w-full max-w-xs rounded-md" />
+        <Skeleton className="ml-auto h-9 w-72 max-w-[40%] rounded-md" />
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-2" aria-busy="true" aria-label="Loading">
+        <Skeleton className="h-9 w-56 rounded-lg" />
+        <div className="bg-surface flex min-h-[28rem] flex-col gap-1.5 rounded-xl p-2 lg:flex-[1_1_0px]">
+          <div className="flex h-8 items-center gap-2">
+            <Skeleton className="h-7 w-24 rounded-md" />
+            <Skeleton className="h-7 w-24 rounded-md" />
+          </div>
+          <div className="bg-background flex-1 rounded-lg" />
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -613,16 +638,18 @@ function Editor({ automation }: { automation: Loaded }) {
   async function onRun(fileUrl?: string) {
     if (!(await persist(true))) return;
     const runId = await runNow({ automationId: automation._id, fileUrl });
-    router.push(`/automations/${automation._id}/runs/${runId}`);
+    router.push(`/automations/${automation._id}/runs/${runId}`, {
+      transitionTypes: ["nav-forward"],
+    });
   }
 
   const query = search.trim().toLowerCase();
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="reveal flex flex-wrap items-center gap-3">
         <Button asChild variant="ghost" size="icon" className="-ml-2">
-          <Link href="/automations">
+          <Link href="/automations" transitionTypes={["nav-back"]}>
             <ArrowLeft />
             <span className="sr-only">Back to automations</span>
           </Link>
@@ -693,7 +720,7 @@ function Editor({ automation }: { automation: Loaded }) {
         />
       )}
 
-      <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1">
+      <Tabs value={tab} onValueChange={setTab} className="reveal min-h-0 flex-1">
         <TabsList>
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>

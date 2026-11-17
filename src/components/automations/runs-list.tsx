@@ -76,7 +76,10 @@ export function RunsList({ automationId }: { automationId: Id<"automations"> }) 
               </TableCell>
               <TableCell className="text-right">
                 <Button asChild variant="ghost" size="sm">
-                  <Link href={`/automations/${automationId}/runs/${run._id}`}>
+                  <Link
+                    href={`/automations/${automationId}/runs/${run._id}`}
+                    transitionTypes={["nav-forward"]}
+                  >
                     View<span className="sr-only"> run from {when.format(run.startedAt)}</span>
                   </Link>
                 </Button>

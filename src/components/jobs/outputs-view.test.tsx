@@ -90,7 +90,9 @@ describe("Outputs, by run", () => {
       title: "Shorts: podcast episode 12.mp4",
       urls: captioned,
     });
-    await waitFor(() => expect(pushed).toHaveBeenCalledWith("/review/rev_9"));
+    await waitFor(() =>
+      expect(pushed).toHaveBeenCalledWith("/review/rev_9", { transitionTypes: ["nav-forward"] }),
+    );
   });
 
   test("says so when the review could not be opened, and can be tried again", async () => {

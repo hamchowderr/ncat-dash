@@ -56,7 +56,7 @@ function useSendToReview() {
     setSending(key);
     try {
       const reviewId = await createReview({ organizationId: team.id, title, urls });
-      router.push(`/review/${reviewId}`);
+      router.push(`/review/${reviewId}`, { transitionTypes: ["nav-forward"] });
     } catch (error) {
       toast.error(errorMessage(error, "The review could not be opened."));
       setSending(null);
@@ -165,7 +165,11 @@ function RunCard({ run, review }: { run: RunOutputs; review: ReturnType<typeof u
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-base font-semibold">
-              <Link href={`/automations/${run.automationId}`} className="hover:underline">
+              <Link
+                href={`/automations/${run.automationId}`}
+                transitionTypes={["nav-forward"]}
+                className="hover:underline"
+              >
                 {run.automationName}
               </Link>
             </h2>
@@ -183,7 +187,12 @@ function RunCard({ run, review }: { run: RunOutputs; review: ReturnType<typeof u
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild size="sm" variant="ghost">
-            <Link href={`/automations/${run.automationId}/runs/${run.runId}`}>See the run</Link>
+            <Link
+              href={`/automations/${run.automationId}/runs/${run.runId}`}
+              transitionTypes={["nav-forward"]}
+            >
+              See the run
+            </Link>
           </Button>
           {toReview.length > 0 && (
             <Button
