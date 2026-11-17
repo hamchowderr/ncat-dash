@@ -5,6 +5,7 @@ import type { CutList } from "./cuts";
 import { fcp7Xml } from "./fcp7";
 import { fcpXml } from "./fcpxml";
 import { fileNameOf, sourcesOf } from "./cuts";
+import { type Cue, cutCues, formatSrt } from "./srt";
 
 export const EDITORS = [
   { id: "premiere", name: "Premiere Pro", file: "xml" },
@@ -31,6 +32,8 @@ export interface EditorFile {
   text: string;
   /** The editors this file is for, by name. */
   editors: string[];
+  /** True for a captions file, which every editor imports. */
+  captions?: boolean;
 }
 
 /** A name that is safe as a file name on every system. */
@@ -50,8 +53,15 @@ const HOW_TO: Record<Exclude<EditorId, "capcut">, string> = {
 /**
  * The files to hand an editor for a cut list: the timeline file each chosen editor opens,
  * and a short note on how to open it. Empty when there is nothing to export.
+ *
+ * `captions` holds the captions of a whole recording, by its URL. Each timeline cut from
+ * that recording then gets its own captions file, timed to where the words now sit.
  */
-export function editorFiles(list: CutList, editors: EditorId[]): EditorFile[] {
+export function editorFiles(
+  list: CutList,
+  editors: EditorId[],
+  captions: Record<string, Cue[]> = {},
+): EditorFile[] {
   if (list.timelines.length === 0) return [];
   const chosen = EDITORS.filter((editor) => editors.includes(editor.id));
   const base = safeFileName(list.name);
@@ -74,6 +84,16 @@ export function editorFiles(list: CutList, editors: EditorId[]): EditorFile[] {
   }
   if (files.length === 0) return [];
 
+  const used = new Set<string>();
+  for (const timeline of list.timelines) {
+    const cues = cutCues(captions[timeline.source.url] ?? [], timeline.pieces);
+    let name = `${safeFileName(timeline.name)}.srt`;
+    for (let copy = 2; used.has(name); copy++) name = `${safeFileName(timeline.name)} ${copy}.srt`;
+    if (cues.length === 0) continue;
+    used.add(name);
+    files.push({ name, text: formatSrt(cues), editors: [], captions: true });
+  }
+
   const recordings = sourcesOf(list).map((source) => fileNameOf(source.url));
   const steps = chosen.flatMap((editor) => (editor.id === "capcut" ? [] : [HOW_TO[editor.id]]));
   files.push({
@@ -87,6 +107,9 @@ export function editorFiles(list: CutList, editors: EditorId[]): EditorFile[] {
       "2. Open the timeline in your editor:",
       ...steps.map((step) => `   ${step}`),
       "3. If the editor says the media is offline or missing, point it at that folder once.",
+      ...(used.size > 0
+        ? ["4. Import the .srt file with the timeline's name to get its captions as editable text."]
+        : []),
       "",
       "The timeline shows the original recording with every cut as its own piece, so you can",
       "move any cut. Looks added by the automation (blurred background, logo, burned-in",

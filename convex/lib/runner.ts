@@ -164,13 +164,13 @@ async function startNode(
   if (node.kind === "export") {
     // The timeline files are made from the cuts when someone downloads them, so all this
     // step does is make sure there are cuts to open, and hand its files on.
-    if (!cutListOf(run, [...byNode.values()])) {
+    if (!(await cutListOf(ctx, run, [...byNode.values()]))) {
       await failStep(
         ctx,
         run,
         step,
         byNode,
-        "No cuts reached this step. Put it after Clips for a platform.",
+        "No cuts reached this step. Put it after a step that cuts the recording, such as Clips for a platform.",
       );
       return;
     }
