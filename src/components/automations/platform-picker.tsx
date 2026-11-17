@@ -1,9 +1,38 @@
 "use client";
 
-import { formatLimit, PLATFORMS, type PlatformName } from "@ncat-dash/automation-core";
-import { RectangleHorizontal, Smartphone } from "lucide-react";
+import {
+  type Frame,
+  formatLimit,
+  frameName,
+  PLATFORMS,
+  type PlatformName,
+} from "@ncat-dash/automation-core";
+import { RectangleHorizontal, RectangleVertical, Smartphone, Square } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+
+// The outline drawn on each tile, in the shape its clips are made.
+const OUTLINE: Record<Frame, string> = {
+  "9:16": "h-6.5 w-4.5",
+  "4:5": "h-6 w-5",
+  "1:1": "h-5 w-5",
+  "16:9": "h-4 w-6.5",
+  original: "h-4 w-6.5 border-dashed",
+};
+
+const ICON: Record<Frame, typeof Smartphone> = {
+  "9:16": Smartphone,
+  "4:5": RectangleVertical,
+  "1:1": Square,
+  "16:9": RectangleHorizontal,
+  original: RectangleHorizontal,
+};
+
+/** What the clips look like, under the tiles. */
+export function frameSentence(frame: Frame): string {
+  if (frame === "original") return "Keeps the video's own shape.";
+  return `${frameName(frame)}. The whole picture is kept, on a blurred background.`;
+}
 
 /** Platform tiles: each shows the frame it needs and how long a clip may be. */
 export function PlatformPicker({
@@ -34,6 +63,7 @@ export function PlatformPicker({
               type="button"
               role="radio"
               aria-checked={on}
+              aria-label={`${platform.name}, ${frameName(platform.frame).toLowerCase()}, up to ${formatLimit(platform.maxSeconds)}`}
               disabled={disabled}
               onClick={() => onChange(platform.name)}
               className={cn(
@@ -47,7 +77,7 @@ export function PlatformPicker({
                 aria-hidden="true"
                 className={cn(
                   "row-span-2 rounded-[3px] border-2 transition-colors",
-                  platform.frame === "9:16" ? "h-6.5 w-4.5" : "h-4 w-6.5",
+                  OUTLINE[platform.frame],
                   on ? "border-primary" : "border-muted-foreground/70",
                 )}
               />
@@ -66,14 +96,11 @@ export function PlatformPicker({
       </div>
       {selected && (
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          {selected.frame === "9:16" ? (
-            <Smartphone className="text-foreground size-4" aria-hidden="true" />
-          ) : (
-            <RectangleHorizontal className="text-foreground size-4" aria-hidden="true" />
-          )}
-          {selected.frame === "9:16"
-            ? "Vertical 9:16. The whole picture is kept, on a blurred background."
-            : "Keeps the video's own shape."}
+          {(() => {
+            const Icon = ICON[selected.frame];
+            return <Icon className="text-foreground size-4" aria-hidden="true" />;
+          })()}
+          {frameSentence(selected.frame)}
         </p>
       )}
     </div>

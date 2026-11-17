@@ -59,6 +59,22 @@ describe("the platform tiles", () => {
     expect(screen.getByRole("radio", { name: /Instagram Stories/ })).toBeTruthy();
   });
 
+  test("says what shape the chosen platform's clips are made in", () => {
+    const { rerender } = renderInApp(
+      <PlatformPicker compact value="Instagram feed" onChange={vi.fn()} />,
+    );
+    expect(
+      screen.getByText("Portrait 4:5. The whole picture is kept, on a blurred background."),
+    ).toBeTruthy();
+    rerender(<PlatformPicker compact value="YouTube" onChange={vi.fn()} />);
+    expect(
+      screen.getByText("Wide 16:9. The whole picture is kept, on a blurred background."),
+    ).toBeTruthy();
+    rerender(<PlatformPicker compact value="X" onChange={vi.fn()} />);
+    expect(screen.getByText("Keeps the video's own shape.")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "YouTube, wide 16:9, up to 15 min" })).toBeTruthy();
+  });
+
   test("choosing one hands it back", () => {
     const onChange = vi.fn();
     renderInApp(<PlatformPicker compact value={undefined} onChange={onChange} />);

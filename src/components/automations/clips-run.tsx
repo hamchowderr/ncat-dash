@@ -2,7 +2,7 @@
 
 import type { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { type ClipsSetup, getPlatform } from "@ncat-dash/automation-core";
+import { type ClipsSetup, type Frame, getPlatform } from "@ncat-dash/automation-core";
 import type { FunctionReturnType } from "convex/server";
 import { Check, CircleAlert, Copy, Download, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -20,6 +20,15 @@ type ClipState =
   | { state: "waiting" | "cutting" | "captioning" }
   | { state: "ready"; url: string }
   | { state: "failed" };
+
+// The shape a clip's preview is drawn in.
+const ASPECT: Record<Frame, string> = {
+  "9:16": "aspect-[9/16]",
+  "4:5": "aspect-[4/5]",
+  "1:1": "aspect-square",
+  "16:9": "aspect-video",
+  original: "aspect-video",
+};
 
 function clipState(index: number, cut: Step | undefined, caption: Step | undefined): ClipState {
   const cutJob = cut?.stage === "cut" ? cut.jobs[index] : undefined;
@@ -82,7 +91,9 @@ export function ClipsRun({
   const caption = setup.captions ? byNode.get("captions") : undefined;
   const approval = byNode.get("approval");
   const platform = getPlatform(setup.platform);
-  const vertical = platform?.frame === "9:16";
+  const frame = platform?.frame ?? "original";
+  const tall = frame === "9:16" || frame === "4:5";
+  const shape = ASPECT[frame];
   const plan = cut?.plan ?? [];
   const clips = plan.map((clip, index) => ({ ...clip, ...clipState(index, cut, caption) }));
   const ready = clips.filter((clip) => clip.state === "ready").length;
@@ -196,9 +207,7 @@ export function ClipsRun({
         )}
       </section>
 
-      <div
-        className={cn("grid gap-4", vertical ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2")}
-      >
+      <div className={cn("grid gap-4", tall ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2")}>
         {clips.map((clip) => (
           <section key={clip.part} className="grid content-start gap-3 rounded-2xl bg-surface p-4">
             <div className="text-muted-foreground flex items-center justify-between font-mono text-[11.5px]">
@@ -215,10 +224,7 @@ export function ClipsRun({
                   src={clip.url}
                   controls
                   preload="metadata"
-                  className={cn(
-                    "w-full rounded-lg bg-black",
-                    vertical ? "aspect-[9/16]" : "aspect-video",
-                  )}
+                  className={cn("w-full rounded-lg bg-black", shape)}
                 />
                 <div className="flex flex-wrap gap-2">
                   <Button asChild size="sm">
@@ -234,7 +240,7 @@ export function ClipsRun({
               <div
                 className={cn(
                   "flex items-center justify-center gap-2 rounded-lg text-sm",
-                  vertical ? "aspect-[9/16]" : "aspect-video",
+                  shape,
                   clip.state === "failed"
                     ? "bg-destructive/10 text-destructive"
                     : clip.state === "waiting"
