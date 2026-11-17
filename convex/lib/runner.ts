@@ -32,6 +32,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { brandOf, enqueueJob, pump } from "./queue";
+import { closeReviewForStep, openReviewForApproval } from "./reviews";
 
 // One step may fan out over this many incoming files at most.
 const MAX_JOBS_PER_STEP = 100;
@@ -151,6 +152,7 @@ async function startNode(
 
   if (node.kind === "approval") {
     await ctx.db.patch(step._id, { status: "waiting_approval", startedAt: now });
+    await openReviewForApproval(ctx, run, step, incomingFiles(node, run, byNode));
     return;
   }
 
@@ -617,5 +619,6 @@ export async function decideApproval(
     await failStep(ctx, run, step, byNode, "Rejected at the approval step.");
     await ctx.db.patch(step._id, { decidedBy: userId });
   }
+  await closeReviewForStep(ctx, step._id, approved, userId);
   await advance(ctx, run._id);
 }
