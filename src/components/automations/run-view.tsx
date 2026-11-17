@@ -20,7 +20,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { nodeTitle, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib/automations";
 import { errorMessage, formatDuration } from "@/lib/catalog";
 
-import { type FlowNode, nodeTypes, TRIGGER_ID, triggerEdges, triggerPosition } from "./flow-nodes";
+import {
+  edgeTypes,
+  FIT_VIEW,
+  flowEdge,
+  type FlowNode,
+  nodeTypes,
+  TRIGGER_ID,
+  triggerEdges,
+  triggerPosition,
+} from "./flow-nodes";
 import { ClipsRun } from "./clips-run";
 import { RunStatusBadge } from "./run-status";
 
@@ -76,7 +85,7 @@ export function RunView({
         run.edges,
       ),
       ...run.edges.map((edge) => ({
-        ...edge,
+        ...flowEdge(edge),
         animated: byNode.get(edge.target)?.status === "running",
       })),
     ];
@@ -158,16 +167,17 @@ export function RunView({
                 nodes={flow.nodes}
                 edges={flow.edges}
                 nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                minZoom={0.25}
                 nodesDraggable={false}
                 nodesConnectable={false}
                 elementsSelectable={false}
                 forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
                 fitView
-                fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
-                proOptions={{ hideAttribution: true }}
+                fitViewOptions={FIT_VIEW}
               >
                 <Background gap={20} />
-                <Controls showInteractive={false} fitViewOptions={{ maxZoom: 1, padding: 0.3 }} />
+                <Controls showInteractive={false} fitViewOptions={FIT_VIEW} />
               </ReactFlow>
             </ReactFlowProvider>
           </div>
