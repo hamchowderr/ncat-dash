@@ -46,6 +46,7 @@ import { isMember, requireMember } from "./lib/authz";
 import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
 import { deleteVersions, recordVersion } from "./lib/versions";
+import { deleteNotes, notesOf } from "./notes";
 import { presign } from "./lib/s3";
 import { decryptSecret } from "./lib/crypto";
 import { edgeValidator, nodeValidator, operationValidator, triggerValidator } from "./schema";
@@ -259,7 +260,10 @@ export const exportFile = query({
   returns: v.object({ fileName: v.string(), file: v.any(), notes: v.array(v.string()) }),
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
-    const { file, notes } = exportAutomation(automation as AutomationDraft);
+    const { file, notes } = exportAutomation(
+      automation as AutomationDraft,
+      await notesOf(ctx, automation._id),
+    );
     return { fileName: automationFileName(automation.name), file, notes };
   },
 });
@@ -297,6 +301,15 @@ export const importFile = mutation({
       read.draft,
       { userId, source: "imported" },
     );
+    for (const note of read.canvasNotes) {
+      await ctx.db.insert("automationNotes", {
+        organizationId: args.organizationId,
+        automationId,
+        ...note,
+        createdBy: userId,
+        updatedAt: Date.now(),
+      });
+    }
     return { automationId, notes: read.notes };
   },
 });
@@ -540,6 +553,7 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     await loadForMember(ctx, args.automationId);
     await deleteVersions(ctx, args.automationId);
+    await deleteNotes(ctx, args.automationId);
     await ctx.db.delete(args.automationId);
   },
 });
