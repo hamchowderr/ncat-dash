@@ -1,9 +1,9 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
 import { pump } from "./lib/queue";
-import { decideApproval } from "./lib/runner";
+import { decideApproval, retriesFor, retryStepNow, startRun } from "./lib/runner";
 
 function summary(run: Doc<"runs">) {
   return {
@@ -15,6 +15,8 @@ function summary(run: Doc<"runs">) {
     error: run.error,
     startedAt: run._creationTime,
     finishedAt: run.finishedAt,
+    // How many times steps in the run tried again after failing.
+    retries: run.retries ?? 0,
   };
 }
 
@@ -48,6 +50,8 @@ export const get = query({
     return {
       ...summary(run),
       trigger: run.trigger,
+      // How many times a failed step tries again for this team.
+      retryLimit: await retriesFor(ctx, run.organizationId),
       nodes: run.nodes,
       edges: run.edges,
       steps: await Promise.all(
@@ -66,6 +70,10 @@ export const get = query({
               .map((job) => ({ _id: job._id, status: job.status, outputs: job.outputs })),
             stage: step.stage,
             plan: step.plan,
+            retries: step.retries ?? 0,
+            // Set while the step waits to try again.
+            retryAt: step.retryAt ?? null,
+            retryError: step.retryError ?? null,
           };
         }),
       ),
@@ -147,5 +155,37 @@ export const cancel = mutation({
     }
     await ctx.db.patch(args.runId, { status: "cancelled", finishedAt: now });
     await pump(ctx, run.organizationId);
+  },
+});
+
+/** Starts a booked try for a step that failed. Scheduled by the runner. */
+export const retryStep = internalMutation({
+  args: { runStepId: v.id("runSteps"), retry: v.number() },
+  handler: async (ctx, args) => {
+    await retryStepNow(ctx, args.runStepId, args.retry);
+  },
+});
+
+/**
+ * Starts a finished run over, with the file and data that started it the first time
+ * and the automation as it is now. For a run that failed once the cause is fixed.
+ */
+export const runAgain = mutation({
+  args: { runId: v.id("runs") },
+  returns: v.id("runs"),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new ConvexError({ code: "not_found", message: "This run no longer exists." });
+    const { userId } = await requireMember(ctx, run.organizationId);
+    if (run.status === "running" || run.status === "waiting") {
+      throw new ConvexError({ code: "conflict", message: "This run is still going." });
+    }
+    const automation = await ctx.db.get(run.automationId);
+    if (!automation) {
+      throw new ConvexError({ code: "not_found", message: "This automation no longer exists." });
+    }
+    const started = await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
+    if (!started.ok) throw new ConvexError({ code: "invalid_input", message: started.message });
+    return started.runId;
   },
 });

@@ -139,6 +139,9 @@ export default defineSchema({
     dispatchedAt: v.optional(v.number()),
     // Set when an automation run created the job, so its result moves the run on.
     runStepId: v.optional(v.id("runSteps")),
+    // True when the failure is one another try cannot fix, such as a setting the
+    // toolkit refuses. A step in a run does not try such a job again.
+    permanent: v.optional(v.boolean()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
@@ -154,6 +157,8 @@ export default defineSchema({
     // The team's music library. A step that adds music uses the first track unless it
     // picks another by name.
     music: v.optional(musicValidator),
+    // How many times a failed step in a run tries again before the run fails.
+    stepRetries: v.optional(v.number()),
   }).index("by_organization", ["organizationId"]),
 
   // A saved automation: what starts it, and the steps it runs.
@@ -172,6 +177,18 @@ export default defineSchema({
     // For a watched folder: only files added after this moment start a run, so
     // switching it on never reprocesses what was already there.
     watchFrom: v.optional(v.number()),
+    // Changes not yet published. The fields above are the live version, the one triggers
+    // run; while the automation is on, edits are kept here until someone publishes them.
+    draft: v.optional(
+      v.object({
+        name: v.string(),
+        trigger: triggerValidator,
+        nodes: v.array(nodeValidator),
+        edges: v.array(edgeValidator),
+        updatedBy: v.string(),
+        updatedAt: v.number(),
+      }),
+    ),
     createdBy: v.string(),
     updatedAt: v.number(),
   })
@@ -214,6 +231,8 @@ export default defineSchema({
     // The person who pressed "Run now"; null when a trigger started it.
     startedBy: v.union(v.null(), v.string()),
     finishedAt: v.union(v.null(), v.number()),
+    // How many times steps in this run have tried again after failing.
+    retries: v.optional(v.number()),
   })
     .index("by_automation", ["automationId"])
     .index("by_organization", ["organizationId"])
@@ -255,11 +274,34 @@ export default defineSchema({
     ),
     // Who approved or rejected, for an approval step.
     decidedBy: v.optional(v.string()),
+    // How many times this step has tried again after failing.
+    retries: v.optional(v.number()),
+    // Set while the step waits to try again: when the next try starts, and why the
+    // last one failed.
+    retryAt: v.optional(v.number()),
+    retryError: v.optional(v.string()),
     startedAt: v.union(v.null(), v.number()),
     finishedAt: v.union(v.null(), v.number()),
   })
     .index("by_run", ["runId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
+
+  // Something the team should know about: a run that failed after all its tries. Shown
+  // under the bell to every member until that member has seen it.
+  alerts: defineTable({
+    organizationId: v.string(),
+    kind: v.literal("run_failed"),
+    runId: v.id("runs"),
+    automationId: v.id("automations"),
+    automationName: v.string(),
+    // The step that failed, as it is named on the canvas.
+    stepName: v.optional(v.string()),
+    message: v.string(),
+    // How many times that step tried again before giving up.
+    retries: v.number(),
+    // The members who have seen it.
+    seenBy: v.array(v.string()),
+  }).index("by_organization", ["organizationId"]),
 
   // A team's own S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces).
   storageConnections: defineTable({

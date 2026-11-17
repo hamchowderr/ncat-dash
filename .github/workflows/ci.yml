@@ -30,7 +30,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # The recipe tests run every recipe through a real FFmpeg.
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core libxml2-utils
+      # The timeline export tests read every file back with OpenTimelineIO, an independent reader.
+      - run: pip install opentimelineio==0.18.1 OpenTimelineIO-Plugins otio-fcpx-xml-adapter
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test

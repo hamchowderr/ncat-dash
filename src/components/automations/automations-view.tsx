@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -158,6 +159,15 @@ export function AutomationsView() {
                     <Link href={`/automations/${automation._id}`} className="hover:underline">
                       {automation.name}
                     </Link>
+                    {automation.hasDraft && (
+                      <Badge
+                        variant="outline"
+                        className="ml-2"
+                        title="Has changes that are not published yet"
+                      >
+                        Draft
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {triggerSummary(automation.trigger)}
