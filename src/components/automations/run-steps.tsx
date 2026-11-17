@@ -17,7 +17,7 @@ import { nodeTitle, TRIGGER_LABELS } from "@/lib/automations";
 import { formatDuration } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
-import { nodeLook, TRIGGER_ICONS, TRIGGER_TINT } from "./flow-nodes";
+import { nodeLook, TRIGGER_ICONS, TRIGGER_ID, TRIGGER_TINT } from "./flow-nodes";
 import { RunStatusBadge, shownStatus } from "./run-status";
 
 export type RunDetails = NonNullable<FunctionReturnType<typeof api.runs.get>>;
@@ -243,6 +243,56 @@ export function StepFiles({
   );
 }
 
+/**
+ * What went along each line of a run, by "source>target": the files a finished step handed
+ * on that way (for an If, only those that left by that way out), and the starting file
+ * for lines from the trigger. Lines whose step has not finished are left out.
+ */
+export function passedAlong(run: {
+  trigger: unknown;
+  edges: { source: string; target: string; branch?: string }[];
+  nodes: { id: string }[];
+  steps: {
+    nodeId: string;
+    status: string;
+    outputs: string[];
+    branches?: Record<string, string[]>;
+  }[];
+}): Map<string, string[]> {
+  const byNode = new Map(run.steps.map((step) => [step.nodeId, step]));
+  const passed = new Map<string, string[]>();
+  for (const edge of run.edges) {
+    const from = byNode.get(edge.source);
+    if (from?.status !== "done") continue;
+    const files = from.branches
+      ? edge.branch
+        ? (from.branches[edge.branch] ?? [])
+        : Object.values(from.branches).flat()
+      : from.outputs;
+    passed.set(`${edge.source}>${edge.target}`, files);
+  }
+  const fileUrl = (run.trigger as { file_url?: unknown } | null)?.file_url;
+  const fed = new Set(run.edges.map((edge) => edge.target));
+  for (const node of run.nodes) {
+    if (fed.has(node.id)) continue;
+    passed.set(`${TRIGGER_ID}>${node.id}`, typeof fileUrl === "string" && fileUrl ? [fileUrl] : []);
+  }
+  return passed;
+}
+
+/** The files that reached a step, from every line into it. */
+function receivedBy(nodeId: string, passed: Map<string, string[]>): string[] {
+  return [...passed].flatMap(([key, files]) => (key.endsWith(`>${nodeId}`) ? files : []));
+}
+
+/** "a.mp4, b.mp4 and 3 more". */
+function fileList(files: string[]): string {
+  const names = files.slice(0, 2).map(fileNameOf);
+  return files.length > 2
+    ? `${names.join(", ")} and ${files.length - 2} more`
+    : names.join(" and ");
+}
+
 /** Puts steps in the order the canvas reads, left to right and then top to bottom. */
 function inCanvasOrder(nodes: AutomationNode[]): AutomationNode[] {
   return [...nodes].sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
@@ -284,6 +334,12 @@ export function RunSteps({
   const byNode = new Map(run.steps.map((step) => [step.nodeId, step]));
   const rows = inCanvasOrder(run.nodes as AutomationNode[]).filter((node) => byNode.has(node.id));
   const TriggerIcon = TRIGGER_ICONS[run.triggerKind];
+  const passed = passedAlong({
+    trigger: run.trigger,
+    edges: run.edges as { source: string; target: string; branch?: string }[],
+    nodes: run.nodes,
+    steps: run.steps,
+  });
 
   return (
     <section aria-labelledby="run-steps-title" className="bg-card rounded-xl border">
@@ -331,6 +387,7 @@ export function RunSteps({
               icon={<Icon className={cn("size-4", look.tint)} aria-hidden="true" />}
               title={nodeTitle(node)}
               sentence={stepSentence(node, step, run.status)}
+              got={quiet ? undefined : receivedBy(node.id, passed)}
               aside={
                 <>
                   {took && <span className="tabular-nums">{took}</span>}
@@ -383,7 +440,8 @@ export function RunSteps({
                   <ReviewLink runStepId={step._id} />
                 </div>
               )}
-              <StepFacts facts={step.facts} />
+              {/* A logic step reads its files only to decide; that is not news to anyone. */}
+              {node.kind === "step" && <StepFacts facts={step.facts} />}
               <StepFiles label={`Files from ${nodeTitle(node)}`} files={files} />
             </Row>
           );
@@ -399,6 +457,7 @@ function Row({
   icon,
   title,
   sentence,
+  got,
   aside,
   quiet = false,
   marked = false,
@@ -409,6 +468,8 @@ function Row({
   icon: React.ReactNode;
   title: string;
   sentence: React.ReactNode;
+  /** The files that reached the step. */
+  got?: string[];
   aside: React.ReactNode;
   quiet?: boolean;
   marked?: boolean;
@@ -442,6 +503,15 @@ function Row({
         <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1">
           <div className={cn("grid min-w-0 flex-1", quiet && "opacity-60")}>
             <h3 className="truncate text-sm font-medium">{title}</h3>
+            {got && got.length > 0 && (
+              <p
+                className="text-muted-foreground truncate text-xs"
+                data-got
+                title={got.map(fileNameOf).join(", ")}
+              >
+                Got {fileList(got)}
+              </p>
+            )}
             <p className="text-muted-foreground text-sm" data-note>
               {sentence}
             </p>

@@ -357,8 +357,11 @@ function FlowEdge({
   targetPosition,
   markerEnd,
   style,
+  data,
 }: EdgeProps) {
   const insert = useContext(InsertOnEdgeContext);
+  // On a run: how many files went along this line, once the step before has finished.
+  const passed = (data as { passed?: number } | undefined)?.passed;
   const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -381,6 +384,20 @@ function FlowEdge({
           >
             <Plus className="size-3" aria-hidden="true" />
           </button>
+        </EdgeLabelRenderer>
+      )}
+      {!insert && passed !== undefined && (
+        <EdgeLabelRenderer>
+          <span
+            data-passed={passed}
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            className={cn(
+              "bg-card absolute rounded-full border px-1.5 py-px font-mono text-[10px] leading-4 tabular-nums",
+              passed === 0 ? "text-muted-foreground border-dashed" : "text-foreground",
+            )}
+          >
+            {passed === 0 ? "none" : passed === 1 ? "1 file" : `${passed} files`}
+          </span>
         </EdgeLabelRenderer>
       )}
     </>
