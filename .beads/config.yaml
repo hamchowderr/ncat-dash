@@ -72,6 +72,6 @@
 # - github.token    → use GITHUB_TOKEN env var instead
 
 sync:
-    remote: "git+https://github.com/hamchowderr/ncat-dash"
+    remote: "https://doltremoteapi.dolthub.com/chowderr/ncat-dash"
 export:
     auto: true
