@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createNcatRoutes } from "../../src/mastra/ncat/routes";
 import { reviewPrompt } from "../../src/mastra/ncat/review";
 import { ctx, find } from "../helpers/route-harness";
@@ -46,6 +46,62 @@ describe("the agent answering in a review room", () => {
     await route.handler(c);
     expect(captured.status).toBe(200);
     expect((captured.body as { answer: string }).answer).toMatch(/At 0:02 the logo/);
+  });
+
+  it("sends the still to the model as the image itself, not its address", async () => {
+    const still = "http://toolkit.internal.test/still.jpg";
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]);
+    const images: unknown[] = [];
+    const realFetch = globalThis.fetch;
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url === still) {
+        return new Response(jpeg, { headers: { "content-type": "image/jpeg" } });
+      }
+      if (url.includes("/v1/messages") && typeof init?.body === "string") {
+        const body = JSON.parse(init.body) as {
+          messages: { content: string | { type: string; source?: unknown }[] }[];
+        };
+        for (const message of body.messages) {
+          if (Array.isArray(message.content)) {
+            images.push(...message.content.filter((part) => part.type === "image"));
+          }
+        }
+      }
+      return realFetch(input, init);
+    });
+    try {
+      const { c, captured } = ctx({
+        resourceId: "u1",
+        body: { ...asked("@Agent is the logo too small here?"), still },
+      });
+      await route.handler(c);
+      expect(captured.status).toBe(200);
+      expect(images).toEqual([
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: "image/jpeg",
+            data: Buffer.from(jpeg).toString("base64"),
+          },
+        },
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("answers without the still when it cannot be fetched", async () => {
+    const { c, captured } = ctx({
+      resourceId: "u1",
+      body: {
+        ...asked("@Agent is the logo too small here?"),
+        still: "http://127.0.0.1:9/gone.jpg",
+      },
+    });
+    await route.handler(c);
+    expect(captured.status).toBe(200);
   });
 
   it("only answers a signed request", async () => {
