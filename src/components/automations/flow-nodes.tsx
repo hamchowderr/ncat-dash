@@ -2,7 +2,18 @@
 
 import { type AutomationNode, missingSettings, NODE_GAP } from "@ncat-dash/automation-core";
 import { getStep, type StepCategory } from "@ncat-dash/step-catalog";
-import { type Edge, Handle, type Node, type NodeProps, Position } from "@xyflow/react";
+import {
+  BaseEdge,
+  type Edge,
+  EdgeLabelRenderer,
+  type EdgeProps,
+  getBezierPath,
+  Handle,
+  MarkerType,
+  type Node,
+  type NodeProps,
+  Position,
+} from "@xyflow/react";
 import {
   CalendarClock,
   Code,
@@ -218,6 +229,102 @@ function TriggerNode({ data, selected }: NodeProps<TriggerFlowNode>) {
 
 export const nodeTypes = { step: StepNode, trigger: TriggerNode };
 
+/** Set by the editor; absent on a run, where nothing can be inserted. */
+export const InsertOnEdgeContext = createContext<((source: string, target: string) => void) | null>(
+  null,
+);
+
+/** A line between two steps, with a plus in the middle to put a step between them. */
+function FlowEdge({
+  source,
+  target,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  markerEnd,
+  style,
+}: EdgeProps) {
+  const insert = useContext(InsertOnEdgeContext);
+  const [path, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+  });
+  return (
+    <>
+      <BaseEdge path={path} markerEnd={markerEnd} style={style} />
+      {insert && (
+        <EdgeLabelRenderer>
+          <button
+            type="button"
+            aria-label="Add a step here"
+            onClick={() => insert(source, target)}
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            className="nodrag nopan bg-card text-muted-foreground hover:text-foreground hover:border-foreground/40 focus-visible:ring-ring/50 pointer-events-auto absolute flex size-5 items-center justify-center rounded-md border opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-3"
+          >
+            <Plus className="size-3" aria-hidden="true" />
+          </button>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+}
+
+/**
+ * Room around the flow when it is fitted. React Flow 13 reads a plain number as pixels,
+ * and a node's caption hangs below and beside its tile, so the sides and bottom get more.
+ */
+export const FIT_VIEW = {
+  maxZoom: 1,
+  padding: { x: "80px", top: "40px", bottom: "90px" },
+} as const;
+
+export const edgeTypes = { flow: FlowEdge };
+
+/** How every line on the canvas is drawn: with an arrow showing which way files go. */
+export function flowEdge<T extends { id: string; source: string; target: string }>(edge: T) {
+  return { ...edge, type: "flow" as const, markerEnd: { type: MarkerType.ArrowClosed } };
+}
+
+/**
+ * Positions that read left to right: each step one place right of the furthest step
+ * feeding it, and steps that share a place stacked and centred.
+ */
+export function tidyPositions(
+  nodeIds: string[],
+  edges: { source: string; target: string }[],
+): Map<string, { x: number; y: number }> {
+  const depth = new Map<string, number>();
+  const depthOf = (id: string, seen: Set<string>): number => {
+    if (depth.has(id)) return depth.get(id)!;
+    if (seen.has(id)) return 0;
+    seen.add(id);
+    const sources = edges.filter((edge) => edge.target === id).map((edge) => edge.source);
+    const value = sources.length ? Math.max(...sources.map((s) => depthOf(s, seen))) + 1 : 0;
+    depth.set(id, value);
+    return value;
+  };
+  const columns = new Map<number, string[]>();
+  for (const id of nodeIds) {
+    const column = depthOf(id, new Set());
+    columns.set(column, [...(columns.get(column) ?? []), id]);
+  }
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const [column, ids] of columns) {
+    ids.forEach((id, row) =>
+      positions.set(id, { x: column * NODE_GAP, y: (row - (ids.length - 1) / 2) * ROW_GAP }),
+    );
+  }
+  return positions;
+}
+const ROW_GAP = 150;
+
 /** Where the trigger sits: one place to the left of the first step. */
 export function triggerPosition(nodes: { position: { x: number; y: number } }[]) {
   if (nodes.length === 0) return { x: -NODE_GAP, y: 0 };
@@ -232,14 +339,16 @@ export function triggerEdges(nodeIds: string[], edges: { target: string }[]): Ed
   const fed = new Set(edges.map((edge) => edge.target));
   return nodeIds
     .filter((id) => !fed.has(id))
-    .map((id) => ({
-      id: `${TRIGGER_ID}>${id}`,
-      source: TRIGGER_ID,
-      target: id,
-      deletable: false,
-      selectable: false,
-      focusable: false,
-    }));
+    .map((id) =>
+      flowEdge({
+        id: `${TRIGGER_ID}>${id}`,
+        source: TRIGGER_ID,
+        target: id,
+        deletable: false,
+        selectable: false,
+        focusable: false,
+      }),
+    );
 }
 
 /** Ids of the steps nothing follows. */
