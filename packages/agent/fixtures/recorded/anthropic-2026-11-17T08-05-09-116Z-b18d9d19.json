@@ -1,0 +1,111 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Build an automation that makes short clips with captions from each new recording I upload.",
+        "model": "claude-sonnet-5-5",
+        "turnIndex": 7,
+        "hasToolResult": true
+      },
+      "response": {
+        "content": "I built the automation and tried it on your newest upload, \"podcast episode 12.mp4\". It worked, but it's switched off. [Open it](/automations/jn7a8qr3qd8n1x6dx5bkqv3kx18jcfre)\n\n**What starts it:** each new video you upload. Audio and image uploads are ignored.\n\n**What it does:** it makes two sets of clips from each recording, and each set gets captions.\n- **TikTok:** cuts the video at pauses in speech into clips that fit TikTok's length limit and frame, then captions each clip.\n- **YouTube Shorts:** does the same for Shorts.\n\n**Caption look (my pick):** bold capitals, three words at a time, in the middle of the screen, with each word appearing as it's spoken. I can change this if you want a different style.\n\n**The try:** it made 3 TikTok clips and 3 YouTube Shorts clips, and captioned all 6. No step failed. [See the run](/automations/jn7a8qr3qd8n1x6dx5bkqv3kx18jcfre/runs/jx7czpk25gbnmnc09vt13tx29d8jc118)\n\nShould I switch it on so it runs on every new upload?",
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 8934,
+          "cache_read_input_tokens": 13731,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 8934,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 396
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 3328,
+        "interChunkDelaysMs": [
+          0,
+          0,
+          0,
+          6,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "totalDurationMs": 3335
+      },
+      "metadata": {
+        "systemHash": "1704ad69",
+        "toolsHash": "7ea793fd"
+      }
+    }
+  ]
+}

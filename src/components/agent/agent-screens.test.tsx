@@ -60,7 +60,20 @@ describe("the card that asks first", () => {
       "change_automation",
       "create_automation",
       "switch_automation",
+      "try_automation",
     ]);
+  });
+
+  test("asks before trying an automation, in plain words", () => {
+    const view = APPROVAL_VIEWS.try_automation?.({
+      toolCallId: "call_2",
+      toolName: "try_automation",
+      args: { automationId: "auto_1" },
+    } as never);
+    expect(view?.title).toBe("Try this automation on a file?");
+    const { container } = render(<>{view?.body}</>);
+    expect(container.textContent).toMatch(/uses your server/);
+    expect(container.textContent).not.toContain("auto_1");
   });
 
   test("asks in plain words and lists the change", () => {

@@ -1,0 +1,102 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Build an automation that makes short clips with captions from each new recording I upload.",
+        "model": "claude-sonnet-5-5",
+        "turnIndex": 4,
+        "hasToolResult": true
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "name": "change_automation",
+            "arguments": "{\"automationId\": \"jn7a8qr3qd8n1x6dx5bkqv3kx18jcfre\", \"operations\": [{\"op\":\"trigger\",\"trigger\":{\"kind\":\"upload\",\"fileType\":\"video\"}},{\"op\":\"add\",\"id\":\"clips_tiktok\",\"type\":\"clips\",\"label\":\"TikTok clips\",\"settings\":{\"platform\":\"TikTok\"}},{\"op\":\"add\",\"id\":\"caption_tiktok\",\"type\":\"step:video-caption\",\"label\":\"Caption TikTok clips\",\"after\":\"clips_tiktok\",\"settings\":{\"settings\":{\"style\":\"word_by_word\",\"position\":\"middle_center\",\"bold\":true,\"all_caps\":true,\"max_words_per_line\":3}}},{\"op\":\"add\",\"id\":\"clips_shorts\",\"type\":\"clips\",\"label\":\"YouTube Shorts clips\",\"settings\":{\"platform\":\"YouTube Shorts\"}},{\"op\":\"add\",\"id\":\"caption_shorts\",\"type\":\"step:video-caption\",\"label\":\"Caption Shorts clips\",\"after\":\"clips_shorts\",\"settings\":{\"settings\":{\"style\":\"word_by_word\",\"position\":\"middle_center\",\"bold\":true,\"all_caps\":true,\"max_words_per_line\":3}}},{\"op\":\"tidy\"}]}",
+            "id": "toolu_01SExEYKHvKJnqJnNApAxL8L"
+          }
+        ],
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 141,
+          "cache_read_input_tokens": 20773,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 141,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 458
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 685,
+        "interChunkDelaysMs": [
+          1,
+          0,
+          0,
+          376,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          23,
+          365,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          32,
+          364,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          33,
+          353,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          28,
+          25,
+          586,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          4,
+          0,
+          1,
+          0
+        ],
+        "totalDurationMs": 2880
+      },
+      "metadata": {
+        "systemHash": "ab37c40a",
+        "toolsHash": "7ea793fd"
+      }
+    }
+  ]
+}
