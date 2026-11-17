@@ -14,7 +14,10 @@ import {
   planClips,
   planJobs,
   readyNodes,
+  retryDelayMs,
+  retryLimit,
   settingsForLaterSteps,
+  shouldRetry,
   stepsBefore,
   type TemplateContext,
   TemplateError,
@@ -25,8 +28,9 @@ import {
   withBrand,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { brandOf, enqueueJob, pump } from "./queue";
 
 // One step may fan out over this many incoming files at most.
@@ -124,6 +128,8 @@ async function failStep(
     error,
     startedAt: step.startedAt ?? now,
     finishedAt: now,
+    retryAt: undefined,
+    retryError: undefined,
   });
   // Whatever this step fed can no longer run. Other branches carry on.
   for (const nodeId of downstreamOf(step.nodeId, run.edges as AutomationEdge[])) {
@@ -417,6 +423,10 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
           error: failed?.error ?? null,
           finishedAt: Date.now(),
         });
+        // A person who rejects at an approval step already knows; anything else that
+        // ends a run is something the team should hear about.
+        const broken = steps.find((step) => step.status === "failed" && !step.decidedBy);
+        if (broken) await alertTeam(ctx, run, broken);
       } else {
         const working = open.some((step) => step.status === "running");
         const next = working ? "running" : "waiting";
@@ -429,6 +439,105 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
       if (fresh?.status === "pending") await startNode(ctx, run, node, fresh, byNode);
     }
   }
+  await pump(ctx, run.organizationId);
+}
+
+/** Tells the team a run has failed. Every member sees it under the bell until they open it. */
+async function alertTeam(ctx: MutationCtx, run: Doc<"runs">, step: Doc<"runSteps">) {
+  const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
+  await ctx.db.insert("alerts", {
+    organizationId: run.organizationId,
+    kind: "run_failed",
+    runId: run._id,
+    automationId: run.automationId,
+    automationName: run.automationName,
+    stepName: node ? (node.label ?? nodeTypeOf(node)?.title) : undefined,
+    message: step.error ?? "The step failed.",
+    retries: step.retries ?? 0,
+    seenBy: [],
+  });
+}
+
+/** How many times a failed step tries again for this team. */
+export async function retriesFor(ctx: QueryCtx, organizationId: string): Promise<number> {
+  const settings = await ctx.db
+    .query("teamSettings")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .first();
+  return retryLimit(settings?.stepRetries);
+}
+
+/**
+ * Books another try for a step whose jobs failed, after a wait that grows with each
+ * try. Returns false when the step has no tries left or the failure is one another try
+ * cannot fix; the caller then fails the step.
+ */
+async function bookRetry(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  failures: Doc<"jobs">[],
+): Promise<boolean> {
+  const used = step.retries ?? 0;
+  if (!shouldRetry(used, await retriesFor(ctx, run.organizationId), failures)) return false;
+  const retry = used + 1;
+  const delay = retryDelayMs(retry);
+  await ctx.db.patch(step._id, {
+    retries: retry,
+    retryAt: Date.now() + delay,
+    retryError: failures[0].error ?? "The step failed.",
+  });
+  await ctx.db.patch(run._id, { retries: (run.retries ?? 0) + 1 });
+  await ctx.scheduler.runAfter(delay, internal.runs.retryStep, { runStepId: step._id, retry });
+  return true;
+}
+
+/**
+ * Runs a booked try: sends each job that failed again, exactly as it was, and leaves
+ * the ones that worked alone. Does nothing if the run was stopped in the meantime.
+ */
+export async function retryStepNow(
+  ctx: MutationCtx,
+  runStepId: Id<"runSteps">,
+  retry: number,
+): Promise<void> {
+  const step = await ctx.db.get(runStepId);
+  if (!step || step.status !== "running" || step.retryAt === undefined || step.retries !== retry) {
+    return;
+  }
+  const run = await ctx.db.get(step.runId);
+  if (!run || (run.status !== "running" && run.status !== "waiting")) return;
+
+  // The new job takes the old one's place, so the order the step relies on is kept.
+  const jobIds = [...step.jobIds];
+  const added: Id<"jobs">[] = [];
+  let problem: string | null = null;
+  for (let i = 0; i < jobIds.length && problem === null; i++) {
+    const job = await ctx.db.get(jobIds[i]);
+    if (!job || job.status !== "failed") continue;
+    const queued = await enqueueJob(ctx, {
+      organizationId: run.organizationId,
+      stepId: job.stepId,
+      input: job.input,
+      createdBy: job.createdBy,
+      runStepId: step._id,
+    });
+    if (queued.ok) {
+      jobIds[i] = queued.jobId;
+      added.push(queued.jobId);
+    } else problem = queued.message;
+  }
+  if (problem !== null) {
+    for (const jobId of added) await ctx.db.delete(jobId);
+    const steps = await ctx.db
+      .query("runSteps")
+      .withIndex("by_run", (q) => q.eq("runId", run._id))
+      .take(200);
+    await failStep(ctx, run, step, new Map(steps.map((other) => [other.nodeId, other])), problem);
+    await advance(ctx, run._id);
+    return;
+  }
+  await ctx.db.patch(step._id, { jobIds, retryAt: undefined });
   await pump(ctx, run.organizationId);
 }
 
@@ -445,6 +554,10 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
     if (job) jobs.push(job);
   }
   if (jobs.some((job) => job.status === "queued" || job.status === "running")) return;
+
+  // A job that failed gets another go before the step is given up on.
+  const failures = jobs.filter((job) => job.status === "failed");
+  if (failures.length > 0 && (await bookRetry(ctx, run, step, failures))) return;
 
   if (step.stage === "probe") {
     await cutClips(ctx, run, step, jobs);
@@ -470,6 +583,7 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
       status: "done",
       outputs: jobs.flatMap((job) => job.outputs),
       finishedAt: Date.now(),
+      retryError: undefined,
     });
   }
   await advance(ctx, run._id);

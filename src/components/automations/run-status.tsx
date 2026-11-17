@@ -6,6 +6,7 @@ import {
   Hourglass,
   Loader2,
   type LucideIcon,
+  RotateCw,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +14,19 @@ import { cn } from "@/lib/utils";
 
 export type RunStatus = "running" | "waiting" | "done" | "failed" | "cancelled";
 export type StepStatus = "pending" | "running" | "waiting_approval" | "done" | "failed" | "skipped";
+/** What a step is shown as: its status, or "retrying" while it waits to try again. */
+export type ShownStepStatus = StepStatus | "retrying";
+
+/** A step that failed and is waiting for its next try is shown as trying again. */
+export function shownStatus(step: {
+  status: StepStatus;
+  retryAt?: number | null;
+}): ShownStepStatus {
+  return step.status === "running" && step.retryAt ? "retrying" : step.status;
+}
 
 const LOOK: Record<
-  RunStatus | StepStatus,
+  RunStatus | ShownStepStatus,
   {
     label: string;
     icon: LucideIcon;
@@ -48,6 +59,12 @@ const LOOK: Record<
     tone: "text-emerald-600 dark:text-emerald-400",
     variant: "secondary",
   },
+  retrying: {
+    label: "Trying again",
+    icon: RotateCw,
+    tone: "text-amber-600 dark:text-amber-400",
+    variant: "secondary",
+  },
   failed: { label: "Failed", icon: CircleAlert, tone: "", variant: "destructive" },
   skipped: {
     label: "Skipped",
@@ -63,7 +80,7 @@ const LOOK: Record<
   },
 };
 
-export function RunStatusBadge({ status }: { status: RunStatus | StepStatus }) {
+export function RunStatusBadge({ status }: { status: RunStatus | ShownStepStatus }) {
   const { label, icon: Icon, tone, variant } = LOOK[status];
   return (
     <Badge variant={variant} data-status={status}>
@@ -74,7 +91,7 @@ export function RunStatusBadge({ status }: { status: RunStatus | StepStatus }) {
 }
 
 /** Just the icon, for a node on the canvas. */
-export function StatusIcon({ status, className }: { status: StepStatus; className?: string }) {
+export function StatusIcon({ status, className }: { status: ShownStepStatus; className?: string }) {
   const { label, icon: Icon, tone } = LOOK[status];
   return (
     <span title={label}>
