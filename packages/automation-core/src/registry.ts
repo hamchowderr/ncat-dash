@@ -105,10 +105,28 @@ const TRIGGERS: NodeType[] = [
     role: "trigger",
     group: "trigger",
     title: "New upload",
-    description: "Starts by itself each time someone on the team uploads a file.",
+    description:
+      "Starts by itself each time someone on the team uploads a file. The run is handed the file's details (duration, width, height, fps, codecs, whether it has sound), and can be limited to files of a certain length.",
     takes: "nothing",
     gives: "file",
-    settings: { type: "object", properties: { fileType }, required: ["fileType"] },
+    settings: {
+      type: "object",
+      properties: {
+        fileType,
+        minSeconds: {
+          type: "number",
+          minimum: 0,
+          description:
+            "Only files at least this many seconds long start the automation. The length is read from the file when it is uploaded; a file whose length cannot be read does not start it.",
+        },
+        maxSeconds: {
+          type: "number",
+          minimum: 0,
+          description: "Only files at most this many seconds long start the automation.",
+        },
+      },
+      required: ["fileType"],
+    },
     automatic: null,
   },
   {
