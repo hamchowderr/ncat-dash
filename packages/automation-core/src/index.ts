@@ -5,3 +5,5 @@ export * from "./starters";
 export * from "./templates";
 export * from "./clips";
 export * from "./setup";
+export * from "./registry";
+export * from "./operations";

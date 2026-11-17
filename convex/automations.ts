@@ -1,10 +1,15 @@
 import {
+  applyOperations,
+  type AutomationDraft,
   type AutomationEdge,
   type AutomationNode,
+  draftProblems,
   getPlatform,
   graphProblem,
   missingSettings,
   nextRunAt,
+  OperationError,
+  outline,
   scheduleProblem,
   STARTERS,
 } from "@ncat-dash/automation-core";
@@ -17,13 +22,14 @@ import {
   internalMutation,
   internalQuery,
   mutation,
+  type MutationCtx,
   query,
 } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
 import { startRun } from "./lib/runner";
 import { presign } from "./lib/s3";
 import { decryptSecret } from "./lib/crypto";
-import { edgeValidator, nodeValidator, triggerValidator } from "./schema";
+import { edgeValidator, nodeValidator, operationValidator, triggerValidator } from "./schema";
 
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
 
@@ -199,26 +205,86 @@ export const save = mutation({
   returns: v.object({ enabled: v.boolean(), problem: v.union(v.null(), v.string()) }),
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
-    const name = args.name.trim().slice(0, 80);
-    if (!name) fail("invalid_input", "Give the automation a name.");
-    if (JSON.stringify(args.nodes).length > 400_000) {
-      fail("invalid_input", "This automation's settings are too large to save.");
+    return await storeDraft(ctx, automation, args);
+  },
+});
+
+/** Writes a changed automation, switching it off when it can no longer run. */
+async function storeDraft(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  draft: Pick<Doc<"automations">, "name" | "trigger" | "nodes" | "edges">,
+): Promise<{ enabled: boolean; problem: string | null }> {
+  const name = draft.name.trim().slice(0, 80);
+  if (!name) fail("invalid_input", "Give the automation a name.");
+  if (JSON.stringify(draft.nodes).length > 400_000) {
+    fail("invalid_input", "This automation's settings are too large to save.");
+  }
+  const problem =
+    automationProblem(draft.trigger, draft.nodes, draft.edges) ??
+    (await storageProblem(ctx, automation.organizationId, draft.trigger));
+  const enabled = automation.enabled && problem === null;
+  await ctx.db.patch(automation._id, {
+    name,
+    trigger: draft.trigger,
+    nodes: draft.nodes,
+    edges: draft.edges,
+    enabled,
+    nextRunAt: scheduledNext(draft.trigger, enabled),
+    watchFrom: watchStart(automation, draft.trigger, enabled),
+    updatedAt: Date.now(),
+  });
+  return { enabled, problem };
+}
+
+const describedValidator = v.object({
+  // The automation as short text: what starts it, then each step in running order.
+  outline: v.string(),
+  // What still stops it running. Empty when it can be switched on.
+  problems: v.array(v.object({ nodeId: v.union(v.null(), v.string()), message: v.string() })),
+  enabled: v.boolean(),
+});
+
+/**
+ * An automation as text, with what is still missing. This is what the agent reads before
+ * it changes anything; the node types it can use are NODE_TYPES in automation-core.
+ */
+export const describe = query({
+  args: { automationId: v.id("automations") },
+  returns: describedValidator,
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    const draft = automation as AutomationDraft;
+    return {
+      outline: outline(draft),
+      problems: draftProblems(draft),
+      enabled: automation.enabled,
+    };
+  },
+});
+
+/**
+ * Makes changes to an automation, in order, and saves the result. All of them are made or
+ * none: the first change that cannot be made is reported and nothing is saved. The canvas
+ * makes the same changes locally before it saves, so both build the same way.
+ */
+export const change = mutation({
+  args: { automationId: v.id("automations"), operations: v.array(operationValidator) },
+  returns: describedValidator,
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    if (args.operations.length === 0 || args.operations.length > 100) {
+      fail("invalid_input", "Send between 1 and 100 changes at a time.");
     }
-    const problem =
-      automationProblem(args.trigger, args.nodes, args.edges) ??
-      (await storageProblem(ctx, automation.organizationId, args.trigger));
-    const enabled = automation.enabled && problem === null;
-    await ctx.db.patch(args.automationId, {
-      name,
-      trigger: args.trigger,
-      nodes: args.nodes,
-      edges: args.edges,
-      enabled,
-      nextRunAt: scheduledNext(args.trigger, enabled),
-      watchFrom: watchStart(automation, args.trigger, enabled),
-      updatedAt: Date.now(),
-    });
-    return { enabled, problem };
+    let next: AutomationDraft;
+    try {
+      next = applyOperations(automation as AutomationDraft, args.operations);
+    } catch (caught) {
+      if (caught instanceof OperationError) fail("invalid_input", caught.message);
+      throw caught;
+    }
+    const { enabled } = await storeDraft(ctx, automation, next);
+    return { outline: outline(next), problems: draftProblems(next), enabled };
   },
 });
 

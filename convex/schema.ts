@@ -37,6 +37,30 @@ export const triggerValidator = v.union(
   v.object({ kind: v.literal("folder"), prefix: v.string(), fileType: fileTypeValidator }),
 );
 
+/**
+ * One change to an automation, as the canvas and the agent send it. The shapes are the
+ * `Operation` type in packages/automation-core/src/operations.ts.
+ */
+export const operationValidator = v.union(
+  v.object({
+    op: v.literal("add"),
+    type: v.string(),
+    id: v.optional(v.string()),
+    after: v.optional(v.string()),
+    before: v.optional(v.string()),
+    settings: v.optional(v.record(v.string(), v.any())),
+    label: v.optional(v.string()),
+  }),
+  v.object({ op: v.literal("remove"), ids: v.array(v.string()) }),
+  v.object({ op: v.literal("connect"), source: v.string(), target: v.string() }),
+  v.object({ op: v.literal("disconnect"), source: v.string(), target: v.string() }),
+  v.object({ op: v.literal("set"), id: v.string(), settings: v.record(v.string(), v.any()) }),
+  v.object({ op: v.literal("rename"), id: v.string(), label: v.string() }),
+  v.object({ op: v.literal("trigger"), trigger: triggerValidator }),
+  v.object({ op: v.literal("name"), name: v.string() }),
+  v.object({ op: v.literal("tidy") }),
+);
+
 // Users, sessions, organizations (teams), members and invitations live in the
 // Better Auth component (convex/betterAuth). App tables point at a team by its
 // organization id, and every read or write checks membership first (lib/authz.ts).
