@@ -65,7 +65,7 @@ test.beforeAll(async ({ browser }) => {
   await jordan.locator("#baseUrl").fill(TOOLKIT);
   await jordan.locator("#apiKey").fill("stand-in-key-1234");
   await jordan.getByRole("button", { name: "Test and connect" }).click();
-  // Storage and brand can wait; the dashboard opens once the toolkit is connected.
+  // Files go to the toolkit's storage; the brand can wait. The dashboard opens now.
   await expect(jordan.getByText(/Your toolkit answered/)).toBeVisible();
   await jordan.goto("/");
   await expect(jordan.getByRole("link", { name: "Review" })).toBeVisible();
@@ -448,7 +448,7 @@ test("someone on another team cannot open the room", async ({ browser }) => {
   await outsider.locator("#baseUrl").fill(TOOLKIT);
   await outsider.locator("#apiKey").fill("stand-in-key-1234");
   await outsider.getByRole("button", { name: "Test and connect" }).click();
-  // Storage and brand can wait; the dashboard opens once the toolkit is connected.
+  // Files go to the toolkit's storage; the brand can wait. The dashboard opens now.
   await expect(outsider.getByText(/Your toolkit answered/)).toBeVisible();
   await outsider.goto("/");
   await expect(outsider.getByRole("link", { name: "Review" })).toBeVisible();
