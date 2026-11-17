@@ -32,7 +32,7 @@ export function branchesOfKind(kind: string | undefined): readonly string[] {
 
 /** Whether a node of this kind can have a way for when it fails: steps that do work. */
 export function canFailOver(kind: string | undefined): boolean {
-  return kind === "step" || kind === "clips" || kind === "export";
+  return kind === "step" || kind === "clips" || kind === "export" || kind === "automation";
 }
 
 export type Check = "length" | "type" | "shape" | "size" | "sound";

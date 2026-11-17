@@ -44,6 +44,7 @@ import { components, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { notify } from "./alerts";
+import { runEnded, startAutomationStep, startingFiles } from "./chain";
 import { cutListOf } from "./exports";
 import { finishCheck, startIf, startWait } from "./logic";
 import { brandOf, enqueueJob, pump } from "./queue";
@@ -64,10 +65,15 @@ export async function startRun(
   triggerKind: TriggerKind,
   trigger: Record<string, unknown>,
   startedBy: string | null,
-  options: { test?: string } = {},
+  options: {
+    test?: string;
+    /** The run that started this one, and the step that waits for it when one does. */
+    parent?: { runId: Id<"runs">; runStepId?: Id<"runSteps">; chain: Id<"automations">[] };
+  } = {},
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
   if (problem) return { ok: false, message: problem };
+  const { parent } = options;
 
   const runId = await ctx.db.insert("runs", {
     organizationId: automation.organizationId,
@@ -82,6 +88,13 @@ export async function startRun(
     startedBy,
     finishedAt: null,
     ...(options.test ? { test: options.test } : {}),
+    ...(parent
+      ? {
+          parentRunId: parent.runId,
+          ...(parent.runStepId ? { parentRunStepId: parent.runStepId } : {}),
+          chain: [...parent.chain, automation._id],
+        }
+      : {}),
   });
   for (const node of automation.nodes) {
     await ctx.db.insert("runSteps", {
@@ -100,10 +113,8 @@ export async function startRun(
   return { ok: true, runId };
 }
 
-function triggerFiles(trigger: unknown): string[] {
-  const fileUrl = (trigger as { file_url?: unknown } | null)?.file_url;
-  return typeof fileUrl === "string" && fileUrl !== "" ? [fileUrl] : [];
-}
+/** The files that started the run: the trigger's file, or all of those another run handed it. */
+const triggerFiles = startingFiles;
 
 /**
  * The files a finished step hands to `node`. A step with one way out hands on all of its
@@ -219,6 +230,11 @@ async function startNode(
 
   if (node.kind === "wait") {
     await startWait(ctx, run, node, step, byNode);
+    return;
+  }
+
+  if (node.kind === "automation") {
+    await startAutomationStep(ctx, run, node, step, byNode, incomingFiles(node, run, byNode));
     return;
   }
 
@@ -550,6 +566,8 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
           error: failed?.error ?? null,
           finishedAt: Date.now(),
         });
+        // A step waiting on this run moves on, and automations that follow it start.
+        await runEnded(ctx, run, failed ? "failed" : "done", failed?.error ?? null);
         // A person who rejects at an approval step already knows, one that ran out of
         // time has its own alert, and a step with a way for when it fails was dealt with;
         // anything else that ends a run is something the team should hear about.

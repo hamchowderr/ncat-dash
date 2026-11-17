@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TRIGGER_LABELS } from "@/lib/automations";
+import { RUN_TRIGGER_LABELS } from "@/lib/automations";
 import { formatDuration } from "@/lib/catalog";
 
 import { RunStatusBadge } from "./run-status";
@@ -52,7 +52,7 @@ export function RunsList({ automationId }: { automationId: Id<"automations"> }) 
             <TableRow key={run._id}>
               <TableCell className="font-medium">{when.format(run.startedAt)}</TableCell>
               <TableCell className="text-muted-foreground">
-                {run.testOf ? `Test of ${run.testOf}` : TRIGGER_LABELS[run.triggerKind]}
+                {run.testOf ? `Test of ${run.testOf}` : RUN_TRIGGER_LABELS[run.triggerKind]}
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap items-center gap-2">

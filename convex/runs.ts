@@ -1,7 +1,8 @@
 import { type AutomationNode, nodeTypeOf } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
-import type { Doc } from "./_generated/dataModel";
-import { internalMutation, mutation, query } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { internalMutation, mutation, type MutationCtx, query } from "./_generated/server";
+import { runEnded } from "./lib/chain";
 import { approvalView, membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { factsOf } from "./lib/facts";
@@ -50,6 +51,18 @@ function summary(run: Doc<"runs">) {
     retries: run.retries ?? 0,
     // For a test of one step: that step's name, as it was when tested.
     testOf: run.test ? testName(run) : null,
+  };
+}
+
+/** Enough of another run to link to it. */
+function linkTo(run: Doc<"runs">) {
+  return {
+    runId: run._id,
+    automationId: run.automationId,
+    automationName: run.automationName,
+    status: run.status,
+    // How it came from the run it links from: a step that ran it, or following it.
+    how: run.triggerKind === "finished" ? ("followed" as const) : ("step" as const),
   };
 }
 
@@ -122,6 +135,11 @@ export const get = query({
         .map((node) => node.id),
     );
     const members = approvalNodes.size > 0 ? await membersOf(ctx, run.organizationId) : [];
+    const parent = run.parentRunId ? await ctx.db.get(run.parentRunId) : null;
+    const started = await ctx.db
+      .query("runs")
+      .withIndex("by_parentRun", (q) => q.eq("parentRunId", args.runId))
+      .take(50);
     return {
       ...summary(run),
       // Whether the run's cuts can be opened in a video editor.
@@ -131,6 +149,10 @@ export const get = query({
       startedWith: startingFileName(run.trigger),
       // How many times a failed step tries again for this team.
       retryLimit: await retriesFor(ctx, run.organizationId),
+      // The run that started this one, when another run did.
+      startedByRun: parent ? linkTo(parent) : null,
+      // Runs this one started: by a Run an automation step, or by being followed.
+      startedRuns: started.map(linkTo),
       nodes: run.nodes,
       edges: run.edges,
       steps: await Promise.all(
@@ -155,6 +177,8 @@ export const get = query({
             // For an If: the files that left by each way. For a Wait: when it carries on.
             branches: step.branches,
             resumeAt: step.resumeAt,
+            // For a Run an automation step: the run it started.
+            childRunId: step.childRunId ?? null,
             retries: step.retries ?? 0,
             // Set while the step waits to try again.
             retryAt: step.retryAt ?? null,
@@ -255,30 +279,45 @@ export const cancel = mutation({
     const run = await ctx.db.get(args.runId);
     if (!run) return;
     await requireMember(ctx, run.organizationId);
-    if (run.status !== "running" && run.status !== "waiting") return;
-    const now = Date.now();
-    const steps = await ctx.db
-      .query("runSteps")
-      .withIndex("by_run", (q) => q.eq("runId", args.runId))
-      .take(200);
-    for (const step of steps) {
-      if (step.status === "done" || step.status === "failed" || step.status === "skipped") continue;
-      for (const jobId of step.jobIds) {
-        const job = await ctx.db.get(jobId);
-        if (job && job.status === "queued" && job.dispatchedAt === undefined) {
-          await ctx.db.patch(jobId, {
-            status: "failed",
-            error: "The run was cancelled before this job was sent.",
-            finishedAt: now,
-          });
-        }
-      }
-      await ctx.db.patch(step._id, { status: "skipped", finishedAt: now });
-    }
-    await ctx.db.patch(args.runId, { status: "cancelled", finishedAt: now });
-    await pump(ctx, run.organizationId);
+    await cancelRun(ctx, run);
   },
 });
+
+/**
+ * Stops a run, and every run one of its "Run an automation" steps is waiting on. A step
+ * waiting on this run is told it was stopped.
+ */
+async function cancelRun(ctx: MutationCtx, run: Doc<"runs">): Promise<void> {
+  if (run.status !== "running" && run.status !== "waiting") return;
+  const now = Date.now();
+  const steps = await ctx.db
+    .query("runSteps")
+    .withIndex("by_run", (q) => q.eq("runId", run._id))
+    .take(200);
+  const waitedOn: Id<"runs">[] = [];
+  for (const step of steps) {
+    if (step.status === "running" && step.childRunId) waitedOn.push(step.childRunId);
+    if (step.status === "done" || step.status === "failed" || step.status === "skipped") continue;
+    for (const jobId of step.jobIds) {
+      const job = await ctx.db.get(jobId);
+      if (job && job.status === "queued" && job.dispatchedAt === undefined) {
+        await ctx.db.patch(jobId, {
+          status: "failed",
+          error: "The run was cancelled before this job was sent.",
+          finishedAt: now,
+        });
+      }
+    }
+    await ctx.db.patch(step._id, { status: "skipped", finishedAt: now });
+  }
+  await ctx.db.patch(run._id, { status: "cancelled", finishedAt: now });
+  for (const childId of waitedOn) {
+    const child = await ctx.db.get(childId);
+    if (child) await cancelRun(ctx, child);
+  }
+  await runEnded(ctx, run, "cancelled", null);
+  await pump(ctx, run.organizationId);
+}
 
 /** Fires when a Wait step's time is up, and lets the run carry on. */
 export const wake = internalMutation({

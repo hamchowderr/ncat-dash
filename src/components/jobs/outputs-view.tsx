@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { nodeTitle, TRIGGER_LABELS } from "@/lib/automations";
+import { nodeTitle, RUN_TRIGGER_LABELS } from "@/lib/automations";
 import { errorMessage, stepTitle } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
@@ -152,7 +152,7 @@ function ByRun() {
 function RunCard({ run, review }: { run: RunOutputs; review: ReturnType<typeof useSendToReview> }) {
   const finishedCount = countOf(run.finished);
   const alongCount = countOf(run.along);
-  const how = run.test ? "Test of one step" : TRIGGER_LABELS[run.triggerKind];
+  const how = run.test ? "Test of one step" : RUN_TRIGGER_LABELS[run.triggerKind];
   const title = run.startedWith ? `${run.automationName}: ${run.startedWith}` : run.automationName;
   const toReview = run.finished.flatMap((group) => group.files);
 

@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/select";
 import { hookUrl, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib/automations";
 
+import { AutomationPicker } from "./automation-picker";
+
 const UNITS = { minutes: 1, hours: 60, days: 1440 } as const;
 type Unit = keyof typeof UNITS;
 
@@ -26,7 +28,8 @@ function defaultFor(kind: TriggerKind): Trigger {
   if (kind === "schedule") return { kind, schedule: { mode: "interval", minutes: 60 } };
   if (kind === "upload") return { kind, fileType: "video" };
   if (kind === "folder") return { kind, prefix: "incoming/", fileType: "video" };
-  return { kind };
+  if (kind === "finished") return { kind, automationId: "", when: "done" };
+  return { kind: kind as "manual" | "webhook" };
 }
 
 export function CopyButton({ text, label }: { text: string; label: string }) {
@@ -108,6 +111,44 @@ export function TriggerPanel({
             kept with the run. Treat the address like a password.
           </FieldDescription>
         </Field>
+      )}
+
+      {trigger.kind === "finished" && (
+        <>
+          <Field>
+            <FieldLabel htmlFor="trigger-follows">Which automation</FieldLabel>
+            <AutomationPicker
+              id="trigger-follows"
+              value={trigger.automationId}
+              exclude={automationId}
+              onChange={(followed) => onChange({ ...trigger, automationId: followed })}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="trigger-when">Start after it</FieldLabel>
+            <Select
+              value={trigger.when}
+              onValueChange={(when) => onChange({ ...trigger, when: when as typeof trigger.when })}
+            >
+              <SelectTrigger id="trigger-when" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="done">Works</SelectItem>
+                <SelectItem value="failed">Fails</SelectItem>
+                <SelectItem value="either">Works or fails</SelectItem>
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              {trigger.when === "failed"
+                ? "It gets the files that run started with, so it can try something else with them."
+                : trigger.when === "either"
+                  ? "It gets the files that run finished with. After a failure, the files it started with."
+                  : "It gets the files that run finished with."}{" "}
+              Only runs of its published version count, and this automation has to be switched on.
+            </FieldDescription>
+          </Field>
+        </>
       )}
 
       {trigger.kind === "folder" && (

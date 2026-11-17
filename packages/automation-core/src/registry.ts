@@ -8,6 +8,7 @@ import { allSteps, getStep, userInputJsonSchema } from "@ncat-dash/step-catalog"
 import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
+import { FINISH_CHOICES } from "./chain";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
 import { TIME_LIMIT_UNITS, TIME_UP_CHOICES } from "./approval";
@@ -36,8 +37,8 @@ export interface JsonSchema {
 
 export interface NodeType {
   /**
-   * Stable name: "trigger:upload", "approval", "clips", "export", "if", "wait", or
-   * "step:<catalog id>".
+   * Stable name: "trigger:upload", "approval", "clips", "export", "if", "wait",
+   * "automation", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
   type: string;
@@ -223,7 +224,67 @@ const TRIGGERS: NodeType[] = [
     settings: { type: "object", properties: {} },
     automatic: null,
   },
+  {
+    type: "trigger:finished",
+    role: "trigger",
+    group: "trigger",
+    title: "Another automation finishes",
+    description:
+      "Starts by itself each time a run of another of the team's automations ends: after it works, after it fails, or both. The files that run finished with become the files to work on; after a failure, the files it started with.",
+    takes: "nothing",
+    gives: "files",
+    settings: {
+      type: "object",
+      properties: {
+        automationId: {
+          type: "string",
+          description:
+            "The id of the automation to follow, from the team's list of automations. Not this automation itself.",
+        },
+        when: {
+          type: "string",
+          enum: [...FINISH_CHOICES],
+          default: "done",
+          description:
+            "done: after its run works. failed: after it fails. either: after every run.",
+        },
+      },
+      required: ["automationId", "when"],
+    },
+    automatic: null,
+  },
 ];
+
+/** Runs another automation, like a step; see chain.ts. */
+const RUN_AUTOMATION: NodeType = {
+  type: "automation",
+  role: "action",
+  group: "logic",
+  title: "Run an automation",
+  description:
+    "Hands the files that reach it to another of the team's automations and starts that one's published version. It waits for that run to finish and hands on the files it finished with, or, with wait off, just starts it and hands its own files straight on. Automations cannot start each other in a loop.",
+  takes: "files",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      automation: {
+        type: "string",
+        description:
+          "The id of the automation to run, from the team's list of automations. Not this automation itself.",
+      },
+      wait: {
+        type: "boolean",
+        default: true,
+        description:
+          "True: wait for the other run and hand on its finished files. False: start it and carry on at once.",
+      },
+    },
+    required: ["automation"],
+  },
+  ask: ["automation"],
+  automatic: null,
+};
 
 const APPROVAL: NodeType = {
   type: "approval",
@@ -399,6 +460,7 @@ export const NODE_TYPES: NodeType[] = [
   EXPORT,
   IF,
   WAIT,
+  RUN_AUTOMATION,
   ...allSteps.map(stepType),
   APPROVAL,
 ].sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));
@@ -438,7 +500,8 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
     type === "clips" ||
     type === "export" ||
     type === "if" ||
-    type === "wait"
+    type === "wait" ||
+    type === "automation"
   ) {
     return { kind: type };
   }

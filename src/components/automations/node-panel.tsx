@@ -6,6 +6,7 @@ import {
   getPlatform,
   KIND_WORDS,
   nodeTypeOf,
+  waitsForRun,
   wantedKind,
   writeSource,
 } from "@ncat-dash/automation-core";
@@ -31,6 +32,7 @@ import { nodeTitle } from "@/lib/automations";
 import { fieldLabel } from "@/lib/catalog";
 
 import { TeamApprovalSettings } from "./approval-panel";
+import { AutomationPicker } from "./automation-picker";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { PlatformPicker } from "./platform-picker";
@@ -67,6 +69,7 @@ export function NodePanel({
   failSteps,
   onAddOnFailure,
   waitsFor,
+  automationId,
 }: {
   node: NodeContent;
   /** The steps that run before this one, nearest first. Their files can be used here. */
@@ -89,6 +92,8 @@ export function NodePanel({
   onAddOnFailure?: () => void;
   /** The names of the steps straight before this one. With two or more, it joins them. */
   waitsFor?: string[];
+  /** The automation being edited, which a Run an automation step cannot pick. */
+  automationId?: string;
 }) {
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
   const nodeType = nodeTypeOf(node);
@@ -287,6 +292,34 @@ export function NodePanel({
 
       {(node.kind === "if" || node.kind === "wait") && (
         <LogicSettings node={node} onChange={onChange} />
+      )}
+
+      {node.kind === "automation" && (
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`node-${node.id}-automation`}>Automation to run</FieldLabel>
+            <AutomationPicker
+              id={`node-${node.id}-automation`}
+              value={typeof node.input.automation === "string" ? node.input.automation : ""}
+              exclude={automationId ?? ""}
+              onChange={(automation) => onChange({ input: { ...node.input, automation } })}
+            />
+          </Field>
+          <Field orientation="horizontal">
+            <Switch
+              id={`node-${node.id}-wait`}
+              checked={waitsForRun(node)}
+              onCheckedChange={(wait) => onChange({ input: { ...node.input, wait } })}
+            />
+            <FieldLabel htmlFor={`node-${node.id}-wait`}>Wait for it to finish</FieldLabel>
+          </Field>
+          <p className="text-muted-foreground text-xs text-pretty">
+            {waitsForRun(node)
+              ? "The files that reach this step go to it. When its run finishes, the files it made carry on from here. If it fails, so does this step."
+              : "The files that reach this step go to it, and this run carries on with them straight away without waiting."}{" "}
+            It runs the published version.
+          </p>
+        </FieldGroup>
       )}
 
       {node.kind === "step" && fields && needed.length > 0 && (

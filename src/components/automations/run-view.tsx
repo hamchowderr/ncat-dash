@@ -21,7 +21,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib/automations";
+import { RUN_TRIGGER_LABELS, type RunTriggerKind, type Trigger } from "@/lib/automations";
 import { errorMessage, formatDuration } from "@/lib/catalog";
 
 import {
@@ -37,12 +37,15 @@ import {
 } from "./flow-nodes";
 import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 import { ClipsRun } from "./clips-run";
-import { logicNote, passedAlong, RunSteps } from "./run-steps";
+import { logicNote, passedAlong, RunSteps, StartedRunLink } from "./run-steps";
 import { EditorExport } from "./editor-export";
 import { RunStatusBadge, shownStatus } from "./run-status";
 
 /** A run only records which kind of trigger started it, which is all the canvas shows. */
-function runTrigger(kind: TriggerKind): Trigger {
+function runTrigger(kind: RunTriggerKind): Trigger {
+  if (kind === "automation" || kind === "finished") {
+    return { kind: "finished", automationId: "", when: "done" };
+  }
   if (kind === "schedule") return { kind, schedule: { mode: "interval", minutes: 60 } };
   if (kind === "upload") return { kind, fileType: "any" };
   if (kind === "folder") return { kind, prefix: "", fileType: "any" };
@@ -91,7 +94,13 @@ export function RunView({
         id: TRIGGER_ID,
         type: "trigger",
         position: triggerPosition(run.nodes),
-        data: { trigger: runTrigger(run.triggerKind), summary: "Started this run" },
+        data: {
+          trigger: runTrigger(run.triggerKind),
+          runKind: run.triggerKind,
+          summary: run.startedByRun
+            ? `Started by a run of ${run.startedByRun.automationName}`
+            : "Started this run",
+        },
       },
       ...(run.nodes as AutomationNode[]).map(({ position, ...node }) => ({
         id: node.id,
@@ -148,6 +157,10 @@ export function RunView({
     }
   }
 
+  // Automations that follow this one and started when it ended. Runs a step started are
+  // shown on that step's line instead.
+  const followed = run.startedRuns.filter((next) => next.how === "followed");
+
   return (
     <div className="reveal flex flex-col gap-4 md:gap-6">
       <div className="flex flex-wrap items-center gap-3">
@@ -160,7 +173,7 @@ export function RunView({
         <div className="grid">
           <h1 className="text-lg font-semibold tracking-tight">{run.automationName}</h1>
           <p className="text-muted-foreground text-sm">
-            {run.testOf ? `Test of ${run.testOf}` : `${TRIGGER_LABELS[run.triggerKind]} run`},
+            {run.testOf ? `Test of ${run.testOf}` : `${RUN_TRIGGER_LABELS[run.triggerKind]} run`},
             started {when.format(run.startedAt)}
             {run.finishedAt ? `, took ${formatDuration(run.finishedAt - run.startedAt)}` : ""}
           </p>
@@ -202,6 +215,15 @@ export function RunView({
           )}
         </div>
       </div>
+
+      {(run.startedByRun || followed.length > 0) && (
+        <nav aria-label="Linked runs" className="flex flex-wrap items-center gap-x-6 gap-y-1">
+          {run.startedByRun && <StartedRunLink run={run.startedByRun} lead="Started by a run of" />}
+          {followed.map((next) => (
+            <StartedRunLink key={next.runId} run={next} lead="Then started" />
+          ))}
+        </nav>
+      )}
 
       {clipsSetup && showClips && (
         <ClipsRun
