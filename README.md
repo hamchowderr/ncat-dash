@@ -125,10 +125,10 @@ To connect the two, start Convex once (`npx convex dev`), then run:
 pnpm setup:agent
 ```
 
-It makes the shared secret and puts every value where it is read: `.env.local` for the chat, `packages/agent/.env` for the agent server, and `AGENT_URL` and `MASTRA_JWT_SECRET` in Convex for @Agent in review rooms. Running it again keeps the same secret. When the agent server runs somewhere else, pass its address: `pnpm setup:agent --agent-url https://agent.example.com` (a Convex in the cloud cannot reach an agent on your own computer). The model key is the one thing to add yourself, in `packages/agent/.env`: `ANTHROPIC_API_KEY`, with `CHAT_MODEL=anthropic/claude-sonnet-5-5`, or `USE_AIMOCK=true` for the stand-in model. Then:
+It makes the shared secret and puts every value where it is read: `.env.local` for the chat, `packages/agent/.env` for the agent server, and `AGENT_URL` and `MASTRA_JWT_SECRET` in Convex for @Agent in review rooms. Running it again keeps the same secret. When the agent server runs somewhere else, pass its address: `pnpm setup:agent --agent-url https://agent.example.com` (a Convex in the cloud cannot reach an agent on your own computer). The model key is not copied anywhere: it stays in Infisical, and `infisical run` hands it to the agent server as it starts. The model is Sonnet 5.5 (`CHAT_MODEL=anthropic/claude-sonnet-5-5`, set by `pnpm setup:agent`). Then:
 
 ```bash
-pnpm --filter @ncat-dash/agent dev        # the agent server
+infisical run --path=/shared -- pnpm --filter @ncat-dash/agent dev   # the agent server, with the model key from Infisical
 pnpm --filter @ncat-dash/agent dev:mock   # only with USE_AIMOCK=true
 ```
 
