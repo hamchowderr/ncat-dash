@@ -195,6 +195,20 @@ export default defineSchema({
   }).index("by_organization", ["organizationId"]),
 
   // A saved automation: what starts it, and the steps it runs.
+  // Sticky notes on an automation's canvas, for the team. Not part of its versions: they
+  // explain the automation and never change what it does, so they save as they are typed.
+  automationNotes: defineTable({
+    organizationId: v.string(),
+    automationId: v.id("automations"),
+    text: v.string(),
+    x: v.number(),
+    y: v.number(),
+    width: v.number(),
+    height: v.number(),
+    createdBy: v.string(),
+    updatedAt: v.number(),
+  }).index("by_automation", ["automationId"]),
+
   automations: defineTable({
     organizationId: v.string(),
     name: v.string(),
