@@ -59,6 +59,7 @@ const note = (over: Record<string, unknown>) => ({
   createdAt: 1_700_000_000_000,
   resolved: false,
   mine: false,
+  agent: null,
   ...over,
 });
 
@@ -172,6 +173,33 @@ describe("the review room", () => {
     });
     await user.click(screen.getByRole("button", { name: "Delete your comment" }));
     expect(mutationOf(api.reviews.removeComment)).toHaveBeenCalledWith({ commentId: "mine" });
+    NOTES.clip_a = [];
+  });
+
+  test("the agent can be tagged from the comment box, and asked again when no answer came", async () => {
+    NOTES.clip_a = [
+      note({ id: "q", time: 2, body: "@Agent is it sharp?", authorId: "u1", mine: true }),
+      note({
+        id: "a",
+        parentId: "q",
+        time: 2,
+        authorId: "agent",
+        authorName: "Agent",
+        body: "The agent could not be reached. Ask again in a moment.",
+        agent: { askedBy: "u1", state: "failed" },
+        mine: true,
+      }),
+    ];
+    const { user } = open();
+    const box = screen.getByRole("textbox", { name: /^Comment at this moment/ });
+    await user.type(box, "@ag");
+    await user.click(screen.getByRole("option", { name: /Agent/ }));
+    await user.type(box, "what do you think?{Enter}");
+    expect(mutationOf(api.reviews.comment)).toHaveBeenCalledWith(
+      expect.objectContaining({ clipId: "clip_a", body: "@Agent what do you think?" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Ask again" }));
+    expect(mutationOf(api.reviews.askAgentAgain)).toHaveBeenCalledWith({ commentId: "a" });
     NOTES.clip_a = [];
   });
 

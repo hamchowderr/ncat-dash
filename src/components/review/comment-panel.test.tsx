@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
 
 import { CommentPanel, type RoomComment } from "./comment-panel";
+import { AGENT_PERSON } from "./person";
 
 const people = [
   { id: "u1", name: "Maya Ortiz", image: null },
@@ -20,6 +21,7 @@ const comment = (over: Partial<RoomComment> & { id: string }): RoomComment => ({
   createdAt: 1_700_000_000_000,
   resolved: false,
   mine: false,
+  agent: null,
   ...over,
 });
 
@@ -45,12 +47,13 @@ function setup(comments: RoomComment[] = NOTES, timed = true) {
     onSend: vi.fn(async () => true),
     onResolve: vi.fn(),
     onDelete: vi.fn(),
+    onAskAgain: vi.fn(),
   };
   render(
     <CommentPanel
       threads={threadComments(comments)}
       loading={false}
-      people={people}
+      people={[AGENT_PERSON, ...people]}
       timed={timed}
       moment={7}
       active={null}
@@ -140,5 +143,83 @@ describe("the conversation about a clip", () => {
     expect(screen.getByText(/Write a note below/)).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /^Comment\. Type @/ })).toBeInTheDocument();
     expect(screen.queryByText("0:07")).not.toBeInTheDocument();
+  });
+});
+
+describe("the agent in a thread", () => {
+  const asked = comment({
+    id: "q",
+    time: 2,
+    body: "@Agent is the logo too small here?",
+    mine: true,
+  });
+  const answer = (over: Partial<RoomComment>) =>
+    comment({
+      id: "a",
+      parentId: "q",
+      time: 2,
+      authorId: "agent",
+      authorName: "Agent",
+      createdAt: 1_700_000_002_000,
+      ...over,
+    });
+
+  test("shows that it is looking while the answer is on its way", () => {
+    setup([asked, answer({ agent: { askedBy: "u1", state: "thinking" }, mine: true })]);
+    const thread = screen.getAllByRole("listitem")[0];
+    expect(within(thread).getByText("Agent")).toBeInTheDocument();
+    expect(within(thread).getByText("for Maya")).toBeInTheDocument();
+    expect(within(thread).getByRole("status")).toHaveTextContent("Looking at the clip");
+  });
+
+  test("shows its answer like a reply, and the tag in the question is marked", () => {
+    setup([
+      asked,
+      answer({
+        body: "At 0:02 the logo is hard to read.",
+        agent: { askedBy: "u1", state: "answered" },
+        mine: true,
+      }),
+    ]);
+    const thread = screen.getAllByRole("listitem")[0];
+    expect(within(thread).getByText("At 0:02 the logo is hard to read.")).toBeInTheDocument();
+    expect(within(thread).getByText("@Agent")).toHaveClass("text-primary");
+    expect(within(thread).queryByRole("status")).not.toBeInTheDocument();
+    expect(within(thread).getByRole("button", { name: "Delete this answer" })).toBeInTheDocument();
+  });
+
+  test("lets the person who asked ask again when no answer came", async () => {
+    const { user, onAskAgain } = setup([
+      asked,
+      answer({
+        body: "The agent could not be reached. Ask again in a moment.",
+        agent: { askedBy: "u1", state: "failed" },
+        mine: true,
+      }),
+    ]);
+    await user.click(screen.getByRole("button", { name: "Ask again" }));
+    expect(onAskAgain).toHaveBeenCalledWith("a");
+  });
+
+  test("nobody else gets to ask again for them", () => {
+    setup([
+      { ...asked, mine: false },
+      answer({
+        body: "The agent could not be reached. Ask again in a moment.",
+        agent: { askedBy: "u1", state: "failed" },
+        mine: false,
+      }),
+    ]);
+    expect(screen.getByText(/could not be reached/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ask again" })).not.toBeInTheDocument();
+  });
+
+  test("is offered first when typing @ in the comment box", async () => {
+    const { user } = setup([]);
+    await user.type(screen.getByRole("textbox", { name: /Comment at this moment/ }), "@");
+    const options = screen.getAllByRole("option");
+    expect(options[0]).toHaveTextContent("Agent");
+    await user.type(screen.getByRole("textbox", { name: /Comment at this moment/ }), "ag");
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Agent"]);
   });
 });
