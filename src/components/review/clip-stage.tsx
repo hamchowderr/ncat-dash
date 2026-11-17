@@ -2,10 +2,11 @@
 
 import { formatMoment, momentPercent } from "@ncat-dash/review-core";
 import { Pause, Play } from "lucide-react";
-import type { ReactNode, RefObject } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { DrawingLayer, DrawingTools, type StageDrawing } from "./frame-drawing";
 import { Face } from "./person";
 
 const IMAGE = /\.(png|jpe?g|gif|webp|avif)(\?|#|$)/i;
@@ -41,6 +42,7 @@ export function ClipStage({
   onPlaying,
   onSeek,
   onMark,
+  drawing = null,
 }: {
   url: string;
   video: RefObject<HTMLVideoElement | null>;
@@ -55,8 +57,48 @@ export function ClipStage({
   onPlaying: (playing: boolean) => void;
   onSeek: (seconds: number) => void;
   onMark: (mark: Mark) => void;
+  /** Marks over the picture: a saved drawing, or one being made. */
+  drawing?: StageDrawing | null;
 }) {
   const still = isStill(url);
+  const picture = useRef<HTMLImageElement>(null);
+  const area = useRef<HTMLDivElement>(null);
+  // Where the picture sits inside its area, so a drawing lines up with it exactly.
+  const [frame, setFrame] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  }>();
+
+  useEffect(() => {
+    const media = still ? picture.current : video.current;
+    if (!media || !area.current || typeof ResizeObserver === "undefined") return;
+    const measure = () =>
+      setFrame(
+        media.offsetWidth > 0
+          ? {
+              left: media.offsetLeft,
+              top: media.offsetTop,
+              width: media.offsetWidth,
+              height: media.offsetHeight,
+            }
+          : undefined,
+      );
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(media);
+    observer.observe(area.current);
+    media.addEventListener("loadedmetadata", measure);
+    media.addEventListener("load", measure);
+    return () => {
+      observer.disconnect();
+      media.removeEventListener("loadedmetadata", measure);
+      media.removeEventListener("load", measure);
+    };
+  }, [still, url, video]);
+
+  const editing = drawing?.editing ?? null;
 
   function toggle() {
     const player = video.current;
@@ -72,11 +114,16 @@ export function ClipStage({
     >
       <div className="flex min-h-12 flex-wrap items-center gap-2 px-4 py-2">{header}</div>
 
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-4">
+      <div ref={area} className="relative flex min-h-0 flex-1 items-center justify-center px-4">
         {still ? (
           // The file sits in the team's own storage, so there is nothing for Next to resize.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt="" className="max-h-full max-w-full rounded-md object-contain" />
+          <img
+            ref={picture}
+            src={url}
+            alt=""
+            className="max-h-full max-w-full rounded-md object-contain"
+          />
         ) : (
           <video
             ref={video}
@@ -93,75 +140,101 @@ export function ClipStage({
             className="max-h-full max-w-full cursor-pointer rounded-md bg-black object-contain"
           />
         )}
+        {drawing && (
+          <div
+            className={cn("absolute", !frame && "inset-0")}
+            style={frame ? { ...frame } : undefined}
+          >
+            <DrawingLayer
+              shapes={drawing.shapes}
+              tool={editing?.tool}
+              color={editing?.color}
+              onAdd={editing?.onAdd}
+            />
+          </div>
+        )}
       </div>
 
-      {!still && (
-        <div className="flex items-center gap-3 px-4 pt-7 pb-4">
-          <button
-            type="button"
-            onClick={toggle}
-            aria-label={playing ? "Pause" : "Play"}
-            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-zinc-950 outline-none transition-transform hover:scale-105 focus-visible:ring-3 focus-visible:ring-white/50 active:scale-95"
-          >
-            {playing ? (
-              <Pause className="size-4 fill-current" />
-            ) : (
-              <Play className="size-4 translate-x-px fill-current" />
-            )}
-          </button>
+      {editing ? (
+        <DrawingTools
+          tool={editing.tool}
+          color={editing.color}
+          count={drawing?.shapes.length ?? 0}
+          onTool={editing.onTool}
+          onColor={editing.onColor}
+          onUndo={editing.onUndo}
+          onClear={editing.onClear}
+          onDone={editing.onDone}
+        />
+      ) : (
+        !still && (
+          <div className="flex items-center gap-3 px-4 pt-7 pb-4">
+            <button
+              type="button"
+              onClick={toggle}
+              aria-label={playing ? "Pause" : "Play"}
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-zinc-950 outline-none transition-transform hover:scale-105 focus-visible:ring-3 focus-visible:ring-white/50 active:scale-95"
+            >
+              {playing ? (
+                <Pause className="size-4 fill-current" />
+              ) : (
+                <Play className="size-4 translate-x-px fill-current" />
+              )}
+            </button>
 
-          <div className="relative h-5 min-w-0 flex-1">
-            <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-white/20">
-              <div
-                className="h-full rounded-full bg-white"
-                style={{ width: `${momentPercent(time, duration)}%` }}
+            <div className="relative h-5 min-w-0 flex-1">
+              <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-white/20">
+                <div
+                  className="h-full rounded-full bg-white"
+                  style={{ width: `${momentPercent(time, duration)}%` }}
+                />
+              </div>
+              <input
+                type="range"
+                aria-label="Position in the clip"
+                aria-valuetext={`${formatMoment(time)} of ${formatMoment(duration)}`}
+                min={0}
+                max={duration > 0 ? duration : 0}
+                step={0.05}
+                value={Math.min(time, duration > 0 ? duration : 0)}
+                onChange={(event) => onSeek(Number(event.target.value))}
+                className="absolute inset-0 w-full cursor-pointer opacity-0"
               />
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 h-3.5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
+                style={{ left: `${momentPercent(time, duration)}%` }}
+              />
+              {duration > 0 &&
+                marks.map((mark) => (
+                  <button
+                    key={mark.id}
+                    type="button"
+                    onClick={() => onMark(mark)}
+                    aria-label={`${mark.authorName}'s comment at ${formatMoment(mark.time)}`}
+                    className={cn(
+                      "absolute -top-6 -translate-x-1/2 rounded-full outline-none transition-transform hover:z-10 hover:scale-110 focus-visible:ring-3 focus-visible:ring-white/60",
+                      mark.resolved && "opacity-45",
+                      activeMark === mark.id && "z-10 scale-110 ring-2 ring-white",
+                    )}
+                    style={{ left: `${momentPercent(mark.time, duration)}%` }}
+                  >
+                    <Face
+                      id={mark.authorId}
+                      name={mark.authorName}
+                      className="size-5 text-[0.5rem]"
+                    />
+                  </button>
+                ))}
             </div>
-            <input
-              type="range"
-              aria-label="Position in the clip"
-              aria-valuetext={`${formatMoment(time)} of ${formatMoment(duration)}`}
-              min={0}
-              max={duration > 0 ? duration : 0}
-              step={0.05}
-              value={Math.min(time, duration > 0 ? duration : 0)}
-              onChange={(event) => onSeek(Number(event.target.value))}
-              className="absolute inset-0 w-full cursor-pointer opacity-0"
-            />
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 h-3.5 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
-              style={{ left: `${momentPercent(time, duration)}%` }}
-            />
-            {duration > 0 &&
-              marks.map((mark) => (
-                <button
-                  key={mark.id}
-                  type="button"
-                  onClick={() => onMark(mark)}
-                  aria-label={`${mark.authorName}'s comment at ${formatMoment(mark.time)}`}
-                  className={cn(
-                    "absolute -top-6 -translate-x-1/2 rounded-full outline-none transition-transform hover:z-10 hover:scale-110 focus-visible:ring-3 focus-visible:ring-white/60",
-                    mark.resolved && "opacity-45",
-                    activeMark === mark.id && "z-10 scale-110 ring-2 ring-white",
-                  )}
-                  style={{ left: `${momentPercent(mark.time, duration)}%` }}
-                >
-                  <Face
-                    id={mark.authorId}
-                    name={mark.authorName}
-                    className="size-5 text-[0.5rem]"
-                  />
-                </button>
-              ))}
-          </div>
 
-          <span className="shrink-0 font-mono text-xs text-zinc-300 tabular-nums">
-            {formatMoment(time)} / {formatMoment(duration)}
-          </span>
-        </div>
+            <span className="shrink-0 font-mono text-xs text-zinc-300 tabular-nums">
+              {formatMoment(time)} / {formatMoment(duration)}
+            </span>
+          </div>
+        )
       )}
-      {still && <div className="h-4" />}
+      {still && !editing && <div className="h-4" />}
     </section>
   );
 }

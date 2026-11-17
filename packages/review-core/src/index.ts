@@ -188,3 +188,4 @@ export function asksAgent(body: string): boolean {
 /** The longest an answer from the agent may be, as it is kept with the comments. */
 export const AGENT_ANSWER_LIMIT = 4000;
 export * from "./sense";
+export * from "./drawing";

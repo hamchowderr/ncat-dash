@@ -1,13 +1,15 @@
 "use client";
 
-import { formatMoment, splitBody, type Thread } from "@ncat-dash/review-core";
-import { Check, CircleCheck, CornerDownRight, RotateCw, Trash2 } from "lucide-react";
+import { formatMoment, type Shape, splitBody, type Thread } from "@ncat-dash/review-core";
+import { Check, CircleCheck, CornerDownRight, PenLine, RotateCw, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { Composer } from "./composer";
+import type { ComposerDrawing } from "./frame-drawing";
+import { type Typist, TypingLine } from "./typing";
 import { Face, type Person } from "./person";
 
 export type RoomComment = {
@@ -23,6 +25,8 @@ export type RoomComment = {
   mine: boolean;
   /** Written by a client through the review's share link. */
   client?: boolean;
+  /** Marks drawn over the paused frame; only a thread's first comment has them. */
+  drawing?: Shape[] | null;
   /** Set on the agent's answer to an "@Agent" comment. */
   agent: { askedBy: string; state: "thinking" | "answered" | "failed" } | null;
 };
@@ -102,6 +106,15 @@ function Entry({
               {formatMoment(comment.time)}
             </button>
           )}
+          {comment.drawing && (
+            <span
+              className="text-muted-foreground flex items-center gap-1 text-xs"
+              title="Has a drawing on the frame"
+            >
+              <PenLine className="size-3" aria-hidden="true" />
+              Drawing
+            </span>
+          )}
           <span className="text-muted-foreground text-xs">{when(comment.createdAt)}</span>
           {comment.mine && (
             <button
@@ -153,6 +166,9 @@ export function CommentPanel({
   onDelete,
   onAskAgain,
   guest = false,
+  drawing,
+  typing = [],
+  onTyping,
 }: {
   threads: Thread<RoomComment>[];
   loading: boolean;
@@ -169,7 +185,15 @@ export function CommentPanel({
   onAskAgain?: (id: string) => void;
   /** Someone outside the team, through a share link: no resolving, no tagging. */
   guest?: boolean;
+  /** Drawing on the frame with the next comment. */
+  drawing?: ComposerDrawing;
+  /** Others writing on this clip and version right now. */
+  typing?: Typist[];
+  /** Told when this person starts or stops writing, and where. */
+  onTyping?: (threadId: string | null, active: boolean) => void;
 }) {
+  const typingIn = (threadId: string | null) =>
+    typing.filter((typist) => typist.threadId === threadId).map((typist) => typist.name);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const open = threads.filter((thread) => !thread.root.resolved).length;
 
@@ -237,12 +261,14 @@ export function CommentPanel({
                     ))}
                   </div>
                 )}
+                <TypingLine names={typingIn(root.id)} className="ml-9" />
                 {replyTo === root.id ? (
                   <div className="ml-9">
                     <Composer
                       people={people}
                       placeholder="Reply"
                       autoFocus
+                      onTyping={(active) => onTyping?.(root.id, active)}
                       onSend={async (body) => {
                         const saved = await onSend(body, root.id);
                         if (saved) setReplyTo(null);
@@ -282,7 +308,8 @@ export function CommentPanel({
         )}
       </div>
 
-      <div className="p-3">
+      <div className="flex flex-col gap-1.5 p-3">
+        <TypingLine names={typingIn(null)} className="px-1" />
         <Composer
           people={people}
           moment={timed ? moment : undefined}
@@ -296,7 +323,39 @@ export function CommentPanel({
                 : "Comment. Type @ to tag a teammate or the Agent."
           }
           onFocus={onComposerFocus}
+          onTyping={(active) => onTyping?.(null, active)}
           onSend={(body) => onSend(body)}
+          tools={
+            drawing && (
+              <>
+                <Button
+                  type="button"
+                  variant={drawing.drawing ? "secondary" : "ghost"}
+                  size={drawing.count > 0 ? "sm" : "icon-sm"}
+                  aria-label="Draw on the frame"
+                  aria-pressed={drawing.drawing}
+                  onClick={drawing.onToggle}
+                  className={drawing.count > 0 ? "h-7 gap-1 px-2 text-xs" : undefined}
+                >
+                  <PenLine />
+                  {drawing.count > 0 && (
+                    <span>{drawing.count === 1 ? "1 mark" : `${drawing.count} marks`}</span>
+                  )}
+                </Button>
+                {drawing.count > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Remove the drawing"
+                    onClick={drawing.onRemove}
+                  >
+                    <X />
+                  </Button>
+                )}
+              </>
+            )
+          }
         />
       </div>
     </section>
