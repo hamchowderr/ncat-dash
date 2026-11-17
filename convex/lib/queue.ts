@@ -21,13 +21,29 @@ export async function parallelLimit(ctx: QueryCtx, organizationId: string): Prom
   return settings?.maxParallelJobs ?? DEFAULT_PARALLEL_JOBS;
 }
 
-/** The team's logo, colour, font and music from its settings. Empty when none are set. */
-export async function brandOf(ctx: QueryCtx, organizationId: string): Promise<Brand> {
+export type MusicTrack = { name: string; file: string };
+
+/**
+ * The team's logo, colour and font from its settings, and its music library. The first
+ * track is the one a step uses when it does not pick another, so it is also `brand.music`.
+ */
+export async function brandAndMusicOf(
+  ctx: QueryCtx,
+  organizationId: string,
+): Promise<{ brand: Brand; music: MusicTrack[] }> {
   const settings = await ctx.db
     .query("teamSettings")
     .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
     .first();
-  return settings?.brand ?? {};
+  const { music: single, ...rest } = settings?.brand ?? {};
+  // Before the library there was one track, kept on the brand itself.
+  const music = settings?.music ?? (single ? [{ name: "Background music", file: single }] : []);
+  return { brand: music[0] ? { ...rest, music: music[0].file } : rest, music };
+}
+
+/** The team's logo, colour, font and first music track. Empty when none are set. */
+export async function brandOf(ctx: QueryCtx, organizationId: string): Promise<Brand> {
+  return (await brandAndMusicOf(ctx, organizationId)).brand;
 }
 
 type Enqueued =

@@ -10,11 +10,17 @@ import {
   writeSource,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
-import { ChevronRight, Sparkles, Trash2 } from "lucide-react";
+import { ChevronRight, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import { StepFields, fromInput, toInput, useStepFields } from "@/components/steps/step-fields";
+import {
+  FilePicture,
+  StepFields,
+  fromInput,
+  toInput,
+  useStepFields,
+} from "@/components/steps/step-fields";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -44,6 +50,7 @@ export function NodePanel({
   startGivesFile,
   filled,
   brand,
+  music,
   onChange,
   onRemove,
 }: {
@@ -56,6 +63,8 @@ export function NodePanel({
   filled: Record<string, string>;
   /** The team's logo, colour, font and music from Settings. */
   brand: Brand;
+  /** The team's music library, to pick a track from by name. */
+  music: { name: string; file: string }[];
   onChange: (patch: Partial<NodeContent>) => void;
   onRemove: () => void;
 }) {
@@ -85,7 +94,16 @@ export function NodePanel({
   const brandFields = Object.fromEntries(
     Object.entries(nodeType?.brand ?? {}).map(([name, key]) => [
       name,
-      { word: BRAND_WORDS[key], set: Boolean(brand[key]) },
+      {
+        word: BRAND_WORDS[key],
+        set: Boolean(brand[key]),
+        ...(key === "music" && music.length > 0
+          ? {
+              usual: "First track in your library",
+              choices: music.map((track) => ({ value: track.file, label: track.name })),
+            }
+          : {}),
+      },
     ]),
   );
 
@@ -96,7 +114,7 @@ export function NodePanel({
   const rest = (fields ?? []).filter((field) => !needed.includes(field));
 
   // What the step takes care of by itself, one line each.
-  const handled: { label: string; text: string; settings?: boolean }[] = [];
+  const handled: { label: string; text: string; settings?: boolean; picture?: string }[] = [];
   if (automaticField && isBlank(node.input[automaticField])) {
     handled.push({
       label: fieldLabel(automaticField).replace(/ URLs?$/, ""),
@@ -114,11 +132,16 @@ export function NodePanel({
   const unset: string[] = [];
   for (const [name, { word, set }] of Object.entries(brandFields)) {
     if (!isBlank(node.input[name])) continue;
+    const key = nodeType?.brand?.[name];
     if (set)
       handled.push({
         label: fieldLabel(name).replace(/ URLs?$/, ""),
-        text: `your team's ${word}`,
+        text:
+          key === "music" && music[0]
+            ? `${music[0].name}, the first track in your library`
+            : `your team's ${word}`,
         settings: true,
+        ...(key === "logo" ? { picture: brand.logo } : {}),
       });
     else if (fields?.find((field) => field.name === name)?.required) unset.push(word);
   }
@@ -202,24 +225,26 @@ export function NodePanel({
 
       {handled.length > 0 && (
         <div className="bg-muted/40 rounded-lg border p-3">
-          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
-            <Sparkles className="text-muted-foreground size-3.5" aria-hidden="true" />
-            Handled for you
-          </p>
+          <p className="mb-1.5 text-xs font-medium">Handled for you</p>
           <ul className="text-muted-foreground flex flex-col gap-1 text-xs">
             {handled.map((item) => (
-              <li key={item.label}>
-                <span className="text-foreground">{item.label}:</span> {item.text}
-                {item.settings && (
-                  <>
-                    {" "}
-                    (
-                    <Link href="/settings" className="underline underline-offset-2">
-                      Settings
-                    </Link>
-                    )
-                  </>
+              <li key={item.label} className={item.picture ? "flex items-center gap-2" : undefined}>
+                {item.picture && (
+                  <FilePicture value={item.picture} label="Your logo" className="size-8" />
                 )}
+                <span>
+                  <span className="text-foreground">{item.label}:</span> {item.text}
+                  {item.settings && (
+                    <>
+                      {" "}
+                      (
+                      <Link href="/settings" className="underline underline-offset-2">
+                        Settings
+                      </Link>
+                      )
+                    </>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

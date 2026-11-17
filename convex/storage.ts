@@ -118,6 +118,8 @@ export const startUpload = action({
     fileName: v.string(),
     contentType: v.string(),
     size: v.number(),
+    // "brand" for a logo or music track: kept for steps to use, never starts an automation.
+    purpose: v.optional(v.literal("brand")),
   },
   returns: v.object({ uploadId: v.id("uploads"), uploadUrl: v.string() }),
   handler: async (ctx, args): Promise<{ uploadId: Doc<"uploads">["_id"]; uploadUrl: string }> => {
@@ -143,6 +145,7 @@ export const startUpload = action({
       contentType: args.contentType || "application/octet-stream",
       size: args.size,
       createdBy: userId,
+      ...(args.purpose ? { purpose: args.purpose } : {}),
     });
     return { uploadId, uploadUrl };
   },
@@ -157,6 +160,7 @@ export const finishUpload = mutation({
     await requireMember(ctx, upload.organizationId);
     if (upload.status === "ready") return;
     await ctx.db.patch(args.uploadId, { status: "ready" });
+    if (upload.purpose === "brand") return;
     // Starts any automation set to run when a file is uploaded.
     await ctx.scheduler.runAfter(0, internal.automations.uploadFinished, {
       uploadId: args.uploadId,
@@ -191,6 +195,7 @@ export const listUploads = query({
       contentType: upload.contentType,
       size: upload.size,
       status: upload.status,
+      purpose: upload.purpose ?? null,
     }));
   },
 });
@@ -327,6 +332,7 @@ export const recordUpload = internalMutation({
     contentType: v.string(),
     size: v.number(),
     createdBy: v.string(),
+    purpose: v.optional(v.literal("brand")),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("uploads", { ...args, status: "uploading" });

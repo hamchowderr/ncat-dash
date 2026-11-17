@@ -30,7 +30,7 @@ import {
   query,
 } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
-import { brandOf } from "./lib/queue";
+import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
 import { presign } from "./lib/s3";
 import { decryptSecret } from "./lib/crypto";
@@ -258,6 +258,9 @@ const describedValidator = v.object({
   // What still stops it running. Empty when it can be switched on.
   problems: v.array(v.object({ nodeId: v.union(v.null(), v.string()), message: v.string() })),
   enabled: v.boolean(),
+  // The team's music library: a track's name and the value to put in a music setting to
+  // use it. A step that leaves the setting empty uses the first one.
+  music: v.optional(v.array(v.object({ name: v.string(), value: v.string() }))),
 });
 
 /**
@@ -270,11 +273,12 @@ export const describe = query({
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
     const draft = automation as AutomationDraft;
-    const brand = await brandOf(ctx, automation.organizationId);
+    const { brand, music } = await brandAndMusicOf(ctx, automation.organizationId);
     return {
       outline: outline(draft, brand),
       problems: draftProblems(draft, brand),
       enabled: automation.enabled,
+      music: music.map((track) => ({ name: track.name, value: track.file })),
     };
   },
 });

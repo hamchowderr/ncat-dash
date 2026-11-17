@@ -47,7 +47,7 @@ export function SettingsView() {
         <Skeleton className="h-48 max-w-xl rounded-xl" />
       ) : (
         <>
-          <BrandCard brand={settings.brand} canEdit={settings.canEdit} />
+          <BrandCard brand={settings.brand} music={settings.music} canEdit={settings.canEdit} />
           <Card className="max-w-xl">
             <CardHeader>
               <CardTitle>
