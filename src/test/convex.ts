@@ -31,6 +31,8 @@ export function actionOf(action: FunctionReference<"action">) {
 }
 
 export const pushed = vi.fn();
+/** The stand-in behind "load more" on a paginated query. */
+export const loadMore = vi.fn();
 export const toastError = vi.fn();
 export const toastInfo = vi.fn();
 export const toastSuccess = vi.fn();
@@ -41,6 +43,7 @@ export function resetConvex() {
   queries.clear();
   mutations.clear();
   pushed.mockReset();
+  loadMore.mockReset();
   toastError.mockReset();
   toastInfo.mockReset();
   toastSuccess.mockReset();
@@ -52,6 +55,18 @@ export const convexReact = {
     if (args === "skip") return undefined;
     const answer = queries.get(getFunctionName(query));
     return typeof answer === "function" ? answer(args) : answer;
+  },
+  /**
+   * A paginated query answers with its rows, or with `{ results, status }` to show more
+   * pages waiting. Its arguments are given without `paginationOpts`.
+   */
+  usePaginatedQuery(query: FunctionReference<"query">, args: Record<string, unknown> | "skip") {
+    if (args === "skip") return { results: [], status: "LoadingFirstPage", loadMore };
+    const answer = queries.get(getFunctionName(query));
+    const rows = typeof answer === "function" ? answer(args) : answer;
+    if (rows === undefined) return { results: [], status: "LoadingFirstPage", loadMore };
+    if (Array.isArray(rows)) return { results: rows, status: "Exhausted", loadMore };
+    return { ...(rows as object), loadMore };
   },
   useMutation(mutation: FunctionReference<"mutation">) {
     return mutationOf(mutation);

@@ -284,12 +284,21 @@ test("approving the room lets the automation finish", async () => {
   await expect(jordan.getByText("Done").filter({ visible: true }).first()).toBeVisible();
 });
 
-test("Send to review on Outputs opens a room with that step's files", async () => {
+test("Outputs shows the run's files and sends them to review", async () => {
   await jordan.goto("/outputs");
-  await jordan.getByRole("button", { name: "Send to review" }).first().click();
+  const run = jordan.getByRole("region", { name: /^Weekly clips, / });
+  await expect(run).toContainText("From station-interview.webm · Webhook");
+  await expect(run.getByRole("heading", { name: "Split video · 2 files" })).toBeVisible();
+  await expect(run.getByRole("link", { name: "See the run" })).toHaveAttribute(
+    "href",
+    /\/automations\/.+\/runs\/.+/,
+  );
+  await run.getByRole("button", { name: "Send to review" }).click();
   await expect(jordan).toHaveURL(/\/review\/.+/);
   expect(jordan.url()).not.toBe(roomUrl);
-  await expect(jordan.getByRole("heading", { name: "Split video" })).toBeVisible();
+  await expect(
+    jordan.getByRole("heading", { name: "Weekly clips: station-interview.webm" }),
+  ).toBeVisible();
   await expect(
     jordan.getByRole("navigation", { name: "Clips in this review" }).getByRole("button"),
   ).toHaveCount(2);
