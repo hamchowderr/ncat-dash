@@ -88,7 +88,7 @@ export function MoveDialog({
           ))}
         </nav>
 
-        <div className="h-64 overflow-y-auto rounded-lg border">
+        <div className="h-64 overflow-y-auto rounded-lg bg-surface">
           {folders === null ? (
             <div className="flex flex-col gap-2 p-2">
               <Skeleton className="h-8" />

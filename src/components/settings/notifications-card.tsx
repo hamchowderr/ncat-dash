@@ -88,7 +88,7 @@ export function NotificationsCard() {
         <div role="table" aria-label="What you hear about" className="flex flex-col">
           <div
             role="row"
-            className="text-muted-foreground grid grid-cols-[1fr_3.5rem_3.5rem] items-end gap-2 border-b pb-2 text-xs font-medium"
+            className="text-muted-foreground grid grid-cols-[1fr_3.5rem_3.5rem] items-end gap-2 pb-2 text-xs font-medium"
           >
             <span role="columnheader">When</span>
             <span role="columnheader" className="flex flex-col items-center gap-1">
@@ -105,7 +105,7 @@ export function NotificationsCard() {
               role="row"
               key={entry.kind}
               data-notification={entry.kind}
-              className="grid grid-cols-[1fr_3.5rem_3.5rem] items-center gap-2 border-b py-3 last:border-b-0"
+              className="grid grid-cols-[1fr_3.5rem_3.5rem] items-center gap-2 py-2.5"
             >
               <span role="cell" className="flex min-w-0 flex-col gap-0.5">
                 <span className="text-sm font-medium">{entry.title}</span>
@@ -135,7 +135,7 @@ export function NotificationsCard() {
         </div>
 
         <fieldset
-          className={cn("flex flex-col gap-3 border-t pt-4", !anyEmail && "opacity-60")}
+          className={cn("flex flex-col gap-3 pt-4", !anyEmail && "opacity-60")}
           disabled={!anyEmail}
         >
           <legend className="sr-only">When emails come</legend>

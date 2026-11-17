@@ -27,13 +27,13 @@ export function RunsList({ automationId }: { automationId: Id<"automations"> }) 
   if (runs === undefined) return <Skeleton className="h-40 rounded-xl" />;
   if (runs.length === 0) {
     return (
-      <p className="text-muted-foreground rounded-xl border border-dashed p-6 text-sm">
+      <p className="text-muted-foreground rounded-xl bg-surface p-6 text-sm">
         This automation has not run yet. Press Run now to try it.
       </p>
     );
   }
   return (
-    <div className="overflow-hidden rounded-xl border">
+    <div className="overflow-hidden rounded-xl bg-surface">
       <Table>
         <TableHeader>
           <TableRow>

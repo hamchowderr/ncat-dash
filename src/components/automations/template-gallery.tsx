@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { FlowStrip } from "./flow-strip";
 
 const card =
-  "bg-card hover:border-foreground/30 focus-visible:ring-ring/50 flex flex-col gap-3 rounded-xl border p-4 text-left outline-none transition-[border-color,box-shadow] hover:shadow-sm focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60";
+  "hover:bg-muted focus-visible:ring-ring/50 flex flex-col gap-3 rounded-xl bg-surface p-4 text-left outline-none transition-colors focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60";
 
 function TemplateCard({
   starter,

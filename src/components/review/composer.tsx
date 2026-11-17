@@ -67,13 +67,13 @@ export function Composer({
   }
 
   return (
-    <div className="bg-background focus-within:border-ring focus-within:ring-ring/50 relative rounded-xl border focus-within:ring-3">
+    <div className="bg-surface focus-within:ring-ring/50 relative rounded-xl focus-within:ring-3">
       {offered.length > 0 && (
         <ul
           id={listId}
           role="listbox"
           aria-label="People on the team"
-          className="bg-popover text-popover-foreground absolute bottom-full left-0 z-20 mb-1.5 w-64 overflow-hidden rounded-lg border p-1 shadow-md"
+          className="bg-popover text-popover-foreground absolute bottom-full left-0 z-20 mb-1.5 w-64 overflow-hidden rounded-lg p-1 shadow-lg"
         >
           {offered.map((person, index) => (
             <li

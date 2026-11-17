@@ -214,7 +214,7 @@ export function EmailCard() {
           </form>
         )}
 
-        <p className="text-muted-foreground border-t pt-4 text-sm">
+        <p className="text-muted-foreground pt-2 text-sm">
           Which emails you get, and whether they come as they happen or once a day, is up to you
           under{" "}
           <a href="#notifications" className="underline">

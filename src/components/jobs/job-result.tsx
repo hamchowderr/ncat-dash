@@ -50,7 +50,7 @@ export function JobResult({ jobId }: { jobId: Id<"jobs"> }) {
       {job.status === "done" && hasData && (
         <details className="group" open={job.outputs.length === 0}>
           <summary className="text-muted-foreground cursor-pointer text-sm">Returned data</summary>
-          <pre className="bg-muted/40 mt-2 max-h-96 overflow-auto rounded-lg border p-3 text-xs">
+          <pre className="bg-surface mt-2 max-h-96 overflow-auto rounded-lg p-3 text-xs">
             {JSON.stringify(job.result, null, 2)}
           </pre>
         </details>

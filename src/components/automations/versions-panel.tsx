@@ -9,11 +9,11 @@ import {
   automationFileName,
   exportAutomation,
 } from "@ncat-dash/automation-core";
-import { Background, Controls, ReactFlow, ReactFlowProvider } from "@xyflow/react";
+import { Background, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
 import { Download, History, RotateCcw } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,8 @@ import type { Trigger } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
 import { downloadJson } from "@/lib/download";
 import { cn } from "@/lib/utils";
+
+import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 
 import {
   canvasEdge,
@@ -61,6 +63,7 @@ function howItCame(version: Listed): string {
 
 /** A version's steps on a still canvas: nothing can be moved, joined or changed. */
 function VersionCanvas({ version }: { version: AutomationDraft }) {
+  const canvasRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
   const flow = useMemo(() => {
     const nodes: FlowNode[] = [
@@ -88,22 +91,32 @@ function VersionCanvas({ version }: { version: AutomationDraft }) {
   }, [version]);
   return (
     <ReactFlowProvider>
-      <ReactFlow
-        nodes={flow.nodes}
-        edges={flow.edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        minZoom={0.25}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
-        fitView
-        fitViewOptions={FIT_VIEW}
-      >
-        <Background gap={20} />
-        <Controls showInteractive={false} fitViewOptions={FIT_VIEW} />
-      </ReactFlow>
+      <div className="absolute inset-0 flex flex-col">
+        <CanvasBar>
+          <CanvasZoom fitViewOptions={FIT_VIEW} />
+          <FitOnResize canvasRef={canvasRef} fitViewOptions={FIT_VIEW} />
+        </CanvasBar>
+        <div
+          ref={canvasRef}
+          className="bg-background relative mx-2 mb-2 min-h-0 flex-1 overflow-hidden rounded-lg"
+        >
+          <ReactFlow
+            nodes={flow.nodes}
+            edges={flow.edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            minZoom={0.25}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
+            fitView
+            fitViewOptions={FIT_VIEW}
+          >
+            <Background gap={20} />
+          </ReactFlow>
+        </div>
+      </div>
     </ReactFlowProvider>
   );
 }
@@ -115,13 +128,10 @@ function VersionCanvas({ version }: { version: AutomationDraft }) {
  */
 export function VersionsPanel({
   automationId,
-  draftShown = false,
   beforeRestore,
   onRestored,
 }: {
   automationId: Id<"automations">;
-  /** The draft bar sits above, so the panel is that much shorter. */
-  draftShown?: boolean;
   /** Called first, so the editor can set aside work that is not saved yet. */
   beforeRestore?: () => void;
   /** Called once a version is back, with whether it became the draft. */
@@ -141,7 +151,7 @@ export function VersionsPanel({
   }
   if (!chosen) {
     return (
-      <p className="text-muted-foreground rounded-xl border border-dashed p-6 text-sm">
+      <p className="text-muted-foreground rounded-xl bg-surface p-6 text-sm">
         No versions are kept yet. Each time this automation is saved while it is off, or a draft is
         published, the version that runs is kept here.
       </p>
@@ -181,13 +191,13 @@ export function VersionsPanel({
   return (
     <div
       className={cn(
-        "grid overflow-hidden rounded-xl border lg:min-h-[32rem] lg:grid-cols-[20rem_minmax(0,1fr)]",
-        draftShown ? "lg:h-[calc(100vh-17.5rem)]" : "lg:h-[calc(100vh-13.5rem)]",
+        // Fills the space under the tabs, whatever sits above them.
+        "grid overflow-hidden rounded-xl bg-surface lg:min-h-[28rem] lg:flex-[1_1_0px] lg:grid-cols-[20rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]",
       )}
     >
       <ol
         aria-label="Versions"
-        className="flex max-h-80 flex-col overflow-y-auto border-b lg:max-h-none lg:border-r lg:border-b-0"
+        className="flex max-h-80 flex-col gap-0.5 overflow-y-auto p-2 lg:max-h-none"
       >
         {listed.versions.map((version) => {
           const selected = version._id === chosen._id;
@@ -198,8 +208,8 @@ export function VersionsPanel({
                 aria-current={selected ? "true" : undefined}
                 onClick={() => setChosenId(version._id)}
                 className={cn(
-                  "hover:bg-muted/60 flex w-full flex-col gap-1 border-b px-4 py-3 text-left outline-none focus-visible:bg-muted",
-                  selected && "bg-muted",
+                  "hover:bg-background/70 flex w-full flex-col gap-1 rounded-lg px-3 py-2.5 text-left outline-none focus-visible:bg-background",
+                  selected && "bg-background shadow-xs",
                 )}
               >
                 <span className="flex items-center gap-2">
@@ -221,7 +231,7 @@ export function VersionsPanel({
       </ol>
 
       <section aria-label={`Version ${chosen.number}`} className="flex min-h-80 flex-col">
-        <div className="flex flex-wrap items-start gap-3 border-b px-4 py-3">
+        <div className="flex flex-wrap items-start gap-3 px-4 py-3">
           <div className="grid min-w-0 flex-1 gap-0.5">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <History className="text-muted-foreground size-4" aria-hidden="true" />
@@ -248,13 +258,13 @@ export function VersionsPanel({
           )}
         </div>
         {chosen.changes.length > 0 && (
-          <ul className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 border-b px-4 py-2 text-xs">
+          <ul className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 px-4 pb-2 text-xs">
             {chosen.changes.map((change) => (
               <li key={change}>{change}</li>
             ))}
           </ul>
         )}
-        <div className="bg-muted/30 relative min-h-72 flex-1">
+        <div className="relative min-h-72 flex-1">
           {content ? (
             <VersionCanvas
               version={{

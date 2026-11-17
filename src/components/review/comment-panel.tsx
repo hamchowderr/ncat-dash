@@ -176,9 +176,9 @@ export function CommentPanel({
   return (
     <section
       aria-label="Comments"
-      className="bg-card flex min-h-96 min-w-0 flex-col overflow-hidden rounded-xl border"
+      className="flex min-h-96 min-w-0 flex-col overflow-hidden rounded-xl bg-surface"
     >
-      <header className="flex items-baseline gap-2 border-b px-4 py-3">
+      <header className="flex items-baseline gap-2 px-4 py-3">
         <h2 className="text-sm font-semibold">Comments</h2>
         <span className="text-muted-foreground text-xs">
           {threads.length === 0
@@ -282,7 +282,7 @@ export function CommentPanel({
         )}
       </div>
 
-      <div className="border-t p-3">
+      <div className="p-3">
         <Composer
           people={people}
           moment={timed ? moment : undefined}

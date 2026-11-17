@@ -1,32 +1,32 @@
-'use client';
+"use client";
 
-import { HistoryIcon, SquarePenIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { Conversation, ConversationContent } from '@/components/ai-elements/conversation';
-import { Message, MessageContent } from '@/components/ai-elements/message';
-import { Shimmer } from '@/components/ai-elements/shimmer';
-import { Suggestion } from '@/components/ai-elements/suggestion';
-import type { ApprovalViews } from '@/components/chat/approval-view';
-import { ChatLinkProvider } from '@/components/chat/chat-markdown';
-import { Composer, type ComposerSubmit } from '@/components/chat/composer';
-import { PlanModeToggle, usePlanMode } from '@/components/chat/plan-mode';
-import { AskUserPrompt } from '@/components/chat/tool-views';
-import { ApprovalCards, partKey, TranscriptPart } from '@/components/chat/transcript';
-import { Button } from '@/components/ui/button';
+import { HistoryIcon, SquarePenIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
+import { Message, MessageContent } from "@/components/ai-elements/message";
+import { Shimmer } from "@/components/ai-elements/shimmer";
+import { Suggestion } from "@/components/ai-elements/suggestion";
+import type { ApprovalViews } from "@/components/chat/approval-view";
+import { ChatLinkProvider } from "@/components/chat/chat-markdown";
+import { Composer, type ComposerSubmit } from "@/components/chat/composer";
+import { PlanModeToggle, usePlanMode } from "@/components/chat/plan-mode";
+import { AskUserPrompt } from "@/components/chat/tool-views";
+import { ApprovalCards, partKey, TranscriptPart } from "@/components/chat/transcript";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { collectToolResults } from '@/lib/agent-controller/events';
+} from "@/components/ui/dropdown-menu";
+import { collectToolResults } from "@/lib/agent-controller/events";
 import {
   type AgentControllerToolEnd,
   useAgentControllerChat,
-} from '@/lib/agent-controller/use-agent-controller-chat';
-import { useThreads } from '@/lib/agent-controller/use-threads';
-import { cn } from '@/lib/utils';
+} from "@/lib/agent-controller/use-agent-controller-chat";
+import { useThreads } from "@/lib/agent-controller/use-threads";
+import { cn } from "@/lib/utils";
 
 export type ChatPanelSuggestion = { label: string; prompt: string };
 
@@ -93,10 +93,10 @@ export type ChatPanelProps = {
  *   <ChatPanel title="Assistant" suggestions={[…]} actions={<CloseButton />} />
  */
 export function ChatPanel({
-  title = 'Chat',
-  greeting = { title: 'How can I help you today?' },
+  title = "Chat",
+  greeting = { title: "How can I help you today?" },
   suggestions = [],
-  placeholder = 'How can I help you today?',
+  placeholder = "How can I help you today?",
   actions,
   className,
   onToolEnd,
@@ -111,7 +111,7 @@ export function ChatPanel({
   const { threads } = useThreads({ refreshSignal: controller.refreshSignal });
   // Archived chats stay out of the menu, as they do in the full shell's sidebar.
   const recent = threads.filter((t) => !t.archived);
-  const busy = status === 'streaming';
+  const busy = status === "streaming";
   // Nothing to show yet. A parked approval or question is something to show, even with
   // no messages, so it is never hidden behind the greeting.
   const empty =
@@ -142,10 +142,10 @@ export function ChatPanel({
 
   return (
     <ChatLinkProvider onNavigate={onNavigate}>
-      <div className={cn('flex h-full min-h-0 flex-col bg-background', className)}>
+      <div className={cn("flex h-full min-h-0 flex-col bg-background", className)}>
         {/* Height from --chat-panel-header-height (default 3rem): a host sets it to its own
           header height so the two headers' bottom borders run on one line. */}
-        <header className="flex h-[var(--chat-panel-header-height,3rem)] shrink-0 items-center gap-1 border-b px-3">
+        <header className="flex h-[var(--chat-panel-header-height,3rem)] shrink-0 items-center gap-1 px-3">
           <div className="min-w-0 flex-1 truncate font-medium text-sm">{title}</div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -162,7 +162,7 @@ export function ChatPanel({
                   <DropdownMenuItem
                     key={t.id}
                     onSelect={() => void controller.openThread(t.id)}
-                    className={cn(t.id === controller.activeThreadId && 'bg-accent')}
+                    className={cn(t.id === controller.activeThreadId && "bg-accent")}
                   >
                     <span className="truncate">{t.title}</span>
                   </DropdownMenuItem>
@@ -206,12 +206,12 @@ export function ChatPanel({
           <Conversation className="min-h-0 flex-1">
             <ConversationContent className="px-4">
               {transcript.messages
-                .filter((m) => m.role === 'user' || m.role === 'assistant')
+                .filter((m) => m.role === "user" || m.role === "assistant")
                 .map((m) => (
-                  <Message key={m.id} from={m.role === 'user' ? 'user' : 'assistant'}>
+                  <Message key={m.id} from={m.role === "user" ? "user" : "assistant"}>
                     <MessageContent>
                       {m.content.map((part, i) => {
-                        if (renderTool && part.type === 'tool_call') {
+                        if (renderTool && part.type === "tool_call") {
                           const call = part as { id: string; name: string; args: unknown };
                           const own = renderTool(call, resultsById.get(call.id));
                           if (own !== undefined) return <div key={partKey(m.id, i)}>{own}</div>;
@@ -229,7 +229,7 @@ export function ChatPanel({
                   </Message>
                 ))}
 
-              {busy && transcript.messages.at(-1)?.role === 'user' && (
+              {busy && transcript.messages.at(-1)?.role === "user" && (
                 <Shimmer className="text-muted-foreground text-sm">Thinking…</Shimmer>
               )}
 
@@ -248,7 +248,9 @@ export function ChatPanel({
           the empty state too (a first message can fail before any transcript exists). */}
         {transcript.error && (
           <p role="alert" className="shrink-0 px-4 pt-2 text-destructive text-sm">
-            {errorWords ? errorWords(transcript.error) : `AgentController error: ${transcript.error}`}
+            {errorWords
+              ? errorWords(transcript.error)
+              : `AgentController error: ${transcript.error}`}
           </p>
         )}
 
@@ -257,7 +259,7 @@ export function ChatPanel({
         <div className="shrink-0 p-3 pt-1">
           <Composer
             onSend={handleSend}
-            status={busy ? 'streaming' : status === 'error' ? 'error' : 'ready'}
+            status={busy ? "streaming" : status === "error" ? "error" : "ready"}
             models={false}
             webSearch={false}
             placeholder={placeholder}
