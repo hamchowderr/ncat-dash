@@ -2,7 +2,14 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { type AutomationNode, BRANCH_LABELS, IF_BRANCHES } from "@ncat-dash/automation-core";
+import {
+  type AutomationEdge,
+  type AutomationNode,
+  BRANCH_LABELS,
+  FAILURE_WAY,
+  failsOver,
+  IF_BRANCHES,
+} from "@ncat-dash/automation-core";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Check, FileText, MessagesSquare, Music, Play, X } from "lucide-react";
@@ -76,7 +83,12 @@ function sortedSentence(branches: Record<string, string[]>): string {
 }
 
 /** One line under a step's name saying what happened there. */
-function stepSentence(node: AutomationNode, step: RunStep, runStatus: string): string {
+function stepSentence(
+  node: AutomationNode,
+  step: RunStep,
+  runStatus: string,
+  failsOver = false,
+): string {
   if (step.status === "skipped") {
     return runStatus === "cancelled" ? "The run was stopped first." : "No files came this way.";
   }
@@ -101,7 +113,9 @@ function stepSentence(node: AutomationNode, step: RunStep, runStatus: string): s
       ? `${finished} of ${step.jobs.length} files finished.`
       : "Working on it.";
   }
-  if (step.status === "failed") return "Stopped here.";
+  if (step.status === "failed") {
+    return failsOver ? "Failed, so its files went the way for when it fails." : "Stopped here.";
+  }
   const made = node.kind === "step" ? step.outputs.length : 0;
   if (made === 1) return "Made 1 file.";
   if (made > 1) return `Made ${made} files.`;
@@ -265,7 +279,12 @@ export function passedAlong(run: {
   const passed = new Map<string, string[]>();
   for (const edge of run.edges) {
     const from = byNode.get(edge.source);
-    if (from?.status !== "done") continue;
+    // A step that failed hands the files it was given to its way for when it fails.
+    if (from?.status === "failed" && edge.branch === FAILURE_WAY) {
+      passed.set(`${edge.source}>${edge.target}`, from.outputs);
+      continue;
+    }
+    if (from?.status !== "done" || edge.branch === FAILURE_WAY) continue;
     const files = from.branches
       ? edge.branch
         ? (from.branches[edge.branch] ?? [])
@@ -378,7 +397,23 @@ export function RunSteps({
             step.startedAt && step.finishedAt && step.finishedAt - step.startedAt >= 1000
               ? formatDuration(step.finishedAt - step.startedAt)
               : null;
-          const files = node.kind === "step" && !node.off ? step.outputs : [];
+          // A step joining others that have not all finished says which it is waiting for.
+          const sources = (run.edges as AutomationEdge[])
+            .filter((edge) => edge.target === node.id)
+            .map((edge) => edge.source);
+          const unfinished = sources.filter((source) =>
+            ["pending", "running", "waiting_approval"].includes(byNode.get(source)?.status ?? ""),
+          );
+          const waitingFor =
+            step.status === "pending" && sources.length > 1 && unfinished.length < sources.length
+              ? unfinished.flatMap((source) => {
+                  const other = run.nodes.find((candidate) => candidate.id === source);
+                  return other ? [nodeTitle(other as AutomationNode)] : [];
+                })
+              : [];
+          // Only what the step made: not what it handed on while off or after failing.
+          const files =
+            node.kind === "step" && !node.off && step.status !== "failed" ? step.outputs : [];
           return (
             <Row
               key={node.id}
@@ -388,7 +423,16 @@ export function RunSteps({
               last={index === rows.length - 1}
               icon={<Icon className={cn("size-4", look.tint)} aria-hidden="true" />}
               title={nodeTitle(node)}
-              sentence={stepSentence(node, step, run.status)}
+              sentence={
+                waitingFor.length > 0
+                  ? `Waiting for ${waitingFor.join(" and ")} to finish.`
+                  : stepSentence(
+                      node,
+                      step,
+                      run.status,
+                      failsOver(node.id, run.edges as AutomationEdge[]),
+                    )
+              }
               got={quiet ? undefined : receivedBy(node.id, passed)}
               aside={
                 <>

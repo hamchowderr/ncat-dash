@@ -154,11 +154,33 @@ const operation = z.discriminatedUnion("op", [
       .describe(
         "The id of the step this one goes in front of; it is put on the line into that step.",
       ),
+    branch: z
+      .string()
+      .optional()
+      .describe(
+        'Which way out of the earlier step: "yes" or "no" after an If, or "failed" after a step that does work, for a step that runs only when that step fails and gets the files it was given.',
+      ),
     settings: z.record(z.string(), z.unknown()).optional(),
     label: z.string().optional(),
+    join: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Ids of more steps the new step also follows, besides after, to join branches back together. It waits until all of them have finished, then runs once with the files from all of them; a branch an If did not take is not waited for.",
+      ),
   }),
   z.object({ op: z.literal("remove"), ids: z.array(z.string()) }),
-  z.object({ op: z.literal("connect"), source: z.string(), target: z.string() }),
+  z.object({
+    op: z.literal("connect"),
+    source: z.string(),
+    target: z.string(),
+    branch: z
+      .string()
+      .optional()
+      .describe(
+        'Which way out of the earlier step: "yes" or "no" after an If, or "failed" after a step that does work, for a step that runs only when that step fails and gets the files it was given.',
+      ),
+  }),
   z.object({ op: z.literal("disconnect"), source: z.string(), target: z.string() }),
   z.object({
     op: z.literal("set"),

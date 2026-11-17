@@ -6,7 +6,7 @@
 import { type Brand, BRAND_WORDS } from "./brand";
 import { graphProblem, MAX_NODES, NODE_GAP } from "./graph";
 import type { AutomationEdge, AutomationNode } from "./graph";
-import { branchesOfKind, logicProblem } from "./logic";
+import { branchesOfKind, canFailOver, FAILURE_WAY, logicProblem } from "./logic";
 import {
   defaultSettings,
   getNodeType,
@@ -50,6 +50,11 @@ export type Operation =
       branch?: string;
       settings?: Record<string, unknown>;
       label?: string;
+      /**
+       * More steps the new one also follows, besides `after`. It then waits until all of
+       * them have finished and runs once, with the files from all of them.
+       */
+      join?: string[];
     }
   /** Removes steps and joins what fed each one to what it fed. */
   | { op: "remove"; ids: string[] }
@@ -195,7 +200,12 @@ export function pasteSteps(
     );
   }
   const branch = wayOut(draft, after, op.branch);
-  const lift = branch === undefined ? 0 : (branch === "no" ? 1 : -1) * (ROW_GAP / 2);
+  const lift =
+    branch === undefined
+      ? 0
+      : branch === FAILURE_WAY
+        ? ROW_GAP
+        : (branch === "no" ? 1 : -1) * (ROW_GAP / 2);
   const before = new Set([after.id, ...stepsBefore(after.id, draft.edges).flat()]);
   // Steps already hanging off that way: the copy goes below them.
   const beside = draft.edges
@@ -228,7 +238,10 @@ export function bridgeEdges<
   let next: (E | AutomationEdge)[] = edges;
   for (const id of removed) {
     const feeding = next.filter((edge) => edge.target === id);
-    const targets = next.filter((edge) => edge.source === id).map((edge) => edge.target);
+    // What hung off the way for when it fails is not joined up: it was never the main flow.
+    const targets = next
+      .filter((edge) => edge.source === id && edge.branch !== FAILURE_WAY)
+      .map((edge) => edge.target);
     next = next.filter((edge) => edge.source !== id && edge.target !== id);
     for (const { source, branch } of feeding) {
       for (const target of targets) {
@@ -268,8 +281,14 @@ export function tidyPositions(
     const column = depthOf(id, new Set());
     columns.set(column, [...(columns.get(column) ?? []), id]);
   }
-  // What hangs off an If's "no" sits below what hangs off its "yes".
-  const below = (id: string) => (edges.some((e) => e.target === id && e.branch === "no") ? 1 : 0);
+  // What hangs off an If's "no" sits below what hangs off its "yes", and what runs when a
+  // step fails sits below the rest.
+  const below = (id: string) =>
+    edges.some((e) => e.target === id && e.branch === FAILURE_WAY)
+      ? 2
+      : edges.some((e) => e.target === id && e.branch === "no")
+        ? 1
+        : 0;
   const positions = new Map<string, { x: number; y: number }>();
   for (const [column, unsorted] of columns) {
     const ids = [...unsorted].sort((a, b) => below(a) - below(b));
@@ -297,6 +316,12 @@ function wayOut(
 ): string | undefined {
   const ways = branchesOfKind(source.kind);
   const title = source.label ?? nodeTypeOf(source)?.title ?? source.id;
+  if (asked === FAILURE_WAY) {
+    if (!canFailOver(source.kind)) {
+      throw new OperationError(`${title} cannot have a way for when it fails.`);
+    }
+    return asked;
+  }
   if (ways.length === 0) {
     if (asked !== undefined) throw new OperationError(`${title} has only one way out.`);
     return undefined;
@@ -377,18 +402,44 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
       link(id, before.id, branchesOfKind(kind.kind)[0]),
     ];
   } else {
-    const rightmost = nodes.reduce<AutomationNode | undefined>(
-      (far, node) => (!far || node.position.x > far.position.x ? node : far),
-      undefined,
-    );
-    const anchor = after ?? rightmost;
     const branch = after ? wayOut(draft, after, op.branch) : undefined;
-    // The two ways out of an If fan apart, "yes" above and "no" below.
-    const lift = branch === undefined ? 0 : (branch === "no" ? 1 : -1) * (ROW_GAP / 2);
-    position = anchor
-      ? { x: anchor.position.x + NODE_GAP, y: anchor.position.y + lift }
-      : { x: 0, y: 0 };
+    // The two ways out of an If fan apart, "yes" above and "no" below; what runs when a
+    // step fails hangs a row below it.
+    const lift =
+      branch === undefined
+        ? 0
+        : branch === FAILURE_WAY
+          ? ROW_GAP
+          : (branch === "no" ? 1 : -1) * (ROW_GAP / 2);
+    if (after) {
+      position = { x: after.position.x + NODE_GAP, y: after.position.y + lift };
+    } else if (nodes.length === 0) {
+      position = { x: 0, y: 0 };
+    } else {
+      // A step joined to nothing starts from the start, so it goes in the first column,
+      // below everything else.
+      position = {
+        x: Math.min(...nodes.map((node) => node.position.x)),
+        y: Math.max(...nodes.map((node) => node.position.y)) + ROW_GAP,
+      };
+    }
     if (after) edges = [...edges, link(after.id, id, branch)];
+  }
+
+  const joined = (op.join ?? []).filter((other) => other !== after?.id);
+  if (joined.length > 0) {
+    if (!after || before) {
+      throw new OperationError("To join steps, say which step it comes after too.");
+    }
+    const sources = [after, ...joined.map((other) => need(draft, other))];
+    // It sits one place right of the furthest step it waits for, level with their middle.
+    position = {
+      x: Math.max(...sources.map((source) => source.position.x)) + NODE_GAP,
+      y: Math.round(sources.reduce((sum, source) => sum + source.position.y, 0) / sources.length),
+    };
+    for (const source of sources.slice(1)) {
+      edges = [...edges, link(source.id, id, wayOut({ ...draft, edges }, source, undefined))];
+    }
   }
 
   const node: AutomationNode = {
@@ -398,6 +449,8 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
     input: { ...defaultSettings(nodeType), ...(op.settings ?? {}) },
     position,
   };
+  const problem = joined.length > 0 ? graphProblem([...nodes, node], edges) : null;
+  if (problem) throw new OperationError(problem);
   return { ...draft, nodes: [...nodes, node], edges };
 }
 
