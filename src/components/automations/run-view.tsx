@@ -4,7 +4,13 @@ import "@xyflow/react/style.css";
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { type AutomationNode, readClipsSetup } from "@ncat-dash/automation-core";
+import {
+  type AutomationEdge,
+  type AutomationNode,
+  BRANCH_LABELS,
+  IF_BRANCHES,
+  readClipsSetup,
+} from "@ncat-dash/automation-core";
 import { Background, Controls, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Check, CircleStop, MessagesSquare, RotateCw, X } from "lucide-react";
@@ -22,6 +28,7 @@ import { nodeTitle, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib
 import { errorMessage, formatDuration } from "@/lib/catalog";
 
 import {
+  canvasEdge,
   edgeTypes,
   FIT_VIEW,
   flowEdge,
@@ -32,6 +39,7 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { ClipsRun } from "./clips-run";
+import { EditorExport } from "./editor-export";
 import { RunStatusBadge, shownStatus } from "./run-status";
 
 /** A run only records which kind of trigger started it, which is all the canvas shows. */
@@ -43,6 +51,48 @@ function runTrigger(kind: TriggerKind): Trigger {
 }
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const timeOnly = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
+
+/**
+ * What a logic step did, in a few words: which way an If sent its files, or when a Wait
+ * carries on. Null for every other step.
+ */
+function logicNote(step: {
+  status: string;
+  branches?: Record<string, string[]>;
+  stage?: string;
+  resumeAt?: number;
+}): string | null {
+  if (step.branches) {
+    const went = IF_BRANCHES.filter((way) => (step.branches?.[way]?.length ?? 0) > 0);
+    const total = went.reduce((sum, way) => sum + step.branches![way].length, 0);
+    if (total === 1) return `Went ${BRANCH_LABELS[went[0]]}`;
+    return went.map((way) => `${step.branches![way].length} ${BRANCH_LABELS[way]}`).join(", ");
+  }
+  if (step.stage === "check" && step.status === "running") return "Reading the files";
+  if (step.stage === "wait" && step.status === "running" && step.resumeAt) {
+    return `Until ${until(step.resumeAt)}`;
+  }
+  return null;
+}
+
+/** A moment as a person says it: just the time when it is today, the date too when it is not. */
+function until(moment: number): string {
+  const today = new Date().toDateString() === new Date(moment).toDateString();
+  return today ? timeOnly.format(moment) : when.format(moment);
+}
+
+/** What an If did with its files, as a sentence. */
+function sortedSentence(branches: Record<string, string[]>): string {
+  const counts = IF_BRANCHES.map(
+    (way) => [BRANCH_LABELS[way], branches[way]?.length ?? 0] as const,
+  );
+  const total = counts.reduce((sum, [, count]) => sum + count, 0);
+  if (total === 1) return `The file went out by ${counts.find(([, count]) => count === 1)![0]}.`;
+  return `${counts
+    .map(([label, count]) => `${count} ${count === 1 ? "file" : "files"} went out by ${label}`)
+    .join(", ")}.`;
+}
 
 /** Counts down to a step's next try. */
 function RetryCountdown({ at }: { at: number }) {
@@ -104,6 +154,7 @@ export function RunView({
           node,
           status: byNode.has(node.id) ? shownStatus(byNode.get(node.id)!) : undefined,
           jobCount: byNode.get(node.id)?.jobs.length,
+          note: logicNote(byNode.get(node.id) ?? { status: "pending" }) ?? undefined,
         },
       })),
     ];
@@ -112,8 +163,8 @@ export function RunView({
         run.nodes.map((node) => node.id),
         run.edges,
       ),
-      ...run.edges.map((edge) => ({
-        ...flowEdge(edge),
+      ...(run.edges as AutomationEdge[]).map((edge) => ({
+        ...flowEdge(canvasEdge(edge)),
         animated:
           byNode.get(edge.target)?.status === "running" && !byNode.get(edge.target)?.retryAt,
       })),
@@ -158,6 +209,7 @@ export function RunView({
         </div>
         <div className="ml-auto flex items-center gap-3">
           <RunStatusBadge status={run.status} />
+          {run.hasCuts && <EditorExport runId={runId} />}
           {clipsSetup && (
             <Button variant="ghost" size="sm" onClick={() => setShowClips((shown) => !shown)}>
               {showClips ? "Show the canvas" : "Show clips"}
@@ -267,6 +319,15 @@ export function RunView({
                   {step.status === "running" && step.jobs.length > 1 && (
                     <p className="text-muted-foreground text-sm tabular-nums">
                       {finished} of {step.jobs.length} files finished
+                    </p>
+                  )}
+                  {logicNote(step) && (
+                    <p className="text-muted-foreground text-sm" data-note>
+                      {node.kind === "if" && step.branches
+                        ? sortedSentence(step.branches)
+                        : node.kind === "wait" && step.resumeAt
+                          ? `Carries on at ${until(step.resumeAt)}.`
+                          : `${logicNote(step)}.`}
                     </p>
                   )}
                   {step.error && (

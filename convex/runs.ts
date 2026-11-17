@@ -2,7 +2,10 @@ import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
+import { finishWait } from "./lib/logic";
 import { pump } from "./lib/queue";
+import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
+import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
 import { decideApproval, retriesFor, retryStepNow, startRun } from "./lib/runner";
 
 function summary(run: Doc<"runs">) {
@@ -49,6 +52,8 @@ export const get = query({
       .take(200);
     return {
       ...summary(run),
+      // Whether the run's cuts can be opened in a video editor.
+      hasCuts: (await cutListOf(ctx, run, steps)) !== null,
       trigger: run.trigger,
       // How many times a failed step tries again for this team.
       retryLimit: await retriesFor(ctx, run.organizationId),
@@ -70,6 +75,9 @@ export const get = query({
               .map((job) => ({ _id: job._id, status: job.status, outputs: job.outputs })),
             stage: step.stage,
             plan: step.plan,
+            // For an If: the files that left by each way. For a Wait: when it carries on.
+            branches: step.branches,
+            resumeAt: step.resumeAt,
             retries: step.retries ?? 0,
             // Set while the step waits to try again.
             retryAt: step.retryAt ?? null,
@@ -77,6 +85,34 @@ export const get = query({
           };
         }),
       ),
+    };
+  },
+});
+
+/**
+ * The files that open a run's cuts in the team's video editors, made on the spot from
+ * the cuts the run saved. Null when the run has no cuts to open.
+ */
+export const editorFiles = query({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run || !(await isMember(ctx, run.organizationId))) return null;
+    const steps = await ctx.db
+      .query("runSteps")
+      .withIndex("by_run", (q) => q.eq("runId", args.runId))
+      .take(200);
+    const cuts = await cutListOf(ctx, run, steps);
+    if (!cuts) return null;
+    const editors = await editorsOf(ctx, run.organizationId);
+    return {
+      timelines: cuts.timelines.length,
+      editors: EDITORS.filter((editor) => editors.includes(editor.id)).map((editor) => editor.name),
+      usesCapCut: editors.includes("capcut"),
+      files: filesForEditors(cuts, editors, await captionsOf(ctx, run, steps)),
+      // The finished clips, for editors that open no timeline and for anyone who wants
+      // everything in one folder.
+      clips: finishedFiles(run, steps),
     };
   },
 });
@@ -155,6 +191,14 @@ export const cancel = mutation({
     }
     await ctx.db.patch(args.runId, { status: "cancelled", finishedAt: now });
     await pump(ctx, run.organizationId);
+  },
+});
+
+/** Fires when a Wait step's time is up, and lets the run carry on. */
+export const wake = internalMutation({
+  args: { runStepId: v.id("runSteps") },
+  handler: async (ctx, args) => {
+    await finishWait(ctx, args.runStepId);
   },
 });
 

@@ -2,12 +2,19 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import type { AutomationNode, Starter } from "@ncat-dash/automation-core";
+import {
+  automationFileName,
+  type AutomationNode,
+  exportAutomation,
+  MAX_AUTOMATION_FILE_CHARS,
+  parseAutomationFile,
+  type Starter,
+} from "@ncat-dash/automation-core";
 import { useMutation, useQuery } from "convex/react";
-import { Hourglass, MoreHorizontal, Plus, Workflow } from "lucide-react";
+import { FileUp, Hourglass, MoreHorizontal, Plus, Workflow } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +45,7 @@ import {
 } from "@/components/ui/table";
 import { triggerSummary } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
+import { downloadJson } from "@/lib/download";
 import { useActiveTeam } from "@/lib/team-context";
 
 import { FlowStrip } from "./flow-strip";
@@ -54,6 +62,8 @@ export function AutomationsView() {
   const create = useMutation(api.automations.create);
   const setEnabled = useMutation(api.automations.setEnabled);
   const remove = useMutation(api.automations.remove);
+  const importFile = useMutation(api.automations.importFile);
+  const picker = useRef<HTMLInputElement>(null);
 
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -74,8 +84,49 @@ export function AutomationsView() {
     }
   }
 
+  /** Reads a file someone exported and opens the automation it holds, switched off. */
+  async function onImport(file: File | undefined) {
+    if (!file) return;
+    setPending(true);
+    try {
+      if (file.size > MAX_AUTOMATION_FILE_CHARS) {
+        toast.error("This file is too large to be an automation.");
+        return;
+      }
+      // Checked here first so a wrong file is turned away straight off; the server checks again.
+      const read = parseAutomationFile(await file.text());
+      if (!read.ok) {
+        toast.error(read.message);
+        return;
+      }
+      const { automationId, notes } = await importFile({
+        organizationId: team.id,
+        file: JSON.parse(await file.text()),
+      });
+      toast.success(`Imported ${read.draft.name}. It is switched off until you turn it on.`, {
+        description: notes.join(" ") || undefined,
+        duration: notes.length > 0 ? 12_000 : undefined,
+      });
+      router.push(`/automations/${automationId}`);
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The file could not be imported. Try again."));
+    } finally {
+      setPending(false);
+      if (picker.current) picker.current.value = "";
+    }
+  }
+
   return (
     <>
+      <input
+        ref={picker}
+        type="file"
+        accept=".json,application/json"
+        className="sr-only"
+        tabIndex={-1}
+        aria-label="Automation file to import"
+        onChange={(event) => void onImport(event.target.files?.[0])}
+      />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Automations</h1>
@@ -84,10 +135,21 @@ export function AutomationsView() {
             schedule, or when another tool calls them.
           </p>
         </div>
-        <Button size="sm" onClick={() => setOpen(true)}>
-          <Plus />
-          New automation
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => picker.current?.click()}
+          >
+            <FileUp />
+            Import
+          </Button>
+          <Button size="sm" onClick={() => setOpen(true)}>
+            <Plus />
+            New automation
+          </Button>
+        </div>
       </div>
 
       {approvals && approvals.length > 0 && (
@@ -219,6 +281,20 @@ export function AutomationsView() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild>
                           <Link href={`/automations/${automation._id}`}>Open</Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            const { file, notes } = exportAutomation({
+                              name: automation.name,
+                              trigger: automation.trigger,
+                              nodes: automation.nodes as AutomationNode[],
+                              edges: automation.edges,
+                            });
+                            downloadJson(automationFileName(automation.name), file);
+                            toast.success("Saved as a file", { description: notes[0] });
+                          }}
+                        >
+                          Export as a file
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           variant="destructive"

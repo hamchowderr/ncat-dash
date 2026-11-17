@@ -6,6 +6,7 @@
 import { type Brand, BRAND_WORDS } from "./brand";
 import { graphProblem, MAX_NODES, NODE_GAP } from "./graph";
 import type { AutomationEdge, AutomationNode } from "./graph";
+import { branchesOfKind, logicProblem } from "./logic";
 import {
   defaultSettings,
   getNodeType,
@@ -42,12 +43,18 @@ export type Operation =
       id?: string;
       after?: string;
       before?: string;
+      /**
+       * Which way out of `after` to hang it on, when `after` is an If: "yes" or "no".
+       * Left out, it takes the first way nothing is connected to yet.
+       */
+      branch?: string;
       settings?: Record<string, unknown>;
       label?: string;
     }
   /** Removes steps and joins what fed each one to what it fed. */
   | { op: "remove"; ids: string[] }
-  | { op: "connect"; source: string; target: string }
+  /** `branch` says which way out of an If the connection leaves by: "yes" or "no". */
+  | { op: "connect"; source: string; target: string; branch?: string }
   | { op: "disconnect"; source: string; target: string }
   /** Merges into a step's settings. A value of null clears that setting. */
   | { op: "set"; id: string; settings: Record<string, unknown> }
@@ -78,19 +85,22 @@ export function newNodeId(existing: { id: string }[], base: string): string {
 }
 
 /** Edges left after removing steps, with each removed step's neighbours joined up. */
-export function bridgeEdges<E extends { id: string; source: string; target: string }>(
-  removed: string[],
-  edges: E[],
-): (E | AutomationEdge)[] {
+export function bridgeEdges<
+  E extends { id: string; source: string; target: string; branch?: string },
+>(removed: string[], edges: E[]): (E | AutomationEdge)[] {
   let next: (E | AutomationEdge)[] = edges;
   for (const id of removed) {
-    const sources = next.filter((edge) => edge.target === id).map((edge) => edge.source);
+    const feeding = next.filter((edge) => edge.target === id);
     const targets = next.filter((edge) => edge.source === id).map((edge) => edge.target);
     next = next.filter((edge) => edge.source !== id && edge.target !== id);
-    for (const source of sources) {
+    for (const { source, branch } of feeding) {
       for (const target of targets) {
         if (!next.some((edge) => edge.source === source && edge.target === target)) {
-          next = [...next, { id: `${source}>${target}`, source, target }];
+          // What followed the removed step stays on the same way out of an If before it.
+          next = [
+            ...next,
+            { id: `${source}>${target}`, source, target, ...(branch ? { branch } : {}) },
+          ];
         }
       }
     }
@@ -104,7 +114,7 @@ export function bridgeEdges<E extends { id: string; source: string; target: stri
  */
 export function tidyPositions(
   nodeIds: string[],
-  edges: { source: string; target: string }[],
+  edges: { source: string; target: string; branch?: string }[],
 ): Map<string, { x: number; y: number }> {
   const depth = new Map<string, number>();
   const depthOf = (id: string, seen: Set<string>): number => {
@@ -121,8 +131,11 @@ export function tidyPositions(
     const column = depthOf(id, new Set());
     columns.set(column, [...(columns.get(column) ?? []), id]);
   }
+  // What hangs off an If's "no" sits below what hangs off its "yes".
+  const below = (id: string) => (edges.some((e) => e.target === id && e.branch === "no") ? 1 : 0);
   const positions = new Map<string, { x: number; y: number }>();
-  for (const [column, ids] of columns) {
+  for (const [column, unsorted] of columns) {
+    const ids = [...unsorted].sort((a, b) => below(a) - below(b));
     ids.forEach((id, row) =>
       positions.set(id, { x: column * NODE_GAP, y: (row - (ids.length - 1) / 2) * ROW_GAP }),
     );
@@ -136,11 +149,48 @@ function need(draft: AutomationDraft, id: string): AutomationNode {
   return node;
 }
 
-function withEdge(draft: AutomationDraft, source: string, target: string): AutomationEdge[] {
-  if (draft.edges.some((edge) => edge.source === source && edge.target === target)) {
-    return draft.edges;
+/**
+ * The way out of `source` a new connection leaves by: the one asked for, or the first
+ * nothing hangs off yet. Undefined for a step with a single way out.
+ */
+function wayOut(
+  draft: AutomationDraft,
+  source: AutomationNode,
+  asked: string | undefined,
+): string | undefined {
+  const ways = branchesOfKind(source.kind);
+  const title = source.label ?? nodeTypeOf(source)?.title ?? source.id;
+  if (ways.length === 0) {
+    if (asked !== undefined) throw new OperationError(`${title} has only one way out.`);
+    return undefined;
   }
-  return [...draft.edges, { id: `${source}>${target}`, source, target }];
+  if (asked !== undefined) {
+    if (!ways.includes(asked)) {
+      throw new OperationError(
+        `${title} has no way out called "${asked}". Use ${ways.join(" or ")}.`,
+      );
+    }
+    return asked;
+  }
+  const used = draft.edges.filter((edge) => edge.source === source.id).map((edge) => edge.branch);
+  return ways.find((way) => !used.includes(way)) ?? ways[0];
+}
+
+function link(source: string, target: string, branch: string | undefined): AutomationEdge {
+  return { id: `${source}>${target}`, source, target, ...(branch ? { branch } : {}) };
+}
+
+function withEdge(
+  draft: AutomationDraft,
+  source: string,
+  target: string,
+  asked?: string,
+): AutomationEdge[] {
+  const existing = draft.edges.find((other) => other.source === source && other.target === target);
+  // Connecting two steps again only matters when it moves the line to another way out.
+  if (existing && (asked === undefined || existing.branch === asked)) return draft.edges;
+  const branch = wayOut(draft, need(draft, source), asked);
+  return [...draft.edges.filter((other) => other !== existing), link(source, target, branch)];
 }
 
 function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): AutomationDraft {
@@ -171,14 +221,18 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
         ? { ...node, position: { ...node.position, x: node.position.x + NODE_GAP } }
         : node,
     );
-    const feeding = after
-      ? [after.id]
-      : edges.filter((edge) => edge.target === before.id).map((edge) => edge.source);
-    edges = edges.filter((edge) => !(edge.target === before.id && feeding.includes(edge.source)));
+    const feeding = edges.filter(
+      (other) => other.target === before.id && (!after || other.source === after.id),
+    );
+    edges = edges.filter((other) => !feeding.includes(other));
     edges = [
       ...edges,
-      ...feeding.map((source) => ({ id: `${source}>${id}`, source, target: id })),
-      { id: `${id}>${before.id}`, source: id, target: before.id },
+      // Each line that fed the step after keeps the way out it left by.
+      ...(feeding.length > 0 || !after
+        ? feeding.map((other) => link(other.source, id, other.branch))
+        : [link(after.id, id, wayOut(draft, after, op.branch))]),
+      // A new If carries on by its first way out.
+      link(id, before.id, branchesOfKind(kind.kind)[0]),
     ];
   } else {
     const rightmost = nodes.reduce<AutomationNode | undefined>(
@@ -186,8 +240,13 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
       undefined,
     );
     const anchor = after ?? rightmost;
-    position = anchor ? { x: anchor.position.x + NODE_GAP, y: anchor.position.y } : { x: 0, y: 0 };
-    if (after) edges = [...edges, { id: `${after.id}>${id}`, source: after.id, target: id }];
+    const branch = after ? wayOut(draft, after, op.branch) : undefined;
+    // The two ways out of an If fan apart, "yes" above and "no" below.
+    const lift = branch === undefined ? 0 : (branch === "no" ? 1 : -1) * (ROW_GAP / 2);
+    position = anchor
+      ? { x: anchor.position.x + NODE_GAP, y: anchor.position.y + lift }
+      : { x: 0, y: 0 };
+    if (after) edges = [...edges, link(after.id, id, branch)];
   }
 
   const node: AutomationNode = {
@@ -219,7 +278,7 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
     case "connect": {
       need(draft, op.source);
       need(draft, op.target);
-      const edges = withEdge(draft, op.source, op.target);
+      const edges = withEdge(draft, op.source, op.target, op.branch);
       const problem = graphProblem(draft.nodes, edges);
       if (problem) throw new OperationError(problem);
       return { ...draft, edges };
@@ -236,7 +295,7 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
       const known = nodeTypeOf(node)?.settings.properties;
       const input = { ...node.input };
       for (const [name, value] of Object.entries(op.settings)) {
-        if (known && !(name in known)) {
+        if (known && !Object.hasOwn(known, name)) {
           throw new OperationError(
             `"${name}" is not a setting of ${nodeTypeOf(node)?.title ?? "this step"}.`,
           );
@@ -396,6 +455,9 @@ export function draftProblems(draft: AutomationDraft, brand: Brand = {}): DraftP
         message: `${node.label ?? nodeType.title} still needs: ${own.join(", ")}.`,
       });
     }
+    const logic = own.length === 0 ? logicProblem(node) : null;
+    if (logic)
+      problems.push({ nodeId: node.id, message: `${node.label ?? nodeType.title}: ${logic}` });
   }
   return problems;
 }
@@ -425,7 +487,7 @@ export function outline(draft: AutomationDraft, brand: Brand = {}): string {
   for (const node of sorted) {
     const sources = draft.edges
       .filter((edge) => edge.target === node.id)
-      .map((edge) => edge.source);
+      .map((edge) => (edge.branch ? `${edge.source} (${edge.branch})` : edge.source));
     const issue = problems.find((problem) => problem.nodeId === node.id);
     lines.push(
       `- ${node.id} [${typeNameOf(node)}]${node.label ? ` "${node.label}"` : ""} from ${
