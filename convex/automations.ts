@@ -42,6 +42,7 @@ import {
 import { isMember, requireMember } from "./lib/authz";
 import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
+import { deleteVersions, recordVersion } from "./lib/versions";
 import { presign } from "./lib/s3";
 import { decryptSecret } from "./lib/crypto";
 import { edgeValidator, nodeValidator, operationValidator, triggerValidator } from "./schema";
@@ -196,6 +197,8 @@ export const get = query({
       // The version triggers run, when the canvas is showing a draft of something else.
       // Null when what is above is the live version.
       live: draft ? versionOf(automation) : null,
+      // When the draft began as an earlier version brought back, that version's number.
+      restoredFrom: draft?.restoredFrom ?? null,
       // Team members need the full address to give to whatever calls it.
       hookToken: automation.hookToken,
       nextRunAt: automation.nextRunAt,
@@ -213,18 +216,26 @@ export const create = mutation({
     if (args.starterId && !starter) fail("not_found", "Unknown starter.");
     const name = (args.name.trim() || starter?.name || "").slice(0, 80);
     if (!name) fail("invalid_input", "Give the automation a name.");
-    return await ctx.db.insert("automations", {
-      organizationId: args.organizationId,
+    const content = {
       name,
-      enabled: false,
-      trigger: starter?.trigger ?? { kind: "manual" },
+      trigger: starter?.trigger ?? ({ kind: "manual" } as const),
       nodes: starter?.nodes ?? [],
       edges: starter?.edges ?? [],
+    };
+    const automationId = await ctx.db.insert("automations", {
+      organizationId: args.organizationId,
+      ...content,
+      enabled: false,
       hookToken: randomToken(),
       nextRunAt: null,
       createdBy: userId,
       updatedAt: Date.now(),
     });
+    await recordVersion(ctx, { _id: automationId, organizationId: args.organizationId }, content, {
+      userId,
+      source: "created",
+    });
+    return automationId;
   },
 });
 
@@ -277,6 +288,12 @@ export const importFile = mutation({
       createdBy: userId,
       updatedAt: Date.now(),
     });
+    await recordVersion(
+      ctx,
+      { _id: automationId, organizationId: args.organizationId },
+      read.draft,
+      { userId, source: "imported" },
+    );
     return { automationId, notes: read.notes };
   },
 });
@@ -337,21 +354,36 @@ async function storeChanges(
 ): Promise<{ enabled: boolean; problem: string | null; draft: boolean }> {
   const version = checked(changed);
   if (!automation.enabled && !automation.draft) {
-    return { ...(await storeLive(ctx, automation, version)), draft: false };
+    const stored = await storeLive(ctx, automation, version, { userId, source: "saved" });
+    return { ...stored, draft: false };
   }
   const problem = await problemOf(ctx, automation.organizationId, version);
   const same = canonical(version) === canonical(versionOf(automation));
   await ctx.db.patch(automation._id, {
-    draft: same ? undefined : { ...version, updatedBy: userId, updatedAt: Date.now() },
+    draft: same
+      ? undefined
+      : {
+          ...version,
+          updatedBy: userId,
+          updatedAt: Date.now(),
+          // Still based on the version it was brought back from, after more edits.
+          ...(automation.draft?.restoredFrom !== undefined
+            ? { restoredFrom: automation.draft.restoredFrom }
+            : {}),
+        },
   });
   return { enabled: automation.enabled, problem, draft: !same };
 }
 
-/** Writes the live version, switching the automation off when it can no longer run. */
+/**
+ * Writes the live version, switching the automation off when it can no longer run, and
+ * keeps it as a numbered version so it can be brought back later.
+ */
 async function storeLive(
   ctx: MutationCtx,
   automation: Doc<"automations">,
   version: Version,
+  by: Parameters<typeof recordVersion>[3],
 ): Promise<{ enabled: boolean; problem: string | null }> {
   const problem = await problemOf(ctx, automation.organizationId, version);
   const enabled = automation.enabled && problem === null;
@@ -363,6 +395,7 @@ async function storeLive(
     watchFrom: watchStart(automation, version.trigger, enabled),
     updatedAt: Date.now(),
   });
+  await recordVersion(ctx, automation, version, by);
   return { enabled, problem };
 }
 
@@ -374,14 +407,18 @@ export const publish = mutation({
   args: { automationId: v.id("automations") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { automation } = await loadForMember(ctx, args.automationId);
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
     if (!automation.draft) return null;
     const version = checked(automation.draft);
     if (automation.enabled) {
       const problem = await problemOf(ctx, automation.organizationId, version);
       if (problem) fail("invalid_input", problem);
     }
-    await storeLive(ctx, automation, version);
+    await storeLive(ctx, automation, version, {
+      userId,
+      source: "published",
+      restoredFrom: automation.draft.restoredFrom,
+    });
     return null;
   },
 });
@@ -486,6 +523,7 @@ export const remove = mutation({
   args: { automationId: v.id("automations") },
   handler: async (ctx, args) => {
     await loadForMember(ctx, args.automationId);
+    await deleteVersions(ctx, args.automationId);
     await ctx.db.delete(args.automationId);
   },
 });
