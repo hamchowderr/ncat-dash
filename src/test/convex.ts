@@ -25,6 +25,11 @@ export function mutationOf(mutation: FunctionReference<"mutation">) {
   return mock;
 }
 
+/** The stand-in behind an action, to check how it was called or set what it gives back. */
+export function actionOf(action: FunctionReference<"action">) {
+  return mutationOf(action as unknown as FunctionReference<"mutation">);
+}
+
 export const pushed = vi.fn();
 export const toastError = vi.fn();
 export const toastInfo = vi.fn();
@@ -50,6 +55,9 @@ export const convexReact = {
   },
   useMutation(mutation: FunctionReference<"mutation">) {
     return mutationOf(mutation);
+  },
+  useAction(action: FunctionReference<"action">) {
+    return actionOf(action);
   },
 };
 

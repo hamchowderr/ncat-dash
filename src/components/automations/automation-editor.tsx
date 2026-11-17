@@ -94,6 +94,7 @@ import {
 import { DraftBar } from "./draft-bar";
 import { LiveRunBadge, useLiveRun } from "./live-run";
 import { NodePanel } from "./node-panel";
+import { StepTest } from "./step-test";
 import { STEP_ICONS } from "./step-icons";
 import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
@@ -264,6 +265,8 @@ function Editor({ automation }: { automation: Loaded }) {
 
   const [tab, setTab] = useState("editor");
   const running = useLiveRun(automation._id);
+  // The last test of each step since the editor opened, so its result stays in the panel.
+  const [tests, setTests] = useState<Record<string, Id<"runs">>>({});
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Keep the whole automation in view when it opens and whenever a step is added or removed.
@@ -791,6 +794,18 @@ function Editor({ automation }: { automation: Loaded }) {
                       }
                       onRemove={() => removeSteps([selected.id])}
                     />
+                    {(selected.data.node.kind === "step" ||
+                      selected.data.node.kind === "clips") && (
+                      <StepTest
+                        key={selected.id}
+                        automationId={automation._id}
+                        node={selected.data.node}
+                        runId={tests[selected.id]}
+                        onStarted={(runId) =>
+                          setTests((current) => ({ ...current, [selected.id]: runId }))
+                        }
+                      />
+                    )}
                   </>
                 ) : (
                   <>

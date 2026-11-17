@@ -147,7 +147,8 @@ export function RunView({
         <div className="grid">
           <h1 className="text-lg font-semibold tracking-tight">{run.automationName}</h1>
           <p className="text-muted-foreground text-sm">
-            {TRIGGER_LABELS[run.triggerKind]} run, started {when.format(run.startedAt)}
+            {run.testOf ? `Test of ${run.testOf}` : `${TRIGGER_LABELS[run.triggerKind]} run`},
+            started {when.format(run.startedAt)}
             {run.finishedAt ? `, took ${formatDuration(run.finishedAt - run.startedAt)}` : ""}
           </p>
         </div>
