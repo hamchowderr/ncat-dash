@@ -9,14 +9,19 @@ import {
   type CutSource,
   clipsCutList,
   cutCues,
+  editorFiles,
   fcp7Xml,
   fcpXml,
   fileNameOf,
   formatSrt,
   framePieces,
   frameTime,
+  isCuttingStep,
+  keptPieces,
   parseSrt,
+  parseTime,
   rateOf,
+  stepTimelines,
 } from "../src";
 
 const source = (fps: number, more: Partial<CutSource> = {}): CutSource => ({
@@ -142,6 +147,32 @@ describe("the files", () => {
   });
 });
 
+describe("files per editor", () => {
+  it("gives each editor the file it opens, and a note on opening it", () => {
+    const names = (editors: Parameters<typeof editorFiles>[1]) =>
+      editorFiles(silences(30), editors).map((file) => file.name);
+    expect(names(["premiere", "resolve", "finalcut", "capcut"])).toEqual([
+      "Episode 12.xml",
+      "Episode 12.fcpxml",
+      "How to open.txt",
+    ]);
+    expect(names(["resolve"])).toEqual(["Episode 12.xml", "How to open.txt"]);
+    expect(names(["finalcut"])).toEqual(["Episode 12.fcpxml", "How to open.txt"]);
+    // CapCut opens no timeline, so on its own there is nothing to hand over.
+    expect(names(["capcut"])).toEqual([]);
+    expect(names([])).toEqual([]);
+  });
+
+  it("names the recording to keep beside the timeline, and makes file names safe", () => {
+    const files = editorFiles({ ...silences(30), name: 'Ep 12: "final" / v2' }, ["premiere"]);
+    expect(files[0].name).toBe("Ep 12 final v2.xml");
+    expect(files[0].editors).toEqual(["Premiere Pro"]);
+    expect(files[1].text).toContain("Episode 12 & more.mp4");
+    expect(files[1].text).toContain("Premiere Pro: File > Import");
+    expect(files[1].text).not.toContain("Final Cut Pro:");
+  });
+});
+
 describe("captions", () => {
   const srt =
     "1\n00:00:01,000 --> 00:00:03,500\nHello there\n\n2\n00:00:13,000 --> 00:00:15,000\nCut away\n\n3\n00:00:20,000 --> 00:00:22,000\nSecond part\nline two\n";
@@ -171,6 +202,135 @@ const hasOtio =
 const hasOtioFcpx =
   hasOtio && spawnSync("python3", ["-c", "import otio_fcpx_xml_adapter"]).status === 0;
 const RATES = [23.976, 25, 29.97, 30, 60];
+
+describe("the toolkit's cutting steps", () => {
+  const recording = source(25, { url: "https://files.example.com/team/Episode%2012.mp4?sig=abc" });
+
+  it("reads times the way the toolkit takes them", () => {
+    expect(parseTime("00:01:30")).toBe(90);
+    expect(parseTime("01:30.5")).toBe(90.5);
+    expect(parseTime("90")).toBe(90);
+    expect(parseTime(12.25)).toBe(12.25);
+    expect(parseTime("1:02:03.250")).toBe(3723.25);
+    expect(parseTime("soon")).toBeNull();
+    expect(parseTime(-1)).toBeNull();
+    expect(parseTime(undefined)).toBeNull();
+  });
+
+  it("knows which steps cut", () => {
+    expect(isCuttingStep("video-trim")).toBe(true);
+    expect(isCuttingStep("video-caption")).toBe(false);
+  });
+
+  it("keeps what is left once parts are removed", () => {
+    expect(
+      keptPieces(
+        [
+          { start: "00:00:50", end: "00:01:00" },
+          { start: "00:00:10", end: "00:00:20" },
+          { start: "00:00:15", end: "00:00:25" },
+          { start: "later", end: "00:02:00" },
+        ],
+        120,
+      ),
+    ).toEqual([
+      { start: 0, seconds: 10 },
+      { start: 25, seconds: 25 },
+      { start: 60, seconds: 60 },
+    ]);
+    expect(keptPieces([{ start: "0", end: "999" }], 120)).toEqual([]);
+    expect(keptPieces([], 120)).toEqual([{ start: 0, seconds: 120 }]);
+  });
+
+  it("gives Trim one timeline with the kept part", () => {
+    expect(stepTimelines("video-trim", { start: "00:00:05", end: "00:00:20" }, recording)).toEqual([
+      { name: "Episode 12 trimmed", source: recording, pieces: [{ start: 5, seconds: 15 }] },
+    ]);
+    // A missing end means the end of the recording.
+    expect(stepTimelines("video-trim", { start: "00:09:00" }, recording)[0].pieces).toEqual([
+      { start: 540, seconds: 60 },
+    ]);
+    expect(stepTimelines("video-trim", { start: "x" }, recording)).toEqual([]);
+  });
+
+  it("gives Cut one timeline and Split one per part", () => {
+    const cut = stepTimelines(
+      "video-cut",
+      { cuts: [{ start: "00:01:00", end: "00:02:00" }] },
+      recording,
+    );
+    expect(cut).toHaveLength(1);
+    expect(cut[0].name).toBe("Episode 12 cut");
+    expect(cut[0].pieces).toEqual([
+      { start: 0, seconds: 60 },
+      { start: 120, seconds: 480 },
+    ]);
+    const split = stepTimelines(
+      "video-split",
+      {
+        splits: [
+          { start: "00:00:00", end: "00:05:00" },
+          { start: "00:05:00", end: "00:10:00" },
+        ],
+      },
+      recording,
+    );
+    expect(split.map((timeline) => timeline.name)).toEqual([
+      "Episode 12 1 of 2",
+      "Episode 12 2 of 2",
+    ]);
+    expect(split[1].pieces).toEqual([{ start: 300, seconds: 300 }]);
+    expect(stepTimelines("video-split", {}, recording)).toEqual([]);
+  });
+
+  it("opens in other tools like any other cut list", () => {
+    const list = {
+      name: "Trim and split",
+      timelines: stepTimelines("video-cut", { cuts: [{ start: "10", end: "20" }] }, recording),
+    };
+    expect(fcp7Xml(list)).toContain("<name>Episode 12 cut</name>");
+    expect(fcpXml(list)).toContain('name="Episode 12 cut"');
+  });
+});
+
+describe("caption files per timeline", () => {
+  const list = silences(25);
+  const url = list.timelines[0].source.url;
+  const cues = [
+    { start: 1, end: 3, text: "Hello" },
+    { start: 13, end: 14, text: "In a pause" },
+    { start: 15, end: 17, text: "Back again" },
+  ];
+
+  it("adds one captions file per timeline, timed to the cut", () => {
+    const files = editorFiles(list, ["premiere"], { [url]: cues });
+    expect(files.map((file) => file.name)).toEqual([
+      "Episode 12.xml",
+      "Episode 12 without pauses.srt",
+      "How to open.txt",
+    ]);
+    const captions = files[1];
+    expect(captions.captions).toBe(true);
+    const moved = parseSrt(captions.text);
+    expect(moved.map((cue) => cue.text)).toEqual(["Hello", "Back again"]);
+    // "Back again" starts 0.8s into the second piece, which now sits at 12.5s.
+    expect(moved[1].start).toBeCloseTo(13.3, 2);
+    expect(files[2].text).toContain("4. Import the .srt file");
+  });
+
+  it("adds none when the recording has no captions", () => {
+    const files = editorFiles(list, ["premiere"], { "https://elsewhere.example.com/a.mp4": cues });
+    expect(files.some((file) => file.captions)).toBe(false);
+    expect(files.at(-1)?.text).not.toContain("4. Import");
+  });
+
+  it("keeps caption file names apart", () => {
+    const twice = { name: "Twice", timelines: [list.timelines[0], list.timelines[0]] };
+    const names = editorFiles(twice, ["finalcut"], { [url]: cues }).map((file) => file.name);
+    expect(names).toContain("Episode 12 without pauses.srt");
+    expect(names).toContain("Episode 12 without pauses 2.srt");
+  });
+});
 
 describe("read back by other tools", () => {
   let dir: string;

@@ -9,12 +9,13 @@ import {
   applyOperations,
   type AutomationDraft,
   type AutomationEdge,
+  automationFileName,
   type AutomationNode,
   type Brand,
   canonical,
   canRedo,
   canUndo,
-  graphProblem,
+  exportAutomation,
   newNodeId,
   type Operation,
   OperationError,
@@ -41,11 +42,22 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, LayoutGrid, Play, Plus, Redo2, Save, Search, Undo2, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  LayoutGrid,
+  Play,
+  Plus,
+  Redo2,
+  Save,
+  Search,
+  Undo2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -56,12 +68,14 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { nodeTitle, type Trigger } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
+import { downloadJson } from "@/lib/download";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import {
   AddAfterContext,
   BrandContext,
+  canvasEdge,
   edgeTypes,
   FIT_VIEW,
   flowEdge,
@@ -69,6 +83,8 @@ import {
   InsertOnEdgeContext,
   lastNodeIds,
   nodeTypes,
+  openWaysOf,
+  savedEdge,
   type StepFlowNode,
   GROUP_ICONS,
   TRIGGER_ID,
@@ -147,7 +163,7 @@ function Editor({ automation }: { automation: Loaded }) {
     ...(automation.nodes as AutomationNode[]).map(toFlowNode),
   ]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(
-    automation.edges.map((edge) => ({ ...edge })),
+    (automation.edges as AutomationEdge[]).map(canvasEdge),
   );
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
@@ -164,11 +180,7 @@ function Editor({ automation }: { automation: Loaded }) {
         ...node.data.node,
         position: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
       }));
-    const savedEdges: AutomationEdge[] = edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-    }));
+    const savedEdges: AutomationEdge[] = edges.map(savedEdge);
     return { name, trigger, nodes: savedNodes, edges: savedEdges };
   }, [name, trigger, nodes, edges]);
   /** Puts a whole automation on the canvas, keeping what is selected and where the trigger sits. */
@@ -183,7 +195,7 @@ function Editor({ automation }: { automation: Loaded }) {
         .map((node) => ({ ...node, data: { trigger: next.trigger } })),
       ...next.nodes.map((node) => ({ ...toFlowNode(node), selected: chosen.has(node.id) })),
     ]);
-    setEdges(next.edges.map((edge) => ({ ...edge })));
+    setEdges(next.edges.map(canvasEdge));
     // The settings panel keeps what is being typed; a new revision makes it read again.
     setRevision((current) => current + 1);
   }
@@ -262,28 +274,37 @@ function Editor({ automation }: { automation: Loaded }) {
     return () => timers.forEach(clearTimeout);
   }, [fitView, nodeCount, tab, panelShown]);
 
-  // Each step nothing follows offers a "+" to carry on from it.
+  // Each step nothing follows offers a "+" to carry on from it, and so does each way out
+  // of an If that nothing hangs off yet.
   const shownNodes = useMemo(() => {
     const last = lastNodeIds(
       stepNodes.map((node) => node.id),
       edges,
     );
+    const open = openWaysOf(draft.nodes, draft.edges);
     return nodes.map((node) =>
-      node.type === "step" ? { ...node, data: { ...node.data, last: last.has(node.id) } } : node,
+      node.type === "step"
+        ? { ...node, data: { ...node.data, last: last.has(node.id), openWays: open.get(node.id) } }
+        : node,
     );
-  }, [nodes, stepNodes, edges]);
+  }, [nodes, stepNodes, edges, draft]);
 
   // The line a new step is being put on, when it was started from a plus on a line.
   const [insertOn, setInsertOn] = useState<{ source: string; target: string } | null>(null);
 
+  // The way out of an If a new step is being hung on, when it was started from that way's plus.
+  const [onWay, setOnWay] = useState<string | undefined>(undefined);
+
   function openPalette() {
     setInsertOn(null);
+    setOnWay(undefined);
     setPaletteOpen(true);
   }
 
-  function addAfter(nodeId: string) {
+  function addAfter(nodeId: string, way?: string) {
     setNodes((current) => current.map((node) => ({ ...node, selected: node.id === nodeId })));
     openPalette();
+    setOnWay(way);
   }
 
   function insertOnEdge(source: string, target: string) {
@@ -295,7 +316,7 @@ function Editor({ automation }: { automation: Loaded }) {
   const onConnectEnd: OnConnectEnd = (_event, connection) => {
     if (connection.isValid || connection.fromHandle?.type !== "source") return;
     const from = connection.fromNode?.id;
-    if (from && from !== TRIGGER_ID) addAfter(from);
+    if (from && from !== TRIGGER_ID) addAfter(from, connection.fromHandle?.id ?? undefined);
   };
 
   /**
@@ -330,7 +351,7 @@ function Editor({ automation }: { automation: Loaded }) {
         }));
       return [...start, ...steps];
     });
-    setEdges(next.edges.map((edge) => ({ ...edge })));
+    setEdges(next.edges.map(canvasEdge));
     return next;
   }
 
@@ -380,33 +401,34 @@ function Editor({ automation }: { automation: Loaded }) {
               before: insertOn.target,
               after: insertOn.source === TRIGGER_ID ? undefined : insertOn.source,
             }
-          : { op: "add", type, id, after },
+          : { op: "add", type, id, after, ...(after && onWay ? { branch: onWay } : {}) },
       ],
       { select: id },
     );
     setInsertOn(null);
+    setOnWay(undefined);
   }
 
-  const onConnect = useCallback(
-    (connection: Connection) => {
-      if (connection.source === TRIGGER_ID || connection.target === TRIGGER_ID) return;
-      const next = [
-        ...draft.edges,
-        {
-          id: `${connection.source}>${connection.target}`,
-          source: connection.source,
-          target: connection.target,
-        },
-      ];
-      const problem = graphProblem(draft.nodes, next);
-      if (problem) {
-        toast.error(problem);
-        return;
-      }
-      setEdges((current) => [...current, next[next.length - 1]]);
-    },
-    [draft, setEdges],
-  );
+  // Drawing a line goes the same way as the agent's "connect", so a line out of an If
+  // carries the way it left by.
+  function onConnect(connection: Connection) {
+    if (connection.source === TRIGGER_ID || connection.target === TRIGGER_ID) return;
+    change([
+      {
+        op: "connect",
+        source: connection.source,
+        target: connection.target,
+        ...(connection.sourceHandle ? { branch: connection.sourceHandle } : {}),
+      },
+    ]);
+  }
+
+  /** Saves the automation on the canvas to the person's computer as a file. */
+  function onExport() {
+    const { file, notes } = exportAutomation(draft);
+    downloadJson(automationFileName(draft.name), file);
+    toast.success("Saved as a file", { description: notes[0] });
+  }
 
   async function persist(quiet = false): Promise<boolean> {
     if (!dirty) return true;
@@ -533,6 +555,10 @@ function Editor({ automation }: { automation: Loaded }) {
             />
             <Label htmlFor="automation-on">{automation.enabled ? "On" : "Off"}</Label>
           </div>
+          <Button variant="ghost" size="sm" onClick={onExport}>
+            <Download />
+            Export
+          </Button>
           <Button variant="outline" size="sm" disabled={busy || !dirty} onClick={onSave}>
             <Save />
             {dirty ? (drafting ? "Save draft" : "Save") : hasDraft ? "Draft saved" : "Saved"}

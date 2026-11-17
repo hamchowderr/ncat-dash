@@ -126,7 +126,9 @@ export function draftChanges(live: AutomationDraft, draft: AutomationDraft): str
     if (!after.has(node.id)) lines.push(`Removed ${title(node)}`);
   }
   const joins = (automation: AutomationDraft) =>
-    automation.edges.map((edge) => `${edge.source}>${edge.target}`).sort();
+    automation.edges
+      .map((edge) => `${edge.source}>${edge.target}${edge.branch ? `:${edge.branch}` : ""}`)
+      .sort();
   // Adding or removing a step always moves lines, so it is only worth saying by itself.
   const sameSteps =
     live.nodes.length === draft.nodes.length && draft.nodes.every((node) => before.has(node.id));
