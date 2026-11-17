@@ -8,6 +8,7 @@ import {
   BRAND_WORDS,
   canonical,
   draftProblems,
+  getNodeType,
   exportAutomation,
   getPlatform,
   graphProblem,
@@ -17,6 +18,7 @@ import {
   withinLength,
   missingSettings,
   nextRunAt,
+  nodeTypeIndex,
   nodeTypeOf,
   OperationError,
   outline,
@@ -27,6 +29,7 @@ import {
 import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
+import { authComponent } from "./auth";
 import type { Doc } from "./_generated/dataModel";
 import {
   internalAction,
@@ -645,5 +648,23 @@ export const startFromUpload = internalMutation({
       if (!automation || !automation.enabled || automation.trigger.kind !== "upload") continue;
       await startRun(ctx, automation, "upload", args.trigger, null);
     }
+  },
+});
+
+/**
+ * The pieces an automation is built from, for the agent: with no type, one line per kind
+ * of trigger and step; with a type, that one in full, including the settings it accepts.
+ * Served from here so the agent always sees what this deployment really has.
+ */
+export const nodeTypes = query({
+  args: { type: v.optional(v.string()) },
+  returns: v.object({ index: v.optional(v.string()), type: v.optional(v.any()) }),
+  handler: async (ctx, args) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) fail("unauthenticated", "Sign in first.");
+    if (!args.type) return { index: nodeTypeIndex() };
+    const found = getNodeType(args.type);
+    if (!found) fail("not_found", `There is no step type called ${args.type}.`);
+    return { type: found };
   },
 });
