@@ -14,6 +14,7 @@ import { decryptSecret } from "./lib/crypto";
 import { collectUrls } from "./lib/outputs";
 import { enqueueJob, pump } from "./lib/queue";
 import { onJobFinished } from "./lib/runner";
+import { UploadLinkError, withUploadLinks } from "./storage";
 
 // A Convex document holds at most 1 MB, so a larger result is kept as its links only.
 const MAX_RESULT_CHARS = 700_000;
@@ -140,7 +141,7 @@ export const dispatch = internalAction({
       const answer = (await callStep(
         { baseUrl: connection.baseUrl, apiKey: await decryptSecret(connection.apiKeyCipher) },
         step,
-        job.input,
+        await withUploadLinks(ctx, job.organizationId, job.input),
         { webhookUrl: webhookUrl.toString(), id: job._id, signal: AbortSignal.timeout(120_000) },
       )) as { code?: number; job_id?: string; response?: unknown; message?: string } | null;
 
@@ -161,7 +162,9 @@ export const dispatch = internalAction({
       const message =
         error instanceof ToolkitError
           ? `The toolkit refused the job (HTTP ${error.status}). ${error.body.slice(0, 300)}`
-          : "The toolkit could not be reached.";
+          : error instanceof UploadLinkError
+            ? error.message
+            : "The toolkit could not be reached.";
       await ctx.runMutation(internal.jobs.finish, { jobId: job._id, ok: false, error: message });
     }
   },

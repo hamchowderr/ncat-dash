@@ -89,6 +89,7 @@ function textRecipe<Extra extends z.ZodRawShape>(args: {
     method: "POST",
     output: "files",
     primaryInput: "video_url",
+    brandInputs: { font: "font", font_color: "color" },
     input,
     toRequest: (blanks) => {
       const filled = blanks as unknown as { video_url: string } & TextBlanks &
@@ -104,6 +105,7 @@ function recipe<Shape extends z.ZodRawShape>(args: {
   description: string;
   primaryInput: (keyof Shape & string) | null;
   listInput?: { field: string; itemKey: string };
+  brandInputs?: StepDefinition["brandInputs"];
   blanks: Shape;
   toRequest: (blanks: z.output<z.ZodObject<Shape>>) => Record<string, unknown>;
 }): StepDefinition {
@@ -117,6 +119,7 @@ function recipe<Shape extends z.ZodRawShape>(args: {
     output: "files",
     primaryInput: args.primaryInput,
     listInput: args.listInput,
+    brandInputs: args.brandInputs,
     input: z.object(args.blanks),
     toRequest: args.toRequest,
   }) as unknown as StepDefinition;
@@ -219,6 +222,7 @@ export const recipes: StepDefinition[] = [
     title: "Add a logo",
     description: "Puts a logo in the bottom-left corner of a video for its whole length.",
     primaryInput: "video_url",
+    brandInputs: { logo_url: "logo" },
     blanks: {
       video_url: url("The video"),
       logo_url: url("The logo image, ideally a PNG with a clear background"),
@@ -320,6 +324,7 @@ export const recipes: StepDefinition[] = [
     description:
       "Mixes a music track under a video's own sound without re-encoding the picture. The video needs sound.",
     primaryInput: "video_url",
+    brandInputs: { music_url: "music" },
     blanks: {
       video_url: url("The video"),
       music_url: url("The music track"),

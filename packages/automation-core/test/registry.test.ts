@@ -9,6 +9,12 @@ import {
   draftProblems,
   getNodeType,
   graphProblem,
+  brandProblem,
+  missingBrandOf,
+  missingSettingsOf,
+  readUploadRef,
+  uploadRef,
+  withBrand,
   NODE_GAP,
   NODE_TYPES,
   nodeTypeIndex,
@@ -175,8 +181,14 @@ describe("operations", () => {
     const problems = draftProblems(logo);
     expect(problems).toHaveLength(1);
     expect(problems[0].nodeId).toBe("logo_1");
-    expect(problems[0].message).toMatch(/still needs/);
+    expect(problems[0].message).toMatch(/needs your team's logo\. Add it in Settings/);
     expect(draftProblems(built)).toEqual([]);
+  });
+
+  it("stops asking once the team's brand supplies what a step needs", () => {
+    const logo = applyOperation(built, { op: "add", type: "step:recipe-logo", after: "captions" });
+    expect(draftProblems(logo, { logo: "upload:abc" })).toEqual([]);
+    expect(outline(logo, { logo: "upload:abc" })).not.toMatch(/PROBLEM/);
   });
 
   it("writes the automation out in running order for a model to read", () => {
@@ -213,5 +225,48 @@ describe("operations", () => {
       expect(rebuilt.edges.length, starter.id).toBe(starter.edges.length);
       expect(graphProblem(rebuilt.nodes, rebuilt.edges), starter.id).toBeNull();
     }
+  });
+});
+
+describe("team brand", () => {
+  const logoStep = getNodeType("step:recipe-logo")!;
+
+  it("counts a brand setting as missing only while Settings has nothing for it", () => {
+    expect(logoStep.brand).toEqual({ logo_url: "logo" });
+    expect(missingSettingsOf(logoStep, {})).toContain("logo_url");
+    expect(missingBrandOf(logoStep, {}, {})).toEqual(["logo"]);
+    expect(missingSettingsOf(logoStep, {}, { logo: "upload:abc" })).not.toContain("logo_url");
+    expect(missingBrandOf(logoStep, {}, { logo: "upload:abc" })).toEqual([]);
+  });
+
+  it("fills blank brand settings and leaves a step's own choice alone", () => {
+    const brand = { logo: "upload:abc" };
+    expect(withBrand(logoStep, {}, brand).logo_url).toBe("upload:abc");
+    expect(withBrand(logoStep, { logo_url: "" }, brand).logo_url).toBe("upload:abc");
+    expect(withBrand(logoStep, { logo_url: "https://x.test/a.png" }, brand).logo_url).toBe(
+      "https://x.test/a.png",
+    );
+    expect(withBrand(logoStep, {}, {})).toEqual({});
+  });
+
+  it("tells the agent which steps take the brand from Settings", () => {
+    expect(nodeTypeIndex()).toMatch(/step:recipe-logo .*takes the team's logo from Settings/);
+  });
+
+  it("keeps a lasting pointer to an upload, not a link that runs out", () => {
+    expect(readUploadRef(uploadRef("k57abc_1"))).toBe("k57abc_1");
+    expect(readUploadRef("https://x.test/a.png")).toBeNull();
+    expect(readUploadRef(undefined)).toBeNull();
+  });
+
+  it("checks brand values in plain words", () => {
+    expect(brandProblem("logo", "upload:abc")).toBeNull();
+    expect(brandProblem("logo", "https://x.test/a.png")).toBeNull();
+    expect(brandProblem("logo", "a.png")).toMatch(/uploads/);
+    expect(brandProblem("color", "#FFCC00")).toBeNull();
+    expect(brandProblem("color", "white")).toBeNull();
+    expect(brandProblem("color", "#FC0")).toMatch(/colour/);
+    expect(brandProblem("font", "Arial Black")).toBeNull();
+    expect(brandProblem("font", "bad;font")).toMatch(/font name/);
   });
 });

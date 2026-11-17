@@ -1,28 +1,49 @@
 "use client";
 
-import type { AutomationNode } from "@ncat-dash/automation-core";
-import { getPlatform, nodeTypeOf, writeSource } from "@ncat-dash/automation-core";
+import type { AutomationNode, Brand } from "@ncat-dash/automation-core";
+import {
+  BRAND_WORDS,
+  getPlatform,
+  KIND_WORDS,
+  nodeTypeOf,
+  wantedKind,
+  writeSource,
+} from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
-import { Trash2 } from "lucide-react";
+import { ChevronRight, Sparkles, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { StepFields, fromInput, toInput, useStepFields } from "@/components/steps/step-fields";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { nodeTitle } from "@/lib/automations";
+import { fieldLabel } from "@/lib/catalog";
 
+import { nodeLook } from "./flow-nodes";
 import { PlatformPicker } from "./platform-picker";
 
 type NodeContent = Omit<AutomationNode, "position">;
 
-/** Settings for the step selected on the canvas. Mount with key={node.id}. */
+function isBlank(value: unknown): boolean {
+  return value === undefined || value === null || value === "";
+}
+
+/**
+ * Settings for the step selected on the canvas. Mount with key={node.id}.
+ *
+ * Only what the step cannot work out is asked for up front. What it takes care of by
+ * itself is listed in one short block, and everything else sits under "More options".
+ */
 export function NodePanel({
   node,
   before,
   startGivesFile,
   filled,
+  brand,
   onChange,
   onRemove,
 }: {
@@ -33,13 +54,17 @@ export function NodePanel({
   startGivesFile: boolean;
   /** Settings an earlier step fills in by itself, with a line saying from where. */
   filled: Record<string, string>;
+  /** The team's logo, colour, font and music from Settings. */
+  brand: Brand;
   onChange: (patch: Partial<NodeContent>) => void;
   onRemove: () => void;
 }) {
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
+  const nodeType = nodeTypeOf(node);
   const fields = useStepFields(node.stepId ?? "");
   const [values, setValues] = useState(() => fromInput(node.input));
   const [problem, setProblem] = useState<string | null>(null);
+  const look = nodeLook(node);
 
   // Where a file setting can come from, in plain words. What is saved is a reference the
   // runner fills in; nobody sees or types it.
@@ -56,26 +81,96 @@ export function NodePanel({
       })),
   ];
 
+  const automaticField = step?.primaryInput ?? step?.listInput?.field ?? null;
+  const brandFields = Object.fromEntries(
+    Object.entries(nodeType?.brand ?? {}).map(([name, key]) => [
+      name,
+      { word: BRAND_WORDS[key], set: Boolean(brand[key]) },
+    ]),
+  );
+
+  // Asked for up front: what is required and nothing else supplies.
+  const needed = (fields ?? []).filter(
+    ({ name, required }) => required && name !== automaticField && !brandFields[name],
+  );
+  const rest = (fields ?? []).filter((field) => !needed.includes(field));
+
+  // What the step takes care of by itself, one line each.
+  const handled: { label: string; text: string; settings?: boolean }[] = [];
+  if (automaticField && isBlank(node.input[automaticField])) {
+    handled.push({
+      label: fieldLabel(automaticField).replace(/ URLs?$/, ""),
+      text: `the nearest ${KIND_WORDS[wantedKind(automaticField)]} before this step`,
+    });
+  }
+  for (const [name, note] of Object.entries(filled)) {
+    if (isBlank(node.input[name])) {
+      handled.push({
+        label: fieldLabel(name),
+        text: note.replace(/^Automatic\. Uses /, "").replace(/\. Fill it in.*$/, ""),
+      });
+    }
+  }
+  const unset: string[] = [];
+  for (const [name, { word, set }] of Object.entries(brandFields)) {
+    if (!isBlank(node.input[name])) continue;
+    if (set)
+      handled.push({
+        label: fieldLabel(name).replace(/ URLs?$/, ""),
+        text: `your team's ${word}`,
+        settings: true,
+      });
+    else if (fields?.find((field) => field.name === name)?.required) unset.push(word);
+  }
+
+  const change = (name: string, value: string) => {
+    if (!fields) return;
+    const next = { ...values, [name]: value };
+    setValues(next);
+    const parsed = toInput(fields, next);
+    setProblem(parsed.ok ? null : parsed.message);
+    if (parsed.ok) onChange({ input: parsed.input });
+  };
+  const automatic = { field: automaticField, sources, filled, brand: brandFields };
+
   return (
-    <FieldGroup>
-      <Field>
-        <FieldLabel htmlFor="node-label">Name</FieldLabel>
-        <Input
-          id="node-label"
-          value={node.label ?? ""}
-          placeholder={nodeTitle({ ...node, label: undefined })}
-          maxLength={60}
-          onChange={(event) => onChange({ label: event.target.value || undefined })}
-          autoComplete="off"
-        />
-        <FieldDescription>
-          {node.kind === "approval"
-            ? "The run stops here until someone on the team approves. The files it was shown carry on to the next step."
-            : node.kind === "clips"
-              ? "Cuts each video at pauses in speech into the fewest clips that fit the platform, and reframes them for it."
-              : step?.description}
-        </FieldDescription>
-      </Field>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start gap-3">
+        <span className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
+          <look.icon className={`size-5 ${look.tint}`} aria-hidden="true" />
+        </span>
+        <div className="grid min-w-0 flex-1 gap-0.5">
+          <h2 className="truncate text-sm font-semibold">{nodeTitle(node)}</h2>
+          <p className="text-muted-foreground text-xs text-pretty">
+            {nodeType?.description ?? "This step is no longer in the catalog."}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground -mt-1 -mr-1 shrink-0"
+          onClick={onRemove}
+        >
+          <Trash2 />
+          <span className="sr-only">Remove step</span>
+        </Button>
+      </div>
+
+      {unset.length > 0 && (
+        <Alert>
+          <AlertDescription>
+            This step uses your team&apos;s {unset.join(" and ")}, which is not set yet.{" "}
+            <Link
+              href="/settings"
+              className="text-foreground font-medium underline underline-offset-4"
+            >
+              Add it in Settings
+            </Link>
+            . It is set once and every automation uses it.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {node.kind === "clips" && (
         <Field>
@@ -88,24 +183,16 @@ export function NodePanel({
         </Field>
       )}
 
-      {node.kind === "step" && fields && (
-        <StepFields
-          fields={fields}
-          values={values}
-          idPrefix={`node-${node.id}`}
-          automatic={{
-            field: step?.primaryInput ?? step?.listInput?.field ?? null,
-            sources,
-            filled,
-          }}
-          onChange={(name, value) => {
-            const next = { ...values, [name]: value };
-            setValues(next);
-            const parsed = toInput(fields, next);
-            setProblem(parsed.ok ? null : parsed.message);
-            if (parsed.ok) onChange({ input: parsed.input });
-          }}
-        />
+      {node.kind === "step" && fields && needed.length > 0 && (
+        <FieldGroup>
+          <StepFields
+            fields={needed}
+            values={values}
+            idPrefix={`node-${node.id}`}
+            automatic={automatic}
+            onChange={change}
+          />
+        </FieldGroup>
       )}
       {problem && (
         <Alert variant="destructive">
@@ -113,10 +200,69 @@ export function NodePanel({
         </Alert>
       )}
 
-      <Button type="button" variant="outline" size="sm" className="self-start" onClick={onRemove}>
-        <Trash2 />
-        Remove step
-      </Button>
-    </FieldGroup>
+      {handled.length > 0 && (
+        <div className="bg-muted/40 rounded-lg border p-3">
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+            <Sparkles className="text-muted-foreground size-3.5" aria-hidden="true" />
+            Handled for you
+          </p>
+          <ul className="text-muted-foreground flex flex-col gap-1 text-xs">
+            {handled.map((item) => (
+              <li key={item.label}>
+                <span className="text-foreground">{item.label}:</span> {item.text}
+                {item.settings && (
+                  <>
+                    {" "}
+                    (
+                    <Link href="/settings" className="underline underline-offset-2">
+                      Settings
+                    </Link>
+                    )
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {node.kind === "step" && needed.length === 0 && unset.length === 0 && (
+        <p className="text-muted-foreground text-sm">Nothing to set. This step works as it is.</p>
+      )}
+
+      <Collapsible>
+        <CollapsibleTrigger className="group text-muted-foreground hover:text-foreground flex w-full items-center gap-1.5 rounded-md py-1 text-sm font-medium outline-none focus-visible:underline">
+          <ChevronRight
+            className="size-4 transition-transform group-data-[state=open]:rotate-90"
+            aria-hidden="true"
+          />
+          More options
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <FieldGroup className="pt-3">
+            <Field>
+              <FieldLabel htmlFor="node-label">Name on the canvas</FieldLabel>
+              <Input
+                id="node-label"
+                value={node.label ?? ""}
+                placeholder={nodeTitle({ ...node, label: undefined })}
+                maxLength={60}
+                onChange={(event) => onChange({ label: event.target.value || undefined })}
+                autoComplete="off"
+              />
+            </Field>
+            {node.kind === "step" && fields && (
+              <StepFields
+                fields={rest}
+                values={values}
+                idPrefix={`node-${node.id}`}
+                automatic={automatic}
+                onChange={change}
+              />
+            )}
+          </FieldGroup>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+import type { Brand } from "./brand";
 import { missingSettingsOf, nodeTypeOf } from "./registry";
 
 /** One box on the canvas. */
@@ -31,9 +32,9 @@ export const NODE_GAP = 220;
  * The settings a step still needs before it can run: required blanks that are empty and
  * that the step before does not fill in. Reads the node's description in registry.ts.
  */
-export function missingSettings(node: AutomationNode): string[] {
+export function missingSettings(node: AutomationNode, brand?: Brand): string[] {
   const nodeType = nodeTypeOf(node);
-  return nodeType ? missingSettingsOf(nodeType, node.input) : [];
+  return nodeType ? missingSettingsOf(nodeType, node.input, brand) : [];
 }
 
 export type NodeStatus = "pending" | "running" | "waiting_approval" | "done" | "failed" | "skipped";

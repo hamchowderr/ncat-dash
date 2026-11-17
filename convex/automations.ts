@@ -3,11 +3,15 @@ import {
   type AutomationDraft,
   type AutomationEdge,
   type AutomationNode,
+  type Brand,
+  BRAND_WORDS,
   draftProblems,
   getPlatform,
   graphProblem,
+  missingBrandOf,
   missingSettings,
   nextRunAt,
+  nodeTypeOf,
   OperationError,
   outline,
   scheduleProblem,
@@ -26,6 +30,7 @@ import {
   query,
 } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
+import { brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
 import { presign } from "./lib/s3";
 import { decryptSecret } from "./lib/crypto";
@@ -87,6 +92,7 @@ function automationProblem(
   trigger: Doc<"automations">["trigger"],
   nodes: AutomationNode[],
   edges: AutomationEdge[],
+  brand: Brand,
 ): string | null {
   const graph = graphProblem(nodes, edges);
   if (graph) return graph;
@@ -97,8 +103,13 @@ function automationProblem(
     if (node.kind === "clips" && !getPlatform(node.input.platform)) {
       return "Pick a platform for the clips.";
     }
-    if (missingSettings(node).length > 0) {
-      const title = node.label ?? getStep(node.stepId ?? "")?.title ?? "A step";
+    const nodeType = nodeTypeOf(node);
+    const title = node.label ?? nodeType?.title ?? "A step";
+    const fromBrand = nodeType ? missingBrandOf(nodeType, node.input, brand) : [];
+    if (fromBrand.length > 0) {
+      return `${title} needs your team's ${fromBrand.map((key) => BRAND_WORDS[key]).join(" and ")}. Add it in Settings, under Brand.`;
+    }
+    if (missingSettings(node, brand).length > 0) {
       return `${title} still needs its settings. Select it on the canvas.`;
     }
   }
@@ -221,8 +232,12 @@ async function storeDraft(
     fail("invalid_input", "This automation's settings are too large to save.");
   }
   const problem =
-    automationProblem(draft.trigger, draft.nodes, draft.edges) ??
-    (await storageProblem(ctx, automation.organizationId, draft.trigger));
+    automationProblem(
+      draft.trigger,
+      draft.nodes,
+      draft.edges,
+      await brandOf(ctx, automation.organizationId),
+    ) ?? (await storageProblem(ctx, automation.organizationId, draft.trigger));
   const enabled = automation.enabled && problem === null;
   await ctx.db.patch(automation._id, {
     name,
@@ -255,9 +270,10 @@ export const describe = query({
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
     const draft = automation as AutomationDraft;
+    const brand = await brandOf(ctx, automation.organizationId);
     return {
-      outline: outline(draft),
-      problems: draftProblems(draft),
+      outline: outline(draft, brand),
+      problems: draftProblems(draft, brand),
       enabled: automation.enabled,
     };
   },
@@ -284,7 +300,8 @@ export const change = mutation({
       throw caught;
     }
     const { enabled } = await storeDraft(ctx, automation, next);
-    return { outline: outline(next), problems: draftProblems(next), enabled };
+    const brand = await brandOf(ctx, automation.organizationId);
+    return { outline: outline(next, brand), problems: draftProblems(next, brand), enabled };
   },
 });
 
@@ -294,8 +311,12 @@ export const setEnabled = mutation({
     const { automation } = await loadForMember(ctx, args.automationId);
     if (args.enabled) {
       const problem =
-        automationProblem(automation.trigger, automation.nodes, automation.edges) ??
-        (await storageProblem(ctx, automation.organizationId, automation.trigger));
+        automationProblem(
+          automation.trigger,
+          automation.nodes,
+          automation.edges,
+          await brandOf(ctx, automation.organizationId),
+        ) ?? (await storageProblem(ctx, automation.organizationId, automation.trigger));
       if (problem) fail("invalid_input", problem);
     }
     await ctx.db.patch(args.automationId, {
