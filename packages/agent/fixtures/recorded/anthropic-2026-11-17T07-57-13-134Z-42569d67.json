@@ -2,7 +2,7 @@
   "fixtures": [
     {
       "match": {
-        "userMessage": "Review: \"Weekly clips\" (open).\nClip: \"Why the station matters\", version 1 of 1.\nThe comment is pinned to 0:02. The image is a still of that moment.\n\nWhat the toolkit measured in the clip:\nThe second image shows 12 frames in reading order (left to right, then down), one every 0.5 seconds from 0:00. Compare them to see movement, and a cut where the picture changes completely.\nPacing: the clip is one continuous shot with no cuts.\nSound: the clip has no audio track.\n\nThe clip was made by the automation \"Weekly clips\" (that run is waiting). How it is built now:\nAutomation \"Weekly clips\"\nStarts: trigger:webhook {}\n- split_1 [step:video-split] from the start settings {\"splits\":[{\"end\":\"00:00:06\",\"start\":\"00:00:00\"},{\"end\":\"00:00:12\",\"start\":\"00:00:06\"}]}\n- approval [approval] from split_1 settings {}\n\nThe thread you were tagged in, oldest first:\nMaya Ortiz: @Agent does this part move too fast?\n\nAnswer Maya Ortiz's latest message in this thread.",
+        "userMessage": "Maya Ortiz: @Agent does this part move too fast?",
         "model": "claude-sonnet-5-5",
         "turnIndex": 0,
         "hasToolResult": false

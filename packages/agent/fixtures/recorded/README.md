@@ -21,6 +21,9 @@ approval step). `packages/automation-core/test/recorded-model.test.ts` makes its
 against the real rules, so a rule change that would trip the model fails a test.
 
 One review room answer, recorded 2026-11-17 by the browser tests (`RECORD_AGENT=1 pnpm
-test:e2e`): Maya asks "@Agent is the logo too small here?" at 0:02 of "Why the station
-matters", with the still from `e2e/fixtures/still.jpg`. The model looked at the still and
-said there is no logo in it. The browser tests play this answer back.
+test:e2e`): Maya asks "@Agent does this part move too fast?" at 0:02 of "Why the station
+matters", with the still, the frames around the moment and the toolkit's measurements of
+the clip. The model said it is one continuous shot with no cuts and described the motion
+across the frames. The browser tests play this answer back. Its match was cut down to the
+question line, so the replay still works when the automation outline or FFmpeg's numbers
+shift a little; the Convex tests check what is sent.
