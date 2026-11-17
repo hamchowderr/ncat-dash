@@ -6,7 +6,7 @@
 import { type Brand, BRAND_WORDS } from "./brand";
 import { graphProblem, MAX_NODES, NODE_GAP } from "./graph";
 import type { AutomationEdge, AutomationNode } from "./graph";
-import { branchesOfKind, logicProblem } from "./logic";
+import { branchesOfKind, canFailOver, FAILURE_WAY, logicProblem } from "./logic";
 import {
   defaultSettings,
   getNodeType,
@@ -50,6 +50,11 @@ export type Operation =
       branch?: string;
       settings?: Record<string, unknown>;
       label?: string;
+      /**
+       * More steps the new one also follows, besides `after`. It then waits until all of
+       * them have finished and runs once, with the files from all of them.
+       */
+      join?: string[];
     }
   /** Removes steps and joins what fed each one to what it fed. */
   | { op: "remove"; ids: string[] }
@@ -64,12 +69,154 @@ export type Operation =
    */
   | { op: "use"; id: string; field: string; from: string }
   | { op: "rename"; id: string; label: string }
+  /** Turns a step off (its files go straight on) or back on. */
+  | { op: "switch"; id: string; on: boolean }
+  /**
+   * Copies steps, with the lines between them, and puts the copy beside them: fed by
+   * whatever feeds the originals, with nothing after it yet.
+   */
+  | { op: "duplicate"; ids: string[] }
+  /**
+   * Puts copied steps on the canvas. With `after`, the copy carries on from that step
+   * (by `branch`, for an If); without, it starts straight from the start.
+   */
+  | { op: "paste"; steps: StepsOnClipboard; after?: string; branch?: string }
   | { op: "trigger"; trigger: StarterTrigger }
   | { op: "name"; name: string }
   /** Lays the steps out left to right. */
   | { op: "tidy" };
 
 export class OperationError extends Error {}
+
+/** Steps copied from a canvas, with the lines between them. */
+export interface StepsOnClipboard {
+  nodes: AutomationNode[];
+  edges: AutomationEdge[];
+}
+
+/** The steps with these ids and the lines that join them to each other. */
+export function copySteps(
+  draft: { nodes: AutomationNode[]; edges: AutomationEdge[] },
+  ids: string[],
+): StepsOnClipboard {
+  const chosen = new Set(ids);
+  return {
+    nodes: draft.nodes.filter((node) => chosen.has(node.id)),
+    edges: draft.edges.filter((edge) => chosen.has(edge.source) && chosen.has(edge.target)),
+  };
+}
+
+/**
+ * Adds a copy of `clip` to the draft, with new ids. Settings that point at a copied step
+ * point at its copy; settings that point at a step outside the copy are kept only when
+ * that step runs before the copy (`before`), and otherwise go back to being filled in by
+ * themselves. `feeds` gives the lines into each step with nothing before it in the copy.
+ */
+function pasteCopy(
+  draft: AutomationDraft,
+  clip: StepsOnClipboard,
+  place: { x: number; y: number },
+  before: Set<string>,
+  feeds: (original: AutomationNode) => { source: string; branch?: string }[],
+): { draft: AutomationDraft; ids: string[] } {
+  if (clip.nodes.length === 0) throw new OperationError("There is nothing to paste.");
+  if (draft.nodes.length + clip.nodes.length > MAX_NODES) {
+    throw new OperationError(`An automation can have at most ${MAX_NODES} steps.`);
+  }
+  const renamed = new Map<string, string>();
+  const taken: { id: string }[] = [...draft.nodes];
+  for (const node of clip.nodes) {
+    const id = newNodeId(taken, node.stepId ?? node.kind);
+    renamed.set(node.id, id);
+    taken.push({ id });
+  }
+  const left = Math.min(...clip.nodes.map((node) => node.position.x));
+  const top = Math.min(...clip.nodes.map((node) => node.position.y));
+  const outside = clip.nodes
+    .flatMap((node) => referencedSteps(node.input))
+    .filter((id) => !renamed.has(id) && !before.has(id));
+  const copies: AutomationNode[] = clip.nodes.map((node) => {
+    const kept = withoutReferencesTo(node.input, outside);
+    const input = JSON.parse(
+      JSON.stringify(kept).replace(/(\{\{\s*steps\.)([A-Za-z0-9_]+)\./g, (whole, start, id) =>
+        renamed.has(id) ? `${start}${renamed.get(id)}.` : whole,
+      ),
+    ) as Record<string, unknown>;
+    return {
+      ...node,
+      id: renamed.get(node.id)!,
+      input,
+      position: { x: place.x + node.position.x - left, y: place.y + node.position.y - top },
+    };
+  });
+  const inside = clip.edges
+    .filter((edge) => renamed.has(edge.source) && renamed.has(edge.target))
+    .map((edge) => link(renamed.get(edge.source)!, renamed.get(edge.target)!, edge.branch));
+  const into = clip.nodes
+    .filter((node) => !clip.edges.some((edge) => edge.target === node.id))
+    .flatMap((node) =>
+      feeds(node).map((feed) => link(feed.source, renamed.get(node.id)!, feed.branch)),
+    );
+  const edges = [...draft.edges, ...inside, ...into];
+  const nodes = [...draft.nodes, ...copies];
+  const problem = graphProblem(nodes, edges);
+  if (problem) throw new OperationError(problem);
+  return { draft: { ...draft, nodes, edges }, ids: copies.map((node) => node.id) };
+}
+
+/** What a paste or duplicate adds, and the ids of the new steps, for selecting them. */
+export function pasteSteps(
+  draft: AutomationDraft,
+  op: Extract<Operation, { op: "paste" | "duplicate" }>,
+): { draft: AutomationDraft; ids: string[] } {
+  const lowest = (nodes: AutomationNode[]) =>
+    nodes.length ? Math.max(...nodes.map((node) => node.position.y)) : -ROW_GAP;
+  if (op.op === "duplicate") {
+    if (op.ids.length === 0) throw new OperationError("Choose the steps to duplicate.");
+    const originals = op.ids.map((id) => need(draft, id));
+    const clip = copySteps(draft, op.ids);
+    const before = new Set(originals.flatMap((node) => stepsBefore(node.id, draft.edges).flat()));
+    // The copy sits just below the steps it copies.
+    const place = {
+      x: Math.min(...originals.map((node) => node.position.x)),
+      y: lowest(originals) + ROW_GAP,
+    };
+    return pasteCopy(draft, clip, place, before, (original) =>
+      draft.edges
+        .filter((edge) => edge.target === original.id && !op.ids.includes(edge.source))
+        .map((edge) => ({ source: edge.source, branch: edge.branch })),
+    );
+  }
+  const after = op.after ? need(draft, op.after) : undefined;
+  if (!after) {
+    if (op.branch !== undefined) throw new OperationError("A way out needs a step to leave from.");
+    // Nothing to carry on from: below everything, starting from the start.
+    return pasteCopy(
+      draft,
+      op.steps,
+      { x: 0, y: lowest(draft.nodes) + ROW_GAP },
+      new Set(),
+      () => [],
+    );
+  }
+  const branch = wayOut(draft, after, op.branch);
+  const lift =
+    branch === undefined
+      ? 0
+      : branch === FAILURE_WAY
+        ? ROW_GAP
+        : (branch === "no" ? 1 : -1) * (ROW_GAP / 2);
+  const before = new Set([after.id, ...stepsBefore(after.id, draft.edges).flat()]);
+  // Steps already hanging off that way: the copy goes below them.
+  const beside = draft.edges
+    .filter((edge) => edge.source === after.id && edge.branch === branch)
+    .map((edge) => need(draft, edge.target));
+  const place = {
+    x: after.position.x + NODE_GAP,
+    y: beside.length ? lowest(beside) + ROW_GAP : after.position.y + lift,
+  };
+  return pasteCopy(draft, op.steps, place, before, () => [{ source: after.id, branch }]);
+}
 
 const ROW_GAP = 150;
 
@@ -91,7 +238,10 @@ export function bridgeEdges<
   let next: (E | AutomationEdge)[] = edges;
   for (const id of removed) {
     const feeding = next.filter((edge) => edge.target === id);
-    const targets = next.filter((edge) => edge.source === id).map((edge) => edge.target);
+    // What hung off the way for when it fails is not joined up: it was never the main flow.
+    const targets = next
+      .filter((edge) => edge.source === id && edge.branch !== FAILURE_WAY)
+      .map((edge) => edge.target);
     next = next.filter((edge) => edge.source !== id && edge.target !== id);
     for (const { source, branch } of feeding) {
       for (const target of targets) {
@@ -131,8 +281,14 @@ export function tidyPositions(
     const column = depthOf(id, new Set());
     columns.set(column, [...(columns.get(column) ?? []), id]);
   }
-  // What hangs off an If's "no" sits below what hangs off its "yes".
-  const below = (id: string) => (edges.some((e) => e.target === id && e.branch === "no") ? 1 : 0);
+  // What hangs off an If's "no" sits below what hangs off its "yes", and what runs when a
+  // step fails sits below the rest.
+  const below = (id: string) =>
+    edges.some((e) => e.target === id && e.branch === FAILURE_WAY)
+      ? 2
+      : edges.some((e) => e.target === id && e.branch === "no")
+        ? 1
+        : 0;
   const positions = new Map<string, { x: number; y: number }>();
   for (const [column, unsorted] of columns) {
     const ids = [...unsorted].sort((a, b) => below(a) - below(b));
@@ -160,6 +316,12 @@ function wayOut(
 ): string | undefined {
   const ways = branchesOfKind(source.kind);
   const title = source.label ?? nodeTypeOf(source)?.title ?? source.id;
+  if (asked === FAILURE_WAY) {
+    if (!canFailOver(source.kind)) {
+      throw new OperationError(`${title} cannot have a way for when it fails.`);
+    }
+    return asked;
+  }
   if (ways.length === 0) {
     if (asked !== undefined) throw new OperationError(`${title} has only one way out.`);
     return undefined;
@@ -202,7 +364,12 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
   if (draft.nodes.length >= MAX_NODES) {
     throw new OperationError(`An automation can have at most ${MAX_NODES} steps.`);
   }
-  const after = op.after ? need(draft, op.after) : undefined;
+  // "after the trigger" is what a step with no `after` already does, so take it that way
+  // rather than as a step called "trigger" (unless there really is one).
+  const afterTrigger =
+    (op.after === "trigger" || op.after === "__trigger") &&
+    !draft.nodes.some((node) => node.id === op.after);
+  const after = op.after && !afterTrigger ? need(draft, op.after) : undefined;
   const before = op.before ? need(draft, op.before) : undefined;
   const taken = op.id && draft.nodes.some((node) => node.id === op.id);
   const id =
@@ -235,18 +402,44 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
       link(id, before.id, branchesOfKind(kind.kind)[0]),
     ];
   } else {
-    const rightmost = nodes.reduce<AutomationNode | undefined>(
-      (far, node) => (!far || node.position.x > far.position.x ? node : far),
-      undefined,
-    );
-    const anchor = after ?? rightmost;
     const branch = after ? wayOut(draft, after, op.branch) : undefined;
-    // The two ways out of an If fan apart, "yes" above and "no" below.
-    const lift = branch === undefined ? 0 : (branch === "no" ? 1 : -1) * (ROW_GAP / 2);
-    position = anchor
-      ? { x: anchor.position.x + NODE_GAP, y: anchor.position.y + lift }
-      : { x: 0, y: 0 };
+    // The two ways out of an If fan apart, "yes" above and "no" below; what runs when a
+    // step fails hangs a row below it.
+    const lift =
+      branch === undefined
+        ? 0
+        : branch === FAILURE_WAY
+          ? ROW_GAP
+          : (branch === "no" ? 1 : -1) * (ROW_GAP / 2);
+    if (after) {
+      position = { x: after.position.x + NODE_GAP, y: after.position.y + lift };
+    } else if (nodes.length === 0) {
+      position = { x: 0, y: 0 };
+    } else {
+      // A step joined to nothing starts from the start, so it goes in the first column,
+      // below everything else.
+      position = {
+        x: Math.min(...nodes.map((node) => node.position.x)),
+        y: Math.max(...nodes.map((node) => node.position.y)) + ROW_GAP,
+      };
+    }
     if (after) edges = [...edges, link(after.id, id, branch)];
+  }
+
+  const joined = (op.join ?? []).filter((other) => other !== after?.id);
+  if (joined.length > 0) {
+    if (!after || before) {
+      throw new OperationError("To join steps, say which step it comes after too.");
+    }
+    const sources = [after, ...joined.map((other) => need(draft, other))];
+    // It sits one place right of the furthest step it waits for, level with their middle.
+    position = {
+      x: Math.max(...sources.map((source) => source.position.x)) + NODE_GAP,
+      y: Math.round(sources.reduce((sum, source) => sum + source.position.y, 0) / sources.length),
+    };
+    for (const source of sources.slice(1)) {
+      edges = [...edges, link(source.id, id, wayOut({ ...draft, edges }, source, undefined))];
+    }
   }
 
   const node: AutomationNode = {
@@ -256,6 +449,8 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
     input: { ...defaultSettings(nodeType), ...(op.settings ?? {}) },
     position,
   };
+  const problem = joined.length > 0 ? graphProblem([...nodes, node], edges) : null;
+  if (problem) throw new OperationError(problem);
   return { ...draft, nodes: [...nodes, node], edges };
 }
 
@@ -344,6 +539,24 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
       return {
         ...draft,
         nodes: draft.nodes.map((other) => (other.id === op.id ? { ...other, input } : other)),
+      };
+    }
+    case "duplicate":
+    case "paste":
+      return pasteSteps(draft, op).draft;
+    case "switch": {
+      const node = need(draft, op.id);
+      if (!op.on && node.kind === "if") {
+        throw new OperationError("An If cannot be turned off. Remove it instead.");
+      }
+      return {
+        ...draft,
+        nodes: draft.nodes.map((other) => {
+          if (other.id !== op.id) return other;
+          const rest = { ...other };
+          delete rest.off;
+          return op.on ? rest : { ...rest, off: true };
+        }),
       };
     }
     case "rename": {

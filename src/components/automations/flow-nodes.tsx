@@ -7,6 +7,8 @@ import {
   BRANCH_LABELS,
   BRAND_WORDS,
   branchesOfKind,
+  canFailOver,
+  FAILURE_WAY,
   conditionSentence,
   missingBrandOf,
   missingSettings,
@@ -14,6 +16,7 @@ import {
   type NodeGroup,
   nodeTypeOf,
   waitSentence,
+  approvalShort,
 } from "@ncat-dash/automation-core";
 import { getStep, type StepCategory } from "@ncat-dash/step-catalog";
 import {
@@ -123,7 +126,7 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
     return {
       icon: UserCheck,
       tint: "text-amber-600 dark:text-amber-400",
-      kind: "Waits for a person",
+      kind: approvalShort(node.input),
     };
   }
   if (node.kind === "clips") {
@@ -167,6 +170,11 @@ export type StepNodeData = {
   openWays?: string[];
   /** In a run: what happened here in a few words, shown in place of the usual second line. */
   note?: string;
+  /**
+   * The way out for when this step fails: "used" when something hangs off it, "offered"
+   * when the step is chosen in the editor, so a line can be drawn from it.
+   */
+  failWay?: "used" | "offered";
 };
 export type TriggerNodeData = { trigger: Trigger; summary?: string };
 export type StepFlowNode = Node<StepNodeData, "step">;
@@ -188,9 +196,11 @@ const plus =
   "nodrag bg-card text-muted-foreground hover:text-foreground hover:border-foreground/40 focus-visible:ring-ring/50 absolute left-full ml-10 flex -translate-y-1/2 items-center justify-center rounded-md border outline-none before:absolute before:right-full before:h-px before:w-10 before:bg-[var(--xy-edge-stroke-default,#b1b1b7)] focus-visible:ring-3";
 /** How far down the tile each way out of an If sits, in percent: Yes above, No below. */
 const WAY_TOP = [28, 72];
+/** How far down the tile the way out for when a step fails sits, in percent. */
+const FAIL_TOP = 84;
 
 function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
-  const { node, status, jobCount, last, openWays, note } = data;
+  const { node, status, jobCount, last, openWays, note, failWay } = data;
   const ways = branchesOfKind(node.kind);
   const look = nodeLook({ ...node, input: node.input });
   const addAfter = useContext(AddAfterContext);
@@ -198,15 +208,17 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
   const nodeType = nodeTypeOf(node);
   const missing = status ? [] : missingSettings({ ...node, position: { x: 0, y: 0 } }, brand);
   const missingBrand = status || !nodeType ? [] : missingBrandOf(nodeType, node.input, brand);
-  const second = note
-    ? note
-    : jobCount && jobCount > 1 && status && status !== "pending" && ways.length === 0
-      ? `${jobCount} ${node.kind === "clips" ? "clips" : "files"}`
-      : missingBrand.length > 0
-        ? `Needs your ${BRAND_WORDS[missingBrand[0]]}`
-        : missing.length > 0
-          ? "Needs settings"
-          : look.kind;
+  const second = node.off
+    ? "Turned off"
+    : note
+      ? note
+      : jobCount && jobCount > 1 && status && status !== "pending" && ways.length === 0
+        ? `${jobCount} ${node.kind === "clips" ? "clips" : "files"}`
+        : missingBrand.length > 0
+          ? `Needs your ${BRAND_WORDS[missingBrand[0]]}`
+          : missing.length > 0
+            ? "Needs settings"
+            : look.kind;
   return (
     <div className="relative" data-node={id}>
       <div
@@ -219,6 +231,7 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
           status === "done" && "border-emerald-600/60",
           status === "failed" && "border-destructive",
           status === "skipped" && "opacity-50",
+          node.off && "border-dashed opacity-50",
         )}
       >
         <Handle type="target" position={Position.Left} className={handle} />
@@ -242,6 +255,29 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
             }
           >
             <TriangleAlert className="size-4" aria-hidden="true" />
+          </span>
+        )}
+        {canFailOver(node.kind) && (
+          // The way out for when the step fails, low on its right, in the colour of an error.
+          // Always there, so lines can attach to it; seen only when it is used or chosen.
+          <span className={cn(!failWay && "pointer-events-none opacity-0")} aria-hidden={!failWay}>
+            {failWay === "used" && (
+              <span
+                className="text-destructive pointer-events-none absolute right-2 -translate-y-1/2 text-[10px] leading-none font-medium"
+                style={{ top: `${FAIL_TOP}%` }}
+              >
+                Fails
+              </span>
+            )}
+            <Handle
+              id={FAILURE_WAY}
+              type="source"
+              position={Position.Right}
+              isConnectable={Boolean(failWay)}
+              className="!border-background !bg-destructive !size-2.5 !border-2"
+              style={{ top: `${FAIL_TOP}%` }}
+              title="Drag to the step that runs when this one fails"
+            />
           </span>
         )}
         {ways.length === 0 ? (
@@ -355,10 +391,16 @@ function FlowEdge({
   targetY,
   sourcePosition,
   targetPosition,
+  sourceHandleId,
   markerEnd,
   style,
+  data,
 }: EdgeProps) {
+  // The way for when a step fails is dashed, in the colour of an error.
+  const failing = sourceHandleId === FAILURE_WAY;
   const insert = useContext(InsertOnEdgeContext);
+  // On a run: how many files went along this line, once the step before has finished.
+  const passed = (data as { passed?: number } | undefined)?.passed;
   const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -369,7 +411,11 @@ function FlowEdge({
   });
   return (
     <>
-      <BaseEdge path={path} markerEnd={markerEnd} style={style} />
+      <BaseEdge
+        path={path}
+        markerEnd={markerEnd}
+        style={failing ? { ...style, stroke: "var(--destructive)", strokeDasharray: "5 4" } : style}
+      />
       {insert && (
         <EdgeLabelRenderer>
           <button
@@ -381,6 +427,20 @@ function FlowEdge({
           >
             <Plus className="size-3" aria-hidden="true" />
           </button>
+        </EdgeLabelRenderer>
+      )}
+      {!insert && passed !== undefined && (
+        <EdgeLabelRenderer>
+          <span
+            data-passed={passed}
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            className={cn(
+              "bg-card absolute rounded-full border px-1.5 py-px font-mono text-[10px] leading-4 tabular-nums",
+              passed === 0 ? "text-muted-foreground border-dashed" : "text-foreground",
+            )}
+          >
+            {passed === 0 ? "none" : passed === 1 ? "1 file" : `${passed} files`}
+          </span>
         </EdgeLabelRenderer>
       )}
     </>
@@ -460,7 +520,13 @@ export function triggerEdges(nodeIds: string[], edges: { target: string }[]): Ed
 }
 
 /** Ids of the steps nothing follows. */
-export function lastNodeIds(nodeIds: string[], edges: { source: string }[]): Set<string> {
-  const feeding = new Set(edges.map((edge) => edge.source));
+export function lastNodeIds(
+  nodeIds: string[],
+  edges: { source: string; sourceHandle?: string | null }[],
+): Set<string> {
+  // A step that only has a way for when it fails still offers to carry on.
+  const feeding = new Set(
+    edges.filter((edge) => edge.sourceHandle !== FAILURE_WAY).map((edge) => edge.source),
+  );
   return new Set(nodeIds.filter((id) => !feeding.has(id)));
 }

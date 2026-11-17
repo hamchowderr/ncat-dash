@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { Bell, CircleAlert } from "lucide-react";
+import { Bell, CircleAlert, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -19,9 +19,19 @@ function tries(retries: number): string {
   return retries > 0 ? ` after ${retries + 1} tries` : "";
 }
 
+type Shown = { kind: "run_failed" | "approval_waiting"; automationName: string; retries: number };
+
+/** The first line of an alert: what happened, in a few words. */
+export function alertTitle(alert: Shown): string {
+  return alert.kind === "approval_waiting"
+    ? `${alert.automationName} is waiting for your approval`
+    : `${alert.automationName} failed${tries(alert.retries)}`;
+}
+
 /**
  * The bell at the top of every page. It counts the alerts the person has not seen,
- * lists the team's latest ones, and pops up a notice the moment a run fails.
+ * lists the latest ones meant for them, and pops up a notice the moment a run fails or an
+ * approval starts waiting for them.
  */
 export function AlertsBell() {
   const team = useActiveTeam();
@@ -43,11 +53,12 @@ export function AlertsBell() {
       announced.current.add(alert._id);
       if (alert.seen) continue;
       const href = `/automations/${alert.automationId}/runs/${alert.runId}`;
-      toast.error(`${alert.automationName} failed${tries(alert.retries)}`, {
+      const waiting = alert.kind === "approval_waiting";
+      (waiting ? toast.info : toast.error)(alertTitle(alert), {
         description: alert.stepName ? `${alert.stepName}: ${alert.message}` : alert.message,
         duration: 15_000,
         action: {
-          label: "View run",
+          label: waiting ? "Review" : "View run",
           onClick: () => {
             void markSeen({ organizationId: team.id, alertId: alert._id });
             router.push(href);
@@ -93,8 +104,8 @@ export function AlertsBell() {
         </div>
         {!data || data.alerts.length === 0 ? (
           <p className="text-muted-foreground px-4 py-6 text-sm">
-            Nothing to report. When a run fails after all its tries, it shows up here for everyone
-            on the team.
+            Nothing to report. A run that fails after all its tries shows up here, and so does an
+            approval waiting for you.
           </p>
         ) : (
           <ul className="max-h-96 overflow-y-auto">
@@ -105,23 +116,34 @@ export function AlertsBell() {
                   data-alert={alert.seen ? "seen" : "new"}
                   className={cn(
                     "hover:bg-muted/60 flex gap-3 px-4 py-3 outline-none focus-visible:bg-muted/60",
-                    !alert.seen && "bg-destructive/5",
+                    !alert.seen &&
+                      (alert.kind === "approval_waiting" ? "bg-amber-500/10" : "bg-destructive/5"),
                   )}
                   onClick={() => {
                     setOpen(false);
                     if (!alert.seen) void markSeen({ organizationId: team.id, alertId: alert._id });
                   }}
                 >
-                  <CircleAlert
-                    className={cn(
-                      "mt-0.5 size-4 shrink-0",
-                      alert.seen ? "text-muted-foreground" : "text-destructive",
-                    )}
-                    aria-hidden="true"
-                  />
+                  {alert.kind === "approval_waiting" ? (
+                    <UserCheck
+                      className={cn(
+                        "mt-0.5 size-4 shrink-0",
+                        alert.seen ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400",
+                      )}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <CircleAlert
+                      className={cn(
+                        "mt-0.5 size-4 shrink-0",
+                        alert.seen ? "text-muted-foreground" : "text-destructive",
+                      )}
+                      aria-hidden="true"
+                    />
+                  )}
                   <span className="grid min-w-0 gap-0.5">
                     <span className={cn("truncate text-sm", !alert.seen && "font-medium")}>
-                      {alert.automationName} failed{tries(alert.retries)}
+                      {alertTitle(alert)}
                     </span>
                     <span className="text-muted-foreground line-clamp-2 text-xs break-words">
                       {alert.stepName ? `${alert.stepName}: ` : ""}

@@ -1,0 +1,52 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Build an automation that makes short clips with captions from each new recording I upload.",
+        "model": "claude-sonnet-5-5",
+        "turnIndex": 3,
+        "hasToolResult": true
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "name": "create_automation",
+            "arguments": "{\"name\": \"Captioned short clips from new uploads\"}",
+            "id": "toolu_01XYbBWkoPESufNa5rj5bLkL"
+          }
+        ],
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 1972,
+          "cache_read_input_tokens": 18801,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 1972,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 59
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 865,
+        "interChunkDelaysMs": [
+          0,
+          0,
+          0,
+          377,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "totalDurationMs": 1243
+      },
+      "metadata": {
+        "systemHash": "ab37c40a",
+        "toolsHash": "7ea793fd"
+      }
+    }
+  ]
+}

@@ -51,7 +51,7 @@ export function RunsList({ automationId }: { automationId: Id<"automations"> }) 
             <TableRow key={run._id}>
               <TableCell className="font-medium">{when.format(run.startedAt)}</TableCell>
               <TableCell className="text-muted-foreground">
-                {TRIGGER_LABELS[run.triggerKind]}
+                {run.testOf ? `Test of ${run.testOf}` : TRIGGER_LABELS[run.triggerKind]}
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap items-center gap-2">

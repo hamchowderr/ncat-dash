@@ -61,6 +61,8 @@ Changes to an automation are plain data (`operations.ts`): add a step after anot
 
 An automation that is switched on keeps running its live version while it is edited (`draft` on the automation). Saving, from the canvas or through `automations.change`, goes to the draft; triggers keep starting the live version, and Run now runs what the canvas shows so a draft can be tried first. `automations.publish` makes the draft live and refuses one that could not run, so a live automation is never switched off by an edit; `automations.discardDraft` throws it away. The bar above the canvas lists what publishing would change (`draftChanges` in `history.ts`), and the list marks automations with a draft. An automation that is off and has no draft saves straight to its live version, as before.
 
+Every version an automation has had as its live version is kept, numbered from 1 (`automationVersions`, `convex/lib/versions.ts`): when it is made or imported, each save while it is off, and each publish, with who did it. A save that only moves steps around, or runs the same as the version before, adds none, and the newest 100 are kept. The Versions tab beside Runs lists them with what changed from the one before (`versions.list`), shows a version's steps on a still canvas (`versions.get`), exports one as a file, and brings one back as the draft (`versions.restore`), so nothing that runs changes until someone publishes it. The draft bar then says which version it came from, and the version published from it is marked as brought back.
+
 The canvas has undo and redo (the buttons beside the name, Ctrl+Z and Ctrl+Shift+Z). Every state of the automation is kept as plain data (`history.ts`: up to 100 steps, with changes made in quick succession, such as typing, counted as one). A change that arrives from the agent or a teammate is a step of its own, so it can be undone too.
 
 Steps are wired by themselves (`wiring.ts`). A step is given the nearest files of the kind it wants before it: those from the step straight before if it made some, otherwise from further back, and last the file that started the run. So captions placed after a transcript step still get the video, and a logo placed after a thumbnail step gets the video before the thumbnail. The kind wanted comes from the step's file setting (`video_url`, `audio_urls`, `image_url`), and the kind made from the file's ending. Where someone wants a different file, the setting is a pick list: Automatic, the file that started the run, the file from an earlier step, or a fixed file. The agent makes the same choice with the `use` operation. What is saved is a reference such as `{{steps.caption_1.url}}` that the runner fills in (`templates.ts`); it is not shown or typed anywhere. Removing a step clears the settings that pointed at it. Text travels the same way. A step can say it makes a named value (`values` in the step catalog: Transcribe makes `transcript` and `captions`) and another that a setting takes one (`valueInputs`: Caption video takes `captions`). Left empty, that setting is filled from the nearest earlier step that makes it, and that step is told to make it (`include_srt`) only when something later is waiting. The toolkit accepts caption text only with the classic style, so with any other style the caption step is left to transcribe the video itself. The graph, wiring and schedule rules live in `packages/automation-core` and are covered by its tests.
@@ -112,22 +114,21 @@ The Agent button in the top bar opens a chat beside whatever is on screen. Descr
 
 It is two parts, both from [mastra-chat-kit](https://github.com/hamchowderr/mastra-chat-kit) (MIT, see `packages/agent/LICENSE-mastra-chat-kit`):
 
-- `packages/agent/` is the kit's server at commit `2aef2da`, a Mastra `AgentController` server on port 4111. What is ours is in `src/mastra/ncat/`: the tools (`tools.ts`: look at the team's automations, read one, list step types, change one, make one, switch one on or off), the instructions, and the hand-over described below. Kit files changed: `agents/chat.ts` (our tools and instructions), `lib/tool-categories.ts` (reading never asks, changing asks, switching on always asks), `lib/env.ts` (`CONVEX_URL`), `mastra/index.ts` (our route), and `fixtures/chat.json`. The kit's own tests are not copied.
+- `packages/agent/` is the kit's server at commit `2aef2da`, a Mastra `AgentController` server on port 4111. What is ours is in `src/mastra/ncat/`: the tools (`tools.ts`: look at the team's automations, read one, list step types, change one, make one, switch one on or off, list the team's uploads, try one on an upload, and check how a run went), the instructions, and the hand-over described below. Kit files changed: `agents/chat.ts` (our tools and instructions), `lib/tool-categories.ts` (reading never asks, changing asks, switching on always asks), `lib/env.ts` (`CONVEX_URL`), `mastra/index.ts` (our route), and `fixtures/chat.json`. The kit's own tests are not copied.
 - The chat panel is the kit's `chat-panel`, installed with shadcn into `src/components/chat*`, `src/components/ai-elements`, `src/lib/agent-controller`, `src/lib/mastra-proxy.ts` and the proxy routes under `src/app/api/`. It was installed from the registry built at that same commit, because the published registry was older than the server and the two did not agree on approvals. One change to it: `ChatPanel` takes `renderTool`. Ours is `src/components/agent/`: the panel's wording, what each approval card and tool line says (`tool-words.ts`), and the Agent button in the shell.
 
 The agent has no access of its own. On every chat request the web app (`src/lib/agent-session.ts`, wired in `src/instrumentation.ts`) hands the agent server the signed-in person's own Convex token and the team and automation on their screen, in a request signed with `MASTRA_JWT_SECRET`. The tools then call the same Convex functions the dashboard does, as that person, so the agent can see and change what they can and nothing else. The hand-over is kept in memory only. A new automation the agent makes becomes "this automation" until another is on screen. An open editor shows the agent's change as it happens, unless the person has unsaved work of their own.
 
-To run it locally, add to `.env.local`:
+To connect the two, start Convex once (`npx convex dev`), then run:
 
 ```bash
-MASTRA_SERVER_URL=http://127.0.0.1:4111
-MASTRA_JWT_SECRET=<openssl rand -base64 32>
+pnpm setup:agent
 ```
 
-Copy `packages/agent/.env.example` to `packages/agent/.env` and set `APP_SECRET`, the same `MASTRA_JWT_SECRET`, `CONVEX_URL` (your `NEXT_PUBLIC_CONVEX_URL`), and either a model key with `CHAT_MODEL`, or `USE_AIMOCK=true` for the stand-in model. Then:
+It makes the shared secret and puts every value where it is read: `.env.local` for the chat, `packages/agent/.env` for the agent server, and `AGENT_URL` and `MASTRA_JWT_SECRET` in Convex for @Agent in review rooms. Running it again keeps the same secret. When the agent server runs somewhere else, pass its address: `pnpm setup:agent --agent-url https://agent.example.com` (a Convex in the cloud cannot reach an agent on your own computer). The model key is not copied anywhere: it stays in Infisical, and `infisical run` hands it to the agent server as it starts. The model is Sonnet 5.5 (`CHAT_MODEL=anthropic/claude-sonnet-5-5`, set by `pnpm setup:agent`). Then:
 
 ```bash
-pnpm --filter @ncat-dash/agent dev        # the agent server
+infisical run --path=/shared -- pnpm --filter @ncat-dash/agent dev   # the agent server, with the model key from Infisical
 pnpm --filter @ncat-dash/agent dev:mock   # only with USE_AIMOCK=true
 ```
 
@@ -140,11 +141,13 @@ The stand-in model is [AIMock](https://aimock.copilotkit.dev), a small server th
 
 AIMock can also sit between the agent and a real model and save what the model answers, so a real conversation can be played back afterwards for free, in tests and for screen recordings.
 
-1. In `packages/agent/.env` keep `USE_AIMOCK=true` and set a real key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY`) with a matching `CHAT_MODEL` such as `anthropic/claude-sonnet-4-6`. Recording goes straight to the provider; a gateway model (`vercel/...`, `mastra/...`) is not recorded.
+1. In `packages/agent/.env` keep `USE_AIMOCK=true` and set a real key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY`) with a matching `CHAT_MODEL` such as `anthropic/claude-sonnet-5-5`. Recording goes straight to the provider; a gateway model (`vercel/...`, `mastra/...`) is not recorded.
 2. Run `pnpm --filter @ncat-dash/agent dev:record` in place of `dev:mock`, and use the chat. Each answer the model gives is saved under `packages/agent/fixtures/recorded/`. A message that was already recorded is played back and costs nothing; only new ones reach the model.
 3. Run `pnpm --filter @ncat-dash/agent dev:replay` to play the recordings back with no key. Anything that was not recorded gets an error there, so a recording can never quietly turn into a paid call.
 
-A recording is matched on the message the person typed, so the same sentence always gets the same answer. Read a recording before committing it. No real model has been recorded yet.
+A recording is matched on the message the person typed, so the same sentence always gets the same answer. Read a recording before committing it. The recorder reads the folder when it starts, so restart it after deleting recordings.
+
+One real conversation is recorded so far: the agent builds an automation, tries it on an upload and reports (see `packages/agent/fixtures/recorded/README.md`). Its tool calls name the automation it built, so played back against a fresh dashboard the later changes go to an automation that is not there; it is for tests and for reading what the model did, not for a full replay in the browser.
 
 On first start the agent server downloads a small text-embedding model (fastembed) for recalling earlier conversations.
 
@@ -170,6 +173,18 @@ Everything is built on open-source [shadcn/ui](https://ui.shadcn.com) components
 ```bash
 npx shadcn add <component-or-block>
 ```
+
+## Issues
+
+Work is tracked in Beads (`bd`), not GitHub issues. The issues live in a Dolt database on DoltHub, `chowderr/ncat-dash` (private), and `.beads/issues.jsonl` is a read-only export of it. Every piece of work starts as a bead, and its PR names the bead it closes (for example "Closes dash-0y4").
+
+To get the issues in a new clone, run:
+
+```bash
+pnpm setup:beads
+```
+
+Dolt does not sign in with a DoltHub API token; it needs a credential key file in `~/.dolt/creds`. When `DOLT_CREDS_KEY_ID` and `DOLT_CREDS_JWK` are set (as they are in cloud sessions), the script writes that file, runs `dolt creds use`, and then clones the issues (or pulls them if this clone already has them). Without those variables it uses whatever key Dolt already has from `dolt login`. After that, `bd ready` lists open work, and `bd dolt push` sends your changes to DoltHub.
 
 ## Licence
 

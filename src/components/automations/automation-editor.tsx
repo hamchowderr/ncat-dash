@@ -14,8 +14,11 @@ import {
   type Brand,
   canonical,
   canRedo,
+  canFailOver,
   canUndo,
+  copySteps,
   exportAutomation,
+  FAILURE_WAY,
   newNodeId,
   type Operation,
   OperationError,
@@ -35,6 +38,8 @@ import {
   MiniMap,
   type OnConnectEnd,
   type Edge,
+  type NodeChange,
+  NodeChangeset,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -51,6 +56,7 @@ import {
   Redo2,
   Save,
   Search,
+  StickyNote,
   Undo2,
   X,
 } from "lucide-react";
@@ -69,6 +75,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { nodeTitle, type Trigger } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
 import { downloadJson } from "@/lib/download";
+import { copiedSteps, holdSteps } from "@/lib/step-clipboard";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
@@ -91,16 +98,24 @@ import {
   triggerEdges,
   triggerPosition,
 } from "./flow-nodes";
+import { isNoteId, notePlace, useCanvasNotes } from "./canvas-notes";
 import { DraftBar } from "./draft-bar";
+import { LiveRunBadge, useLiveRun } from "./live-run";
 import { NodePanel } from "./node-panel";
+import { type NoteFlowNode, noteNodeTypes } from "./note-node";
+import { StepTest } from "./step-test";
 import { STEP_ICONS } from "./step-icons";
 import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
+import { VersionsPanel } from "./versions-panel";
 import { TriggerPanel } from "./trigger-panel";
 
 const EMPTY_BRAND: Brand = {};
 const EMPTY_MUSIC: { name: string; file: string }[] = [];
 const FIT = { ...FIT_VIEW, duration: 200 };
+
+/** Steps and the team's notes, side by side on one canvas. */
+const canvasNodeTypes = { ...nodeTypes, ...noteNodeTypes };
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.automations.get>>>;
 
@@ -152,6 +167,7 @@ function Editor({ automation }: { automation: Loaded }) {
 
   const [name, setName] = useState(automation.name);
   const [trigger, setTrigger] = useState<Trigger>(automation.trigger);
+  const notes = useCanvasNotes(automation._id);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([
     {
       id: TRIGGER_ID,
@@ -170,6 +186,8 @@ function Editor({ automation }: { automation: Loaded }) {
   const [runOpen, setRunOpen] = useState(false);
 
   const stepNodes = nodes.filter((node): node is StepFlowNode => node.type === "step");
+  // How many steps are chosen: with more than one, a new step joins them.
+  const joining = stepNodes.filter((node) => node.selected).length;
   const selected = nodes.find((node) => node.selected);
 
   // What would be saved, in the shape the server stores.
@@ -216,20 +234,6 @@ function Editor({ automation }: { automation: Loaded }) {
   const onUndo = () => step(undo);
   const onRedo = () => step(redo);
 
-  const onKey = useEffectEvent((event: KeyboardEvent) => {
-    if (!(event.metaKey || event.ctrlKey) || event.altKey || isTyping(event.target)) return;
-    const key = event.key.toLowerCase();
-    if (key !== "z" && key !== "y") return;
-    event.preventDefault();
-    if (key === "y" || event.shiftKey) onRedo();
-    else onUndo();
-  });
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => onKey(event);
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
-  }, []);
-
   // The automation as the server has it. It changes under an open editor when the agent
   // or a teammate edits it.
   const incomingDraft: AutomationDraft = {
@@ -261,11 +265,14 @@ function Editor({ automation }: { automation: Loaded }) {
   const draftShown = hasDraft || (automation.enabled && dirty);
 
   const [tab, setTab] = useState("editor");
+  const running = useLiveRun(automation._id);
+  // The last test of each step since the editor opened, so its result stays in the panel.
+  const [tests, setTests] = useState<Record<string, Id<"runs">>>({});
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Keep the whole automation in view when it opens and whenever a step is added or removed.
-  const { fitView } = useReactFlow();
-  const nodeCount = nodes.length;
+  const { fitView, screenToFlowPosition } = useReactFlow();
+  const nodeCount = nodes.length + notes.noteNodes.length;
   const panelShown = nodes.some((node) => node.selected);
   useEffect(() => {
     if (tab !== "editor") return;
@@ -282,12 +289,30 @@ function Editor({ automation }: { automation: Loaded }) {
       edges,
     );
     const open = openWaysOf(draft.nodes, draft.edges);
-    return nodes.map((node) =>
-      node.type === "step"
-        ? { ...node, data: { ...node.data, last: last.has(node.id), openWays: open.get(node.id) } }
-        : node,
-    );
-  }, [nodes, stepNodes, edges, draft]);
+    return nodes.map((node) => {
+      if (node.type !== "step") return node;
+      // While a run goes, each step it has reached shows how it is doing.
+      const now = running.steps.get(node.id);
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          last: last.has(node.id),
+          openWays: open.get(node.id),
+          status: now?.status,
+          jobCount: now?.jobCount,
+          note: now?.note,
+          failWay: draft.edges.some(
+            (edge) => edge.source === node.id && edge.branch === FAILURE_WAY,
+          )
+            ? ("used" as const)
+            : node.selected
+              ? ("offered" as const)
+              : undefined,
+        },
+      };
+    });
+  }, [nodes, stepNodes, edges, draft, running.steps]);
 
   // The line a new step is being put on, when it was started from a plus on a line.
   const [insertOn, setInsertOn] = useState<{ source: string; target: string } | null>(null);
@@ -331,6 +356,9 @@ function Editor({ automation }: { automation: Loaded }) {
       toast.error(caught instanceof OperationError ? caught.message : "That could not be done.");
       return null;
     }
+    // A change to the steps themselves (adding, pasting, removing) is undone on its own,
+    // even straight after another; typing in a setting is undone a run of keys at a time.
+    setHistory((current) => record(current, next, Date.now(), { merge: false }));
     setNodes((current) => {
       const known = new Map(current.map((node) => [node.id, node]));
       const steps = next.nodes.map((node): FlowNode => {
@@ -360,6 +388,72 @@ function Editor({ automation }: { automation: Loaded }) {
     change([{ op: "remove", ids }]);
   }
 
+  const chosenSteps = () =>
+    nodes.filter((node) => node.selected && node.type === "step").map((node) => node.id);
+
+  /** Makes a paste or duplicate, then selects what it made. */
+  function addCopy(op: Operation, said: string) {
+    const before = new Set(draft.nodes.map((node) => node.id));
+    const next = change([op]);
+    if (!next) return;
+    const made = new Set(next.nodes.filter((node) => !before.has(node.id)).map((node) => node.id));
+    setNodes((current) => current.map((node) => ({ ...node, selected: made.has(node.id) })));
+    toast.success(said);
+  }
+
+  function copySelected() {
+    const ids = chosenSteps();
+    if (ids.length === 0) return;
+    holdSteps(copySteps(draft, ids));
+    toast.success(ids.length === 1 ? "Copied the step." : `Copied ${ids.length} steps.`);
+  }
+
+  function pasteHere() {
+    const steps = copiedSteps();
+    if (!steps || steps.nodes.length === 0) {
+      toast.error("Copy a step first. Select it and press Ctrl+C.");
+      return;
+    }
+    const ids = chosenSteps();
+    // One step chosen: the copy carries on from it. Otherwise it starts from the start.
+    const after = ids.length === 1 ? ids[0] : undefined;
+    addCopy(
+      { op: "paste", steps, after },
+      after
+        ? `Pasted after ${nodeTitle(draft.nodes.find((node) => node.id === after)!)}.`
+        : "Pasted.",
+    );
+  }
+
+  function duplicateSelected(ids = chosenSteps()) {
+    if (ids.length === 0) return;
+    addCopy(
+      { op: "duplicate", ids },
+      ids.length === 1 ? "Duplicated the step." : `Duplicated ${ids.length} steps.`,
+    );
+  }
+
+  const onKey = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || isTyping(event.target)) return;
+    // Leave copying text the person has highlighted on the page alone.
+    if (window.getSelection()?.toString()) return;
+    const key = event.key.toLowerCase();
+    if (tab !== "editor" && key !== "z" && key !== "y") return;
+    if (key === "c") copySelected();
+    else if (key === "v") pasteHere();
+    else if (key === "d") duplicateSelected();
+    else if (key === "z" || key === "y") {
+      if (key === "y" || event.shiftKey) onRedo();
+      else onUndo();
+    } else return;
+    event.preventDefault();
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onKey(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
+
   function tidy() {
     change([{ op: "tidy" }], { moveTrigger: true });
     setTimeout(() => void fitView(FIT), 60);
@@ -371,9 +465,13 @@ function Editor({ automation }: { automation: Loaded }) {
         stepNodes.map((node) => node.id),
         edges,
       ),
-      ...edges.map(flowEdge),
+      ...edges.map((edge) => ({
+        ...flowEdge(edge),
+        // The line into the step a run is on moves.
+        animated: running.steps.get(edge.target)?.status === "running",
+      })),
     ],
-    [stepNodes, edges],
+    [stepNodes, edges, running.steps],
   );
 
   function changeTrigger(next: Trigger) {
@@ -391,6 +489,9 @@ function Editor({ automation }: { automation: Loaded }) {
     setSearch("");
     const onLine = insertOn && draft.nodes.some((node) => node.id === insertOn.target);
     const after = selected?.type === "step" ? selected.id : undefined;
+    // With several steps chosen, the new step joins them: it runs once all have finished.
+    const chosen = chosenSteps();
+    const join = !onWay && chosen.length > 1 ? chosen.filter((other) => other !== after) : [];
     change(
       [
         insertOn && onLine
@@ -401,7 +502,14 @@ function Editor({ automation }: { automation: Loaded }) {
               before: insertOn.target,
               after: insertOn.source === TRIGGER_ID ? undefined : insertOn.source,
             }
-          : { op: "add", type, id, after, ...(after && onWay ? { branch: onWay } : {}) },
+          : {
+              op: "add",
+              type,
+              id,
+              after,
+              ...(after && onWay ? { branch: onWay } : {}),
+              ...(join.length > 0 ? { join } : {}),
+            },
       ],
       { select: id },
     );
@@ -576,6 +684,7 @@ function Editor({ automation }: { automation: Loaded }) {
           live={live ?? (JSON.parse(savedJson) as AutomationDraft)}
           draft={draft}
           busy={busy}
+          restoredFrom={automation.restoredFrom}
           onPublish={onPublish}
           onDiscard={onDiscard}
         />
@@ -585,6 +694,7 @@ function Editor({ automation }: { automation: Loaded }) {
         <TabsList>
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
+          <TabsTrigger value="versions">Versions</TabsTrigger>
         </TabsList>
 
         <TabsContent value="editor">
@@ -665,34 +775,81 @@ function Editor({ automation }: { automation: Loaded }) {
             )}
 
             <div className="bg-muted/30 relative h-96 min-h-0 lg:h-auto" data-testid="canvas">
+              <LiveRunBadge
+                automationId={automation._id}
+                latest={running.latest}
+                active={running.active}
+              />
               {!paletteOpen && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="bg-card absolute top-3 left-3 z-10 shadow-xs"
-                  onClick={openPalette}
-                >
-                  <Plus />
-                  Add step
-                </Button>
+                <div className="absolute top-3 left-3 z-10 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-card shadow-xs"
+                    onClick={openPalette}
+                  >
+                    <Plus />
+                    {joining > 1 ? `Add a step after these ${joining}` : "Add step"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-card shadow-xs"
+                    onClick={(event) => {
+                      const canvas = event.currentTarget
+                        .closest("[data-testid=canvas]")
+                        ?.getBoundingClientRect();
+                      if (!canvas) return;
+                      const middle = screenToFlowPosition({
+                        x: canvas.left + canvas.width / 2,
+                        y: canvas.top + canvas.height / 2,
+                      });
+                      void notes.addNote(notePlace(middle, [...notes.noteNodes, ...nodes]));
+                    }}
+                  >
+                    <StickyNote />
+                    Add note
+                  </Button>
+                </div>
               )}
               <BrandContext value={brand}>
                 <AddAfterContext value={addAfter}>
                   <InsertOnEdgeContext value={insertOnEdge}>
                     <ReactFlow
-                      nodes={shownNodes}
+                      nodes={[...notes.noteNodes, ...shownNodes]}
                       edges={shownEdges}
-                      nodeTypes={nodeTypes}
+                      nodeTypes={canvasNodeTypes}
                       edgeTypes={edgeTypes}
                       minZoom={0.25}
-                      onNodesChange={onNodesChange}
+                      onNodesChange={(changes) => {
+                        // Notes are kept apart from the steps: they are saved as they change.
+                        const all = changes.toArray();
+                        const forNotes = all.filter((change) => isNoteId(change.id));
+                        const forSteps = all.filter((change) => !isNoteId(change.id));
+                        if (forNotes.length > 0) {
+                          notes.onNoteChanges(forNotes as NodeChange<NoteFlowNode>[]);
+                        }
+                        if (forSteps.length > 0) {
+                          onNodesChange(new NodeChangeset(forSteps as NodeChange<FlowNode>[]));
+                        }
+                      }}
+                      onNodeDragStop={(_event, _node, moved) => {
+                        for (const node of moved) {
+                          if (isNoteId(node.id)) notes.onNoteDragStop(node.id, node.position);
+                        }
+                      }}
                       onEdgesChange={onEdgesChange}
                       onConnect={onConnect}
                       onConnectEnd={onConnectEnd}
                       onBeforeDelete={async ({ nodes: doomed, edges: cut }) => {
                         // Deleting steps with the keyboard goes the same way as Remove step.
                         if (doomed.length === 0) return { nodes: doomed, edges: cut };
-                        removeSteps(doomed.map((node) => node.id));
+                        const doomedNotes = doomed.filter((node) => isNoteId(node.id));
+                        if (doomedNotes.length > 0) {
+                          void notes.removeNotes(doomedNotes.map((node) => node.id));
+                        }
+                        const doomedSteps = doomed.filter((node) => !isNoteId(node.id));
+                        if (doomedSteps.length > 0) removeSteps(doomedSteps.map((node) => node.id));
                         return false;
                       }}
                       forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
@@ -765,7 +922,40 @@ function Editor({ automation }: { automation: Loaded }) {
                         )
                       }
                       onRemove={() => removeSteps([selected.id])}
+                      onDuplicate={() => duplicateSelected([selected.id])}
+                      waitsFor={draft.edges
+                        .filter((edge) => edge.target === selected.id)
+                        .flatMap((edge) => {
+                          const source = draft.nodes.find((n) => n.id === edge.source);
+                          return source ? [nodeTitle(source)] : [];
+                        })}
+                      {...(canFailOver(selected.data.node.kind)
+                        ? {
+                            failSteps: draft.edges
+                              .filter(
+                                (edge) =>
+                                  edge.source === selected.id && edge.branch === FAILURE_WAY,
+                              )
+                              .flatMap((edge) => {
+                                const target = draft.nodes.find((n) => n.id === edge.target);
+                                return target ? [nodeTitle(target)] : [];
+                              }),
+                            onAddOnFailure: () => addAfter(selected.id, FAILURE_WAY),
+                          }
+                        : {})}
                     />
+                    {(selected.data.node.kind === "step" ||
+                      selected.data.node.kind === "clips") && (
+                      <StepTest
+                        key={selected.id}
+                        automationId={automation._id}
+                        node={selected.data.node}
+                        runId={tests[selected.id]}
+                        onStarted={(runId) =>
+                          setTests((current) => ({ ...current, [selected.id]: runId }))
+                        }
+                      />
+                    )}
                   </>
                 ) : (
                   <>
@@ -785,6 +975,18 @@ function Editor({ automation }: { automation: Loaded }) {
 
         <TabsContent value="runs">
           <RunsList automationId={automation._id} />
+        </TabsContent>
+
+        <TabsContent value="versions">
+          <VersionsPanel
+            automationId={automation._id}
+            draftShown={draftShown}
+            // Unsaved work goes, as when a draft is discarded. Undo brings it back.
+            beforeRestore={() => {
+              if (dirty) show(JSON.parse(savedJson) as AutomationDraft);
+            }}
+            onRestored={() => setTab("editor")}
+          />
         </TabsContent>
       </Tabs>
 

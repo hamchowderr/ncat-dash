@@ -74,6 +74,8 @@ export type ChatPanelProps = {
     call: { id: string; name: string; args: unknown },
     result: { result?: unknown; isError?: boolean } | undefined,
   ) => ReactNode | undefined;
+  /** ncat-dash: the words shown when a turn fails, in place of the raw error. */
+  errorWords?: (error: string) => string;
 };
 
 /**
@@ -102,6 +104,7 @@ export function ChatPanel({
   onNavigate,
   approvalViews,
   renderTool,
+  errorWords,
 }: ChatPanelProps) {
   const controller = useAgentControllerChat({ onToolEnd });
   const { transcript, status, sendMessage, answerQuestion, pendingSuspension } = controller;
@@ -245,7 +248,7 @@ export function ChatPanel({
           the empty state too (a first message can fail before any transcript exists). */}
         {transcript.error && (
           <p role="alert" className="shrink-0 px-4 pt-2 text-destructive text-sm">
-            AgentController error: {transcript.error}
+            {errorWords ? errorWords(transcript.error) : `AgentController error: ${transcript.error}`}
           </p>
         )}
 

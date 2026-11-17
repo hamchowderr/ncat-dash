@@ -118,8 +118,17 @@ export function draftChanges(live: AutomationDraft, draft: AutomationDraft): str
   for (const node of draft.nodes) {
     const old = before.get(node.id);
     if (!old) lines.push(`Added ${title(node)}`);
-    else if (canonical(withoutPosition(old)) !== canonical(withoutPosition(node))) {
-      lines.push(`Changed ${title(node)}`);
+    else {
+      // Turning a step off or on is said as such; any other change to it as a change.
+      if (Boolean(old.off) !== Boolean(node.off)) {
+        lines.push(`${node.off ? "Turned off" : "Turned on"} ${title(node)}`);
+      }
+      const rest = (step: AutomationNode) => {
+        const content = withoutPosition(step);
+        delete content.off;
+        return canonical(content);
+      };
+      if (rest(old) !== rest(node)) lines.push(`Changed ${title(node)}`);
     }
   }
   for (const node of live.nodes) {
