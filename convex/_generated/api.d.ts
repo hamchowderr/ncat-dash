@@ -26,6 +26,7 @@ import type * as lib_queue from "../lib/queue.js";
 import type * as lib_reviews from "../lib/reviews.js";
 import type * as lib_runner from "../lib/runner.js";
 import type * as lib_s3 from "../lib/s3.js";
+import type * as lib_versions from "../lib/versions.js";
 import type * as presence from "../presence.js";
 import type * as reviewAgent from "../reviewAgent.js";
 import type * as reviews from "../reviews.js";
@@ -35,6 +36,7 @@ import type * as storage from "../storage.js";
 import type * as teamSettings from "../teamSettings.js";
 import type * as teams from "../teams.js";
 import type * as toolkitConnections from "../toolkitConnections.js";
+import type * as versions from "../versions.js";
 import type * as watch from "../watch.js";
 
 import type {
@@ -62,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   "lib/reviews": typeof lib_reviews;
   "lib/runner": typeof lib_runner;
   "lib/s3": typeof lib_s3;
+  "lib/versions": typeof lib_versions;
   presence: typeof presence;
   reviewAgent: typeof reviewAgent;
   reviews: typeof reviews;
@@ -71,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   teamSettings: typeof teamSettings;
   teams: typeof teams;
   toolkitConnections: typeof toolkitConnections;
+  versions: typeof versions;
   watch: typeof watch;
 }>;
 

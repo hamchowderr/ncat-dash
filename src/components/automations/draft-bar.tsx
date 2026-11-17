@@ -16,6 +16,7 @@ export function DraftBar({
   live,
   draft,
   busy,
+  restoredFrom,
   onPublish,
   onDiscard,
 }: {
@@ -24,6 +25,8 @@ export function DraftBar({
   live: AutomationDraft;
   draft: AutomationDraft;
   busy: boolean;
+  /** The version this draft was brought back from, if it was. */
+  restoredFrom?: number | null;
   onPublish: () => void;
   onDiscard: () => void;
 }) {
@@ -38,7 +41,9 @@ export function DraftBar({
         aria-hidden="true"
       />
       <p className="min-w-0 flex-1 text-sm">
-        <span className="font-medium">Draft.</span>{" "}
+        <span className="font-medium">
+          {restoredFrom ? `Draft from version ${restoredFrom}.` : "Draft."}
+        </span>{" "}
         {enabled
           ? "The live version keeps running by itself until you publish."
           : "Publish to make this the version that runs."}
