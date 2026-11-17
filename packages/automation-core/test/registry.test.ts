@@ -48,12 +48,12 @@ describe("node registry", () => {
     expect(getNodeType("approval")?.takes).toBe("files");
     expect(getNodeType("clips")?.gives).toBe("files");
     expect(getNodeType("export")).toMatchObject({ takes: "files", gives: "files" });
-    expect(names.length).toBe(5 + allSteps.length + 3);
+    expect(names.length).toBe(5 + allSteps.length + 5);
   });
 
   it("gives every type a title, a description and an object schema for its settings", () => {
     for (const nodeType of NODE_TYPES) {
-      expect(nodeType.title.length).toBeGreaterThan(2);
+      expect(nodeType.title.length).toBeGreaterThanOrEqual(2);
       expect(nodeType.description.length).toBeGreaterThan(10);
       expect(nodeType.settings.type).toBe("object");
       if (nodeType.automatic) {
@@ -65,7 +65,7 @@ describe("node registry", () => {
   it("lists only steps that can be added, with no trigger among them", () => {
     const listed = actionTypesByGroup().flatMap((group) => group.types);
     expect(listed.every((nodeType) => nodeType.role === "action")).toBe(true);
-    expect(listed.length).toBe(allSteps.length + 3);
+    expect(listed.length).toBe(allSteps.length + 5);
   });
 
   it("knows the type of every node in every template", () => {

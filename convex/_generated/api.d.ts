@@ -19,6 +19,7 @@ import type * as lib_authz from "../lib/authz.js";
 import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_edition from "../lib/edition.js";
 import type * as lib_exports from "../lib/exports.js";
+import type * as lib_logic from "../lib/logic.js";
 import type * as lib_outputs from "../lib/outputs.js";
 import type * as lib_queue from "../lib/queue.js";
 import type * as lib_runner from "../lib/runner.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   "lib/crypto": typeof lib_crypto;
   "lib/edition": typeof lib_edition;
   "lib/exports": typeof lib_exports;
+  "lib/logic": typeof lib_logic;
   "lib/outputs": typeof lib_outputs;
   "lib/queue": typeof lib_queue;
   "lib/runner": typeof lib_runner;
