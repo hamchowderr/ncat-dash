@@ -49,7 +49,10 @@ export function Composer({
   const active = Math.min(picked, Math.max(0, offered.length - 1));
 
   function choose(person: Person) {
-    setText(completeMention(text, person));
+    const next = completeMention(text, person);
+    setText(next);
+    // The name is complete, so the list stays closed until more is typed.
+    setDismissed(next);
     setPicked(0);
     field.current?.focus();
   }
