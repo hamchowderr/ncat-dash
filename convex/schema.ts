@@ -215,6 +215,8 @@ export default defineSchema({
         edges: v.array(edgeValidator),
         updatedBy: v.string(),
         updatedAt: v.number(),
+        // Set when the draft began as an earlier version brought back; its number.
+        restoredFrom: v.optional(v.number()),
       }),
     ),
     createdBy: v.string(),
@@ -225,6 +227,29 @@ export default defineSchema({
     .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"]),
 
   // Files a watched folder has already started a run for, so each starts only one.
+  // Every version an automation has had as its live version, numbered from 1, so an
+  // earlier one can be looked at and brought back. The newest 100 are kept.
+  automationVersions: defineTable({
+    automationId: v.id("automations"),
+    organizationId: v.string(),
+    number: v.number(),
+    name: v.string(),
+    trigger: triggerValidator,
+    nodes: v.array(nodeValidator),
+    edges: v.array(edgeValidator),
+    // How it became live: made new, saved while off, published from a draft, or imported.
+    source: v.union(
+      v.literal("created"),
+      v.literal("saved"),
+      v.literal("published"),
+      v.literal("imported"),
+    ),
+    // When it was an earlier version brought back, that version's number.
+    restoredFrom: v.optional(v.number()),
+    byId: v.string(),
+    byName: v.string(),
+  }).index("by_automation_and_number", ["automationId", "number"]),
+
   watchedFiles: defineTable({
     automationId: v.id("automations"),
     key: v.string(),

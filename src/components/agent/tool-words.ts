@@ -125,3 +125,17 @@ export function resultWords(name: string | undefined, result: unknown): string[]
   }
   return [];
 }
+
+/**
+ * What a failed turn says to the person. The raw error can be a whole provider response
+ * (the request it sent included), which means nothing to them.
+ */
+export function errorWords(error: string): string {
+  if (/\b(401|403)\b|api[_ -]?key|authentication/i.test(error)) {
+    return "The agent could not reach its model: the model key is missing or wrong. Whoever runs the agent server needs to check it.";
+  }
+  if (/\b(429|529)\b|rate limit|overloaded/i.test(error)) {
+    return "The agent's model is busy right now. Wait a minute and send your message again.";
+  }
+  return "Something went wrong and the agent stopped. Send your message again; if it keeps happening, whoever runs the agent server can see why in its log.";
+}

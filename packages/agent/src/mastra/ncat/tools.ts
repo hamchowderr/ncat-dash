@@ -181,11 +181,22 @@ const operation = z.discriminatedUnion("op", [
     trigger: z
       .object({ kind: z.string() })
       .passthrough()
-      .describe("What starts the automation; the settings of a trigger type from list_step_types."),
+      .describe(
+        'What starts the automation: kind is the trigger type from list_step_types without "trigger:" (so "upload" for trigger:upload), plus that type\'s settings.',
+      ),
   }),
   z.object({ op: z.literal("name"), name: z.string() }),
   z.object({ op: z.literal("tidy") }),
 ]);
+
+/**
+ * A change as the dashboard takes it. The step list names triggers "trigger:upload" and
+ * so on, and a model reasonably sends that name as the kind; the dashboard wants "upload".
+ */
+export function asSent(op: z.infer<typeof operation>): z.infer<typeof operation> {
+  if (op.op !== "trigger" || !op.trigger.kind.startsWith("trigger:")) return op;
+  return { ...op, trigger: { ...op.trigger, kind: op.trigger.kind.slice("trigger:".length) } };
+}
 
 export const changeAutomation = createTool({
   id: "change_automation",
@@ -199,7 +210,7 @@ export const changeAutomation = createTool({
     try {
       const result = await client.mutation(dash.automations.change, {
         automationId: id,
-        operations: input.operations,
+        operations: input.operations.map(asSent),
       });
       return { automationId: id, ...result };
     } catch (caught) {

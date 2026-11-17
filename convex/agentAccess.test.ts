@@ -33,6 +33,19 @@ describe("the step list the agent reads", () => {
     expect(type?.settings.required).toEqual(["platform"]);
   });
 
+  // A real model asked for step:video-caption and got "Server Error": its settings are a
+  // JSON Schema with "$schema", which Convex cannot send.
+  test("gives every kind in full, none of them refused", async () => {
+    const { maya } = await studio();
+    const { index } = await maya.as.query(api.automations.nodeTypes, {});
+    const names = [...(index ?? "").matchAll(/^([a-z][a-z0-9:_-]*) \(/gm)].map((m) => m[1]!);
+    expect(names).toContain("step:video-caption");
+    for (const type of names) {
+      const result = await maya.as.query(api.automations.nodeTypes, { type });
+      expect(JSON.stringify(result)).not.toContain('"$');
+    }
+  });
+
   test("says so when there is no such kind", async () => {
     const { maya } = await studio();
     await expect(

@@ -141,10 +141,10 @@ describe('prompt-cache breakpoints', () => {
     expect(stable).toEqual({
       role: 'system',
       content: 'Business: Cultured Matter.',
-      providerOptions: CACHE_BREAKPOINT,
+      providerOptions: { ...CACHE_BREAKPOINT, turnContext: { added: true } },
     });
     expect(volatile?.content).toContain('Current date and time');
-    expect(volatile?.providerOptions).toBeUndefined();
+    expect(volatile?.providerOptions).toEqual({ turnContext: { added: true } });
   });
 
   it('puts the stable sections first wherever they are listed, joined in order', async () => {
@@ -193,6 +193,32 @@ describe('prompt-cache breakpoints', () => {
     const later = await step(processor, [{ role: 'system', content: 'Instructions.' }]);
     expect(later.systemMessages.slice(0, 2)).toEqual(first.systemMessages.slice(0, 2));
   });
+
+  // A real run hands each step the system messages the step before returned. Before this
+  // was handled, a date message piled up per step and Anthropic refused the fourth call
+  // ("A maximum of 4 blocks with cache_control may be provided. Found 5.").
+  it('replaces, not repeats, its messages when a step gets the last step\'s output', async () => {
+    const processor = cached();
+    let messages: SystemMessage[] = [
+      { role: 'system', content: 'Instructions.' },
+      { role: 'system', content: 'Task list rules.' },
+    ];
+    for (let i = 0; i < 6; i++) messages = (await step(processor, messages)).systemMessages;
+    expect(messages.map((m) => m.content.split('\n')[0])).toEqual([
+      'Instructions.',
+      'Task list rules.',
+      'Business: Cultured Matter.',
+      expect.stringContaining('Current date and time'),
+    ]);
+    expect(JSON.stringify(messages).match(/cacheControl/g)).toHaveLength(2);
+  });
+
+  it('without promptCache, also keeps a single turn context across steps', async () => {
+    const processor = new TurnContextProcessor({ now: () => NOW, promptCache: false });
+    let messages: SystemMessage[] = [{ role: 'system', content: 'Instructions.' }];
+    for (let i = 0; i < 3; i++) messages = (await step(processor, messages)).systemMessages;
+    expect(messages).toHaveLength(2);
+  });
 });
 
 describe('subagents', () => {
@@ -221,8 +247,8 @@ describe('subagents', () => {
     const messages = await (wrapped.instructions as Resolve)({ requestContext: inZone('UTC') });
     expect(messages.map((m) => m.providerOptions)).toEqual([
       CACHE_BREAKPOINT,
-      CACHE_BREAKPOINT,
-      undefined,
+      { ...CACHE_BREAKPOINT, turnContext: { added: true } },
+      { turnContext: { added: true } },
     ]);
     expect(messages[1]?.content).toBe('Voice.');
   });
