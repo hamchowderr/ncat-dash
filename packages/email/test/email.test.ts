@@ -5,6 +5,7 @@ import {
   invitationEmail,
   isEmailAddress,
   passwordResetEmail,
+  approvalWaitingEmail,
   runFailedEmail,
   sendEmail,
   senderProblem,
@@ -155,5 +156,25 @@ describe("messages", () => {
     expect(failed.text).toContain("tried again 2 times");
     expect(failed.text).toContain("https://dash.example.com/automations/a/runs/r");
     expect(failed.text).toContain("https://dash.example.com/settings");
+  });
+
+  it("asks a reviewer to decide, with a link to the run", () => {
+    const waiting = approvalWaitingEmail(
+      {
+        teamName: "Acme",
+        automationName: "Clips for social",
+        stepName: "Check the clips",
+        note: "If nobody decides within 24 hours, it is rejected by itself.",
+        runUrl: "https://dash.example.com/automations/a/runs/r",
+        settingsUrl: "https://dash.example.com/settings",
+      },
+      branding,
+    );
+    expect(waiting.subject).toBe("Waiting for your approval: Clips for social");
+    expect(waiting.text).toContain('A run reached the step "Check the clips" in Acme');
+    expect(waiting.text).toContain("rejected by itself");
+    expect(waiting.html).toContain("Review it");
+    expect(waiting.html).toContain("https://dash.example.com/automations/a/runs/r");
+    expect(waiting.text).toContain("https://dash.example.com/settings");
   });
 });

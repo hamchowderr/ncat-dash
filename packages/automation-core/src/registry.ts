@@ -10,6 +10,7 @@ import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 import type { Brand, BrandKey } from "./brand";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
+import { TIME_LIMIT_UNITS, TIME_UP_CHOICES } from "./approval";
 import {
   CHECK_NAMES,
   CHECKS,
@@ -225,10 +226,34 @@ const APPROVAL: NodeType = {
   group: "people",
   title: "Approval",
   description:
-    "Stops the run until someone on the team approves. The files it was shown carry on to the next step.",
+    "Stops the run until a reviewer approves. The files it was shown carry on to the next step. Reviewers are told in the bell and by email; it can decide by itself when nobody does in time.",
   takes: "files",
   gives: "files",
-  settings: { type: "object", properties: {} },
+  settings: {
+    type: "object",
+    properties: {
+      reviewers: {
+        type: "array",
+        items: { type: "string" },
+        default: [],
+        description:
+          "The user ids of the team members asked to approve. Empty means anyone on the team. Team owners and admins can always decide.",
+      },
+      timeLimit: {
+        type: "number",
+        exclusiveMinimum: 0,
+        description:
+          "How long to wait for a decision, in timeLimitUnit. Leave it out to wait until someone decides. 6 days at most.",
+      },
+      timeLimitUnit: { type: "string", enum: [...TIME_LIMIT_UNITS], default: "hours" },
+      whenTimeUp: {
+        type: "string",
+        enum: [...TIME_UP_CHOICES],
+        default: "reject",
+        description: "What happens when the time limit passes with no decision.",
+      },
+    },
+  },
   automatic: null,
 };
 

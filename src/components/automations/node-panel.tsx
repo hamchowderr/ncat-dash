@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { nodeTitle } from "@/lib/automations";
 import { fieldLabel } from "@/lib/catalog";
 
+import { TeamApprovalSettings } from "./approval-panel";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { PlatformPicker } from "./platform-picker";
@@ -217,6 +218,8 @@ export function NodePanel({
           />
         </Field>
       )}
+
+      {node.kind === "approval" && <TeamApprovalSettings node={node} onChange={onChange} />}
 
       {(node.kind === "if" || node.kind === "wait") && (
         <LogicSettings node={node} onChange={onChange} />
