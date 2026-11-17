@@ -11,6 +11,7 @@ Working name: NCA Toolkit Dashboard. Under active development.
 - `packages/automation-core/` holds the rules an automation follows: what makes a valid graph, which steps are ready, placeholders, schedules. It also holds the node registry and the building operations, described under Automations.
 - `packages/email/` holds the emails the app sends (as plain data) and a small client for toSend, the service that delivers them.
 - `packages/step-catalog/` describes every toolkit endpoint once (inputs, outputs, how to call it). The app, the automation runner and the agent all read from it. Its tests compare every step with `test/toolkit-schemas.json`, the request schemas read out of the toolkit's own routes, because the toolkit rejects fields it does not know.
+- `packages/agent/` is the agent server: a Mastra server that chats with a signed-in person and builds automations for them. See The agent.
 - `.agents/skills/` holds the official agent skills for Convex, Better Auth, Mastra, Vercel and shadcn.
 
 ## Run it locally
@@ -105,11 +106,55 @@ With no email set up nothing is sent and nothing breaks. If toSend refuses to se
 
 Two things in toSend's own rules matter here: it is for email people expect (alerts, account email, invitations), not cold outreach, and it needs a paid toSend plan once its trial ends.
 
+### The agent
+
+The Agent button in the top bar opens a chat beside whatever is on screen. Describe what should run by itself and the agent builds the automation; ask for a change to the one that is open and it makes it on the canvas. It asks before it makes, changes or switches on anything, on a card that lists the change in plain words.
+
+It is two parts, both from [mastra-chat-kit](https://github.com/hamchowderr/mastra-chat-kit) (MIT, see `packages/agent/LICENSE-mastra-chat-kit`):
+
+- `packages/agent/` is the kit's server at commit `2aef2da`, a Mastra `AgentController` server on port 4111. What is ours is in `src/mastra/ncat/`: the tools (`tools.ts`: look at the team's automations, read one, list step types, change one, make one, switch one on or off), the instructions, and the hand-over described below. Kit files changed: `agents/chat.ts` (our tools and instructions), `lib/tool-categories.ts` (reading never asks, changing asks, switching on always asks), `lib/env.ts` (`CONVEX_URL`), `mastra/index.ts` (our route), and `fixtures/chat.json`. The kit's own tests are not copied.
+- The chat panel is the kit's `chat-panel`, installed with shadcn into `src/components/chat*`, `src/components/ai-elements`, `src/lib/agent-controller`, `src/lib/mastra-proxy.ts` and the proxy routes under `src/app/api/`. It was installed from the registry built at that same commit, because the published registry was older than the server and the two did not agree on approvals. One change to it: `ChatPanel` takes `renderTool`. Ours is `src/components/agent/`: the panel's wording, what each approval card and tool line says (`tool-words.ts`), and the Agent button in the shell.
+
+The agent has no access of its own. On every chat request the web app (`src/lib/agent-session.ts`, wired in `src/instrumentation.ts`) hands the agent server the signed-in person's own Convex token and the team and automation on their screen, in a request signed with `MASTRA_JWT_SECRET`. The tools then call the same Convex functions the dashboard does, as that person, so the agent can see and change what they can and nothing else. The hand-over is kept in memory only. A new automation the agent makes becomes "this automation" until another is on screen. An open editor shows the agent's change as it happens, unless the person has unsaved work of their own.
+
+To run it locally, add to `.env.local`:
+
+```bash
+MASTRA_SERVER_URL=http://127.0.0.1:4111
+MASTRA_JWT_SECRET=<openssl rand -base64 32>
+```
+
+Copy `packages/agent/.env.example` to `packages/agent/.env` and set `APP_SECRET`, the same `MASTRA_JWT_SECRET`, `CONVEX_URL` (your `NEXT_PUBLIC_CONVEX_URL`), and either a model key with `CHAT_MODEL`, or `USE_AIMOCK=true` for the stand-in model. Then:
+
+```bash
+pnpm --filter @ncat-dash/agent dev        # the agent server
+pnpm --filter @ncat-dash/agent dev:mock   # only with USE_AIMOCK=true
+```
+
+The stand-in model is [AIMock](https://aimock.copilotkit.dev), a small server that pretends to be a model provider. It costs nothing and needs no key. The agent package carries the kit's whole AIMock setup:
+
+- `pnpm --filter @ncat-dash/agent dev:mock` answers from a script (`packages/agent/fixtures/chat.json`). Our set requests come first in that file: "List my automations and say which are switched on.", "Build an automation that makes short clips with captions from each new recording I upload." and then "Add captions to the clips before they go for approval." The kit's own demo requests follow.
+- `pnpm --filter @ncat-dash/agent test` runs the kit's tests and ours against it. `tests/integration/ncat-tools.test.ts` drives our tools end to end through the real approval gates, with only Convex stood in for, and reads AIMock's journal to prove each step was answered by its own script entry. A test in `automation-core` makes the scripted changes against the real automation rules.
+
+#### Recording a real model
+
+AIMock can also sit between the agent and a real model and save what the model answers, so a real conversation can be played back afterwards for free, in tests and for screen recordings.
+
+1. In `packages/agent/.env` keep `USE_AIMOCK=true` and set a real key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY`) with a matching `CHAT_MODEL` such as `anthropic/claude-sonnet-4-6`. Recording goes straight to the provider; a gateway model (`vercel/...`, `mastra/...`) is not recorded.
+2. Run `pnpm --filter @ncat-dash/agent dev:record` in place of `dev:mock`, and use the chat. Each answer the model gives is saved under `packages/agent/fixtures/recorded/`. A message that was already recorded is played back and costs nothing; only new ones reach the model.
+3. Run `pnpm --filter @ncat-dash/agent dev:replay` to play the recordings back with no key. Anything that was not recorded gets an error there, so a recording can never quietly turn into a paid call.
+
+A recording is matched on the message the person typed, so the same sentence always gets the same answer. Read a recording before committing it. No real model has been recorded yet.
+
+On first start the agent server downloads a small text-embedding model (fastembed) for recalling earlier conversations.
+
 ### Editions
 
 One codebase serves both editions. Self-hosted is the default. `npx convex env set NCAT_EDITION hosted` switches a deployment to the hosted edition.
 
 ### Checks
+
+`pnpm test` runs three sets: each package's own tests, the Convex functions in memory (`convex/*.test.ts`, set up in `convex/test.setup.ts`), and the screens in a pretend browser (`src/**/*.test.ts(x)`). A change to a Convex function or a screen comes with a test in the matching set.
 
 ```bash
 pnpm typecheck
