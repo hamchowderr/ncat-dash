@@ -50,11 +50,12 @@ export function ReviewsView() {
           </div>
         </div>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="reveal grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {reviews.map((review) => (
             <li key={review._id}>
               <Link
                 href={`/review/${review._id}`}
+                transitionTypes={["nav-forward"]}
                 className="group hover:bg-muted focus-visible:ring-ring/50 flex h-full gap-3 rounded-xl bg-surface p-3 outline-none transition-colors focus-visible:ring-3"
               >
                 <span className="flex h-24 w-[4.25rem] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-black">

@@ -58,7 +58,7 @@ export function JobsView() {
           </Button>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl bg-surface">
+        <div className="reveal overflow-hidden rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>

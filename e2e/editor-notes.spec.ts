@@ -18,9 +18,10 @@ test("notes can be added, written, moved, kept and removed", async ({ page }) =>
   await expect(page.locator("#baseUrl")).toBeVisible();
 
   await page.goto("/automations");
-  await page.getByRole("button", { name: "New automation", exact: true }).click();
+  await page.getByRole("link", { name: "New automation", exact: true }).click();
+  await expect(page).toHaveURL(/\/automations\/new$/);
   await page.getByRole("button", { name: "Empty canvas" }).first().click();
-  await expect(page).toHaveURL(/\/automations\/[a-z0-9]+$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
 
   await page.getByRole("button", { name: "Add note" }).click();
   await expect(notes(page)).toHaveCount(1);

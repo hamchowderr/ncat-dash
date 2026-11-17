@@ -139,7 +139,7 @@ function ReviewLink({ runStepId }: { runStepId: Id<"runSteps"> }) {
   if (!reviewId) return null;
   return (
     <Button asChild size="sm" variant="outline">
-      <Link href={`/review/${reviewId}`}>
+      <Link href={`/review/${reviewId}`} transitionTypes={["nav-forward"]}>
         <MessagesSquare />
         Open the review room
       </Link>

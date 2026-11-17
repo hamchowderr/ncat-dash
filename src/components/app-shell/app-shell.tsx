@@ -69,7 +69,7 @@ function Shell({
       <AppSidebar teamName={state.team.name} edition={edition} user={state.user} />
       {/* The page scrolls inside its own frame, so the bar along the top always stays put
           and a page can fill exactly the height that is left. */}
-      <SidebarInset className="min-w-0 md:overflow-hidden">
+      <SidebarInset className={cn("min-w-0 md:overflow-hidden", agentOpen && "max-lg:hidden")}>
         <header className="flex h-16 shrink-0 items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />
           <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
@@ -93,15 +93,17 @@ function Shell({
         </div>
       </SidebarInset>
       {/* Always in place on a wide screen and opened by growing, so the page makes room
-          for the chat instead of jumping. On a narrow screen it takes the whole screen. */}
+          for the chat instead of jumping. On a narrow screen there is no room beside the
+          page, so the agent takes the page's place until it is closed: nothing lies over
+          anything. */}
       <aside
         aria-label="Agent"
         aria-hidden={!agentOpen}
         inert={!agentOpen}
         className={cn(
-          "bg-background flex-col overflow-hidden lg:z-auto lg:flex lg:h-svh lg:shrink-0",
+          "bg-background h-svh flex-col overflow-hidden lg:flex lg:shrink-0",
           "motion-safe:lg:transition-[width] motion-safe:lg:duration-300 motion-safe:lg:ease-[cubic-bezier(0.16,1,0.3,1)]",
-          agentOpen ? "fixed inset-0 z-40 flex lg:static lg:w-[26rem]" : "hidden lg:w-0",
+          agentOpen ? "flex min-w-0 flex-1 lg:w-[26rem] lg:flex-none" : "hidden lg:w-0",
         )}
       >
         {agentOpen && (
@@ -120,7 +122,11 @@ function Shell({
  */
 function PageTransition({ children }: { children: ReactNode }) {
   return (
-    <ViewTransition enter="page-enter" exit="page-exit" default="none">
+    <ViewTransition
+      enter={{ "nav-forward": "nav-forward", "nav-back": "nav-back", default: "page-enter" }}
+      exit={{ "nav-forward": "nav-forward", "nav-back": "nav-back", default: "page-exit" }}
+      default="none"
+    >
       {children}
     </ViewTransition>
   );
