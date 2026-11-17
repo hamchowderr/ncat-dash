@@ -161,12 +161,23 @@ export function AutomationsView() {
           <ul className="flex flex-col gap-1">
             {approvals.map((approval) => (
               <li key={approval.runStepId} className="flex items-center justify-between gap-3">
-                <span className="truncate text-sm">
+                <span className="min-w-0 truncate text-sm">
                   {approval.automationName}
                   {approval.waitingSince && (
                     <span className="text-muted-foreground">
                       {" "}
                       since {when.format(approval.waitingSince)}
+                    </span>
+                  )}
+                  {approval.forYou && approval.asked.length > 0 && (
+                    <span className="ml-2 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-700 dark:text-amber-300">
+                      Asks you
+                    </span>
+                  )}
+                  {approval.decideBy !== null && (
+                    <span className="text-muted-foreground block text-xs">
+                      {approval.whenTimeUp === "approve" ? "Approves" : "Rejects"} by itself at{" "}
+                      {when.format(approval.decideBy)}
                     </span>
                   )}
                 </span>

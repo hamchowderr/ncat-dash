@@ -1,6 +1,6 @@
-import { COMMENT_LIMIT } from "@ncat-dash/review-core";
+import { AGENT, asksAgent, COMMENT_LIMIT } from "@ncat-dash/review-core";
 import { ConvexError, v } from "convex/values";
-import { components } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
 import { authComponent } from "./auth";
@@ -132,7 +132,8 @@ export const comments = query({
       authorName: comment.authorName,
       createdAt: comment._creationTime,
       resolved: comment.resolved,
-      mine: comment.authorId === userId,
+      mine: (comment.agent ? comment.agent.askedBy : comment.authorId) === userId,
+      agent: comment.agent ?? null,
     }));
   },
 });
@@ -295,7 +296,7 @@ export const comment = mutation({
     }
 
     const user = await authComponent.safeGetAuthUser(ctx);
-    return await ctx.db.insert("reviewComments", {
+    const id = await ctx.db.insert("reviewComments", {
       reviewId: clip.reviewId,
       clipId: clip._id,
       organizationId: clip.organizationId,
@@ -307,6 +308,52 @@ export const comment = mutation({
       parentId,
       resolved: false,
     });
+
+    // "@Agent" asks for an answer in the same thread. It shows as thinking at once, and
+    // the agent server fills it in (convex/reviewAgent.ts).
+    if (asksAgent(body)) {
+      const root = parentId ?? id;
+      const thinking = existing.some(
+        (other) => other.agent?.state === "thinking" && (other.parentId ?? other._id) === root,
+      );
+      if (!thinking) {
+        const answerId = await ctx.db.insert("reviewComments", {
+          reviewId: clip.reviewId,
+          clipId: clip._id,
+          organizationId: clip.organizationId,
+          version,
+          time,
+          body: "",
+          authorId: AGENT.id,
+          authorName: AGENT.name,
+          parentId: root,
+          resolved: false,
+          agent: { askedBy: userId, state: "thinking" },
+        });
+        await ctx.scheduler.runAfter(0, internal.reviewAgent.answer, { answerId });
+      }
+    }
+    return id;
+  },
+});
+
+/** Asks the agent again after an answer that did not come. Only the person who asked can. */
+export const askAgentAgain = mutation({
+  args: { commentId: v.id("reviewComments") },
+  handler: async (ctx, args) => {
+    const found = await ctx.db.get(args.commentId);
+    if (!found?.agent)
+      throw new ConvexError({ code: "not_found", message: "That answer is gone." });
+    const { userId } = await requireMember(ctx, found.organizationId);
+    if (found.agent.askedBy !== userId) {
+      throw new ConvexError({
+        code: "forbidden",
+        message: "Only the person who asked can ask again.",
+      });
+    }
+    if (found.agent.state !== "failed") return;
+    await ctx.db.patch(found._id, { body: "", agent: { askedBy: userId, state: "thinking" } });
+    await ctx.scheduler.runAfter(0, internal.reviewAgent.answer, { answerId: found._id });
   },
 });
 
@@ -328,7 +375,9 @@ export const removeComment = mutation({
     const found = await ctx.db.get(args.commentId);
     if (!found) return;
     const { userId } = await requireMember(ctx, found.organizationId);
-    if (found.authorId !== userId) {
+    // The agent's answer belongs to whoever asked for it.
+    const owner = found.agent ? found.agent.askedBy : found.authorId;
+    if (owner !== userId) {
       throw new ConvexError({ code: "forbidden", message: "You can only delete your own." });
     }
     if (!found.parentId) {

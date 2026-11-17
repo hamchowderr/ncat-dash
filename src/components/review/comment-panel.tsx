@@ -1,7 +1,7 @@
 "use client";
 
 import { formatMoment, splitBody, type Thread } from "@ncat-dash/review-core";
-import { Check, CircleCheck, CornerDownRight, Trash2 } from "lucide-react";
+import { Check, CircleCheck, CornerDownRight, RotateCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ export type RoomComment = {
   createdAt: number;
   resolved: boolean;
   mine: boolean;
+  /** Set on the agent's answer to an "@Agent" comment. */
+  agent: { askedBy: string; state: "thinking" | "answered" | "failed" } | null;
 };
 
 const clock = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
@@ -55,6 +57,7 @@ function Entry({
   timed,
   onSeek,
   onDelete,
+  onAskAgain,
 }: {
   comment: RoomComment;
   people: Person[];
@@ -63,8 +66,11 @@ function Entry({
   timed: boolean;
   onSeek: (seconds: number) => void;
   onDelete: (id: string) => void;
+  onAskAgain: (id: string) => void;
 }) {
   const author = people.find((person) => person.id === comment.authorId);
+  const agent = comment.agent;
+  const asker = agent ? people.find((person) => person.id === agent.askedBy) : undefined;
   return (
     <div className="group/entry flex gap-2.5">
       <Face
@@ -76,6 +82,9 @@ function Entry({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-sm font-medium">{comment.authorName}</span>
+          {agent && asker && (
+            <span className="text-muted-foreground text-xs">for {asker.name.split(" ")[0]}</span>
+          )}
           {timed && (
             <button
               type="button"
@@ -91,14 +100,31 @@ function Entry({
             <button
               type="button"
               onClick={() => onDelete(comment.id)}
-              aria-label="Delete your comment"
+              aria-label={agent ? "Delete this answer" : "Delete your comment"}
               className="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 ml-auto rounded opacity-0 outline-none group-hover/entry:opacity-100 focus-visible:opacity-100 focus-visible:ring-3"
             >
               <Trash2 className="size-3.5" />
             </button>
           )}
         </div>
-        <Body text={comment.body} people={people} />
+        {agent?.state === "thinking" ? (
+          <p role="status" className="text-muted-foreground flex items-center gap-1.5 text-sm">
+            <span className="bg-primary size-1.5 animate-pulse rounded-full" />
+            Looking at the clip
+          </p>
+        ) : agent?.state === "failed" ? (
+          <div className="flex flex-col items-start gap-1">
+            <p className="text-muted-foreground text-sm">{comment.body}</p>
+            {comment.mine && (
+              <Button variant="outline" size="xs" onClick={() => onAskAgain(comment.id)}>
+                <RotateCw />
+                Ask again
+              </Button>
+            )}
+          </div>
+        ) : (
+          <Body text={comment.body} people={people} />
+        )}
       </div>
     </div>
   );
@@ -118,6 +144,7 @@ export function CommentPanel({
   onSend,
   onResolve,
   onDelete,
+  onAskAgain,
 }: {
   threads: Thread<RoomComment>[];
   loading: boolean;
@@ -131,6 +158,7 @@ export function CommentPanel({
   onSend: (body: string, parentId?: string) => Promise<boolean>;
   onResolve: (id: string, resolved: boolean) => void;
   onDelete: (id: string) => void;
+  onAskAgain: (id: string) => void;
 }) {
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const open = threads.filter((thread) => !thread.root.resolved).length;
@@ -155,8 +183,8 @@ export function CommentPanel({
         {loading ? null : threads.length === 0 ? (
           <p className="text-muted-foreground px-4 py-6 text-sm">
             {timed
-              ? "Pause where something needs a note and write it below. It stays pinned to that moment for the whole team."
-              : "Write a note below. The whole team sees it here."}
+              ? "Pause where something needs a note and write it below. It stays pinned to that moment for the whole team. Tag @Agent to ask the agent about that moment."
+              : "Write a note below. The whole team sees it here. Tag @Agent to ask the agent."}
           </p>
         ) : (
           <ol className="divide-y">
@@ -177,6 +205,7 @@ export function CommentPanel({
                   timed={timed}
                   onSeek={onSeek}
                   onDelete={onDelete}
+                  onAskAgain={onAskAgain}
                 />
                 {replies.length > 0 && (
                   <div className="ml-9 flex flex-col gap-3">
@@ -189,6 +218,7 @@ export function CommentPanel({
                         timed={false}
                         onSeek={onSeek}
                         onDelete={onDelete}
+                        onAskAgain={onAskAgain}
                       />
                     ))}
                   </div>
@@ -235,8 +265,8 @@ export function CommentPanel({
           moment={timed ? moment : undefined}
           placeholder={
             timed
-              ? "Comment at this moment. Type @ to tag a teammate."
-              : "Comment. Type @ to tag a teammate."
+              ? "Comment at this moment. Type @ to tag a teammate or the Agent."
+              : "Comment. Type @ to tag a teammate or the Agent."
           }
           onFocus={onComposerFocus}
           onSend={(body) => onSend(body)}

@@ -14,6 +14,7 @@ import {
   type NodeGroup,
   nodeTypeOf,
   waitSentence,
+  approvalShort,
 } from "@ncat-dash/automation-core";
 import { getStep, type StepCategory } from "@ncat-dash/step-catalog";
 import {
@@ -123,7 +124,7 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
     return {
       icon: UserCheck,
       tint: "text-amber-600 dark:text-amber-400",
-      kind: "Waits for a person",
+      kind: approvalShort(node.input),
     };
   }
   if (node.kind === "clips") {

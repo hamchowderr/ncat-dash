@@ -119,14 +119,13 @@ It is two parts, both from [mastra-chat-kit](https://github.com/hamchowderr/mast
 
 The agent has no access of its own. On every chat request the web app (`src/lib/agent-session.ts`, wired in `src/instrumentation.ts`) hands the agent server the signed-in person's own Convex token and the team and automation on their screen, in a request signed with `MASTRA_JWT_SECRET`. The tools then call the same Convex functions the dashboard does, as that person, so the agent can see and change what they can and nothing else. The hand-over is kept in memory only. A new automation the agent makes becomes "this automation" until another is on screen. An open editor shows the agent's change as it happens, unless the person has unsaved work of their own.
 
-To run it locally, add to `.env.local`:
+To connect the two, start Convex once (`npx convex dev`), then run:
 
 ```bash
-MASTRA_SERVER_URL=http://127.0.0.1:4111
-MASTRA_JWT_SECRET=<openssl rand -base64 32>
+pnpm setup:agent
 ```
 
-Copy `packages/agent/.env.example` to `packages/agent/.env` and set `APP_SECRET`, the same `MASTRA_JWT_SECRET`, `CONVEX_URL` (your `NEXT_PUBLIC_CONVEX_URL`), and either a model key with `CHAT_MODEL`, or `USE_AIMOCK=true` for the stand-in model. Then:
+It makes the shared secret and puts every value where it is read: `.env.local` for the chat, `packages/agent/.env` for the agent server, and `AGENT_URL` and `MASTRA_JWT_SECRET` in Convex for @Agent in review rooms. Running it again keeps the same secret. When the agent server runs somewhere else, pass its address: `pnpm setup:agent --agent-url https://agent.example.com` (a Convex in the cloud cannot reach an agent on your own computer). The model key is the one thing to add yourself, in `packages/agent/.env`: `ANTHROPIC_API_KEY`, with `CHAT_MODEL=anthropic/claude-sonnet-5-5`, or `USE_AIMOCK=true` for the stand-in model. Then:
 
 ```bash
 pnpm --filter @ncat-dash/agent dev        # the agent server

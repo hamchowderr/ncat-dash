@@ -21,3 +21,8 @@ built one clips branch per platform, tried it on the upload (`try_automation`), 
 the run went (`check_run`) and reported. `packages/automation-core/test/recorded-model.test.ts`
 checks it asked before building, makes its changes against the real rules, and checks it
 tried what it built.
+
+One review room answer, recorded 2026-11-17 by the browser tests (`RECORD_AGENT=1 pnpm
+test:e2e`): Maya asks "@Agent is the logo too small here?" at 0:02 of "Why the station
+matters", with the still from `e2e/fixtures/still.jpg`. The model looked at the still and
+said there is no logo in it. The browser tests play this answer back.

@@ -1,5 +1,6 @@
 // Stand-ins for the browser tests: a file server that supports seeking, and a toolkit
-// that answers every job at once. Nothing here is used by the product itself.
+// that answers every job at once. Nothing here is used by the product itself. The agent
+// server is the real one, with its stand-in model (see playwright.config.ts).
 import { createReadStream, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
@@ -10,9 +11,18 @@ export const FILES = `http://127.0.0.1:${FILES_PORT}`;
 export const CLIPS = ["opening-hello", "why-the-station-matters"];
 
 const clip = fileURLToPath(new URL("./fixtures/clip.webm", import.meta.url));
+const still = fileURLToPath(new URL("./fixtures/still.jpg", import.meta.url));
 
-// Every name serves the same short clip.
+// Every name serves the same short clip, and every .jpg the same still of it.
 createServer((request, response) => {
+  if (request.url.endsWith(".jpg")) {
+    response.writeHead(200, {
+      "Content-Type": "image/jpeg",
+      "Content-Length": statSync(still).size,
+    });
+    createReadStream(still).pipe(response);
+    return;
+  }
   const size = statSync(clip).size;
   const range = /bytes=(\d*)-(\d*)/.exec(request.headers.range ?? "");
   const head = {
@@ -43,10 +53,12 @@ createServer((request, response) => {
       response.end(JSON.stringify({ code: 200, response: "Authorized", build_number: "204" }));
       return;
     }
-    // A split answers with its clips; anything else with one file.
+    // A split answers with its clips, a thumbnail with a still; anything else with one file.
     const result = request.url.startsWith("/v1/video/split")
       ? CLIPS.map((name) => ({ file_url: `${FILES}/${name}.webm` }))
-      : `${FILES}/tighter-cut.webm`;
+      : request.url.startsWith("/v1/video/thumbnail")
+        ? `${FILES}/still.jpg`
+        : `${FILES}/tighter-cut.webm`;
     response.end(
       JSON.stringify({ code: 200, job_id: "stand-in", response: result, message: "success" }),
     );

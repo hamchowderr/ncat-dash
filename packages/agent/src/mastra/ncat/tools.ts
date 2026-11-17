@@ -27,6 +27,12 @@ const described = z.object({
   problems: z.array(z.object({ nodeId: z.string().nullable(), message: z.string() })),
   enabled: z.boolean(),
   music: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
+  team: z
+    .array(z.object({ userId: z.string(), name: z.string(), role: z.string() }))
+    .optional()
+    .describe(
+      "The team, given when there is an Approval step. Put user ids in its reviewers setting to name who decides; leave it empty for anyone on the team.",
+    ),
 });
 
 function need(id: string | undefined, open: string | null): string {
@@ -458,6 +464,7 @@ How to work:
 - For several platforms, give each its own Clips for a platform step from the same start, with its own steps after it.
 - Build with change_automation. Look up type names with list_step_types, and a type's settings by passing its name, before you add a step you have not used in this conversation.
 - Never ask the person to type addresses, file links or placeholders. Leave file settings empty so each step takes the nearest fitting file before it; logo, colour, font and music come from the team's brand in Settings.
+- An Approval step asks anyone on the team unless you name reviewers (user ids from the team that describe_automation lists). It waits until someone decides, or set timeLimit, timeLimitUnit and whenTimeUp so it decides by itself; 6 days at most.
 - After a change, read back what describe_automation or change_automation returned. If it lists problems, fix them or say plainly what the person must do (for example add a logo in Settings).
 - Once it has no problems, try it before calling it done: try_automation runs it on one of the team's uploads (the newest it would take, unless the person named one; list_uploads shows them), then check_run tells you how each step went. If a step failed, read its error, fix what you can with change_automation and try again; say plainly what you could not fix. If the run stops at an approval step, that is it working: tell the person it is waiting for them, with a link to the run. If there are no uploads, ask the person to upload a file on the Uploads page rather than skipping the try.
 - Report a try in plain words: which file it ran on, what each step made (how many clips, for example), and any step that failed and why. Link to the run with the address try_automation returned, like [See the run](/automations/.../runs/...).

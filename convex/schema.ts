@@ -286,6 +286,9 @@ export default defineSchema({
     finishedAt: v.union(v.null(), v.number()),
     // How many times steps in this run have tried again after failing.
     retries: v.optional(v.number()),
+    // Set when someone tested one step on its own: that step's node id. Nobody is
+    // alerted when a test fails, since the person testing is watching it.
+    test: v.optional(v.string()),
   })
     .index("by_automation", ["automationId"])
     .index("by_organization", ["organizationId"])
@@ -351,6 +354,11 @@ export default defineSchema({
     ),
     // Who approved or rejected, for an approval step.
     decidedBy: v.optional(v.string()),
+    // For an approval step: the reviewers it named when the run reached it (empty for the
+    // whole team), when it decides by itself if nobody has, and whether it did.
+    reviewers: v.optional(v.array(v.string())),
+    decideBy: v.optional(v.number()),
+    decidedAutomatically: v.optional(v.boolean()),
     // How many times this step has tried again after failing.
     retries: v.optional(v.number()),
     // Set while the step waits to try again: when the next try starts, and why the
@@ -367,7 +375,13 @@ export default defineSchema({
   // under the bell to every member until that member has seen it.
   alerts: defineTable({
     organizationId: v.string(),
-    kind: v.literal("run_failed"),
+    // "run_failed": a run ended with a failed step. "approval_waiting": a run reached an
+    // approval step and waits for the people in `recipients` to decide.
+    kind: v.union(v.literal("run_failed"), v.literal("approval_waiting")),
+    // The members it is for. Left out: everyone on the team.
+    recipients: v.optional(v.array(v.string())),
+    // For "approval_waiting": the step waiting. The alert goes once it is decided.
+    runStepId: v.optional(v.id("runSteps")),
     runId: v.id("runs"),
     automationId: v.id("automations"),
     automationName: v.string(),
@@ -378,7 +392,9 @@ export default defineSchema({
     retries: v.number(),
     // The members who have seen it.
     seenBy: v.array(v.string()),
-  }).index("by_organization", ["organizationId"]),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_runStep", ["runStepId"]),
 
   // The toSend account this dashboard sends email through: failed-run alerts, sign-in
   // emails and team invitations. One for the whole deployment, set once in Settings by
@@ -402,6 +418,8 @@ export default defineSchema({
     organizationId: v.string(),
     userId: v.string(),
     runFailed: v.boolean(),
+    // Email when an approval step waits for this member. Left out: yes.
+    approvalWaiting: v.optional(v.boolean()),
   }).index("by_organization_and_user", ["organizationId", "userId"]),
 
   // A team's own S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces).
@@ -502,6 +520,15 @@ export default defineSchema({
     authorName: v.string(),
     parentId: v.optional(v.id("reviewComments")),
     resolved: v.boolean(),
+    // Set on the agent's answer to an "@Agent" comment. The answer is written by the
+    // agent server through Convex itself, never by the person who asked.
+    agent: v.optional(
+      v.object({
+        // Who asked: their name is shown beside the answer, and only they can ask again.
+        askedBy: v.string(),
+        state: v.union(v.literal("thinking"), v.literal("answered"), v.literal("failed")),
+      }),
+    ),
   })
     .index("by_clip", ["clipId"])
     .index("by_review", ["reviewId"]),

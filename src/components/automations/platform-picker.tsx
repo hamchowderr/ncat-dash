@@ -37,7 +37,9 @@ export function PlatformPicker({
               disabled={disabled}
               onClick={() => onChange(platform.name)}
               className={cn(
-                "bg-background hover:border-muted-foreground/60 focus-visible:ring-ring/50 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 rounded-lg border p-2.5 text-left outline-none transition-[border-color,background-color,transform] duration-150 hover:-translate-y-px focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+                "bg-background hover:border-muted-foreground/60 focus-visible:ring-ring/50 grid grid-cols-[auto_minmax(0,1fr)] items-center rounded-lg border text-left outline-none transition-[border-color,background-color,transform] duration-150 hover:-translate-y-px focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+                // In a narrow panel the tiles are tighter, so whole names fit without scrolling.
+                compact ? "gap-x-2 px-2 py-2" : "gap-x-2.5 p-2.5",
                 on && "border-primary bg-primary/5 hover:border-primary",
               )}
             >
@@ -49,7 +51,12 @@ export function PlatformPicker({
                   on ? "border-primary" : "border-muted-foreground/70",
                 )}
               />
-              <span className="truncate text-sm leading-tight font-medium">{platform.name}</span>
+              <span
+                data-platform-name
+                className="text-sm leading-tight font-medium text-pretty break-words"
+              >
+                {platform.name}
+              </span>
               <span className="text-muted-foreground font-mono text-[11px]">
                 up to {formatLimit(platform.maxSeconds)}
               </span>

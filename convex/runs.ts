@@ -1,12 +1,40 @@
+import { type AutomationNode, nodeTypeOf } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { approvalView, membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
+import { factsOf } from "./lib/facts";
 import { finishWait } from "./lib/logic";
 import { pump } from "./lib/queue";
 import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
-import { decideApproval, retriesFor, retryStepNow, startRun } from "./lib/runner";
+import {
+  approvalTimeUp as decideWhenTimeIsUp,
+  decideApproval,
+  retriesFor,
+  retryStepNow,
+  startRun,
+} from "./lib/runner";
+
+/** The name of the file that started a run: as uploaded, or else from its address. */
+export function startingFileName(trigger: unknown): string | null {
+  const { file_name: name, file_url: url } = (trigger ?? {}) as Record<string, unknown>;
+  if (typeof name === "string" && name) return name;
+  if (typeof url !== "string") return null;
+  try {
+    const last = new URL(url).pathname.split("/").filter(Boolean).pop();
+    return last ? decodeURIComponent(last) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The name of the step a test run tried. */
+function testName(run: Doc<"runs">): string {
+  const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === run.test);
+  return node ? (node.label ?? nodeTypeOf(node)?.title ?? "a step") : "a step";
+}
 
 function summary(run: Doc<"runs">) {
   return {
@@ -20,6 +48,8 @@ function summary(run: Doc<"runs">) {
     finishedAt: run.finishedAt,
     // How many times steps in the run tried again after failing.
     retries: run.retries ?? 0,
+    // For a test of one step: that step's name, as it was when tested.
+    testOf: run.test ? testName(run) : null,
   };
 }
 
@@ -39,6 +69,41 @@ export const listForAutomation = query({
   },
 });
 
+/**
+ * The automation's newest run, with just enough of each step to light up the editor's
+ * canvas while it goes. Null when it has never run.
+ */
+export const latestForAutomation = query({
+  args: { automationId: v.id("automations") },
+  handler: async (ctx, args) => {
+    const automation = await ctx.db.get(args.automationId);
+    if (!automation) return null;
+    if (!(await isMember(ctx, automation.organizationId))) return null;
+    const run = await ctx.db
+      .query("runs")
+      .withIndex("by_automation", (q) => q.eq("automationId", args.automationId))
+      .order("desc")
+      .first();
+    if (!run) return null;
+    const steps = await ctx.db
+      .query("runSteps")
+      .withIndex("by_run", (q) => q.eq("runId", run._id))
+      .take(200);
+    return {
+      ...summary(run),
+      steps: steps.map((step) => ({
+        nodeId: step.nodeId,
+        status: step.status,
+        jobCount: step.jobIds.length,
+        branches: step.branches,
+        stage: step.stage,
+        resumeAt: step.resumeAt,
+        retryAt: step.retryAt ?? null,
+      })),
+    };
+  },
+});
+
 /** One run with the live state of every step. */
 export const get = query({
   args: { runId: v.id("runs") },
@@ -46,15 +111,24 @@ export const get = query({
     const run = await ctx.db.get(args.runId);
     if (!run) return null;
     if (!(await isMember(ctx, run.organizationId))) return null;
+    const { userId } = await requireMember(ctx, run.organizationId);
     const steps = await ctx.db
       .query("runSteps")
       .withIndex("by_run", (q) => q.eq("runId", args.runId))
       .take(200);
+    const approvalNodes = new Set(
+      (run.nodes as { id: string; kind: string }[])
+        .filter((node) => node.kind === "approval")
+        .map((node) => node.id),
+    );
+    const members = approvalNodes.size > 0 ? await membersOf(ctx, run.organizationId) : [];
     return {
       ...summary(run),
       // Whether the run's cuts can be opened in a video editor.
       hasCuts: (await cutListOf(ctx, run, steps)) !== null,
       trigger: run.trigger,
+      // The file that started the run, by name, when a file did.
+      startedWith: startingFileName(run.trigger),
       // How many times a failed step tries again for this team.
       retryLimit: await retriesFor(ctx, run.organizationId),
       nodes: run.nodes,
@@ -73,6 +147,9 @@ export const get = query({
             jobs: jobs
               .filter((job) => job !== null)
               .map((job) => ({ _id: job._id, status: job.status, outputs: job.outputs })),
+            // What the step found out, readable: a transcript, a length. Only for one file,
+            // since a list of facts per file would bury the page.
+            facts: jobs.length === 1 && jobs[0]?.status === "done" ? factsOf(jobs[0].result) : [],
             stage: step.stage,
             plan: step.plan,
             // For an If: the files that left by each way. For a Wait: when it carries on.
@@ -82,6 +159,10 @@ export const get = query({
             // Set while the step waits to try again.
             retryAt: step.retryAt ?? null,
             retryError: step.retryError ?? null,
+            // For an approval step: who is asked, by when, and who decided.
+            approval: approvalNodes.has(step.nodeId)
+              ? approvalView(step, run, members, userId)
+              : null,
           };
         }),
       ),
@@ -121,7 +202,8 @@ export const editorFiles = query({
 export const waitingApprovals = query({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
-    await requireMember(ctx, args.organizationId);
+    const { userId } = await requireMember(ctx, args.organizationId);
+    const members = await membersOf(ctx, args.organizationId);
     const steps = await ctx.db
       .query("runSteps")
       .withIndex("by_organization_and_status", (q) =>
@@ -138,13 +220,17 @@ export const waitingApprovals = query({
         automationId: run.automationId,
         automationName: run.automationName,
         waitingSince: step.startedAt,
+        ...approvalView(step, run, members, userId),
       });
     }
     return found;
   },
 });
 
-/** Approves or rejects an approval step. Any team member may decide. */
+/**
+ * Approves or rejects an approval step. The reviewers it names may decide, and so may the
+ * team's owners and admins; with no reviewers named, anyone on the team.
+ */
 export const decide = mutation({
   args: { runStepId: v.id("runSteps"), approved: v.boolean() },
   handler: async (ctx, args) => {
@@ -202,6 +288,14 @@ export const wake = internalMutation({
   },
 });
 
+/** Decides an approval step whose time limit has passed. Scheduled by the runner. */
+export const approvalTimeUp = internalMutation({
+  args: { runStepId: v.id("runSteps") },
+  handler: async (ctx, args) => {
+    await decideWhenTimeIsUp(ctx, args.runStepId);
+  },
+});
+
 /** Starts a booked try for a step that failed. Scheduled by the runner. */
 export const retryStep = internalMutation({
   args: { runStepId: v.id("runSteps"), retry: v.number() },
@@ -228,7 +322,18 @@ export const runAgain = mutation({
     if (!automation) {
       throw new ConvexError({ code: "not_found", message: "This automation no longer exists." });
     }
-    const started = await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
+    // A test runs its one step again, as it was tested; anything else runs the whole
+    // automation as it is now.
+    const started = run.test
+      ? await startRun(
+          ctx,
+          { ...automation, nodes: run.nodes, edges: run.edges },
+          run.triggerKind,
+          run.trigger,
+          userId,
+          { test: run.test },
+        )
+      : await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
     if (!started.ok) throw new ConvexError({ code: "invalid_input", message: started.message });
     return started.runId;
   },
