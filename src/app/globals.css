@@ -142,6 +142,10 @@
 ::view-transition-new(root) {
   animation: none;
 }
+/* Clicks during the fade reach the live page instead of being swallowed by the overlay. */
+::view-transition {
+  pointer-events: none;
+}
 ::view-transition-group(.page-exit),
 ::view-transition-group(.page-enter) {
   animation-duration: 0s;
