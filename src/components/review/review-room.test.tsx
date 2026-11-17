@@ -71,14 +71,14 @@ const NOTES: Record<string, unknown[]> = {
   ],
 };
 
-function open(review: unknown = room()) {
+function open(review: unknown = room(), focus?: { clip?: string; comment?: string }) {
   answerQuery(api.reviews.get, review);
   answerQuery(api.reviews.people, { me: "u1", people });
   answerQuery(
     api.reviews.comments,
     (args: Record<string, unknown>) => NOTES[args.clipId as string] ?? [],
   );
-  const view = renderInApp(<ReviewRoom reviewId={REVIEW} />);
+  const view = renderInApp(<ReviewRoom reviewId={REVIEW} focus={focus} />);
   return { ...view, user: userEvent.setup() };
 }
 
@@ -103,6 +103,30 @@ describe("the review room", () => {
     expect(video(container)).toHaveAttribute("src", "https://files.example/a.mp4");
     // One version: nothing to switch between.
     expect(screen.queryByRole("group", { name: "Version" })).not.toBeInTheDocument();
+  });
+
+  test("a link to a comment opens its clip, at its version and moment, with its thread marked", async () => {
+    const reply = note({ id: "r1", parentId: "n1", version: 1, time: 2, body: "A reply" });
+    NOTES.clip_b.push(reply);
+    const { container } = open(room(), { clip: "clip_b", comment: "r1" });
+    expect(screen.getByRole("heading", { name: /Clip 2 of 2/ })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(video(container)).toHaveAttribute("src", "https://files.example/b.mp4"),
+    );
+    expect(screen.getByRole("button", { name: "Version 1" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await waitFor(() => expect(video(container).currentTime).toBe(2));
+    expect(container.querySelector("#thread-n1")).toHaveClass("bg-muted/60");
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    NOTES.clip_b.pop();
+  });
+
+  test("a link to a comment that is gone still opens the room", () => {
+    const { container } = open(room(), { clip: "clip_b", comment: "gone" });
+    expect(screen.getByRole("heading", { name: /Clip 2 of 2/ })).toBeInTheDocument();
+    expect(video(container)).toHaveAttribute("src", "https://files.example/b-v2.mp4");
   });
 
   test("the clip list shows what is open on each and switches the clip", async () => {
