@@ -76,6 +76,7 @@ export const operationValidator = v.union(
     branch: v.optional(v.string()),
     settings: v.optional(v.record(v.string(), v.any())),
     label: v.optional(v.string()),
+    join: v.optional(v.array(v.string())),
   }),
   v.object({ op: v.literal("remove"), ids: v.array(v.string()) }),
   v.object({

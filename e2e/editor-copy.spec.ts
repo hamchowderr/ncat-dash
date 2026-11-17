@@ -17,7 +17,7 @@ const steps = (page: Page) => page.locator(".react-flow__node-step");
 const key = (page: Page, letter: string) =>
   page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+${letter}`);
 
-test("steps can be duplicated, copied and pasted, here and in another automation", async ({
+test("steps can be duplicated, copied, pasted and joined, here and in another automation", async ({
   page,
 }) => {
   await page.goto("/sign-up");
@@ -56,6 +56,22 @@ test("steps can be duplicated, copied and pasted, here and in another automation
   await expect(steps(page)).toHaveCount(4);
   await key(page, "z");
   await expect(steps(page)).toHaveCount(3);
+  // Two steps chosen together: a new step joins them, and runs once both have finished.
+  await steps(page).nth(0).click();
+  await steps(page)
+    .nth(1)
+    .click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] });
+  await page.getByRole("button", { name: "Add a step after these 2" }).click();
+  await page.getByLabel("Search steps").fill("Join videos");
+  await page
+    .getByRole("complementary", { name: "Steps you can add" })
+    .getByRole("button", { name: "Join videos", exact: true })
+    .click();
+  await expect(steps(page)).toHaveCount(4);
+  await expect(page.getByText(/^Waits for .+ to finish, then runs once/)).toBeVisible();
+  await key(page, "z");
+  await expect(steps(page)).toHaveCount(3);
+
   await page.getByRole("button", { name: /^Save/ }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
 

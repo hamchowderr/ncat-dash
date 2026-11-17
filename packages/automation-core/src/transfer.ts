@@ -15,7 +15,7 @@ import { getStep } from "@ncat-dash/step-catalog";
 
 import { readUploadRef } from "./brand";
 import { type AutomationEdge, type AutomationNode, graphProblem, MAX_NODES } from "./graph";
-import { branchesOfKind } from "./logic";
+import { branchesOfKind, canFailOver, FAILURE_WAY } from "./logic";
 import { type AutomationDraft, tidyPositions } from "./operations";
 import { nodeTypeOf } from "./registry";
 import { scheduleProblem } from "./schedule";
@@ -301,7 +301,9 @@ function readEdges(value: unknown, nodes: AutomationNode[]): AutomationEdge[] | 
       // A line out of an If that names no way, or one that does not exist, leaves by the first.
       ...(ways.length > 0
         ? { branch: ways.includes(branch as string) ? (branch as string) : ways[0] }
-        : {}),
+        : branch === FAILURE_WAY && canFailOver(kinds.get(source))
+          ? { branch: FAILURE_WAY }
+          : {}),
     });
   }
   return edges;

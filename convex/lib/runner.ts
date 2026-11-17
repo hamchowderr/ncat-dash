@@ -10,6 +10,7 @@ import {
   chooseFiles,
   clipRequest,
   downstreamOf,
+  failsOver,
   durationOf,
   type FileKind,
   getPlatform,
@@ -156,6 +157,11 @@ export async function failStep(
   error: string,
 ) {
   const now = Date.now();
+  const edges = run.edges as AutomationEdge[];
+  const node = (run.nodes as AutomationNode[]).find((other) => other.id === step.nodeId);
+  // With a way for when it fails, the files it was given go that way instead, so a step
+  // hung there can try something else with them. advance() passes over the usual way.
+  const handled = node !== undefined && failsOver(node.id, edges);
   await ctx.db.patch(step._id, {
     status: "failed",
     error,
@@ -163,7 +169,9 @@ export async function failStep(
     finishedAt: now,
     retryAt: undefined,
     retryError: undefined,
+    ...(handled ? { outputs: incomingFiles(node, run, byNode) } : {}),
   });
+  if (handled) return;
   // Whatever this step fed can no longer run. Other branches carry on.
   for (const nodeId of downstreamOf(step.nodeId, run.edges as AutomationEdge[])) {
     const below = byNode.get(nodeId);
@@ -527,17 +535,24 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
         ["pending", "running", "waiting_approval"].includes(step.status),
       );
       if (open.length === 0) {
-        const failed = steps.find((step) => step.status === "failed");
+        // A step that failed with a way for when it fails was dealt with; the run is fine.
+        const failed = steps.find(
+          (step) => step.status === "failed" && !failsOver(step.nodeId, edges),
+        );
         await ctx.db.patch(runId, {
           status: failed ? "failed" : "done",
           error: failed?.error ?? null,
           finishedAt: Date.now(),
         });
-        // A person who rejects at an approval step already knows, and one that ran out
-        // of time has its own alert; anything else that ends a run is something the
-        // team should hear about.
+        // A person who rejects at an approval step already knows, one that ran out of
+        // time has its own alert, and a step with a way for when it fails was dealt with;
+        // anything else that ends a run is something the team should hear about.
         const broken = steps.find(
-          (step) => step.status === "failed" && !step.decidedBy && !step.decidedAutomatically,
+          (step) =>
+            step.status === "failed" &&
+            !step.decidedBy &&
+            !step.decidedAutomatically &&
+            !failsOver(step.nodeId, edges),
         );
         if (broken && !run.test) await alertTeam(ctx, run, broken);
       } else {

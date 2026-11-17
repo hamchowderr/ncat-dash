@@ -1,5 +1,5 @@
 import type { Brand } from "./brand";
-import { branchesOfKind } from "./logic";
+import { branchesOfKind, canFailOver, FAILURE_WAY } from "./logic";
 import { missingSettingsOf, nodeTypeOf } from "./registry";
 
 /** One box on the canvas. */
@@ -74,8 +74,11 @@ export function graphProblem(nodes: AutomationNode[], edges: AutomationEdge[]): 
     const key = `${edge.source}>${edge.target}`;
     if (seen.has(key)) return "Two steps are connected twice.";
     seen.add(key);
-    const ways = branchesOfKind(nodes.find((node) => node.id === edge.source)?.kind);
-    if (ways.length > 0 ? !ways.includes(edge.branch ?? "") : edge.branch !== undefined) {
+    const kind = nodes.find((node) => node.id === edge.source)?.kind;
+    const ways = branchesOfKind(kind);
+    if (edge.branch === FAILURE_WAY) {
+      if (!canFailOver(kind)) return "Only a step that does work can have a way for when it fails.";
+    } else if (ways.length > 0 ? !ways.includes(edge.branch ?? "") : edge.branch !== undefined) {
       return ways.length > 0
         ? `A connection out of an If step has to leave by ${ways.join(" or ")}.`
         : "Only an If step has more than one way out.";
@@ -106,6 +109,11 @@ export function upstreamOf(nodeId: string, edges: AutomationEdge[]): string[] {
   return edges.filter((edge) => edge.target === nodeId).map((edge) => edge.source);
 }
 
+/** Whether something hangs off the way for when this step fails. */
+export function failsOver(nodeId: string, edges: AutomationEdge[]): boolean {
+  return edges.some((edge) => edge.source === nodeId && edge.branch === FAILURE_WAY);
+}
+
 /**
  * Which ways out a finished step used, by step id. Only a step with more than one way out
  * (an If) has an entry; a way that got no files is left out and what hangs off it is skipped.
@@ -120,11 +128,14 @@ function edgeState(
   taken: Taken,
 ): EdgeState {
   const source = status[edge.source];
+  // The way for when a step fails carries files only when it did fail.
+  if (source === "failed") return edge.branch === FAILURE_WAY ? "live" : "dead";
   if (source === "done") {
+    if (edge.branch === FAILURE_WAY) return "dead";
     const used = taken[edge.source];
     return edge.branch !== undefined && used && !used.includes(edge.branch) ? "dead" : "live";
   }
-  return source === "failed" || source === "skipped" ? "dead" : "open";
+  return source === "skipped" ? "dead" : "open";
 }
 
 function incomingStates(
