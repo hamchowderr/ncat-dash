@@ -1,6 +1,11 @@
 "use client";
 
-import { type AutomationNode, missingSettings, NODE_GAP } from "@ncat-dash/automation-core";
+import {
+  type AutomationNode,
+  missingSettings,
+  NODE_GAP,
+  type NodeGroup,
+} from "@ncat-dash/automation-core";
 import { getStep, type StepCategory } from "@ncat-dash/step-catalog";
 import {
   BaseEdge,
@@ -33,6 +38,7 @@ import {
   UserCheck,
   Wand2,
   Webhook,
+  Zap,
 } from "lucide-react";
 import { createContext, useContext } from "react";
 
@@ -59,6 +65,14 @@ export const CATEGORY_ICONS: Record<StepCategory, LucideIcon> = {
   ffmpeg: Terminal,
   code: Code,
   storage: HardDriveUpload,
+};
+
+/** The icon each group of the step list is shown with. */
+export const GROUP_ICONS: Record<NodeGroup, LucideIcon> = {
+  ...CATEGORY_ICONS,
+  trigger: Zap,
+  "ready-made": Scissors,
+  people: UserCheck,
 };
 
 export const TRIGGER_ICONS: Record<TriggerKind, LucideIcon> = {
@@ -291,39 +305,6 @@ export const edgeTypes = { flow: FlowEdge };
 export function flowEdge<T extends { id: string; source: string; target: string }>(edge: T) {
   return { ...edge, type: "flow" as const, markerEnd: { type: MarkerType.ArrowClosed } };
 }
-
-/**
- * Positions that read left to right: each step one place right of the furthest step
- * feeding it, and steps that share a place stacked and centred.
- */
-export function tidyPositions(
-  nodeIds: string[],
-  edges: { source: string; target: string }[],
-): Map<string, { x: number; y: number }> {
-  const depth = new Map<string, number>();
-  const depthOf = (id: string, seen: Set<string>): number => {
-    if (depth.has(id)) return depth.get(id)!;
-    if (seen.has(id)) return 0;
-    seen.add(id);
-    const sources = edges.filter((edge) => edge.target === id).map((edge) => edge.source);
-    const value = sources.length ? Math.max(...sources.map((s) => depthOf(s, seen))) + 1 : 0;
-    depth.set(id, value);
-    return value;
-  };
-  const columns = new Map<number, string[]>();
-  for (const id of nodeIds) {
-    const column = depthOf(id, new Set());
-    columns.set(column, [...(columns.get(column) ?? []), id]);
-  }
-  const positions = new Map<string, { x: number; y: number }>();
-  for (const [column, ids] of columns) {
-    ids.forEach((id, row) =>
-      positions.set(id, { x: column * NODE_GAP, y: (row - (ids.length - 1) / 2) * ROW_GAP }),
-    );
-  }
-  return positions;
-}
-const ROW_GAP = 150;
 
 /** Where the trigger sits: one place to the left of the first step. */
 export function triggerPosition(nodes: { position: { x: number; y: number } }[]) {
