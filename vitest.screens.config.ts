@@ -15,5 +15,8 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.{ts,tsx}"],
     environment: "jsdom",
+    // Stand-ins for the Convex hooks, the router and toasts (src/test/convex.ts).
+    setupFiles: ["src/test/setup.ts"],
+    restoreMocks: true,
   },
 });

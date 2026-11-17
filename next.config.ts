@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     "@ncat-dash/step-catalog",
     "@ncat-dash/automation-core",
     "@ncat-dash/timeline-export",
+    "@ncat-dash/review-core",
   ],
   partialPrefetching: true,
   turbopack: {

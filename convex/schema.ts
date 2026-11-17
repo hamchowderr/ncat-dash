@@ -427,4 +427,57 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     // Finds the upload behind a file in the bucket, for the Files page.
     .index("by_organization_and_key", ["organizationId", "key"]),
+
+  // A review room: a set of clips a team looks at together, comments on, and approves.
+  // Opened by hand from Outputs, or by an approval step when a run reaches it.
+  reviews: defineTable({
+    organizationId: v.string(),
+    title: v.string(),
+    status: v.union(v.literal("open"), v.literal("approved"), v.literal("rejected")),
+    // Set when an approval step opened the room. Deciding the room decides that step.
+    runId: v.optional(v.id("runs")),
+    runStepId: v.optional(v.id("runSteps")),
+    // The person who opened it; null when a run did.
+    createdBy: v.union(v.null(), v.string()),
+    decidedBy: v.optional(v.string()),
+    decidedAt: v.optional(v.number()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_runStep", ["runStepId"]),
+
+  // One clip in a review. A changed clip is added as a new version, so comments on the
+  // earlier ones stay where they were made.
+  reviewClips: defineTable({
+    reviewId: v.id("reviews"),
+    organizationId: v.string(),
+    title: v.string(),
+    versions: v.array(
+      v.object({
+        url: v.string(),
+        // The person who added it; null when a run did.
+        addedBy: v.union(v.null(), v.string()),
+        addedAt: v.number(),
+      }),
+    ),
+  }).index("by_review", ["reviewId"]),
+
+  // A comment on a clip, pinned to a moment in it. A reply points at the comment that
+  // started its thread and carries that comment's moment.
+  reviewComments: defineTable({
+    reviewId: v.id("reviews"),
+    clipId: v.id("reviewClips"),
+    organizationId: v.string(),
+    // Which version of the clip was on screen, counted from 1.
+    version: v.number(),
+    // Seconds into the clip.
+    time: v.number(),
+    body: v.string(),
+    authorId: v.string(),
+    // The author's name when they wrote it, so the comment still reads after they leave.
+    authorName: v.string(),
+    parentId: v.optional(v.id("reviewComments")),
+    resolved: v.boolean(),
+  })
+    .index("by_clip", ["clipId"])
+    .index("by_review", ["reviewId"]),
 });

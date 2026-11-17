@@ -2144,6 +2144,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         },
         Name
       >;
+      people: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string },
+        Array<{ id: string; image: null | string; name: string }>,
+        Name
+      >;
       peopleFor: FunctionReference<
         "query",
         "internal",
