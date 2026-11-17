@@ -14,6 +14,7 @@ import { RequestContext } from '@mastra/core/request-context';
 import { registerApiRoute } from '@mastra/core/server';
 import { CONNECTORS_OFF_KEY, readConnectorsOff } from '../lib/connectors-off';
 import { TIME_ZONE_KEY } from '../lib/time-zone';
+import { TURN_USER_KEY } from '../lib/turn-user';
 import { resourceIdOf } from './resource';
 import { sessionEventStream } from './session-sse';
 import { streamBodyLimit, streamBodySchema, timeZone } from './stream-body';
@@ -28,7 +29,10 @@ function turnRequestContext({
   webSearch,
   timeZone,
   connectorsOff,
+  userId,
 }: {
+  /** Whose turn it is (the resource id), for what the turn context reads about them. */
+  userId?: string | undefined;
   // `| undefined` so callers can pass a parsed-but-absent field under
   // exactOptionalPropertyTypes (consumers compile with it).
   webSearch?: boolean | undefined;
@@ -39,6 +43,7 @@ function turnRequestContext({
   if (webSearch === true) requestContext.set('webSearch', true);
   if (timeZone) requestContext.set(TIME_ZONE_KEY, timeZone);
   if (connectorsOff?.length) requestContext.set(CONNECTORS_OFF_KEY, connectorsOff);
+  if (userId) requestContext.set(TURN_USER_KEY, userId);
   return requestContext;
 }
 
@@ -106,7 +111,12 @@ export const createControllerRoutes = (deps: ChatServerDeps) => [
       // user message) so the agent's dynamic instructions flip into browse-the-web
       // mode — driving the workspace browser the Browser panel screencasts.
       // The browser's time zone rides the same way, for today's date (lib/turn-context.ts).
-      const requestContext = turnRequestContext({ webSearch, timeZone, connectorsOff });
+      const requestContext = turnRequestContext({
+        webSearch,
+        timeZone,
+        connectorsOff,
+        userId: resourceIdOf(c),
+      });
       // Map the composer's attachments onto sendMessage's file shape ({ data, ... }).
       // `createMessageInput` accepts a data URL as `data` for both text and binary parts.
       const messageFiles = files?.length
@@ -158,6 +168,11 @@ export const createControllerRoutes = (deps: ChatServerDeps) => [
           // stream — lets the resulting `model_changed` event flow to the client too.
           if (model && deps.modelAllowlist.has(model)) {
             await session.model.switch(model);
+          } else if (deps.modelFor) {
+            // Without a pick from the composer, the host may choose (a team's own setting),
+            // and with no choice the turn runs on the server's default.
+            const chosen = (await deps.modelFor(resourceIdOf(c))) ?? session.model.getDefault();
+            if (chosen && chosen !== session.model.get()) await session.model.switch(chosen);
           }
           // Same for the mode: switching inside the stream sends `mode_changed` too. Switched
           // (and so saved on the thread) even when the Session is already in it, so a chat
@@ -272,6 +287,7 @@ export const createControllerRoutes = (deps: ChatServerDeps) => [
             // The resumed run reads today's date in the user's zone too, and keeps the
             // connectors turned off for this chat off.
             requestContext: turnRequestContext({
+              userId: resourceIdOf(c),
               timeZone: timeZone.parse(body.timeZone),
               connectorsOff: readConnectorsOff(body.connectorsOff),
             }),

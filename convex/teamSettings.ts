@@ -1,5 +1,10 @@
 import {
+  AGENT_MODELS,
+  agentSettingsProblem,
+  agentSettingsText,
   BRAND_KEYS,
+  MAX_HOUSE_RULES_CHARS,
+  NO_AGENT_SETTINGS,
   brandProblem,
   MAX_STEP_RETRIES,
   readUploadRef,
@@ -16,7 +21,7 @@ import {
   pump,
 } from "./lib/queue";
 import { editorsOf } from "./lib/exports";
-import { brandValidator, editorValidator, musicValidator } from "./schema";
+import { agentSettingsValidator, brandValidator, editorValidator, musicValidator } from "./schema";
 
 const MAX_TRACKS = 100;
 
@@ -34,6 +39,9 @@ export const get = query({
       maxParallelJobs: await parallelLimit(ctx, args.organizationId),
       ...(await brandAndMusicOf(ctx, args.organizationId)),
       editors: await editorsOf(ctx, args.organizationId),
+      agent: settings?.agent ?? NO_AGENT_SETTINGS,
+      agentModels: AGENT_MODELS.map(({ id, name, note }) => ({ id, name, note })),
+      mostHouseRules: MAX_HOUSE_RULES_CHARS,
       mostAllowed: MAX_PARALLEL_JOBS,
       canEdit: MANAGER_ROLES.includes(role),
     };
@@ -182,5 +190,54 @@ export const setBrand = mutation({
         ...(music ? { music } : {}),
       });
     }
+  },
+});
+
+/**
+ * Sets how the agent works for the team: the model it runs on, house rules it always
+ * follows, and the platforms it makes clips for when nobody names any. Owners and admins
+ * only.
+ */
+export const setAgent = mutation({
+  args: { organizationId: v.string(), agent: agentSettingsValidator },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId, MANAGER_ROLES);
+    const agent = {
+      model: args.agent.model,
+      houseRules: args.agent.houseRules.trim(),
+      platforms: [...new Set(args.agent.platforms)],
+    };
+    const problem = agentSettingsProblem(agent);
+    if (problem) throw new ConvexError({ code: "invalid_input", message: problem });
+    const existing = await ctx.db
+      .query("teamSettings")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, { agent });
+    else {
+      await ctx.db.insert("teamSettings", {
+        organizationId: args.organizationId,
+        maxParallelJobs: DEFAULT_PARALLEL_JOBS,
+        agent,
+      });
+    }
+  },
+});
+
+/**
+ * What the agent needs from the team's settings on each turn: the model to run on (null
+ * for its own default) and what to be told. Any member: the agent calls it as the person.
+ */
+export const agentBrief = query({
+  args: { organizationId: v.string() },
+  returns: v.object({ model: v.union(v.string(), v.null()), text: v.union(v.string(), v.null()) }),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const settings = await ctx.db
+      .query("teamSettings")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    const agent = settings?.agent ?? NO_AGENT_SETTINGS;
+    return { model: agent.model, text: agentSettingsText(agent) ?? null };
   },
 });

@@ -116,6 +116,12 @@ export const fileDetailsValidator = v.object({
   audioSampleRate: v.optional(v.number()),
 });
 
+export const agentSettingsValidator = v.object({
+  model: v.union(v.string(), v.null()),
+  houseRules: v.string(),
+  platforms: v.array(v.string()),
+});
+
 export const brandValidator = v.object({
   logo: v.optional(v.string()),
   color: v.optional(v.string()),
@@ -192,6 +198,8 @@ export default defineSchema({
     stepRetries: v.optional(v.number()),
     // The video editors the team uses, which decides the files an export makes.
     editors: v.optional(v.array(editorValidator)),
+    // How the agent works for this team: its model, house rules and default platforms.
+    agent: v.optional(agentSettingsValidator),
   }).index("by_organization", ["organizationId"]),
 
   // A saved automation: what starts it, and the steps it runs.
