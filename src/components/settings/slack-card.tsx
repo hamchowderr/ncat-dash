@@ -2,8 +2,8 @@
 
 import { api } from "@convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Check, Copy, ExternalLink } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { Check, Copy, ExternalLink, Lock } from "lucide-react";
+import { type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -11,6 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { createSlackAppUrl, slackManifest } from "@/lib/slack-manifest";
@@ -44,6 +51,121 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
       <p className="self-center text-sm font-medium">{title}</p>
       <div className="col-start-2 flex flex-col gap-2 text-sm">{children}</div>
     </li>
+  );
+}
+
+const NONE = "none";
+
+type Channel = { id: string; name: string; private: boolean };
+
+/**
+ * Where review activity goes in Slack: new reviews, client feedback and mentions, each
+ * comment thread as a Slack thread whose replies come back to the review.
+ */
+function ReviewAlerts({
+  channel,
+  canEdit,
+}: {
+  channel: { id: string; name: string } | null;
+  canEdit: boolean;
+}) {
+  const team = useActiveTeam();
+  const listChannels = useAction(api.slackReview.channels);
+  const setAlertChannel = useAction(api.slackReview.setAlertChannel);
+  const [channels, setChannels] = useState<Channel[] | null | "failed">(null);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canEdit) return;
+    let live = true;
+    listChannels({ organizationId: team.id })
+      .then((found) => live && setChannels(found ?? "failed"))
+      .catch(() => live && setChannels("failed"));
+    return () => {
+      live = false;
+    };
+  }, [canEdit, listChannels, team.id]);
+
+  async function onPick(value: string) {
+    setProblem(null);
+    setSaving(true);
+    try {
+      const result = await setAlertChannel({
+        organizationId: team.id,
+        channelId: value === NONE ? null : value,
+      });
+      if (result.ok) {
+        toast.success(
+          value === NONE
+            ? "Review activity stays in the dashboard"
+            : "Review activity goes to Slack",
+        );
+      } else setProblem(result.detail);
+    } catch (caught) {
+      setProblem(errorMessage(caught, "That could not be saved. Try again."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!canEdit) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        {channel
+          ? `New reviews, client feedback and mentions are posted to #${channel.name}. Replies in a review's Slack thread come back to the review.`
+          : "Review activity is not posted to Slack."}
+      </p>
+    );
+  }
+
+  const listed = Array.isArray(channels) ? channels : [];
+  // The saved channel stays pickable even before Slack's list arrives.
+  const options =
+    channel && !listed.some((one) => one.id === channel.id)
+      ? [{ id: channel.id, name: channel.name, private: false }, ...listed]
+      : listed;
+
+  return (
+    <Field>
+      <FieldLabel htmlFor="slack-review-channel">Review activity</FieldLabel>
+      <Select
+        value={channel?.id ?? NONE}
+        onValueChange={onPick}
+        disabled={saving || channels === null}
+      >
+        <SelectTrigger id="slack-review-channel" className="w-64">
+          <SelectValue placeholder={channels === null ? "Loading channels" : undefined} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NONE}>Not posted</SelectItem>
+          {options.map((one) => (
+            <SelectItem key={one.id} value={one.id}>
+              {one.private ? (
+                <>
+                  <Lock aria-hidden="true" />
+                  <span className="sr-only">Private </span>
+                </>
+              ) : (
+                "#"
+              )}
+              {one.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <FieldDescription>
+        {channels === "failed"
+          ? "Slack did not list the channels. Try again in a minute."
+          : "New reviews, client feedback and mentions are posted here. Replies in a review's Slack thread come back to the review. For a private channel, invite the app to it first."}
+      </FieldDescription>
+      {problem && (
+        <Alert variant="destructive">
+          <AlertTitle>That channel was not picked</AlertTitle>
+          <AlertDescription>{problem}</AlertDescription>
+        </Alert>
+      )}
+    </Field>
   );
 }
 
@@ -144,6 +266,7 @@ export function SlackCard() {
               The agent knows people by the email address on their Slack profile, and does only what
               they could do here. Someone not on the team gets a note saying so.
             </p>
+            <ReviewAlerts channel={slack.alertChannel} canEdit={slack.canEdit} />
             {slack.canEdit && (
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={() => setEditing(true)} disabled={busy !== null}>

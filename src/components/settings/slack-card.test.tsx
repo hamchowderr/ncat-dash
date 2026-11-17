@@ -14,7 +14,13 @@ const connected = {
   slackTeamName: "Salt House",
   connectedAt: Date.UTC(2026, 10, 17, 18),
   connectedBy: "Jordan Lee",
+  alertChannel: null,
 };
+
+const channels = [
+  { id: "G0CLIENT", name: "client-x", private: true },
+  { id: "C0VIDEO", name: "video-team", private: false },
+];
 
 describe("the Slack card", () => {
   test("walks an owner through making the app, with the manifest filled in", () => {
@@ -55,8 +61,46 @@ describe("the Slack card", () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Slack is connected"));
   });
 
+  test("an owner picks the Slack channel review activity goes to", async () => {
+    answerQuery(api.slack.forTeam, connected);
+    actionOf(api.slackReview.channels).mockResolvedValue(channels);
+    const pick = actionOf(api.slackReview.setAlertChannel);
+    pick.mockResolvedValue({ ok: true });
+    renderInApp(<SlackCard />);
+    const select = screen.getByRole("combobox", { name: "Review activity" });
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(select).toHaveTextContent("Not posted");
+    const user = userEvent.setup();
+    await user.click(select);
+    expect(screen.getByRole("option", { name: /Private\s*client-x/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "#video-team" }));
+    expect(pick).toHaveBeenCalledWith({ organizationId: TEAM.id, channelId: "C0VIDEO" });
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Review activity goes to Slack"));
+  });
+
+  test("says why a channel was not picked", async () => {
+    answerQuery(api.slack.forTeam, {
+      ...connected,
+      alertChannel: { id: "C0VIDEO", name: "video-team" },
+    });
+    actionOf(api.slackReview.channels).mockResolvedValue(channels);
+    actionOf(api.slackReview.setAlertChannel).mockResolvedValue({
+      ok: false,
+      detail: "The app could not join #general.",
+    });
+    renderInApp(<SlackCard />);
+    const select = screen.getByRole("combobox", { name: "Review activity" });
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(select).toHaveTextContent("video-team");
+    const user = userEvent.setup();
+    await user.click(select);
+    await user.click(screen.getByRole("option", { name: "Not posted" }));
+    expect(await screen.findByText("The app could not join #general.")).toBeInTheDocument();
+  });
+
   test("shows the connected workspace, and an owner can disconnect it", async () => {
     answerQuery(api.slack.forTeam, connected);
+    actionOf(api.slackReview.channels).mockResolvedValue(channels);
     const disconnect = mutationOf(api.slack.disconnect);
     renderInApp(<SlackCard />);
     expect(screen.getByText("Salt House")).toBeInTheDocument();
@@ -73,9 +117,15 @@ describe("the Slack card", () => {
     expect(screen.queryByRole("link", { name: "Create the Slack app" })).not.toBeInTheDocument();
     unmount();
 
-    answerQuery(api.slack.forTeam, { ...connected, canEdit: false });
+    answerQuery(api.slack.forTeam, {
+      ...connected,
+      canEdit: false,
+      alertChannel: { id: "C0VIDEO", name: "video-team" },
+    });
     renderInApp(<SlackCard />);
     expect(screen.getByText("Salt House")).toBeInTheDocument();
+    expect(screen.getByText(/posted to #video-team/)).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Disconnect" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Change" })).not.toBeInTheDocument();
   });

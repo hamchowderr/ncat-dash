@@ -35,8 +35,11 @@ export function slackManifest(origin: string, teamName: string) {
           "im:history",
           "im:read",
           "im:write",
-          // Answering.
+          // Answering, and posting review activity to the channel the team picks.
           "chat:write",
+          "channels:read",
+          "groups:read",
+          "channels:join",
           "reactions:write",
           // Telling who wrote: their email address is how the dashboard knows them.
           "users:read",

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { forwardSlack, SLACK_WEBHOOK_PATH } from "./slack-forward";
+import { forwardSlack, isThreadReply, SLACK_WEBHOOK_PATH } from "./slack-forward";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -46,5 +46,47 @@ describe("passing Slack's requests to the agent server", () => {
     const down = await forwardSlack(request(), "http://agent.test");
     expect(down.status).toBe(503);
     expect(await down.text()).toMatch(/not reachable/);
+  });
+
+  test("also brings a reply in a thread to the dashboard's backend, for review threads", async () => {
+    const seen: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      seen.push(`${url} ${new Headers(init.headers).get("x-slack-signature")}`);
+      return new Response("", { status: 200 });
+    });
+    const reply = JSON.stringify({
+      type: "event_callback",
+      team_id: "T1",
+      event: { type: "message", user: "U1", text: "On it", ts: "2.0", thread_ts: "1.0" },
+    });
+    const send = (body: string) =>
+      forwardSlack(
+        new Request("https://dash.test/api/slack/events", {
+          method: "POST",
+          headers: { "x-slack-signature": "v0=abc" },
+          body,
+        }),
+        "http://agent.test",
+        "http://convex.test/",
+      );
+    await send(reply);
+    expect(seen.sort()).toEqual([
+      `http://agent.test${SLACK_WEBHOOK_PATH} v0=abc`,
+      "http://convex.test/slack/events v0=abc",
+    ]);
+    seen.length = 0;
+    await send(JSON.stringify({ type: "event_callback", event: { type: "app_mention" } }));
+    expect(seen).toEqual([`http://agent.test${SLACK_WEBHOOK_PATH} v0=abc`]);
+  });
+
+  test("knows a reply in a thread from everything else", () => {
+    const event = (fields: Record<string, unknown>) =>
+      JSON.stringify({ type: "event_callback", event: { type: "message", ts: "2.0", ...fields } });
+    expect(isThreadReply(event({ thread_ts: "1.0" }))).toBe(true);
+    expect(isThreadReply(event({}))).toBe(false);
+    expect(isThreadReply(event({ thread_ts: "2.0" }))).toBe(false);
+    expect(isThreadReply(event({ thread_ts: "1.0", bot_id: "B1" }))).toBe(false);
+    expect(isThreadReply(event({ thread_ts: "1.0", subtype: "message_changed" }))).toBe(false);
+    expect(isThreadReply("payload=%7B%7D")).toBe(false);
   });
 });
