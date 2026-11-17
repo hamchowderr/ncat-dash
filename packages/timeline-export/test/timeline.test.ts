@@ -9,6 +9,7 @@ import {
   type CutSource,
   clipsCutList,
   cutCues,
+  editorFiles,
   fcp7Xml,
   fcpXml,
   fileNameOf,
@@ -139,6 +140,32 @@ describe("the files", () => {
     };
     expect(fcp7Xml(list)).not.toContain("<sourcetrack>");
     expect(fcpXml(list)).not.toContain("hasAudio");
+  });
+});
+
+describe("files per editor", () => {
+  it("gives each editor the file it opens, and a note on opening it", () => {
+    const names = (editors: Parameters<typeof editorFiles>[1]) =>
+      editorFiles(silences(30), editors).map((file) => file.name);
+    expect(names(["premiere", "resolve", "finalcut", "capcut"])).toEqual([
+      "Episode 12.xml",
+      "Episode 12.fcpxml",
+      "How to open.txt",
+    ]);
+    expect(names(["resolve"])).toEqual(["Episode 12.xml", "How to open.txt"]);
+    expect(names(["finalcut"])).toEqual(["Episode 12.fcpxml", "How to open.txt"]);
+    // CapCut opens no timeline, so on its own there is nothing to hand over.
+    expect(names(["capcut"])).toEqual([]);
+    expect(names([])).toEqual([]);
+  });
+
+  it("names the recording to keep beside the timeline, and makes file names safe", () => {
+    const files = editorFiles({ ...silences(30), name: 'Ep 12: "final" / v2' }, ["premiere"]);
+    expect(files[0].name).toBe("Ep 12 final v2.xml");
+    expect(files[0].editors).toEqual(["Premiere Pro"]);
+    expect(files[1].text).toContain("Episode 12 & more.mp4");
+    expect(files[1].text).toContain("Premiere Pro: File > Import");
+    expect(files[1].text).not.toContain("Final Cut Pro:");
   });
 });
 

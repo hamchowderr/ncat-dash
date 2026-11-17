@@ -25,6 +25,7 @@ import {
 } from "@xyflow/react";
 import {
   CalendarClock,
+  Clapperboard,
   Code,
   Film,
   FolderInput,
@@ -120,6 +121,13 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
       icon: Scissors,
       tint: "text-orange-600 dark:text-orange-400",
       kind: String(node.input.platform ?? "No platform picked"),
+    };
+  }
+  if (node.kind === "export") {
+    return {
+      icon: Clapperboard,
+      tint: "text-indigo-600 dark:text-indigo-400",
+      kind: "Premiere, Resolve, Final Cut",
     };
   }
   const step = getStep(node.stepId ?? "");

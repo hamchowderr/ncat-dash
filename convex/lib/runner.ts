@@ -13,6 +13,7 @@ import {
   parseSilences,
   planClips,
   planJobs,
+  readFileDetails,
   readyNodes,
   retryDelayMs,
   retryLimit,
@@ -31,6 +32,7 @@ import { getStep } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { cutListOf } from "./exports";
 import { brandOf, enqueueJob, pump } from "./queue";
 
 // One step may fan out over this many incoming files at most.
@@ -156,6 +158,28 @@ async function startNode(
 
   if (node.kind === "clips") {
     await startClips(ctx, run, node, step, byNode, filesFor("video", node, run, byNode));
+    return;
+  }
+
+  if (node.kind === "export") {
+    // The timeline files are made from the cuts when someone downloads them, so all this
+    // step does is make sure there are cuts to open, and hand its files on.
+    if (!cutListOf(run, [...byNode.values()])) {
+      await failStep(
+        ctx,
+        run,
+        step,
+        byNode,
+        "No cuts reached this step. Put it after Clips for a platform.",
+      );
+      return;
+    }
+    await ctx.db.patch(step._id, {
+      status: "done",
+      outputs: incomingFiles(node, run, byNode),
+      startedAt: now,
+      finishedAt: now,
+    });
     return;
   }
 
@@ -336,6 +360,7 @@ async function cutClips(
   }
 
   const plan: NonNullable<Doc<"runSteps">["plan"]> = [];
+  const sources: NonNullable<Doc<"runSteps">["sources"]> = [];
   // Probes come in pairs per video: its metadata, then its pauses.
   for (let i = 0; i + 1 < probes.length; i += 2) {
     const [metadata, silence] = [probes[i], probes[i + 1]];
@@ -350,6 +375,21 @@ async function cutClips(
         metadata.error ?? "Could not read how long the video is.",
       );
       return;
+    }
+    // Kept so the cuts can be opened in a video editor. A video whose frame rate or
+    // picture size could not be read is still cut, it just cannot be exported.
+    const details = readFileDetails(metadata.result);
+    if (details?.fps && details.width && details.height) {
+      sources.push({
+        url: source,
+        fps: details.fps,
+        width: details.width,
+        height: details.height,
+        duration,
+        hasAudio: details.hasAudio ?? true,
+        ...(details.audioChannels ? { audioChannels: details.audioChannels } : {}),
+        ...(details.audioSampleRate ? { audioSampleRate: details.audioSampleRate } : {}),
+      });
     }
     // Without the pauses the video is still cut, just evenly.
     const pauses = silence.status === "done" ? parseSilences(silence.result) : [];
@@ -385,7 +425,7 @@ async function cutClips(
     await failStep(ctx, run, step, byNode, queued.message);
     return;
   }
-  await ctx.db.patch(step._id, { stage: "cut", jobIds: queued.jobIds, plan });
+  await ctx.db.patch(step._id, { stage: "cut", jobIds: queued.jobIds, plan, sources });
 }
 
 /**

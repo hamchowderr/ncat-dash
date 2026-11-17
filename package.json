@@ -15,6 +15,7 @@
     "@convex-dev/better-auth": "^0.13.0",
     "@ncat-dash/automation-core": "workspace:*",
     "@ncat-dash/step-catalog": "workspace:*",
+    "@ncat-dash/timeline-export": "workspace:*",
     "@xyflow/react": "^13.0.1",
     "aws4fetch": "^1.0.20",
     "better-auth": "^1.7.25",

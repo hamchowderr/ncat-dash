@@ -3,12 +3,19 @@ import { v } from "convex/values";
 
 export const nodeValidator = v.object({
   id: v.string(),
-  kind: v.union(v.literal("step"), v.literal("approval"), v.literal("clips")),
+  kind: v.union(v.literal("step"), v.literal("approval"), v.literal("clips"), v.literal("export")),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
   input: v.record(v.string(), v.any()),
   position: v.object({ x: v.number(), y: v.number() }),
 });
+
+export const editorValidator = v.union(
+  v.literal("premiere"),
+  v.literal("resolve"),
+  v.literal("finalcut"),
+  v.literal("capcut"),
+);
 
 export const edgeValidator = v.object({ id: v.string(), source: v.string(), target: v.string() });
 
@@ -159,6 +166,8 @@ export default defineSchema({
     music: v.optional(musicValidator),
     // How many times a failed step in a run tries again before the run fails.
     stepRetries: v.optional(v.number()),
+    // The video editors the team uses, which decides the files an export makes.
+    editors: v.optional(v.array(editorValidator)),
   }).index("by_organization", ["organizationId"]),
 
   // A saved automation: what starts it, and the steps it runs.
@@ -269,6 +278,22 @@ export default defineSchema({
           parts: v.number(),
           start: v.number(),
           seconds: v.number(),
+        }),
+      ),
+    ),
+    // What is known about each video a "clips" step cut, kept so its cuts can be opened
+    // in a video editor later.
+    sources: v.optional(
+      v.array(
+        v.object({
+          url: v.string(),
+          fps: v.number(),
+          width: v.number(),
+          height: v.number(),
+          duration: v.number(),
+          hasAudio: v.boolean(),
+          audioChannels: v.optional(v.number()),
+          audioSampleRate: v.optional(v.number()),
         }),
       ),
     ),
