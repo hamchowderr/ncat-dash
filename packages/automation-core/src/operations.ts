@@ -3,6 +3,7 @@
  * both build automations out of these, so anything one can do the other can too, and a
  * change is checked the same way wherever it comes from.
  */
+import { type Brand, BRAND_WORDS } from "./brand";
 import { graphProblem, MAX_NODES, NODE_GAP } from "./graph";
 import type { AutomationEdge, AutomationNode } from "./graph";
 import {
@@ -348,7 +349,7 @@ export interface DraftProblem {
 }
 
 /** Everything that stops the automation from running, in plain language. Empty when it can. */
-export function draftProblems(draft: AutomationDraft): DraftProblem[] {
+export function draftProblems(draft: AutomationDraft, brand: Brand = {}): DraftProblem[] {
   const problems: DraftProblem[] = [];
   const graph = graphProblem(draft.nodes, draft.edges);
   if (graph) problems.push({ nodeId: null, message: graph });
@@ -378,11 +379,21 @@ export function draftProblems(draft: AutomationDraft): DraftProblem[] {
         });
       }
     }
-    const missing = missingSettingsOf(nodeType, node.input);
-    if (missing.length > 0) {
+    const missing = missingSettingsOf(nodeType, node.input, brand);
+    const fromBrand = missing.flatMap((name) => nodeType.brand?.[name] ?? []);
+    const own = missing.filter((name) => !nodeType.brand?.[name]);
+    if (fromBrand.length > 0) {
       problems.push({
         nodeId: node.id,
-        message: `${node.label ?? nodeType.title} still needs: ${missing.join(", ")}.`,
+        message: `${node.label ?? nodeType.title} needs your team's ${fromBrand
+          .map((key) => BRAND_WORDS[key])
+          .join(" and ")}. Add it in Settings, under Brand.`,
+      });
+    }
+    if (own.length > 0) {
+      problems.push({
+        nodeId: node.id,
+        message: `${node.label ?? nodeType.title} still needs: ${own.join(", ")}.`,
       });
     }
   }
@@ -394,7 +405,7 @@ export function draftProblems(draft: AutomationDraft): DraftProblem[] {
  * its id, type, settings, what feeds it, and anything still missing. For a model to read
  * before it changes anything.
  */
-export function outline(draft: AutomationDraft): string {
+export function outline(draft: AutomationDraft, brand: Brand = {}): string {
   const lines = [
     `Automation "${draft.name}"`,
     `Starts: ${triggerTypeOf(draft.trigger).type} ${JSON.stringify(
@@ -410,7 +421,7 @@ export function outline(draft: AutomationDraft): string {
       (order.get(a.id)?.x ?? 0) - (order.get(b.id)?.x ?? 0) ||
       (order.get(a.id)?.y ?? 0) - (order.get(b.id)?.y ?? 0),
   );
-  const problems = draftProblems(draft);
+  const problems = draftProblems(draft, brand);
   for (const node of sorted) {
     const sources = draft.edges
       .filter((edge) => edge.target === node.id)

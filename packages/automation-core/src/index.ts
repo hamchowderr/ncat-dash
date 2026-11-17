@@ -8,3 +8,4 @@ export * from "./setup";
 export * from "./registry";
 export * from "./operations";
 export * from "./wiring";
+export * from "./brand";

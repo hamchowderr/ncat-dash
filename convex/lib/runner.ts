@@ -9,6 +9,7 @@ import {
   getPlatform,
   graphProblem,
   type NodeStatus,
+  nodeTypeOf,
   parseSilences,
   planClips,
   planJobs,
@@ -21,11 +22,12 @@ import {
   valueFrom,
   valueSources,
   wantedKind,
+  withBrand,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { enqueueJob, pump } from "./queue";
+import { brandOf, enqueueJob, pump } from "./queue";
 
 // One step may fan out over this many incoming files at most.
 const MAX_JOBS_PER_STEP = 100;
@@ -176,8 +178,12 @@ async function startNode(
   const edges = run.edges as AutomationEdge[];
   // Text and data an earlier step made that this step takes, such as a transcript's
   // captions, and anything this step must switch on for a later step that is waiting.
+  const nodeType = nodeTypeOf(node);
   const settings: Record<string, unknown> = {
-    ...node.input,
+    // The team's logo, colour, font and music fill whatever the step leaves empty.
+    ...(nodeType
+      ? withBrand(nodeType, node.input, await brandOf(ctx, run.organizationId))
+      : node.input),
     ...settingsForLaterSteps(node, nodes, edges),
   };
   for (const source of valueSources(node, nodes, edges)) {

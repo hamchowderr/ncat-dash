@@ -62,6 +62,13 @@ export const operationValidator = v.union(
   v.object({ op: v.literal("tidy") }),
 );
 
+export const brandValidator = v.object({
+  logo: v.optional(v.string()),
+  color: v.optional(v.string()),
+  font: v.optional(v.string()),
+  music: v.optional(v.string()),
+});
+
 // Users, sessions, organizations (teams), members and invitations live in the
 // Better Auth component (convex/betterAuth). App tables point at a team by its
 // organization id, and every read or write checks membership first (lib/authz.ts).
@@ -118,6 +125,9 @@ export default defineSchema({
     organizationId: v.string(),
     // How many jobs this team may have on the toolkit at the same time.
     maxParallelJobs: v.number(),
+    // Set once, used by every automation: a logo and music (an "upload:<id>" pointer to
+    // one of the team's uploads, or an address), a colour and a font.
+    brand: v.optional(brandValidator),
   }).index("by_organization", ["organizationId"]),
 
   // A saved automation: what starts it, and the steps it runs.

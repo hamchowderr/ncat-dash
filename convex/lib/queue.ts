@@ -1,3 +1,4 @@
+import type { Brand } from "@ncat-dash/automation-core";
 import { getStep, userInputSchema } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -18,6 +19,15 @@ export async function parallelLimit(ctx: QueryCtx, organizationId: string): Prom
     .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
     .first();
   return settings?.maxParallelJobs ?? DEFAULT_PARALLEL_JOBS;
+}
+
+/** The team's logo, colour, font and music from its settings. Empty when none are set. */
+export async function brandOf(ctx: QueryCtx, organizationId: string): Promise<Brand> {
+  const settings = await ctx.db
+    .query("teamSettings")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .first();
+  return settings?.brand ?? {};
 }
 
 type Enqueued =
