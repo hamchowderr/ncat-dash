@@ -332,6 +332,61 @@ describe("who is here and new versions", () => {
     expect(screen.getByText("2 here now")).toBeInTheDocument();
   });
 
+  test("shows a client in the room, marked as one, and who is typing where", async () => {
+    NOTES.clip_a = [note({ id: "t1", body: "Logo?", authorId: "guest:riley", client: true })];
+    present.push(
+      {
+        userId: "guest:riley",
+        online: true,
+        lastDisconnected: 0,
+        data: {
+          name: "Riley Client",
+          client: true,
+          typing: { clipId: "clip_a", version: 1, threadId: "t1" },
+        },
+      },
+      {
+        userId: "u2",
+        online: true,
+        lastDisconnected: 0,
+        data: { typing: { clipId: "clip_a", version: 1, threadId: null } },
+      },
+      {
+        // Typing on another clip shows nowhere here.
+        userId: "u3",
+        online: true,
+        lastDisconnected: 0,
+        data: { typing: { clipId: "clip_b", version: 2, threadId: null } },
+      },
+    );
+    const { user } = open();
+    const here = screen.getByRole("list", { name: "Here now" });
+    expect(within(here).getByText("Riley Client")).toBeInTheDocument();
+    expect(screen.getByText("4 here now")).toBeInTheDocument();
+    const comments = screen.getByRole("region", { name: "Comments" });
+    const statuses = within(comments)
+      .getAllByRole("status")
+      .map((line) => line.textContent);
+    expect(statuses).toEqual(["Riley is typing…", "Maya is typing…"]);
+    await user.hover(within(here).getByText("Riley Client").closest("span")!);
+    expect((await screen.findAllByText("Riley Client (client)")).length).toBeGreaterThan(0);
+    NOTES.clip_a = [];
+  });
+
+  test("tells the room when you type, and when you stop", async () => {
+    const { user } = open();
+    const box = screen.getByRole("textbox", { name: /^Comment at this moment/ });
+    await user.type(box, "Hi");
+    const said = mutationOf(api.presence.typing);
+    expect(said).toHaveBeenCalledTimes(1);
+    expect(said).toHaveBeenCalledWith({
+      roomId: REVIEW,
+      typing: { clipId: "clip_a", version: 1, threadId: null },
+    });
+    await user.click(document.body);
+    expect(said).toHaveBeenLastCalledWith({ roomId: REVIEW, typing: null });
+  });
+
   test("says when you are alone", () => {
     open();
     expect(screen.getByText("Only you here")).toBeInTheDocument();

@@ -3,6 +3,7 @@ import { ConvexError, v } from "convex/values";
 import { components } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
+import { type RoomData, typingValidator } from "./lib/typing";
 
 // Who is in a review room right now. The room's id is the review's id.
 const presence = new Presence(components.presence);
@@ -33,5 +34,19 @@ export const disconnect = mutation({
   args: { sessionToken: v.string() },
   handler: async (ctx, args) => {
     return await presence.disconnect(ctx, args.sessionToken);
+  },
+});
+
+/** Says what a teammate is writing in the room, or that they stopped. */
+export const typing = mutation({
+  args: { roomId: v.string(), typing: typingValidator },
+  handler: async (ctx, args) => {
+    const reviewId = ctx.db.normalizeId("reviews", args.roomId);
+    const review = reviewId ? await ctx.db.get(reviewId) : null;
+    if (!review) return null;
+    const { userId } = await requireMember(ctx, review.organizationId);
+    const data: RoomData = { typing: args.typing };
+    await presence.updateRoomUser(ctx, args.roomId, userId, data);
+    return null;
   },
 });

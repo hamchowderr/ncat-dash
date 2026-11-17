@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { drawingValidator } from "./lib/drawing";
 
 export const nodeValidator = v.object({
   id: v.string(),
@@ -618,6 +619,8 @@ export default defineSchema({
     // Written through the review's share link by someone outside the team. Their
     // authorId is "guest:" and a random id their browser keeps.
     client: v.optional(v.boolean()),
+    // Marks drawn over the paused frame, on a thread's first comment only.
+    drawing: v.optional(drawingValidator),
     // Set on the agent's answer to an "@Agent" comment. The answer is written by the
     // agent server through Convex itself, never by the person who asked.
     agent: v.optional(

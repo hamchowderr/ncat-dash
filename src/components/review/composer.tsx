@@ -8,7 +8,7 @@ import {
   mentionQuery,
 } from "@ncat-dash/review-core";
 import { ArrowUp, AtSign, Clock } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { type ReactNode, useId, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,8 @@ export function Composer({
   autoFocus,
   onFocus,
   onSend,
+  tools,
+  onTyping,
 }: {
   people: Person[];
   /** The moment the comment will be pinned to; left out for a reply or a still image. */
@@ -35,6 +37,10 @@ export function Composer({
   onFocus?: () => void;
   /** Resolves to whether the comment was saved; the text is kept when it was not. */
   onSend: (body: string) => Promise<boolean>;
+  /** More buttons beside "Tag a teammate", such as drawing on the frame. */
+  tools?: ReactNode;
+  /** Told when writing starts or goes on (true) and when it stops (false). */
+  onTyping?: (active: boolean) => void;
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -63,7 +69,10 @@ export function Composer({
     setSending(true);
     const saved = await onSend(body);
     setSending(false);
-    if (saved) setText("");
+    if (saved) {
+      setText("");
+      onTyping?.(false);
+    }
   }
 
   return (
@@ -105,9 +114,11 @@ export function Composer({
         aria-label={placeholder}
         aria-controls={offered.length > 0 ? listId : undefined}
         onFocus={onFocus}
+        onBlur={() => onTyping?.(false)}
         onChange={(event) => {
           setText(event.target.value);
           setPicked(0);
+          onTyping?.(event.target.value.trim() !== "");
         }}
         onKeyDown={(event) => {
           if (offered.length > 0) {
@@ -155,6 +166,7 @@ export function Composer({
         >
           <AtSign />
         </Button>
+        {tools}
         <Button
           type="button"
           size="icon-sm"

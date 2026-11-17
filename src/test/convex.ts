@@ -38,7 +38,12 @@ export const toastError = vi.fn();
 export const toastInfo = vi.fn();
 export const toastSuccess = vi.fn();
 /** Who the presence hook says is in the room. */
-export const present: { userId: string; online: boolean; lastDisconnected: number }[] = [];
+export const present: {
+  userId: string;
+  online: boolean;
+  lastDisconnected: number;
+  data?: unknown;
+}[] = [];
 
 export function resetConvex() {
   queries.clear();

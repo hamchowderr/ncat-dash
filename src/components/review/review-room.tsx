@@ -43,7 +43,11 @@ import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import { ClipStage, isStill, type Mark } from "./clip-stage";
+import type { RoomData, Typing } from "@convex/lib/typing";
+
 import { CommentPanel } from "./comment-panel";
+import { useFrameDrawing } from "./frame-drawing";
+import { type Typist, useTypingSignal } from "./typing";
 import { AGENT_PERSON, Face, type Person } from "./person";
 import { ShareDialog } from "./share-dialog";
 
@@ -52,21 +56,34 @@ type Clip = Review["clips"][number];
 
 const finishedAt = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
-/** The teammates who have this room open right now. */
-function HereNow({
-  reviewId,
-  me,
-  people,
-}: {
-  reviewId: Id<"reviews">;
-  me: string;
-  people: Person[];
-}) {
-  const present = usePresence(api.presence, reviewId, me);
-  const here = (present ?? [])
-    .filter((state) => state.online)
-    .map((state) => people.find((person) => person.id === state.userId))
-    .filter((person): person is Person => person !== undefined);
+type Present = NonNullable<ReturnType<typeof usePresence>>[number];
+export type Here = Person & { client: boolean; typing: Typing };
+
+/** Who has the room open: teammates from the team list, clients by the name they gave. */
+function whoIsHere(present: Present[] | undefined, people: Person[]): Here[] {
+  const here: Here[] = [];
+  for (const state of present ?? []) {
+    if (!state.online || here.some((entry) => entry.id === state.userId)) continue;
+    const data = (state.data ?? {}) as RoomData;
+    if (state.userId.startsWith("guest:")) {
+      if (data.name)
+        here.push({
+          id: state.userId,
+          name: data.name,
+          image: null,
+          client: true,
+          typing: data.typing ?? null,
+        });
+      continue;
+    }
+    const person = people.find((entry) => entry.id === state.userId);
+    if (person) here.push({ ...person, client: false, typing: data.typing ?? null });
+  }
+  return here;
+}
+
+/** The people who have this room open right now, clients included. */
+export function HereNow({ here, me }: { here: Here[]; me: string }) {
   if (here.length === 0) return null;
   return (
     <div className="flex items-center gap-2">
@@ -82,7 +99,11 @@ function HereNow({
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                {person.id === me ? `${person.name} (you)` : person.name}
+                {person.id === me
+                  ? `${person.name} (you)`
+                  : person.client
+                    ? `${person.name} (client)`
+                    : person.name}
               </TooltipContent>
             </Tooltip>
           </li>
@@ -181,6 +202,7 @@ function ClipWorkspace({
   focus = null,
   highlight = null,
   onFocused,
+  typing = [],
 }: {
   review: Review;
   clip: Clip;
@@ -193,6 +215,8 @@ function ClipWorkspace({
   /** The thread marked when the room was opened at a comment. */
   highlight?: string | null;
   onFocused?: (threadId: string | null) => void;
+  /** Others writing on this clip and version right now. */
+  typing?: Typist[];
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const [time, setTime] = useState(0);
@@ -205,6 +229,10 @@ function ClipWorkspace({
   const resolve = useMutation(api.reviews.resolve);
   const removeComment = useMutation(api.reviews.removeComment);
   const askAgentAgain = useMutation(api.reviews.askAgentAgain);
+  const sayTyping = useMutation(api.presence.typing);
+  const signal = useTypingSignal(
+    (place) => void sayTyping({ roomId: review._id, typing: place }).catch(() => {}),
+  );
 
   const url = clip.versions[version - 1].url;
   const timed = !isStill(url);
@@ -217,11 +245,23 @@ function ClipWorkspace({
     resolved: root.resolved,
   }));
 
+  const sketch = useFrameDrawing({ video, threads, active: active ?? highlight, time, playing });
+
   function seek(seconds: number) {
     const player = video.current;
     if (!player) return;
     player.currentTime = seconds;
     setTime(seconds);
+  }
+
+  /** Picks a thread; one with a drawing also stops the clip at its moment to show it. */
+  function pick(id: string | null) {
+    setActive(id);
+    const root = threads.find((thread) => thread.root.id === id)?.root;
+    if (root?.drawing && !sketch.composer.drawing) {
+      video.current?.pause();
+      seek(root.time);
+    }
   }
 
   // Opening at a comment: its version, its moment, and its thread in view.
@@ -258,6 +298,7 @@ function ClipWorkspace({
         onDuration={(seconds) => setDuration(Number.isFinite(seconds) ? seconds : 0)}
         onPlaying={setPlaying}
         onSeek={seek}
+        drawing={sketch.stage}
         onMark={(mark) => {
           video.current?.pause();
           seek(mark.time);
@@ -307,7 +348,10 @@ function ClipWorkspace({
         timed={timed}
         moment={time}
         active={active ?? highlight}
-        onActive={setActive}
+        onActive={pick}
+        drawing={sketch.composer}
+        typing={typing}
+        onTyping={(threadId, active) => signal({ clipId: clip._id, version, threadId }, active)}
         onSeek={(seconds) => {
           video.current?.pause();
           seek(seconds);
@@ -322,8 +366,12 @@ function ClipWorkspace({
               time: timed ? (video.current?.currentTime ?? time) : 0,
               version,
               parentId: parentId as Id<"reviewComments"> | undefined,
+              drawing: parentId ? undefined : sketch.pending,
             });
-            if (!parentId) setActive(id);
+            if (!parentId) {
+              sketch.sent();
+              setActive(id);
+            }
             return true;
           } catch (error) {
             toast.error(errorMessage(error, "The comment could not be saved."));
@@ -428,7 +476,33 @@ export function ClipList({
  * One review. `focus` opens it at a clip and a comment, as a link from a notification does
  * (/review/<id>?clip=<clipId>&comment=<commentId>).
  */
-export function ReviewRoom({
+export function ReviewRoom(props: {
+  reviewId: Id<"reviews">;
+  focus?: { clip?: string; comment?: string };
+}) {
+  const review = useQuery(api.reviews.get, { reviewId: props.reviewId });
+  // Someone who cannot open the review never joins its room, so nobody sees them there.
+  if (review === undefined) return <Skeleton className="h-[70svh] rounded-xl" />;
+  if (review === null || review.clips.length === 0) return <GoneRoom />;
+  return <OpenRoom {...props} />;
+}
+
+function GoneRoom() {
+  return (
+    <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
+      <p className="text-muted-foreground text-sm">
+        This review is gone, or it belongs to another team.
+      </p>
+      <Button asChild size="sm" variant="outline">
+        <Link href="/review" transitionTypes={["nav-back"]}>
+          Back to Review
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+function OpenRoom({
   reviewId,
   focus,
 }: {
@@ -439,6 +513,8 @@ export function ReviewRoom({
   const router = useRouter();
   const review = useQuery(api.reviews.get, { reviewId });
   const roster = useQuery(api.reviews.people, { organizationId: team.id });
+  // The heartbeat names the signed-in person itself; this id only keys the session.
+  const present = usePresence(api.presence, reviewId, roster?.me ?? "loading");
   const decide = useMutation(api.reviews.decide);
   const reopen = useMutation(api.reviews.reopen);
   const remove = useMutation(api.reviews.remove);
@@ -452,20 +528,7 @@ export function ReviewRoom({
   const [busy, setBusy] = useState(false);
 
   if (review === undefined) return <Skeleton className="h-[70svh] rounded-xl" />;
-  if (review === null || review.clips.length === 0) {
-    return (
-      <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
-        <p className="text-muted-foreground text-sm">
-          This review is gone, or it belongs to another team.
-        </p>
-        <Button asChild size="sm" variant="outline">
-          <Link href="/review" transitionTypes={["nav-back"]}>
-            Back to Review
-          </Link>
-        </Button>
-      </div>
-    );
-  }
+  if (review === null || review.clips.length === 0) return <GoneRoom />;
 
   const index = Math.max(
     0,
@@ -475,6 +538,15 @@ export function ReviewRoom({
   const version = Math.min(versions[clip._id] ?? clip.versions.length, clip.versions.length);
   const people = roster?.people ?? [];
   const decider = people.find((person) => person.id === review.decidedBy);
+  const here = roster ? whoIsHere(present, people) : [];
+  const typists: Typist[] = here
+    .filter(
+      (person) =>
+        person.id !== roster?.me &&
+        person.typing?.clipId === clip._id &&
+        person.typing.version === version,
+    )
+    .map((person) => ({ id: person.id, name: person.name, threadId: person.typing!.threadId }));
 
   async function act(run: () => Promise<unknown>, fallback: string) {
     setBusy(true);
@@ -505,7 +577,7 @@ export function ReviewRoom({
           <h1 className="truncate font-medium">{review.title}</h1>
         </nav>
 
-        {roster && <HereNow reviewId={reviewId} me={roster.me} people={people} />}
+        {roster && <HereNow here={here} me={roster.me} />}
 
         <div className="flex flex-wrap items-center gap-2">
           {review.clientVerdict && (
@@ -622,6 +694,7 @@ export function ReviewRoom({
           onVersion={(next) => setVersions((current) => ({ ...current, [clip._id]: next }))}
           focus={focusComment}
           highlight={highlight}
+          typing={typists}
           onFocused={(threadId) => {
             setFocusComment(null);
             setHighlight(threadId);

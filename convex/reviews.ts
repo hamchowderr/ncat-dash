@@ -1,4 +1,4 @@
-import { AGENT, asksAgent, COMMENT_LIMIT, mentionedIn } from "@ncat-dash/review-core";
+import { AGENT, asksAgent, cleanDrawing, COMMENT_LIMIT, mentionedIn } from "@ncat-dash/review-core";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -6,6 +6,7 @@ import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/s
 import { authComponent } from "./auth";
 import { notify } from "./lib/alerts";
 import { isMember, requireMember } from "./lib/authz";
+import { drawingValidator } from "./lib/drawing";
 import { CLIP_LIMIT, openReview, shareOf, VERSION_LIMIT } from "./lib/reviews";
 import { decideApproval } from "./lib/runner";
 
@@ -136,6 +137,7 @@ export const comments = query({
       createdAt: comment._creationTime,
       resolved: comment.resolved,
       client: comment.client === true,
+      drawing: comment.drawing ?? null,
       mine: (comment.agent ? comment.agent.askedBy : comment.authorId) === userId,
       agent: comment.agent ?? null,
     }));
@@ -270,6 +272,7 @@ export const comment = mutation({
     time: v.number(),
     version: v.number(),
     parentId: v.optional(v.id("reviewComments")),
+    drawing: v.optional(drawingValidator),
   },
   handler: async (ctx, args) => {
     const clip = await ctx.db.get(args.clipId);
@@ -319,6 +322,8 @@ export const comment = mutation({
       authorName: user?.name?.trim() || "Someone",
       parentId,
       resolved: false,
+      // A drawing belongs to the moment a thread is about, so a reply carries none.
+      drawing: parentId ? undefined : (cleanDrawing(args.drawing) ?? undefined),
     });
 
     // Teammates named after "@" hear about it, under the bell and by email as they chose.

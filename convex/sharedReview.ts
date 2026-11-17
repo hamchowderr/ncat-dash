@@ -1,9 +1,10 @@
-import { COMMENT_LIMIT } from "@ncat-dash/review-core";
+import { cleanDrawing, COMMENT_LIMIT } from "@ncat-dash/review-core";
 import { ConvexError, v } from "convex/values";
 import { components } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
 import { notify } from "./lib/alerts";
+import { drawingValidator } from "./lib/drawing";
 import { CLIP_LIMIT } from "./lib/reviews";
 
 // The client's side of a review's share link (/share/<token>). Nobody here is signed in:
@@ -29,21 +30,21 @@ async function shareFor(ctx: QueryCtx | MutationCtx, token: string) {
   return review ? { share, review } : null;
 }
 
-async function requireShare(ctx: QueryCtx | MutationCtx, token: string) {
+export async function requireShare(ctx: QueryCtx | MutationCtx, token: string) {
   const found = await shareFor(ctx, token);
   if (!found) throw closed();
   return found;
 }
 
 /** The id a client's browser keeps for them, so they can delete what they wrote. */
-function guestAuthor(guestId: string): string {
+export function guestAuthor(guestId: string): string {
   if (!/^[A-Za-z0-9-]{16,64}$/.test(guestId)) {
     throw new ConvexError({ code: "invalid", message: "Open the link again to comment." });
   }
   return `guest:${guestId}`;
 }
 
-function guestName(name: string): string {
+export function guestName(name: string): string {
   const clean = name.replace(/\s+/g, " ").trim();
   if (clean === "") throw new ConvexError({ code: "invalid", message: "Say who you are first." });
   return clean.slice(0, GUEST_NAME_LIMIT);
@@ -120,6 +121,7 @@ export const comments = query({
         createdAt: row._creationTime,
         resolved: row.resolved,
         client: row.client === true,
+        drawing: row.drawing ?? null,
         mine: row.authorId === me,
         agent: row.agent ?? null,
       }));
@@ -157,6 +159,7 @@ export const comment = mutation({
     time: v.number(),
     version: v.number(),
     parentId: v.optional(v.id("reviewComments")),
+    drawing: v.optional(drawingValidator),
   },
   handler: async (ctx, args) => {
     const { share, review } = await requireShare(ctx, args.token);
@@ -206,6 +209,7 @@ export const comment = mutation({
       parentId,
       resolved: false,
       client: true,
+      drawing: parentId ? undefined : (cleanDrawing(args.drawing) ?? undefined),
     });
     await tellTeam(ctx, review, authorName, body, { clipId: clip._id, commentId: parentId ?? id });
     return id;
