@@ -30,6 +30,8 @@ export function noteFlowNode(note: {
     position: { x: note.x, y: note.y },
     width: note.width,
     height: note.height,
+    // Known before the note is drawn, so resizing starts from the size it has.
+    measured: { width: note.width, height: note.height },
     data: { noteId: note._id, text: note.text },
     // Notes sit behind the steps and never take part in the flow.
     zIndex: -1,

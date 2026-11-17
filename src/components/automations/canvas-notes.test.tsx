@@ -174,7 +174,11 @@ describe("where a new note goes", () => {
     expect(notePlace({ x: 500, y: 300 }, [step(0, 0)])).toEqual({ x: 390, y: 230 });
   });
 
+  test("clear of the words below a step", () => {
+    expect(notePlace({ x: 80, y: 260 }, [step(0, 0)])).toEqual({ x: 0, y: 228 });
+  });
+
   test("below everything when the middle would cover a step", () => {
-    expect(notePlace({ x: 80, y: 70 }, [step(0, 0), step(300, 200)])).toEqual({ x: 0, y: 380 });
+    expect(notePlace({ x: 80, y: 70 }, [step(0, 0), step(300, 200)])).toEqual({ x: 0, y: 428 });
   });
 });

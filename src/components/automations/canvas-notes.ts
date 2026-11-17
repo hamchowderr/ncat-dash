@@ -12,7 +12,9 @@ import { errorMessage } from "@/lib/catalog";
 import { NOTE_PREFIX, type NoteFlowNode, noteFlowNode } from "./note-node";
 
 /** What this person has done to a note that the saved copy does not show yet. */
-type Local = Partial<Pick<NoteFlowNode, "position" | "width" | "height" | "selected" | "dragging">>;
+type Local = Partial<
+  Pick<NoteFlowNode, "position" | "width" | "height" | "measured" | "selected" | "dragging">
+>;
 
 export const isNoteId = (id: string) => id.startsWith(NOTE_PREFIX);
 const noteIdOf = (id: string) => id.slice(NOTE_PREFIX.length) as Id<"automationNotes">;
@@ -75,6 +77,7 @@ export function useCanvasNotes(automationId: Id<"automations">) {
         if (change.type === "dimensions" && change.resizing !== undefined && change.dimensions) {
           own.width = change.dimensions.width;
           own.height = change.dimensions.height;
+          own.measured = { ...change.dimensions };
         }
         updated[change.id] = own;
       }
@@ -131,6 +134,10 @@ const NOTE_SIZE = { width: 220, height: 140 };
  * Where a new note goes: in the middle of what the canvas shows, unless that would cover
  * a step or another note, and then just below everything, so nothing is hidden.
  */
+/** Room left around a step, and the height of the words below it. */
+const CLEAR = 24;
+const LABEL = 64;
+
 export function notePlace(
   middle: XYPosition,
   taken: {
@@ -147,16 +154,17 @@ export function notePlace(
     width: node.measured?.width ?? node.width ?? 160,
     height: node.measured?.height ?? node.height ?? 140,
   }));
+  // A step's name and summary sit below its box, and a note should leave room around it.
   const covers = boxes.some(
     (box) =>
-      wanted.x < box.x + box.width &&
-      wanted.x + NOTE_SIZE.width > box.x &&
-      wanted.y < box.y + box.height &&
-      wanted.y + NOTE_SIZE.height > box.y,
+      wanted.x < box.x + box.width + CLEAR &&
+      wanted.x + NOTE_SIZE.width > box.x - CLEAR &&
+      wanted.y < box.y + box.height + LABEL + CLEAR &&
+      wanted.y + NOTE_SIZE.height > box.y - CLEAR,
   );
   if (!covers || boxes.length === 0) return wanted;
   return {
     x: Math.min(...boxes.map((box) => box.x)),
-    y: Math.max(...boxes.map((box) => box.y + box.height)) + 40,
+    y: Math.max(...boxes.map((box) => box.y + box.height)) + LABEL + CLEAR,
   };
 }
