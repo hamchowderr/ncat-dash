@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
+import { AgentCard } from "./agent-card";
 import { BrandCard } from "./brand-card";
 import { EditorsCard } from "./editors-card";
 import { EmailCard } from "./email-card";
@@ -71,6 +72,12 @@ export function SettingsView() {
         <>
           <BrandCard brand={settings.brand} music={settings.music} canEdit={settings.canEdit} />
           <EditorsCard editors={settings.editors} canEdit={settings.canEdit} />
+          <AgentCard
+            agent={settings.agent}
+            models={settings.agentModels}
+            mostHouseRules={settings.mostHouseRules}
+            canEdit={settings.canEdit}
+          />
           <Card className="max-w-xl">
             <CardHeader>
               <CardTitle>

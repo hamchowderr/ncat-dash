@@ -107,6 +107,13 @@ export type ChatServerDeps = {
   modelAllowlist: ReadonlySet<string>;
 
   /**
+   * OPTIONAL — the model a turn runs on when the composer sends none, for one user (the
+   * resource id), or null for the agent's own default. Use it for a choice kept outside
+   * the chat, such as a team setting. Only ids on `modelAllowlist` should come back.
+   */
+  modelFor?: (resourceId: string | undefined) => Promise<string | null>;
+
+  /**
    * OPTIONAL — work threads (lib/work-threads.ts). The Session a work thread runs on, for
    * one user (the resource id; undefined is the shared user), or undefined when the thread
    * is not a work thread. With it, `/stream`, `/approve` and `/answer` reach a work

@@ -33,6 +33,8 @@ import { createMcpServer } from './lib/mcp';
 import { getSharedStore, getSharedVector, MESSAGE_VECTOR_INDEX } from './lib/memory';
 import { readWorkspaceFile, readWorkspaceTree } from './lib/workspace-files';
 import { createNcatRoutes } from './ncat/routes';
+import { teamModelFor, teamSection } from './ncat/team-brief';
+import { turnContextSections } from './lib/turn-context';
 // The AgentController route contract, split by surface — see routes/. The modules
 // are FACTORIES over a dependency contract (routes/types.ts) rather than importers
 // of this file's wiring: the routes are the portable half (the HTTP contract the
@@ -82,6 +84,25 @@ const storage = new MastraCompositeStore({
 // routes into their own Mastra project supplies their own object of this shape —
 // their controller, their workspace, their vector index — and gets the same
 // endpoints. See routes/types.ts for what each field is for.
+// Models a turn may run on: the composer's pick, or a team's (Settings → Agent in the
+// dashboard, AGENT_MODELS in automation-core). Keep in sync with web `MODELS` in
+// components/chat/composer.tsx. An id not listed here falls back to the agent's own
+// `model: env.CHAT_MODEL` rather than erroring.
+const MODEL_ALLOWLIST: ReadonlySet<string> = new Set([
+  'anthropic/claude-sonnet-5-5',
+  'anthropic/claude-opus-5-5',
+  'anthropic/claude-haiku-5-5',
+  'anthropic/claude-sonnet-4-6',
+  'anthropic/claude-opus-4-8',
+  'anthropic/claude-haiku-4-5',
+  'openai/gpt-4.1-mini',
+  'openai/gpt-4o-mini',
+  'openai/gpt-4.1-nano',
+]);
+
+// Every turn also carries the team's house rules and default platforms.
+turnContextSections.push(teamSection);
+
 const chatServerDeps: ChatServerDeps = {
   getSession: getChatSession,
   getAgentController: getChatAgentController,
@@ -105,17 +126,9 @@ const chatServerDeps: ChatServerDeps = {
         filter: { resource_id: resourceId ?? CHAT_RESOURCE_ID },
       }),
   },
-  // Models the composer's picker may request. Keep in sync with web `MODELS` in
-  // components/chat/composer.tsx. An id not listed here falls back to the agent's
-  // own `model: env.CHAT_MODEL` rather than erroring.
-  modelAllowlist: new Set([
-    'anthropic/claude-sonnet-4-6',
-    'anthropic/claude-opus-4-8',
-    'anthropic/claude-haiku-4-5',
-    'openai/gpt-4.1-mini',
-    'openai/gpt-4o-mini',
-    'openai/gpt-4.1-nano',
-  ]),
+  modelAllowlist: MODEL_ALLOWLIST,
+  // A team's own pick (Settings → Agent in the dashboard), when the composer sends none.
+  modelFor: (resourceId) => teamModelFor(resourceId, MODEL_ALLOWLIST),
 };
 
 const auth = createServerAuth(env.MASTRA_JWT_SECRET, CHAT_RESOURCE_ID);
