@@ -127,3 +127,88 @@ export function describeFileDetails(details: FileDetails): string {
   if (kind === "video" && details.hasAudio === false) parts.push("no sound");
   return parts.join(" · ");
 }
+
+const KIND_LABELS = { video: "Video", audio: "Audio", image: "Picture", other: "Other" } as const;
+
+/**
+ * The same five things about any file, for a table: what it is, how long, picture size,
+ * frame rate and format. Null where one does not apply, so every row lines up.
+ */
+export function fileDetailColumns(details: FileDetails): {
+  type: string;
+  length: string | null;
+  picture: string | null;
+  frameRate: string | null;
+  format: string | null;
+} {
+  const kind = detailsKind(details);
+  const codecs = [details.videoCodec, details.audioCodec].filter(Boolean);
+  return {
+    type: KIND_LABELS[kind],
+    length:
+      details.duration !== undefined && kind !== "image" ? formatDuration(details.duration) : null,
+    picture:
+      details.width !== undefined && details.height !== undefined
+        ? `${details.width}×${details.height}`
+        : null,
+    frameRate:
+      details.fps !== undefined && kind === "video"
+        ? `${Math.round(details.fps * 100) / 100} fps`
+        : null,
+    format: codecs.length > 0 ? codecs.join(" / ") : null,
+  };
+}
+
+/**
+ * FFprobe names a family of containers ("mov,mp4,m4a,3gp,3g2,mj2"). Show the one the file's own
+ * name ends in when it is in that family, otherwise the family spelled out.
+ */
+function containerOf(format: string | undefined, name: string | undefined): string | null {
+  if (!format) return null;
+  const family = format.split(",").map((part) => part.trim());
+  const ending = name?.split(".").pop()?.toLowerCase();
+  return ending && family.includes(ending) ? ending : family.join(", ");
+}
+
+/** Everything that was read from a file, as label and value pairs in a fixed order. */
+export function fileDetailRows(details: FileDetails, name?: string): [string, string][] {
+  const kind = detailsKind(details);
+  const columns = fileDetailColumns(details);
+  const rows: [string, string | null][] = [
+    ["Type", columns.type],
+    ["Length", columns.length],
+    ["Picture size", columns.picture],
+    ["Frame rate", columns.frameRate],
+    ["Video format", kind === "video" ? (details.videoCodec ?? null) : null],
+    ["Picture format", kind === "image" ? (details.videoCodec ?? null) : null],
+    ["Sound format", details.audioCodec ?? null],
+    [
+      "Sound",
+      details.hasAudio === false
+        ? "None"
+        : details.audioChannels !== undefined
+          ? details.audioChannels === 1
+            ? "Mono"
+            : details.audioChannels === 2
+              ? "Stereo"
+              : `${details.audioChannels} channels`
+          : null,
+    ],
+    [
+      "Sample rate",
+      details.audioSampleRate !== undefined
+        ? `${Math.round(details.audioSampleRate / 100) / 10} kHz`
+        : null,
+    ],
+    ["Container", containerOf(details.format, name)],
+    [
+      "Bitrate",
+      details.bitrate !== undefined
+        ? details.bitrate >= 1_000_000
+          ? `${Math.round(details.bitrate / 10_000) / 100} Mbps`
+          : `${Math.round(details.bitrate / 1000)} kbps`
+        : null,
+    ],
+  ];
+  return rows.filter((row): row is [string, string] => row[1] !== null);
+}

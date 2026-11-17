@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { describeFileDetails } from "@ncat-dash/automation-core";
+import { fileDetailColumns, fileDetailRows } from "@ncat-dash/automation-core";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Copy, Trash2, UploadCloud } from "lucide-react";
@@ -9,6 +9,13 @@ import { useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,6 +48,7 @@ export function UploadsView() {
   const [inFlight, setInFlight] = useState<Record<string, InFlight>>({});
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [opened, setOpened] = useState<Id<"uploads"> | null>(null);
 
   async function send(files: FileList | File[]) {
     for (const file of Array.from(files)) {
@@ -145,6 +153,7 @@ export function UploadsView() {
 
   const active = Object.entries(inFlight);
   const ready = uploads?.filter((upload) => upload.status === "ready");
+  const openedUpload = ready?.find((upload) => upload._id === opened);
 
   return (
     <>
@@ -206,7 +215,11 @@ export function UploadsView() {
             <TableHeader>
               <TableRow>
                 <TableHead>File</TableHead>
-                <TableHead>Details</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Length</TableHead>
+                <TableHead>Picture size</TableHead>
+                <TableHead>Frame rate</TableHead>
+                <TableHead>Format</TableHead>
                 <TableHead>Size</TableHead>
                 <TableHead>
                   <span className="sr-only">Actions</span>
@@ -216,13 +229,33 @@ export function UploadsView() {
             <TableBody>
               {ready.map((upload) => (
                 <TableRow key={upload._id}>
-                  <TableCell className="w-2/5 max-w-0 truncate font-medium">
-                    {upload.fileName}
+                  <TableCell className="w-1/3 max-w-0 truncate font-medium">
+                    {upload.details ? (
+                      <button
+                        type="button"
+                        className="max-w-full truncate rounded-sm underline-offset-4 outline-none hover:underline focus-visible:underline"
+                        onClick={() => setOpened(upload._id)}
+                      >
+                        {upload.fileName}
+                      </button>
+                    ) : (
+                      upload.fileName
+                    )}
                   </TableCell>
+                  {(() => {
+                    const columns = upload.details ? fileDetailColumns(upload.details) : null;
+                    return (["type", "length", "picture", "frameRate", "format"] as const).map(
+                      (key) => (
+                        <TableCell
+                          key={key}
+                          className="text-muted-foreground whitespace-nowrap tabular-nums"
+                        >
+                          {columns?.[key] ?? "–"}
+                        </TableCell>
+                      ),
+                    );
+                  })()}
                   <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
-                    {upload.details ? describeFileDetails(upload.details) : ""}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground tabular-nums">
                     {formatBytes(upload.size)}
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap">
@@ -245,6 +278,30 @@ export function UploadsView() {
           </Table>
         </div>
       )}
+      <Dialog open={openedUpload !== undefined} onOpenChange={(open) => !open && setOpened(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="truncate pr-6">{openedUpload?.fileName}</DialogTitle>
+            <DialogDescription>
+              Read from the file when it was uploaded. A run this file starts is given the same
+              details.
+            </DialogDescription>
+          </DialogHeader>
+          {openedUpload?.details && (
+            <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+              {[
+                ...fileDetailRows(openedUpload.details, openedUpload.fileName),
+                ["File size", formatBytes(openedUpload.size)],
+              ].map(([label, value]) => (
+                <div key={label} className="col-span-2 grid grid-cols-subgrid">
+                  <dt className="text-muted-foreground">{label}</dt>
+                  <dd className="min-w-0 break-words tabular-nums">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
