@@ -1,0 +1,10 @@
+**/node_modules
+**/.mastra
+**/.next
+**/*.db
+**/*.db-shm
+**/*.db-wal
+.convex
+.git
+test-results
+playwright-report
