@@ -20,6 +20,7 @@ const kind = v.union(
   v.literal("approval_waiting"),
   v.literal("approval_timed_out"),
   v.literal("mention"),
+  v.literal("client_feedback"),
 );
 
 /** The person asking's notification settings on a team, with every kind spelled out. */

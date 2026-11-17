@@ -81,6 +81,7 @@ describe("notification settings", () => {
       "approval_waiting",
       "approval_timed_out",
       "mention",
+      "client_feedback",
     ]);
     expect(settings.kinds.every((entry) => entry.bell && entry.email)).toBe(true);
     expect(settings).toMatchObject({ emailTiming: "now", digestHour: 8, emailReady: true });
@@ -274,6 +275,20 @@ describe("the rules", () => {
     expect(
       alertHref({
         kind: "mention",
+        reviewId: "r1" as Id<"reviews">,
+        clipId: "c1" as Id<"reviewClips">,
+        commentId: "m1" as Id<"reviewComments">,
+      }),
+    ).toBe("/review/r1?clip=c1&comment=m1");
+  });
+
+  test("client feedback links to the review, and to the thread when there is one", () => {
+    expect(alertHref({ kind: "client_feedback", reviewId: "r1" as Id<"reviews"> })).toBe(
+      "/review/r1",
+    );
+    expect(
+      alertHref({
+        kind: "client_feedback",
         reviewId: "r1" as Id<"reviews">,
         clipId: "c1" as Id<"reviewClips">,
         commentId: "m1" as Id<"reviewComments">,
