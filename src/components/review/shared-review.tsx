@@ -5,7 +5,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { threadComments } from "@ncat-dash/review-core";
 import { useMutation, useQuery } from "convex/react";
 import { Check, Undo2 } from "lucide-react";
-import { type FormEvent, useRef, useState, useSyncExternalStore } from "react";
+import { type FormEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,9 @@ import { cn } from "@/lib/utils";
 
 import { ClipStage, isStill, type Mark } from "./clip-stage";
 import { CommentPanel } from "./comment-panel";
-import { ClipList } from "./review-room";
+import { useFrameDrawing } from "./frame-drawing";
+import { ClipList, type Here, HereNow } from "./review-room";
+import { type Typist, useTypingSignal } from "./typing";
 
 type Room = NonNullable<ReturnType<typeof useQuery<typeof api.sharedReview.room>>>;
 type Clip = Room["clips"][number];
@@ -76,6 +78,43 @@ function useGuest(): Guest | null {
   );
 }
 
+/** Keeps the client in the review's room while the page is open, and lists who else is. */
+function useGuestPresence(token: string, guest: Guest | null): Here[] {
+  const heartbeat = useMutation(api.sharedPresence.heartbeat);
+  const disconnect = useMutation(api.sharedPresence.disconnect);
+  const [roomToken, setRoomToken] = useState<string | null>(null);
+  const guestId = guest?.id;
+  const name = guest?.name;
+
+  useEffect(() => {
+    if (!guestId || !name) return;
+    const sessionId = crypto.randomUUID();
+    let session: string | null = null;
+    let stopped = false;
+    const beat = () =>
+      heartbeat({ token, guestId, name, sessionId, interval: 10_000 })
+        .then((tokens) => {
+          if (stopped) return;
+          session = tokens.sessionToken;
+          setRoomToken(tokens.roomToken);
+        })
+        .catch(() => {});
+    void beat();
+    const timer = setInterval(() => void beat(), 10_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      if (session) void disconnect({ sessionToken: session }).catch(() => {});
+    };
+  }, [token, guestId, name, heartbeat, disconnect]);
+
+  const here = useQuery(
+    api.sharedPresence.here,
+    guestId && roomToken ? { token, guestId, roomToken } : "skip",
+  );
+  return here ?? [];
+}
+
 function NameForm({ teamName }: { teamName: string | null }) {
   const [name, setName] = useState("");
   function submit(event: FormEvent) {
@@ -120,6 +159,7 @@ function Workspace({
   count,
   version,
   onVersion,
+  typing,
 }: {
   token: string;
   guest: Guest;
@@ -128,6 +168,7 @@ function Workspace({
   count: number;
   version: number;
   onVersion: (version: number) => void;
+  typing: Typist[];
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const [time, setTime] = useState(0);
@@ -141,6 +182,11 @@ function Workspace({
   });
   const comment = useMutation(api.sharedReview.comment);
   const removeComment = useMutation(api.sharedReview.removeComment);
+  const sayTyping = useMutation(api.sharedPresence.typing);
+  const signal = useTypingSignal(
+    (place) =>
+      void sayTyping({ token, guestId: guest.id, name: guest.name, typing: place }).catch(() => {}),
+  );
 
   const url = clip.versions[version - 1].url;
   const timed = !isStill(url);
@@ -153,11 +199,23 @@ function Workspace({
     resolved: root.resolved,
   }));
 
+  const sketch = useFrameDrawing({ video, threads, active: active, time, playing });
+
   function seek(seconds: number) {
     const player = video.current;
     if (!player) return;
     player.currentTime = seconds;
     setTime(seconds);
+  }
+
+  /** Picks a thread; one with a drawing also stops the clip at its moment to show it. */
+  function pick(id: string | null) {
+    setActive(id);
+    const root = threads.find((thread) => thread.root.id === id)?.root;
+    if (root?.drawing && !sketch.composer.drawing) {
+      video.current?.pause();
+      seek(root.time);
+    }
   }
 
   return (
@@ -174,6 +232,7 @@ function Workspace({
         onDuration={(seconds) => setDuration(Number.isFinite(seconds) ? seconds : 0)}
         onPlaying={setPlaying}
         onSeek={seek}
+        drawing={sketch.stage}
         onMark={(mark) => {
           video.current?.pause();
           seek(mark.time);
@@ -225,7 +284,10 @@ function Workspace({
         timed={timed}
         moment={time}
         active={active}
-        onActive={setActive}
+        onActive={pick}
+        drawing={sketch.composer}
+        typing={typing}
+        onTyping={(threadId, active) => signal({ clipId: clip._id, version, threadId }, active)}
         onSeek={(seconds) => {
           video.current?.pause();
           seek(seconds);
@@ -242,8 +304,12 @@ function Workspace({
               time: timed ? (video.current?.currentTime ?? time) : 0,
               version,
               parentId: parentId as Id<"reviewComments"> | undefined,
+              drawing: parentId ? undefined : sketch.pending,
             });
-            if (!parentId) setActive(id);
+            if (!parentId) {
+              sketch.sent();
+              setActive(id);
+            }
             return true;
           } catch (error) {
             toast.error(errorMessage(error, "The comment could not be saved."));
@@ -322,6 +388,7 @@ function Verdict({ token, guest, room }: { token: string; guest: Guest; room: Ro
 export function SharedReview({ token }: { token: string }) {
   const room = useQuery(api.sharedReview.room, { token });
   const guest = useGuest();
+  const here = useGuestPresence(token, guest);
   const [clipId, setClipId] = useState<Id<"reviewClips"> | null>(null);
   const [versions, setVersions] = useState<Record<string, number>>({});
 
@@ -331,8 +398,8 @@ export function SharedReview({ token }: { token: string }) {
       <div className="mx-auto mt-[12svh] flex max-w-sm flex-col gap-2 rounded-xl border p-6">
         <h1 className="text-lg font-semibold">This review is no longer shared</h1>
         <p className="text-muted-foreground text-sm">
-          The link was switched off or the review was removed. Ask the person who sent it for a
-          new one.
+          The link was switched off or the review was removed. Ask the person who sent it for a new
+          one.
         </p>
       </div>
     );
@@ -355,6 +422,7 @@ export function SharedReview({ token }: { token: string }) {
           )}
           <h1 className="truncate font-medium">{room.title}</h1>
         </div>
+        <HereNow here={here} me={`guest:${guest.id}`} />
         <span className="text-muted-foreground text-sm">Reviewing as {guest.name}</span>
         <Verdict token={token} guest={guest} room={room} />
       </header>
@@ -371,6 +439,18 @@ export function SharedReview({ token }: { token: string }) {
           count={room.clips.length}
           version={version}
           onVersion={(next) => setVersions((current) => ({ ...current, [clip._id]: next }))}
+          typing={here
+            .filter(
+              (person) =>
+                person.id !== `guest:${guest.id}` &&
+                person.typing?.clipId === clip._id &&
+                person.typing.version === version,
+            )
+            .map((person) => ({
+              id: person.id,
+              name: person.name,
+              threadId: person.typing!.threadId,
+            }))}
         />
       </div>
     </div>
