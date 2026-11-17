@@ -38,6 +38,8 @@ import {
   MiniMap,
   type OnConnectEnd,
   type Edge,
+  type NodeChange,
+  NodeChangeset,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -54,6 +56,7 @@ import {
   Redo2,
   Save,
   Search,
+  StickyNote,
   Undo2,
   X,
 } from "lucide-react";
@@ -95,9 +98,11 @@ import {
   triggerEdges,
   triggerPosition,
 } from "./flow-nodes";
+import { isNoteId, notePlace, useCanvasNotes } from "./canvas-notes";
 import { DraftBar } from "./draft-bar";
 import { LiveRunBadge, useLiveRun } from "./live-run";
 import { NodePanel } from "./node-panel";
+import { type NoteFlowNode, noteNodeTypes } from "./note-node";
 import { StepTest } from "./step-test";
 import { STEP_ICONS } from "./step-icons";
 import { RunDialog } from "./run-dialog";
@@ -108,6 +113,9 @@ import { TriggerPanel } from "./trigger-panel";
 const EMPTY_BRAND: Brand = {};
 const EMPTY_MUSIC: { name: string; file: string }[] = [];
 const FIT = { ...FIT_VIEW, duration: 200 };
+
+/** Steps and the team's notes, side by side on one canvas. */
+const canvasNodeTypes = { ...nodeTypes, ...noteNodeTypes };
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.automations.get>>>;
 
@@ -159,6 +167,7 @@ function Editor({ automation }: { automation: Loaded }) {
 
   const [name, setName] = useState(automation.name);
   const [trigger, setTrigger] = useState<Trigger>(automation.trigger);
+  const notes = useCanvasNotes(automation._id);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([
     {
       id: TRIGGER_ID,
@@ -262,8 +271,8 @@ function Editor({ automation }: { automation: Loaded }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Keep the whole automation in view when it opens and whenever a step is added or removed.
-  const { fitView } = useReactFlow();
-  const nodeCount = nodes.length;
+  const { fitView, screenToFlowPosition } = useReactFlow();
+  const nodeCount = nodes.length + notes.noteNodes.length;
   const panelShown = nodes.some((node) => node.selected);
   useEffect(() => {
     if (tab !== "editor") return;
@@ -772,33 +781,75 @@ function Editor({ automation }: { automation: Loaded }) {
                 active={running.active}
               />
               {!paletteOpen && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="bg-card absolute top-3 left-3 z-10 shadow-xs"
-                  onClick={openPalette}
-                >
-                  <Plus />
-                  {joining > 1 ? `Add a step after these ${joining}` : "Add step"}
-                </Button>
+                <div className="absolute top-3 left-3 z-10 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-card shadow-xs"
+                    onClick={openPalette}
+                  >
+                    <Plus />
+                    {joining > 1 ? `Add a step after these ${joining}` : "Add step"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-card shadow-xs"
+                    onClick={(event) => {
+                      const canvas = event.currentTarget
+                        .closest("[data-testid=canvas]")
+                        ?.getBoundingClientRect();
+                      if (!canvas) return;
+                      const middle = screenToFlowPosition({
+                        x: canvas.left + canvas.width / 2,
+                        y: canvas.top + canvas.height / 2,
+                      });
+                      void notes.addNote(notePlace(middle, [...notes.noteNodes, ...nodes]));
+                    }}
+                  >
+                    <StickyNote />
+                    Add note
+                  </Button>
+                </div>
               )}
               <BrandContext value={brand}>
                 <AddAfterContext value={addAfter}>
                   <InsertOnEdgeContext value={insertOnEdge}>
                     <ReactFlow
-                      nodes={shownNodes}
+                      nodes={[...notes.noteNodes, ...shownNodes]}
                       edges={shownEdges}
-                      nodeTypes={nodeTypes}
+                      nodeTypes={canvasNodeTypes}
                       edgeTypes={edgeTypes}
                       minZoom={0.25}
-                      onNodesChange={onNodesChange}
+                      onNodesChange={(changes) => {
+                        // Notes are kept apart from the steps: they are saved as they change.
+                        const all = changes.toArray();
+                        const forNotes = all.filter((change) => isNoteId(change.id));
+                        const forSteps = all.filter((change) => !isNoteId(change.id));
+                        if (forNotes.length > 0) {
+                          notes.onNoteChanges(forNotes as NodeChange<NoteFlowNode>[]);
+                        }
+                        if (forSteps.length > 0) {
+                          onNodesChange(new NodeChangeset(forSteps as NodeChange<FlowNode>[]));
+                        }
+                      }}
+                      onNodeDragStop={(_event, _node, moved) => {
+                        for (const node of moved) {
+                          if (isNoteId(node.id)) notes.onNoteDragStop(node.id, node.position);
+                        }
+                      }}
                       onEdgesChange={onEdgesChange}
                       onConnect={onConnect}
                       onConnectEnd={onConnectEnd}
                       onBeforeDelete={async ({ nodes: doomed, edges: cut }) => {
                         // Deleting steps with the keyboard goes the same way as Remove step.
                         if (doomed.length === 0) return { nodes: doomed, edges: cut };
-                        removeSteps(doomed.map((node) => node.id));
+                        const doomedNotes = doomed.filter((node) => isNoteId(node.id));
+                        if (doomedNotes.length > 0) {
+                          void notes.removeNotes(doomedNotes.map((node) => node.id));
+                        }
+                        const doomedSteps = doomed.filter((node) => !isNoteId(node.id));
+                        if (doomedSteps.length > 0) removeSteps(doomedSteps.map((node) => node.id));
                         return false;
                       }}
                       forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}

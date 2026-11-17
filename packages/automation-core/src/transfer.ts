@@ -35,7 +35,22 @@ export interface AutomationFile {
   trigger: StarterTrigger;
   nodes: AutomationNode[];
   edges: AutomationEdge[];
+  /** The team's sticky notes on the canvas. Files made before notes have none. */
+  notes?: CanvasNote[];
 }
+
+/** A sticky note on an automation's canvas, as a file carries it. */
+export interface CanvasNote {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export const MAX_CANVAS_NOTES = 30;
+export const MAX_CANVAS_NOTE_CHARS = 2000;
+export const CANVAS_NOTE_SIDES = { minWidth: 120, minHeight: 80, max: 800 };
 
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
 
@@ -74,7 +89,10 @@ function uploadsNote(count: number, reader: "export" | "import"): string {
 }
 
 /** The automation as a file, with a note for anything that was left out. */
-export function exportAutomation(draft: AutomationDraft): {
+export function exportAutomation(
+  draft: AutomationDraft,
+  canvasNotes: CanvasNote[] = [],
+): {
   file: AutomationFile;
   notes: string[];
 } {
@@ -96,6 +114,17 @@ export function exportAutomation(draft: AutomationDraft): {
         target,
         ...(branch ? { branch } : {}),
       })),
+      ...(canvasNotes.length > 0
+        ? {
+            notes: canvasNotes.map(({ text, x, y, width, height }) => ({
+              text,
+              x,
+              y,
+              width,
+              height,
+            })),
+          }
+        : {}),
     },
     notes: dropped.count > 0 ? [uploadsNote(dropped.count, "export")] : [],
   };
@@ -112,7 +141,8 @@ export function automationFileName(name: string): string {
 }
 
 export type ReadAutomationFile =
-  { ok: true; draft: AutomationDraft; notes: string[] } | { ok: false; message: string };
+  | { ok: true; draft: AutomationDraft; notes: string[]; canvasNotes: CanvasNote[] }
+  | { ok: false; message: string };
 
 const NOT_A_FILE =
   "This is not an automation file. Export one from an automation's page and choose that.";
@@ -344,7 +374,44 @@ export function readAutomationFile(value: unknown): ReadAutomationFile {
   // An automation with no steps yet is fine to import; one that loops is not.
   const problem = nodes.length > 0 ? graphProblem(nodes, edges) : null;
   if (problem) return { ok: false, message: `The file cannot be used. ${problem}` };
-  return { ok: true, draft: { name, trigger, nodes, edges }, notes };
+  const canvasNotes = readCanvasNotes(value.notes, notes);
+  return { ok: true, draft: { name, trigger, nodes, edges }, notes, canvasNotes };
+}
+
+/** The file's sticky notes that can be used. Anything unreadable is left out, and said so. */
+function readCanvasNotes(value: unknown, notes: string[]): CanvasNote[] {
+  if (value === undefined) return [];
+  const list = Array.isArray(value) ? value : [];
+  const read: CanvasNote[] = [];
+  let skipped = Array.isArray(value) ? 0 : 1;
+  const place = (n: unknown) =>
+    typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 1_000_000;
+  const side = (n: number, least: number) =>
+    Math.min(CANVAS_NOTE_SIDES.max, Math.max(least, Math.round(n)));
+  for (const item of list) {
+    if (
+      read.length >= MAX_CANVAS_NOTES ||
+      !isObject(item) ||
+      typeof item.text !== "string" ||
+      ![item.x, item.y, item.width, item.height].every(place)
+    ) {
+      skipped++;
+      continue;
+    }
+    read.push({
+      text: item.text.slice(0, MAX_CANVAS_NOTE_CHARS),
+      x: Math.round(item.x as number),
+      y: Math.round(item.y as number),
+      width: side(item.width as number, CANVAS_NOTE_SIDES.minWidth),
+      height: side(item.height as number, CANVAS_NOTE_SIDES.minHeight),
+    });
+  }
+  if (skipped > 0) {
+    notes.push(
+      `Left out ${skipped} ${plural(skipped, "note", "notes")} on the canvas that could not be read.`,
+    );
+  }
+  return read;
 }
 
 /** Reads the text of an automation file. */
