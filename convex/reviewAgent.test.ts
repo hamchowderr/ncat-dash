@@ -233,7 +233,7 @@ describe("tagging the agent", () => {
     expect(await notes()).toEqual([]);
   });
 
-  test("sends a still of the moment from the team's toolkit, and how the automation is built", async () => {
+  test("lets the agent see and hear the clip through the team's toolkit, and how the automation is built", async () => {
     process.env.AGENT_URL = AGENT_URL;
     process.env.MASTRA_JWT_SECRET = SECRET;
     process.env.CONNECTIONS_SECRET = "a-connections-secret-of-at-least-32-chars";
@@ -272,11 +272,43 @@ describe("tagging the agent", () => {
     const review = await maya.as.query(api.reviews.get, { reviewId: listed._id });
     const clipId = review!.clips[0]._id;
 
-    const sent = agentServer(({ url }) =>
-      url.startsWith("http://toolkit.example.test")
-        ? Response.json({ code: 200, response: "https://files.example/still-0002.png" })
-        : Response.json({ answer: "Seen it." }),
-    );
+    const sent = agentServer(({ url }) => {
+      const path = url.replace("http://toolkit.example.test", "");
+      if (path === "/v1/video/thumbnail") {
+        return Response.json({ code: 200, response: "https://files.example/still-0002.png" });
+      }
+      if (path === "/v1/code/execute/python") {
+        return Response.json({
+          code: 200,
+          response: {
+            result: {
+              duration: 40,
+              cuts: [1.5, 9, 30],
+              loudness: -23.5,
+              loudnessAtMoment: -31,
+              silences: [{ start: 2, end: 3.2 }],
+              hasAudio: true,
+            },
+          },
+        });
+      }
+      if (path === "/v1/ffmpeg/compose") {
+        return Response.json({
+          code: 200,
+          response: [
+            { file_url: "https://files.example/frames.png" },
+            { file_url: "https://files.example/near.mp3" },
+          ],
+        });
+      }
+      if (path === "/v1/media/transcribe") {
+        return Response.json({
+          code: 200,
+          response: { segments: [{ start: 1.5, end: 3, text: " Welcome back to the station. " }] },
+        });
+      }
+      return Response.json({ answer: "Seen it." });
+    });
     await maya.as.mutation(api.reviews.comment, {
       clipId,
       body: "@Agent what is on screen?",
@@ -285,15 +317,106 @@ describe("tagging the agent", () => {
     });
     await settled(t);
 
-    const [toolkit, agent] = sent;
-    expect(toolkit.url).toBe("http://toolkit.example.test/v1/video/thumbnail");
-    expect(toolkit.headers["x-api-key"]).toBe("toolkit-key");
-    expect(toolkit.body).toMatchObject({ video_url: CLIP, second: 2.5 });
+    const toolkit = sent.filter((entry) => entry.url.startsWith("http://toolkit.example.test"));
+    const byPath = (path: string) => toolkit.find((entry) => entry.url.endsWith(path))!;
+    for (const entry of toolkit) expect(entry.headers["x-api-key"]).toBe("toolkit-key");
+    expect(byPath("/v1/video/thumbnail").body).toMatchObject({ video_url: CLIP, second: 2.5 });
+    // The clip's address goes into the measuring script as a JSON string.
+    expect(byPath("/v1/code/execute/python").body.code).toContain(
+      JSON.stringify(JSON.stringify(CLIP)),
+    );
+    // Frames from 0:00 to 0:06 around 0:02.5, and 30 seconds of sound for the transcript.
+    const compose = byPath("/v1/ffmpeg/compose").body as {
+      inputs: { file_url: string; options: { option: string; argument: unknown }[] }[];
+      outputs: unknown[];
+    };
+    expect(compose.inputs.map((input) => input.options.map((o) => o.argument))).toEqual([
+      [0, 6],
+      [0, 30],
+    ]);
+    expect(compose.outputs).toHaveLength(2);
+    expect(byPath("/v1/media/transcribe").body).toMatchObject({
+      media_url: "https://files.example/near.mp3",
+      include_segments: true,
+    });
+
+    const agent = sent.find((entry) => entry.url.startsWith(AGENT_URL))!;
     expect(agent.body.still).toBe("https://files.example/still-0002.png");
+    expect(agent.body.frames).toBe("https://files.example/frames.png");
+    expect(agent.body.sense).toEqual({
+      frames: { from: 0, every: 0.5, count: 12 },
+      pacing: { cuts: 3, averageShot: 10, shot: { start: 1.5, end: 9 }, cutsNear: [1.5, 9] },
+      sound: {
+        hasAudio: true,
+        loudness: -23.5,
+        loudnessAtMoment: -31,
+        quietNear: [{ start: 2, end: 3.2 }],
+      },
+      transcript: [{ at: 1.5, text: "Welcome back to the station." }],
+    });
     expect((agent.body.question as { automation: unknown }).automation).toMatchObject({
       name: "Weekly clips",
       runStatus: "waiting",
       outline: expect.stringContaining("approval [approval]"),
+    });
+    delete process.env.CONNECTIONS_SECRET;
+  });
+
+  test("a clip with no sound, too long to look through for cuts, gets the rest", async () => {
+    process.env.CONNECTIONS_SECRET = "a-connections-secret-of-at-least-32-chars";
+    const { t, team, maya, ask } = await room();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("toolkitConnections", {
+        organizationId: team,
+        baseUrl: "http://toolkit.example.test",
+        apiKeyCipher: await encryptSecret("toolkit-key"),
+        apiKeyHint: "-key",
+        status: "ok",
+        buildNumber: null,
+        lastCheckedAt: Date.now(),
+        lastError: null,
+        createdBy: maya.id,
+      });
+    });
+    const sent = agentServer(({ url }) => {
+      if (url.endsWith("/v1/video/thumbnail")) return new Response("busy", { status: 503 });
+      if (url.endsWith("/v1/code/execute/python")) {
+        return Response.json({
+          response: {
+            result: {
+              duration: 3600,
+              cuts: null,
+              loudness: null,
+              loudnessAtMoment: null,
+              silences: [],
+              hasAudio: false,
+            },
+          },
+        });
+      }
+      if (url.endsWith("/v1/ffmpeg/compose")) {
+        return Response.json({ response: [{ file_url: "https://files.example/frames.png" }] });
+      }
+      return Response.json({ answer: "Seen it." });
+    });
+    await ask(maya, "@Agent does this move too fast?");
+    await settled(t);
+
+    const compose = sent.find((entry) => entry.url.endsWith("/v1/ffmpeg/compose"))!.body as {
+      inputs: unknown[];
+      outputs: unknown[];
+    };
+    expect(compose.inputs).toHaveLength(1);
+    expect(compose.outputs).toHaveLength(1);
+    expect(sent.some((entry) => entry.url.endsWith("/v1/media/transcribe"))).toBe(false);
+    const agent = sent.find((entry) => entry.url.startsWith(AGENT_URL))!;
+    expect(agent.body.still).toBeNull();
+    expect(agent.body.frames).toBe("https://files.example/frames.png");
+    expect(agent.body.sense).toEqual({
+      frames: { from: 0, every: 0.5, count: 12 },
+      pacing: null,
+      sound: { hasAudio: false, loudness: null, loudnessAtMoment: null, quietNear: [] },
+      transcript: null,
     });
     delete process.env.CONNECTIONS_SECRET;
   });
