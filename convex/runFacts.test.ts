@@ -142,3 +142,42 @@ describe("a run page's steps", () => {
     expect(run?.steps[0].facts).toEqual([]);
   });
 });
+
+describe("the newest run, for the editor's canvas", () => {
+  test("is null before the first run and for someone outside the team", async () => {
+    const t = backend();
+    const team = await addTeam(t, "Salt House");
+    const maya = await addPerson(t, "Maya Ortiz", [team]);
+    const outsider = await addPerson(t, "Someone Else", [await addTeam(t, "Other Team")]);
+    const automationId = await t.run((ctx) =>
+      ctx.db.insert("automations", {
+        organizationId: team,
+        name: "Weekly clips",
+        enabled: true,
+        trigger: { kind: "webhook" },
+        nodes: [{ id: "approval", kind: "approval", input: {}, position: { x: 0, y: 0 } }],
+        edges: [],
+        hookToken: "token",
+        nextRunAt: null,
+        createdBy: maya.id,
+        updatedAt: Date.now(),
+      }),
+    );
+    expect(await maya.as.query(api.runs.latestForAutomation, { automationId })).toBeNull();
+
+    await t.run(async (ctx) => {
+      const automation = (await ctx.db.get(automationId))!;
+      await startRun(ctx, automation, "webhook", { file_url: "https://files.example/a.mp4" }, null);
+      // A second run starts later; the canvas follows the newest.
+      await startRun(ctx, automation, "webhook", { file_url: "https://files.example/b.mp4" }, null);
+    });
+    const latest = await maya.as.query(api.runs.latestForAutomation, { automationId });
+    const runs = await maya.as.query(api.runs.listForAutomation, { automationId });
+    expect(latest?._id).toBe(runs[0]._id);
+    expect(latest).toMatchObject({
+      status: "waiting",
+      steps: [{ nodeId: "approval", status: "waiting_approval", jobCount: 0, retryAt: null }],
+    });
+    expect(await outsider.as.query(api.runs.latestForAutomation, { automationId })).toBeNull();
+  });
+});

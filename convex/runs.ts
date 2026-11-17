@@ -40,6 +40,41 @@ export const listForAutomation = query({
   },
 });
 
+/**
+ * The automation's newest run, with just enough of each step to light up the editor's
+ * canvas while it goes. Null when it has never run.
+ */
+export const latestForAutomation = query({
+  args: { automationId: v.id("automations") },
+  handler: async (ctx, args) => {
+    const automation = await ctx.db.get(args.automationId);
+    if (!automation) return null;
+    if (!(await isMember(ctx, automation.organizationId))) return null;
+    const run = await ctx.db
+      .query("runs")
+      .withIndex("by_automation", (q) => q.eq("automationId", args.automationId))
+      .order("desc")
+      .first();
+    if (!run) return null;
+    const steps = await ctx.db
+      .query("runSteps")
+      .withIndex("by_run", (q) => q.eq("runId", run._id))
+      .take(200);
+    return {
+      ...summary(run),
+      steps: steps.map((step) => ({
+        nodeId: step.nodeId,
+        status: step.status,
+        jobCount: step.jobIds.length,
+        branches: step.branches,
+        stage: step.stage,
+        resumeAt: step.resumeAt,
+        retryAt: step.retryAt ?? null,
+      })),
+    };
+  },
+});
+
 /** One run with the live state of every step. */
 export const get = query({
   args: { runId: v.id("runs") },
