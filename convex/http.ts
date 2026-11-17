@@ -8,6 +8,13 @@ import { toolkitMessageText } from "./lib/toolkitMessage";
 
 const http = httpRouter();
 
+// FFmpeg's log opens with a long banner and says what went wrong at the end, so a long
+// error keeps its start and its end rather than being cut after the banner.
+function keepEnds(text: string, max = 6000): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, 1500)}\n…\n${text.slice(text.length - (max - 1500))}`;
+}
+
 authComponent.registerRoutes(http, createAuth);
 
 // The toolkit posts each job's result here. The URL carries the job id and a random
@@ -36,7 +43,7 @@ http.route({
         token,
         ok,
         result: ok ? payload.response : undefined,
-        error: ok ? undefined : toolkitMessageText(payload.message).slice(0, 2000),
+        error: ok ? undefined : keepEnds(toolkitMessageText(payload.message)),
       });
     } catch {
       // A job id that is not an id at all.

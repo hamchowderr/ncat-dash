@@ -85,3 +85,18 @@ describe("toolkitMessageText", () => {
     expect(toolkitMessageText(undefined)).toBe("The step failed.");
   });
 });
+
+describe("a very long failure from the toolkit", () => {
+  test("keeps the end, where FFmpeg says what went wrong", async () => {
+    const { post, job } = await setUp();
+    const banner = "configuration: --enable-everything ".repeat(400);
+    await post({
+      code: 500,
+      message: `ffmpeg version 6.1\n${banner}\nOutput file does not contain any stream`,
+    });
+    const error = (await job())?.error ?? "";
+    expect(error.length).toBeLessThanOrEqual(6010);
+    expect(error.startsWith("ffmpeg version 6.1")).toBe(true);
+    expect(error.endsWith("Output file does not contain any stream")).toBe(true);
+  });
+});
