@@ -1,10 +1,10 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { KIND_WORDS, wantedKind } from "@ncat-dash/automation-core";
+import { KIND_WORDS, readUploadRef, uploadRef, wantedKind } from "@ncat-dash/automation-core";
 import { getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
 import { useAction, useQuery } from "convex/react";
-import { Upload } from "lucide-react";
+import { FileCheck, Upload, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -65,9 +65,20 @@ function exampleOf(schema: JsonSchema): unknown {
 const UNSET = "__unset__";
 const AUTO = "__auto__";
 const FIXED = "__fixed__";
+const BRAND = "__brand__";
 
 /** Lets a URL field be filled from one of the team's uploads. */
-export function UploadPicker({ onPick }: { onPick: (url: string) => void }) {
+export function UploadPicker({
+  onPick,
+  lasting = false,
+}: {
+  onPick: (url: string) => void;
+  /**
+   * Hand back a lasting pointer to the upload instead of a link. A link stops working
+   * after a week, so anything that is saved and used again later needs the pointer.
+   */
+  lasting?: boolean;
+}) {
   const team = useActiveTeam();
   const uploads = useQuery(api.storage.listUploads, { organizationId: team.id });
   const linkFor = useAction(api.storage.linkFor);
@@ -87,13 +98,81 @@ export function UploadPicker({ onPick }: { onPick: (url: string) => void }) {
         {ready.map((upload) => (
           <DropdownMenuItem
             key={upload._id}
-            onSelect={async () => onPick(await linkFor({ uploadId: upload._id }))}
+            onSelect={async () =>
+              onPick(lasting ? uploadRef(upload._id) : await linkFor({ uploadId: upload._id }))
+            }
           >
             <span className="truncate">{upload.fileName}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * One fixed file that is kept and used again: an address, or one of the team's uploads.
+ * An upload is shown by its name and saved as a lasting pointer.
+ */
+export function FileChoice({
+  value,
+  onChange,
+  label,
+  id,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  id?: string;
+  disabled?: boolean;
+}) {
+  const team = useActiveTeam();
+  const uploads = useQuery(api.storage.listUploads, { organizationId: team.id });
+  const uploadId = readUploadRef(value);
+  if (uploadId) {
+    const upload = uploads?.find((candidate) => candidate._id === uploadId);
+    return (
+      <div className="flex items-center gap-2">
+        <div
+          id={id}
+          className="bg-muted/50 flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border px-3 text-sm"
+        >
+          <FileCheck className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">
+            {upload?.fileName ?? (uploads ? "An upload that was removed" : "Your upload")}
+          </span>
+        </div>
+        {!disabled && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            onClick={() => onChange("")}
+          >
+            <X />
+            <span className="sr-only">Clear {label}</span>
+          </Button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <Input
+        id={id}
+        aria-label={`${label}: address of the file`}
+        type="url"
+        inputMode="url"
+        placeholder="https://"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        autoComplete="off"
+        disabled={disabled}
+      />
+      {!disabled && <UploadPicker lasting onPick={onChange} />}
+    </div>
   );
 }
 
@@ -167,6 +246,11 @@ export function StepFields({
     sources?: { value: string; label: string }[];
     /** Settings an earlier step fills in when left empty, with a line saying from where. */
     filled?: Record<string, string>;
+    /**
+     * Settings the team's brand fills in when left empty: what it is called ("logo") and
+     * whether Settings has one yet.
+     */
+    brand?: Record<string, { word: string; set: boolean }>;
   };
   idPrefix?: string;
 }) {
@@ -194,24 +278,27 @@ export function StepFields({
         if (automatic && kind === "url") {
           const sources = automatic.sources ?? [];
           const value = values[name] ?? "";
+          const brand = automatic.brand?.[name];
           const pointed = sources.find((source) => source.value === value);
           const mode = pointed
             ? pointed.value
-            : value !== "" || fixed[name] || !filledForYou
+            : value !== "" || fixed[name]
               ? FIXED
-              : AUTO;
+              : brand
+                ? BRAND
+                : filledForYou
+                  ? AUTO
+                  : FIXED;
           const what = KIND_WORDS[wantedKind(name)];
+          const label = fieldLabel(name).replace(/ URLs?$/, "");
           return (
             <Field key={name}>
-              <FieldLabel htmlFor={id}>
-                {fieldLabel(name).replace(/ URLs?$/, "")}
-                {!required && <span className="text-muted-foreground font-normal">optional</span>}
-              </FieldLabel>
+              <FieldLabel htmlFor={id}>{label}</FieldLabel>
               <Select
                 value={mode}
                 onValueChange={(next) => {
                   setFixed((current) => ({ ...current, [name]: next === FIXED }));
-                  onChange(name, next === AUTO || next === FIXED ? "" : next);
+                  onChange(name, next === AUTO || next === FIXED || next === BRAND ? "" : next);
                 }}
               >
                 <SelectTrigger id={id} className="w-full">
@@ -219,34 +306,30 @@ export function StepFields({
                 </SelectTrigger>
                 <SelectContent>
                   {filledForYou && <SelectItem value={AUTO}>Automatic</SelectItem>}
+                  {brand && <SelectItem value={BRAND}>Your team&apos;s {brand.word}</SelectItem>}
                   {sources.map((source) => (
                     <SelectItem key={source.value} value={source.value}>
                       {source.label}
                     </SelectItem>
                   ))}
-                  <SelectItem value={FIXED}>A fixed file</SelectItem>
+                  <SelectItem value={FIXED}>
+                    {brand ? "A different file for this step" : "A fixed file"}
+                  </SelectItem>
                 </SelectContent>
               </Select>
               {mode === FIXED && (
-                <div className="flex items-center gap-2">
-                  <Input
-                    aria-label={`${fieldLabel(name)}: address of the file`}
-                    type="url"
-                    inputMode="url"
-                    placeholder="https://"
-                    value={value}
-                    onChange={(event) => onChange(name, event.target.value)}
-                    autoComplete="off"
-                  />
-                  <UploadPicker onPick={(url) => onChange(name, url)} />
-                </div>
+                <FileChoice value={value} onChange={(next) => onChange(name, next)} label={label} />
               )}
               <FieldDescription>
                 {mode === AUTO
-                  ? `Uses the nearest ${what} before this step: the step before if it made one, otherwise further back, and last the file that started the run.`
-                  : mode === FIXED
-                    ? "The same file on every run. Paste its address or pick one of your uploads."
-                    : field.description}
+                  ? `Uses the nearest ${what} before this step.`
+                  : mode === BRAND
+                    ? brand?.set
+                      ? `Set once in Settings, under Brand.`
+                      : `Not set yet. Add your ${brand?.word} in Settings, under Brand.`
+                    : mode === FIXED
+                      ? "The same file on every run."
+                      : field.description}
               </FieldDescription>
             </Field>
           );
@@ -304,11 +387,13 @@ export function StepFields({
                     ? "From the step before"
                     : automatic?.filled?.[name]
                       ? "Automatic"
-                      : field.default !== undefined
-                        ? String(field.default)
-                        : kind === "url"
-                          ? "https://"
-                          : undefined
+                      : automatic?.brand?.[name]?.set
+                        ? `Your team's ${automatic.brand[name].word}`
+                        : field.default !== undefined
+                          ? String(field.default)
+                          : kind === "url"
+                            ? "https://"
+                            : undefined
                 }
                 value={values[name] ?? ""}
                 onChange={(event) => onChange(name, event.target.value)}

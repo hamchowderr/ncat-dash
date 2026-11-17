@@ -10,6 +10,7 @@ import {
   type AutomationDraft,
   type AutomationEdge,
   type AutomationNode,
+  type Brand,
   graphProblem,
   newNodeId,
   type Operation,
@@ -48,10 +49,12 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { nodeTitle, type Trigger } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
+import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import {
   AddAfterContext,
+  BrandContext,
   edgeTypes,
   FIT_VIEW,
   flowEdge,
@@ -66,10 +69,12 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { NodePanel } from "./node-panel";
+import { STEP_ICONS } from "./step-icons";
 import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
 import { TriggerPanel } from "./trigger-panel";
 
+const EMPTY_BRAND: Brand = {};
 const FIT = { ...FIT_VIEW, duration: 200 };
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.automations.get>>>;
@@ -111,6 +116,8 @@ export function AutomationEditor({ automationId }: { automationId: Id<"automatio
 function Editor({ automation }: { automation: Loaded }) {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
+  const team = useActiveTeam();
+  const brand = useQuery(api.teamSettings.get, { organizationId: team.id })?.brand ?? EMPTY_BRAND;
   const save = useMutation(api.automations.save);
   const setEnabled = useMutation(api.automations.setEnabled);
   const runNow = useMutation(api.automations.runNow);
@@ -482,27 +489,30 @@ function Editor({ automation }: { automation: Loaded }) {
                         nodeType.description.toLowerCase().includes(query),
                     );
                     if (matches.length === 0) return null;
-                    const Icon = GROUP_ICONS[group];
+                    const GroupIcon = GROUP_ICONS[group];
                     return (
                       <div key={group} className="mb-3">
                         <h3 className="text-muted-foreground px-2 py-1 text-xs font-medium">
                           {label}
                         </h3>
-                        {matches.map((nodeType) => (
-                          <button
-                            key={nodeType.type}
-                            type="button"
-                            title={nodeType.description}
-                            onClick={() => addNode(nodeType.type)}
-                            className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
-                          >
-                            <Icon
-                              className="text-muted-foreground size-4 shrink-0"
-                              aria-hidden="true"
-                            />
-                            <span className="truncate">{nodeType.title}</span>
-                          </button>
-                        ))}
+                        {matches.map((nodeType) => {
+                          const Icon = STEP_ICONS[nodeType.type.replace(/^step:/, "")] ?? GroupIcon;
+                          return (
+                            <button
+                              key={nodeType.type}
+                              type="button"
+                              title={nodeType.description}
+                              onClick={() => addNode(nodeType.type)}
+                              className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
+                            >
+                              <Icon
+                                className="text-muted-foreground size-4 shrink-0"
+                                aria-hidden="true"
+                              />
+                              <span className="truncate">{nodeType.title}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     );
                   })}
@@ -522,49 +532,51 @@ function Editor({ automation }: { automation: Loaded }) {
                   Add step
                 </Button>
               )}
-              <AddAfterContext value={addAfter}>
-                <InsertOnEdgeContext value={insertOnEdge}>
-                  <ReactFlow
-                    nodes={shownNodes}
-                    edges={shownEdges}
-                    nodeTypes={nodeTypes}
-                    edgeTypes={edgeTypes}
-                    minZoom={0.25}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
-                    onConnect={onConnect}
-                    onConnectEnd={onConnectEnd}
-                    onBeforeDelete={async ({ nodes: doomed, edges: cut }) => {
-                      // Deleting steps with the keyboard goes the same way as Remove step.
-                      if (doomed.length === 0) return { nodes: doomed, edges: cut };
-                      removeSteps(doomed.map((node) => node.id));
-                      return false;
-                    }}
-                    forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
-                    fitView
-                    fitViewOptions={FIT_VIEW}
-                  >
-                    <Background gap={20} />
-                    <Controls showInteractive={false} fitViewOptions={FIT_VIEW}>
-                      <ControlButton onClick={tidy} title="Tidy up" aria-label="Tidy up">
-                        <LayoutGrid />
-                      </ControlButton>
-                    </Controls>
-                    {stepNodes.length > 5 && (
-                      <MiniMap
-                        pannable
-                        zoomable
-                        position="top-right"
-                        className="!bg-card overflow-hidden rounded-lg border shadow-sm"
-                        style={{ width: 168, height: 96 }}
-                        nodeColor="var(--muted-foreground)"
-                        nodeBorderRadius={12}
-                        maskColor="color-mix(in oklab, var(--muted) 70%, transparent)"
-                      />
-                    )}
-                  </ReactFlow>
-                </InsertOnEdgeContext>
-              </AddAfterContext>
+              <BrandContext value={brand}>
+                <AddAfterContext value={addAfter}>
+                  <InsertOnEdgeContext value={insertOnEdge}>
+                    <ReactFlow
+                      nodes={shownNodes}
+                      edges={shownEdges}
+                      nodeTypes={nodeTypes}
+                      edgeTypes={edgeTypes}
+                      minZoom={0.25}
+                      onNodesChange={onNodesChange}
+                      onEdgesChange={onEdgesChange}
+                      onConnect={onConnect}
+                      onConnectEnd={onConnectEnd}
+                      onBeforeDelete={async ({ nodes: doomed, edges: cut }) => {
+                        // Deleting steps with the keyboard goes the same way as Remove step.
+                        if (doomed.length === 0) return { nodes: doomed, edges: cut };
+                        removeSteps(doomed.map((node) => node.id));
+                        return false;
+                      }}
+                      forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
+                      fitView
+                      fitViewOptions={FIT_VIEW}
+                    >
+                      <Background gap={20} />
+                      <Controls showInteractive={false} fitViewOptions={FIT_VIEW}>
+                        <ControlButton onClick={tidy} title="Tidy up" aria-label="Tidy up">
+                          <LayoutGrid />
+                        </ControlButton>
+                      </Controls>
+                      {stepNodes.length > 5 && (
+                        <MiniMap
+                          pannable
+                          zoomable
+                          position="top-right"
+                          className="!bg-card overflow-hidden rounded-lg border shadow-sm"
+                          style={{ width: 168, height: 96 }}
+                          nodeColor="var(--muted-foreground)"
+                          nodeBorderRadius={12}
+                          maskColor="color-mix(in oklab, var(--muted) 70%, transparent)"
+                        />
+                      )}
+                    </ReactFlow>
+                  </InsertOnEdgeContext>
+                </AddAfterContext>
+              </BrandContext>
               {stepNodes.length === 0 && (
                 <p className="text-muted-foreground pointer-events-none absolute inset-x-0 bottom-6 text-center text-sm">
                   Press Add step to put the first step after the trigger.
@@ -576,8 +588,8 @@ function Editor({ automation }: { automation: Loaded }) {
               <aside className="min-h-0 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
                 {selected.type === "step" ? (
                   <>
-                    <h2 className="mb-4 text-sm font-semibold">Step settings</h2>
                     <NodePanel
+                      brand={brand}
                       key={selected.id}
                       node={selected.data.node}
                       before={stepsBefore(selected.id, draft.edges)

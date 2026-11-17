@@ -1,7 +1,15 @@
+import { readUploadRef } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import {
+  action,
+  type ActionCtx,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { type BucketConfig, checkBucket, presign } from "./lib/s3";
@@ -235,6 +243,61 @@ export const loadUpload = internalQuery({
     return upload;
   },
 });
+
+/** An upload by id for a job being sent, checked against the team that owns the job. */
+export const uploadForTeam = internalQuery({
+  args: { uploadId: v.string(), organizationId: v.string() },
+  handler: async (ctx, args) => {
+    const id = ctx.db.normalizeId("uploads", args.uploadId);
+    const upload = id ? await ctx.db.get(id) : null;
+    if (!upload || upload.organizationId !== args.organizationId) return null;
+    return { key: upload.key };
+  },
+});
+
+export class UploadLinkError extends Error {}
+
+/**
+ * Swaps every "upload:<id>" pointer inside a job's input for a fresh link the toolkit can
+ * fetch. Settings keep the pointer, because a signed link stops working after a week.
+ */
+export async function withUploadLinks(
+  ctx: ActionCtx,
+  organizationId: string,
+  input: unknown,
+): Promise<unknown> {
+  const ids = new Set<string>();
+  const find = (value: unknown) => {
+    const id = readUploadRef(value);
+    if (id) ids.add(id);
+    else if (Array.isArray(value)) value.forEach(find);
+    else if (value && typeof value === "object") Object.values(value).forEach(find);
+  };
+  find(input);
+  if (ids.size === 0) return input;
+
+  const storage = await ctx.runQuery(internal.storage.load, { organizationId });
+  if (!storage) throw new UploadLinkError("Connect your storage first.");
+  const config = await toBucketConfig(storage);
+  const links = new Map<string, string>();
+  for (const uploadId of ids) {
+    const upload = await ctx.runQuery(internal.storage.uploadForTeam, { uploadId, organizationId });
+    if (!upload) {
+      throw new UploadLinkError("A file this step uses is no longer in your uploads.");
+    }
+    links.set(uploadId, await presign(config, "GET", upload.key, READ_LINK_SECONDS));
+  }
+  const swap = (value: unknown): unknown => {
+    const id = readUploadRef(value);
+    if (id) return links.get(id);
+    if (Array.isArray(value)) return value.map(swap);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, swap(item)]));
+    }
+    return value;
+  };
+  return swap(input);
+}
 
 export const save = internalMutation({
   args: {

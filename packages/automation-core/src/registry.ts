@@ -7,6 +7,7 @@
 import { allSteps, getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
 import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
+import type { Brand, BrandKey } from "./brand";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
 import { MIN_INTERVAL_MINUTES } from "./schedule";
@@ -47,6 +48,8 @@ export interface NodeType {
   makes?: string[];
   /** Settings filled by a named value from an earlier step when left empty. */
   fills?: Record<string, string>;
+  /** Settings filled from the team's brand in Settings when left empty. */
+  brand?: Record<string, BrandKey>;
 }
 
 export const GROUP_LABELS: Record<NodeGroup, string> = {
@@ -235,6 +238,7 @@ function stepType(step: StepDefinition): NodeType {
     settings: userInputJsonSchema(step) as JsonSchema,
     automatic: step.primaryInput ?? step.listInput?.field ?? null,
     ...(step.values ? { makes: Object.keys(step.values) } : {}),
+    ...(step.brandInputs ? { brand: step.brandInputs } : {}),
     ...(step.valueInputs
       ? {
           fills: Object.fromEntries(
@@ -303,13 +307,47 @@ export function defaultSettings(nodeType: NodeType): Record<string, unknown> {
   return settings;
 }
 
-/** Required settings that are still blank and that the step before does not fill in. */
-export function missingSettingsOf(nodeType: NodeType, input: Record<string, unknown>): string[] {
+/**
+ * Required settings that are still blank and that nothing fills in: not the step before,
+ * and not the team's brand. Pass the brand to count what it supplies.
+ */
+export function missingSettingsOf(
+  nodeType: NodeType,
+  input: Record<string, unknown>,
+  brand?: Brand,
+): string[] {
   return (nodeType.settings.required ?? []).filter((name) => {
     if (name === nodeType.automatic) return false;
     const value = input[name];
-    return value === undefined || value === null || value === "";
+    if (!(value === undefined || value === null || value === "")) return false;
+    const key = nodeType.brand?.[name];
+    return !(key && brand?.[key]);
   });
+}
+
+/** The brand items a node still needs set in Settings: required, blank, and not set there. */
+export function missingBrandOf(
+  nodeType: NodeType,
+  input: Record<string, unknown>,
+  brand: Brand,
+): BrandKey[] {
+  return missingSettingsOf(nodeType, input, brand).flatMap((name) => nodeType.brand?.[name] ?? []);
+}
+
+/** A node's settings with every blank brand setting filled from the team's brand. */
+export function withBrand(
+  nodeType: NodeType,
+  input: Record<string, unknown>,
+  brand: Brand,
+): Record<string, unknown> {
+  const filled = { ...input };
+  for (const [name, key] of Object.entries(nodeType.brand ?? {})) {
+    const value = filled[name];
+    if ((value === undefined || value === null || value === "") && brand[key]) {
+      filled[name] = brand[key];
+    }
+  }
+  return filled;
 }
 
 /**
@@ -321,6 +359,10 @@ export function nodeTypeIndex(): string {
     (nodeType) =>
       `${nodeType.type} (${GROUP_LABELS[nodeType.group]}; takes ${nodeType.takes}, gives ${nodeType.gives}${
         nodeType.makes ? `, makes ${nodeType.makes.join(" and ")}` : ""
+      }${
+        nodeType.brand
+          ? `, takes the team's ${Object.values(nodeType.brand).join(" and ")} from Settings`
+          : ""
       }${
         nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""
       }): ${nodeType.title}. ${nodeType.description}`,

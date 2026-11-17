@@ -54,6 +54,11 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
     string,
     { value: string; when?: (settings: Record<string, unknown>) => boolean }
   >;
+  /**
+   * Settings filled from the team's brand (its logo, colour, font or music in Settings)
+   * when they are left empty on the step.
+   */
+  brandInputs?: Record<string, "logo" | "color" | "font" | "music">;
   /** Builds the toolkit request from the filled-in blanks. Only recipes have one. */
   toRequest?: (input: z.output<TInput>) => Record<string, unknown>;
 }

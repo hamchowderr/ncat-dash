@@ -2,9 +2,13 @@
 
 import {
   type AutomationNode,
+  type Brand,
+  BRAND_WORDS,
+  missingBrandOf,
   missingSettings,
   NODE_GAP,
   type NodeGroup,
+  nodeTypeOf,
 } from "@ncat-dash/automation-core";
 import { getStep, type StepCategory } from "@ncat-dash/step-catalog";
 import {
@@ -51,6 +55,8 @@ import {
 } from "@/lib/automations";
 import { CATEGORY_LABELS } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
+
+import { STEP_ICONS } from "./step-icons";
 
 import { StatusIcon, type StepStatus } from "./run-status";
 
@@ -120,7 +126,7 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
   if (!step)
     return { icon: Shapes, tint: "text-muted-foreground", kind: "No longer in the catalog" };
   return {
-    icon: CATEGORY_ICONS[step.category],
+    icon: STEP_ICONS[step.id] ?? CATEGORY_ICONS[step.category],
     tint: CATEGORY_TINTS[step.category],
     kind: CATEGORY_LABELS[step.category],
   };
@@ -140,6 +146,9 @@ export type TriggerFlowNode = Node<TriggerNodeData, "trigger">;
 export type FlowNode = StepFlowNode | TriggerFlowNode;
 
 /** Set by the editor; absent on a run, where nothing can be added. */
+/** The team's brand, so a step knows whether Settings already supplies its logo or font. */
+export const BrandContext = createContext<Brand>({});
+
 export const AddAfterContext = createContext<((nodeId: string) => void) | null>(null);
 
 const tile =
@@ -152,13 +161,18 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
   const { node, status, jobCount, last } = data;
   const look = nodeLook({ ...node, input: node.input });
   const addAfter = useContext(AddAfterContext);
-  const missing = status ? [] : missingSettings({ ...node, position: { x: 0, y: 0 } });
+  const brand = useContext(BrandContext);
+  const nodeType = nodeTypeOf(node);
+  const missing = status ? [] : missingSettings({ ...node, position: { x: 0, y: 0 } }, brand);
+  const missingBrand = status || !nodeType ? [] : missingBrandOf(nodeType, node.input, brand);
   const second =
     jobCount && jobCount > 1 && status && status !== "pending"
       ? `${jobCount} ${node.kind === "clips" ? "clips" : "files"}`
-      : missing.length > 0
-        ? "Needs settings"
-        : look.kind;
+      : missingBrand.length > 0
+        ? `Needs your ${BRAND_WORDS[missingBrand[0]]}`
+        : missing.length > 0
+          ? "Needs settings"
+          : look.kind;
   return (
     <div className="relative" data-node={id}>
       <div
@@ -182,7 +196,11 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
         {missing.length > 0 && (
           <span
             className="bg-card absolute -top-1.5 -right-1.5 rounded-full p-0.5 text-amber-600 dark:text-amber-400"
-            title={`Still needs: ${missing.join(", ")}`}
+            title={
+              missingBrand.length > 0
+                ? `Add your team's ${missingBrand.map((key) => BRAND_WORDS[key]).join(" and ")} in Settings`
+                : `Still needs: ${missing.join(", ")}`
+            }
           >
             <TriangleAlert className="size-4" aria-hidden="true" />
           </span>

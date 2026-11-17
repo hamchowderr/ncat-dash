@@ -13,6 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
+import { BrandCard } from "./brand-card";
+
 export function SettingsView() {
   const team = useActiveTeam();
   const settings = useQuery(api.teamSettings.get, { organizationId: team.id });
@@ -44,54 +46,57 @@ export function SettingsView() {
       {settings === undefined ? (
         <Skeleton className="h-48 max-w-xl rounded-xl" />
       ) : (
-        <Card className="max-w-xl">
-          <CardHeader>
-            <CardTitle>
-              <h2>Jobs at once</h2>
-            </CardTitle>
-            <CardDescription>
-              How many jobs this team sends to its toolkit at the same time. The rest wait their
-              turn, so one big automation cannot swamp a small server.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={onSubmit}>
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="max-parallel">Most jobs at once</FieldLabel>
-                  <Input
-                    id="max-parallel"
-                    type="number"
-                    min={1}
-                    max={settings.mostAllowed}
-                    step={1}
-                    className="w-28"
-                    value={typed ?? String(settings.maxParallelJobs)}
-                    onChange={(event) => setTyped(event.target.value)}
-                    disabled={!settings.canEdit}
-                    required
-                  />
-                  <FieldDescription>
-                    {settings.canEdit
-                      ? `From 1 to ${settings.mostAllowed}. Raise it if your toolkit server has room to spare.`
-                      : "Only a team owner or admin can change this."}
-                  </FieldDescription>
-                </Field>
-                {settings.canEdit && (
+        <>
+          <BrandCard brand={settings.brand} canEdit={settings.canEdit} />
+          <Card className="max-w-xl">
+            <CardHeader>
+              <CardTitle>
+                <h2>Jobs at once</h2>
+              </CardTitle>
+              <CardDescription>
+                How many jobs this team sends to its toolkit at the same time. The rest wait their
+                turn, so one big automation cannot swamp a small server.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={onSubmit}>
+                <FieldGroup>
                   <Field>
-                    <Button
-                      type="submit"
-                      className="self-start"
-                      disabled={pending || typed === null}
-                    >
-                      {pending ? "Saving" : "Save"}
-                    </Button>
+                    <FieldLabel htmlFor="max-parallel">Most jobs at once</FieldLabel>
+                    <Input
+                      id="max-parallel"
+                      type="number"
+                      min={1}
+                      max={settings.mostAllowed}
+                      step={1}
+                      className="w-28"
+                      value={typed ?? String(settings.maxParallelJobs)}
+                      onChange={(event) => setTyped(event.target.value)}
+                      disabled={!settings.canEdit}
+                      required
+                    />
+                    <FieldDescription>
+                      {settings.canEdit
+                        ? `From 1 to ${settings.mostAllowed}. Raise it if your toolkit server has room to spare.`
+                        : "Only a team owner or admin can change this."}
+                    </FieldDescription>
                   </Field>
-                )}
-              </FieldGroup>
-            </form>
-          </CardContent>
-        </Card>
+                  {settings.canEdit && (
+                    <Field>
+                      <Button
+                        type="submit"
+                        className="self-start"
+                        disabled={pending || typed === null}
+                      >
+                        {pending ? "Saving" : "Save"}
+                      </Button>
+                    </Field>
+                  )}
+                </FieldGroup>
+              </form>
+            </CardContent>
+          </Card>
+        </>
       )}
     </>
   );
