@@ -18,7 +18,15 @@ export type StarterTrigger =
       /** Only files at most this long, in seconds, start the automation. */
       maxSeconds?: number;
     }
-  | { kind: "folder"; prefix: string; fileType: FileType };
+  | { kind: "folder"; prefix: string; fileType: FileType }
+  | {
+      /** Starts when a run of another of the team's automations ends; see chain.ts. */
+      kind: "finished";
+      /** The automation it follows. Empty until one is picked. */
+      automationId: string;
+      /** "done": after it works. "failed": after it fails. "either": both. */
+      when: "done" | "failed" | "either";
+    };
 
 export interface Starter {
   id: string;

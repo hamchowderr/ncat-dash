@@ -41,14 +41,15 @@ describe("node registry", () => {
   it("describes every trigger, every catalog step, approval, clips and export exactly once", () => {
     const names = NODE_TYPES.map((nodeType) => nodeType.type);
     expect(new Set(names).size).toBe(names.length);
-    for (const kind of ["manual", "upload", "folder", "schedule", "webhook"]) {
+    for (const kind of ["manual", "upload", "folder", "schedule", "webhook", "finished"]) {
       expect(getNodeType(`trigger:${kind}`)?.role).toBe("trigger");
     }
     for (const step of allSteps) expect(getNodeType(`step:${step.id}`)?.title).toBe(step.title);
     expect(getNodeType("approval")?.takes).toBe("files");
     expect(getNodeType("clips")?.gives).toBe("files");
     expect(getNodeType("export")).toMatchObject({ takes: "files", gives: "files" });
-    expect(names.length).toBe(5 + allSteps.length + 5);
+    expect(getNodeType("automation")).toMatchObject({ takes: "files", gives: "files" });
+    expect(names.length).toBe(6 + allSteps.length + 6);
   });
 
   it("gives every type a title, a description and an object schema for its settings", () => {
@@ -65,7 +66,7 @@ describe("node registry", () => {
   it("lists only steps that can be added, with no trigger among them", () => {
     const listed = actionTypesByGroup().flatMap((group) => group.types);
     expect(listed.every((nodeType) => nodeType.role === "action")).toBe(true);
-    expect(listed.length).toBe(allSteps.length + 5);
+    expect(listed.length).toBe(allSteps.length + 6);
   });
 
   it("knows the type of every node in every template", () => {

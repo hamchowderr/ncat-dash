@@ -62,6 +62,8 @@ test("a run says a step was turned off and its files went straight on", () => {
     hasCuts: false,
     trigger: {},
     retryLimit: 2,
+    startedByRun: null,
+    startedRuns: [],
     nodes: [{ ...CAPTION, off: true, position: { x: 0, y: 0 } }],
     edges: [],
     steps: [

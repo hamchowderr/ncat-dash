@@ -63,6 +63,8 @@ describe("a step that joins two sides", () => {
       hasCuts: false,
       trigger: {},
       retryLimit: 2,
+      startedByRun: null,
+      startedRuns: [],
       nodes: [
         { id: "intro", kind: "step", stepId: "video-trim", input: {}, position: { x: 0, y: 0 } },
         {

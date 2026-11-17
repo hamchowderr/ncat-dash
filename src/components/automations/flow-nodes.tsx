@@ -17,6 +17,7 @@ import {
   nodeTypeOf,
   waitSentence,
   approvalShort,
+  waitsForRun,
 } from "@ncat-dash/automation-core";
 import { getStep, type StepCategory } from "@ncat-dash/step-catalog";
 import {
@@ -55,11 +56,15 @@ import {
   Waypoints,
   Webhook,
   Zap,
+  CircleCheckBig,
+  Workflow,
 } from "lucide-react";
 import { createContext, useContext } from "react";
 
 import {
   nodeTitle,
+  RUN_TRIGGER_LABELS,
+  type RunTriggerKind,
   type Trigger,
   type TriggerKind,
   TRIGGER_LABELS,
@@ -100,6 +105,12 @@ export const TRIGGER_ICONS: Record<TriggerKind, LucideIcon> = {
   schedule: CalendarClock,
   upload: Upload,
   folder: FolderInput,
+  finished: CircleCheckBig,
+};
+
+export const RUN_TRIGGER_ICONS: Record<RunTriggerKind, LucideIcon> = {
+  ...TRIGGER_ICONS,
+  automation: Workflow,
 };
 
 // One colour per kind of step, so a graph can be read at a glance.
@@ -142,6 +153,13 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
   if (node.kind === "wait") {
     return { icon: Clock, tint: LOGIC_TINT, kind: waitSentence(node.input) };
   }
+  if (node.kind === "automation") {
+    return {
+      icon: Workflow,
+      tint: LOGIC_TINT,
+      kind: waitsForRun(node) ? "Waits for it to finish" : "Starts it and carries on",
+    };
+  }
   if (node.kind === "export") {
     return {
       icon: Clapperboard,
@@ -176,7 +194,8 @@ export type StepNodeData = {
    */
   failWay?: "used" | "offered";
 };
-export type TriggerNodeData = { trigger: Trigger; summary?: string };
+/** On a run's canvas, `runKind` is what started the run, which can be another run. */
+export type TriggerNodeData = { trigger: Trigger; summary?: string; runKind?: RunTriggerKind };
 export type StepFlowNode = Node<StepNodeData, "step">;
 export type TriggerFlowNode = Node<TriggerNodeData, "trigger">;
 export type FlowNode = StepFlowNode | TriggerFlowNode;
@@ -351,7 +370,7 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
 }
 
 function TriggerNode({ data, selected }: NodeProps<TriggerFlowNode>) {
-  const Icon = TRIGGER_ICONS[data.trigger.kind];
+  const Icon = data.runKind ? RUN_TRIGGER_ICONS[data.runKind] : TRIGGER_ICONS[data.trigger.kind];
   return (
     <div className="relative" data-node={TRIGGER_ID}>
       <div
@@ -365,7 +384,9 @@ function TriggerNode({ data, selected }: NodeProps<TriggerFlowNode>) {
         <Handle type="source" position={Position.Right} className={handle} />
       </div>
       <div className={caption}>
-        <span className="truncate text-sm font-medium">{TRIGGER_LABELS[data.trigger.kind]}</span>
+        <span className="truncate text-sm font-medium">
+          {data.runKind ? RUN_TRIGGER_LABELS[data.runKind] : TRIGGER_LABELS[data.trigger.kind]}
+        </span>
         <span className="text-muted-foreground line-clamp-2 text-xs">
           {data.summary ?? triggerSummary(data.trigger)}
         </span>

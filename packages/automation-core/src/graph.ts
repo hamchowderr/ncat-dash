@@ -9,9 +9,10 @@ export interface AutomationNode {
    * "step" runs a catalog step on the toolkit; "approval" waits for a person; "clips"
    * cuts each incoming video into clips that fit the platform in `input.platform`;
    * "export" makes the timeline files that open the run's cuts in a video editor; "if"
-   * sends each file one of two ways; "wait" holds the run for a length of time.
+   * sends each file one of two ways; "wait" holds the run for a length of time;
+   * "automation" runs another of the team's automations on its files (chain.ts).
    */
-  kind: "step" | "approval" | "clips" | "export" | "if" | "wait";
+  kind: "step" | "approval" | "clips" | "export" | "if" | "wait" | "automation";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */

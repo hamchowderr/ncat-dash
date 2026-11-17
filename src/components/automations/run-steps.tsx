@@ -9,10 +9,20 @@ import {
   FAILURE_WAY,
   failsOver,
   IF_BRANCHES,
+  waitsForRun,
 } from "@ncat-dash/automation-core";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { Check, FileText, MessagesSquare, Music, Play, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  FileText,
+  MessagesSquare,
+  Music,
+  Play,
+  Workflow,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -21,12 +31,12 @@ import { FailureText } from "@/components/failure-text";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { nodeTitle, TRIGGER_LABELS } from "@/lib/automations";
+import { nodeTitle, RUN_TRIGGER_LABELS } from "@/lib/automations";
 import { formatDuration } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 import { ApprovalWaitingNote, decidedSentence } from "./approval-status";
-import { nodeLook, TRIGGER_ICONS, TRIGGER_ID, TRIGGER_TINT } from "./flow-nodes";
+import { nodeLook, RUN_TRIGGER_ICONS, TRIGGER_ID, TRIGGER_TINT } from "./flow-nodes";
 import { RunStatusBadge, shownStatus } from "./run-status";
 
 export type RunDetails = NonNullable<FunctionReturnType<typeof api.runs.get>>;
@@ -104,6 +114,12 @@ function stepSentence(
   const note = logicNote(step);
   if (note) return `${note}.`;
   if (step.status === "waiting_approval") return "Waiting for someone to check the files.";
+  if (node.kind === "automation" && step.status !== "failed") {
+    if (step.status === "running") return "Waiting for its run to finish.";
+    return waitsForRun(node)
+      ? "Its run finished, and its files carried on from here."
+      : "Started its run, and carried on without waiting.";
+  }
   if (node.kind === "approval") {
     return step.status === "done" ? "Approved." : step.status === "failed" ? "Not approved." : "";
   }
@@ -355,7 +371,7 @@ export function RunSteps({
 }) {
   const byNode = new Map(run.steps.map((step) => [step.nodeId, step]));
   const rows = inCanvasOrder(run.nodes as AutomationNode[]).filter((node) => byNode.has(node.id));
-  const TriggerIcon = TRIGGER_ICONS[run.triggerKind];
+  const TriggerIcon = RUN_TRIGGER_ICONS[run.triggerKind];
   const passed = passedAlong({
     trigger: run.trigger,
     edges: run.edges as { source: string; target: string; branch?: string }[],
@@ -375,7 +391,7 @@ export function RunSteps({
       <ol className="py-2">
         <Row
           icon={<TriggerIcon className={cn("size-4", TRIGGER_TINT)} aria-hidden="true" />}
-          title={run.testOf ? "Test of one step" : TRIGGER_LABELS[run.triggerKind]}
+          title={run.testOf ? "Test of one step" : RUN_TRIGGER_LABELS[run.triggerKind]}
           sentence={
             run.startedWith ? (
               <>
@@ -414,7 +430,14 @@ export function RunSteps({
               : [];
           // Only what the step made: not what it handed on while off or after failing.
           const files =
-            node.kind === "step" && !node.off && step.status !== "failed" ? step.outputs : [];
+            (node.kind === "step" || (node.kind === "automation" && waitsForRun(node))) &&
+            !node.off &&
+            step.status !== "failed"
+              ? step.outputs
+              : [];
+          const child = step.childRunId
+            ? run.startedRuns.find((started) => started.runId === step.childRunId)
+            : undefined;
           return (
             <Row
               key={node.id}
@@ -506,6 +529,7 @@ export function RunSteps({
                   <ReviewLink runStepId={step._id} />
                 </div>
               )}
+              {child && <StartedRunLink run={child} />}
               {/* A logic step reads its files only to decide; that is not news to anyone. */}
               {node.kind === "step" && <StepFacts facts={step.facts} />}
               <StepFiles label={`Files from ${nodeTitle(node)}`} files={files} />
@@ -514,6 +538,30 @@ export function RunSteps({
         })}
       </ol>
     </section>
+  );
+}
+
+/** A link to a run another run started, or was started by. */
+export function StartedRunLink({
+  run,
+  lead = "Run of",
+}: {
+  run: RunDetails["startedRuns"][number];
+  lead?: string;
+}) {
+  return (
+    <Link
+      href={`/automations/${run.automationId}/runs/${run.runId}`}
+      className="hover:bg-muted -mx-1 inline-flex w-fit items-center gap-2 rounded-md px-1 py-0.5 text-sm"
+      data-run-link={run.runId}
+    >
+      <Workflow className="text-muted-foreground size-4" aria-hidden="true" />
+      <span>
+        {lead} <span className="font-medium">{run.automationName}</span>
+      </span>
+      <RunStatusBadge status={run.status} />
+      <ArrowUpRight className="text-muted-foreground size-3.5" aria-hidden="true" />
+    </Link>
   );
 }
 

@@ -147,7 +147,7 @@ export type ReadAutomationFile =
 const NOT_A_FILE =
   "This is not an automation file. Export one from an automation's page and choose that.";
 const FILE_TYPES = ["any", "video", "audio", "image"];
-const KINDS = ["step", "approval", "clips", "export", "if", "wait"];
+const KINDS = ["step", "approval", "clips", "export", "if", "wait", "automation"];
 const MAX_DEPTH = 12;
 // Names the database accepts for a setting: plain text that does not start with $ or _.
 const SAFE_KEY = /^(?![$_])[\x20-\x7e]{1,200}$/;
@@ -209,6 +209,12 @@ function readTrigger(value: unknown, notes: string[]): StarterTrigger {
         prefix: typeof value.prefix === "string" ? value.prefix.slice(0, 500) : "",
         fileType,
       };
+    case "finished":
+      // The automation it followed belongs to the team the file came from.
+      notes.push(
+        "It started when another automation finished. That automation is not part of the file, so it starts by hand for now.",
+      );
+      return { kind: "manual" };
     case "schedule": {
       const schedule = value.schedule;
       if (isObject(schedule)) {
@@ -239,7 +245,7 @@ function readNodes(
   if (!Array.isArray(value)) return NOT_A_FILE;
   if (value.length > MAX_NODES) return `An automation can have at most ${MAX_NODES} steps.`;
   const nodes: AutomationNode[] = [];
-  const dropped = { keys: 0, uploads: { count: 0 }, unknown: [] as string[] };
+  const dropped = { keys: 0, uploads: { count: 0 }, unknown: [] as string[], automations: 0 };
   let placed = true;
   for (const raw of value) {
     if (!isObject(raw)) return NOT_A_FILE;
@@ -273,6 +279,11 @@ function readNodes(
       input: settings,
       position: { x: 0, y: 0 },
     };
+    // The automation a "Run an automation" step ran belongs to the team the file came from.
+    if (kind === "automation" && node.input.automation !== undefined) {
+      delete node.input.automation;
+      dropped.automations++;
+    }
     // A setting this version does not know would be refused the next time it is changed.
     const known = nodeTypeOf(node)?.settings.properties ?? {};
     for (const name of Object.keys(node.input)) {
@@ -298,6 +309,11 @@ function readNodes(
     nodes.push(node);
   }
   if (dropped.uploads.count > 0) notes.push(uploadsNote(dropped.uploads.count, "import"));
+  if (dropped.automations > 0) {
+    notes.push(
+      `${plural(dropped.automations, "A Run an automation step needs", "Run an automation steps need")} the automation to run picked again, since it is not part of the file.`,
+    );
+  }
   const unknown = [...new Set(dropped.unknown)];
   if (unknown.length > 0 || dropped.keys > 0) {
     const count = unknown.length + dropped.keys;

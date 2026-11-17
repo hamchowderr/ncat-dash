@@ -11,6 +11,15 @@ export const TRIGGER_LABELS: Record<TriggerKind, string> = {
   schedule: "Schedule",
   upload: "New upload",
   folder: "Watched folder",
+  finished: "Another automation finishes",
+};
+
+/** What can start a run: a trigger, or a Run an automation step in another run. */
+export type RunTriggerKind = TriggerKind | "automation";
+
+export const RUN_TRIGGER_LABELS: Record<RunTriggerKind, string> = {
+  ...TRIGGER_LABELS,
+  automation: "Started by another automation",
 };
 
 /** One line saying when the automation starts, for lists and the canvas. */
@@ -26,6 +35,12 @@ export function triggerSummary(trigger: Trigger): string {
         : `Starts when ${trigger.fileType === "image" ? "an" : "a"} ${trigger.fileType} file is uploaded`;
     case "folder":
       return `Starts when a file lands in ${trigger.prefix || "your bucket"}`;
+    case "finished":
+      return trigger.when === "failed"
+        ? "Starts when another automation fails"
+        : trigger.when === "either"
+          ? "Starts when another automation ends"
+          : "Starts when another automation finishes";
     case "schedule": {
       const { schedule } = trigger;
       if (schedule.mode === "daily") return `Every day at ${schedule.time} (${schedule.timeZone})`;
@@ -45,6 +60,7 @@ export function nodeTitle(node: Pick<AutomationNode, "kind" | "stepId" | "label"
   if (node.kind === "if") return "If";
   if (node.kind === "wait") return "Wait";
   if (node.kind === "export") return "Export for editors";
+  if (node.kind === "automation") return "Run an automation";
   return getStep(node.stepId ?? "")?.title ?? node.stepId ?? "Step";
 }
 

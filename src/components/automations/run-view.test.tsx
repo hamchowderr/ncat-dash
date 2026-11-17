@@ -31,6 +31,8 @@ function runWith(step: Record<string, unknown>) {
     startedAt: 1_700_000_000_000,
     finishedAt: null,
     retryLimit: 0,
+    startedByRun: null,
+    startedRuns: [],
     hasCuts: false,
     nodes: [{ id: "approval", kind: "approval", input: {}, position: { x: 0, y: 0 } }],
     edges: [],

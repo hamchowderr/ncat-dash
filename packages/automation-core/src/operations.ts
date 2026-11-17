@@ -17,6 +17,7 @@ import {
   typeNameOf,
 } from "./registry";
 import { scheduleProblem } from "./schedule";
+import { followProblem } from "./chain";
 import type { StarterTrigger } from "./starters";
 import {
   fileFields,
@@ -629,6 +630,8 @@ export function draftProblems(draft: AutomationDraft, brand: Brand = {}): DraftP
     const schedule = scheduleProblem(draft.trigger.schedule);
     if (schedule) problems.push({ nodeId: null, message: schedule });
   }
+  const follow = followProblem(draft.trigger);
+  if (follow) problems.push({ nodeId: null, message: follow });
   for (const node of draft.nodes) {
     const nodeType = nodeTypeOf(node);
     if (!nodeType) {

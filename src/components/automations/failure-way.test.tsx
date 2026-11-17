@@ -70,6 +70,8 @@ function run(): RunDetails {
     trigger: { file_url: FILE },
     startedWith: "short-teaser.mp4",
     retryLimit: 2,
+    startedByRun: null,
+    startedRuns: [],
     nodes: [
       { ...TRIM, position: { x: 0, y: 0 } },
       {
