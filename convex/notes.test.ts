@@ -104,4 +104,22 @@ describe("notes on an automation's canvas", () => {
     await maya.as.mutation(api.automations.remove, { automationId });
     expect(await t.run((ctx) => ctx.db.query("automationNotes").collect())).toEqual([]);
   });
+
+  test("go out with an exported automation and come back with an import", async () => {
+    const { team, maya, automationId } = await setUp();
+    const noteId = await maya.as.mutation(api.notes.add, { automationId, x: 10, y: 20 });
+    await maya.as.mutation(api.notes.update, { noteId, text: "Captions first." });
+
+    const exported = await maya.as.query(api.automations.exportFile, { automationId });
+    const imported = await maya.as.mutation(api.automations.importFile, {
+      organizationId: team,
+      file: JSON.parse(JSON.stringify(exported.file)),
+    });
+
+    const copied = await maya.as.query(api.notes.list, { automationId: imported.automationId });
+    expect(copied.map(({ _id, ...note }) => note)).toEqual([
+      { text: "Captions first.", x: 10, y: 20, width: 220, height: 140 },
+    ]);
+    expect(await maya.as.query(api.notes.list, { automationId })).toHaveLength(1);
+  });
 });

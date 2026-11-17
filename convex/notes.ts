@@ -1,3 +1,8 @@
+import {
+  CANVAS_NOTE_SIDES,
+  MAX_CANVAS_NOTE_CHARS,
+  MAX_CANVAS_NOTES,
+} from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
@@ -9,12 +14,12 @@ import { isMember, requireMember } from "./lib/authz";
  * each change is kept as it is made, and teammates see it straight away.
  */
 
-export const MAX_NOTES = 30;
-export const MAX_NOTE_CHARS = 2000;
+export const MAX_NOTES = MAX_CANVAS_NOTES;
+export const MAX_NOTE_CHARS = MAX_CANVAS_NOTE_CHARS;
 const DEFAULT_SIZE = { width: 220, height: 140 };
-export const MIN_WIDTH = 120;
-export const MIN_HEIGHT = 80;
-export const MAX_SIDE = 800;
+const MIN_WIDTH = CANVAS_NOTE_SIDES.minWidth;
+const MIN_HEIGHT = CANVAS_NOTE_SIDES.minHeight;
+const MAX_SIDE = CANVAS_NOTE_SIDES.max;
 
 const noteValidator = v.object({
   _id: v.id("automationNotes"),
@@ -148,6 +153,15 @@ export const remove = mutation({
     return null;
   },
 });
+
+/** The notes on an automation, for its exported file. */
+export async function notesOf(ctx: QueryCtx, automationId: Id<"automations">) {
+  const notes = await ctx.db
+    .query("automationNotes")
+    .withIndex("by_automation", (q) => q.eq("automationId", automationId))
+    .take(MAX_NOTES);
+  return notes.map(({ text, x, y, width, height }) => ({ text, x, y, width, height }));
+}
 
 /** Removes every note on an automation, when the automation itself is deleted. */
 export async function deleteNotes(ctx: MutationCtx, automationId: Id<"automations">) {
