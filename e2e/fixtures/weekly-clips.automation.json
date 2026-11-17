@@ -1,0 +1,22 @@
+{
+  "format": "ncat-dash-automation",
+  "version": 1,
+  "name": "Weekly clips",
+  "trigger": { "kind": "webhook" },
+  "nodes": [
+    {
+      "id": "split_1",
+      "kind": "step",
+      "stepId": "video-split",
+      "input": {
+        "splits": [
+          { "start": "00:00:00", "end": "00:00:06" },
+          { "start": "00:00:06", "end": "00:00:12" }
+        ]
+      },
+      "position": { "x": 0, "y": 0 }
+    },
+    { "id": "approval", "kind": "approval", "input": {}, "position": { "x": 320, "y": 0 } }
+  ],
+  "edges": [{ "id": "split_1>approval", "source": "split_1", "target": "approval" }]
+}
