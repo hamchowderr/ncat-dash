@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT,
+  asksAgent,
   clipTitleFrom,
   completeMention,
   formatMoment,
@@ -161,5 +163,20 @@ describe("initials", () => {
     expect(initialsOf("sam")).toBe("SA");
     expect(initialsOf("Ana Maria de Souza")).toBe("AS");
     expect(initialsOf("  ")).toBe("?");
+  });
+});
+
+describe("asking the agent", () => {
+  it("is a mention of @Agent, in any capitals", () => {
+    expect(asksAgent("@Agent is the logo too late here?")).toBe(true);
+    expect(asksAgent("what do you think @agent")).toBe(true);
+    expect(asksAgent("@Agents of change")).toBe(false);
+    expect(asksAgent("mail agent@example.com")).toBe(false);
+    expect(asksAgent("no one asked")).toBe(false);
+  });
+
+  it("is offered beside the team after @", () => {
+    expect(matchPeople("ag", [AGENT, ...people]).map((person) => person.id)).toEqual(["agent"]);
+    expect(completeMention("hey @ag", AGENT)).toBe("hey @Agent ");
   });
 });

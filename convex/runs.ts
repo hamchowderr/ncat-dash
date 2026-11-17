@@ -3,6 +3,7 @@ import type { Doc } from "./_generated/dataModel";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { approvalView, membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
+import { factsOf } from "./lib/facts";
 import { finishWait } from "./lib/logic";
 import { pump } from "./lib/queue";
 import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
@@ -69,6 +70,9 @@ export const get = query({
       // Whether the run's cuts can be opened in a video editor.
       hasCuts: (await cutListOf(ctx, run, steps)) !== null,
       trigger: run.trigger,
+      // The file that started the run, by name, when a file did.
+      startedWith:
+        typeof run.trigger?.file_name === "string" ? (run.trigger.file_name as string) : null,
       // How many times a failed step tries again for this team.
       retryLimit: await retriesFor(ctx, run.organizationId),
       nodes: run.nodes,
@@ -87,6 +91,9 @@ export const get = query({
             jobs: jobs
               .filter((job) => job !== null)
               .map((job) => ({ _id: job._id, status: job.status, outputs: job.outputs })),
+            // What the step found out, readable: a transcript, a length. Only for one file,
+            // since a list of facts per file would bury the page.
+            facts: jobs.length === 1 && jobs[0]?.status === "done" ? factsOf(jobs[0].result) : [],
             stage: step.stage,
             plan: step.plan,
             // For an If: the files that left by each way. For a Wait: when it carries on.

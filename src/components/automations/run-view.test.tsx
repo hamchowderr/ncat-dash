@@ -41,6 +41,7 @@ function runWith(step: Record<string, unknown>) {
         status: "waiting_approval",
         jobs: [],
         outputs: [],
+        facts: [],
         retries: 0,
         retryAt: null,
         retryError: null,

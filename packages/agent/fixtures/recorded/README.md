@@ -19,3 +19,8 @@ captions from each new recording I upload.", then, on the automation it built, "
 to the clips before they go for approval." (it already had captions, so the model added the
 approval step). `packages/automation-core/test/recorded-model.test.ts` makes its changes
 against the real rules, so a rule change that would trip the model fails a test.
+
+One review room answer, recorded 2026-11-17 by the browser tests (`RECORD_AGENT=1 pnpm
+test:e2e`): Maya asks "@Agent is the logo too small here?" at 0:02 of "Why the station
+matters", with the still from `e2e/fixtures/still.jpg`. The model looked at the still and
+said there is no logo in it. The browser tests play this answer back.

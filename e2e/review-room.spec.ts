@@ -210,6 +210,39 @@ test("only the author can delete a comment", async () => {
   await expect(comments(maya).getByText("fixing it now")).toBeHidden();
 });
 
+test("tagging @Agent gets the agent's answer in the thread, for everyone", async () => {
+  // Another clip, so the threads above stay as they were.
+  await maya
+    .getByRole("navigation", { name: "Clips in this review" })
+    .getByRole("button", { name: /Why the station matters/ })
+    .click();
+  await seek(maya, 2);
+  await commentBox(maya).pressSequentially("@ag");
+  await maya.getByRole("option", { name: /Agent/ }).click();
+  await commentBox(maya).pressSequentially("is the logo too small here?");
+  await commentBox(maya).press("Enter");
+
+  // The real agent server answers after Convex took a still of 0:02 from the toolkit. The
+  // model's answer is one Sonnet 5.5 really gave to this question with this still, played
+  // back (packages/agent/fixtures/recorded): it saw there is no logo in the frame.
+  const thread = comments(maya).getByRole("listitem").first();
+  await expect(thread.getByText("@Agent", { exact: true })).toHaveClass(/font-medium/);
+  await expect(thread).toContainText(/I don't see a logo in this frame at all/, {
+    timeout: 60_000,
+  });
+  await expect(thread).toContainText("for Maya");
+
+  await jordan
+    .getByRole("navigation", { name: "Clips in this review" })
+    .getByRole("button", { name: /Why the station matters/ })
+    .click();
+  const seen = comments(jordan).getByRole("listitem").first();
+  await expect(seen).toContainText(/I don't see a logo in this frame at all/);
+  // Only Maya, who asked, can delete the answer.
+  await expect(seen.getByRole("button", { name: "Delete this answer" })).toHaveCount(0);
+  await expect(thread.getByRole("button", { name: "Delete this answer" })).toHaveCount(1);
+});
+
 test("approving the room lets the automation finish", async () => {
   await jordan.getByRole("button", { name: "Approve", exact: true }).click();
   await expect(jordan.getByText("Approved by Jordan Lee")).toBeVisible();

@@ -44,7 +44,7 @@ import { cn } from "@/lib/utils";
 
 import { ClipStage, isStill, type Mark } from "./clip-stage";
 import { CommentPanel } from "./comment-panel";
-import { Face, type Person } from "./person";
+import { AGENT_PERSON, Face, type Person } from "./person";
 
 type Review = NonNullable<ReturnType<typeof useQuery<typeof api.reviews.get>>>;
 type Clip = Review["clips"][number];
@@ -195,6 +195,7 @@ function ClipWorkspace({
   const comment = useMutation(api.reviews.comment);
   const resolve = useMutation(api.reviews.resolve);
   const removeComment = useMutation(api.reviews.removeComment);
+  const askAgentAgain = useMutation(api.reviews.askAgentAgain);
 
   const url = clip.versions[version - 1].url;
   const timed = !isStill(url);
@@ -308,6 +309,11 @@ function ClipWorkspace({
         onDelete={(id) =>
           void removeComment({ commentId: id as Id<"reviewComments"> }).catch((error) =>
             toast.error(errorMessage(error, "The comment could not be deleted.")),
+          )
+        }
+        onAskAgain={(id) =>
+          void askAgentAgain({ commentId: id as Id<"reviewComments"> }).catch((error) =>
+            toast.error(errorMessage(error, "The agent could not be asked again.")),
           )
         }
       />
@@ -527,7 +533,7 @@ export function ReviewRoom({ reviewId }: { reviewId: Id<"reviews"> }) {
           clip={clip}
           index={index}
           version={version}
-          people={people}
+          people={[AGENT_PERSON, ...people]}
           onVersion={(next) => setVersions((current) => ({ ...current, [clip._id]: next }))}
         />
       </div>
