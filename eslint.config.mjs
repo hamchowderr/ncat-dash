@@ -17,6 +17,19 @@ const eslintConfig = defineConfig([
     "convex/betterAuth/_generated/**",
     ".agents/**",
     ".claude/**",
+    // The agent server follows the chat kit's own conventions and has its own typecheck.
+    "packages/agent/**",
+    // The chat panel, installed as it ships from the mastra-chat-kit registry.
+    "src/components/ai-elements/**",
+    "src/components/chat/**",
+    "src/components/chat-panel/**",
+    "src/components/ui/carousel.tsx",
+    "src/lib/agent-controller/**",
+    "src/lib/mastra-proxy.ts",
+    "src/app/api/agent-controller/**",
+    "src/app/api/browser/**",
+    "src/app/api/images/**",
+    "src/app/api/workspace/**",
   ]),
 ]);
 
