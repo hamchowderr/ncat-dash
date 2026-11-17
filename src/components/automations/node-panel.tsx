@@ -196,6 +196,17 @@ export function NodePanel({
         </Alert>
       )}
 
+      {node.kind === "export" && (
+        <p className="text-muted-foreground text-sm text-pretty">
+          Nothing to set up. When a run finishes, press Open in editor on the run to download the
+          timeline. Your editors are picked once in{" "}
+          <Link href="/settings" className="text-foreground underline underline-offset-4">
+            Settings
+          </Link>
+          .
+        </p>
+      )}
+
       {node.kind === "clips" && (
         <Field>
           <FieldLabel>Platform</FieldLabel>

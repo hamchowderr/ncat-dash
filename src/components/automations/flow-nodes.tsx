@@ -30,6 +30,7 @@ import {
 } from "@xyflow/react";
 import {
   CalendarClock,
+  Clapperboard,
   Clock,
   Code,
   Film,
@@ -66,7 +67,7 @@ import { cn } from "@/lib/utils";
 
 import { STEP_ICONS } from "./step-icons";
 
-import { StatusIcon, type StepStatus } from "./run-status";
+import { type ShownStepStatus, StatusIcon } from "./run-status";
 
 export const TRIGGER_ID = "__trigger";
 
@@ -138,6 +139,13 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
   if (node.kind === "wait") {
     return { icon: Clock, tint: LOGIC_TINT, kind: waitSentence(node.input) };
   }
+  if (node.kind === "export") {
+    return {
+      icon: Clapperboard,
+      tint: "text-indigo-600 dark:text-indigo-400",
+      kind: "Premiere, Resolve, Final Cut",
+    };
+  }
   const step = getStep(node.stepId ?? "");
   if (!step)
     return { icon: Shapes, tint: "text-muted-foreground", kind: "No longer in the catalog" };
@@ -150,7 +158,7 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
 
 export type StepNodeData = {
   node: Omit<AutomationNode, "position">;
-  status?: StepStatus;
+  status?: ShownStepStatus;
   /** How many jobs the step fanned out to, in a run. */
   jobCount?: number;
   /** Nothing follows this step yet, so it offers to add one. */
@@ -207,6 +215,7 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
           "rounded-2xl",
           selected && "ring-ring/50 border-ring ring-3",
           status === "running" && "border-primary",
+          status === "retrying" && "border-amber-500/70",
           status === "done" && "border-emerald-600/60",
           status === "failed" && "border-destructive",
           status === "skipped" && "opacity-50",

@@ -6,6 +6,7 @@ import {
   type AutomationNode,
   type Brand,
   BRAND_WORDS,
+  canonical,
   draftProblems,
   exportAutomation,
   getPlatform,
@@ -60,6 +61,17 @@ async function loadForMember(
   if (!automation) fail("not_found", "This automation no longer exists.");
   const member = await requireMember(ctx, automation.organizationId);
   return { automation, ...member };
+}
+
+type Version = Pick<Doc<"automations">, "name" | "trigger" | "nodes" | "edges">;
+
+function versionOf(source: Version): Version {
+  return { name: source.name, trigger: source.trigger, nodes: source.nodes, edges: source.edges };
+}
+
+/** What the editor and the agent work on: the draft when there is one, else the live version. */
+function workingCopy(automation: Doc<"automations">): Version {
+  return versionOf(automation.draft ?? automation);
 }
 
 /** A watched folder starts counting from the moment it is switched on. */
@@ -148,6 +160,8 @@ export const list = query({
           _id: automation._id,
           name: automation.name,
           enabled: automation.enabled,
+          // True when there are changes that have not been published yet.
+          hasDraft: automation.draft !== undefined,
           trigger: automation.trigger,
           stepCount: automation.nodes.length,
           nodes: automation.nodes,
@@ -170,13 +184,15 @@ export const get = query({
     if (!automation) return null;
     // Someone who is not on the team sees the same as for a deleted automation.
     if (!(await isMember(ctx, automation.organizationId))) return null;
+    const draft = automation.draft;
     return {
       _id: automation._id,
-      name: automation.name,
+      // The version being worked on: the draft when there is one, else the live version.
+      ...workingCopy(automation),
       enabled: automation.enabled,
-      trigger: automation.trigger,
-      nodes: automation.nodes,
-      edges: automation.edges,
+      // The version triggers run, when the canvas is showing a draft of something else.
+      // Null when what is above is the live version.
+      live: draft ? versionOf(automation) : null,
       // Team members need the full address to give to whatever calls it.
       hookToken: automation.hookToken,
       nextRunAt: automation.nextRunAt,
@@ -207,6 +223,14 @@ export const create = mutation({
       updatedAt: Date.now(),
     });
   },
+});
+
+const savedValidator = v.object({
+  enabled: v.boolean(),
+  // What stops this version running. Null when it is complete.
+  problem: v.union(v.null(), v.string()),
+  // True when the changes were kept as a draft and the live version is untouched.
+  draft: v.boolean(),
 });
 
 /**
@@ -255,8 +279,9 @@ export const importFile = mutation({
 });
 
 /**
- * Saves the canvas. A half-built automation can be saved; it only has to be complete
- * to be switched on or run. Saving one that is on but no longer complete switches it off.
+ * Saves the canvas. A half-built automation can be saved; it only has to be complete to
+ * be switched on, run or published. While the automation is on, or once it has a draft,
+ * what is saved is the draft: the live version keeps running until `publish`.
  */
 export const save = mutation({
   args: {
@@ -266,44 +291,108 @@ export const save = mutation({
     nodes: v.array(nodeValidator),
     edges: v.array(edgeValidator),
   },
-  returns: v.object({ enabled: v.boolean(), problem: v.union(v.null(), v.string()) }),
+  returns: savedValidator,
   handler: async (ctx, args) => {
-    const { automation } = await loadForMember(ctx, args.automationId);
-    return await storeDraft(ctx, automation, args);
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
+    return await storeChanges(ctx, automation, args, userId);
   },
 });
 
-/** Writes a changed automation, switching it off when it can no longer run. */
-async function storeDraft(
-  ctx: MutationCtx,
-  automation: Doc<"automations">,
-  draft: Pick<Doc<"automations">, "name" | "trigger" | "nodes" | "edges">,
-): Promise<{ enabled: boolean; problem: string | null }> {
-  const name = draft.name.trim().slice(0, 80);
+function checked(version: Version): Version {
+  const name = version.name.trim().slice(0, 80);
   if (!name) fail("invalid_input", "Give the automation a name.");
-  if (JSON.stringify(draft.nodes).length > 400_000) {
+  if (JSON.stringify(version.nodes).length > 400_000) {
     fail("invalid_input", "This automation's settings are too large to save.");
   }
-  const problem =
+  return { ...versionOf(version), name };
+}
+
+async function problemOf(
+  ctx: MutationCtx,
+  organizationId: string,
+  version: Version,
+): Promise<string | null> {
+  return (
     automationProblem(
-      draft.trigger,
-      draft.nodes,
-      draft.edges,
-      await brandOf(ctx, automation.organizationId),
-    ) ?? (await storageProblem(ctx, automation.organizationId, draft.trigger));
+      version.trigger,
+      version.nodes,
+      version.edges,
+      await brandOf(ctx, organizationId),
+    ) ?? (await storageProblem(ctx, organizationId, version.trigger))
+  );
+}
+
+/**
+ * Keeps an edit: as the draft when the automation is on or already has one, otherwise
+ * straight into the live version. A draft that matches the live version is dropped.
+ */
+async function storeChanges(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  changed: Version,
+  userId: string,
+): Promise<{ enabled: boolean; problem: string | null; draft: boolean }> {
+  const version = checked(changed);
+  if (!automation.enabled && !automation.draft) {
+    return { ...(await storeLive(ctx, automation, version)), draft: false };
+  }
+  const problem = await problemOf(ctx, automation.organizationId, version);
+  const same = canonical(version) === canonical(versionOf(automation));
+  await ctx.db.patch(automation._id, {
+    draft: same ? undefined : { ...version, updatedBy: userId, updatedAt: Date.now() },
+  });
+  return { enabled: automation.enabled, problem, draft: !same };
+}
+
+/** Writes the live version, switching the automation off when it can no longer run. */
+async function storeLive(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  version: Version,
+): Promise<{ enabled: boolean; problem: string | null }> {
+  const problem = await problemOf(ctx, automation.organizationId, version);
   const enabled = automation.enabled && problem === null;
   await ctx.db.patch(automation._id, {
-    name,
-    trigger: draft.trigger,
-    nodes: draft.nodes,
-    edges: draft.edges,
+    ...version,
+    draft: undefined,
     enabled,
-    nextRunAt: scheduledNext(draft.trigger, enabled),
-    watchFrom: watchStart(automation, draft.trigger, enabled),
+    nextRunAt: scheduledNext(version.trigger, enabled),
+    watchFrom: watchStart(automation, version.trigger, enabled),
     updatedAt: Date.now(),
   });
   return { enabled, problem };
 }
+
+/**
+ * Makes the draft the live version. An automation that is on stays on, so a draft that
+ * could not run is refused and the live version carries on untouched.
+ */
+export const publish = mutation({
+  args: { automationId: v.id("automations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    if (!automation.draft) return null;
+    const version = checked(automation.draft);
+    if (automation.enabled) {
+      const problem = await problemOf(ctx, automation.organizationId, version);
+      if (problem) fail("invalid_input", problem);
+    }
+    await storeLive(ctx, automation, version);
+    return null;
+  },
+});
+
+/** Throws the draft away. The canvas goes back to the live version. */
+export const discardDraft = mutation({
+  args: { automationId: v.id("automations") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await loadForMember(ctx, args.automationId);
+    await ctx.db.patch(args.automationId, { draft: undefined });
+    return null;
+  },
+});
 
 const describedValidator = v.object({
   // The automation as short text: what starts it, then each step in running order.
@@ -314,6 +403,9 @@ const describedValidator = v.object({
   // The team's music library: a track's name and the value to put in a music setting to
   // use it. A step that leaves the setting empty uses the first one.
   music: v.optional(v.array(v.object({ name: v.string(), value: v.string() }))),
+  // True when what is described is a draft: the live version is different and keeps
+  // running until `automations.publish`.
+  draft: v.optional(v.boolean()),
 });
 
 /**
@@ -325,12 +417,13 @@ export const describe = query({
   returns: describedValidator,
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
-    const draft = automation as AutomationDraft;
+    const draft = workingCopy(automation) as AutomationDraft;
     const { brand, music } = await brandAndMusicOf(ctx, automation.organizationId);
     return {
       outline: outline(draft, brand),
       problems: draftProblems(draft, brand),
       enabled: automation.enabled,
+      draft: automation.draft !== undefined,
       music: music.map((track) => ({ name: track.name, value: track.file })),
     };
   },
@@ -339,26 +432,27 @@ export const describe = query({
 /**
  * Makes changes to an automation, in order, and saves the result. All of them are made or
  * none: the first change that cannot be made is reported and nothing is saved. The canvas
- * makes the same changes locally before it saves, so both build the same way.
+ * makes the same changes locally before it saves, so both build the same way. Like `save`,
+ * changes to an automation that is on go to its draft; `publish` makes them live.
  */
 export const change = mutation({
   args: { automationId: v.id("automations"), operations: v.array(operationValidator) },
   returns: describedValidator,
   handler: async (ctx, args) => {
-    const { automation } = await loadForMember(ctx, args.automationId);
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
     if (args.operations.length === 0 || args.operations.length > 100) {
       fail("invalid_input", "Send between 1 and 100 changes at a time.");
     }
     let next: AutomationDraft;
     try {
-      next = applyOperations(automation as AutomationDraft, args.operations);
+      next = applyOperations(workingCopy(automation) as AutomationDraft, args.operations);
     } catch (caught) {
       if (caught instanceof OperationError) fail("invalid_input", caught.message);
       throw caught;
     }
-    const { enabled } = await storeDraft(ctx, automation, next);
+    const { enabled, draft } = await storeChanges(ctx, automation, next, userId);
     const brand = await brandOf(ctx, automation.organizationId);
-    return { outline: outline(next, brand), problems: draftProblems(next, brand), enabled };
+    return { outline: outline(next, brand), problems: draftProblems(next, brand), enabled, draft };
   },
 });
 
@@ -393,9 +487,17 @@ export const remove = mutation({
   },
 });
 
-/** Starts a run by hand, optionally on a file. Works whether or not the automation is on. */
+/**
+ * Starts a run by hand, optionally on a file. Works whether or not the automation is on.
+ * It runs what the canvas shows, so a draft can be tried before it is published; pass
+ * `version: "live"` to run the published version instead.
+ */
 export const runNow = mutation({
-  args: { automationId: v.id("automations"), fileUrl: v.optional(v.string()) },
+  args: {
+    automationId: v.id("automations"),
+    fileUrl: v.optional(v.string()),
+    version: v.optional(v.union(v.literal("draft"), v.literal("live"))),
+  },
   returns: v.id("runs"),
   handler: async (ctx, args) => {
     const { automation, userId } = await loadForMember(ctx, args.automationId);
@@ -405,7 +507,7 @@ export const runNow = mutation({
     }
     const started = await startRun(
       ctx,
-      automation,
+      args.version === "live" ? automation : { ...automation, ...workingCopy(automation) },
       "manual",
       fileUrl ? { file_url: fileUrl } : {},
       userId,

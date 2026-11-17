@@ -38,7 +38,7 @@ const empty: AutomationDraft = {
 };
 
 describe("node registry", () => {
-  it("describes every trigger, every catalog step, approval and clips exactly once", () => {
+  it("describes every trigger, every catalog step, approval, clips and export exactly once", () => {
     const names = NODE_TYPES.map((nodeType) => nodeType.type);
     expect(new Set(names).size).toBe(names.length);
     for (const kind of ["manual", "upload", "folder", "schedule", "webhook"]) {
@@ -47,7 +47,8 @@ describe("node registry", () => {
     for (const step of allSteps) expect(getNodeType(`step:${step.id}`)?.title).toBe(step.title);
     expect(getNodeType("approval")?.takes).toBe("files");
     expect(getNodeType("clips")?.gives).toBe("files");
-    expect(names.length).toBe(5 + allSteps.length + 4);
+    expect(getNodeType("export")).toMatchObject({ takes: "files", gives: "files" });
+    expect(names.length).toBe(5 + allSteps.length + 5);
   });
 
   it("gives every type a title, a description and an object schema for its settings", () => {
@@ -64,7 +65,7 @@ describe("node registry", () => {
   it("lists only steps that can be added, with no trigger among them", () => {
     const listed = actionTypesByGroup().flatMap((group) => group.types);
     expect(listed.every((nodeType) => nodeType.role === "action")).toBe(true);
-    expect(listed.length).toBe(allSteps.length + 4);
+    expect(listed.length).toBe(allSteps.length + 5);
   });
 
   it("knows the type of every node in every template", () => {

@@ -401,6 +401,14 @@ describe("export and import", () => {
     );
   });
 
+  it("keeps an Export for editors step", () => {
+    const withExport = applyOperations(draft, [
+      { op: "add", type: "export", id: "export_1", after: "clips_1" },
+    ]);
+    const read = parseAutomationFile(JSON.stringify(exportAutomation(withExport).file));
+    expect(read.ok && read.draft.nodes.map((item) => item.kind)).toContain("export");
+  });
+
   it("names the file after the automation", () => {
     expect(automationFileName("Clips for Social!")).toBe("clips-for-social.automation.json");
     expect(automationFileName("  ")).toBe("automation.automation.json");

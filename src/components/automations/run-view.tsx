@@ -13,10 +13,11 @@ import {
 } from "@ncat-dash/automation-core";
 import { Background, Controls, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Check, CircleStop, X } from "lucide-react";
+import { ArrowLeft, Check, CircleStop, RotateCw, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { MediaPreview } from "@/components/jobs/media-preview";
@@ -38,7 +39,8 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { ClipsRun } from "./clips-run";
-import { RunStatusBadge } from "./run-status";
+import { EditorExport } from "./editor-export";
+import { RunStatusBadge, shownStatus } from "./run-status";
 
 /** A run only records which kind of trigger started it, which is all the canvas shows. */
 function runTrigger(kind: TriggerKind): Trigger {
@@ -92,6 +94,17 @@ function sortedSentence(branches: Record<string, string[]>): string {
     .join(", ")}.`;
 }
 
+/** Counts down to a step's next try. */
+function RetryCountdown({ at }: { at: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const left = at - now;
+  return <>{left > 0 ? `in ${formatDuration(left)}` : "now"}</>;
+}
+
 /** One run: the canvas with each step's live state, and what each step produced. */
 export function RunView({
   automationId,
@@ -103,6 +116,8 @@ export function RunView({
   const run = useQuery(api.runs.get, { runId });
   const decide = useMutation(api.runs.decide);
   const cancel = useMutation(api.runs.cancel);
+  const runAgain = useMutation(api.runs.runAgain);
+  const router = useRouter();
   const { resolvedTheme } = useTheme();
   const [busy, setBusy] = useState(false);
   const [showClips, setShowClips] = useState(false);
@@ -123,7 +138,7 @@ export function RunView({
         position,
         data: {
           node,
-          status: byNode.get(node.id)?.status,
+          status: byNode.has(node.id) ? shownStatus(byNode.get(node.id)!) : undefined,
           jobCount: byNode.get(node.id)?.jobs.length,
           note: logicNote(byNode.get(node.id) ?? { status: "pending" }) ?? undefined,
         },
@@ -136,7 +151,8 @@ export function RunView({
       ),
       ...(run.edges as AutomationEdge[]).map((edge) => ({
         ...flowEdge(canvasEdge(edge)),
-        animated: byNode.get(edge.target)?.status === "running",
+        animated:
+          byNode.get(edge.target)?.status === "running" && !byNode.get(edge.target)?.retryAt,
       })),
     ];
     return { nodes, edges, byNode };
@@ -179,6 +195,7 @@ export function RunView({
         </div>
         <div className="ml-auto flex items-center gap-3">
           <RunStatusBadge status={run.status} />
+          {run.hasCuts && <EditorExport runId={runId} />}
           {clipsSetup && (
             <Button variant="ghost" size="sm" onClick={() => setShowClips((shown) => !shown)}>
               {showClips ? "Show the canvas" : "Show clips"}
@@ -193,6 +210,22 @@ export function RunView({
             >
               <CircleStop />
               Stop run
+            </Button>
+          )}
+          {!active && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                act(async () => {
+                  const next = await runAgain({ runId });
+                  router.push(`/automations/${automationId}/runs/${next}`);
+                }, "The run could not be started again.")
+              }
+            >
+              <RotateCw />
+              Run again
             </Button>
           )}
         </div>
@@ -245,8 +278,30 @@ export function RunView({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <h2 className="truncate text-sm font-medium">{nodeTitle(node)}</h2>
-                    <RunStatusBadge status={step.status} />
+                    <RunStatusBadge status={shownStatus(step)} />
                   </div>
+                  {step.retryAt && step.status === "running" && (
+                    <div data-retry="waiting" className="flex flex-col gap-1 text-sm">
+                      <p className="font-medium tabular-nums">
+                        Trying again <RetryCountdown at={step.retryAt} />, try {step.retries + 1} of{" "}
+                        {Math.max(run.retryLimit, step.retries) + 1}
+                      </p>
+                      {step.retryError && (
+                        <p className="text-muted-foreground break-words">
+                          The last try failed: {step.retryError}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {step.retries > 0 && !step.retryAt && step.status !== "skipped" && (
+                    <p data-retry="used" className="text-muted-foreground text-sm">
+                      {step.status === "done"
+                        ? `Worked on try ${step.retries + 1}.`
+                        : step.status === "failed"
+                          ? `Gave up after ${step.retries + 1} tries.`
+                          : `On try ${step.retries + 1}.`}
+                    </p>
+                  )}
                   {step.status === "running" && step.jobs.length > 1 && (
                     <p className="text-muted-foreground text-sm tabular-nums">
                       {finished} of {step.jobs.length} files finished

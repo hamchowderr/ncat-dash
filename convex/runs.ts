@@ -4,7 +4,9 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
 import { finishWait } from "./lib/logic";
 import { pump } from "./lib/queue";
-import { decideApproval } from "./lib/runner";
+import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
+import { cutListOf, editorsOf } from "./lib/exports";
+import { decideApproval, retriesFor, retryStepNow, startRun } from "./lib/runner";
 
 function summary(run: Doc<"runs">) {
   return {
@@ -16,6 +18,8 @@ function summary(run: Doc<"runs">) {
     error: run.error,
     startedAt: run._creationTime,
     finishedAt: run.finishedAt,
+    // How many times steps in the run tried again after failing.
+    retries: run.retries ?? 0,
   };
 }
 
@@ -48,7 +52,11 @@ export const get = query({
       .take(200);
     return {
       ...summary(run),
+      // Whether the run's cuts can be opened in a video editor.
+      hasCuts: cutListOf(run, steps) !== null,
       trigger: run.trigger,
+      // How many times a failed step tries again for this team.
+      retryLimit: await retriesFor(ctx, run.organizationId),
       nodes: run.nodes,
       edges: run.edges,
       steps: await Promise.all(
@@ -70,9 +78,38 @@ export const get = query({
             // For an If: the files that left by each way. For a Wait: when it carries on.
             branches: step.branches,
             resumeAt: step.resumeAt,
+            retries: step.retries ?? 0,
+            // Set while the step waits to try again.
+            retryAt: step.retryAt ?? null,
+            retryError: step.retryError ?? null,
           };
         }),
       ),
+    };
+  },
+});
+
+/**
+ * The files that open a run's cuts in the team's video editors, made on the spot from
+ * the cuts the run saved. Null when the run has no cuts to open.
+ */
+export const editorFiles = query({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run || !(await isMember(ctx, run.organizationId))) return null;
+    const steps = await ctx.db
+      .query("runSteps")
+      .withIndex("by_run", (q) => q.eq("runId", args.runId))
+      .take(200);
+    const cuts = cutListOf(run, steps);
+    if (!cuts) return null;
+    const editors = await editorsOf(ctx, run.organizationId);
+    return {
+      timelines: cuts.timelines.length,
+      editors: EDITORS.filter((editor) => editors.includes(editor.id)).map((editor) => editor.name),
+      usesCapCut: editors.includes("capcut"),
+      files: filesForEditors(cuts, editors),
     };
   },
 });
@@ -159,5 +196,37 @@ export const wake = internalMutation({
   args: { runStepId: v.id("runSteps") },
   handler: async (ctx, args) => {
     await finishWait(ctx, args.runStepId);
+  },
+});
+
+/** Starts a booked try for a step that failed. Scheduled by the runner. */
+export const retryStep = internalMutation({
+  args: { runStepId: v.id("runSteps"), retry: v.number() },
+  handler: async (ctx, args) => {
+    await retryStepNow(ctx, args.runStepId, args.retry);
+  },
+});
+
+/**
+ * Starts a finished run over, with the file and data that started it the first time
+ * and the automation as it is now. For a run that failed once the cause is fixed.
+ */
+export const runAgain = mutation({
+  args: { runId: v.id("runs") },
+  returns: v.id("runs"),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new ConvexError({ code: "not_found", message: "This run no longer exists." });
+    const { userId } = await requireMember(ctx, run.organizationId);
+    if (run.status === "running" || run.status === "waiting") {
+      throw new ConvexError({ code: "conflict", message: "This run is still going." });
+    }
+    const automation = await ctx.db.get(run.automationId);
+    if (!automation) {
+      throw new ConvexError({ code: "not_found", message: "This automation no longer exists." });
+    }
+    const started = await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
+    if (!started.ok) throw new ConvexError({ code: "invalid_input", message: started.message });
+    return started.runId;
   },
 });
