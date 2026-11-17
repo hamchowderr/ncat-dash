@@ -1,6 +1,8 @@
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 
+import { AGENT_SECRET } from "../playwright.config";
+
 const HOOK = "http://127.0.0.1:3211/automations/hook";
 
 /**
@@ -29,4 +31,7 @@ export default async function globalSetup() {
   set("SITE_URL", "http://localhost:3000");
   set("BETTER_AUTH_SECRET", randomBytes(32).toString("hex"));
   set("CONNECTIONS_SECRET", randomBytes(32).toString("hex"));
+  // Where Convex asks the agent when someone tags @Agent in a review.
+  set("AGENT_URL", "http://127.0.0.1:4111");
+  set("MASTRA_JWT_SECRET", AGENT_SECRET);
 }

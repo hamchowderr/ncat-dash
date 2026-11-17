@@ -1,3 +1,6 @@
+import os from "node:os";
+import path from "node:path";
+
 import { defineConfig } from "@playwright/test";
 
 // Browser tests: the real screens against a real local Convex backend, with stand-ins
@@ -6,6 +9,10 @@ import { defineConfig } from "@playwright/test";
 const CONVEX = "http://127.0.0.1:3210";
 const CONVEX_SITE = "http://127.0.0.1:3211";
 const APP = "http://localhost:3000";
+const AGENT = "http://127.0.0.1:4111";
+const AIMOCK = "http://127.0.0.1:4010";
+/** Shared by the agent server and Convex, which signs its questions to the agent with it. */
+export const AGENT_SECRET = "browser-tests-agent-secret-at-least-32-characters";
 
 export default defineConfig({
   testDir: "e2e",
@@ -35,6 +42,32 @@ export default defineConfig({
       command: "npx convex dev",
       env: { CONVEX_AGENT_MODE: "anonymous" },
       url: `${CONVEX}/version`,
+      reuseExistingServer: true,
+      timeout: 180_000,
+    },
+    {
+      // The agent's stand-in model: scripted answers from packages/agent/fixtures/chat.json.
+      command: "pnpm --filter @ncat-dash/agent dev:mock",
+      url: `${AIMOCK}/health`,
+      reuseExistingServer: true,
+    },
+    {
+      // The real agent server, answering "@Agent" with the stand-in model.
+      command: "pnpm --filter @ncat-dash/agent dev",
+      env: {
+        APP_SECRET: "browser-tests-app-secret-at-least-32-characters",
+        MASTRA_JWT_SECRET: AGENT_SECRET,
+        CONVEX_URL: CONVEX,
+        USE_AIMOCK: "true",
+        AIMOCK_URL: AIMOCK,
+        ANTHROPIC_BASE_URL: `${AIMOCK}/v1`,
+        OPENAI_BASE_URL: `${AIMOCK}/v1`,
+        ANTHROPIC_API_KEY: "stand-in",
+        OPENAI_API_KEY: "stand-in",
+        // test-results/ is emptied by Playwright as it starts, so the database lives elsewhere.
+        TURSO_DATABASE_URL: `file:${path.join(os.tmpdir(), "ncat-dash-e2e-agent.db")}`,
+      },
+      url: `${AGENT}/health`,
       reuseExistingServer: true,
       timeout: 180_000,
     },
