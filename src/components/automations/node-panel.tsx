@@ -10,7 +10,7 @@ import {
   writeSource,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
-import { ChevronRight, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -55,6 +55,7 @@ export function NodePanel({
   music,
   onChange,
   onRemove,
+  onDuplicate,
 }: {
   node: NodeContent;
   /** The steps that run before this one, nearest first. Their files can be used here. */
@@ -69,6 +70,8 @@ export function NodePanel({
   music: { name: string; file: string }[];
   onChange: (patch: Partial<NodeContent>) => void;
   onRemove: () => void;
+  /** Puts a copy of the step beside it. */
+  onDuplicate?: () => void;
 }) {
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
   const nodeType = nodeTypeOf(node);
@@ -178,6 +181,19 @@ export function NodePanel({
             aria-label={node.off ? "Turn this step on" : "Turn this step off"}
             title={node.off ? "Turned off. Turn it on" : "Turn off without removing it"}
           />
+        )}
+        {onDuplicate && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground -mt-1 shrink-0"
+            title="Duplicate (Ctrl+D)"
+            onClick={onDuplicate}
+          >
+            <Copy />
+            <span className="sr-only">Duplicate step</span>
+          </Button>
         )}
         <Button
           type="button"

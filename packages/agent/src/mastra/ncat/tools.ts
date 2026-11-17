@@ -179,6 +179,11 @@ const operation = z.discriminatedUnion("op", [
         "false turns a step off: runs skip its work and hand its files straight on, keeping its settings. true turns it back on. An If cannot be turned off.",
       ),
   }),
+  z
+    .object({ op: z.literal("duplicate"), ids: z.array(z.string()).min(1) })
+    .describe(
+      "Copies these steps, with the lines between them and their settings, and puts the copy beside them: fed by whatever feeds the originals, with nothing after it yet. Connect what should follow it.",
+    ),
   z.object({
     op: z.literal("trigger"),
     trigger: z

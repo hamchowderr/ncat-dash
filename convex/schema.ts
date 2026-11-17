@@ -89,6 +89,7 @@ export const operationValidator = v.union(
   v.object({ op: v.literal("use"), id: v.string(), field: v.string(), from: v.string() }),
   v.object({ op: v.literal("rename"), id: v.string(), label: v.string() }),
   v.object({ op: v.literal("switch"), id: v.string(), on: v.boolean() }),
+  v.object({ op: v.literal("duplicate"), ids: v.array(v.string()) }),
   v.object({ op: v.literal("trigger"), trigger: triggerValidator }),
   v.object({ op: v.literal("name"), name: v.string() }),
   v.object({ op: v.literal("tidy") }),
