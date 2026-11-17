@@ -35,6 +35,25 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    * the blanks a person fills in, and `toRequest` turns them into the toolkit's request.
    */
   input: TInput;
+  /**
+   * Named things a finished step hands on besides files, such as a transcript: the name,
+   * then where it sits in the step's result. A later step that takes that name gets it
+   * without anyone wiring it.
+   */
+  values?: Record<string, string>;
+  /**
+   * Settings this step needs switched on to make one of its values. Applied by the runner
+   * only when a later step is waiting for that value.
+   */
+  valueSettings?: Record<string, Record<string, unknown>>;
+  /**
+   * Settings that take a named value from an earlier step when they are left empty.
+   * `when` says, from the step's own settings, whether taking it is safe.
+   */
+  valueInputs?: Record<
+    string,
+    { value: string; when?: (settings: Record<string, unknown>) => boolean }
+  >;
   /** Builds the toolkit request from the filled-in blanks. Only recipes have one. */
   toRequest?: (input: z.output<TInput>) => Record<string, unknown>;
 }

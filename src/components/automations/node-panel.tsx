@@ -22,6 +22,7 @@ export function NodePanel({
   node,
   before,
   startGivesFile,
+  filled,
   onChange,
   onRemove,
 }: {
@@ -30,6 +31,8 @@ export function NodePanel({
   before: NodeContent[];
   /** Whether the automation's start hands over a file. */
   startGivesFile: boolean;
+  /** Settings an earlier step fills in by itself, with a line saying from where. */
+  filled: Record<string, string>;
   onChange: (patch: Partial<NodeContent>) => void;
   onRemove: () => void;
 }) {
@@ -90,7 +93,11 @@ export function NodePanel({
           fields={fields}
           values={values}
           idPrefix={`node-${node.id}`}
-          automatic={{ field: step?.primaryInput ?? step?.listInput?.field ?? null, sources }}
+          automatic={{
+            field: step?.primaryInput ?? step?.listInput?.field ?? null,
+            sources,
+            filled,
+          }}
           onChange={(name, value) => {
             const next = { ...values, [name]: value };
             setValues(next);

@@ -43,6 +43,10 @@ export interface NodeType {
   settings: JsonSchema;
   /** The setting the step before fills in by itself, when there is one. */
   automatic: string | null;
+  /** Named text or data it makes for later steps, such as "transcript". */
+  makes?: string[];
+  /** Settings filled by a named value from an earlier step when left empty. */
+  fills?: Record<string, string>;
 }
 
 export const GROUP_LABELS: Record<NodeGroup, string> = {
@@ -230,6 +234,14 @@ function stepType(step: StepDefinition): NodeType {
     gives: gives(step),
     settings: userInputJsonSchema(step) as JsonSchema,
     automatic: step.primaryInput ?? step.listInput?.field ?? null,
+    ...(step.values ? { makes: Object.keys(step.values) } : {}),
+    ...(step.valueInputs
+      ? {
+          fills: Object.fromEntries(
+            Object.entries(step.valueInputs).map(([field, { value }]) => [field, value]),
+          ),
+        }
+      : {}),
   };
 }
 
@@ -307,6 +319,10 @@ export function missingSettingsOf(nodeType: NodeType, input: Record<string, unkn
 export function nodeTypeIndex(): string {
   return NODE_TYPES.map(
     (nodeType) =>
-      `${nodeType.type} (${GROUP_LABELS[nodeType.group]}; takes ${nodeType.takes}, gives ${nodeType.gives}): ${nodeType.title}. ${nodeType.description}`,
+      `${nodeType.type} (${GROUP_LABELS[nodeType.group]}; takes ${nodeType.takes}, gives ${nodeType.gives}${
+        nodeType.makes ? `, makes ${nodeType.makes.join(" and ")}` : ""
+      }${
+        nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""
+      }): ${nodeType.title}. ${nodeType.description}`,
   ).join("\n");
 }

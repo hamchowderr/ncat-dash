@@ -16,6 +16,7 @@ import {
   OperationError,
   stepsBefore,
   triggerTypeOf,
+  valueSources,
 } from "@ncat-dash/automation-core";
 import {
   Background,
@@ -45,7 +46,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Trigger } from "@/lib/automations";
+import { nodeTitle, type Trigger } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
@@ -584,6 +585,16 @@ function Editor({ automation }: { automation: Loaded }) {
                         .flatMap((id) => stepNodes.find((node) => node.id === id) ?? [])
                         .map((node) => node.data.node)}
                       startGivesFile={triggerTypeOf(trigger).gives === "file"}
+                      filled={Object.fromEntries(
+                        valueSources(
+                          { ...selected.data.node, position: selected.position },
+                          draft.nodes,
+                          draft.edges,
+                        ).map(({ field, value, from }) => [
+                          field,
+                          `Automatic. Uses the ${value} from ${nodeTitle(from)}. Fill it in to use your own instead.`,
+                        ]),
+                      )}
                       onChange={(patch) =>
                         setNodes((current) =>
                           current.map((node) =>

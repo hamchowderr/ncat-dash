@@ -13,10 +13,13 @@ import {
   planClips,
   planJobs,
   readyNodes,
+  settingsForLaterSteps,
   stepsBefore,
   type TemplateContext,
   TemplateError,
   upstreamOf,
+  valueFrom,
+  valueSources,
   wantedKind,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
@@ -169,11 +172,23 @@ async function startNode(
     run,
     byNode,
   );
+  const nodes = run.nodes as AutomationNode[];
+  const edges = run.edges as AutomationEdge[];
+  // Text and data an earlier step made that this step takes, such as a transcript's
+  // captions, and anything this step must switch on for a later step that is waiting.
+  const settings: Record<string, unknown> = {
+    ...node.input,
+    ...settingsForLaterSteps(node, nodes, edges),
+  };
+  for (const source of valueSources(node, nodes, edges)) {
+    const found = valueFrom(source.from.stepId ?? "", source.value, steps[source.from.id]?.result);
+    if (found !== undefined) settings[source.field] = found;
+  }
   let planned: Record<string, unknown>[];
   try {
     planned = planJobs(
       { primaryInput: definition.primaryInput, listInput: definition.listInput },
-      node.input,
+      settings,
       { inputs, trigger: (run.trigger ?? {}) as Record<string, unknown>, steps },
     );
   } catch (error) {

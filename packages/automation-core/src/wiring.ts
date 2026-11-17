@@ -11,8 +11,10 @@
  * run", "the file from Add a logo"). That choice is kept in the settings as a reference
  * the runner fills in; nobody types one.
  */
+import { getStep } from "@ncat-dash/step-catalog";
+
 import { fileFamily } from "./files";
-import type { AutomationEdge } from "./graph";
+import type { AutomationEdge, AutomationNode } from "./graph";
 import type { NodeType } from "./registry";
 
 export type FileKind = "video" | "audio" | "image" | "media" | "any";
@@ -148,4 +150,72 @@ export function withoutReferencesTo(
       ([, value]) => !referencedSteps(value).some((id) => removed.includes(id)),
     ),
   );
+}
+
+function blank(value: unknown): boolean {
+  return value === undefined || value === null || value === "";
+}
+
+function at(result: unknown, path: string): unknown {
+  let current = result;
+  for (const key of path.split(".")) {
+    if (current === null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+/**
+ * Where each empty value setting of a step will be filled from: the nearest earlier step
+ * that makes a value of that name. A setting with no such step before it is left out,
+ * and the step then does what it does with the setting empty.
+ */
+export function valueSources(
+  node: AutomationNode,
+  nodes: AutomationNode[],
+  edges: AutomationEdge[],
+): { field: string; value: string; from: AutomationNode }[] {
+  const wanted = Object.entries(getStep(node.stepId ?? "")?.valueInputs ?? {});
+  if (node.kind !== "step" || wanted.length === 0) return [];
+  const before = stepsBefore(node.id, edges)
+    .flat()
+    .flatMap((id) => nodes.find((candidate) => candidate.id === id) ?? []);
+  return wanted.flatMap(([field, { value, when }]) => {
+    if (!blank(node.input[field]) || (when && !when(node.input))) return [];
+    const from = before.find(
+      (other) => other.kind === "step" && getStep(other.stepId ?? "")?.values?.[value],
+    );
+    return from ? [{ field, value, from }] : [];
+  });
+}
+
+/**
+ * The settings to add to a step so it makes what later steps are waiting for. A
+ * transcript step followed by captions is told to write caption timings too.
+ */
+export function settingsForLaterSteps(
+  node: AutomationNode,
+  nodes: AutomationNode[],
+  edges: AutomationEdge[],
+): Record<string, unknown> {
+  const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
+  if (!step?.valueSettings) return {};
+  const extra: Record<string, unknown> = {};
+  for (const later of nodes) {
+    for (const source of valueSources(later, nodes, edges)) {
+      if (source.from.id !== node.id) continue;
+      for (const [name, value] of Object.entries(step.valueSettings[source.value] ?? {})) {
+        if (blank(node.input[name])) extra[name] = value;
+      }
+    }
+  }
+  return extra;
+}
+
+/** Reads a named value out of a finished step's result. Undefined when it is not there. */
+export function valueFrom(stepId: string, value: string, result: unknown): unknown {
+  const path = getStep(stepId)?.values?.[value];
+  if (!path) return undefined;
+  const found = at(result, path);
+  return blank(found) ? undefined : found;
 }
