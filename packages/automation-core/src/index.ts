@@ -9,3 +9,4 @@ export * from "./registry";
 export * from "./operations";
 export * from "./wiring";
 export * from "./brand";
+export * from "./details";

@@ -1,9 +1,11 @@
-import { readUploadRef } from "@ncat-dash/automation-core";
+import { readFileDetails, readUploadRef } from "@ncat-dash/automation-core";
+import { callStep, getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import {
   action,
+  internalAction,
   type ActionCtx,
   internalMutation,
   internalQuery,
@@ -13,6 +15,7 @@ import {
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { type BucketConfig, checkBucket, presign } from "./lib/s3";
+import { fileDetailsValidator } from "./schema";
 
 const UPLOAD_LINK_SECONDS = 60 * 60;
 // The longest a presigned link may live (SigV4 limit). Long enough for a job to fetch it.
@@ -160,11 +163,8 @@ export const finishUpload = mutation({
     await requireMember(ctx, upload.organizationId);
     if (upload.status === "ready") return;
     await ctx.db.patch(args.uploadId, { status: "ready" });
-    if (upload.purpose === "brand") return;
-    // Starts any automation set to run when a file is uploaded.
-    await ctx.scheduler.runAfter(0, internal.automations.uploadFinished, {
-      uploadId: args.uploadId,
-    });
+    // Reads the file's details, then starts any automation set to run on an upload.
+    await ctx.scheduler.runAfter(0, internal.storage.readDetails, { uploadId: args.uploadId });
   },
 });
 
@@ -196,6 +196,7 @@ export const listUploads = query({
       size: upload.size,
       status: upload.status,
       purpose: upload.purpose ?? null,
+      details: upload.details ?? null,
     }));
   },
 });
@@ -246,6 +247,77 @@ export const loadUpload = internalQuery({
     if (!upload) throw new ConvexError({ code: "not_found", message: "Upload not found." });
     await requireMember(ctx, upload.organizationId);
     return upload;
+  },
+});
+
+/** What `readDetails` needs: the upload, the team's storage and a toolkit to ask. */
+export const loadForDetails = internalQuery({
+  args: { uploadId: v.id("uploads") },
+  handler: async (ctx, args) => {
+    const upload = await ctx.db.get(args.uploadId);
+    if (!upload || upload.status !== "ready") return null;
+    const storage = await ctx.db
+      .query("storageConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", upload.organizationId))
+      .first();
+    const connections = await ctx.db
+      .query("toolkitConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", upload.organizationId))
+      .take(10);
+    return {
+      upload,
+      storage,
+      connection: connections.find((one) => one.status === "ok") ?? connections[0] ?? null,
+    };
+  },
+});
+
+export const saveDetails = internalMutation({
+  args: { uploadId: v.id("uploads"), details: fileDetailsValidator },
+  handler: async (ctx, args) => {
+    if (await ctx.db.get(args.uploadId)) {
+      await ctx.db.patch(args.uploadId, { details: args.details });
+    }
+  },
+});
+
+/**
+ * Has the toolkit read a finished upload (length, picture size, sound, format) and keeps
+ * what it finds with the upload. Then starts the automations waiting for an upload, so a
+ * run begins with the details in hand. A file the toolkit cannot read still starts them.
+ */
+export const readDetails = internalAction({
+  args: { uploadId: v.id("uploads") },
+  handler: async (ctx, args) => {
+    const found = await ctx.runQuery(internal.storage.loadForDetails, args);
+    if (!found) return;
+    const { upload, storage, connection } = found;
+    const step = getStep("media-metadata");
+    try {
+      if (storage && connection && step) {
+        const answer = (await callStep(
+          { baseUrl: connection.baseUrl, apiKey: await decryptSecret(connection.apiKeyCipher) },
+          step,
+          {
+            media_url: await presign(
+              await toBucketConfig(storage),
+              "GET",
+              upload.key,
+              READ_LINK_SECONDS,
+            ),
+          },
+          { signal: AbortSignal.timeout(60_000) },
+        )) as { response?: unknown } | null;
+        const details = readFileDetails(answer?.response);
+        if (details) await ctx.runMutation(internal.storage.saveDetails, { ...args, details });
+      }
+    } catch {
+      // Details are a help, not a need: the upload is fine without them.
+    }
+    // A logo or music track is kept for steps to use and never starts an automation.
+    if (upload.purpose !== "brand") {
+      await ctx.runAction(internal.automations.uploadFinished, args);
+    }
   },
 });
 

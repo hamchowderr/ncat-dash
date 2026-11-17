@@ -10,6 +10,10 @@ import {
   getNodeType,
   graphProblem,
   brandProblem,
+  describeFileDetails,
+  formatDuration,
+  readFileDetails,
+  withinLength,
   missingBrandOf,
   missingSettingsOf,
   readUploadRef,
@@ -268,5 +272,70 @@ describe("team brand", () => {
     expect(brandProblem("color", "#FC0")).toMatch(/colour/);
     expect(brandProblem("font", "Arial Black")).toBeNull();
     expect(brandProblem("font", "bad;font")).toMatch(/font name/);
+  });
+});
+
+describe("file details", () => {
+  const answer = {
+    filesize: 52428800,
+    duration: 412.6,
+    duration_formatted: "00:06:52.60",
+    format: "mov,mp4,m4a,3gp,3g2,mj2",
+    overall_bitrate: 1016000,
+    video_codec: "h264",
+    width: 1920,
+    height: 1080,
+    fps: 29.97,
+    audio_codec: "aac",
+    audio_channels: 2,
+    audio_sample_rate: 48000,
+    has_video: true,
+    has_audio: true,
+  };
+
+  it("keeps what the toolkit read and drops what it does not know", () => {
+    expect(readFileDetails(answer)).toEqual({
+      filesize: 52428800,
+      duration: 412.6,
+      format: "mov,mp4,m4a,3gp,3g2,mj2",
+      bitrate: 1016000,
+      videoCodec: "h264",
+      width: 1920,
+      height: 1080,
+      fps: 29.97,
+      audioCodec: "aac",
+      audioChannels: 2,
+      audioSampleRate: 48000,
+      hasVideo: true,
+      hasAudio: true,
+    });
+    expect(readFileDetails({ duration: "long", video_codec: "unknown" })).toBeNull();
+    expect(readFileDetails("ffprobe failed")).toBeNull();
+    expect(readFileDetails({ width: 400, height: 400, format: "png_pipe" })).toMatchObject({
+      hasVideo: true,
+    });
+  });
+
+  it("writes the details on one line", () => {
+    expect(describeFileDetails(readFileDetails(answer)!)).toBe(
+      "6:53 · 1920×1080 · 29.97 fps · h264 / aac",
+    );
+    expect(
+      describeFileDetails({ duration: 4, format: "mp3", audioCodec: "mp3", hasAudio: true }),
+    ).toBe("0:04 · mp3");
+    expect(
+      describeFileDetails({ width: 400, height: 400, format: "png_pipe", videoCodec: "png" }),
+    ).toBe("400×400");
+    expect(formatDuration(3725)).toBe("1:02:05");
+  });
+
+  it("limits an upload trigger by length, and leaves out a file of unknown length", () => {
+    expect(withinLength({}, null)).toBe(true);
+    expect(withinLength({ maxSeconds: 60 }, { duration: 45 })).toBe(true);
+    expect(withinLength({ maxSeconds: 60 }, { duration: 412.6 })).toBe(false);
+    expect(withinLength({ minSeconds: 60 }, { duration: 45 })).toBe(false);
+    expect(withinLength({ minSeconds: 30, maxSeconds: 60 }, { duration: 45 })).toBe(true);
+    expect(withinLength({ maxSeconds: 60 }, null)).toBe(false);
+    expect(withinLength({ maxSeconds: 60 }, { width: 400 })).toBe(false);
   });
 });

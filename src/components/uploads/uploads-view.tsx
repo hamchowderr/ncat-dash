@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
+import { describeFileDetails } from "@ncat-dash/automation-core";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Copy, Trash2, UploadCloud } from "lucide-react";
@@ -96,7 +97,8 @@ export function UploadsView() {
     <div className="flex flex-col gap-1">
       <h1 className="text-2xl font-semibold tracking-tight">Uploads</h1>
       <p className="text-muted-foreground text-sm">
-        Sample files for your steps. They go straight from your browser to your own storage.
+        Your files. They go straight from your browser to your own storage, and each one is read for
+        its length, size and format.
       </p>
     </div>
   );
@@ -204,6 +206,7 @@ export function UploadsView() {
             <TableHeader>
               <TableRow>
                 <TableHead>File</TableHead>
+                <TableHead>Details</TableHead>
                 <TableHead>Size</TableHead>
                 <TableHead>
                   <span className="sr-only">Actions</span>
@@ -213,7 +216,12 @@ export function UploadsView() {
             <TableBody>
               {ready.map((upload) => (
                 <TableRow key={upload._id}>
-                  <TableCell className="max-w-0 truncate font-medium">{upload.fileName}</TableCell>
+                  <TableCell className="w-2/5 max-w-0 truncate font-medium">
+                    {upload.fileName}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
+                    {upload.details ? describeFileDetails(upload.details) : ""}
+                  </TableCell>
                   <TableCell className="text-muted-foreground tabular-nums">
                     {formatBytes(upload.size)}
                   </TableCell>
