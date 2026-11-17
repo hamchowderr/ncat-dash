@@ -35,7 +35,7 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { ClipsRun } from "./clips-run";
-import { logicNote, RunSteps } from "./run-steps";
+import { logicNote, passedAlong, RunSteps } from "./run-steps";
 import { EditorExport } from "./editor-export";
 import { RunStatusBadge, shownStatus } from "./run-status";
 
@@ -102,13 +102,20 @@ export function RunView({
         },
       })),
     ];
+    // How many files went along each line, once the step before it has finished.
+    const passed = passedAlong(run as Parameters<typeof passedAlong>[0]);
+    const count = (source: string, target: string) => {
+      const files = passed.get(`${source}>${target}`);
+      return files ? { data: { passed: files.length } } : {};
+    };
     const edges = [
       ...triggerEdges(
         run.nodes.map((node) => node.id),
         run.edges,
-      ),
+      ).map((edge) => (run.startedWith ? { ...edge, ...count(edge.source, edge.target) } : edge)),
       ...(run.edges as AutomationEdge[]).map((edge) => ({
         ...flowEdge(canvasEdge(edge)),
+        ...count(edge.source, edge.target),
         animated:
           byNode.get(edge.target)?.status === "running" && !byNode.get(edge.target)?.retryAt,
       })),

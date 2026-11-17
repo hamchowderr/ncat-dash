@@ -52,19 +52,27 @@ export const createNcatRoutes = () => [
       }
       const parsed = reviewQuestion.safeParse(await c.req.json().catch(() => undefined));
       if (!parsed.success) return c.json({ error: "invalid body" }, 400);
-      const { question, still } = parsed.data;
+      const { question, still, frames = null, sense = null } = parsed.data;
       // The still is fetched here and sent as bytes: a toolkit's bucket can be private or
       // on a local network that the model provider cannot reach by URL.
-      const image = still ? await fetchStill(still) : null;
-      const prompt = reviewPrompt(question, image !== null);
+      const [image, sheet] = await Promise.all([
+        still ? fetchStill(still) : null,
+        frames ? fetchStill(frames) : null,
+      ]);
+      const prompt = reviewPrompt(question, image !== null, sense, sheet !== null);
+      const pictures = [image, sheet].filter((picture) => picture !== null);
       try {
         const result = await reviewAgent.generate([
           {
             role: "user",
-            content: image
+            content: pictures.length
               ? [
                   { type: "text", text: prompt },
-                  { type: "image", image: image.bytes, mediaType: image.mediaType },
+                  ...pictures.map((picture) => ({
+                    type: "image" as const,
+                    image: picture.bytes,
+                    mediaType: picture.mediaType,
+                  })),
                 ]
               : prompt,
           },

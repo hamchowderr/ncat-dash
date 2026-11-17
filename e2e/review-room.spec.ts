@@ -219,7 +219,7 @@ test("tagging @Agent gets the agent's answer in the thread, for everyone", async
   await seek(maya, 2);
   await commentBox(maya).pressSequentially("@ag");
   await maya.getByRole("option", { name: /Agent/ }).click();
-  await commentBox(maya).pressSequentially("is the logo too small here?");
+  await commentBox(maya).pressSequentially("does this part move too fast?");
   await commentBox(maya).press("Enter");
 
   // The real agent server answers after Convex took a still of 0:02 from the toolkit. The
@@ -227,7 +227,7 @@ test("tagging @Agent gets the agent's answer in the thread, for everyone", async
   // back (packages/agent/fixtures/recorded): it saw there is no logo in the frame.
   const thread = comments(maya).getByRole("listitem").first();
   await expect(thread.getByText("@Agent", { exact: true })).toHaveClass(/font-medium/);
-  await expect(thread).toContainText(/I don't see a logo in this frame at all/, {
+  await expect(thread).toContainText(/one continuous shot with no cuts/, {
     timeout: 60_000,
   });
   await expect(thread).toContainText("for Maya");
@@ -237,7 +237,7 @@ test("tagging @Agent gets the agent's answer in the thread, for everyone", async
     .getByRole("button", { name: /Why the station matters/ })
     .click();
   const seen = comments(jordan).getByRole("listitem").first();
-  await expect(seen).toContainText(/I don't see a logo in this frame at all/);
+  await expect(seen).toContainText(/one continuous shot with no cuts/);
   // Only Maya, who asked, can delete the answer.
   await expect(seen.getByRole("button", { name: "Delete this answer" })).toHaveCount(0);
   await expect(thread.getByRole("button", { name: "Delete this answer" })).toHaveCount(1);

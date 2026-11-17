@@ -114,7 +114,7 @@ The Agent button in the top bar opens a chat beside whatever is on screen. Descr
 
 It is two parts, both from [mastra-chat-kit](https://github.com/hamchowderr/mastra-chat-kit) (MIT, see `packages/agent/LICENSE-mastra-chat-kit`):
 
-- `packages/agent/` is the kit's server at commit `2aef2da`, a Mastra `AgentController` server on port 4111. What is ours is in `src/mastra/ncat/`: the tools (`tools.ts`: look at the team's automations, read one, list step types, change one, make one, switch one on or off), the instructions, and the hand-over described below. Kit files changed: `agents/chat.ts` (our tools and instructions), `lib/tool-categories.ts` (reading never asks, changing asks, switching on always asks), `lib/env.ts` (`CONVEX_URL`), `mastra/index.ts` (our route), and `fixtures/chat.json`. The kit's own tests are not copied.
+- `packages/agent/` is the kit's server at commit `2aef2da`, a Mastra `AgentController` server on port 4111. What is ours is in `src/mastra/ncat/`: the tools (`tools.ts`: look at the team's automations, read one, list step types, change one, make one, switch one on or off, list the team's uploads, try one on an upload, and check how a run went), the instructions, and the hand-over described below. Kit files changed: `agents/chat.ts` (our tools and instructions), `lib/tool-categories.ts` (reading never asks, changing asks, switching on always asks), `lib/env.ts` (`CONVEX_URL`), `mastra/index.ts` (our route), and `fixtures/chat.json`. The kit's own tests are not copied.
 - The chat panel is the kit's `chat-panel`, installed with shadcn into `src/components/chat*`, `src/components/ai-elements`, `src/lib/agent-controller`, `src/lib/mastra-proxy.ts` and the proxy routes under `src/app/api/`. It was installed from the registry built at that same commit, because the published registry was older than the server and the two did not agree on approvals. One change to it: `ChatPanel` takes `renderTool`. Ours is `src/components/agent/`: the panel's wording, what each approval card and tool line says (`tool-words.ts`), and the Agent button in the shell.
 
 The agent has no access of its own. On every chat request the web app (`src/lib/agent-session.ts`, wired in `src/instrumentation.ts`) hands the agent server the signed-in person's own Convex token and the team and automation on their screen, in a request signed with `MASTRA_JWT_SECRET`. The tools then call the same Convex functions the dashboard does, as that person, so the agent can see and change what they can and nothing else. The hand-over is kept in memory only. A new automation the agent makes becomes "this automation" until another is on screen. An open editor shows the agent's change as it happens, unless the person has unsaved work of their own.
@@ -125,10 +125,10 @@ To connect the two, start Convex once (`npx convex dev`), then run:
 pnpm setup:agent
 ```
 
-It makes the shared secret and puts every value where it is read: `.env.local` for the chat, `packages/agent/.env` for the agent server, and `AGENT_URL` and `MASTRA_JWT_SECRET` in Convex for @Agent in review rooms. Running it again keeps the same secret. When the agent server runs somewhere else, pass its address: `pnpm setup:agent --agent-url https://agent.example.com` (a Convex in the cloud cannot reach an agent on your own computer). The model key is the one thing to add yourself, in `packages/agent/.env`: `ANTHROPIC_API_KEY`, with `CHAT_MODEL=anthropic/claude-sonnet-5-5`, or `USE_AIMOCK=true` for the stand-in model. Then:
+It makes the shared secret and puts every value where it is read: `.env.local` for the chat, `packages/agent/.env` for the agent server, and `AGENT_URL` and `MASTRA_JWT_SECRET` in Convex for @Agent in review rooms. Running it again keeps the same secret. When the agent server runs somewhere else, pass its address: `pnpm setup:agent --agent-url https://agent.example.com` (a Convex in the cloud cannot reach an agent on your own computer). The model key is not copied anywhere: it stays in Infisical, and `infisical run` hands it to the agent server as it starts. The model is Sonnet 5.5 (`CHAT_MODEL=anthropic/claude-sonnet-5-5`, set by `pnpm setup:agent`). Then:
 
 ```bash
-pnpm --filter @ncat-dash/agent dev        # the agent server
+infisical run --path=/shared -- pnpm --filter @ncat-dash/agent dev   # the agent server, with the model key from Infisical
 pnpm --filter @ncat-dash/agent dev:mock   # only with USE_AIMOCK=true
 ```
 
@@ -147,7 +147,7 @@ AIMock can also sit between the agent and a real model and save what the model a
 
 A recording is matched on the message the person typed, so the same sentence always gets the same answer. Read a recording before committing it. The recorder reads the folder when it starts, so restart it after deleting recordings.
 
-One real conversation is recorded so far (see `packages/agent/fixtures/recorded/README.md`). Its tool calls name the automation it built, so played back against a fresh dashboard the later changes go to an automation that is not there; it is for tests and for reading what the model did, not for a full replay in the browser.
+One real conversation is recorded so far: the agent builds an automation, tries it on an upload and reports (see `packages/agent/fixtures/recorded/README.md`). Its tool calls name the automation it built, so played back against a fresh dashboard the later changes go to an automation that is not there; it is for tests and for reading what the model did, not for a full replay in the browser.
 
 On first start the agent server downloads a small text-embedding model (fastembed) for recalling earlier conversations.
 

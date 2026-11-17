@@ -8,9 +8,10 @@
 // It makes MASTRA_JWT_SECRET (once; an existing one is kept) and APP_SECRET for the agent,
 // then puts each value where it is read:
 //   .env.local             MASTRA_SERVER_URL, MASTRA_JWT_SECRET   (the web app's chat)
-//   packages/agent/.env    MASTRA_JWT_SECRET, APP_SECRET, CONVEX_URL   (the agent server)
+//   packages/agent/.env    MASTRA_JWT_SECRET, APP_SECRET, CONVEX_URL, CHAT_MODEL   (the agent server)
 //   Convex                 AGENT_URL, MASTRA_JWT_SECRET   (@Agent in review rooms)
-// Secrets are never printed.
+// The model key stays in Infisical: `infisical run` gives it to the agent server as it
+// starts, so it is never copied into a file. Secrets are never printed.
 
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -82,6 +83,12 @@ function main() {
   let nextAgent = setEnv(agentText, "MASTRA_JWT_SECRET", jwt);
   nextAgent = setEnv(nextAgent, "APP_SECRET", appSecret);
   nextAgent = setEnv(nextAgent, "CONVEX_URL", convexUrl);
+  // An empty key line could hide the key Infisical passes in, so it is left as a comment.
+  nextAgent = nextAgent.replace(
+    /^ANTHROPIC_API_KEY=[ \t]*$/m,
+    () => "# ANTHROPIC_API_KEY=   comes from Infisical (infisical run); or put the key here",
+  );
+  if (!agent.CHAT_MODEL) nextAgent = setEnv(nextAgent, "CHAT_MODEL", "anthropic/claude-sonnet-5-5");
   writeFileSync(AGENT_ENV, nextAgent);
 
   for (const [key, value] of [
@@ -103,8 +110,12 @@ function main() {
       "Your Convex runs in the cloud and cannot reach an agent on this computer. Once the agent server is online, run this again with --agent-url and its address.",
     );
   }
+  // The model key is not copied anywhere: Infisical hands it to the agent server as it
+  // starts. A key already in packages/agent/.env works too.
   if (!agent.ANTHROPIC_API_KEY && !agent.USE_AIMOCK) {
-    console.log("Still to do: put the model key in packages/agent/.env (ANTHROPIC_API_KEY).");
+    console.log(
+      "Start the agent server through Infisical, which gives it ANTHROPIC_API_KEY:\n  infisical run --path=/shared -- pnpm --filter @ncat-dash/agent dev",
+    );
   }
 }
 

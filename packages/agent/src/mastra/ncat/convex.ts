@@ -12,8 +12,8 @@ export const dash = anyApi;
 
 export class NotConnected extends Error {}
 
-/** The two calls the tools make. ConvexHttpClient has both; a test can stand in for it. */
-export type DashClient = Pick<ConvexHttpClient, "query" | "mutation">;
+/** The calls the tools make. ConvexHttpClient has them all; a test can stand in for it. */
+export type DashClient = Pick<ConvexHttpClient, "query" | "mutation" | "action">;
 
 function realClient(url: string, token: string): DashClient {
   const client = new ConvexHttpClient(url);

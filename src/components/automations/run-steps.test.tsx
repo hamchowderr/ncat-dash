@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 import { answerQuery } from "@/test/convex";
 import { renderInApp } from "@/test/render";
 
-import { type RunDetails, RunSteps } from "./run-steps";
+import { passedAlong, type RunDetails, RunSteps } from "./run-steps";
 
 const AT = 1_700_000_000_000;
 const CLIP = "https://files.example/out/video-caption-29.mp4";
@@ -190,4 +190,65 @@ describe("what happened in a run", () => {
     expect(rows()[0].textContent).toContain("Run by hand");
     expect(rows()[0].textContent).toContain("Started this run.");
   });
+});
+
+describe("what passed between steps", () => {
+  const START = "https://files.example/uploads/long-interview.mp4?sig=1";
+  const withLines = () =>
+    run({
+      trigger: { file_url: START },
+      edges: [
+        { id: "e1", source: "if", target: "clips", branch: "yes" },
+        { id: "e2", source: "if", target: "caption", branch: "no" },
+      ],
+    } as Partial<RunDetails>);
+
+  test("each line carries the files that went along it, by the way out of an If", () => {
+    const passed = passedAlong(withLines() as Parameters<typeof passedAlong>[0]);
+    expect(passed.get("__trigger>if")).toEqual([START]);
+    expect(passed.get("if>clips")).toEqual([]);
+    expect(passed.get("if>caption")).toEqual([CLIP]);
+  });
+
+  test("a line from a step that has not finished carries nothing yet", () => {
+    const passed = passedAlong({
+      trigger: {},
+      nodes: [{ id: "a" }, { id: "b" }],
+      edges: [{ source: "a", target: "b" }],
+      steps: [{ nodeId: "a", status: "running", outputs: [] }],
+    });
+    expect(passed.has("a>b")).toBe(false);
+    expect(passed.get("__trigger>a")).toEqual([]);
+  });
+
+  test("each step's row says which files it got", () => {
+    renderInApp(<RunSteps run={withLines()} highlighted={null} busy={false} onDecide={vi.fn()} />);
+    const ifRow = screen.getByRole("heading", { name: "If" }).closest("li")!;
+    expect(ifRow.querySelector("[data-got]")?.textContent).toBe("Got long-interview.mp4");
+    const caption = screen.getByRole("heading", { name: "Caption video" }).closest("li")!;
+    expect(caption.querySelector("[data-got]")?.textContent).toBe("Got video-caption-29.mp4");
+    // A skipped step got nothing, and says nothing about it.
+    const clips = screen.getByRole("heading", { name: "Clips for a platform" }).closest("li")!;
+    expect(clips.querySelector("[data-got]")).toBeNull();
+  });
+});
+
+test("an If's own reading of the file is not shown as facts", () => {
+  renderInApp(
+    <RunSteps
+      run={run({
+        steps: [
+          step({
+            nodeId: "if",
+            branches: { yes: [], no: [CLIP] },
+            facts: [{ label: "Audio codec", value: "aac" }],
+          }),
+        ],
+      })}
+      highlighted={null}
+      busy={false}
+      onDecide={vi.fn()}
+    />,
+  );
+  expect(screen.queryByText("Audio codec")).toBeNull();
 });
