@@ -84,6 +84,18 @@ describe("testing one step on its own", () => {
     expect(shown?.startedWith).toBe("station_interview.mp4");
   });
 
+  test("does the step's work even while the step is turned off", async () => {
+    const { maya, automationId, look } = await setUp();
+    const runId = await maya.as.mutation(api.automations.testStep, {
+      automationId,
+      node: { ...CAPTION, off: true },
+      fileUrl: FILE,
+    });
+    const { jobs } = await look(runId);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({ stepId: "video-caption" });
+  });
+
   test("shows as a test in the runs list, named after the step", async () => {
     const { maya, automationId } = await setUp();
     await maya.as.mutation(api.automations.testStep, {

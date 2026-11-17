@@ -377,7 +377,7 @@ export function RunSteps({
             step.startedAt && step.finishedAt && step.finishedAt - step.startedAt >= 1000
               ? formatDuration(step.finishedAt - step.startedAt)
               : null;
-          const files = node.kind === "step" ? step.outputs : [];
+          const files = node.kind === "step" && !node.off ? step.outputs : [];
           return (
             <Row
               key={node.id}

@@ -69,7 +69,7 @@ test("a run says a step was turned off and its files went straight on", () => {
         _id: "s1",
         nodeId: "caption",
         status: "done",
-        outputs: [],
+        outputs: ["https://files.example/uploads/short-teaser.mp4"],
         startedAt: 1000,
         finishedAt: 1000,
         jobs: [],
@@ -83,4 +83,6 @@ test("a run says a step was turned off and its files went straight on", () => {
   renderInApp(<RunSteps run={run} highlighted={null} busy={false} onDecide={vi.fn()} />);
   const row = screen.getByRole("heading", { name: "Caption video" }).closest("li")!;
   expect(row.textContent).toContain("Turned off, so its files went straight on.");
+  // The file it handed on is not shown as one it made.
+  expect(screen.queryByRole("list", { name: "Files from Caption video" })).toBeNull();
 });
