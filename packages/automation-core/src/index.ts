@@ -10,3 +10,4 @@ export * from "./operations";
 export * from "./wiring";
 export * from "./brand";
 export * from "./details";
+export * from "./history";
