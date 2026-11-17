@@ -1,9 +1,11 @@
 import {
   type AutomationEdge,
   type AutomationNode,
+  chooseFiles,
   clipRequest,
   downstreamOf,
   durationOf,
+  type FileKind,
   getPlatform,
   graphProblem,
   type NodeStatus,
@@ -11,9 +13,11 @@ import {
   planClips,
   planJobs,
   readyNodes,
+  stepsBefore,
   type TemplateContext,
   TemplateError,
   upstreamOf,
+  wantedKind,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -74,7 +78,7 @@ function triggerFiles(trigger: unknown): string[] {
   return typeof fileUrl === "string" && fileUrl !== "" ? [fileUrl] : [];
 }
 
-/** The files that reach a node: its upstream steps' outputs, or the trigger's file. */
+/** The files handed on by the steps straight before a node, or the trigger's file. */
 function incomingFiles(
   node: AutomationNode,
   run: Doc<"runs">,
@@ -83,6 +87,23 @@ function incomingFiles(
   const sources = upstreamOf(node.id, run.edges as AutomationEdge[]);
   if (sources.length === 0) return triggerFiles(run.trigger);
   return sources.flatMap((source) => byNode.get(source)?.outputs ?? []);
+}
+
+/**
+ * The files a step works on: the nearest ones of the kind it wants. Usually those from
+ * the step straight before; when that step made none of that kind (a transcript, a
+ * thumbnail), the ones from further back, and last the file that started the run.
+ */
+function filesFor(
+  kind: FileKind,
+  node: AutomationNode,
+  run: Doc<"runs">,
+  byNode: Map<string, Doc<"runSteps">>,
+): string[] {
+  const levels = stepsBefore(node.id, run.edges as AutomationEdge[]).map((ids) =>
+    ids.flatMap((id) => byNode.get(id)?.outputs ?? []),
+  );
+  return chooseFiles(kind, [...levels, triggerFiles(run.trigger)]);
 }
 
 async function failStep(
@@ -116,7 +137,6 @@ async function startNode(
   byNode: Map<string, Doc<"runSteps">>,
 ) {
   const now = Date.now();
-  const inputs = incomingFiles(node, run, byNode);
 
   if (node.kind === "approval") {
     await ctx.db.patch(step._id, { status: "waiting_approval", startedAt: now });
@@ -124,7 +144,7 @@ async function startNode(
   }
 
   if (node.kind === "clips") {
-    await startClips(ctx, run, node, step, byNode, inputs);
+    await startClips(ctx, run, node, step, byNode, filesFor("video", node, run, byNode));
     return;
   }
 
@@ -143,6 +163,12 @@ async function startNode(
     steps[nodeId] = { url: other.outputs[0], urls: other.outputs, result: only?.result };
   }
 
+  const inputs = filesFor(
+    wantedKind(definition.primaryInput ?? definition.listInput?.field),
+    node,
+    run,
+    byNode,
+  );
   let planned: Record<string, unknown>[];
   try {
     planned = planJobs(
