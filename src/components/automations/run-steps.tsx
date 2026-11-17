@@ -179,6 +179,70 @@ function FileTile({ url, onOpen }: { url: string; onOpen: () => void }) {
   );
 }
 
+/** What a step found out, as labelled lines. Nothing when it found out nothing. */
+export function StepFacts({ facts }: { facts: { label: string; value: string }[] }) {
+  if (facts.length === 0) return null;
+  return (
+    <dl className="bg-muted/40 grid gap-x-6 gap-y-2 rounded-lg px-3 py-2.5 text-sm sm:grid-cols-[max-content_1fr]">
+      {facts.map((fact) => (
+        <div key={fact.label} className="contents">
+          <dt className="text-muted-foreground">{fact.label}</dt>
+          <dd className="min-w-0 break-words">{fact.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * The files a step made, as small tiles. Choosing one plays it larger. Past a handful,
+ * the rest are left to Outputs.
+ */
+export function StepFiles({
+  label,
+  files,
+  className,
+}: {
+  label: string;
+  files: string[];
+  className?: string;
+}) {
+  const [playing, setPlaying] = useState<string | null>(null);
+  if (files.length === 0) return null;
+  return (
+    <>
+      <ul
+        aria-label={label}
+        className={cn(
+          "grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))]",
+          className,
+        )}
+      >
+        {files.slice(0, FILES_SHOWN).map((url, at) => (
+          <FileTile key={`${at}-${url}`} url={url} onOpen={() => setPlaying(url)} />
+        ))}
+      </ul>
+      {files.length > FILES_SHOWN && (
+        <p className="text-muted-foreground text-sm">
+          And {files.length - FILES_SHOWN} more in{" "}
+          <Link href="/outputs" className="underline underline-offset-4">
+            Outputs
+          </Link>
+          .
+        </p>
+      )}
+      <Dialog open={playing !== null} onOpenChange={(open) => !open && setPlaying(null)}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogTitle className="truncate pr-8 text-sm">
+            {playing ? fileNameOf(playing) : ""}
+          </DialogTitle>
+          {playing && <MediaPreview url={playing} />}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 /** Puts steps in the order the canvas reads, left to right and then top to bottom. */
 function inCanvasOrder(nodes: AutomationNode[]): AutomationNode[] {
   return [...nodes].sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
@@ -217,7 +281,6 @@ export function RunSteps({
   busy: boolean;
   onDecide: (runStepId: Id<"runSteps">, approved: boolean) => void;
 }) {
-  const [playing, setPlaying] = useState<string | null>(null);
   const byNode = new Map(run.steps.map((step) => [step.nodeId, step]));
   const rows = inCanvasOrder(run.nodes as AutomationNode[]).filter((node) => byNode.has(node.id));
   const TriggerIcon = TRIGGER_ICONS[run.triggerKind];
@@ -234,7 +297,7 @@ export function RunSteps({
       <ol className="py-2">
         <Row
           icon={<TriggerIcon className={cn("size-4", TRIGGER_TINT)} aria-hidden="true" />}
-          title={TRIGGER_LABELS[run.triggerKind]}
+          title={run.testOf ? "Test of one step" : TRIGGER_LABELS[run.triggerKind]}
           sentence={
             run.startedWith ? (
               <>
@@ -320,48 +383,12 @@ export function RunSteps({
                   <ReviewLink runStepId={step._id} />
                 </div>
               )}
-              {step.facts.length > 0 && (
-                <dl className="bg-muted/40 grid gap-x-6 gap-y-2 rounded-lg px-3 py-2.5 text-sm sm:grid-cols-[max-content_1fr]">
-                  {step.facts.map((fact) => (
-                    <div key={fact.label} className="contents">
-                      <dt className="text-muted-foreground">{fact.label}</dt>
-                      <dd className="min-w-0 break-words">{fact.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-              {files.length > 0 && (
-                <ul
-                  aria-label={`Files from ${nodeTitle(node)}`}
-                  className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))]"
-                >
-                  {files.slice(0, FILES_SHOWN).map((url, at) => (
-                    <FileTile key={`${at}-${url}`} url={url} onOpen={() => setPlaying(url)} />
-                  ))}
-                </ul>
-              )}
-              {files.length > FILES_SHOWN && (
-                <p className="text-muted-foreground text-sm">
-                  And {files.length - FILES_SHOWN} more in{" "}
-                  <Link href="/outputs" className="underline underline-offset-4">
-                    Outputs
-                  </Link>
-                  .
-                </p>
-              )}
+              <StepFacts facts={step.facts} />
+              <StepFiles label={`Files from ${nodeTitle(node)}`} files={files} />
             </Row>
           );
         })}
       </ol>
-
-      <Dialog open={playing !== null} onOpenChange={(open) => !open && setPlaying(null)}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogTitle className="truncate pr-8 text-sm">
-            {playing ? fileNameOf(playing) : ""}
-          </DialogTitle>
-          {playing && <MediaPreview url={playing} />}
-        </DialogContent>
-      </Dialog>
     </section>
   );
 }
