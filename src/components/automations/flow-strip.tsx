@@ -25,7 +25,7 @@ function columns(nodes: Step[], edges: AutomationEdge[]): Step[][] {
   return result.filter(Boolean);
 }
 
-const tile = "bg-card flex items-center justify-center border shadow-xs";
+const tile = "bg-card flex items-center justify-center shadow-xs";
 
 /** A small, still picture of an automation: its trigger and steps joined by lines. */
 export function FlowStrip({

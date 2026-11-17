@@ -188,12 +188,12 @@ export const BrandContext = createContext<Brand>({});
 export const AddAfterContext = createContext<((nodeId: string, way?: string) => void) | null>(null);
 
 const tile =
-  "bg-card relative flex size-20 items-center justify-center border shadow-sm transition-[box-shadow,border-color]";
+  "bg-card relative flex size-20 items-center justify-center border border-transparent shadow-[0_1px_2px_rgb(0_0_0/0.05),0_6px_16px_-4px_rgb(0_0_0/0.10)] transition-[box-shadow,border-color]";
 const caption =
   "pointer-events-none absolute top-full left-1/2 mt-2 grid w-44 -translate-x-1/2 text-center leading-tight";
 const handle = "!size-2.5 !border-2 !border-background !bg-muted-foreground";
 const plus =
-  "nodrag bg-card text-muted-foreground hover:text-foreground hover:border-foreground/40 focus-visible:ring-ring/50 absolute left-full ml-10 flex -translate-y-1/2 items-center justify-center rounded-md border outline-none before:absolute before:right-full before:h-px before:w-10 before:bg-[var(--xy-edge-stroke-default,#b1b1b7)] focus-visible:ring-3";
+  "nodrag bg-card text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 absolute left-full ml-10 flex -translate-y-1/2 items-center justify-center rounded-md shadow-xs outline-none before:absolute before:right-full before:h-px before:w-10 before:bg-[var(--xy-edge-stroke-default,#b1b1b7)] focus-visible:ring-3";
 /** How far down the tile each way out of an If sits, in percent: Yes above, No below. */
 const WAY_TOP = [28, 72];
 /** How far down the tile the way out for when a step fails sits, in percent. */
@@ -231,7 +231,7 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
           status === "done" && "border-emerald-600/60",
           status === "failed" && "border-destructive",
           status === "skipped" && "opacity-50",
-          node.off && "border-dashed opacity-50",
+          node.off && "border-muted-foreground/40 border-dashed opacity-50",
         )}
       >
         <Handle type="target" position={Position.Left} className={handle} />
@@ -423,7 +423,7 @@ function FlowEdge({
             aria-label="Add a step here"
             onClick={() => insert(source, target)}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
-            className="nodrag nopan bg-card text-muted-foreground hover:text-foreground hover:border-foreground/40 focus-visible:ring-ring/50 pointer-events-auto absolute flex size-5 items-center justify-center rounded-md border opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-3"
+            className="nodrag nopan bg-card text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring/50 pointer-events-auto absolute flex size-5 items-center justify-center rounded-md shadow-xs opacity-70 outline-none transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-3"
           >
             <Plus className="size-3" aria-hidden="true" />
           </button>
@@ -435,8 +435,8 @@ function FlowEdge({
             data-passed={passed}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
             className={cn(
-              "bg-card absolute rounded-full border px-1.5 py-px font-mono text-[10px] leading-4 tabular-nums",
-              passed === 0 ? "text-muted-foreground border-dashed" : "text-foreground",
+              "bg-card absolute rounded-full px-1.5 py-px text-[10px] leading-4 font-medium tabular-nums shadow-xs",
+              passed === 0 ? "text-muted-foreground" : "text-foreground",
             )}
           >
             {passed === 0 ? "none" : passed === 1 ? "1 file" : `${passed} files`}

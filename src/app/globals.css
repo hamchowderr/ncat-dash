@@ -39,6 +39,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-surface: var(--surface);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -50,6 +51,8 @@
 
 :root {
   --card: oklch(1 0 0);
+  /* Quiet tone that groups things in place of a box line. */
+  --surface: oklch(0.973 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
@@ -87,6 +90,7 @@
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
+  --surface: oklch(0.19 0 0);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
@@ -126,5 +130,71 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/*
+ * Moving between pages. Only the page itself changes: the menu, the top bar and the
+ * agent stay exactly where they are. The old page fades out quickly and the new one
+ * settles in, a little faster than it takes to read it.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+/* Clicks during the fade reach the live page instead of being swallowed by the overlay. */
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-group(.page-exit),
+::view-transition-group(.page-enter) {
+  animation-duration: 0s;
+}
+::view-transition-old(.page-exit) {
+  animation: 110ms ease-in both page-out;
+}
+::view-transition-new(.page-enter) {
+  animation: 260ms cubic-bezier(0.16, 1, 0.3, 1) 40ms both page-in;
+}
+@keyframes page-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-new(.page-enter) {
+    animation-name: page-out;
+    animation-direction: reverse;
+  }
+}
+
+/*
+ * Pop-up notices sit in the empty middle of the top bar, centred on the page between the
+ * menu and the agent, so they never cover a button, a step or the chat.
+ */
+:root {
+  --notice-left: 0px;
+  --notice-right: 0px;
+}
+@media (min-width: 48rem) {
+  :root[data-sidebar-open] {
+    --notice-left: 16rem;
+  }
+}
+@media (min-width: 64rem) {
+  :root[data-agent-open] {
+    --notice-right: 26rem;
+  }
+}
+@media (min-width: 37.5rem) {
+  [data-sonner-toaster][data-x-position="center"] {
+    left: calc(50% + (var(--notice-left) - var(--notice-right)) / 2) !important;
+    transition: left 300ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 }

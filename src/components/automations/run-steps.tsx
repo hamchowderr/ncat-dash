@@ -155,7 +155,7 @@ function FileTile({ url, onOpen }: { url: string; onOpen: () => void }) {
       <button
         type="button"
         onClick={onOpen}
-        className="group hover:border-foreground/30 focus-visible:ring-ring/50 flex w-full flex-col overflow-hidden rounded-lg border text-left outline-none focus-visible:ring-[3px]"
+        className="group hover:bg-muted focus-visible:ring-ring/50 flex w-full flex-col overflow-hidden rounded-lg bg-background text-left shadow-xs outline-none focus-visible:ring-[3px]"
       >
         <span className="bg-muted relative grid aspect-video place-items-center overflow-hidden">
           {VIDEO.test(url) ? (
@@ -363,8 +363,8 @@ export function RunSteps({
   });
 
   return (
-    <section aria-labelledby="run-steps-title" className="bg-card rounded-xl border">
-      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b px-4 py-3">
+    <section aria-labelledby="run-steps-title" className="rounded-xl bg-surface">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3">
         <h2 id="run-steps-title" className="text-sm font-semibold">
           What happened
         </h2>
@@ -554,7 +554,7 @@ function Row({
       )}
       <span
         className={cn(
-          "bg-background relative grid size-9 place-items-center rounded-lg border shadow-xs",
+          "bg-background relative grid size-9 place-items-center rounded-lg shadow-xs",
           quiet && "opacity-50",
         )}
       >

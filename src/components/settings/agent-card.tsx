@@ -169,8 +169,8 @@ export function AgentCard({
                       disabled={!canEdit}
                       onClick={() => togglePlatform(platform.name)}
                       className={cn(
-                        "bg-background hover:border-muted-foreground/60 focus-visible:ring-ring/50 flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
-                        on && "border-primary bg-primary/5 hover:border-primary",
+                        "bg-surface hover:bg-muted focus-visible:ring-ring/50 flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium outline-none transition-colors focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
+                        on && "bg-primary/10 hover:bg-primary/15",
                       )}
                     >
                       <span
