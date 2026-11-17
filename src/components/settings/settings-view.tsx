@@ -14,6 +14,7 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
 import { BrandCard } from "./brand-card";
+import { EditorsCard } from "./editors-card";
 import { EmailCard } from "./email-card";
 import { TeamCard } from "./team-card";
 
@@ -68,6 +69,7 @@ export function SettingsView() {
       ) : (
         <>
           <BrandCard brand={settings.brand} music={settings.music} canEdit={settings.canEdit} />
+          <EditorsCard editors={settings.editors} canEdit={settings.canEdit} />
           <Card className="max-w-xl">
             <CardHeader>
               <CardTitle>

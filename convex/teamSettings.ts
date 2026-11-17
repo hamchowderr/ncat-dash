@@ -15,7 +15,8 @@ import {
   parallelLimit,
   pump,
 } from "./lib/queue";
-import { brandValidator, musicValidator } from "./schema";
+import { editorsOf } from "./lib/exports";
+import { brandValidator, editorValidator, musicValidator } from "./schema";
 
 const MAX_TRACKS = 100;
 
@@ -32,6 +33,7 @@ export const get = query({
       mostRetries: MAX_STEP_RETRIES,
       maxParallelJobs: await parallelLimit(ctx, args.organizationId),
       ...(await brandAndMusicOf(ctx, args.organizationId)),
+      editors: await editorsOf(ctx, args.organizationId),
       mostAllowed: MAX_PARALLEL_JOBS,
       canEdit: MANAGER_ROLES.includes(role),
     };
@@ -63,6 +65,30 @@ export const setMaxParallelJobs = mutation({
     }
     // A higher limit lets waiting jobs start straight away.
     await pump(ctx, args.organizationId);
+  },
+});
+
+/**
+ * Sets the video editors the team uses, which decides the files an export makes. Set
+ * once here so no automation step has to ask. Owners and admins only.
+ */
+export const setEditors = mutation({
+  args: { organizationId: v.string(), editors: v.array(editorValidator) },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId, MANAGER_ROLES);
+    const editors = [...new Set(args.editors)];
+    const existing = await ctx.db
+      .query("teamSettings")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, { editors });
+    else {
+      await ctx.db.insert("teamSettings", {
+        organizationId: args.organizationId,
+        maxParallelJobs: DEFAULT_PARALLEL_JOBS,
+        editors,
+      });
+    }
   },
 });
 

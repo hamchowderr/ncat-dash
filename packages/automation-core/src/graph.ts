@@ -1,4 +1,5 @@
 import type { Brand } from "./brand";
+import { branchesOfKind } from "./logic";
 import { missingSettingsOf, nodeTypeOf } from "./registry";
 
 /** One box on the canvas. */
@@ -6,9 +7,11 @@ export interface AutomationNode {
   id: string;
   /**
    * "step" runs a catalog step on the toolkit; "approval" waits for a person; "clips"
-   * cuts each incoming video into clips that fit the platform in `input.platform`.
+   * cuts each incoming video into clips that fit the platform in `input.platform`;
+   * "export" makes the timeline files that open the run's cuts in a video editor; "if"
+   * sends each file one of two ways; "wait" holds the run for a length of time.
    */
-  kind: "step" | "approval" | "clips";
+  kind: "step" | "approval" | "clips" | "export" | "if" | "wait";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */
@@ -22,6 +25,8 @@ export interface AutomationEdge {
   id: string;
   source: string;
   target: string;
+  /** Which way out of the source this is, for a step with more than one: "yes" or "no". */
+  branch?: string;
 }
 
 export const MAX_NODES = 50;
@@ -60,6 +65,12 @@ export function graphProblem(nodes: AutomationNode[], edges: AutomationEdge[]): 
     const key = `${edge.source}>${edge.target}`;
     if (seen.has(key)) return "Two steps are connected twice.";
     seen.add(key);
+    const ways = branchesOfKind(nodes.find((node) => node.id === edge.source)?.kind);
+    if (ways.length > 0 ? !ways.includes(edge.branch ?? "") : edge.branch !== undefined) {
+      return ways.length > 0
+        ? `A connection out of an If step has to leave by ${ways.join(" or ")}.`
+        : "Only an If step has more than one way out.";
+    }
   }
 
   // Kahn's algorithm: if some nodes can never be reached in order, there is a loop.
@@ -86,17 +97,100 @@ export function upstreamOf(nodeId: string, edges: AutomationEdge[]): string[] {
   return edges.filter((edge) => edge.target === nodeId).map((edge) => edge.source);
 }
 
-/** Nodes that have not started and whose every upstream node is done. */
+/**
+ * Which ways out a finished step used, by step id. Only a step with more than one way out
+ * (an If) has an entry; a way that got no files is left out and what hangs off it is skipped.
+ */
+export type Taken = Record<string, string[] | undefined>;
+
+type EdgeState = "live" | "dead" | "open";
+
+function edgeState(
+  edge: AutomationEdge,
+  status: Record<string, NodeStatus>,
+  taken: Taken,
+): EdgeState {
+  const source = status[edge.source];
+  if (source === "done") {
+    const used = taken[edge.source];
+    return edge.branch !== undefined && used && !used.includes(edge.branch) ? "dead" : "live";
+  }
+  return source === "failed" || source === "skipped" ? "dead" : "open";
+}
+
+function incomingStates(
+  node: AutomationNode,
+  edges: AutomationEdge[],
+  status: Record<string, NodeStatus>,
+  taken: Taken,
+): EdgeState[] {
+  return edges
+    .filter((edge) => edge.target === node.id)
+    .map((edge) => edgeState(edge, status, taken));
+}
+
+/**
+ * Nodes that have not started and can: nothing feeding them is still under way, and at
+ * least one connection into them carries files. Without an If that is the same as "every
+ * upstream node is done".
+ */
 export function readyNodes(
   nodes: AutomationNode[],
   edges: AutomationEdge[],
   status: Record<string, NodeStatus>,
+  taken: Taken = {},
 ): AutomationNode[] {
-  return nodes.filter(
-    (node) =>
-      status[node.id] === "pending" &&
-      upstreamOf(node.id, edges).every((source) => status[source] === "done"),
-  );
+  return nodes.filter((node) => {
+    if (status[node.id] !== "pending") return false;
+    const states = incomingStates(node, edges, status, taken);
+    return states.length === 0 || (!states.includes("open") && states.includes("live"));
+  });
+}
+
+/**
+ * Nodes that have not started and never will: every connection into them comes from a way
+ * an If did not go, or from a step that was itself passed over.
+ */
+export function passedOverNodes(
+  nodes: AutomationNode[],
+  edges: AutomationEdge[],
+  status: Record<string, NodeStatus>,
+  taken: Taken = {},
+): AutomationNode[] {
+  return nodes.filter((node) => {
+    if (status[node.id] !== "pending") return false;
+    const states = incomingStates(node, edges, status, taken);
+    return states.length > 0 && states.every((state) => state === "dead");
+  });
+}
+
+/**
+ * The ways out of `sourceId` that lead to `targetId`, directly or through other steps.
+ * Tells a later step which of an If's files are meant for it.
+ */
+export function branchesToward(
+  sourceId: string,
+  targetId: string,
+  edges: AutomationEdge[],
+): string[] {
+  const reaches = new Set([targetId]);
+  const queue = [targetId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    for (const edge of edges) {
+      if (edge.target === id && !reaches.has(edge.source)) {
+        reaches.add(edge.source);
+        queue.push(edge.source);
+      }
+    }
+  }
+  const found = new Set<string>();
+  for (const edge of edges) {
+    if (edge.source === sourceId && edge.branch !== undefined && reaches.has(edge.target)) {
+      found.add(edge.branch);
+    }
+  }
+  return [...found];
 }
 
 /** Every node downstream of `nodeId`, however far. Used to skip what a failure cuts off. */

@@ -1,6 +1,7 @@
 import {
   type AutomationEdge,
   type AutomationNode,
+  branchesToward,
   chooseFiles,
   clipRequest,
   downstreamOf,
@@ -11,14 +12,17 @@ import {
   type NodeStatus,
   nodeTypeOf,
   parseSilences,
+  passedOverNodes,
   planClips,
   planJobs,
+  readFileDetails,
   readyNodes,
   retryDelayMs,
   retryLimit,
   settingsForLaterSteps,
   shouldRetry,
   stepsBefore,
+  type Taken,
   type TemplateContext,
   TemplateError,
   upstreamOf,
@@ -31,6 +35,8 @@ import { getStep } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { cutListOf } from "./exports";
+import { finishCheck, startIf, startWait } from "./logic";
 import { brandOf, enqueueJob, pump } from "./queue";
 
 // One step may fan out over this many incoming files at most.
@@ -87,6 +93,23 @@ function triggerFiles(trigger: unknown): string[] {
   return typeof fileUrl === "string" && fileUrl !== "" ? [fileUrl] : [];
 }
 
+/**
+ * The files a finished step hands to `node`. A step with one way out hands on all of its
+ * files; an If hands on only those that left by the way that leads to `node`.
+ */
+function outputsToward(
+  source: Doc<"runSteps"> | undefined,
+  node: AutomationNode,
+  run: Doc<"runs">,
+): string[] {
+  if (!source) return [];
+  if (!source.branches) return source.outputs;
+  const { branches } = source;
+  return branchesToward(source.nodeId, node.id, run.edges as AutomationEdge[]).flatMap(
+    (way) => branches[way] ?? [],
+  );
+}
+
 /** The files handed on by the steps straight before a node, or the trigger's file. */
 function incomingFiles(
   node: AutomationNode,
@@ -95,7 +118,7 @@ function incomingFiles(
 ): string[] {
   const sources = upstreamOf(node.id, run.edges as AutomationEdge[]);
   if (sources.length === 0) return triggerFiles(run.trigger);
-  return sources.flatMap((source) => byNode.get(source)?.outputs ?? []);
+  return sources.flatMap((source) => outputsToward(byNode.get(source), node, run));
 }
 
 /**
@@ -103,19 +126,19 @@ function incomingFiles(
  * the step straight before; when that step made none of that kind (a transcript, a
  * thumbnail), the ones from further back, and last the file that started the run.
  */
-function filesFor(
+export function filesFor(
   kind: FileKind,
   node: AutomationNode,
   run: Doc<"runs">,
   byNode: Map<string, Doc<"runSteps">>,
 ): string[] {
   const levels = stepsBefore(node.id, run.edges as AutomationEdge[]).map((ids) =>
-    ids.flatMap((id) => byNode.get(id)?.outputs ?? []),
+    ids.flatMap((id) => outputsToward(byNode.get(id), node, run)),
   );
   return chooseFiles(kind, [...levels, triggerFiles(run.trigger)]);
 }
 
-async function failStep(
+export async function failStep(
   ctx: MutationCtx,
   run: Doc<"runs">,
   step: Doc<"runSteps">,
@@ -159,6 +182,38 @@ async function startNode(
     return;
   }
 
+  if (node.kind === "if") {
+    await startIf(ctx, run, node, step, byNode);
+    return;
+  }
+
+  if (node.kind === "wait") {
+    await startWait(ctx, run, node, step, byNode);
+    return;
+  }
+
+  if (node.kind === "export") {
+    // The timeline files are made from the cuts when someone downloads them, so all this
+    // step does is make sure there are cuts to open, and hand its files on.
+    if (!(await cutListOf(ctx, run, [...byNode.values()]))) {
+      await failStep(
+        ctx,
+        run,
+        step,
+        byNode,
+        "No cuts reached this step. Put it after a step that cuts the recording, such as Clips for a platform.",
+      );
+      return;
+    }
+    await ctx.db.patch(step._id, {
+      status: "done",
+      outputs: incomingFiles(node, run, byNode),
+      startedAt: now,
+      finishedAt: now,
+    });
+    return;
+  }
+
   const definition = node.stepId ? getStep(node.stepId) : undefined;
   if (!definition) {
     await failStep(ctx, run, step, byNode, "This step is no longer in the catalog.");
@@ -171,7 +226,8 @@ async function startNode(
   for (const [nodeId, other] of byNode) {
     if (other.status !== "done") continue;
     const only = other.jobIds.length === 1 ? await ctx.db.get(other.jobIds[0]) : null;
-    steps[nodeId] = { url: other.outputs[0], urls: other.outputs, result: only?.result };
+    const urls = outputsToward(other, node, run);
+    steps[nodeId] = { url: urls[0], urls, result: only?.result };
   }
 
   const inputs = filesFor(
@@ -240,7 +296,7 @@ const PAUSE_NOISE = "-30dB";
 const MAX_VIDEOS_PER_CLIPS_STEP = 10;
 
 /** Queues jobs for a step, all or nothing. Returns their ids, or the reason it failed. */
-async function enqueueAll(
+export async function enqueueAll(
   ctx: MutationCtx,
   run: Doc<"runs">,
   step: Doc<"runSteps">,
@@ -336,6 +392,7 @@ async function cutClips(
   }
 
   const plan: NonNullable<Doc<"runSteps">["plan"]> = [];
+  const sources: NonNullable<Doc<"runSteps">["sources"]> = [];
   // Probes come in pairs per video: its metadata, then its pauses.
   for (let i = 0; i + 1 < probes.length; i += 2) {
     const [metadata, silence] = [probes[i], probes[i + 1]];
@@ -350,6 +407,21 @@ async function cutClips(
         metadata.error ?? "Could not read how long the video is.",
       );
       return;
+    }
+    // Kept so the cuts can be opened in a video editor. A video whose frame rate or
+    // picture size could not be read is still cut, it just cannot be exported.
+    const details = readFileDetails(metadata.result);
+    if (details?.fps && details.width && details.height) {
+      sources.push({
+        url: source,
+        fps: details.fps,
+        width: details.width,
+        height: details.height,
+        duration,
+        hasAudio: details.hasAudio ?? true,
+        ...(details.audioChannels ? { audioChannels: details.audioChannels } : {}),
+        ...(details.audioSampleRate ? { audioSampleRate: details.audioSampleRate } : {}),
+      });
     }
     // Without the pauses the video is still cut, just evenly.
     const pauses = silence.status === "done" ? parseSilences(silence.result) : [];
@@ -385,7 +457,7 @@ async function cutClips(
     await failStep(ctx, run, step, byNode, queued.message);
     return;
   }
-  await ctx.db.patch(step._id, { stage: "cut", jobIds: queued.jobIds, plan });
+  await ctx.db.patch(step._id, { stage: "cut", jobIds: queued.jobIds, plan, sources });
 }
 
 /**
@@ -400,7 +472,7 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
 
   // Starting a step can fail it at once (a missing file, a bad setting), which changes
   // what else is ready, so re-read until a pass starts nothing.
-  for (let pass = 0; pass <= nodes.length; pass++) {
+  for (let pass = 0; pass <= nodes.length * 2; pass++) {
     const steps = await ctx.db
       .query("runSteps")
       .withIndex("by_run", (q) => q.eq("runId", runId))
@@ -410,8 +482,25 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
       string,
       NodeStatus
     >;
+    // The ways out each finished If used. A way that got no files leads nowhere this run.
+    const taken: Taken = Object.fromEntries(
+      steps.flatMap((step) =>
+        step.branches
+          ? [[step.nodeId, Object.keys(step.branches).filter((way) => step.branches![way].length)]]
+          : [],
+      ),
+    );
 
-    const ready = readyNodes(nodes, edges, status);
+    // Steps behind a way no file went are passed over, which can pass over more behind them.
+    const passedOver = passedOverNodes(nodes, edges, status, taken);
+    if (passedOver.length > 0) {
+      for (const node of passedOver) {
+        await ctx.db.patch(byNode.get(node.id)!._id, { status: "skipped", finishedAt: Date.now() });
+      }
+      continue;
+    }
+
+    const ready = readyNodes(nodes, edges, status, taken);
     if (ready.length === 0) {
       const open = steps.filter((step) =>
         ["pending", "running", "waiting_approval"].includes(step.status),
@@ -567,6 +656,12 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
 
   if (step.stage === "probe") {
     await cutClips(ctx, run, step, jobs);
+    await advance(ctx, run._id);
+    return;
+  }
+
+  if (step.stage === "check") {
+    await finishCheck(ctx, run, step, jobs);
     await advance(ctx, run._id);
     return;
   }

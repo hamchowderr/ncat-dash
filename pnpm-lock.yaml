@@ -23,6 +23,9 @@ importers:
       '@ncat-dash/step-catalog':
         specifier: workspace:*
         version: link:packages/step-catalog
+      '@ncat-dash/timeline-export':
+        specifier: workspace:*
+        version: link:packages/timeline-export
       '@xyflow/react':
         specifier: ^13.0.1
         version: 13.0.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
@@ -126,6 +129,15 @@ importers:
       zod:
         specifier: ^4.1.0
         version: 4.6.7
+    devDependencies:
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@20.19.43)(jiti@2.7.0)(lightningcss@1.32.0)
+
+  packages/timeline-export:
     devDependencies:
       typescript:
         specifier: ^5
