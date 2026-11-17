@@ -291,7 +291,18 @@ export const runAgain = mutation({
     if (!automation) {
       throw new ConvexError({ code: "not_found", message: "This automation no longer exists." });
     }
-    const started = await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
+    // A test runs its one step again, as it was tested; anything else runs the whole
+    // automation as it is now.
+    const started = run.test
+      ? await startRun(
+          ctx,
+          { ...automation, nodes: run.nodes, edges: run.edges },
+          run.triggerKind,
+          run.trigger,
+          userId,
+          { test: run.test },
+        )
+      : await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
     if (!started.ok) throw new ConvexError({ code: "invalid_input", message: started.message });
     return started.runId;
   },

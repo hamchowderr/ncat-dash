@@ -152,3 +152,19 @@ describe("a step's settings, made to stand alone", () => {
     });
   });
 });
+
+describe("running a test again", () => {
+  test("tests the same step again, not the whole automation", async () => {
+    const { maya, automationId, look } = await setUp({ toolkit: false });
+    const first = await maya.as.mutation(api.automations.testStep, {
+      automationId,
+      node: CAPTION,
+      fileUrl: FILE,
+    });
+    const again = await maya.as.mutation(api.runs.runAgain, { runId: first });
+    const { run, steps, alerts } = await look(again);
+    expect(run?.test).toBe("caption");
+    expect(steps.map((step) => step.nodeId)).toEqual(["caption"]);
+    expect(alerts).toEqual([]);
+  });
+});
