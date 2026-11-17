@@ -1,5 +1,19 @@
 import { type AutomationDraft, outline } from "@ncat-dash/automation-core";
-import { AGENT_ANSWER_LIMIT, formatMoment, isVideoUrl } from "@ncat-dash/review-core";
+import {
+  AGENT_ANSWER_LIMIT,
+  type ClipSense,
+  FRAMES_GRID,
+  FRAMES_PER_SECOND,
+  FRAMES_SPAN,
+  formatMoment,
+  isVideoUrl,
+  LISTEN_SPAN,
+  measureCode,
+  readMeasurements,
+  senseFrom,
+  transcriptNear,
+  windowAround,
+} from "@ncat-dash/review-core";
 import { callStep, getStep } from "@ncat-dash/step-catalog";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -17,7 +31,8 @@ import { brandOf } from "./lib/queue";
 
 /** Long enough for a thoughtful answer from a slow model, short of Convex's action limit. */
 const AGENT_TIMEOUT_MS = 240_000;
-const STILL_TIMEOUT_MS = 60_000;
+/** Each look at the clip through the toolkit (still, measuring, frames, transcript). */
+const LOOK_TIMEOUT_MS = 100_000;
 
 export type ReviewQuestion = {
   review: { title: string; status: string };
@@ -170,32 +185,145 @@ export async function signAgentToken(secret: string, sub: string, now = Date.now
   return `${body}.${base64url(new Uint8Array(signature))}`;
 }
 
-/** A still of the moment from the team's own toolkit, or null when there is none to be had. */
-async function stillOf(
-  toolkit: { baseUrl: string; apiKeyCipher: string } | null,
-  question: ReviewQuestion,
-): Promise<string | null> {
-  const step = getStep("video-thumbnail");
-  if (!toolkit || !step || !question.clip.isVideo || !question.moment) return null;
+type Toolkit = { baseUrl: string; apiKeyCipher: string };
+
+/** One toolkit call, or null when it fails or takes too long: the answer can do without it. */
+async function ask(
+  connection: { baseUrl: string; apiKey: string },
+  stepId: string,
+  input: unknown,
+  timeoutMs: number,
+): Promise<unknown> {
+  const step = getStep(stepId);
+  if (!step) return null;
   try {
-    const answer = (await callStep(
-      { baseUrl: toolkit.baseUrl, apiKey: await decryptSecret(toolkit.apiKeyCipher) },
-      step,
-      { video_url: question.clip.url, second: question.moment.seconds },
-      { signal: AbortSignal.timeout(STILL_TIMEOUT_MS) },
-    )) as { response?: unknown } | null;
-    const response = answer?.response;
-    const url =
-      typeof response === "string"
-        ? response
-        : typeof (response as { url?: unknown })?.url === "string"
-          ? (response as { url: string }).url
-          : null;
-    return url && /^https?:\/\//.test(url) ? url : null;
+    const answer = (await callStep(connection, step, input, {
+      signal: AbortSignal.timeout(timeoutMs),
+    })) as { response?: unknown } | null;
+    return answer?.response ?? null;
   } catch {
-    // The answer can still be given without seeing the frame.
     return null;
   }
+}
+
+const isUrl = (value: unknown): value is string =>
+  typeof value === "string" && /^https?:\/\//.test(value);
+
+/** The address a toolkit call answered with: a bare one, `{ url }`, or `[{ file_url }]`. */
+function urlIn(response: unknown, index = 0): string | null {
+  if (isUrl(response)) return response;
+  if (isUrl((response as { url?: unknown })?.url)) return (response as { url: string }).url;
+  const item = Array.isArray(response) ? response[index] : null;
+  return isUrl((item as { file_url?: unknown })?.file_url)
+    ? (item as { file_url: string }).file_url
+    : null;
+}
+
+export type Look = { still: string | null; frames: string | null; sense: ClipSense | null };
+
+/**
+ * What the agent gets to see and hear of the clip, all from the team's own toolkit: the
+ * still of the moment, frames around it as one picture, the cuts, the loudness, the quiet
+ * gaps, and what is said near the moment. Anything the toolkit cannot give is left out.
+ */
+export async function lookAt(toolkit: Toolkit | null, question: ReviewQuestion): Promise<Look> {
+  if (!toolkit || !question.clip.isVideo || !question.moment) {
+    return { still: null, frames: null, sense: null };
+  }
+  const connection = {
+    baseUrl: toolkit.baseUrl,
+    apiKey: await decryptSecret(toolkit.apiKeyCipher),
+  };
+  const url = question.clip.url;
+  const moment = question.moment.seconds;
+
+  const [stillResponse, measuredResponse] = await Promise.all([
+    ask(connection, "video-thumbnail", { video_url: url, second: moment }, LOOK_TIMEOUT_MS),
+    ask(
+      connection,
+      "code-execute-python",
+      { code: measureCode(url, moment), timeout: 95 },
+      LOOK_TIMEOUT_MS,
+    ),
+  ]);
+  const measured = readMeasurements((measuredResponse as { result?: unknown } | null)?.result);
+  const duration = measured?.duration ?? null;
+
+  // The frames, and the sound to transcribe, cut out in one FFmpeg call.
+  const framesWindow = windowAround(moment, FRAMES_SPAN, duration);
+  const listenWindow = windowAround(moment, LISTEN_SPAN, duration);
+  const listen = measured?.hasAudio === true && listenWindow.length > 0;
+  const cut = await ask(
+    connection,
+    "ffmpeg-compose",
+    {
+      inputs: [
+        {
+          file_url: url,
+          options: [
+            { option: "-ss", argument: framesWindow.start },
+            { option: "-t", argument: framesWindow.length },
+          ],
+        },
+        ...(listen
+          ? [
+              {
+                file_url: url,
+                options: [
+                  { option: "-ss", argument: listenWindow.start },
+                  { option: "-t", argument: listenWindow.length },
+                ],
+              },
+            ]
+          : []),
+      ],
+      outputs: [
+        {
+          options: [
+            { option: "-map", argument: "0:v:0" },
+            {
+              option: "-vf",
+              argument: `fps=${FRAMES_PER_SECOND},scale=480:-2,tile=${FRAMES_GRID.across}x${FRAMES_GRID.down}`,
+            },
+            { option: "-frames:v", argument: 1 },
+            { option: "-f", argument: "image2" },
+          ],
+        },
+        ...(listen
+          ? [
+              {
+                options: [
+                  { option: "-map", argument: "1:a:0" },
+                  { option: "-ac", argument: 1 },
+                  { option: "-b:a", argument: "64k" },
+                  { option: "-f", argument: "mp3" },
+                ],
+              },
+            ]
+          : []),
+      ],
+    },
+    LOOK_TIMEOUT_MS,
+  );
+  const frames = urlIn(cut, 0);
+  const sound = listen ? urlIn(cut, 1) : null;
+  const heard = sound
+    ? await ask(
+        connection,
+        "media-transcribe",
+        { media_url: sound, include_text: false, include_segments: true },
+        LOOK_TIMEOUT_MS,
+      )
+    : null;
+  const transcript = heard
+    ? transcriptNear((heard as { segments?: unknown }).segments, listenWindow.start)
+    : null;
+
+  return {
+    still: urlIn(stillResponse),
+    frames,
+    sense: senseFrom(measured, moment, frames ? framesWindow : null, transcript),
+  };
 }
 
 /** Gets the agent's answer to one "@Agent" comment and writes it in the thread. */
@@ -216,7 +344,7 @@ export const answer = internalAction({
       return;
     }
 
-    const still = await stillOf(loaded.toolkit, loaded.question);
+    const look = await lookAt(loaded.toolkit, loaded.question);
     try {
       const response = await fetch(new URL("/ncat/review-reply", url), {
         method: "POST",
@@ -224,7 +352,7 @@ export const answer = internalAction({
           "content-type": "application/json",
           authorization: `Bearer ${await signAgentToken(secret, loaded.askedBy)}`,
         },
-        body: JSON.stringify({ question: loaded.question, still }),
+        body: JSON.stringify({ question: loaded.question, ...look }),
         signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
       });
       const result = (await response.json().catch(() => null)) as {

@@ -1,8 +1,14 @@
 // Stand-ins for the browser tests: a file server that supports seeking, and a toolkit
 // that answers every job at once. Nothing here is used by the product itself. The agent
-// server is the real one, with its stand-in model (see playwright.config.ts).
-import { createReadStream, statSync } from "node:fs";
+// server is the real one, with its model played back (see playwright.config.ts).
+//
+// Two toolkit jobs run for real, as the toolkit runs them, so the agent sees and measures
+// the clip: Python (/v1/code/execute/python) and FFmpeg compose (/v1/ffmpeg/compose).
+import { execFile } from "node:child_process";
+import { createReadStream, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const FILES_PORT = 8766;
@@ -12,9 +18,67 @@ export const CLIPS = ["opening-hello", "why-the-station-matters"];
 
 const clip = fileURLToPath(new URL("./fixtures/clip.webm", import.meta.url));
 const still = fileURLToPath(new URL("./fixtures/still.jpg", import.meta.url));
+// Files the real jobs make, served at /made/<name>.
+const made = mkdtempSync(join(tmpdir(), "ncat-dash-e2e-made-"));
+let jobs = 0;
+
+const TYPES = { png: "image/png", jpg: "image/jpeg", mp3: "audio/mpeg", mp4: "video/mp4" };
+
+function run(command, args) {
+  return new Promise((resolve, reject) =>
+    execFile(command, args, { timeout: 120_000, maxBuffer: 1 << 24 }, (error, stdout, stderr) =>
+      error ? reject(new Error(stderr || error.message)) : resolve(stdout),
+    ),
+  );
+}
+
+/** /v1/code/execute/python: the code becomes the body of a function, as the toolkit does. */
+async function python(body) {
+  const indented = String(body.code)
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
+  const script = join(made, `job-${++jobs}.py`);
+  writeFileSync(
+    script,
+    `import json\ndef execute_code():\n${indented}\nprint(json.dumps({"result": execute_code()}))\n`,
+  );
+  return JSON.parse(await run("python3", [script]));
+}
+
+/** /v1/ffmpeg/compose: the same command the toolkit builds, with its files served here. */
+async function compose(body) {
+  const flags = (options = []) =>
+    options.flatMap((o) => (o.argument == null ? [o.option] : [o.option, String(o.argument)]));
+  const args = ["-y", ...flags(body.global_options)];
+  for (const input of body.inputs) args.push(...flags(input.options), "-i", input.file_url);
+  if (body.filters?.length)
+    args.push("-filter_complex", body.filters.map((f) => f.filter).join(";"));
+  const job = ++jobs;
+  const outputs = body.outputs.map((output, index) => {
+    const format = output.options.find((o) => o.option === "-f")?.argument;
+    const extension = format === "image2" ? "png" : (format ?? "mp4");
+    const file = join(made, `job-${job}-output-${index}.${extension}`);
+    args.push(...flags(output.options), file);
+    return file;
+  });
+  await run("ffmpeg", args);
+  return outputs.map((file) => ({ file_url: `${FILES}/made/${basename(file)}` }));
+}
 
 // Every name serves the same short clip, and every .jpg the same still of it.
 createServer((request, response) => {
+  if (request.url.startsWith("/made/")) {
+    const file = join(made, basename(request.url));
+    const type = TYPES[file.split(".").pop()] ?? "application/octet-stream";
+    try {
+      response.writeHead(200, { "Content-Type": type, "Content-Length": statSync(file).size });
+      createReadStream(file).pipe(response);
+    } catch {
+      response.writeHead(404).end();
+    }
+    return;
+  }
   if (request.url.endsWith(".jpg")) {
     response.writeHead(200, {
       "Content-Type": "image/jpeg",
@@ -46,8 +110,25 @@ createServer((request, response) => {
 }).listen(FILES_PORT, "127.0.0.1");
 
 createServer((request, response) => {
-  request.resume();
-  request.on("end", () => {
+  const chunks = [];
+  request.on("data", (chunk) => chunks.push(chunk));
+  request.on("end", async () => {
+    const real = request.url.startsWith("/v1/code/execute/python")
+      ? python
+      : request.url.startsWith("/v1/ffmpeg/compose")
+        ? compose
+        : null;
+    if (real) {
+      try {
+        const result = await real(JSON.parse(Buffer.concat(chunks).toString() || "{}"));
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ code: 200, job_id: "stand-in", response: result }));
+      } catch (error) {
+        response.writeHead(500, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ code: 500, message: String(error) }));
+      }
+      return;
+    }
     response.writeHead(200, { "Content-Type": "application/json" });
     if (request.url.startsWith("/v1/toolkit/authenticate")) {
       response.end(JSON.stringify({ code: 200, response: "Authorized", build_number: "204" }));
