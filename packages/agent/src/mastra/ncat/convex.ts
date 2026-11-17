@@ -47,5 +47,10 @@ export function plainError(caught: unknown): string {
   const data = (caught as { data?: { message?: unknown } })?.data;
   if (data && typeof data.message === "string") return data.message;
   const message = caught instanceof Error ? caught.message : String(caught);
+  // A deployed dashboard hides the reason for anything but its own errors, so the model
+  // would only see "Server Error" and retry the same thing.
+  if (/\bServer Error\b/.test(message)) {
+    return "The dashboard could not do that, and gave no reason. Check every value against list_step_types, and change one thing at a time to find the one it refuses.";
+  }
   return message.split("\n")[0]?.slice(0, 400) ?? "Something went wrong.";
 }

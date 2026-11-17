@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 
 import { APPROVAL_VIEWS } from "./approval-views";
 import { ToolRow } from "./tool-row";
-import { toolWords } from "./tool-words";
+import { errorWords, toolWords } from "./tool-words";
 
 export function AgentPanel({
   onAutomation,
@@ -57,6 +57,7 @@ export function AgentPanel({
       renderTool={(call, result) =>
         toolWords(call.name, call.args) ? <ToolRow call={call} result={result} /> : undefined
       }
+      errorWords={errorWords}
       onNavigate={(href) => router.push(href)}
       actions={
         <Button variant="ghost" size="icon" className="size-8" onClick={onClose}>

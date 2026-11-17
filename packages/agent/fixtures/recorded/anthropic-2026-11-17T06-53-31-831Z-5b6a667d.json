@@ -1,0 +1,87 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Add captions to the clips before they go for approval.",
+        "model": "claude-sonnet-5-5",
+        "turnIndex": 4,
+        "hasToolResult": true
+      },
+      "response": {
+        "content": "The clips already had captions, but there was no approval step. I added one, so the captioned clips now wait for someone on the team to approve them.\n\n[Open it](/automations/jn7ewwqrf29pb8vzeyrr83d39s8jdvgm)\n\nThe automation now runs in this order:\n1. **Start:** someone on the team uploads a video.\n2. **Cut into short clips:** the recording is cut at pauses in speech into clips that fit Instagram Reels, and reframed for that format.\n3. **Add captions:** each clip gets bold, all-caps captions, up to 4 words per line, at the bottom centre. The spoken word is highlighted as it's said.\n4. **Approve clips (new):** the run stops here until someone approves. The captioned clips then carry on.\n\nNothing is blocking it from running, and it's still switched off. Want me to switch it on?",
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 357,
+          "cache_read_input_tokens": 18707,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 357,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 283
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 2701,
+        "interChunkDelaysMs": [
+          0,
+          0,
+          0,
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "totalDurationMs": 2705
+      },
+      "metadata": {
+        "systemHash": "8c98bf41",
+        "toolsHash": "49fe857c"
+      }
+    }
+  ]
+}

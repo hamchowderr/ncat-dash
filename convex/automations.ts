@@ -694,6 +694,20 @@ export const startFromUpload = internalMutation({
  * of trigger and step; with a type, that one in full, including the settings it accepts.
  * Served from here so the agent always sees what this deployment really has.
  */
+/**
+ * `value` without keys that start with "$", which Convex cannot send. A step's settings
+ * are described by a JSON Schema, and those carry "$schema".
+ */
+function withoutReservedKeys<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(withoutReservedKeys) as T;
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !key.startsWith("$"))
+      .map(([key, inner]) => [key, withoutReservedKeys(inner)]),
+  ) as T;
+}
+
 export const nodeTypes = query({
   args: { type: v.optional(v.string()) },
   returns: v.object({ index: v.optional(v.string()), type: v.optional(v.any()) }),
@@ -703,6 +717,6 @@ export const nodeTypes = query({
     if (!args.type) return { index: nodeTypeIndex() };
     const found = getNodeType(args.type);
     if (!found) fail("not_found", `There is no step type called ${args.type}.`);
-    return { type: found };
+    return { type: withoutReservedKeys(found) };
   },
 });

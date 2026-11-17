@@ -1,0 +1,101 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Build an automation that makes short clips with captions from each new recording I upload.",
+        "model": "claude-sonnet-5-5",
+        "turnIndex": 4,
+        "hasToolResult": true
+      },
+      "response": {
+        "content": "I built the automation. It's switched off, and nothing is blocking it from running.\n\n[Open it](/automations/jn7ewwqrf29pb8vzeyrr83d39s8jdvgm)\n\n- **Start:** it runs each time someone on the team uploads a video.\n- **Cut into short clips:** it cuts the recording at pauses in speech into clips that fit Instagram Reels' length limit, and reframes them for that format.\n- **Add captions:** each clip gets captions that are transcribed automatically. They're bold, in capitals, up to 4 words per line, at the bottom centre, and the spoken word is highlighted as it's said.\n\nI assumed Instagram Reels because you didn't name a platform. I can switch it to TikTok, YouTube Shorts or another one. I can also change the caption style.\n\nWant me to switch it on?",
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 544,
+          "cache_read_input_tokens": 19529,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 544,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 275
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 3251,
+        "interChunkDelaysMs": [
+          0,
+          0,
+          0,
+          5,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "totalDurationMs": 3257
+      },
+      "metadata": {
+        "systemHash": "0d51c4cd",
+        "toolsHash": "49fe857c"
+      }
+    }
+  ]
+}
