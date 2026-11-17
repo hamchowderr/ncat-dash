@@ -14,11 +14,13 @@ the deleted ones.
 ## What is here
 
 One conversation with `anthropic/claude-sonnet-5-5`, recorded 2026-11-17 in the browser
-against the local stand-in toolkit: "Build an automation that makes short clips with
-captions from each new recording I upload.", then, on the automation it built, "Add captions
-to the clips before they go for approval." (it already had captions, so the model added the
-approval step). `packages/automation-core/test/recorded-model.test.ts` makes its changes
-against the real rules, so a rule change that would trip the model fails a test.
+against the local stand-in toolkit, with one video uploaded: "Build an automation that
+makes short clips with captions from each new recording I upload." The model first asked
+which platforms (`ask_user`, pick several); TikTok and YouTube Shorts were picked. It then
+built one clips branch per platform, tried it on the upload (`try_automation`), read how
+the run went (`check_run`) and reported. `packages/automation-core/test/recorded-model.test.ts`
+checks it asked before building, makes its changes against the real rules, and checks it
+tried what it built.
 
 One review room answer, recorded 2026-11-17 by the browser tests (`RECORD_AGENT=1 pnpm
 test:e2e`): Maya asks "@Agent does this part move too fast?" at 0:02 of "Why the station

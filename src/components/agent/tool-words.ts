@@ -86,6 +86,19 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords | 
           typeof given?.name === "string" ? `Called "${given.name}", switched off` : "Switched off",
         ],
       };
+    case "list_uploads":
+      return { title: "Looking at your uploads", question: "", lines: [] };
+    case "check_run":
+      return { title: "Checking how the run went", question: "", lines: [] };
+    case "try_automation":
+      return {
+        title: "Trying the automation",
+        question: "Try this automation on a file?",
+        lines: [
+          "It runs the real steps on your toolkit, so it takes a while and uses your server.",
+          "It runs whether or not the automation is switched on.",
+        ],
+      };
     case "switch_automation":
       return {
         title: given?.on ? "Switching the automation on" : "Switching the automation off",
@@ -122,6 +135,41 @@ export function resultWords(name: string | undefined, result: unknown): string[]
     return lines.filter(Boolean).length > 0
       ? ["Still needed before it can run:", ...lines.filter(Boolean)]
       : ["Nothing is stopping it from running."];
+  }
+  if (name === "list_uploads") {
+    const rows = Array.isArray(value.uploads) ? value.uploads : [];
+    return rows.length === 0 ? ["No uploads yet."] : [count(rows.length, "file", "files")];
+  }
+  if (name === "try_automation" && typeof value.fileName === "string") {
+    return [`Started on ${value.fileName}`];
+  }
+  if (name === "check_run") {
+    const steps = (Array.isArray(value.steps) ? value.steps : []) as {
+      type?: string;
+      name?: string | null;
+      status?: string;
+      madeCount?: number;
+      error?: string | null;
+    }[];
+    const lines = steps.map((step) => {
+      const label = step.name ?? (step.type ? typeTitle(step.type) : "A step");
+      if (step.status === "failed") return `${label}: failed${step.error ? `: ${step.error}` : ""}`;
+      if (step.status === "done")
+        return `${label}: made ${count(step.madeCount ?? 0, "file", "files")}`;
+      if (step.status === "waiting_approval") return `${label}: waiting for someone to approve`;
+      return `${label}: ${step.status === "running" ? "running" : "not started yet"}`;
+    });
+    const head =
+      value.status === "done"
+        ? "The run finished."
+        : value.status === "failed"
+          ? "The run failed."
+          : value.status === "waiting"
+            ? "The run is waiting."
+            : value.status === "cancelled"
+              ? "The run was cancelled."
+              : "The run is still going.";
+    return [head, ...lines];
   }
   return [];
 }

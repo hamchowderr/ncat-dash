@@ -61,6 +61,11 @@ export interface NodeType {
   /** Settings filled from the team's brand in Settings when left empty. */
   brand?: Record<string, BrandKey>;
   /**
+   * Settings only the person can decide, such as which platform clips are for. The agent
+   * asks for these before building rather than picking them itself.
+   */
+  ask?: string[];
+  /**
    * The ways out of it, when it has more than one. Every connection from it names one,
    * and each way hands on only the files that went that way.
    */
@@ -278,6 +283,7 @@ const CLIPS: NodeType = {
     },
     required: ["platform"],
   },
+  ask: ["platform"],
   automatic: null,
 };
 
@@ -513,6 +519,8 @@ export function nodeTypeIndex(): string {
           : ""
       }${
         nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""
-      }${nodeType.branches ? `, ways out: ${nodeType.branches.join(" and ")}` : ""}): ${nodeType.title}. ${nodeType.description}`,
+      }${nodeType.branches ? `, ways out: ${nodeType.branches.join(" and ")}` : ""}${
+        nodeType.ask ? `, ask the person for its ${nodeType.ask.join(" and ")}` : ""
+      }): ${nodeType.title}. ${nodeType.description}`,
   ).join("\n");
 }
