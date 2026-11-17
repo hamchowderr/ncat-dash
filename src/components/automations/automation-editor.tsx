@@ -92,7 +92,9 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { DraftBar } from "./draft-bar";
+import { LiveRunBadge, useLiveRun } from "./live-run";
 import { NodePanel } from "./node-panel";
+import { StepTest } from "./step-test";
 import { STEP_ICONS } from "./step-icons";
 import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
@@ -262,6 +264,9 @@ function Editor({ automation }: { automation: Loaded }) {
   const draftShown = hasDraft || (automation.enabled && dirty);
 
   const [tab, setTab] = useState("editor");
+  const running = useLiveRun(automation._id);
+  // The last test of each step since the editor opened, so its result stays in the panel.
+  const [tests, setTests] = useState<Record<string, Id<"runs">>>({});
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Keep the whole automation in view when it opens and whenever a step is added or removed.
@@ -283,12 +288,23 @@ function Editor({ automation }: { automation: Loaded }) {
       edges,
     );
     const open = openWaysOf(draft.nodes, draft.edges);
-    return nodes.map((node) =>
-      node.type === "step"
-        ? { ...node, data: { ...node.data, last: last.has(node.id), openWays: open.get(node.id) } }
-        : node,
-    );
-  }, [nodes, stepNodes, edges, draft]);
+    return nodes.map((node) => {
+      if (node.type !== "step") return node;
+      // While a run goes, each step it has reached shows how it is doing.
+      const now = running.steps.get(node.id);
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          last: last.has(node.id),
+          openWays: open.get(node.id),
+          status: now?.status,
+          jobCount: now?.jobCount,
+          note: now?.note,
+        },
+      };
+    });
+  }, [nodes, stepNodes, edges, draft, running.steps]);
 
   // The line a new step is being put on, when it was started from a plus on a line.
   const [insertOn, setInsertOn] = useState<{ source: string; target: string } | null>(null);
@@ -372,9 +388,13 @@ function Editor({ automation }: { automation: Loaded }) {
         stepNodes.map((node) => node.id),
         edges,
       ),
-      ...edges.map(flowEdge),
+      ...edges.map((edge) => ({
+        ...flowEdge(edge),
+        // The line into the step a run is on moves.
+        animated: running.steps.get(edge.target)?.status === "running",
+      })),
     ],
-    [stepNodes, edges],
+    [stepNodes, edges, running.steps],
   );
 
   function changeTrigger(next: Trigger) {
@@ -668,6 +688,11 @@ function Editor({ automation }: { automation: Loaded }) {
             )}
 
             <div className="bg-muted/30 relative h-96 min-h-0 lg:h-auto" data-testid="canvas">
+              <LiveRunBadge
+                automationId={automation._id}
+                latest={running.latest}
+                active={running.active}
+              />
               {!paletteOpen && (
                 <Button
                   variant="outline"
@@ -769,6 +794,18 @@ function Editor({ automation }: { automation: Loaded }) {
                       }
                       onRemove={() => removeSteps([selected.id])}
                     />
+                    {(selected.data.node.kind === "step" ||
+                      selected.data.node.kind === "clips") && (
+                      <StepTest
+                        key={selected.id}
+                        automationId={automation._id}
+                        node={selected.data.node}
+                        runId={tests[selected.id]}
+                        onStarted={(runId) =>
+                          setTests((current) => ({ ...current, [selected.id]: runId }))
+                        }
+                      />
+                    )}
                   </>
                 ) : (
                   <>

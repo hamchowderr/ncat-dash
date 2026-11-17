@@ -1,3 +1,4 @@
+import { type AutomationNode, nodeTypeOf } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, mutation, query } from "./_generated/server";
@@ -16,6 +17,25 @@ import {
   startRun,
 } from "./lib/runner";
 
+/** The name of the file that started a run: as uploaded, or else from its address. */
+export function startingFileName(trigger: unknown): string | null {
+  const { file_name: name, file_url: url } = (trigger ?? {}) as Record<string, unknown>;
+  if (typeof name === "string" && name) return name;
+  if (typeof url !== "string") return null;
+  try {
+    const last = new URL(url).pathname.split("/").filter(Boolean).pop();
+    return last ? decodeURIComponent(last) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The name of the step a test run tried. */
+function testName(run: Doc<"runs">): string {
+  const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === run.test);
+  return node ? (node.label ?? nodeTypeOf(node)?.title ?? "a step") : "a step";
+}
+
 function summary(run: Doc<"runs">) {
   return {
     _id: run._id,
@@ -28,6 +48,8 @@ function summary(run: Doc<"runs">) {
     finishedAt: run.finishedAt,
     // How many times steps in the run tried again after failing.
     retries: run.retries ?? 0,
+    // For a test of one step: that step's name, as it was when tested.
+    testOf: run.test ? testName(run) : null,
   };
 }
 
@@ -44,6 +66,41 @@ export const listForAutomation = query({
       .order("desc")
       .take(50);
     return runs.map(summary);
+  },
+});
+
+/**
+ * The automation's newest run, with just enough of each step to light up the editor's
+ * canvas while it goes. Null when it has never run.
+ */
+export const latestForAutomation = query({
+  args: { automationId: v.id("automations") },
+  handler: async (ctx, args) => {
+    const automation = await ctx.db.get(args.automationId);
+    if (!automation) return null;
+    if (!(await isMember(ctx, automation.organizationId))) return null;
+    const run = await ctx.db
+      .query("runs")
+      .withIndex("by_automation", (q) => q.eq("automationId", args.automationId))
+      .order("desc")
+      .first();
+    if (!run) return null;
+    const steps = await ctx.db
+      .query("runSteps")
+      .withIndex("by_run", (q) => q.eq("runId", run._id))
+      .take(200);
+    return {
+      ...summary(run),
+      steps: steps.map((step) => ({
+        nodeId: step.nodeId,
+        status: step.status,
+        jobCount: step.jobIds.length,
+        branches: step.branches,
+        stage: step.stage,
+        resumeAt: step.resumeAt,
+        retryAt: step.retryAt ?? null,
+      })),
+    };
   },
 });
 
@@ -71,8 +128,7 @@ export const get = query({
       hasCuts: (await cutListOf(ctx, run, steps)) !== null,
       trigger: run.trigger,
       // The file that started the run, by name, when a file did.
-      startedWith:
-        typeof run.trigger?.file_name === "string" ? (run.trigger.file_name as string) : null,
+      startedWith: startingFileName(run.trigger),
       // How many times a failed step tries again for this team.
       retryLimit: await retriesFor(ctx, run.organizationId),
       nodes: run.nodes,
@@ -266,7 +322,18 @@ export const runAgain = mutation({
     if (!automation) {
       throw new ConvexError({ code: "not_found", message: "This automation no longer exists." });
     }
-    const started = await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
+    // A test runs its one step again, as it was tested; anything else runs the whole
+    // automation as it is now.
+    const started = run.test
+      ? await startRun(
+          ctx,
+          { ...automation, nodes: run.nodes, edges: run.edges },
+          run.triggerKind,
+          run.trigger,
+          userId,
+          { test: run.test },
+        )
+      : await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
     if (!started.ok) throw new ConvexError({ code: "invalid_input", message: started.message });
     return started.runId;
   },

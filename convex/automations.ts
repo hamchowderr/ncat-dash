@@ -573,6 +573,60 @@ export const runNow = mutation({
   },
 });
 
+/**
+ * Tests one step on its own, as it stands in the editor (saved or not), on one file.
+ * Settings that point at an earlier step's file take the chosen file instead, since the
+ * steps before do not run. Returns the run, which then updates live like any other.
+ */
+export const testStep = mutation({
+  args: {
+    automationId: v.id("automations"),
+    node: nodeValidator,
+    fileUrl: v.optional(v.string()),
+  },
+  returns: v.id("runs"),
+  handler: async (ctx, args) => {
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
+    if (args.node.kind !== "step" && args.node.kind !== "clips") {
+      fail("invalid_input", "Only steps that do work on a file can be tested on their own.");
+    }
+    const fileUrl = args.fileUrl?.trim();
+    if (fileUrl && !/^https?:\/\//.test(fileUrl)) {
+      fail("invalid_input", "The file address must start with http:// or https://.");
+    }
+    const node = { ...args.node, input: standAlone(args.node.input) };
+    const started = await startRun(
+      ctx,
+      { ...automation, nodes: [node], edges: [] },
+      "manual",
+      fileUrl ? { file_url: fileUrl } : {},
+      userId,
+      { test: node.id },
+    );
+    if (!started.ok) fail("invalid_input", started.message);
+    return started.runId;
+  },
+});
+
+/**
+ * A step's settings with nothing pointing back at earlier steps: a file from one becomes
+ * the file the test runs on, and anything else read from one is left for the step to
+ * work out, as it does when nothing is set.
+ */
+export function standAlone(input: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value === "string" && /\{\{\s*steps\./.test(value)) {
+      if (/^\{\{\s*steps\.[A-Za-z0-9_]+\.url\s*\}\}$/.test(value)) {
+        out[key] = "{{trigger.file_url}}";
+      }
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
 // Internal: the triggers that start runs with nobody logged in.
 
 /** Called from the webhook address. Says why when it cannot start a run. */

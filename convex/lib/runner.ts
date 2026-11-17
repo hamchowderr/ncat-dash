@@ -62,6 +62,7 @@ export async function startRun(
   triggerKind: TriggerKind,
   trigger: Record<string, unknown>,
   startedBy: string | null,
+  options: { test?: string } = {},
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
   if (problem) return { ok: false, message: problem };
@@ -78,6 +79,7 @@ export async function startRun(
     error: null,
     startedBy,
     finishedAt: null,
+    ...(options.test ? { test: options.test } : {}),
   });
   for (const node of automation.nodes) {
     await ctx.db.insert("runSteps", {
@@ -523,7 +525,7 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
         // A person who rejects at an approval step already knows; anything else that
         // ends a run is something the team should hear about.
         const broken = steps.find((step) => step.status === "failed" && !step.decidedBy);
-        if (broken) await alertTeam(ctx, run, broken);
+        if (broken && !run.test) await alertTeam(ctx, run, broken);
       } else {
         const working = open.some((step) => step.status === "running");
         const next = working ? "running" : "waiting";
