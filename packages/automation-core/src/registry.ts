@@ -10,13 +10,21 @@ import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 import type { Brand, BrandKey } from "./brand";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
+import {
+  CHECK_NAMES,
+  CHECKS,
+  DEFAULT_CONDITION,
+  IF_BRANCHES,
+  PICTURE_SIZES,
+  WAIT_UNITS,
+} from "./logic";
 import { MIN_INTERVAL_MINUTES } from "./schedule";
 import type { StarterTrigger } from "./starters";
 
 /** What moves along a connection. Only files do today; "data" is a step's JSON result. */
 export type Carries = "nothing" | "file" | "files" | "data";
 
-export type NodeGroup = "trigger" | "ready-made" | "people" | StepCategory;
+export type NodeGroup = "trigger" | "ready-made" | "logic" | "people" | StepCategory;
 
 export interface JsonSchema {
   type?: string;
@@ -27,7 +35,8 @@ export interface JsonSchema {
 
 export interface NodeType {
   /**
-   * Stable name: "trigger:upload", "approval", "clips", "export", or "step:<catalog id>".
+   * Stable name: "trigger:upload", "approval", "clips", "export", "if", "wait", or
+   * "step:<catalog id>".
    * Never rename one that has shipped.
    */
   type: string;
@@ -50,11 +59,17 @@ export interface NodeType {
   fills?: Record<string, string>;
   /** Settings filled from the team's brand in Settings when left empty. */
   brand?: Record<string, BrandKey>;
+  /**
+   * The ways out of it, when it has more than one. Every connection from it names one,
+   * and each way hands on only the files that went that way.
+   */
+  branches?: string[];
 }
 
 export const GROUP_LABELS: Record<NodeGroup, string> = {
   trigger: "Starts the automation",
   "ready-made": "Ready-made",
+  logic: "Logic",
   video: "Video",
   audio: "Audio",
   media: "Media",
@@ -70,6 +85,7 @@ export const GROUP_LABELS: Record<NodeGroup, string> = {
 export const GROUP_ORDER: NodeGroup[] = [
   "trigger",
   "ready-made",
+  "logic",
   "video",
   "audio",
   "media",
@@ -240,6 +256,71 @@ const CLIPS: NodeType = {
   automatic: null,
 };
 
+const IF: NodeType = {
+  type: "if",
+  role: "action",
+  group: "logic",
+  title: "If",
+  description:
+    "Sends each file one of two ways. A file leaves by Yes when it passes a check on its length, type, shape, picture size or sound, and by No when it does not.",
+  takes: "files",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      check: {
+        type: "string",
+        enum: CHECK_NAMES,
+        default: DEFAULT_CONDITION.check,
+        description: "What to look at on each file.",
+      },
+      is: {
+        type: "string",
+        enum: CHECK_NAMES.flatMap((check) => CHECKS[check].choices.map((choice) => choice.value)),
+        default: DEFAULT_CONDITION.is,
+        description: `What it has to be to leave by Yes. ${CHECK_NAMES.map(
+          (check) =>
+            `For ${check}: ${CHECKS[check].choices.map((choice) => choice.value).join(", ")}.`,
+        ).join(" ")}`,
+      },
+      value: {
+        type: "number",
+        exclusiveMinimum: 0,
+        default: DEFAULT_CONDITION.value,
+        description: `The number to compare against. For length: seconds. For size: pixels on the shorter side (${PICTURE_SIZES.map((size) => size.value).join(", ")}). Not used by the other checks.`,
+      },
+    },
+    required: ["check", "is"],
+  },
+  automatic: null,
+  branches: [...IF_BRANCHES],
+};
+
+const WAIT: NodeType = {
+  type: "wait",
+  role: "action",
+  group: "logic",
+  title: "Wait",
+  description:
+    "Holds the run for a length of time, then hands the files it was given to the next step. Six days at most.",
+  takes: "files",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      amount: {
+        type: "number",
+        exclusiveMinimum: 0,
+        default: 30,
+        description: "How many minutes, hours or days to wait.",
+      },
+      unit: { type: "string", enum: [...WAIT_UNITS], default: "minutes" },
+    },
+    required: ["amount", "unit"],
+  },
+  automatic: null,
+};
+
 const EXPORT: NodeType = {
   type: "export",
   role: "action",
@@ -285,6 +366,8 @@ export const NODE_TYPES: NodeType[] = [
   ...TRIGGERS,
   CLIPS,
   EXPORT,
+  IF,
+  WAIT,
   ...allSteps.map(stepType),
   APPROVAL,
 ].sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));
@@ -319,7 +402,15 @@ export function triggerTypeOf(trigger: StarterTrigger): NodeType {
 
 /** The saved shape of a node of this type: its kind and, for a toolkit step, the step id. */
 export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId"> | null {
-  if (type === "approval" || type === "clips" || type === "export") return { kind: type };
+  if (
+    type === "approval" ||
+    type === "clips" ||
+    type === "export" ||
+    type === "if" ||
+    type === "wait"
+  ) {
+    return { kind: type };
+  }
   if (type.startsWith("step:")) {
     const stepId = type.slice("step:".length);
     return getStep(stepId) ? { kind: "step", stepId } : null;
@@ -397,6 +488,6 @@ export function nodeTypeIndex(): string {
           : ""
       }${
         nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""
-      }): ${nodeType.title}. ${nodeType.description}`,
+      }${nodeType.branches ? `, ways out: ${nodeType.branches.join(" and ")}` : ""}): ${nodeType.title}. ${nodeType.description}`,
   ).join("\n");
 }

@@ -30,6 +30,7 @@ import { nodeTitle } from "@/lib/automations";
 import { fieldLabel } from "@/lib/catalog";
 
 import { nodeLook } from "./flow-nodes";
+import { LogicSettings } from "./logic-panel";
 import { PlatformPicker } from "./platform-picker";
 
 type NodeContent = Omit<AutomationNode, "position">;
@@ -215,6 +216,10 @@ export function NodePanel({
             onChange={(platform) => onChange({ input: { ...node.input, platform } })}
           />
         </Field>
+      )}
+
+      {(node.kind === "if" || node.kind === "wait") && (
+        <LogicSettings node={node} onChange={onChange} />
       )}
 
       {node.kind === "step" && fields && needed.length > 0 && (
