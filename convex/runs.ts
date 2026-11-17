@@ -1,3 +1,4 @@
+import { type AutomationNode, nodeTypeOf } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, mutation, query } from "./_generated/server";
@@ -8,6 +9,25 @@ import { pump } from "./lib/queue";
 import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
 import { decideApproval, retriesFor, retryStepNow, startRun } from "./lib/runner";
+
+/** The name of the file that started a run: as uploaded, or else from its address. */
+export function startingFileName(trigger: unknown): string | null {
+  const { file_name: name, file_url: url } = (trigger ?? {}) as Record<string, unknown>;
+  if (typeof name === "string" && name) return name;
+  if (typeof url !== "string") return null;
+  try {
+    const last = new URL(url).pathname.split("/").filter(Boolean).pop();
+    return last ? decodeURIComponent(last) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The name of the step a test run tried. */
+function testName(run: Doc<"runs">): string {
+  const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === run.test);
+  return node ? (node.label ?? nodeTypeOf(node)?.title ?? "a step") : "a step";
+}
 
 function summary(run: Doc<"runs">) {
   return {
@@ -21,6 +41,8 @@ function summary(run: Doc<"runs">) {
     finishedAt: run.finishedAt,
     // How many times steps in the run tried again after failing.
     retries: run.retries ?? 0,
+    // For a test of one step: that step's name, as it was when tested.
+    testOf: run.test ? testName(run) : null,
   };
 }
 
@@ -92,8 +114,7 @@ export const get = query({
       hasCuts: (await cutListOf(ctx, run, steps)) !== null,
       trigger: run.trigger,
       // The file that started the run, by name, when a file did.
-      startedWith:
-        typeof run.trigger?.file_name === "string" ? (run.trigger.file_name as string) : null,
+      startedWith: startingFileName(run.trigger),
       // How many times a failed step tries again for this team.
       retryLimit: await retriesFor(ctx, run.organizationId),
       nodes: run.nodes,
