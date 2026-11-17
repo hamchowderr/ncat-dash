@@ -15,6 +15,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { StructuredField, structuredHint } from "@/components/steps/structured-field";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { fieldLabel } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { useBrandUpload, useFileLink } from "@/lib/use-brand-upload";
@@ -49,19 +49,6 @@ function kindOf(schema: JsonSchema): FieldKind {
   if (schema.type === "number" || schema.type === "integer") return "number";
   if (schema.type === "boolean") return "yesno";
   return "json";
-}
-
-/** A small example of the shape a list or group field expects, shown as its placeholder. */
-function exampleOf(schema: JsonSchema): unknown {
-  if (schema.enum) return schema.enum[0];
-  if (schema.type === "array") return [exampleOf(schema.items ?? {})];
-  if (schema.type === "object") {
-    const entries = Object.entries(schema.properties ?? {}).slice(0, 4);
-    return Object.fromEntries(entries.map(([key, value]) => [key, exampleOf(value)]));
-  }
-  if (schema.type === "number" || schema.type === "integer") return 0;
-  if (schema.type === "boolean") return true;
-  return schema.format === "uri" ? "https://..." : "...";
 }
 
 const UNSET = "__unset__";
@@ -279,7 +266,10 @@ export function toInput(
       try {
         input[name] = JSON.parse(raw);
       } catch {
-        return { ok: false, message: `${fieldLabel(name)} is not valid JSON.` };
+        return {
+          ok: false,
+          message: `${fieldLabel(name)} could not be read. Remove it and add it again.`,
+        };
       }
     } else input[name] = raw;
   }
@@ -462,15 +452,12 @@ export function StepFields({
                 </SelectContent>
               </Select>
             ) : kind === "json" ? (
-              <Textarea
-                id={id}
+              <StructuredField
+                schema={field}
+                name={name}
                 value={values[name] ?? ""}
-                onChange={(event) => onChange(name, event.target.value)}
-                placeholder={JSON.stringify(exampleOf(field), null, 2)}
-                required={isRequired}
-                rows={5}
-                spellCheck={false}
-                className="font-mono text-xs"
+                onChange={(next) => onChange(name, next)}
+                id={id}
               />
             ) : (
               <Input
@@ -505,7 +492,11 @@ export function StepFields({
             ) : automatic?.filled?.[name] && !values[name] ? (
               <FieldDescription>{automatic.filled[name]}</FieldDescription>
             ) : (
-              field.description && <FieldDescription>{field.description}</FieldDescription>
+              (field.description || kind === "json") && (
+                <FieldDescription>
+                  {(kind === "json" && structuredHint(field)) || field.description}
+                </FieldDescription>
+              )
             )}
           </Field>
         );
