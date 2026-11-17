@@ -27,7 +27,7 @@ export interface JsonSchema {
 
 export interface NodeType {
   /**
-   * Stable name: "trigger:upload", "approval", "clips", or "step:<catalog id>".
+   * Stable name: "trigger:upload", "approval", "clips", "export", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
   type: string;
@@ -240,6 +240,19 @@ const CLIPS: NodeType = {
   automatic: null,
 };
 
+const EXPORT: NodeType = {
+  type: "export",
+  role: "action",
+  group: "ready-made",
+  title: "Export for editors",
+  description:
+    "Makes timeline files that open this run's cuts in Premiere Pro, DaVinci Resolve and Final Cut Pro, with every cut still adjustable. Put it after Clips for a platform. It has nothing to set up: the editors are picked once in Settings. CapCut cannot open a timeline, so it uses the finished clips.",
+  takes: "files",
+  gives: "files",
+  settings: { type: "object", properties: {} },
+  automatic: null,
+};
+
 function gives(step: StepDefinition): Carries {
   return step.output === "json" ? "data" : step.output;
 }
@@ -271,6 +284,7 @@ function stepType(step: StepDefinition): NodeType {
 export const NODE_TYPES: NodeType[] = [
   ...TRIGGERS,
   CLIPS,
+  EXPORT,
   ...allSteps.map(stepType),
   APPROVAL,
 ].sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));
@@ -305,7 +319,7 @@ export function triggerTypeOf(trigger: StarterTrigger): NodeType {
 
 /** The saved shape of a node of this type: its kind and, for a toolkit step, the step id. */
 export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId"> | null {
-  if (type === "approval" || type === "clips") return { kind: type };
+  if (type === "approval" || type === "clips" || type === "export") return { kind: type };
   if (type.startsWith("step:")) {
     const stepId = type.slice("step:".length);
     return getStep(stepId) ? { kind: "step", stepId } : null;
