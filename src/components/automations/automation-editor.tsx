@@ -96,6 +96,7 @@ import { NodePanel } from "./node-panel";
 import { STEP_ICONS } from "./step-icons";
 import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
+import { VersionsPanel } from "./versions-panel";
 import { TriggerPanel } from "./trigger-panel";
 
 const EMPTY_BRAND: Brand = {};
@@ -576,6 +577,7 @@ function Editor({ automation }: { automation: Loaded }) {
           live={live ?? (JSON.parse(savedJson) as AutomationDraft)}
           draft={draft}
           busy={busy}
+          restoredFrom={automation.restoredFrom}
           onPublish={onPublish}
           onDiscard={onDiscard}
         />
@@ -585,6 +587,7 @@ function Editor({ automation }: { automation: Loaded }) {
         <TabsList>
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
+          <TabsTrigger value="versions">Versions</TabsTrigger>
         </TabsList>
 
         <TabsContent value="editor">
@@ -785,6 +788,18 @@ function Editor({ automation }: { automation: Loaded }) {
 
         <TabsContent value="runs">
           <RunsList automationId={automation._id} />
+        </TabsContent>
+
+        <TabsContent value="versions">
+          <VersionsPanel
+            automationId={automation._id}
+            draftShown={draftShown}
+            // Unsaved work goes, as when a draft is discarded. Undo brings it back.
+            beforeRestore={() => {
+              if (dirty) show(JSON.parse(savedJson) as AutomationDraft);
+            }}
+            onRestored={() => setTab("editor")}
+          />
         </TabsContent>
       </Tabs>
 
