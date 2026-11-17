@@ -415,7 +415,9 @@ export function StepFields({
                       ? "The same file on every run."
                       : brand?.choices?.some((choice) => choice.value === mode)
                         ? "From your library in Settings, under Brand."
-                        : field.description}
+                        : pointed
+                          ? `Takes ${pointed.label.charAt(0).toLowerCase()}${pointed.label.slice(1)}.`
+                          : field.description}
               </FieldDescription>
             </Field>
           );
