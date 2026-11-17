@@ -11,14 +11,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
 /**
  * Email for the whole dashboard, set once: the toSend account that failed-run alerts,
- * sign-in emails and team invitations are sent through. Below it, each member's own
- * switch for alert emails.
+ * sign-in emails and team invitations are sent through. Each member picks which emails
+ * they get in the Notifications card.
  */
 export function EmailCard() {
   const team = useActiveTeam();
@@ -26,7 +25,6 @@ export function EmailCard() {
   const connect = useAction(api.email.connect);
   const sendTest = useAction(api.email.sendTest);
   const remove = useMutation(api.email.remove);
-  const setAlertEmails = useMutation(api.email.setAlertEmails);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<"save" | "test" | "remove" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -84,14 +82,6 @@ export function EmailCard() {
     }
   }
 
-  async function onToggle(enabled: boolean, kind?: "approval_waiting") {
-    try {
-      await setAlertEmails({ organizationId: team.id, enabled, kind });
-    } catch (caught) {
-      toast.error(errorMessage(caught, "The setting could not be saved. Try again."));
-    }
-  }
-
   return (
     <Card className="max-w-xl">
       <CardHeader>
@@ -99,8 +89,8 @@ export function EmailCard() {
           <h2>Email</h2>
         </CardTitle>
         <CardDescription>
-          Failed-run alerts, approval requests, password resets, address confirmations and team
-          invitations are sent through{" "}
+          Notifications, password resets, address confirmations and team invitations are sent
+          through{" "}
           <a href="https://tosend.com" target="_blank" rel="noreferrer" className="underline">
             toSend
           </a>
@@ -224,42 +214,14 @@ export function EmailCard() {
           </form>
         )}
 
-        <div className="flex items-start justify-between gap-4 border-t pt-4">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="alert-emails" className="text-sm font-medium">
-              Email me when a run fails
-            </label>
-            <p className="text-muted-foreground text-sm">
-              {email.configured
-                ? "Only for you, on this team. The alert under the bell stays either way."
-                : "Only for you, on this team. Emails start once email is set up."}
-            </p>
-          </div>
-          <Switch
-            id="alert-emails"
-            checked={email.alertEmails}
-            onCheckedChange={onToggle}
-            aria-label="Email me when a run fails"
-          />
-        </div>
-
-        <div className="flex items-start justify-between gap-4 border-t pt-4">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="approval-emails" className="text-sm font-medium">
-              Email me when an approval is waiting for me
-            </label>
-            <p className="text-muted-foreground text-sm">
-              Sent when a run reaches an Approval step that asks you to review. The alert under the
-              bell stays either way.
-            </p>
-          </div>
-          <Switch
-            id="approval-emails"
-            checked={email.approvalEmails}
-            onCheckedChange={(enabled) => onToggle(enabled, "approval_waiting")}
-            aria-label="Email me when an approval is waiting for me"
-          />
-        </div>
+        <p className="text-muted-foreground border-t pt-4 text-sm">
+          Which emails you get, and whether they come as they happen or once a day, is up to you
+          under{" "}
+          <a href="#notifications" className="underline">
+            Notifications
+          </a>
+          .
+        </p>
       </CardContent>
     </Card>
   );

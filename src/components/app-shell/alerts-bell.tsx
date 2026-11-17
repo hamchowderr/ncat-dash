@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { Bell, CircleAlert, UserCheck } from "lucide-react";
+import { AtSign, Bell, CircleAlert, Clock, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -19,14 +19,45 @@ function tries(retries: number): string {
   return retries > 0 ? ` after ${retries + 1} tries` : "";
 }
 
-type Shown = { kind: "run_failed" | "approval_waiting"; automationName: string; retries: number };
+type Kind = "run_failed" | "approval_waiting" | "approval_timed_out" | "mention";
+type Shown = { kind: Kind; automationName: string; retries: number; from?: string | null };
 
 /** The first line of an alert: what happened, in a few words. */
 export function alertTitle(alert: Shown): string {
-  return alert.kind === "approval_waiting"
-    ? `${alert.automationName} is waiting for your approval`
-    : `${alert.automationName} failed${tries(alert.retries)}`;
+  switch (alert.kind) {
+    case "approval_waiting":
+      return `${alert.automationName} is waiting for your approval`;
+    case "approval_timed_out":
+      return `${alert.automationName}: an approval ran out of time`;
+    case "mention":
+      return `${alert.from ?? "Someone"} mentioned you in ${alert.automationName}`;
+    default:
+      return `${alert.automationName} failed${tries(alert.retries)}`;
+  }
 }
+
+/** How each kind looks under the bell: its icon, and its colour while unseen. */
+const LOOK: Record<Kind, { icon: typeof Bell; tint: string; wash: string; action: string }> = {
+  run_failed: {
+    icon: CircleAlert,
+    tint: "text-destructive",
+    wash: "bg-destructive/5",
+    action: "View run",
+  },
+  approval_waiting: {
+    icon: UserCheck,
+    tint: "text-amber-600 dark:text-amber-400",
+    wash: "bg-amber-500/10",
+    action: "Review",
+  },
+  approval_timed_out: {
+    icon: Clock,
+    tint: "text-amber-600 dark:text-amber-400",
+    wash: "bg-amber-500/10",
+    action: "View run",
+  },
+  mention: { icon: AtSign, tint: "text-primary", wash: "bg-primary/5", action: "Open review" },
+};
 
 /**
  * The bell at the top of every page. It counts the alerts the person has not seen,
@@ -52,16 +83,14 @@ export function AlertsBell() {
       if (announced.current.has(alert._id)) continue;
       announced.current.add(alert._id);
       if (alert.seen) continue;
-      const href = `/automations/${alert.automationId}/runs/${alert.runId}`;
-      const waiting = alert.kind === "approval_waiting";
-      (waiting ? toast.info : toast.error)(alertTitle(alert), {
+      (alert.kind === "run_failed" ? toast.error : toast.info)(alertTitle(alert), {
         description: alert.stepName ? `${alert.stepName}: ${alert.message}` : alert.message,
         duration: 15_000,
         action: {
-          label: waiting ? "Review" : "View run",
+          label: LOOK[alert.kind].action,
           onClick: () => {
             void markSeen({ organizationId: team.id, alertId: alert._id });
-            router.push(href);
+            router.push(alert.href);
           },
         },
       });
@@ -104,43 +133,35 @@ export function AlertsBell() {
         </div>
         {!data || data.alerts.length === 0 ? (
           <p className="text-muted-foreground px-4 py-6 text-sm">
-            Nothing to report. A run that fails after all its tries shows up here, and so does an
-            approval waiting for you.
+            Nothing to report. Failed runs, approvals for you and mentions show up here. Choose what
+            you hear about in{" "}
+            <Link
+              href="/settings#notifications"
+              className="underline"
+              onClick={() => setOpen(false)}
+            >
+              Settings
+            </Link>
+            .
           </p>
         ) : (
           <ul className="max-h-96 overflow-y-auto">
             {data.alerts.map((alert) => (
               <li key={alert._id} className="border-b last:border-b-0">
                 <Link
-                  href={`/automations/${alert.automationId}/runs/${alert.runId}`}
+                  href={alert.href}
                   data-alert={alert.seen ? "seen" : "new"}
+                  data-alert-kind={alert.kind}
                   className={cn(
                     "hover:bg-muted/60 flex gap-3 px-4 py-3 outline-none focus-visible:bg-muted/60",
-                    !alert.seen &&
-                      (alert.kind === "approval_waiting" ? "bg-amber-500/10" : "bg-destructive/5"),
+                    !alert.seen && LOOK[alert.kind].wash,
                   )}
                   onClick={() => {
                     setOpen(false);
                     if (!alert.seen) void markSeen({ organizationId: team.id, alertId: alert._id });
                   }}
                 >
-                  {alert.kind === "approval_waiting" ? (
-                    <UserCheck
-                      className={cn(
-                        "mt-0.5 size-4 shrink-0",
-                        alert.seen ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400",
-                      )}
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <CircleAlert
-                      className={cn(
-                        "mt-0.5 size-4 shrink-0",
-                        alert.seen ? "text-muted-foreground" : "text-destructive",
-                      )}
-                      aria-hidden="true"
-                    />
-                  )}
+                  <AlertIcon kind={alert.kind} seen={alert.seen} />
                   <span className="grid min-w-0 gap-0.5">
                     <span className={cn("truncate text-sm", !alert.seen && "font-medium")}>
                       {alertTitle(alert)}
@@ -158,5 +179,15 @@ export function AlertsBell() {
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+function AlertIcon({ kind, seen }: { kind: Kind; seen: boolean }) {
+  const { icon: Icon, tint } = LOOK[kind];
+  return (
+    <Icon
+      className={cn("mt-0.5 size-4 shrink-0", seen ? "text-muted-foreground" : tint)}
+      aria-hidden="true"
+    />
   );
 }

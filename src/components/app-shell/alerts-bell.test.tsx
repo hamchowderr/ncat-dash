@@ -11,8 +11,8 @@ const alert = (over: Record<string, unknown>) => ({
   _id: "a1",
   kind: "run_failed",
   at: 1_700_000_000_000,
-  runId: "run1",
-  automationId: "auto1",
+  href: "/automations/auto1/runs/run1",
+  from: null,
   automationName: "Weekly clips",
   stepName: "Captions",
   message: "The toolkit could not be reached.",
@@ -29,6 +29,12 @@ describe("alert titles", () => {
     expect(
       alertTitle({ kind: "approval_waiting", automationName: "Weekly clips", retries: 0 }),
     ).toBe("Weekly clips is waiting for your approval");
+    expect(
+      alertTitle({ kind: "approval_timed_out", automationName: "Weekly clips", retries: 0 }),
+    ).toBe("Weekly clips: an approval ran out of time");
+    expect(
+      alertTitle({ kind: "mention", automationName: "Cut review", retries: 0, from: "Maya" }),
+    ).toBe("Maya mentioned you in Cut review");
   });
 });
 
@@ -60,10 +66,35 @@ describe("the bell", () => {
     });
   });
 
-  test("says approvals show up here when there is nothing", () => {
+  test("a mention opens the review at its thread", () => {
+    answerQuery(api.alerts.list, {
+      unseen: 1,
+      alerts: [
+        alert({
+          kind: "mention",
+          automationName: "Cut review",
+          from: "Maya Ortiz",
+          stepName: null,
+          message: "@Dev Patel tighten the cut",
+          href: "/review/r1?clip=c1&comment=m1",
+        }),
+      ],
+    });
+    renderInApp(<AlertsBell />);
+    fireEvent.click(screen.getByRole("button", { name: /Alerts, 1 you have not seen/ }));
+    const link = screen.getByRole("link", { name: /Maya Ortiz mentioned you in Cut review/ });
+    expect(link).toHaveAttribute("href", "/review/r1?clip=c1&comment=m1");
+    expect(link).toHaveAttribute("data-alert-kind", "mention");
+  });
+
+  test("points to the notification settings when there is nothing", () => {
     answerQuery(api.alerts.list, { unseen: 0, alerts: [] });
     renderInApp(<AlertsBell />);
     fireEvent.click(screen.getByRole("button", { name: "Alerts" }));
-    expect(screen.getByText(/an approval waiting for you/)).toBeInTheDocument();
+    expect(screen.getByText(/approvals for you and mentions show up here/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/settings#notifications",
+    );
   });
 });

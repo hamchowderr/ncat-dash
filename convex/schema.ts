@@ -390,25 +390,41 @@ export default defineSchema({
     .index("by_run", ["runId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
 
-  // Something the team should know about: a run that failed after all its tries. Shown
-  // under the bell to every member until that member has seen it.
+  // Something people should know about: a run that failed after all its tries, an
+  // approval waiting or run out of time, a mention in a review. Shown under the bell to
+  // the members it is for until each has seen it, unless they switched that kind off in
+  // their notification settings.
   alerts: defineTable({
     organizationId: v.string(),
     // "run_failed": a run ended with a failed step. "approval_waiting": a run reached an
     // approval step and waits for the people in `recipients` to decide.
-    kind: v.union(v.literal("run_failed"), v.literal("approval_waiting")),
+    // "approval_timed_out": nobody decided in time, so the step decided by itself.
+    // "mention": someone wrote @ and a member's name in a review comment.
+    kind: v.union(
+      v.literal("run_failed"),
+      v.literal("approval_waiting"),
+      v.literal("approval_timed_out"),
+      v.literal("mention"),
+    ),
     // The members it is for. Left out: everyone on the team.
     recipients: v.optional(v.array(v.string())),
     // For "approval_waiting": the step waiting. The alert goes once it is decided.
     runStepId: v.optional(v.id("runSteps")),
-    runId: v.id("runs"),
-    automationId: v.id("automations"),
+    // The run it is about. Left out for a mention in a review.
+    runId: v.optional(v.id("runs")),
+    automationId: v.optional(v.id("automations")),
+    // The automation's name, or for a mention the review's title.
     automationName: v.string(),
     // The step that failed, as it is named on the canvas.
     stepName: v.optional(v.string()),
     message: v.string(),
     // How many times that step tried again before giving up.
     retries: v.number(),
+    // For a mention: the review, clip and thread it is in, and who wrote it.
+    reviewId: v.optional(v.id("reviews")),
+    clipId: v.optional(v.id("reviewClips")),
+    commentId: v.optional(v.id("reviewComments")),
+    from: v.optional(v.string()),
     // The members who have seen it.
     seenBy: v.array(v.string()),
   })
@@ -433,13 +449,38 @@ export default defineSchema({
 
   // A member who has switched off emails about failed runs for a team. No row means
   // they get them.
-  emailPreferences: defineTable({
+  notificationPreferences: defineTable({
     organizationId: v.string(),
     userId: v.string(),
-    runFailed: v.boolean(),
-    // Email when an approval step waits for this member. Left out: yes.
-    approvalWaiting: v.optional(v.boolean()),
-  }).index("by_organization_and_user", ["organizationId", "userId"]),
+    // Per kind of news: under the bell, by email. Anything left out keeps its default
+    // (see NOTIFICATION_KINDS in convex/lib/notifications.ts).
+    kinds: v.optional(
+      v.object({
+        run_failed: v.optional(
+          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
+        ),
+        approval_waiting: v.optional(
+          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
+        ),
+        approval_timed_out: v.optional(
+          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
+        ),
+        mention: v.optional(
+          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
+        ),
+      }),
+    ),
+    // "now": each email as it happens. "daily": one summary a day at `digestHour` in
+    // `timeZone`; approvals waiting still go at once. Left out: "now".
+    emailTiming: v.optional(v.union(v.literal("now"), v.literal("daily"))),
+    digestHour: v.optional(v.number()),
+    // An IANA zone such as "America/Los_Angeles", from the member's browser.
+    timeZone: v.optional(v.string()),
+    // When the last daily summary covered up to.
+    lastDigestAt: v.optional(v.number()),
+  })
+    .index("by_organization_and_user", ["organizationId", "userId"])
+    .index("by_emailTiming", ["emailTiming"]),
 
   // A team's own S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces).
   storageConnections: defineTable({

@@ -163,8 +163,12 @@ describe("a time limit", () => {
     });
     expect(step.decidedBy).toBeUndefined();
     expect(run?.status).toBe("failed");
-    expect(alerts.map((alert) => alert.kind)).toEqual(["run_failed"]);
-    expect(await kinds(ana)).toEqual(["run_failed"]);
+    // The people asked hear it ran out of time; it is not also a failed run.
+    expect(alerts.map((alert) => alert.kind)).toEqual(["approval_timed_out"]);
+    expect(alerts[0].message).toBe(
+      "Nobody decided within 1 day, so it was rejected and the run stopped.",
+    );
+    expect(await kinds(ana)).toEqual(["approval_timed_out"]);
   });
 
   test("approves by itself when set to, and the run carries on", async () => {
@@ -177,7 +181,12 @@ describe("a time limit", () => {
     const { step, run, alerts } = await state();
     expect(step).toMatchObject({ status: "done", decidedAutomatically: true, outputs: [FILE] });
     expect(run?.status).toBe("done");
-    expect(alerts).toEqual([]);
+    expect(alerts.map((alert) => [alert.kind, alert.message])).toEqual([
+      [
+        "approval_timed_out",
+        "Nobody decided within 3 hours, so it was approved and the run carried on.",
+      ],
+    ]);
   });
 
   test("does nothing once someone has decided", async () => {
@@ -225,18 +234,20 @@ describe("a time limit", () => {
 describe("approval emails", () => {
   test("go only to the people asked who still want them", async () => {
     const { t, team, ben, state } = await waitingOn({});
-    await ben.as.mutation(api.email.setAlertEmails, {
+    await ben.as.mutation(api.notifications.set, {
       organizationId: team,
-      enabled: false,
       kind: "approval_waiting",
+      channel: "email",
+      enabled: false,
     });
     const { alerts } = await state();
     const found = await t.query(internal.email.alertRecipients, { alertId: alerts[0]._id });
     expect(found?.recipients.sort()).toEqual(["ana.reyes@example.test", "olu.bello@example.test"]);
 
     // Turning approval emails off leaves failure emails on.
-    const prefs = await ben.as.query(api.email.get, { organizationId: team });
-    expect(prefs).toMatchObject({ approvalEmails: false, alertEmails: true });
+    const prefs = await ben.as.query(api.notifications.get, { organizationId: team });
+    const byKind = Object.fromEntries(prefs.kinds.map((entry) => [entry.kind, entry.email]));
+    expect(byKind).toMatchObject({ approval_waiting: false, run_failed: true });
   });
 
   test("with a named reviewer, only the reviewer is emailed", async () => {
