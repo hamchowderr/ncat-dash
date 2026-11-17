@@ -103,10 +103,9 @@ export function TriggerPanel({
             <CopyButton text={address} label="Copy address" />
           </div>
           <FieldDescription>
-            Send a POST here to start a run once the automation is switched on. Put{" "}
-            <code>file_url</code> in a JSON body to hand it a file. Anything else in the body can be
-            used in a step as <code>{"{{trigger.body.name}}"}</code>. Treat the address like a
-            password.
+            Send a POST here to start a run once the automation is switched on. To hand it a file,
+            send JSON with the file&apos;s link as <code>file_url</code>. Anything else you send is
+            kept with the run. Treat the address like a password.
           </FieldDescription>
         </Field>
       )}
