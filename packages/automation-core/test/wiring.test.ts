@@ -10,7 +10,10 @@ import {
   fits,
   getNodeType,
   readSource,
+  settingsForLaterSteps,
   stepsBefore,
+  valueFrom,
+  valueSources,
   wantedKind,
   writeSource,
 } from "../src";
@@ -169,5 +172,60 @@ describe("pointing a file setting somewhere", () => {
     const cut = applyOperation(pointed, { op: "disconnect", source: "captions", target: "thumb" });
     const messages = draftProblems(cut).map((problem) => problem.message);
     expect(messages.some((message) => /does not run before it/.test(message))).toBe(true);
+  });
+});
+
+describe("text an earlier step made", () => {
+  const flow = (captionSettings: Record<string, unknown> = {}) =>
+    applyOperations(
+      { name: "Test", trigger: { kind: "upload", fileType: "video" }, nodes: [], edges: [] },
+      [
+        { op: "add", type: "step:media-transcribe", id: "transcribe" },
+        { op: "add", type: "step:video-thumbnail", id: "thumb", after: "transcribe" },
+        {
+          op: "add",
+          type: "step:video-caption",
+          id: "captions",
+          after: "thumb",
+          settings: captionSettings,
+        },
+      ],
+    );
+
+  it("finds the nearest earlier step that makes what a setting takes", () => {
+    const draft = flow();
+    const sources = valueSources(draft.nodes[2], draft.nodes, draft.edges);
+    expect(sources.map(({ field, value, from }) => [field, value, from.id])).toEqual([
+      ["captions", "captions", "transcribe"],
+    ]);
+  });
+
+  it("tells the earlier step to make it, only when a later step is waiting", () => {
+    const draft = flow();
+    expect(settingsForLaterSteps(draft.nodes[0], draft.nodes, draft.edges)).toEqual({
+      include_srt: true,
+    });
+    const alone = applyOperation(draft, { op: "remove", ids: ["captions"] });
+    expect(settingsForLaterSteps(alone.nodes[0], alone.nodes, alone.edges)).toEqual({});
+  });
+
+  it("leaves a setting someone filled in alone", () => {
+    const draft = flow({ captions: "1\n00:00:00,000 --> 00:00:01,000\nHello" });
+    expect(valueSources(draft.nodes[2], draft.nodes, draft.edges)).toEqual([]);
+    expect(settingsForLaterSteps(draft.nodes[0], draft.nodes, draft.edges)).toEqual({});
+  });
+
+  it("does not hand caption text to a style the toolkit cannot use it with", () => {
+    const karaoke = flow({ settings: { style: "karaoke" } });
+    expect(valueSources(karaoke.nodes[2], karaoke.nodes, karaoke.edges)).toEqual([]);
+    const classic = flow({ settings: { style: "classic" } });
+    expect(valueSources(classic.nodes[2], classic.nodes, classic.edges)).toHaveLength(1);
+  });
+
+  it("reads the value out of the earlier step's result", () => {
+    expect(valueFrom("media-transcribe", "captions", { text: "Hi", srt: "1\n..." })).toBe("1\n...");
+    expect(valueFrom("media-transcribe", "transcript", { text: "Hi", srt: null })).toBe("Hi");
+    expect(valueFrom("media-transcribe", "captions", { text: "Hi", srt: null })).toBeUndefined();
+    expect(valueFrom("video-caption", "captions", { srt: "x" })).toBeUndefined();
   });
 });

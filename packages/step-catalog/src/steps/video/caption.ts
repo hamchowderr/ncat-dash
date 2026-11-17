@@ -51,6 +51,17 @@ export const videoCaption = defineStep({
   method: "POST",
   output: "file",
   primaryInput: "video_url",
+  valueInputs: {
+    captions: {
+      value: "captions",
+      // The toolkit accepts caption text only with the classic style. The other styles
+      // need word timings, which it works out when it transcribes the video itself.
+      when: (settings) => {
+        const style = (settings.settings as { style?: unknown } | undefined)?.style;
+        return style === undefined || String(style).toLowerCase() === "classic";
+      },
+    },
+  },
   input: z.object({
     video_url: z.string().url().describe("URL of the video to caption"),
     captions: z
