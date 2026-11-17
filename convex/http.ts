@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
+import { fromAgent } from "./lib/agentToken";
 
 const http = httpRouter();
 
@@ -88,6 +89,53 @@ http.route({
       default:
         return new Response("Unknown automation", { status: 404 });
     }
+  }),
+});
+
+// The agent server asks for a Slack workspace's token and signing secret here, and who a
+// Slack user is on the team. Only a caller holding MASTRA_JWT_SECRET is answered.
+async function slackQuestion(request: Request): Promise<Record<string, string> | Response> {
+  if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+  try {
+    const body = (await request.json()) as Record<string, unknown>;
+    const fields: Record<string, string> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (typeof value === "string" && value.length > 0 && value.length <= 64) fields[key] = value;
+    }
+    return fields;
+  } catch {
+    return new Response("Body must be JSON", { status: 400 });
+  }
+}
+
+http.route({
+  path: "/slack/installation",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.slackTeamId) return new Response("Missing slackTeamId", { status: 400 });
+    const found = await ctx.runAction(internal.slack.installation, {
+      slackTeamId: asked.slackTeamId,
+    });
+    return Response.json(found, { status: found ? 200 : 404 });
+  }),
+});
+
+http.route({
+  path: "/slack/person",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.slackTeamId || !asked.slackUserId) {
+      return new Response("Missing slackTeamId or slackUserId", { status: 400 });
+    }
+    const found = await ctx.runAction(internal.slack.person, {
+      slackTeamId: asked.slackTeamId,
+      slackUserId: asked.slackUserId,
+    });
+    return Response.json(found);
   }),
 });
 

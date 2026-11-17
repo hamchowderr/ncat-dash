@@ -1,0 +1,47 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "How many automations does our team have, and what are they called?",
+        "model": "claude-sonnet-5-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "name": "dash_overview",
+            "arguments": "{}",
+            "id": "toolu_019j3oAVhG6Jq5aWwZbnYfVo"
+          }
+        ],
+        "usage": {
+          "input_tokens": 4,
+          "cache_creation_input_tokens": 18881,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 18881,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 28
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1030,
+        "interChunkDelaysMs": [
+          0,
+          0,
+          0,
+          488,
+          1,
+          0
+        ],
+        "totalDurationMs": 1519
+      },
+      "metadata": {
+        "systemHash": "3b3c1eb1",
+        "toolsHash": "93ae18af"
+      }
+    }
+  ]
+}

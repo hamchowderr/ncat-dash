@@ -138,6 +138,11 @@ const envSchema = z
     // The dashboard's Convex deployment. The agent calls it as the signed-in person
     // (mastra/ncat/convex.ts); without it the dashboard tools say they are not connected.
     CONVEX_URL: z.string().url().optional(),
+    // Where the deployment's HTTP actions answer. Left out, it is worked out from
+    // CONVEX_URL (.convex.cloud becomes .convex.site; a local backend's port plus one).
+    CONVEX_SITE_URL: z.string().url().optional(),
+    // A stand-in Slack Web API for tests and local runs. Left out, Slack itself.
+    SLACK_API_URL: z.string().url().optional(),
 
     USE_AIMOCK: boolish.default(false),
     AIMOCK_URL: z.string().url().default('http://localhost:4010'),
