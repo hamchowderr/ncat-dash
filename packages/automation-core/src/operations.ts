@@ -50,6 +50,11 @@ export type Operation =
       branch?: string;
       settings?: Record<string, unknown>;
       label?: string;
+      /**
+       * More steps the new one also follows, besides `after`. It then waits until all of
+       * them have finished and runs once, with the files from all of them.
+       */
+      join?: string[];
     }
   /** Removes steps and joins what fed each one to what it fed. */
   | { op: "remove"; ids: string[] }
@@ -417,6 +422,22 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
     if (after) edges = [...edges, link(after.id, id, branch)];
   }
 
+  const joined = (op.join ?? []).filter((other) => other !== after?.id);
+  if (joined.length > 0) {
+    if (!after || before) {
+      throw new OperationError("To join steps, say which step it comes after too.");
+    }
+    const sources = [after, ...joined.map((other) => need(draft, other))];
+    // It sits one place right of the furthest step it waits for, level with their middle.
+    position = {
+      x: Math.max(...sources.map((source) => source.position.x)) + NODE_GAP,
+      y: Math.round(sources.reduce((sum, source) => sum + source.position.y, 0) / sources.length),
+    };
+    for (const source of sources.slice(1)) {
+      edges = [...edges, link(source.id, id, wayOut({ ...draft, edges }, source, undefined))];
+    }
+  }
+
   const node: AutomationNode = {
     id,
     ...kind,
@@ -424,6 +445,8 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
     input: { ...defaultSettings(nodeType), ...(op.settings ?? {}) },
     position,
   };
+  const problem = joined.length > 0 ? graphProblem([...nodes, node], edges) : null;
+  if (problem) throw new OperationError(problem);
   return { ...draft, nodes: [...nodes, node], edges };
 }
 

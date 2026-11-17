@@ -397,6 +397,20 @@ export function RunSteps({
             step.startedAt && step.finishedAt && step.finishedAt - step.startedAt >= 1000
               ? formatDuration(step.finishedAt - step.startedAt)
               : null;
+          // A step joining others that have not all finished says which it is waiting for.
+          const sources = (run.edges as AutomationEdge[])
+            .filter((edge) => edge.target === node.id)
+            .map((edge) => edge.source);
+          const unfinished = sources.filter((source) =>
+            ["pending", "running", "waiting_approval"].includes(byNode.get(source)?.status ?? ""),
+          );
+          const waitingFor =
+            step.status === "pending" && sources.length > 1 && unfinished.length < sources.length
+              ? unfinished.flatMap((source) => {
+                  const other = run.nodes.find((candidate) => candidate.id === source);
+                  return other ? [nodeTitle(other as AutomationNode)] : [];
+                })
+              : [];
           // Only what the step made: not what it handed on while off or after failing.
           const files =
             node.kind === "step" && !node.off && step.status !== "failed" ? step.outputs : [];
@@ -409,12 +423,16 @@ export function RunSteps({
               last={index === rows.length - 1}
               icon={<Icon className={cn("size-4", look.tint)} aria-hidden="true" />}
               title={nodeTitle(node)}
-              sentence={stepSentence(
-                node,
-                step,
-                run.status,
-                failsOver(node.id, run.edges as AutomationEdge[]),
-              )}
+              sentence={
+                waitingFor.length > 0
+                  ? `Waiting for ${waitingFor.join(" and ")} to finish.`
+                  : stepSentence(
+                      node,
+                      step,
+                      run.status,
+                      failsOver(node.id, run.edges as AutomationEdge[]),
+                    )
+              }
               got={quiet ? undefined : receivedBy(node.id, passed)}
               aside={
                 <>

@@ -162,6 +162,12 @@ const operation = z.discriminatedUnion("op", [
       ),
     settings: z.record(z.string(), z.unknown()).optional(),
     label: z.string().optional(),
+    join: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Ids of more steps the new step also follows, besides after, to join branches back together. It waits until all of them have finished, then runs once with the files from all of them; a branch an If did not take is not waited for.",
+      ),
   }),
   z.object({ op: z.literal("remove"), ids: z.array(z.string()) }),
   z.object({
