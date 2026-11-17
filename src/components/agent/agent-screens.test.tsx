@@ -59,6 +59,9 @@ describe("the card that asks first", () => {
     expect(Object.keys(APPROVAL_VIEWS).sort()).toEqual([
       "change_automation",
       "create_automation",
+      "make_folder",
+      "move_files",
+      "rename_file",
       "switch_automation",
       "try_automation",
     ]);

@@ -83,7 +83,8 @@ export const BROWSER_ACTION_TOOLS = [
  */
 const CATEGORIES: Record<string, ToolCategory> = {
   // The dashboard (ncat/tools.ts): reads look, edits change an automation's design.
-  // switch_automation has no category, so switching one on or off asks every time.
+  // switch_automation, move_files and rename_file have no category, so switching an
+  // automation on or off, and moving or renaming the team's files, ask every time.
   ...Object.fromEntries(NCAT_READ_TOOLS.map((name) => [name, 'read' as const])),
   ...Object.fromEntries(NCAT_EDIT_TOOLS.map((name) => [name, 'edit' as const])),
   // Read: looks things up, changes nothing.
