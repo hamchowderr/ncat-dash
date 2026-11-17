@@ -46,6 +46,8 @@ function run(over: Partial<RunDetails> = {}): RunDetails {
     trigger: {},
     startedWith: "long-interview.mp4",
     retryLimit: 2,
+    startedByRun: null,
+    startedRuns: [],
     nodes: [
       // Listed out of order on purpose: the rows follow the canvas, left to right.
       {

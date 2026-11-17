@@ -572,7 +572,15 @@ function Editor({ automation }: { automation: Loaded }) {
       const result = await save({ automationId: automation._id, ...draft });
       setSavedJson(canonical(draft));
       if (quiet) return true;
-      if (result.draft) {
+      if (result.links) {
+        // A loop or a deleted automation shows nowhere on this canvas, so it is said here.
+        toast.warning(
+          result.draft ? "Draft saved, but it cannot run yet" : "Saved, but it cannot run yet",
+          {
+            description: result.links,
+          },
+        );
+      } else if (result.draft) {
         toast.success(
           automation.enabled
             ? "Draft saved. The live version keeps running until you publish."
@@ -948,6 +956,7 @@ function Editor({ automation }: { automation: Loaded }) {
                   {selected.type === "step" ? (
                     <>
                       <NodePanel
+                        automationId={automation._id}
                         brand={brand}
                         music={music}
                         key={`${selected.id}:${revision}`}

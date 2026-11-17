@@ -7,7 +7,12 @@ import {
   type Brand,
   BRAND_WORDS,
   canonical,
+  type ChainMember,
+  chainLoop,
   draftProblems,
+  followProblem,
+  loopWords,
+  targetOf,
   getNodeType,
   exportAutomation,
   getPlatform,
@@ -143,6 +148,7 @@ function automationProblem(
     if (logic) return `${title}: ${logic}`;
   }
   if (trigger.kind === "schedule") return scheduleProblem(trigger.schedule);
+  if (trigger.kind === "finished") return followProblem(trigger);
   if (trigger.kind === "folder" && trigger.prefix.length > 500)
     return "That folder name is too long.";
   return null;
@@ -250,6 +256,9 @@ const savedValidator = v.object({
   problem: v.union(v.null(), v.string()),
   // True when the changes were kept as a draft and the live version is untouched.
   draft: v.boolean(),
+  // What is wrong with the other automations it runs or follows, such as a loop. The
+  // canvas cannot see the team's other automations, so it is told on every save.
+  links: v.optional(v.union(v.null(), v.string())),
 });
 
 /**
@@ -331,7 +340,8 @@ export const save = mutation({
   returns: savedValidator,
   handler: async (ctx, args) => {
     const { automation, userId } = await loadForMember(ctx, args.automationId);
-    return await storeChanges(ctx, automation, args, userId);
+    const saved = await storeChanges(ctx, automation, args, userId);
+    return { ...saved, links: await linkProblem(ctx, automation, checked(args)) };
   },
 });
 
@@ -346,17 +356,65 @@ function checked(version: Version): Version {
 
 async function problemOf(
   ctx: MutationCtx,
-  organizationId: string,
+  automation: Doc<"automations">,
   version: Version,
 ): Promise<string | null> {
+  const { organizationId } = automation;
   return (
     automationProblem(
       version.trigger,
       version.nodes,
       version.edges,
       await brandOf(ctx, organizationId),
-    ) ?? (await storageProblem(ctx, organizationId, version.trigger))
+    ) ??
+    (await storageProblem(ctx, organizationId, version.trigger)) ??
+    (await linkProblem(ctx, automation, version))
   );
+}
+
+/**
+ * What is wrong with the other automations this one runs or follows: one that is gone,
+ * or links that would make automations start each other in a loop.
+ */
+async function linkProblem(
+  ctx: QueryCtx,
+  automation: Doc<"automations">,
+  version: Version,
+): Promise<string | null> {
+  const targets = version.nodes.flatMap((node) => targetOf(node) ?? []);
+  const followed = version.trigger.kind === "finished" ? version.trigger.automationId : null;
+  if (targets.length === 0 && !followed) return null;
+  const team = await ctx.db
+    .query("automations")
+    .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+    .take(500);
+  const ids = new Set(team.map((other) => other._id as string));
+  if (targets.some((id) => !ids.has(id))) {
+    return "A Run an automation step points at an automation that no longer exists. Pick another.";
+  }
+  if (followed && !ids.has(followed)) {
+    return "The automation this one waits for no longer exists. Pick another.";
+  }
+  // Every other automation as it will run (its draft too, which may be published later),
+  // with this one as it is about to be saved.
+  const members: ChainMember[] = team.flatMap((other) => {
+    if (other._id === automation._id) return [];
+    const versions = other.draft ? [other, other.draft] : [other];
+    return versions.map((each) => ({
+      id: other._id,
+      name: other.name,
+      trigger: each.trigger,
+      nodes: each.nodes,
+    }));
+  });
+  members.push({
+    id: automation._id,
+    name: version.name,
+    trigger: version.trigger,
+    nodes: version.nodes,
+  });
+  const loop = chainLoop(automation._id, members);
+  return loop ? loopWords(loop) : null;
 }
 
 /**
@@ -374,7 +432,7 @@ async function storeChanges(
     const stored = await storeLive(ctx, automation, version, { userId, source: "saved" });
     return { ...stored, draft: false };
   }
-  const problem = await problemOf(ctx, automation.organizationId, version);
+  const problem = await problemOf(ctx, automation, version);
   const same = canonical(version) === canonical(versionOf(automation));
   await ctx.db.patch(automation._id, {
     draft: same
@@ -402,7 +460,7 @@ async function storeLive(
   version: Version,
   by: Parameters<typeof recordVersion>[3],
 ): Promise<{ enabled: boolean; problem: string | null }> {
-  const problem = await problemOf(ctx, automation.organizationId, version);
+  const problem = await problemOf(ctx, automation, version);
   const enabled = automation.enabled && problem === null;
   await ctx.db.patch(automation._id, {
     ...version,
@@ -428,7 +486,7 @@ export const publish = mutation({
     if (!automation.draft) return null;
     const version = checked(automation.draft);
     if (automation.enabled) {
-      const problem = await problemOf(ctx, automation.organizationId, version);
+      const problem = await problemOf(ctx, automation, version);
       if (problem) fail("invalid_input", problem);
     }
     await storeLive(ctx, automation, version, {
@@ -522,7 +580,16 @@ export const change = mutation({
     }
     const { enabled, draft } = await storeChanges(ctx, automation, next, userId);
     const brand = await brandOf(ctx, automation.organizationId);
-    return { outline: outline(next, brand), problems: draftProblems(next, brand), enabled, draft };
+    const links = await linkProblem(ctx, automation, next);
+    return {
+      outline: outline(next, brand),
+      problems: [
+        ...draftProblems(next, brand),
+        ...(links ? [{ nodeId: null, message: links }] : []),
+      ],
+      enabled,
+      draft,
+    };
   },
 });
 
@@ -537,7 +604,9 @@ export const setEnabled = mutation({
           automation.nodes,
           automation.edges,
           await brandOf(ctx, automation.organizationId),
-        ) ?? (await storageProblem(ctx, automation.organizationId, automation.trigger));
+        ) ??
+        (await storageProblem(ctx, automation.organizationId, automation.trigger)) ??
+        (await linkProblem(ctx, automation, automation));
       if (problem) fail("invalid_input", problem);
     }
     await ctx.db.patch(args.automationId, {

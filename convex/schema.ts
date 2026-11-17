@@ -11,6 +11,8 @@ export const nodeValidator = v.object({
     v.literal("export"),
     v.literal("if"),
     v.literal("wait"),
+    // Runs another of the team's automations on its files.
+    v.literal("automation"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -61,6 +63,12 @@ export const triggerValidator = v.union(
   }),
   // A folder in the team's own bucket, checked every minute for new files.
   v.object({ kind: v.literal("folder"), prefix: v.string(), fileType: fileTypeValidator }),
+  // A run of another of the team's automations ended. `automationId` is "" until picked.
+  v.object({
+    kind: v.literal("finished"),
+    automationId: v.string(),
+    when: v.union(v.literal("done"), v.literal("failed"), v.literal("either")),
+  }),
 );
 
 /**
@@ -303,6 +311,10 @@ export default defineSchema({
       v.literal("schedule"),
       v.literal("upload"),
       v.literal("folder"),
+      // Another automation's run ended, and this one follows it.
+      v.literal("finished"),
+      // A "Run an automation" step in another run started it.
+      v.literal("automation"),
     ),
     // What the trigger handed over: file_url, the webhook body, the upload's details.
     trigger: v.any(),
@@ -317,8 +329,17 @@ export default defineSchema({
     // Set when someone tested one step on its own: that step's node id. Nobody is
     // alerted when a test fails, since the person testing is watching it.
     test: v.optional(v.string()),
+    // For a run another run started, by a "Run an automation" step or by following it:
+    // that run, and the step when a step started it. When the step waits, this run's end
+    // moves that step on.
+    parentRunId: v.optional(v.id("runs")),
+    parentRunStepId: v.optional(v.id("runSteps")),
+    // The automations whose runs led to this one, the first one first, this one last. A
+    // run never starts one of them again, nor goes deeper than MAX_CHAIN_DEPTH.
+    chain: v.optional(v.array(v.id("automations"))),
   })
     .index("by_automation", ["automationId"])
+    .index("by_parentRun", ["parentRunId"])
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
 
@@ -352,6 +373,8 @@ export default defineSchema({
     branches: v.optional(v.record(v.string(), v.array(v.string()))),
     // For a "wait" step: when it lets the run carry on.
     resumeAt: v.optional(v.number()),
+    // For a "Run an automation" step: the run it started.
+    childRunId: v.optional(v.id("runs")),
     // The planned clips, in the same order as the cut jobs.
     plan: v.optional(
       v.array(
