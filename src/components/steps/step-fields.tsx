@@ -5,7 +5,7 @@ import { KIND_WORDS, readUploadRef, uploadRef, wantedKind } from "@ncat-dash/aut
 import { getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
 import { useAction, useQuery } from "convex/react";
 import { FileCheck, Upload, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { fieldLabel } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
+import { useBrandUpload, useFileLink } from "@/lib/use-brand-upload";
+import { cn } from "@/lib/utils";
 
 type JsonSchema = {
   type?: string;
@@ -71,8 +73,10 @@ const BRAND = "__brand__";
 export function UploadPicker({
   onPick,
   lasting = false,
+  label = "Use an upload",
 }: {
   onPick: (url: string) => void;
+  label?: string;
   /**
    * Hand back a lasting pointer to the upload instead of a link. A link stops working
    * after a week, so anything that is saved and used again later needs the pointer.
@@ -90,7 +94,7 @@ export function UploadPicker({
       <DropdownMenuTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <Upload />
-          Use an upload
+          {label}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-72 w-72 overflow-y-auto">
@@ -120,27 +124,39 @@ export function FileChoice({
   label,
   id,
   disabled,
+  upload,
+  preview = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
   id?: string;
   disabled?: boolean;
+  /** Lets a file be sent from this computer: the kind of file to offer. */
+  upload?: "image" | "audio";
+  /** Shows the picture itself once one is chosen. */
+  preview?: boolean;
 }) {
   const team = useActiveTeam();
   const uploads = useQuery(api.storage.listUploads, { organizationId: team.id });
+  const { send, busy } = useBrandUpload();
+  const picker = useRef<HTMLInputElement>(null);
   const uploadId = readUploadRef(value);
-  if (uploadId) {
-    const upload = uploads?.find((candidate) => candidate._id === uploadId);
+  const upload_ = uploadId ? uploads?.find((candidate) => candidate._id === uploadId) : undefined;
+  const chosen = uploadId !== null || (preview && /^https?:\/\/\S+$/.test(value));
+  if (chosen) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
+        {preview && <FilePicture value={value} label={label} className="size-16" />}
         <div
           id={id}
           className="bg-muted/50 flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border px-3 text-sm"
         >
           <FileCheck className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
           <span className="truncate">
-            {upload?.fileName ?? (uploads ? "An upload that was removed" : "Your upload")}
+            {uploadId
+              ? (upload_?.fileName ?? (uploads ? "An upload that was removed" : "Your upload"))
+              : value}
           </span>
         </div>
         {!disabled && (
@@ -159,7 +175,7 @@ export function FileChoice({
     );
   }
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Input
         id={id}
         aria-label={`${label}: address of the file`}
@@ -170,9 +186,65 @@ export function FileChoice({
         onChange={(event) => onChange(event.target.value)}
         autoComplete="off"
         disabled={disabled}
+        className="min-w-40 flex-1"
       />
-      {!disabled && <UploadPicker lasting onPick={onChange} />}
+      {!disabled && upload && (
+        <>
+          <input
+            ref={picker}
+            type="file"
+            accept={`${upload}/*`}
+            className="sr-only"
+            aria-label={`Upload ${label.toLowerCase()}`}
+            tabIndex={-1}
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              const sent = file ? await send(file) : null;
+              if (sent) onChange(sent);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => picker.current?.click()}
+          >
+            <Upload />
+            {busy ? "Uploading" : "Upload"}
+          </Button>
+        </>
+      )}
+      {!disabled && <UploadPicker lasting onPick={onChange} label="From uploads" />}
     </div>
+  );
+}
+
+/** The picture a saved file setting points at, such as the team's logo. */
+export function FilePicture({
+  value,
+  label,
+  className,
+}: {
+  value: string | undefined;
+  label: string;
+  className?: string;
+}) {
+  const link = useFileLink(value);
+  return (
+    <span
+      className={cn(
+        "bg-muted flex shrink-0 items-center justify-center overflow-hidden rounded-md border",
+        className,
+      )}
+    >
+      {link && (
+        // The file sits in the team's own storage, so there is nothing for Next to resize.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={link} alt={label} className="size-full object-contain" />
+      )}
+    </span>
   );
 }
 
@@ -250,7 +322,17 @@ export function StepFields({
      * Settings the team's brand fills in when left empty: what it is called ("logo") and
      * whether Settings has one yet.
      */
-    brand?: Record<string, { word: string; set: boolean }>;
+    brand?: Record<
+      string,
+      {
+        word: string;
+        set: boolean;
+        /** Named things to pick from instead, such as the tracks in the music library. */
+        choices?: { value: string; label: string }[];
+        /** What the automatic choice is called when there are named ones to pick from. */
+        usual?: string;
+      }
+    >;
   };
   idPrefix?: string;
 }) {
@@ -276,10 +358,13 @@ export function StepFields({
           );
         }
         if (automatic && kind === "url") {
-          const sources = automatic.sources ?? [];
           const value = values[name] ?? "";
           const brand = automatic.brand?.[name];
-          const pointed = sources.find((source) => source.value === value);
+          // A setting picked from a library, such as music, is not fed by earlier steps.
+          const sources = brand?.choices ? [] : (automatic.sources ?? []);
+          const pointed = [...sources, ...(brand?.choices ?? [])].find(
+            (source) => source.value === value,
+          );
           const mode = pointed
             ? pointed.value
             : value !== "" || fixed[name]
@@ -306,7 +391,16 @@ export function StepFields({
                 </SelectTrigger>
                 <SelectContent>
                   {filledForYou && <SelectItem value={AUTO}>Automatic</SelectItem>}
-                  {brand && <SelectItem value={BRAND}>Your team&apos;s {brand.word}</SelectItem>}
+                  {brand && (
+                    <SelectItem value={BRAND}>
+                      {brand.usual ?? `Your team's ${brand.word}`}
+                    </SelectItem>
+                  )}
+                  {brand?.choices?.map((choice) => (
+                    <SelectItem key={choice.value} value={choice.value}>
+                      {choice.label}
+                    </SelectItem>
+                  ))}
                   {sources.map((source) => (
                     <SelectItem key={source.value} value={source.value}>
                       {source.label}
@@ -329,7 +423,9 @@ export function StepFields({
                       : `Not set yet. Add your ${brand?.word} in Settings, under Brand.`
                     : mode === FIXED
                       ? "The same file on every run."
-                      : field.description}
+                      : brand?.choices?.some((choice) => choice.value === mode)
+                        ? "From your library in Settings, under Brand."
+                        : field.description}
               </FieldDescription>
             </Field>
           );

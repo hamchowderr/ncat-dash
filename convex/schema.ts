@@ -62,6 +62,9 @@ export const operationValidator = v.union(
   v.object({ op: v.literal("tidy") }),
 );
 
+/** One track in the team's music library: a name people pick it by, and where the file is. */
+export const musicValidator = v.array(v.object({ name: v.string(), file: v.string() }));
+
 export const brandValidator = v.object({
   logo: v.optional(v.string()),
   color: v.optional(v.string()),
@@ -128,6 +131,9 @@ export default defineSchema({
     // Set once, used by every automation: a logo and music (an "upload:<id>" pointer to
     // one of the team's uploads, or an address), a colour and a font.
     brand: v.optional(brandValidator),
+    // The team's music library. A step that adds music uses the first track unless it
+    // picks another by name.
+    music: v.optional(musicValidator),
   }).index("by_organization", ["organizationId"]),
 
   // A saved automation: what starts it, and the steps it runs.
@@ -257,5 +263,8 @@ export default defineSchema({
     size: v.number(),
     status: v.union(v.literal("uploading"), v.literal("ready")),
     createdBy: v.string(),
+    // "brand" for a logo or a music track added in Settings. Those are kept to be used
+    // by steps, so they never start an automation.
+    purpose: v.optional(v.literal("brand")),
   }).index("by_organization", ["organizationId"]),
 });
