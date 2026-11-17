@@ -23,8 +23,11 @@ import type * as lib_exports from "../lib/exports.js";
 import type * as lib_logic from "../lib/logic.js";
 import type * as lib_outputs from "../lib/outputs.js";
 import type * as lib_queue from "../lib/queue.js";
+import type * as lib_reviews from "../lib/reviews.js";
 import type * as lib_runner from "../lib/runner.js";
 import type * as lib_s3 from "../lib/s3.js";
+import type * as presence from "../presence.js";
+import type * as reviews from "../reviews.js";
 import type * as runs from "../runs.js";
 import type * as settings from "../settings.js";
 import type * as storage from "../storage.js";
@@ -55,8 +58,11 @@ declare const fullApi: ApiFromModules<{
   "lib/logic": typeof lib_logic;
   "lib/outputs": typeof lib_outputs;
   "lib/queue": typeof lib_queue;
+  "lib/reviews": typeof lib_reviews;
   "lib/runner": typeof lib_runner;
   "lib/s3": typeof lib_s3;
+  presence: typeof presence;
+  reviews: typeof reviews;
   runs: typeof runs;
   settings: typeof settings;
   storage: typeof storage;
@@ -94,4 +100,5 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   betterAuth: import("../betterAuth/_generated/component.js").ComponentApi<"betterAuth">;
+  presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
 };

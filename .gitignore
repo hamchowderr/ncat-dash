@@ -54,3 +54,7 @@ next-env.d.ts
 
 # local Convex backend data
 .convex/
+
+# browser tests
+/test-results/
+/playwright-report/

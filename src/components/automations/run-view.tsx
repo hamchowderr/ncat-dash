@@ -13,7 +13,7 @@ import {
 } from "@ncat-dash/automation-core";
 import { Background, Controls, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Check, CircleStop, RotateCw, X } from "lucide-react";
+import { ArrowLeft, Check, CircleStop, MessagesSquare, RotateCw, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -106,6 +106,20 @@ function RetryCountdown({ at }: { at: number }) {
 }
 
 /** One run: the canvas with each step's live state, and what each step produced. */
+/** Points to the room an approval step opened, where the team can watch and comment first. */
+function ReviewLink({ runStepId }: { runStepId: Id<"runSteps"> }) {
+  const reviewId = useQuery(api.reviews.forStep, { runStepId });
+  if (!reviewId) return null;
+  return (
+    <Button asChild size="sm" variant="outline" className="self-start">
+      <Link href={`/review/${reviewId}`}>
+        <MessagesSquare />
+        Open the review room
+      </Link>
+    </Button>
+  );
+}
+
 export function RunView({
   automationId,
   runId,
@@ -326,6 +340,7 @@ export function RunView({
                       <p className="text-muted-foreground text-sm">
                         Check the files from the step before, then decide. Approving sends them on.
                       </p>
+                      <ReviewLink runStepId={step._id} />
                       <div className="flex gap-2">
                         <Button
                           size="sm"
