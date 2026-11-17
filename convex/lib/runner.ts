@@ -533,10 +533,13 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
   await pump(ctx, run.organizationId);
 }
 
-/** Tells the team a run has failed. Every member sees it under the bell until they open it. */
+/**
+ * Tells the team a run has failed. Every member sees it under the bell until they open
+ * it, and gets an email when email is set up.
+ */
 async function alertTeam(ctx: MutationCtx, run: Doc<"runs">, step: Doc<"runSteps">) {
   const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
-  await ctx.db.insert("alerts", {
+  const alertId = await ctx.db.insert("alerts", {
     organizationId: run.organizationId,
     kind: "run_failed",
     runId: run._id,
@@ -547,6 +550,9 @@ async function alertTeam(ctx: MutationCtx, run: Doc<"runs">, step: Doc<"runSteps
     retries: step.retries ?? 0,
     seenBy: [],
   });
+  // The same news by email, for members who have not switched it off. Sending is an
+  // action of its own, so a problem with email never touches the run.
+  await ctx.scheduler.runAfter(0, internal.email.sendRunFailed, { alertId });
 }
 
 /** How many times a failed step tries again for this team. */
