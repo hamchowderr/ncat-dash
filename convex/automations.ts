@@ -3,6 +3,7 @@ import {
   type AutomationNode,
   getPlatform,
   graphProblem,
+  missingSettings,
   nextRunAt,
   scheduleProblem,
   STARTERS,
@@ -90,6 +91,10 @@ function automationProblem(
     if (node.kind === "clips" && !getPlatform(node.input.platform)) {
       return "Pick a platform for the clips.";
     }
+    if (missingSettings(node).length > 0) {
+      const title = node.label ?? getStep(node.stepId ?? "")?.title ?? "A step";
+      return `${title} still needs its settings. Select it on the canvas.`;
+    }
   }
   if (trigger.kind === "schedule") return scheduleProblem(trigger.schedule);
   if (trigger.kind === "folder" && trigger.prefix.length > 500)
@@ -120,6 +125,8 @@ export const list = query({
           enabled: automation.enabled,
           trigger: automation.trigger,
           stepCount: automation.nodes.length,
+          nodes: automation.nodes,
+          edges: automation.edges,
           nextRunAt: automation.nextRunAt,
           updatedAt: automation.updatedAt,
           lastRun: lastRun

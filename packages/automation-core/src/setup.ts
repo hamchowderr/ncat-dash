@@ -1,9 +1,9 @@
 import { CLIP_CAPTION_SETTINGS, getPlatform, type PlatformName } from "./clips";
-import type { AutomationEdge, AutomationNode } from "./graph";
+import { type AutomationEdge, type AutomationNode, NODE_GAP } from "./graph";
 
 /**
- * The few choices behind a "clips for social" automation. A person sets these once on
- * the setup page; the canvas shows the same automation as steps.
+ * The few choices behind a "clips for social" automation, which the canvas shows as
+ * steps.
  */
 export interface ClipsSetup {
   platform: PlatformName;
@@ -16,6 +16,8 @@ export interface ClipsSetup {
 const CLIPS = "clips";
 const CAPTIONS = "captions";
 const APPROVAL = "approval";
+// Steps run left to right on the canvas.
+const at = (column: number) => ({ x: column * NODE_GAP, y: 0 });
 
 /** The steps for a clips automation with these choices. */
 export function clipsGraph(setup: ClipsSetup): {
@@ -23,7 +25,7 @@ export function clipsGraph(setup: ClipsSetup): {
   edges: AutomationEdge[];
 } {
   const nodes: AutomationNode[] = [
-    { id: CLIPS, kind: "clips", input: { platform: setup.platform }, position: { x: 0, y: 130 } },
+    { id: CLIPS, kind: "clips", input: { platform: setup.platform }, position: at(0) },
   ];
   if (setup.captions) {
     nodes.push({
@@ -31,7 +33,7 @@ export function clipsGraph(setup: ClipsSetup): {
       kind: "step",
       stepId: "video-caption",
       input: { settings: { ...CLIP_CAPTION_SETTINGS } },
-      position: { x: 0, y: 260 },
+      position: at(1),
     });
   }
   if (setup.approve) {
@@ -39,7 +41,7 @@ export function clipsGraph(setup: ClipsSetup): {
       id: APPROVAL,
       kind: "approval",
       input: {},
-      position: { x: 0, y: nodes.length * 130 + 130 },
+      position: at(nodes.length),
     });
   }
   const edges = nodes.slice(1).map((node, index) => ({

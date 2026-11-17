@@ -47,7 +47,7 @@ export function RunView({
   const cancel = useMutation(api.runs.cancel);
   const { resolvedTheme } = useTheme();
   const [busy, setBusy] = useState(false);
-  const [showSteps, setShowSteps] = useState(false);
+  const [showClips, setShowClips] = useState(false);
 
   const flow = useMemo(() => {
     if (!run) return null;
@@ -121,8 +121,8 @@ export function RunView({
         <div className="ml-auto flex items-center gap-3">
           <RunStatusBadge status={run.status} />
           {clipsSetup && (
-            <Button variant="ghost" size="sm" onClick={() => setShowSteps((shown) => !shown)}>
-              {showSteps ? "Show clips" : "Show steps"}
+            <Button variant="ghost" size="sm" onClick={() => setShowClips((shown) => !shown)}>
+              {showClips ? "Show the canvas" : "Show clips"}
             </Button>
           )}
           {active && (
@@ -139,7 +139,7 @@ export function RunView({
         </div>
       </div>
 
-      {clipsSetup && !showSteps && (
+      {clipsSetup && showClips && (
         <ClipsRun
           run={run}
           setup={clipsSetup}
@@ -150,9 +150,9 @@ export function RunView({
         />
       )}
 
-      {(!clipsSetup || showSteps) && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-6">
-          <div className="bg-muted/30 h-[28rem] overflow-hidden rounded-xl border lg:h-[calc(100vh-12rem)]">
+      {(!clipsSetup || !showClips) && (
+        <div className="grid gap-4">
+          <div className="bg-muted/30 h-80 overflow-hidden rounded-xl border">
             <ReactFlowProvider>
               <ReactFlow
                 nodes={flow.nodes}
@@ -172,7 +172,7 @@ export function RunView({
             </ReactFlowProvider>
           </div>
 
-          <ol className="flex flex-col gap-3 lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
+          <ol className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
             {(run.nodes as AutomationNode[]).map((node) => {
               const step = flow.byNode.get(node.id);
               if (!step) return null;
