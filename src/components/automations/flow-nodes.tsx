@@ -254,9 +254,10 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
             <TriangleAlert className="size-4" aria-hidden="true" />
           </span>
         )}
-        {failWay && canFailOver(node.kind) && (
+        {canFailOver(node.kind) && (
           // The way out for when the step fails, low on its right, in the colour of an error.
-          <span>
+          // Always there, so lines can attach to it; seen only when it is used or chosen.
+          <span className={cn(!failWay && "pointer-events-none opacity-0")} aria-hidden={!failWay}>
             <span
               className="text-destructive pointer-events-none absolute right-2 -translate-y-1/2 text-[10px] leading-none font-medium"
               style={{ top: `${FAIL_TOP}%` }}
@@ -267,6 +268,7 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
               id={FAILURE_WAY}
               type="source"
               position={Position.Right}
+              isConnectable={Boolean(failWay)}
               className="!border-background !bg-destructive !size-2.5 !border-2"
               style={{ top: `${FAIL_TOP}%` }}
               title="Drag to the step that runs when this one fails"
