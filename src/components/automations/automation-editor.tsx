@@ -14,9 +14,11 @@ import {
   type Brand,
   canonical,
   canRedo,
+  canFailOver,
   canUndo,
   copySteps,
   exportAutomation,
+  FAILURE_WAY,
   newNodeId,
   type Operation,
   OperationError,
@@ -175,6 +177,8 @@ function Editor({ automation }: { automation: Loaded }) {
   const [runOpen, setRunOpen] = useState(false);
 
   const stepNodes = nodes.filter((node): node is StepFlowNode => node.type === "step");
+  // How many steps are chosen: with more than one, a new step joins them.
+  const joining = stepNodes.filter((node) => node.selected).length;
   const selected = nodes.find((node) => node.selected);
 
   // What would be saved, in the shape the server stores.
@@ -289,6 +293,13 @@ function Editor({ automation }: { automation: Loaded }) {
           status: now?.status,
           jobCount: now?.jobCount,
           note: now?.note,
+          failWay: draft.edges.some(
+            (edge) => edge.source === node.id && edge.branch === FAILURE_WAY,
+          )
+            ? ("used" as const)
+            : node.selected
+              ? ("offered" as const)
+              : undefined,
         },
       };
     });
@@ -469,6 +480,9 @@ function Editor({ automation }: { automation: Loaded }) {
     setSearch("");
     const onLine = insertOn && draft.nodes.some((node) => node.id === insertOn.target);
     const after = selected?.type === "step" ? selected.id : undefined;
+    // With several steps chosen, the new step joins them: it runs once all have finished.
+    const chosen = chosenSteps();
+    const join = !onWay && chosen.length > 1 ? chosen.filter((other) => other !== after) : [];
     change(
       [
         insertOn && onLine
@@ -479,7 +493,14 @@ function Editor({ automation }: { automation: Loaded }) {
               before: insertOn.target,
               after: insertOn.source === TRIGGER_ID ? undefined : insertOn.source,
             }
-          : { op: "add", type, id, after, ...(after && onWay ? { branch: onWay } : {}) },
+          : {
+              op: "add",
+              type,
+              id,
+              after,
+              ...(after && onWay ? { branch: onWay } : {}),
+              ...(join.length > 0 ? { join } : {}),
+            },
       ],
       { select: id },
     );
@@ -758,7 +779,7 @@ function Editor({ automation }: { automation: Loaded }) {
                   onClick={openPalette}
                 >
                   <Plus />
-                  Add step
+                  {joining > 1 ? `Add a step after these ${joining}` : "Add step"}
                 </Button>
               )}
               <BrandContext value={brand}>
@@ -851,6 +872,26 @@ function Editor({ automation }: { automation: Loaded }) {
                       }
                       onRemove={() => removeSteps([selected.id])}
                       onDuplicate={() => duplicateSelected([selected.id])}
+                      waitsFor={draft.edges
+                        .filter((edge) => edge.target === selected.id)
+                        .flatMap((edge) => {
+                          const source = draft.nodes.find((n) => n.id === edge.source);
+                          return source ? [nodeTitle(source)] : [];
+                        })}
+                      {...(canFailOver(selected.data.node.kind)
+                        ? {
+                            failSteps: draft.edges
+                              .filter(
+                                (edge) =>
+                                  edge.source === selected.id && edge.branch === FAILURE_WAY,
+                              )
+                              .flatMap((edge) => {
+                                const target = draft.nodes.find((n) => n.id === edge.target);
+                                return target ? [nodeTitle(target)] : [];
+                              }),
+                            onAddOnFailure: () => addAfter(selected.id, FAILURE_WAY),
+                          }
+                        : {})}
                     />
                     {(selected.data.node.kind === "step" ||
                       selected.data.node.kind === "clips") && (

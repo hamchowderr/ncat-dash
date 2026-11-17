@@ -13,11 +13,26 @@ import { detailsKind, type FileDetails, formatDuration } from "./details";
 export const IF_BRANCHES = ["yes", "no"] as const;
 export type IfBranch = (typeof IF_BRANCHES)[number];
 
-export const BRANCH_LABELS: Record<string, string> = { yes: "Yes", no: "No" };
+/**
+ * The way a step's files go when the step fails, if anything hangs off it. Steps that do
+ * work have it besides their usual way out; it is used only when they fail.
+ */
+export const FAILURE_WAY = "failed";
+
+export const BRANCH_LABELS: Record<string, string> = {
+  yes: "Yes",
+  no: "No",
+  [FAILURE_WAY]: "If it fails",
+};
 
 /** The ways out of a node of this kind. Empty for every kind with a single way out. */
 export function branchesOfKind(kind: string | undefined): readonly string[] {
   return kind === "if" ? IF_BRANCHES : [];
+}
+
+/** Whether a node of this kind can have a way for when it fails: steps that do work. */
+export function canFailOver(kind: string | undefined): boolean {
+  return kind === "step" || kind === "clips" || kind === "export";
 }
 
 export type Check = "length" | "type" | "shape" | "size" | "sound";

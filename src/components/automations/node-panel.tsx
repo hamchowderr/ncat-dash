@@ -10,7 +10,7 @@ import {
   writeSource,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
-import { ChevronRight, Copy, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -47,6 +47,13 @@ function isBlank(value: unknown): boolean {
  * Only what the step cannot work out is asked for up front. What it takes care of by
  * itself is listed in one short block, and everything else sits under "More options".
  */
+/** "A", "A and B", "A, B and C". */
+function joinNames(names: string[]): string {
+  return names.length < 2
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 export function NodePanel({
   node,
   before,
@@ -57,6 +64,9 @@ export function NodePanel({
   onChange,
   onRemove,
   onDuplicate,
+  failSteps,
+  onAddOnFailure,
+  waitsFor,
 }: {
   node: NodeContent;
   /** The steps that run before this one, nearest first. Their files can be used here. */
@@ -73,6 +83,12 @@ export function NodePanel({
   onRemove: () => void;
   /** Puts a copy of the step beside it. */
   onDuplicate?: () => void;
+  /** The names of the steps that run when this one fails. */
+  failSteps?: string[];
+  /** Adds a step that runs when this one fails. Absent for steps that cannot fail over. */
+  onAddOnFailure?: () => void;
+  /** The names of the steps straight before this one. With two or more, it joins them. */
+  waitsFor?: string[];
 }) {
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
   const nodeType = nodeTypeOf(node);
@@ -208,6 +224,14 @@ export function NodePanel({
         </Button>
       </div>
 
+      {waitsFor && waitsFor.length > 1 && (
+        <p className="text-muted-foreground rounded-lg border px-3 py-2 text-xs text-pretty">
+          Waits for {joinNames(waitsFor)} to finish, then runs once with the files from{" "}
+          {waitsFor.length === 2 ? "both" : "all of them"}. A side an If did not send files down is
+          not waited for.
+        </p>
+      )}
+
       {node.off && (
         <Alert>
           <AlertDescription>
@@ -342,6 +366,32 @@ export function NodePanel({
           </FieldGroup>
         </CollapsibleContent>
       </Collapsible>
+
+      {onAddOnFailure && (
+        <section
+          aria-label="If it fails"
+          className="flex items-center justify-between gap-2 border-t pt-4"
+        >
+          <div className="grid min-w-0">
+            <h3 className="text-sm font-medium">If it fails</h3>
+            <p className="text-muted-foreground text-xs text-pretty">
+              {failSteps && failSteps.length > 0
+                ? `Its files go to ${joinNames(failSteps)} instead, and the run carries on.`
+                : "The run stops here. Add a step to try something else with its files."}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={onAddOnFailure}
+          >
+            <Plus />
+            {failSteps && failSteps.length > 0 ? "Add another" : "Add a step"}
+          </Button>
+        </section>
+      )}
     </div>
   );
 }
