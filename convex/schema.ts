@@ -337,8 +337,24 @@ export default defineSchema({
     accessKeyId: v.string(),
     // AES-GCM ciphertext of the secret access key.
     secretCipher: v.string(),
+    // The public address the toolkit hands files out under (its S3_PUBLIC_URL), when it
+    // has one. Lets links in outputs be followed when a file is renamed or moved.
+    publicUrl: v.optional(v.string()),
     createdBy: v.string(),
   }).index("by_organization", ["organizationId"]),
+
+  // What the toolkit read from a file that reached the bucket without going through this
+  // app (dropped in by another tool, or made by a step). Uploads keep theirs on the upload.
+  bucketFiles: defineTable({
+    organizationId: v.string(),
+    key: v.string(),
+    // The contents these details were read from. A file replaced under the same name is
+    // read again.
+    etag: v.string(),
+    // Missing while the read is under way, or when the toolkit could not read the file.
+    details: v.optional(fileDetailsValidator),
+    askedAt: v.number(),
+  }).index("by_organization_and_key", ["organizationId", "key"]),
 
   // Files people upload from the browser. The bytes go straight to the team's bucket;
   // this row only records where they are.
@@ -356,5 +372,8 @@ export default defineSchema({
     // Read from the file by the toolkit once the upload finishes. Missing while that is
     // still to happen, or when the toolkit could not read the file.
     details: v.optional(fileDetailsValidator),
-  }).index("by_organization", ["organizationId"]),
+  })
+    .index("by_organization", ["organizationId"])
+    // Finds the upload behind a file in the bucket, for the Files page.
+    .index("by_organization_and_key", ["organizationId", "key"]),
 });

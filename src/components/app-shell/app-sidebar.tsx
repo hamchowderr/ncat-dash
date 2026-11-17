@@ -6,6 +6,7 @@ import * as React from "react";
 import {
   Clapperboard,
   FolderOutput,
+  FolderTree,
   Home,
   ListChecks,
   Settings,
@@ -42,6 +43,7 @@ const navEveryday: NavItem[] = [
   { title: "Automations", url: "/automations", icon: Workflow },
   { title: "Outputs", url: "/outputs", icon: FolderOutput },
   { title: "Uploads", url: "/uploads", icon: UploadCloud },
+  { title: "Files", url: "/files", icon: FolderTree },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
