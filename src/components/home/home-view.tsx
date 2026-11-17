@@ -97,6 +97,12 @@ export function HomeView() {
                       <dd>{connection.buildNumber}</dd>
                     </>
                   )}
+                  <dt className="text-muted-foreground">Files</dt>
+                  <dd>
+                    {connection.bucket
+                      ? `Kept in the toolkit's bucket, ${connection.bucket}`
+                      : "Check again to find the toolkit's storage"}
+                  </dd>
                   <dt className="text-muted-foreground">Last checked</dt>
                   <dd>{checkedAt.format(connection.lastCheckedAt)}</dd>
                 </dl>

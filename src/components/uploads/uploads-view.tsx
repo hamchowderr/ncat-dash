@@ -16,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -31,7 +30,7 @@ import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { putWithProgress } from "@/lib/upload";
 
-import { StorageForm } from "./storage-form";
+import { NeedsToolkit } from "./needs-toolkit";
 
 type InFlight = { name: string; percent: number };
 
@@ -47,7 +46,6 @@ export function UploadsView() {
   const input = useRef<HTMLInputElement>(null);
   const [inFlight, setInFlight] = useState<Record<string, InFlight>>({});
   const [dragging, setDragging] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [opened, setOpened] = useState<Id<"uploads"> | null>(null);
 
   async function send(files: FileList | File[]) {
@@ -105,8 +103,8 @@ export function UploadsView() {
     <div className="flex flex-col gap-1">
       <h1 className="text-2xl font-semibold tracking-tight">Uploads</h1>
       <p className="text-muted-foreground text-sm">
-        Your files. They go straight from your browser to your own storage, and each one is read for
-        its length, size and format.
+        Your files. They go straight from your browser to your toolkit&apos;s storage, and each one
+        is read for its length, size and format.
       </p>
     </div>
   );
@@ -120,33 +118,11 @@ export function UploadsView() {
     );
   }
 
-  if (storage === null || editing) {
+  if (storage === null) {
     return (
       <>
         {heading}
-        <Card className="max-w-2xl">
-          <CardHeader>
-            <CardTitle>
-              <h2>Connect your storage</h2>
-            </CardTitle>
-            <CardDescription>
-              Uploads need a bucket you own. We test the connection before saving anything.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <StorageForm organizationId={team.id} onSaved={() => setEditing(false)} />
-            {editing && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="self-start"
-                onClick={() => setEditing(false)}
-              >
-                Keep the current storage
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+        <NeedsToolkit className="max-w-2xl" />
       </>
     );
   }
@@ -186,10 +162,7 @@ export function UploadsView() {
           Choose files
         </Button>
         <p className="text-muted-foreground text-xs">
-          Going to bucket {storage.bucket}.{" "}
-          <button type="button" className="underline" onClick={() => setEditing(true)}>
-            Change storage
-          </button>
+          Going to your toolkit&apos;s storage, bucket {storage.bucket}.
         </p>
       </div>
 

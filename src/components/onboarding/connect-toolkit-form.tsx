@@ -15,6 +15,8 @@ const failureTitles = {
   unreachable: "We could not reach your toolkit",
   unauthorized: "Your toolkit did not accept that key",
   not_a_toolkit: "Something answered, but it is not the NCA Toolkit",
+  not_fork: "This is the original NCA Toolkit",
+  storage: "Your toolkit's storage is not working",
 } as const;
 
 const failureHelp = {
@@ -22,13 +24,46 @@ const failureHelp = {
   unreachable: "Check the address, and that the toolkit is running and open to the internet.",
   unauthorized: "Check the key against the API_KEY set on your toolkit.",
   not_a_toolkit: "Check the address points at the toolkit itself, not another app on the server.",
+  not_fork: "",
+  storage:
+    "Your files go to the toolkit's own bucket. Check the S3 settings on your toolkit (S3_ENDPOINT_URL, S3_BUCKET_NAME and both keys), then try again.",
 } as const;
+
+export const FORK_REPO = "https://github.com/hamchowderr/no-code-architects-toolkit";
+
+/**
+ * How to move from Stephen's original toolkit to the Otaku Solutions version. Its settings
+ * carry over, so it is a change of source and a redeploy.
+ */
+export function SwitchToFork() {
+  return (
+    <div className="flex flex-col gap-2">
+      <p>
+        The dashboard works with the Otaku Solutions version of the toolkit, which adds the storage
+        the dashboard uses and fixes the original does not have. Your settings stay the same.
+      </p>
+      <ol className="list-decimal space-y-1 pl-5">
+        <li>
+          Where your toolkit is deployed (Coolify, Docker, Digital Ocean or Google Cloud), change
+          its source to{" "}
+          <a className="underline" href={FORK_REPO} target="_blank" rel="noreferrer">
+            github.com/hamchowderr/no-code-architects-toolkit
+          </a>
+          , branch main.
+        </li>
+        <li>Keep API_KEY and every S3_ setting as they are.</li>
+        <li>Redeploy, wait until it is running, then connect it here again.</li>
+      </ol>
+    </div>
+  );
+}
 
 type Failure = { reason: keyof typeof failureTitles; detail: string };
 
 /**
- * Asks for a toolkit address and API key, tests them, and saves the connection only
- * when the test passes.
+ * Asks for a toolkit address and API key, tests them and the toolkit's storage, and saves
+ * the connection only when both pass. Storage is the toolkit's own bucket, so this is the
+ * whole setup.
  */
 export function ConnectToolkitForm({
   organizationId,
@@ -75,7 +110,8 @@ export function ConnectToolkitForm({
         <CircleCheckIcon className="text-emerald-600 dark:text-emerald-400" />
         <AlertTitle>Connected</AlertTitle>
         <AlertDescription>
-          Your toolkit answered and accepted the key{build ? ` (build ${build})` : ""}.
+          Your toolkit answered and accepted the key{build ? ` (build ${build})` : ""}. Your files
+          go to its own storage, so there is nothing else to connect.
         </AlertDescription>
       </Alert>
     );
@@ -118,7 +154,14 @@ export function ConnectToolkitForm({
       {failure && (
         <Alert variant="destructive">
           <AlertTitle>{failureTitles[failure.reason]}</AlertTitle>
-          <AlertDescription>{failureHelp[failure.reason]}</AlertDescription>
+          <AlertDescription>
+            {failure.reason === "not_fork" ? <SwitchToFork /> : failureHelp[failure.reason]}
+            {failure.reason === "storage" && (
+              <p className="text-xs" data-testid="storage-detail">
+                {failure.detail}
+              </p>
+            )}
+          </AlertDescription>
         </Alert>
       )}
 

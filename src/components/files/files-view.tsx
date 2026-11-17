@@ -34,7 +34,6 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type DragEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -60,6 +59,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NeedsToolkit } from "@/components/uploads/needs-toolkit";
 import {
   Table,
   TableBody,
@@ -454,14 +454,7 @@ export function FilesView() {
     return (
       <>
         {heading}
-        <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
-          <p className="text-muted-foreground text-sm">
-            Connect a bucket you own first. Its files show up here as soon as it is connected.
-          </p>
-          <Button asChild size="sm">
-            <Link href="/uploads">Connect your storage</Link>
-          </Button>
-        </div>
+        <NeedsToolkit />
       </>
     );
   }

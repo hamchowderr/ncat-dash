@@ -3,9 +3,8 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
-import { decryptSecret } from "./lib/crypto";
 import { startRun } from "./lib/runner";
-import { type BucketConfig, listObjects, presign } from "./lib/s3";
+import { bucketOf, listObjects, presign, storageConnection } from "./lib/bucket";
 
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
 // One check starts at most this many runs per automation; the rest follow a minute later.
@@ -24,10 +23,7 @@ export const watchers = internalQuery({
     const found = [];
     for (const automation of automations) {
       if (automation.trigger.kind !== "folder") continue;
-      const storage = await ctx.db
-        .query("storageConnections")
-        .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
-        .first();
+      const storage = await storageConnection(ctx, automation.organizationId);
       if (!storage) continue;
       found.push({
         automationId: automation._id,
@@ -51,13 +47,7 @@ export const poll = internalAction({
 
     for (const watcher of watching) {
       const { storage } = watcher;
-      const config: BucketConfig = {
-        endpoint: storage.endpoint,
-        region: storage.region,
-        bucket: storage.bucket,
-        accessKeyId: storage.accessKeyId,
-        secretAccessKey: await decryptSecret(storage.secretCipher),
-      };
+      const config = await bucketOf(storage);
       const listingKey = `${storage._id}:${watcher.prefix}`;
       try {
         if (!listings.has(listingKey)) {
