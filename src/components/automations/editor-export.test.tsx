@@ -4,7 +4,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { answerQuery, sonner } from "@/test/convex";
+import { answerQuery, toastInfo } from "@/test/convex";
 import { renderInApp } from "@/test/render";
 
 import { EditorExport } from "./editor-export";
@@ -40,7 +40,6 @@ function answer(more: Record<string, unknown> = {}) {
 
 /** Every file the page saved to the person's computer: its name and what was in it. */
 let saved: { name: string; blob: Blob }[];
-let info: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   saved = [];
@@ -56,8 +55,6 @@ beforeEach(() => {
   ) {
     saved.push({ name: this.download, blob: blobs.get(this.href)! });
   });
-  info = vi.fn();
-  (sonner.toast as Record<string, unknown>).info = info;
 });
 
 const names = () => saved.map((file) => file.name);
@@ -129,7 +126,7 @@ describe("Open in editor on a run", () => {
     await user.click(download(dialog, "Finished clips (2)"));
     await waitFor(() => expect(names()).toEqual(["01 a.mp4", "02 b.mp4"]));
     expect(fetched.mock.calls.map(([url]) => url)).toEqual(CLIPS);
-    expect(info).not.toHaveBeenCalled();
+    expect(toastInfo).not.toHaveBeenCalled();
   });
 
   test("opens a clip in a new tab when the storage will not let the page read it", async () => {
@@ -143,7 +140,7 @@ describe("Open in editor on a run", () => {
     await waitFor(() => expect(opened).toHaveBeenCalledWith(CLIPS[1], "_blank", "noopener"));
     expect(names()).toEqual(["01 a.mp4"]);
     await waitFor(() =>
-      expect(info).toHaveBeenCalledWith("1 clip opened in a new tab. Save it from there."),
+      expect(toastInfo).toHaveBeenCalledWith("1 clip opened in a new tab. Save it from there."),
     );
   });
 
@@ -156,7 +153,7 @@ describe("Open in editor on a run", () => {
     await waitFor(() => expect(opened).toHaveBeenCalledTimes(2));
     expect(names()).toEqual([]);
     await waitFor(() =>
-      expect(info).toHaveBeenCalledWith("2 clips opened in a new tab. Save them from there."),
+      expect(toastInfo).toHaveBeenCalledWith("2 clips opened in a new tab. Save them from there."),
     );
   });
 
