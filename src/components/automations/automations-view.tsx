@@ -65,7 +65,6 @@ export function AutomationsView() {
   const importFile = useMutation(api.automations.importFile);
   const picker = useRef<HTMLInputElement>(null);
 
-  const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [removing, setRemoving] = useState<{ id: Id<"automations">; name: string } | null>(null);
 
@@ -77,7 +76,7 @@ export function AutomationsView() {
         name: starter?.name ?? "New automation",
         starterId: starter?.id,
       });
-      router.push(`/automations/${id}`);
+      router.push(`/automations/${id}`, { transitionTypes: ["nav-forward"] });
     } catch (caught) {
       toast.error(errorMessage(caught, "The automation could not be created. Try again."));
       setPending(false);
@@ -107,7 +106,7 @@ export function AutomationsView() {
         description: notes.join(" ") || undefined,
         duration: notes.length > 0 ? 12_000 : undefined,
       });
-      router.push(`/automations/${automationId}`);
+      router.push(`/automations/${automationId}`, { transitionTypes: ["nav-forward"] });
     } catch (caught) {
       toast.error(errorMessage(caught, "The file could not be imported. Try again."));
     } finally {
@@ -145,9 +144,11 @@ export function AutomationsView() {
             <FileUp />
             Import
           </Button>
-          <Button size="sm" onClick={() => setOpen(true)}>
-            <Plus />
-            New automation
+          <Button asChild size="sm">
+            <Link href="/automations/new" transitionTypes={["nav-forward"]}>
+              <Plus />
+              New automation
+            </Link>
           </Button>
         </div>
       </div>
@@ -182,7 +183,10 @@ export function AutomationsView() {
                   )}
                 </span>
                 <Button asChild variant="outline" size="sm">
-                  <Link href={`/automations/${approval.automationId}/runs/${approval.runId}`}>
+                  <Link
+                    href={`/automations/${approval.automationId}/runs/${approval.runId}`}
+                    transitionTypes={["nav-forward"]}
+                  >
                     Review
                   </Link>
                 </Button>
@@ -211,7 +215,7 @@ export function AutomationsView() {
           <TemplateGallery recipes={false} disabled={pending} onPick={onPick} />
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl bg-surface">
+        <div className="reveal overflow-hidden rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>
@@ -229,7 +233,11 @@ export function AutomationsView() {
               {automations.map((automation) => (
                 <TableRow key={automation._id}>
                   <TableCell className="font-medium">
-                    <Link href={`/automations/${automation._id}`} className="hover:underline">
+                    <Link
+                      href={`/automations/${automation._id}`}
+                      transitionTypes={["nav-forward"]}
+                      className="hover:underline"
+                    >
                       {automation.name}
                     </Link>
                     {automation.hasDraft && (
@@ -324,21 +332,6 @@ export function AutomationsView() {
           </Table>
         </div>
       )}
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        {/* The heading and close button stay put; only the templates scroll beneath them. */}
-        <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>New automation</DialogTitle>
-            <DialogDescription>
-              Pick a template to open it on the canvas. Everything can be changed there.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="-mx-4 min-h-0 overflow-y-auto px-4 pb-1">
-            <TemplateGallery disabled={pending} onPick={onPick} />
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={removing !== null} onOpenChange={(next) => !next && setRemoving(null)}>
         <DialogContent>

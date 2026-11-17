@@ -210,7 +210,7 @@ export function UploadsView() {
       {ready === undefined ? (
         <Skeleton className="h-32 rounded-xl" />
       ) : ready.length === 0 ? null : (
-        <div className="overflow-hidden rounded-xl bg-surface">
+        <div className="reveal overflow-hidden rounded-xl bg-surface">
           <Table>
             <TableHeader>
               <TableRow>

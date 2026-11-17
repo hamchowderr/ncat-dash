@@ -167,10 +167,66 @@
     transform: translateY(6px);
   }
 }
+/*
+ * Going deeper (a list to one of its items) slides the page in from the right; going
+ * back slides it in from the left. The menu and the top bar never move.
+ */
+::view-transition-group(.nav-forward),
+::view-transition-group(.nav-back) {
+  animation-duration: 0s;
+}
+::view-transition-old(.nav-forward) {
+  --slide: -24px;
+  animation: 140ms ease-in both page-slide-out;
+}
+::view-transition-new(.nav-forward) {
+  --slide: 24px;
+  animation: 300ms cubic-bezier(0.16, 1, 0.3, 1) 60ms both page-slide-in;
+}
+::view-transition-old(.nav-back) {
+  --slide: 24px;
+  animation: 140ms ease-in both page-slide-out;
+}
+::view-transition-new(.nav-back) {
+  --slide: -24px;
+  animation: 300ms cubic-bezier(0.16, 1, 0.3, 1) 60ms both page-slide-in;
+}
+@keyframes page-slide-out {
+  to {
+    opacity: 0;
+    translate: var(--slide);
+  }
+}
+@keyframes page-slide-in {
+  from {
+    opacity: 0;
+    translate: var(--slide);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-new(.page-enter) {
-    animation-name: page-out;
-    animation-direction: reverse;
+  ::view-transition-new(.page-enter),
+  ::view-transition-new(.nav-forward),
+  ::view-transition-new(.nav-back) {
+    animation: 200ms ease-out both page-out reverse;
+  }
+  ::view-transition-old(.nav-forward),
+  ::view-transition-old(.nav-back) {
+    animation: 120ms ease-in both page-out;
+  }
+}
+
+/*
+ * Loaded content takes over from its grey placeholder with a short fade instead of
+ * appearing all at once.
+ */
+@utility reveal {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: reveal 220ms ease-out both;
+  }
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
   }
 }
 

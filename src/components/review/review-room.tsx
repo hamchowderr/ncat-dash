@@ -447,7 +447,9 @@ export function ReviewRoom({
           This review is gone, or it belongs to another team.
         </p>
         <Button asChild size="sm" variant="outline">
-          <Link href="/review">Back to Review</Link>
+          <Link href="/review" transitionTypes={["nav-back"]}>
+            Back to Review
+          </Link>
         </Button>
       </div>
     );
@@ -480,7 +482,11 @@ export function ReviewRoom({
           aria-label="Breadcrumb"
           className="flex min-w-0 basis-full items-center gap-1.5 text-sm sm:flex-1 sm:basis-auto"
         >
-          <Link href="/review" className="text-muted-foreground hover:text-foreground">
+          <Link
+            href="/review"
+            transitionTypes={["nav-back"]}
+            className="text-muted-foreground hover:text-foreground"
+          >
             Review
           </Link>
           <ChevronRight className="text-muted-foreground size-3.5 shrink-0" aria-hidden="true" />
@@ -547,7 +553,7 @@ export function ReviewRoom({
                 onSelect={() =>
                   act(async () => {
                     await remove({ reviewId });
-                    router.push("/review");
+                    router.push("/review", { transitionTypes: ["nav-back"] });
                   }, "The review could not be deleted.")
                 }
               >
