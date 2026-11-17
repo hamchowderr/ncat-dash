@@ -21,6 +21,8 @@ export type RoomComment = {
   createdAt: number;
   resolved: boolean;
   mine: boolean;
+  /** Written by a client through the review's share link. */
+  client?: boolean;
   /** Set on the agent's answer to an "@Agent" comment. */
   agent: { askedBy: string; state: "thinking" | "answered" | "failed" } | null;
 };
@@ -82,6 +84,11 @@ function Entry({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-sm font-medium">{comment.authorName}</span>
+          {comment.client && (
+            <span className="border-primary/30 text-primary rounded-full border px-1.5 text-[0.65rem] leading-4 font-medium">
+              Client
+            </span>
+          )}
           {agent && asker && (
             <span className="text-muted-foreground text-xs">for {asker.name.split(" ")[0]}</span>
           )}
@@ -145,6 +152,7 @@ export function CommentPanel({
   onResolve,
   onDelete,
   onAskAgain,
+  guest = false,
 }: {
   threads: Thread<RoomComment>[];
   loading: boolean;
@@ -156,9 +164,11 @@ export function CommentPanel({
   onActive: (id: string | null) => void;
   onComposerFocus: () => void;
   onSend: (body: string, parentId?: string) => Promise<boolean>;
-  onResolve: (id: string, resolved: boolean) => void;
+  onResolve?: (id: string, resolved: boolean) => void;
   onDelete: (id: string) => void;
-  onAskAgain: (id: string) => void;
+  onAskAgain?: (id: string) => void;
+  /** Someone outside the team, through a share link: no resolving, no tagging. */
+  guest?: boolean;
 }) {
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const open = threads.filter((thread) => !thread.root.resolved).length;
@@ -182,9 +192,13 @@ export function CommentPanel({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {loading ? null : threads.length === 0 ? (
           <p className="text-muted-foreground px-4 py-6 text-sm">
-            {timed
-              ? "Pause where something needs a note and write it below. It stays pinned to that moment for the whole team. Tag @Agent to ask the agent about that moment."
-              : "Write a note below. The whole team sees it here. Tag @Agent to ask the agent."}
+            {guest
+              ? timed
+                ? "Pause where something needs a change and write it below. Your note stays pinned to that moment for the team."
+                : "Write a note below. The team sees it straight away."
+              : timed
+                ? "Pause where something needs a note and write it below. It stays pinned to that moment for the whole team. Tag @Agent to ask the agent about that moment."
+                : "Write a note below. The whole team sees it here. Tag @Agent to ask the agent."}
           </p>
         ) : (
           <ol className="divide-y">
@@ -205,7 +219,7 @@ export function CommentPanel({
                   timed={timed}
                   onSeek={onSeek}
                   onDelete={onDelete}
-                  onAskAgain={onAskAgain}
+                  onAskAgain={onAskAgain ?? (() => {})}
                 />
                 {replies.length > 0 && (
                   <div className="ml-9 flex flex-col gap-3">
@@ -218,7 +232,7 @@ export function CommentPanel({
                         timed={false}
                         onSeek={onSeek}
                         onDelete={onDelete}
-                        onAskAgain={onAskAgain}
+                        onAskAgain={onAskAgain ?? (() => {})}
                       />
                     ))}
                   </div>
@@ -242,15 +256,24 @@ export function CommentPanel({
                       <CornerDownRight />
                       Reply
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      aria-pressed={root.resolved}
-                      onClick={() => onResolve(root.id, !root.resolved)}
-                    >
-                      {root.resolved ? <CircleCheck className="text-emerald-600" /> : <Check />}
-                      {root.resolved ? "Resolved" : "Resolve"}
-                    </Button>
+                    {onResolve ? (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        aria-pressed={root.resolved}
+                        onClick={() => onResolve(root.id, !root.resolved)}
+                      >
+                        {root.resolved ? <CircleCheck className="text-emerald-600" /> : <Check />}
+                        {root.resolved ? "Resolved" : "Resolve"}
+                      </Button>
+                    ) : (
+                      root.resolved && (
+                        <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                          <CircleCheck className="size-3.5 text-emerald-600" />
+                          Resolved by the team
+                        </span>
+                      )
+                    )}
                   </div>
                 )}
               </li>
@@ -264,9 +287,13 @@ export function CommentPanel({
           people={people}
           moment={timed ? moment : undefined}
           placeholder={
-            timed
-              ? "Comment at this moment. Type @ to tag a teammate or the Agent."
-              : "Comment. Type @ to tag a teammate or the Agent."
+            guest
+              ? timed
+                ? "Comment at this moment"
+                : "Comment"
+              : timed
+                ? "Comment at this moment. Type @ to tag a teammate or the Agent."
+                : "Comment. Type @ to tag a teammate or the Agent."
           }
           onFocus={onComposerFocus}
           onSend={(body) => onSend(body)}

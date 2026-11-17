@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { AtSign, Bell, CircleAlert, Clock, UserCheck } from "lucide-react";
+import { AtSign, Bell, CircleAlert, Clock, MessageSquareQuote, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -19,7 +19,7 @@ function tries(retries: number): string {
   return retries > 0 ? ` after ${retries + 1} tries` : "";
 }
 
-type Kind = "run_failed" | "approval_waiting" | "approval_timed_out" | "mention";
+type Kind = "run_failed" | "approval_waiting" | "approval_timed_out" | "mention" | "client_feedback";
 type Shown = { kind: Kind; automationName: string; retries: number; from?: string | null };
 
 /** The first line of an alert: what happened, in a few words. */
@@ -31,6 +31,8 @@ export function alertTitle(alert: Shown): string {
       return `${alert.automationName}: an approval ran out of time`;
     case "mention":
       return `${alert.from ?? "Someone"} mentioned you in ${alert.automationName}`;
+    case "client_feedback":
+      return `${alert.from ?? "A client"} left feedback on ${alert.automationName}`;
     default:
       return `${alert.automationName} failed${tries(alert.retries)}`;
   }
@@ -57,6 +59,12 @@ const LOOK: Record<Kind, { icon: typeof Bell; tint: string; wash: string; action
     action: "View run",
   },
   mention: { icon: AtSign, tint: "text-primary", wash: "bg-primary/5", action: "Open review" },
+  client_feedback: {
+    icon: MessageSquareQuote,
+    tint: "text-primary",
+    wash: "bg-primary/5",
+    action: "Open review",
+  },
 };
 
 /**

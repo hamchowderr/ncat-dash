@@ -7,6 +7,7 @@ import {
   passwordResetEmail,
   approvalTimedOutEmail,
   approvalWaitingEmail,
+  clientFeedbackEmail,
   digestEmail,
   mentionEmail,
   runFailedEmail,
@@ -195,6 +196,25 @@ describe("messages", () => {
     expect(timedOut.subject).toBe("An approval ran out of time: Clips for social");
     expect(timedOut.text).toContain("rejected and the run stopped");
     expect(timedOut.text).toContain("https://dash.example.com/settings#notifications");
+  });
+
+  it("tells the team what a client said, escaped", () => {
+    const feedback = clientFeedbackEmail(
+      {
+        teamName: "Salt House",
+        from: "Riley <Client>",
+        reviewTitle: "Weekly clips",
+        feedback: "Love it, <i>ship</i> it",
+        reviewUrl: "https://dash.example.com/review/r?clip=c&comment=m",
+        settingsUrl: "https://dash.example.com/settings#notifications",
+      },
+      branding,
+    );
+    expect(feedback.subject).toBe("Riley <Client> left feedback on Weekly clips");
+    expect(feedback.text).toContain('"Love it, <i>ship</i> it"');
+    expect(feedback.text).toContain("https://dash.example.com/review/r?clip=c&comment=m");
+    expect(feedback.html).toContain("&lt;i&gt;ship&lt;/i&gt;");
+    expect(feedback.html).not.toContain("<i>ship</i>");
   });
 
   it("tells a person they were mentioned, quoting the comment, escaped", () => {

@@ -19,7 +19,7 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
-type Kind = "run_failed" | "approval_waiting" | "approval_timed_out" | "mention";
+type Kind = "run_failed" | "approval_waiting" | "approval_timed_out" | "mention" | "client_feedback";
 type Channel = "bell" | "email";
 
 /** "8 AM", "12 PM", in the reader's own way of writing times. */

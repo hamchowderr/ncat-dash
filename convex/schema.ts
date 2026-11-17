@@ -408,11 +408,13 @@ export default defineSchema({
     // approval step and waits for the people in `recipients` to decide.
     // "approval_timed_out": nobody decided in time, so the step decided by itself.
     // "mention": someone wrote @ and a member's name in a review comment.
+    // "client_feedback": a client commented or gave their verdict through a share link.
     kind: v.union(
       v.literal("run_failed"),
       v.literal("approval_waiting"),
       v.literal("approval_timed_out"),
       v.literal("mention"),
+      v.literal("client_feedback"),
     ),
     // The members it is for. Left out: everyone on the team.
     recipients: v.optional(v.array(v.string())),
@@ -428,7 +430,7 @@ export default defineSchema({
     message: v.string(),
     // How many times that step tried again before giving up.
     retries: v.number(),
-    // For a mention: the review, clip and thread it is in, and who wrote it.
+    // For a mention or client feedback: the review, clip and thread, and who wrote it.
     reviewId: v.optional(v.id("reviews")),
     clipId: v.optional(v.id("reviewClips")),
     commentId: v.optional(v.id("reviewComments")),
@@ -474,6 +476,9 @@ export default defineSchema({
           v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
         ),
         mention: v.optional(
+          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
+        ),
+        client_feedback: v.optional(
           v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
         ),
       }),
@@ -552,9 +557,31 @@ export default defineSchema({
     createdBy: v.union(v.null(), v.string()),
     decidedBy: v.optional(v.string()),
     decidedAt: v.optional(v.number()),
+    // What the client said through the review's share link. It tells the team; only a
+    // teammate's decision approves the review or lets a paused run carry on.
+    clientVerdict: v.optional(
+      v.object({ name: v.string(), approved: v.boolean(), at: v.number() }),
+    ),
   })
     .index("by_organization", ["organizationId"])
     .index("by_runStep", ["runStepId"]),
+
+  // A link that lets someone outside the team, such as a client, open one review without
+  // an account: watch the clips, comment, and say whether they approve. At most one per
+  // review; switching it off deletes it, so the old link stops working for good.
+  reviewShares: defineTable({
+    reviewId: v.id("reviews"),
+    organizationId: v.string(),
+    // The secret in the link (/share/<token>).
+    token: v.string(),
+    createdBy: v.string(),
+    // Whether the client may approve or ask for changes.
+    allowVerdict: v.boolean(),
+    // Whether the client sees the team's own threads too, or only their own.
+    showTeamComments: v.boolean(),
+  })
+    .index("by_token", ["token"])
+    .index("by_review", ["reviewId"]),
 
   // One clip in a review. A changed clip is added as a new version, so comments on the
   // earlier ones stay where they were made.
@@ -588,6 +615,9 @@ export default defineSchema({
     authorName: v.string(),
     parentId: v.optional(v.id("reviewComments")),
     resolved: v.boolean(),
+    // Written through the review's share link by someone outside the team. Their
+    // authorId is "guest:" and a random id their browser keeps.
+    client: v.optional(v.boolean()),
     // Set on the agent's answer to an "@Agent" comment. The answer is written by the
     // agent server through Convex itself, never by the person who asked.
     agent: v.optional(
