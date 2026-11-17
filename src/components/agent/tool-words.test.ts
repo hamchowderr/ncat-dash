@@ -200,3 +200,60 @@ describe("platform guide", () => {
     ]);
   });
 });
+
+describe("files and folders", () => {
+  test("looking in a folder never asks", () => {
+    expect(toolWords("list_folder", { folder: "Podcasts/Raw/" })).toEqual({
+      title: "Looking in Podcasts/Raw",
+      question: "",
+      lines: [],
+    });
+    expect(toolWords("list_folder", {})?.title).toBe("Looking at your files");
+  });
+
+  test("making a folder asks first and names the whole path", () => {
+    const words = toolWords("make_folder", { path: "/Podcasts/Raw/" });
+    expect(words?.question).toBe("Make this folder?");
+    expect(words?.lines[0]).toBe("Podcasts/Raw");
+  });
+
+  test("moving lists file names, never full keys, and where they go", () => {
+    expect(toolWords("move_files", { keys: ["ep12.mp4"], toFolder: "Podcasts/Raw/" })).toEqual({
+      title: "Moving files",
+      question: "Move this file?",
+      lines: ["ep12.mp4", "Into Podcasts/Raw"],
+    });
+    const many = toolWords("move_files", {
+      keys: ["a/1.mp4", "a/2.mp4", "a/3.mp4", "a/4.mp4", "a/5.mp4", "a/6.mp4", "a/7.mp4"],
+      toFolder: "",
+    });
+    expect(many?.question).toBe("Move these files?");
+    expect(many?.lines).toEqual([
+      "1.mp4",
+      "2.mp4",
+      "3.mp4",
+      "4.mp4",
+      "5.mp4",
+      "and 2 more",
+      "Into the top of your storage",
+    ]);
+  });
+
+  test("renaming says the old and the new name", () => {
+    expect(toolWords("rename_file", { key: "Raw/ep12.mp4", name: "Episode 12.mp4" })?.lines).toEqual([
+      'ep12.mp4 becomes "Episode 12.mp4"',
+    ]);
+  });
+
+  test("what came back, in plain words", () => {
+    expect(resultWords("list_folder", { folders: [], files: [] })).toEqual(["Nothing here yet."]);
+    expect(
+      resultWords("list_folder", { folders: ["Raw/"], files: [{ name: "a" }, { name: "b" }] }),
+    ).toEqual(["1 folder, 2 files"]);
+    expect(resultWords("make_folder", { made: ["Podcasts/", "Podcasts/Raw/"] })).toEqual([
+      "Made Podcasts, Podcasts/Raw",
+    ]);
+    expect(resultWords("make_folder", { made: [] })).toEqual(["It was already there."]);
+    expect(resultWords("move_files", { moved: 1 })).toEqual(["Moved 1 file"]);
+  });
+});

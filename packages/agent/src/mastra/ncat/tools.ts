@@ -494,6 +494,136 @@ export const checkRun = createTool({
 });
 
 /** Keyed by tool id: the key is the name the model, approvals and categories use. */
+
+/**
+ * A folder as the person or the model writes it ("Podcasts/Raw", "/podcasts/raw/") in
+ * the form the bucket uses: no slash in front, one after, "" for the top of the bucket.
+ */
+export function folderKey(path: string | undefined): string {
+  const parts = (path ?? "")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length ? `${parts.join("/")}/` : "";
+}
+
+const folderPath = z
+  .string()
+  .describe('A folder, written like "Podcasts/Raw". Leave empty for the top of the bucket.');
+
+export const listFolder = createTool({
+  id: "list_folder",
+  description:
+    "What is in one folder of the team's storage: its folders and its files (key, name, kind, size). Use it to find a file, to see whether a folder exists, and before moving anything.",
+  inputSchema: z.object({ folder: folderPath.optional() }),
+  outputSchema: z.object({
+    folder: z.string(),
+    folders: z.array(z.string()),
+    files: z.array(
+      z.object({ key: z.string(), name: z.string(), kind: z.string(), size: z.number() }),
+    ),
+    more: z.boolean(),
+  }),
+  execute: async ({ folder }, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    if (!session.organizationId) throw new Error("No team is open on the dashboard.");
+    const prefix = folderKey(folder);
+    try {
+      const page = (await client.action(dash.files.list, {
+        organizationId: session.organizationId,
+        prefix,
+      })) as {
+        folders: { key: string; name: string }[];
+        files: { key: string; name: string; kind: string; size: number }[];
+        next: string | null;
+      };
+      return {
+        folder: prefix,
+        folders: page.folders.map((found) => found.key),
+        files: page.files.map(({ key, name, kind, size }) => ({ key, name, kind, size })),
+        more: page.next !== null,
+      };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+export const makeFolder = createTool({
+  id: "make_folder",
+  description:
+    'Make a folder in the team\'s storage, with any folders above it that are missing ("Podcasts/Raw" makes Podcasts, then Raw inside it). Folders that already exist are left as they are. Make the folder before building an automation that starts from it.',
+  inputSchema: z.object({ path: folderPath.min(1) }),
+  outputSchema: z.object({ folder: z.string(), made: z.array(z.string()) }),
+  execute: async ({ path }, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    if (!session.organizationId) throw new Error("No team is open on the dashboard.");
+    const organizationId = session.organizationId;
+    const target = folderKey(path);
+    if (!target) throw new Error("Say which folder to make.");
+    const made: string[] = [];
+    let parent = "";
+    try {
+      for (const name of target.slice(0, -1).split("/")) {
+        const here = `${parent}${name}/`;
+        const existing = (await client.action(dash.files.folders, {
+          organizationId,
+          prefix: parent,
+        })) as { key: string }[];
+        if (!existing.some((folder) => folder.key === here)) {
+          await client.action(dash.files.createFolder, { organizationId, prefix: parent, name });
+          made.push(here);
+        }
+        parent = here;
+      }
+      return { folder: target, made };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+export const moveFiles = createTool({
+  id: "move_files",
+  description:
+    "Move files (by the keys list_folder gave) into a folder of the team's storage. Make the folder first with make_folder if it does not exist. Anything that pointed at a file, such as an upload or a watched folder, follows it. A file moved into a folder that a switched-on automation watches starts that automation.",
+  inputSchema: z.object({ keys: z.array(z.string().min(1)).min(1).max(50), toFolder: folderPath }),
+  outputSchema: z.object({ folder: z.string(), moved: z.number(), leftBehind: z.number() }),
+  execute: async ({ keys, toFolder }, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    if (!session.organizationId) throw new Error("No team is open on the dashboard.");
+    const folder = folderKey(toFolder);
+    try {
+      const result = (await client.action(dash.files.move, {
+        organizationId: session.organizationId,
+        keys,
+        toFolder: folder,
+      })) as { moved: number; leftBehind: number };
+      return { folder, ...result };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+export const renameFile = createTool({
+  id: "rename_file",
+  description:
+    "Give one file or folder of the team's storage a new name where it is (key from list_folder). Anything that pointed at it follows it.",
+  inputSchema: z.object({ key: z.string().min(1), name: z.string().min(1).max(200) }),
+  outputSchema: z.object({ key: z.string(), name: z.string() }),
+  execute: async ({ key, name }, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    if (!session.organizationId) throw new Error("No team is open on the dashboard.");
+    try {
+      await client.action(dash.files.rename, { organizationId: session.organizationId, key, name });
+      return { key, name };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
 export const ncatTools = {
   dash_overview: dashOverview,
   describe_automation: describeAutomation,
@@ -505,6 +635,10 @@ export const ncatTools = {
   list_uploads: listUploads,
   try_automation: tryAutomation,
   check_run: checkRun,
+  list_folder: listFolder,
+  make_folder: makeFolder,
+  move_files: moveFiles,
+  rename_file: renameFile,
 };
 
 /** Tools that only look. They run without an approval card and are offered in Plan mode. */
@@ -515,10 +649,11 @@ export const NCAT_READ_TOOLS = [
   "platform_guide",
   "list_uploads",
   "check_run",
+  "list_folder",
 ] as const;
 
 /** Tools that change an automation's design: one "Always allow" covers them together. */
-export const NCAT_EDIT_TOOLS = ["change_automation", "create_automation"] as const;
+export const NCAT_EDIT_TOOLS = ["change_automation", "create_automation", "make_folder"] as const;
 
 export const NCAT_INSTRUCTIONS = `You are the builder inside a dashboard for the NCA Toolkit, a self-hosted server that edits video and audio with FFmpeg. People here make content: creators, editors, agencies. Your job is to build automations for them that run by themselves on a server: something starts one (a new upload, a watched folder, a schedule, a web address being called), then steps run in order with nobody at the keyboard.
 
@@ -528,6 +663,7 @@ How to work:
 - For several platforms, give each its own Clips for a platform step from the same start, with its own steps after it.
 - You know each platform's formats: read platform_guide for the platforms you are building for before you build, and build to fit them. The Clips step already cuts to each platform's length and makes its shape (vertical 9:16 for Reels, TikTok, Shorts, Stories, Spotlight; portrait 4:5 for the Instagram and Facebook feeds; wide 16:9 for YouTube; the video's own shape for LinkedIn and X, scaled down to fit X). When something else in the automation has to fit too, use it: an If step on length to send videos too short for a platform another way, captions burned in where people watch with the sound off, and keeping music clips on YouTube Shorts under 1 min. When the person asks what a platform takes, answer from platform_guide, and say plainly when it marks a figure as not confirmed.
 - Build with change_automation. Look up type names with list_step_types, and a type's settings by passing its name, before you add a step you have not used in this conversation.
+- Files and folders: list_folder shows what is in the team's storage. When an automation starts from a folder (a watched folder), check with list_folder that the folder exists and make it with make_folder if not, with any folders above it, before building. When the person's file is in the wrong place (for example at the top of the storage) and should go into a folder so an automation starts from it, move it with move_files. rename_file renames one. Never move or rename files the person did not ask about.
 - Never ask the person to type addresses, file links or placeholders. Leave file settings empty so each step takes the nearest fitting file before it; logo, colour, font and music come from the team's brand in Settings.
 - An Approval step asks anyone on the team unless you name reviewers (user ids from the team that describe_automation lists). It waits until someone decides, or set timeLimit, timeLimitUnit and whenTimeUp so it decides by itself; 6 days at most.
 - After a change, read back what describe_automation or change_automation returned. If it lists problems, fix them or say plainly what the person must do (for example add a logo in Settings).

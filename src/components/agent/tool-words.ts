@@ -109,6 +109,37 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords | 
           "It runs whether or not the automation is switched on.",
         ],
       };
+    case "list_folder":
+      return {
+        title: folderText(given?.folder)
+          ? `Looking in ${folderText(given?.folder)}`
+          : "Looking at your files",
+        question: "",
+        lines: [],
+      };
+    case "make_folder":
+      return {
+        title: "Making a folder",
+        question: "Make this folder?",
+        lines: [folderText(given?.path) || "A new folder", "Folders above it are made too if missing."],
+      };
+    case "move_files": {
+      const keys = Array.isArray(given?.keys) ? given.keys.filter(isText) : [];
+      const into = folderText(given?.toFolder) || "the top of your storage";
+      return {
+        title: "Moving files",
+        question: keys.length === 1 ? "Move this file?" : "Move these files?",
+        lines: [...keys.slice(0, 5).map(fileName), ...(keys.length > 5 ? [`and ${keys.length - 5} more`] : []), `Into ${into}`],
+      };
+    }
+    case "rename_file":
+      return {
+        title: "Renaming a file",
+        question: "Rename this file?",
+        lines: [
+          `${isText(given?.key) ? fileName(given.key) : "The file"} becomes "${isText(given?.name) ? given.name : ""}"`,
+        ],
+      };
     case "switch_automation":
       return {
         title: given?.on ? "Switching the automation on" : "Switching the automation off",
@@ -149,6 +180,19 @@ export function resultWords(name: string | undefined, result: unknown): string[]
   if (name === "platform_guide") {
     const unknown = Array.isArray(value.unknown) ? value.unknown.filter(isText) : [];
     return unknown.length ? [`Not in the guide: ${unknown.join(", ")}`] : [];
+  }
+  if (name === "list_folder") {
+    const folders = Array.isArray(value.folders) ? value.folders.length : 0;
+    const files = Array.isArray(value.files) ? value.files.length : 0;
+    if (folders + files === 0) return ["Nothing here yet."];
+    return [[folders ? count(folders, "folder", "folders") : "", files ? count(files, "file", "files") : ""].filter(Boolean).join(", ")];
+  }
+  if (name === "make_folder") {
+    const made = Array.isArray(value.made) ? value.made.filter(isText) : [];
+    return made.length ? [`Made ${made.map(folderText).join(", ")}`] : ["It was already there."];
+  }
+  if (name === "move_files" && typeof value.moved === "number") {
+    return [`Moved ${count(value.moved, "file", "files")}`];
   }
   if (name === "list_uploads") {
     const rows = Array.isArray(value.uploads) ? value.uploads : [];
@@ -208,4 +252,14 @@ const isText = (item: unknown): item is string => typeof item === "string" && it
 function listWords(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/** A folder as people write it: "Podcasts/Raw", never with slashes at the ends. */
+function folderText(path: unknown): string {
+  return isText(path) ? path.split("/").map((part) => part.trim()).filter(Boolean).join("/") : "";
+}
+
+/** The last part of a storage key: "Podcasts/Raw/ep12.mp4" is "ep12.mp4". */
+function fileName(key: string): string {
+  return key.split("/").filter(Boolean).pop() ?? key;
 }
