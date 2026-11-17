@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "pnpm -r test && vitest run --config vitest.convex.config.ts"
+    "test": "pnpm -r test && vitest run --config vitest.convex.config.ts && vitest run --config vitest.screens.config.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -37,17 +38,22 @@
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/turbopack": "4.3.3",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.12",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "convex-test": "^0.0.71",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
+    "jsdom": "^31.0.1",
     "prettier": "^3.10.1",
     "tailwindcss": "4.3.3",
     "typescript": "^5",
-    "vite": "^8.3.8",
+    "vite": "^7.3.8",
     "vitest": "^3.2.7"
   },
   "packageManager": "pnpm@10.28.0"
