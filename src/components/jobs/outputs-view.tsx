@@ -1,12 +1,16 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
+import { MessagesSquare } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { stepTitle } from "@/lib/catalog";
+import { errorMessage, stepTitle } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
 import { MediaPreview } from "./media-preview";
@@ -16,6 +20,21 @@ const finishedAt = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", tim
 export function OutputsView() {
   const team = useActiveTeam();
   const groups = useQuery(api.jobs.outputs, { organizationId: team.id });
+  const createReview = useMutation(api.reviews.create);
+  const router = useRouter();
+  const [sending, setSending] = useState<string | null>(null);
+
+  // Opens a room with these files so the team can look at them together.
+  async function review(jobId: string, title: string, urls: string[]) {
+    setSending(jobId);
+    try {
+      const reviewId = await createReview({ organizationId: team.id, title, urls });
+      router.push(`/review/${reviewId}`);
+    } catch (error) {
+      toast.error(errorMessage(error, "The review could not be opened."));
+      setSending(null);
+    }
+  }
 
   return (
     <>
@@ -40,15 +59,26 @@ export function OutputsView() {
       ) : (
         groups.map((group) => (
           <section key={group.jobId} className="flex flex-col gap-3">
-            <h2 className="text-sm font-medium">
-              {stepTitle(group.stepId)}
-              {group.finishedAt && (
-                <span className="text-muted-foreground font-normal">
-                  {" "}
-                  · {finishedAt.format(group.finishedAt)}
-                </span>
-              )}
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-medium">
+                {stepTitle(group.stepId)}
+                {group.finishedAt && (
+                  <span className="text-muted-foreground font-normal">
+                    {" "}
+                    · {finishedAt.format(group.finishedAt)}
+                  </span>
+                )}
+              </h2>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={sending !== null}
+                onClick={() => review(group.jobId, stepTitle(group.stepId), group.urls)}
+              >
+                <MessagesSquare />
+                Send to review
+              </Button>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {group.urls.map((url) => (
                 <MediaPreview key={url} url={url} />

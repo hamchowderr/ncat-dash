@@ -40,3 +40,24 @@ export const teamsFor = query({
     return teams;
   },
 });
+
+/** The people on a team, with the name and picture to show for each. */
+export const people = query({
+  args: { organizationId: v.string() },
+  returns: v.array(
+    v.object({ id: v.string(), name: v.string(), image: v.union(v.null(), v.string()) }),
+  ),
+  handler: async (ctx, args) => {
+    const memberships = await ctx.db
+      .query("member")
+      .withIndex("organizationId", (q) => q.eq("organizationId", args.organizationId))
+      .take(200);
+    const people = [];
+    for (const membership of memberships) {
+      const id = ctx.db.normalizeId("user", membership.userId);
+      const user = id ? await ctx.db.get(id) : null;
+      if (user) people.push({ id: user._id, name: user.name, image: user.image ?? null });
+    }
+    return people;
+  },
+});

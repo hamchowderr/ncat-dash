@@ -8,6 +8,7 @@ import {
   FolderOutput,
   Home,
   ListChecks,
+  MessagesSquare,
   Settings,
   type LucideIcon,
   SquareFunction,
@@ -40,6 +41,7 @@ type NavItem = { title: string; url: string; icon: LucideIcon };
 const navEveryday: NavItem[] = [
   { title: "Home", url: "/", icon: Home },
   { title: "Automations", url: "/automations", icon: Workflow },
+  { title: "Review", url: "/review", icon: MessagesSquare },
   { title: "Outputs", url: "/outputs", icon: FolderOutput },
   { title: "Uploads", url: "/uploads", icon: UploadCloud },
   { title: "Settings", url: "/settings", icon: Settings },
