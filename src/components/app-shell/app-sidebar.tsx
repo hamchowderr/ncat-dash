@@ -1,5 +1,7 @@
 "use client";
 
+import { api } from "@convex/_generated/api";
+import { useQuery } from "convex/react";
 import * as React from "react";
 import {
   Clapperboard,
@@ -27,6 +29,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { useActiveTeam } from "@/lib/team-context";
+import { useFileLink } from "@/lib/use-brand-upload";
 
 import { NavUser, type ShellUser } from "./nav-user";
 
@@ -54,6 +58,27 @@ export function navItemFor(pathname: string) {
   return navMain.find((item) => item.url !== "/" && pathname.startsWith(item.url)) ?? navMain[0];
 }
 
+/** The team's logo once it has one in Settings, and a plain mark until then. */
+function TeamMark() {
+  const team = useActiveTeam();
+  const logo = useQuery(api.teamSettings.get, { organizationId: team.id })?.brand.logo;
+  const link = useFileLink(logo);
+  if (link) {
+    return (
+      <div className="flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg">
+        {/* The file sits in the team's own storage, so there is nothing for Next to resize. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={link} alt="" className="size-full object-contain" />
+      </div>
+    );
+  }
+  return (
+    <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
+      <Clapperboard className="size-4" aria-hidden="true" />
+    </div>
+  );
+}
+
 export function AppSidebar({
   teamName,
   edition,
@@ -73,9 +98,7 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link href="/">
-                <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                  <Clapperboard className="size-4" aria-hidden="true" />
-                </div>
+                <TeamMark />
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{teamName}</span>
                   <span className="truncate text-xs">{edition}</span>

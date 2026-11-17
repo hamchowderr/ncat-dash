@@ -75,6 +75,7 @@ import { RunsList } from "./runs-list";
 import { TriggerPanel } from "./trigger-panel";
 
 const EMPTY_BRAND: Brand = {};
+const EMPTY_MUSIC: { name: string; file: string }[] = [];
 const FIT = { ...FIT_VIEW, duration: 200 };
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.automations.get>>>;
@@ -117,7 +118,9 @@ function Editor({ automation }: { automation: Loaded }) {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const team = useActiveTeam();
-  const brand = useQuery(api.teamSettings.get, { organizationId: team.id })?.brand ?? EMPTY_BRAND;
+  const settings = useQuery(api.teamSettings.get, { organizationId: team.id });
+  const brand = settings?.brand ?? EMPTY_BRAND;
+  const music = settings?.music ?? EMPTY_MUSIC;
   const save = useMutation(api.automations.save);
   const setEnabled = useMutation(api.automations.setEnabled);
   const runNow = useMutation(api.automations.runNow);
@@ -590,6 +593,7 @@ function Editor({ automation }: { automation: Loaded }) {
                   <>
                     <NodePanel
                       brand={brand}
+                      music={music}
                       key={selected.id}
                       node={selected.data.node}
                       before={stepsBefore(selected.id, draft.edges)
