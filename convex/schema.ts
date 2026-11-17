@@ -289,5 +289,8 @@ export default defineSchema({
     // Read from the file by the toolkit once the upload finishes. Missing while that is
     // still to happen, or when the toolkit could not read the file.
     details: v.optional(fileDetailsValidator),
-  }).index("by_organization", ["organizationId"]),
+  })
+    .index("by_organization", ["organizationId"])
+    // Finds the upload behind a file in the bucket, for the Files page.
+    .index("by_organization_and_key", ["organizationId", "key"]),
 });

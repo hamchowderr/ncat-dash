@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as automations from "../automations.js";
 import type * as crons from "../crons.js";
+import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as jobs from "../jobs.js";
 import type * as lib_authz from "../lib/authz.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   automations: typeof automations;
   crons: typeof crons;
+  files: typeof files;
   http: typeof http;
   jobs: typeof jobs;
   "lib/authz": typeof lib_authz;
