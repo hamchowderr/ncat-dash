@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "User: Build an automation that makes short clips with captions from each new recording I upload.\nTool Result dash_overview: {\"openAutomationId\":null,\"automations\":[]}\nTool Result list_step_types: {\"index\":\"trigger:manual (Starts the automation; takes nothing, gives file): Run by hand. Starts only when someone presses Run now, with the file they give it.\\ntrigger:upload (Starts the automation; \nTool Result list_step_types: {\"type\":{\"automatic\":null,\"description\":\"Cuts each video at pauses in speech into clips that fit a platform's length limit, and reframes them for it.\",\"gives\":\"files\",\"group\":\"ready-made\",\"role\":\"acti\nTool Result list_step_types: {\"type\":{\"automatic\":\"video_url\",\"description\":\"Adds styled captions to a video. Auto-transcribes if no captions provided. Supports karaoke, highlight, word-by-word, and classic styles. Output URL ope\nTool Result list_step_types: {\"type\":{\"automatic\":null,\"description\":\"Starts by itself each time someone on the team uploads a file. The run is handed the file's details (duration, width, height, fps, codecs, whether it has sound\nTool Result create_automation: {\"automationId\":\"jn7ewwqrf29pb8vzeyrr83d39s8jdvgm\",\"address\":\"/automations/jn7ewwqrf29pb8vzeyrr83d39s8jdvgm\"}\nTool Result change_automation: {\"automationId\":\"jn7ewwqrf29pb8vzeyrr83d39s8jdvgm\",\"outline\":\"Automation \\\"Captioned short clips from new uploads\\\"\\nStarts: trigger:upload {\\\"fileType\\\":\\\"video\\\"}\\n- clips [clips] \\\"Cut into short c\nAssistant: I built the automation. It's switched off, and nothing is blocking it from running.\n\n[Open it](/automations/jn7ewwqrf29pb8vzeyrr83d39s8jdvgm)\n\n- **Start:** it runs each time someone on the team uploads a video.\n- **Cut into short clips:** it cuts the recording at pauses in speech into clips that fit Instagram Reels' length limit, and reframes them for that format.\n- **Add captions:** each clip gets captions that are transcribed automatically. They're bold, in capitals, up to 4 words per line, at the bottom centre, and the spoken word is highlighted as it's said.\n\nI assumed Instagram Reels because you didn't name a platform. I can switch it to TikTok, YouTube Shorts or another one. I can also change the caption style.\n\nWant me to switch it on?",
+        "model": "claude-haiku-4-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "usage": {
+          "input_tokens": 681,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 10
+        },
+        "content": "Short clips with captions from uploads"
+      },
+      "metadata": {
+        "systemHash": "f8067d0b"
+      }
+    }
+  ]
+}

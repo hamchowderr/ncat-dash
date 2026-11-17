@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { resultWords, toolWords } from "./tool-words";
+import { errorWords, resultWords, toolWords } from "./tool-words";
 
 describe("what the agent's tools are called", () => {
   test("reading tools have a title and nothing to ask", () => {
@@ -99,5 +99,25 @@ describe("what came back", () => {
 
   test("nothing for tools with nothing to report", () => {
     expect(resultWords("create_automation", { automationId: "abc" })).toEqual([]);
+  });
+});
+
+describe("what a failed turn says", () => {
+  // The first real model run showed Anthropic's whole error response, request included.
+  const providerError =
+    'controller stream failed: {"url":"https://api.anthropic.com/v1/messages","requestBodyValues":{"model":"x"},"statusCode":400,"responseBody":"{\\"type\\":\\"error\\"}"}';
+
+  test("never shows the raw error", () => {
+    const words = errorWords(providerError);
+    expect(words).not.toMatch(/requestBodyValues|anthropic|statusCode|\{/);
+    expect(words).toMatch(/send your message again/i);
+  });
+
+  test("says when the model key is the problem", () => {
+    expect(errorWords('{"statusCode":401,"message":"invalid x-api-key"}')).toMatch(/model key/);
+  });
+
+  test("says when the model is busy", () => {
+    expect(errorWords("statusCode 529 overloaded_error")).toMatch(/busy/);
   });
 });

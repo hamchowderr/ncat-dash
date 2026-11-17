@@ -1,0 +1,71 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Build an automation that makes short clips with captions from each new recording I upload.",
+        "model": "claude-sonnet-5-5",
+        "turnIndex": 1,
+        "hasToolResult": true
+      },
+      "response": {
+        "toolCalls": [
+          {
+            "name": "list_step_types",
+            "arguments": "{\"type\": \"clips\"}",
+            "id": "toolu_01Q4PGm6TiQf3W4RXuEftV42"
+          },
+          {
+            "name": "list_step_types",
+            "arguments": "{\"type\": \"step:video-caption\"}",
+            "id": "toolu_016fZufqbdEaHnCHzFMvJB8t"
+          },
+          {
+            "name": "list_step_types",
+            "arguments": "{\"type\": \"trigger:upload\"}",
+            "id": "toolu_01LijXFuKE9X58AQChygd4PP"
+          }
+        ],
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 3749,
+          "cache_read_input_tokens": 13632,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 3749,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 152
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1081,
+        "interChunkDelaysMs": [
+          0,
+          0,
+          0,
+          425,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          391,
+          0,
+          0,
+          0,
+          0,
+          0,
+          6,
+          0,
+          0,
+          0
+        ],
+        "totalDurationMs": 1904
+      },
+      "metadata": {
+        "systemHash": "0d51c4cd",
+        "toolsHash": "49fe857c"
+      }
+    }
+  ]
+}

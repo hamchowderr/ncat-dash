@@ -142,11 +142,13 @@ The stand-in model is [AIMock](https://aimock.copilotkit.dev), a small server th
 
 AIMock can also sit between the agent and a real model and save what the model answers, so a real conversation can be played back afterwards for free, in tests and for screen recordings.
 
-1. In `packages/agent/.env` keep `USE_AIMOCK=true` and set a real key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY`) with a matching `CHAT_MODEL` such as `anthropic/claude-sonnet-4-6`. Recording goes straight to the provider; a gateway model (`vercel/...`, `mastra/...`) is not recorded.
+1. In `packages/agent/.env` keep `USE_AIMOCK=true` and set a real key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY`) with a matching `CHAT_MODEL` such as `anthropic/claude-sonnet-5-5`. Recording goes straight to the provider; a gateway model (`vercel/...`, `mastra/...`) is not recorded.
 2. Run `pnpm --filter @ncat-dash/agent dev:record` in place of `dev:mock`, and use the chat. Each answer the model gives is saved under `packages/agent/fixtures/recorded/`. A message that was already recorded is played back and costs nothing; only new ones reach the model.
 3. Run `pnpm --filter @ncat-dash/agent dev:replay` to play the recordings back with no key. Anything that was not recorded gets an error there, so a recording can never quietly turn into a paid call.
 
-A recording is matched on the message the person typed, so the same sentence always gets the same answer. Read a recording before committing it. No real model has been recorded yet.
+A recording is matched on the message the person typed, so the same sentence always gets the same answer. Read a recording before committing it. The recorder reads the folder when it starts, so restart it after deleting recordings.
+
+One real conversation is recorded so far (see `packages/agent/fixtures/recorded/README.md`). Its tool calls name the automation it built, so played back against a fresh dashboard the later changes go to an automation that is not there; it is for tests and for reading what the model did, not for a full replay in the browser.
 
 On first start the agent server downloads a small text-embedding model (fastembed) for recalling earlier conversations.
 
