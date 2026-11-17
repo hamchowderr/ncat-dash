@@ -4,11 +4,11 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { FileVideo, LoaderCircle, Play, Upload } from "lucide-react";
-import Link from "next/link";
 import { type DragEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { NeedsToolkit } from "@/components/uploads/needs-toolkit";
 import {
   Dialog,
   DialogContent,
@@ -126,14 +126,7 @@ export function RunDialog({
         {storage === undefined ? (
           <div className="bg-muted h-36 animate-pulse rounded-xl" />
         ) : storage === null ? (
-          <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-5">
-            <p className="text-muted-foreground text-sm">
-              Connect your storage first, so there is somewhere for your files to go.
-            </p>
-            <Button asChild size="sm">
-              <Link href="/uploads">Connect storage</Link>
-            </Button>
-          </div>
+          <NeedsToolkit />
         ) : (
           <>
             <div

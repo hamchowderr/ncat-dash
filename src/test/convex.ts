@@ -89,6 +89,7 @@ export const presenceReact = { default: () => present };
 export const nextNavigation = {
   useRouter: () => ({ push: pushed, replace: replaced }),
   usePathname: () => "/review",
+  useSearchParams: () => new URLSearchParams(),
 };
 export const sonner = {
   toast: { error: toastError, info: toastInfo, success: toastSuccess, dismiss: toastDismiss },

@@ -36,9 +36,9 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { requireMember } from "./lib/authz";
-import { decryptSecret } from "./lib/crypto";
 import {
-  type BucketConfig,
+  type Bucket,
+  bucketOf as bucketFor,
   copyObject,
   deleteObject,
   keyExists,
@@ -46,7 +46,8 @@ import {
   listObjects,
   presign,
   putFolder,
-} from "./lib/s3";
+  storageConnection,
+} from "./lib/bucket";
 import { fileDetailsValidator } from "./schema";
 
 const UPLOAD_LINK_SECONDS = 60 * 60;
@@ -60,17 +61,11 @@ const CHUNK = 200;
 
 const fail = (code: string, message: string) => new ConvexError({ code, message });
 
-async function bucketOf(ctx: ActionCtx, organizationId: string): Promise<BucketConfig> {
+async function bucketOf(ctx: ActionCtx, organizationId: string): Promise<Bucket> {
   await ctx.runQuery(internal.storage.authorize, { organizationId, managersOnly: false });
   const storage = await ctx.runQuery(internal.storage.load, { organizationId });
-  if (!storage) throw fail("no_storage", "Connect your storage first.");
-  return {
-    endpoint: storage.endpoint,
-    region: storage.region,
-    bucket: storage.bucket,
-    accessKeyId: storage.accessKeyId,
-    secretAccessKey: await decryptSecret(storage.secretCipher),
-  };
+  if (!storage) throw fail("no_storage", "Connect your toolkit first.");
+  return await bucketFor(storage);
 }
 
 /** Runs `work` over every item, a few at a time, and returns the items that failed. */
@@ -102,7 +97,7 @@ function chunks<T>(items: T[]): T[][] {
  * A folder that only exists because of the files in it vanishes when the last one leaves.
  * This leaves an empty-folder marker behind instead, so emptying a folder keeps the folder.
  */
-async function keepFolders(config: BucketConfig, keys: string[]): Promise<void> {
+async function keepFolders(config: Bucket, keys: string[]): Promise<void> {
   const parents = [...new Set(keys.map(parentOf))].filter((parent) => parent !== "");
   await eachOf(parents, async (parent) => {
     if (!(await keyExists(config, parent))) await putFolder(config, parent);
@@ -110,7 +105,7 @@ async function keepFolders(config: BucketConfig, keys: string[]): Promise<void> 
 }
 
 /** Every object a file or folder key stands for. */
-async function objectsOf(config: BucketConfig, key: string): Promise<string[]> {
+async function objectsOf(config: Bucket, key: string): Promise<string[]> {
   if (!isFolderKey(key)) return [key];
   const objects = await listObjects(config, key, Math.ceil(MAX_OBJECTS / 1000) + 1);
   return objects.map((object) => object.key);
@@ -144,7 +139,10 @@ export const list = action({
     try {
       page = await listFolder(config, args.prefix, args.token);
     } catch {
-      throw fail("storage", "Your storage could not be read. Check its connection in Uploads.");
+      throw fail(
+        "storage",
+        "Your files could not be read. Check the toolkit connection in Settings.",
+      );
     }
     // The empty object that marks a folder is the folder itself, not a file inside it.
     const objects = page.objects.filter((object) => object.key !== args.prefix);
@@ -243,9 +241,7 @@ export const linkFor = action({
     const config = await bucketOf(ctx, args.organizationId);
     if (args.use === "download") {
       const name = baseName(args.key).replace(/["\\\r\n]/g, "_");
-      return await presign(config, "GET", args.key, VIEW_LINK_SECONDS, {
-        "response-content-disposition": `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`,
-      });
+      return await presign(config, "GET", args.key, VIEW_LINK_SECONDS, { downloadName: name });
     }
     return await presign(
       config,
@@ -312,7 +308,7 @@ export const startUpload = action({
 async function relocate(
   ctx: ActionCtx,
   organizationId: string,
-  config: BucketConfig,
+  config: Bucket,
   pairs: { from: string; to: string }[],
 ): Promise<{ moved: number; leftBehind: number }> {
   const copies: { from: string; to: string }[] = [];
@@ -529,39 +525,19 @@ export const claimOutside = internalMutation({
   },
 });
 
-export const toolkitOf = internalQuery({
-  args: { organizationId: v.string() },
-  handler: async (ctx, args) => {
-    const connections = await ctx.db
-      .query("toolkitConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .take(10);
-    return connections.find((one) => one.status === "ok") ?? connections[0] ?? null;
-  },
-});
-
 /** Has the toolkit read one file (it runs FFprobe) and keeps what it finds. */
 export const readOutside = internalAction({
   args: { organizationId: v.string(), key: v.string(), etag: v.string() },
   handler: async (ctx, args) => {
-    const storage = await ctx.runQuery(internal.storage.load, {
-      organizationId: args.organizationId,
-    });
-    const connection = await ctx.runQuery(internal.files.toolkitOf, {
+    const connection = await ctx.runQuery(internal.storage.load, {
       organizationId: args.organizationId,
     });
     const step = getStep("media-metadata");
-    if (!storage || !connection || !step) return;
+    if (!connection || !step) return;
     try {
-      const config: BucketConfig = {
-        endpoint: storage.endpoint,
-        region: storage.region,
-        bucket: storage.bucket,
-        accessKeyId: storage.accessKeyId,
-        secretAccessKey: await decryptSecret(storage.secretCipher),
-      };
+      const config = await bucketFor(connection);
       const answer = (await callStep(
-        { baseUrl: connection.baseUrl, apiKey: await decryptSecret(connection.apiKeyCipher) },
+        config,
         step,
         { media_url: await presign(config, "GET", args.key, VIEW_LINK_SECONDS) },
         { signal: AbortSignal.timeout(60_000) },
@@ -759,11 +735,13 @@ export const followLinks = internalMutation({
     folders: v.array(v.object({ from: v.string(), to: v.string() })),
   },
   handler: async (ctx, args) => {
-    const storage = await ctx.db
-      .query("storageConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .first();
-    if (!storage) return;
+    const connection = await storageConnection(ctx, args.organizationId);
+    if (!connection?.storage?.endpoint) return;
+    const storage = {
+      endpoint: connection.storage.endpoint,
+      bucket: connection.storage.bucket,
+      ...(connection.storage.publicUrl ? { publicUrl: connection.storage.publicUrl } : {}),
+    };
     const moved = new Map(args.moves.map(({ from, to }) => [from, to]));
 
     const jobs = await ctx.db

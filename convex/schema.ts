@@ -153,6 +153,18 @@ export default defineSchema({
     buildNumber: v.union(v.null(), v.string()),
     lastCheckedAt: v.number(),
     lastError: v.union(v.null(), v.string()),
+    // The bucket the toolkit keeps files in, as it reported at the last check. Uploads,
+    // the Files page, review playback and exports all go through the toolkit to it, so a
+    // team never enters storage keys here. Missing until a check has read it.
+    storage: v.optional(
+      v.object({
+        bucket: v.string(),
+        // The two addresses the toolkit's output links start with (its S3_ENDPOINT_URL and
+        // S3_PUBLIC_URL), so links can be followed when a file is renamed or moved.
+        endpoint: v.union(v.null(), v.string()),
+        publicUrl: v.union(v.null(), v.string()),
+      }),
+    ),
     createdBy: v.string(),
   }).index("by_organization", ["organizationId"]),
 
@@ -572,21 +584,6 @@ export default defineSchema({
   })
     .index("by_organization_and_user", ["organizationId", "userId"])
     .index("by_emailTiming", ["emailTiming"]),
-
-  // A team's own S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces).
-  storageConnections: defineTable({
-    organizationId: v.string(),
-    endpoint: v.string(),
-    region: v.string(),
-    bucket: v.string(),
-    accessKeyId: v.string(),
-    // AES-GCM ciphertext of the secret access key.
-    secretCipher: v.string(),
-    // The public address the toolkit hands files out under (its S3_PUBLIC_URL), when it
-    // has one. Lets links in outputs be followed when a file is renamed or moved.
-    publicUrl: v.optional(v.string()),
-    createdBy: v.string(),
-  }).index("by_organization", ["organizationId"]),
 
   // What the toolkit read from a file that reached the bucket without going through this
   // app (dropped in by another tool, or made by a step). Uploads keep theirs on the upload.

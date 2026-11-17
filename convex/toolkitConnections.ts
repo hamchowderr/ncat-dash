@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
+import { checkStorage } from "./lib/bucket";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 
 const testResult = v.union(
@@ -15,6 +16,10 @@ const testResult = v.union(
       v.literal("unreachable"),
       v.literal("unauthorized"),
       v.literal("not_a_toolkit"),
+      // Stephen's original toolkit: it has no storage requests, so the dashboard cannot use it.
+      v.literal("not_fork"),
+      // The toolkit answers but its own bucket does not.
+      v.literal("storage"),
     ),
     detail: v.string(),
   }),
@@ -26,6 +31,27 @@ const CHECK_FAILURES = {
   not_a_toolkit: "This address no longer answers like the NCA Toolkit.",
 } as const;
 
+const storageInfo = v.object({
+  bucket: v.string(),
+  endpoint: v.union(v.null(), v.string()),
+  publicUrl: v.union(v.null(), v.string()),
+});
+
+/** The toolkit's own test, then its storage: a toolkit is only usable with both. */
+async function checkToolkit(target: { baseUrl: string; apiKey: string }) {
+  const result = await testConnection(target, { signal: AbortSignal.timeout(15_000) });
+  if (!result.ok) return { result, storage: null };
+  const storage = await checkStorage(target);
+  if (!storage.ok) {
+    return {
+      result: { ok: false as const, reason: storage.reason, detail: storage.detail },
+      storage: null,
+    };
+  }
+  const { bucket, endpoint, publicUrl } = storage;
+  return { result, storage: { bucket, endpoint, publicUrl } };
+}
+
 /** What the browser may see: everything except the encrypted key. */
 function toPublic(connection: Doc<"toolkitConnections">) {
   return {
@@ -34,6 +60,7 @@ function toPublic(connection: Doc<"toolkitConnections">) {
     apiKeyHint: connection.apiKeyHint,
     status: connection.status,
     buildNumber: connection.buildNumber,
+    bucket: connection.storage?.bucket ?? null,
     lastCheckedAt: connection.lastCheckedAt,
     lastError: connection.lastError,
   };
@@ -86,11 +113,9 @@ export const connect = action({
       return { ok: false as const, reason: "unauthorized" as const, detail: "Enter the API key." };
     }
 
-    const result = await testConnection(
-      { baseUrl, apiKey },
-      { signal: AbortSignal.timeout(15_000) },
-    );
-    if (!result.ok) return result;
+    // Fork only: a toolkit without the storage requests is refused with steps to switch.
+    const { result, storage } = await checkToolkit({ baseUrl, apiKey });
+    if (!result.ok || !storage) return result;
 
     await ctx.runMutation(internal.toolkitConnections.save, {
       organizationId: args.organizationId,
@@ -98,6 +123,7 @@ export const connect = action({
       apiKeyCipher: await encryptSecret(apiKey),
       apiKeyHint: apiKey.slice(-4),
       buildNumber: result.buildNumber,
+      storage,
       createdBy: userId,
     });
     return result;
@@ -112,15 +138,20 @@ export const recheck = action({
     const connection = await ctx.runQuery(internal.toolkitConnections.getForCheck, {
       connectionId: args.connectionId,
     });
-    const result = await testConnection(
-      { baseUrl: connection.baseUrl, apiKey: await decryptSecret(connection.apiKeyCipher) },
-      { signal: AbortSignal.timeout(15_000) },
-    );
+    const { result, storage } = await checkToolkit({
+      baseUrl: connection.baseUrl,
+      apiKey: await decryptSecret(connection.apiKeyCipher),
+    });
     await ctx.runMutation(internal.toolkitConnections.recordCheck, {
       connectionId: args.connectionId,
       ok: result.ok,
       buildNumber: result.ok ? result.buildNumber : null,
-      error: result.ok ? null : CHECK_FAILURES[result.reason],
+      error: result.ok
+        ? null
+        : result.reason === "not_fork" || result.reason === "storage"
+          ? result.detail
+          : CHECK_FAILURES[result.reason],
+      ...(storage ? { storage } : {}),
     });
     return result;
   },
@@ -162,6 +193,7 @@ export const save = internalMutation({
     apiKeyCipher: v.string(),
     apiKeyHint: v.string(),
     buildNumber: v.union(v.null(), v.string()),
+    storage: storageInfo,
     createdBy: v.string(),
   },
   handler: async (ctx, args) => {
@@ -186,6 +218,7 @@ export const recordCheck = internalMutation({
     ok: v.boolean(),
     buildNumber: v.union(v.null(), v.string()),
     error: v.union(v.null(), v.string()),
+    storage: v.optional(storageInfo),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.connectionId, {
@@ -193,6 +226,7 @@ export const recordCheck = internalMutation({
       lastCheckedAt: Date.now(),
       lastError: args.error,
       ...(args.ok ? { buildNumber: args.buildNumber } : {}),
+      ...(args.storage ? { storage: args.storage } : {}),
     });
   },
 });

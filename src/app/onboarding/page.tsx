@@ -10,17 +10,16 @@ import { ConnectToolkitForm } from "@/components/onboarding/connect-toolkit-form
 import { CreateTeamForm } from "@/components/onboarding/create-team-form";
 import { BrandForm } from "@/components/settings/brand-form";
 import { Button } from "@/components/ui/button";
-import { StorageForm } from "@/components/uploads/storage-form";
 import { TeamContext } from "@/lib/team-context";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
 
-const STEPS = 4;
+const STEPS = 3;
 
 /**
- * Setting up, in order: name the team, connect the toolkit, connect storage, then the
- * brand every automation uses. The last two can be skipped and done later from Uploads
- * and Settings.
+ * Setting up, in order: name the team, connect the toolkit, then the brand every
+ * automation uses. Files go to the toolkit's own storage, so there is no storage step.
+ * The brand can be skipped and set later in Settings.
  */
 export default function OnboardingPage() {
   const router = useRouter();
@@ -30,10 +29,9 @@ export default function OnboardingPage() {
     api.toolkitConnections.list,
     teamId ? { organizationId: teamId } : "skip",
   );
-  const storage = useQuery(api.storage.get, teamId ? { organizationId: teamId } : "skip");
   const settings = useQuery(api.teamSettings.get, teamId ? { organizationId: teamId } : "skip");
   // How far this visit has got past connecting the toolkit: 2 is the toolkit step itself.
-  const [stage, setStage] = useState<2 | 3 | 4 | null>(null);
+  const [stage, setStage] = useState<2 | 3 | null>(null);
 
   const signedOut = state.status === "signed-out";
   // Someone who set up on an earlier visit goes straight to the dashboard.
@@ -73,8 +71,8 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Connect your toolkit</h1>
               <p className="text-muted-foreground">
-                Point the dashboard at your own NCA Toolkit. We test the connection before saving
-                anything.
+                Point the dashboard at your own NCA Toolkit. Your files go to the toolkit&apos;s own
+                storage, so this is the only connection to make. We test it before saving anything.
               </p>
             </div>
             <ConnectToolkitForm organizationId={state.team.id} onConnected={() => setStage(2)} />
@@ -85,30 +83,7 @@ export default function OnboardingPage() {
             )}
           </>
         )}
-        {step === 3 && state.status === "ready" && (
-          <>
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold">Connect your storage</h1>
-              <p className="text-muted-foreground">
-                The bucket your files go to: uploads, your logo and your music. Any S3-compatible
-                storage works, such as Cloudflare R2.
-              </p>
-            </div>
-            {storage ? (
-              <p className="text-sm">Your storage is connected.</p>
-            ) : (
-              <StorageForm organizationId={state.team.id} onSaved={() => setStage(4)} />
-            )}
-            <Button
-              variant={storage ? "default" : "ghost"}
-              className="w-full"
-              onClick={() => setStage(4)}
-            >
-              {storage ? "Continue" : "Skip for now"}
-            </Button>
-          </>
-        )}
-        {step === 4 && state.status === "ready" && settings && (
+        {step === 3 && state.status === "ready" && settings && (
           <TeamContext.Provider value={state.team}>
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Add your brand</h1>
