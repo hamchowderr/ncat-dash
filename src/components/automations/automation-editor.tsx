@@ -14,9 +14,11 @@ import {
   type Brand,
   canonical,
   canRedo,
+  canFailOver,
   canUndo,
   copySteps,
   exportAutomation,
+  FAILURE_WAY,
   newNodeId,
   type Operation,
   OperationError,
@@ -289,6 +291,9 @@ function Editor({ automation }: { automation: Loaded }) {
           status: now?.status,
           jobCount: now?.jobCount,
           note: now?.note,
+          failWay:
+            node.selected ||
+            draft.edges.some((edge) => edge.source === node.id && edge.branch === FAILURE_WAY),
         },
       };
     });
@@ -851,6 +856,20 @@ function Editor({ automation }: { automation: Loaded }) {
                       }
                       onRemove={() => removeSteps([selected.id])}
                       onDuplicate={() => duplicateSelected([selected.id])}
+                      {...(canFailOver(selected.data.node.kind)
+                        ? {
+                            failSteps: draft.edges
+                              .filter(
+                                (edge) =>
+                                  edge.source === selected.id && edge.branch === FAILURE_WAY,
+                              )
+                              .flatMap((edge) => {
+                                const target = draft.nodes.find((n) => n.id === edge.target);
+                                return target ? [nodeTitle(target)] : [];
+                              }),
+                            onAddOnFailure: () => addAfter(selected.id, FAILURE_WAY),
+                          }
+                        : {})}
                     />
                     {(selected.data.node.kind === "step" ||
                       selected.data.node.kind === "clips") && (

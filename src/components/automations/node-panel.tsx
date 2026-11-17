@@ -10,7 +10,7 @@ import {
   writeSource,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
-import { ChevronRight, Copy, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -57,6 +57,8 @@ export function NodePanel({
   onChange,
   onRemove,
   onDuplicate,
+  failSteps,
+  onAddOnFailure,
 }: {
   node: NodeContent;
   /** The steps that run before this one, nearest first. Their files can be used here. */
@@ -73,6 +75,10 @@ export function NodePanel({
   onRemove: () => void;
   /** Puts a copy of the step beside it. */
   onDuplicate?: () => void;
+  /** The names of the steps that run when this one fails. */
+  failSteps?: string[];
+  /** Adds a step that runs when this one fails. Absent for steps that cannot fail over. */
+  onAddOnFailure?: () => void;
 }) {
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
   const nodeType = nodeTypeOf(node);
@@ -342,6 +348,32 @@ export function NodePanel({
           </FieldGroup>
         </CollapsibleContent>
       </Collapsible>
+
+      {onAddOnFailure && (
+        <section
+          aria-label="If it fails"
+          className="flex items-center justify-between gap-2 border-t pt-4"
+        >
+          <div className="grid min-w-0">
+            <h3 className="text-sm font-medium">If it fails</h3>
+            <p className="text-muted-foreground text-xs text-pretty">
+              {failSteps && failSteps.length > 0
+                ? `Its files go to ${failSteps.join(" and ")} instead, and the run carries on.`
+                : "The run stops here. Add a step to try something else with its files."}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={onAddOnFailure}
+          >
+            <Plus />
+            {failSteps && failSteps.length > 0 ? "Add another" : "Add a step"}
+          </Button>
+        </section>
+      )}
     </div>
   );
 }
