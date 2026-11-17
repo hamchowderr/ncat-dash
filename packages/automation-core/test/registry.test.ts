@@ -11,6 +11,8 @@ import {
   graphProblem,
   brandProblem,
   describeFileDetails,
+  fileDetailColumns,
+  fileDetailRows,
   formatDuration,
   readFileDetails,
   withinLength,
@@ -327,6 +329,53 @@ describe("file details", () => {
       describeFileDetails({ width: 400, height: 400, format: "png_pipe", videoCodec: "png" }),
     ).toBe("400×400");
     expect(formatDuration(3725)).toBe("1:02:05");
+  });
+
+  it("lays every file out in the same columns", () => {
+    expect(fileDetailColumns(readFileDetails(answer)!)).toEqual({
+      type: "Video",
+      length: "6:53",
+      picture: "1920×1080",
+      frameRate: "29.97 fps",
+      format: "h264 / aac",
+    });
+    expect(
+      fileDetailColumns({ duration: 4, format: "mp3", audioCodec: "mp3", hasAudio: true }),
+    ).toEqual({ type: "Audio", length: "0:04", picture: null, frameRate: null, format: "mp3" });
+    expect(
+      fileDetailColumns({
+        width: 400,
+        height: 400,
+        format: "png_pipe",
+        videoCodec: "png",
+        fps: 25,
+      }),
+    ).toEqual({
+      type: "Picture",
+      length: null,
+      picture: "400×400",
+      frameRate: null,
+      format: "png",
+    });
+  });
+
+  it("lists everything that was read, in a fixed order", () => {
+    expect(fileDetailRows(readFileDetails(answer)!)).toContainEqual([
+      "Container",
+      "mov, mp4, m4a, 3gp, 3g2, mj2",
+    ]);
+    expect(fileDetailRows(readFileDetails(answer)!, "Full Interview.MP4")).toEqual([
+      ["Type", "Video"],
+      ["Length", "6:53"],
+      ["Picture size", "1920×1080"],
+      ["Frame rate", "29.97 fps"],
+      ["Video format", "h264"],
+      ["Sound format", "aac"],
+      ["Sound", "Stereo"],
+      ["Sample rate", "48 kHz"],
+      ["Container", "mp4"],
+      ["Bitrate", "1.02 Mbps"],
+    ]);
   });
 
   it("limits an upload trigger by length, and leaves out a file of unknown length", () => {
