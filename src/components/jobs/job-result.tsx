@@ -4,6 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 
+import { FailureText } from "@/components/failure-text";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDuration } from "@/lib/catalog";
 
@@ -37,7 +38,9 @@ export function JobResult({ jobId }: { jobId: Id<"jobs"> }) {
         <p className="text-muted-foreground text-sm">{WAITING[job.status]}</p>
       )}
 
-      {job.status === "failed" && <p className="text-destructive text-sm">{job.error}</p>}
+      {job.status === "failed" && (
+        <FailureText className="text-destructive text-sm" text={job.error} />
+      )}
 
       {job.outputs.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2">

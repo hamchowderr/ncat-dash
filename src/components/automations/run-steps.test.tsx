@@ -252,3 +252,57 @@ test("an If's own reading of the file is not shown as facts", () => {
   );
   expect(screen.queryByText("Audio codec")).toBeNull();
 });
+
+describe("a step that failed with FFmpeg's whole log", () => {
+  const LOG = [
+    "Failed to load audio: ffmpeg version 6.1.1 Copyright (c) 2000-2023 the FFmpeg developers",
+    "  built with gcc 13",
+    "  configuration: --prefix=/usr --enable-gpl --enable-libass",
+    "  libavutil      58. 29.100 / 58. 29.100",
+    "Input #0, png_pipe, from 'still.png':",
+    "  Duration: N/A, bitrate: N/A",
+    "  Stream #0:0: Video: png, rgb24, 64x64, 25 fps",
+    "Output #0, s16le, to 'pipe:':",
+    "[out#0/s16le @ 0x5596e5244280] Output file does not contain any stream",
+  ].join("\n");
+
+  function failed(over: Partial<RunDetails["steps"][number]>) {
+    renderInApp(
+      <RunSteps
+        run={run({
+          status: "failed",
+          steps: [step({ nodeId: "caption", status: "failed", ...over })],
+        })}
+        highlighted={null}
+        busy={false}
+        onDecide={vi.fn()}
+      />,
+    );
+    return screen.getByRole("heading", { name: "Caption video" }).closest("li")!;
+  }
+
+  test("shows a short plain reason, with the log folded away until asked for", () => {
+    const row = failed({ error: LOG });
+    expect(row.textContent).toContain(
+      "This file is a still image. This step needs a video or audio file.",
+    );
+    expect(row.textContent).not.toContain("configuration");
+    fireEvent.click(within(row).getByRole("button", { name: /Show details/ }));
+    expect(row.textContent).toContain("configuration: --prefix=/usr");
+    expect(within(row).getByRole("button", { name: /Hide details/ })).toBeTruthy();
+  });
+
+  test("the last failed try waiting to go again is shortened the same way", () => {
+    const row = failed({ status: "running", retryAt: Date.now() + 60_000, retryError: LOG });
+    expect(row.textContent).toContain(
+      "The last try failed: This file is a still image. This step needs a video or audio file.",
+    );
+    expect(row.textContent).not.toContain("libavutil");
+  });
+
+  test("a short message has nothing to fold away", () => {
+    const row = failed({ error: "Could not download the file." });
+    expect(row.textContent).toContain("Could not download the file.");
+    expect(within(row).queryByRole("button", { name: /Show details/ })).toBeNull();
+  });
+});

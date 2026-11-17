@@ -2,6 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { explainFailure } from "@ncat-dash/automation-core";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 
@@ -65,9 +66,9 @@ export function RunsList({ automationId }: { automationId: Id<"automations"> }) 
                 {run.status === "failed" && run.error && (
                   <p
                     className="text-muted-foreground mt-1 max-w-md truncate text-xs"
-                    title={run.error}
+                    title={explainFailure(run.error).reason}
                   >
-                    {run.error}
+                    {explainFailure(run.error).reason}
                   </p>
                 )}
               </TableCell>
