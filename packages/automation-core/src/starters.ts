@@ -10,7 +10,14 @@ export type StarterTrigger =
   | { kind: "manual" }
   | { kind: "webhook" }
   | { kind: "schedule"; schedule: Schedule }
-  | { kind: "upload"; fileType: FileType }
+  | {
+      kind: "upload";
+      fileType: FileType;
+      /** Only files at least this long, in seconds, start the automation. */
+      minSeconds?: number;
+      /** Only files at most this long, in seconds, start the automation. */
+      maxSeconds?: number;
+    }
   | { kind: "folder"; prefix: string; fileType: FileType };
 
 export interface Starter {

@@ -32,6 +32,9 @@ export const triggerValidator = v.union(
   v.object({
     kind: v.literal("upload"),
     fileType: fileTypeValidator,
+    // Length limits in seconds, checked against the details read from the file.
+    minSeconds: v.optional(v.number()),
+    maxSeconds: v.optional(v.number()),
   }),
   // A folder in the team's own bucket, checked every minute for new files.
   v.object({ kind: v.literal("folder"), prefix: v.string(), fileType: fileTypeValidator }),
@@ -64,6 +67,23 @@ export const operationValidator = v.union(
 
 /** One track in the team's music library: a name people pick it by, and where the file is. */
 export const musicValidator = v.array(v.object({ name: v.string(), file: v.string() }));
+
+/** What the toolkit read from a file. Mirrors FileDetails in automation-core. */
+export const fileDetailsValidator = v.object({
+  duration: v.optional(v.number()),
+  filesize: v.optional(v.number()),
+  format: v.optional(v.string()),
+  bitrate: v.optional(v.number()),
+  hasVideo: v.optional(v.boolean()),
+  hasAudio: v.optional(v.boolean()),
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  fps: v.optional(v.number()),
+  videoCodec: v.optional(v.string()),
+  audioCodec: v.optional(v.string()),
+  audioChannels: v.optional(v.number()),
+  audioSampleRate: v.optional(v.number()),
+});
 
 export const brandValidator = v.object({
   logo: v.optional(v.string()),
@@ -266,5 +286,8 @@ export default defineSchema({
     // "brand" for a logo or a music track added in Settings. Those are kept to be used
     // by steps, so they never start an automation.
     purpose: v.optional(v.literal("brand")),
+    // Read from the file by the toolkit once the upload finishes. Missing while that is
+    // still to happen, or when the toolkit could not read the file.
+    details: v.optional(fileDetailsValidator),
   }).index("by_organization", ["organizationId"]),
 });

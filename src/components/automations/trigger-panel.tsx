@@ -160,6 +160,38 @@ export function TriggerPanel({
         </Field>
       )}
 
+      {trigger.kind === "upload" && trigger.fileType !== "image" && (
+        <Field>
+          <FieldLabel>Only files of this length</FieldLabel>
+          <div className="flex items-center gap-2">
+            {(["minSeconds", "maxSeconds"] as const).map((key) => (
+              <Input
+                key={key}
+                type="number"
+                inputMode="decimal"
+                min={0}
+                aria-label={key === "minSeconds" ? "Shortest, in seconds" : "Longest, in seconds"}
+                placeholder={key === "minSeconds" ? "Shortest" : "Longest"}
+                value={trigger[key] ?? ""}
+                onChange={(event) => {
+                  const typed = event.target.value === "" ? undefined : Number(event.target.value);
+                  const next = { ...trigger };
+                  if (typed !== undefined && Number.isFinite(typed) && typed >= 0) {
+                    next[key] = typed;
+                  } else delete next[key];
+                  onChange(next);
+                }}
+              />
+            ))}
+            <span className="text-muted-foreground shrink-0 text-sm">seconds</span>
+          </div>
+          <FieldDescription>
+            Optional. Each upload&apos;s length is read from the file, so a short-clip automation
+            can skip long recordings. Leave both empty for any length.
+          </FieldDescription>
+        </Field>
+      )}
+
       {trigger.kind === "schedule" && (
         <>
           <Field>

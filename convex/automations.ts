@@ -9,6 +9,7 @@ import {
   getPlatform,
   graphProblem,
   missingBrandOf,
+  withinLength,
   missingSettings,
   nextRunAt,
   nodeTypeOf,
@@ -436,7 +437,8 @@ export const loadUploadForTrigger = internalQuery({
       (automation) =>
         automation.enabled &&
         automation.trigger.kind === "upload" &&
-        (automation.trigger.fileType === "any" || automation.trigger.fileType === family),
+        (automation.trigger.fileType === "any" || automation.trigger.fileType === family) &&
+        withinLength(automation.trigger, upload.details),
     );
     if (matching.length === 0) return null;
     const storage = await ctx.db
@@ -474,6 +476,8 @@ export const uploadFinished = internalAction({
         file_name: upload.fileName,
         content_type: upload.contentType,
         size: upload.size,
+        // What the toolkit read from the file: duration, width, height and so on.
+        details: upload.details ?? null,
       },
     });
   },
