@@ -30,8 +30,9 @@ import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { authComponent } from "./auth";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
+  action,
   internalAction,
   internalMutation,
   internalQuery,
@@ -555,6 +556,108 @@ export const runNow = mutation({
     );
     if (!started.ok) fail("invalid_input", started.message);
     return started.runId;
+  },
+});
+
+/**
+ * The file a try run works on: the upload asked for, or else the team's newest upload the
+ * automation's trigger would take. Brand files (a logo, music) are never picked.
+ */
+function pickUpload(
+  uploads: Doc<"uploads">[],
+  trigger: Doc<"automations">["trigger"],
+  uploadId: string | undefined,
+): Doc<"uploads"> | string {
+  const ready = uploads.filter((upload) => upload.status === "ready" && !upload.purpose);
+  if (uploadId) {
+    const asked = ready.find((upload) => upload._id === uploadId);
+    return asked ?? "That file is not in your team's uploads.";
+  }
+  const wants = trigger.kind === "upload" ? trigger : null;
+  const fits = ready.filter(
+    (upload) =>
+      !wants ||
+      ((wants.fileType === "any" || upload.contentType.split("/")[0] === wants.fileType) &&
+        withinLength(wants, upload.details)),
+  );
+  if (fits.length > 0) return fits[0];
+  return ready.length === 0
+    ? "There are no uploads to try it on. Upload a file on the Uploads page first."
+    : "None of your uploads is the kind of file this automation starts with.";
+}
+
+/** The upload a try run would use, and the team's storage to make its link. Members only. */
+export const tryTarget = internalQuery({
+  args: { automationId: v.id("automations"), uploadId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    const uploads = await ctx.db
+      .query("uploads")
+      .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+      .order("desc")
+      .take(100);
+    const upload = pickUpload(uploads, workingCopy(automation).trigger, args.uploadId);
+    if (typeof upload === "string") fail("invalid_input", upload);
+    const storage = await ctx.db
+      .query("storageConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+      .first();
+    if (!storage) fail("no_storage", "Connect your storage first.");
+    return { upload, storage };
+  },
+});
+
+/** Starts the try run. Members only, checked again here. */
+export const startTry = internalMutation({
+  args: { automationId: v.id("automations"), trigger: v.any() },
+  returns: v.id("runs"),
+  handler: async (ctx, args) => {
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
+    const started = await startRun(
+      ctx,
+      { ...automation, ...workingCopy(automation) },
+      "manual",
+      args.trigger as Record<string, unknown>,
+      userId,
+    );
+    if (!started.ok) fail("invalid_input", started.message);
+    return started.runId;
+  },
+});
+
+/**
+ * Tries an automation on one of the team's uploads, as that upload would start it,
+ * whether or not the automation is on. Runs what the canvas shows. With no upload named,
+ * takes the newest one the automation's trigger would take.
+ */
+export const tryOnUpload = action({
+  args: { automationId: v.id("automations"), uploadId: v.optional(v.string()) },
+  returns: v.object({ runId: v.id("runs"), fileName: v.string() }),
+  handler: async (ctx, args): Promise<{ runId: Id<"runs">; fileName: string }> => {
+    const { upload, storage } = await ctx.runQuery(internal.automations.tryTarget, args);
+    const fileUrl = await presign(
+      {
+        endpoint: storage.endpoint,
+        region: storage.region,
+        bucket: storage.bucket,
+        accessKeyId: storage.accessKeyId,
+        secretAccessKey: await decryptSecret(storage.secretCipher),
+      },
+      "GET",
+      upload.key,
+      READ_LINK_SECONDS,
+    );
+    const runId: Id<"runs"> = await ctx.runMutation(internal.automations.startTry, {
+      automationId: args.automationId,
+      trigger: {
+        file_url: fileUrl,
+        file_name: upload.fileName,
+        content_type: upload.contentType,
+        size: upload.size,
+        details: upload.details ?? null,
+      },
+    });
+    return { runId, fileName: upload.fileName };
   },
 });
 

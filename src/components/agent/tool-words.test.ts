@@ -121,3 +121,59 @@ describe("what a failed turn says", () => {
     expect(errorWords("statusCode 529 overloaded_error")).toMatch(/busy/);
   });
 });
+
+describe("trying an automation", () => {
+  test("asks first, and says it uses the toolkit", () => {
+    const words = toolWords("try_automation", {});
+    expect(words?.question).toBe("Try this automation on a file?");
+    expect(words?.lines.join(" ")).toMatch(/toolkit/);
+  });
+
+  test("looking at uploads and runs never asks", () => {
+    expect(toolWords("list_uploads", {})?.question).toBe("");
+    expect(toolWords("check_run", { runId: "r" })?.question).toBe("");
+  });
+
+  test("says which file it started on", () => {
+    expect(resultWords("try_automation", { fileName: "talk.mp4", runId: "r" })).toEqual([
+      "Started on talk.mp4",
+    ]);
+  });
+
+  test("tells how each step went, never ids or links", () => {
+    const lines = resultWords("check_run", {
+      runId: "run_1",
+      status: "failed",
+      address: "/automations/a/runs/run_1",
+      steps: [
+        { id: "clips", name: "Cut into short clips", status: "done", madeCount: 3, error: null },
+        {
+          id: "caption",
+          name: "Add captions",
+          status: "failed",
+          madeCount: 0,
+          error: "No speech.",
+        },
+        { id: "approve", name: "Approve clips", status: "pending", madeCount: 0, error: null },
+        { id: "c2", type: "step:video-caption", name: null, status: "done", madeCount: 1 },
+      ],
+    });
+    expect(lines).toEqual([
+      "The run failed.",
+      "Cut into short clips: made 3 files",
+      "Add captions: failed: No speech.",
+      "Approve clips: not started yet",
+      "Caption video: made 1 file",
+    ]);
+    expect(lines.join(" ")).not.toMatch(/run_1|\/automations/);
+  });
+
+  test("a step waiting at an approval says so", () => {
+    expect(
+      resultWords("check_run", {
+        status: "waiting",
+        steps: [{ name: "Approve clips", status: "waiting_approval", madeCount: 0 }],
+      }),
+    ).toEqual(["The run is waiting.", "Approve clips: waiting for someone to approve"]);
+  });
+});

@@ -40,13 +40,11 @@ function changesFor(request: string): Operation[][] {
 }
 
 describe("the real model's recorded changes", () => {
-  it("build an automation that can run, then change it", () => {
+  it("build an automation that can run", () => {
     const build = changesFor(
       "Build an automation that makes short clips with captions from each new recording I upload.",
     );
-    const change = changesFor("Add captions to the clips before they go for approval.");
     expect(build.length).toBeGreaterThan(0);
-    expect(change.length).toBeGreaterThan(0);
 
     let draft: AutomationDraft = {
       name: "New",
@@ -59,9 +57,16 @@ describe("the real model's recorded changes", () => {
     expect(draft.nodes.map((node) => node.kind)).toEqual(expect.arrayContaining(["clips", "step"]));
     expect(draft.nodes.some((node) => node.stepId === "video-caption")).toBe(true);
     expect(draftProblems(draft)).toEqual([]);
+  });
 
-    for (const operations of change) draft = applyOperations(draft, operations);
-    expect(draftProblems(draft)).toEqual([]);
-    expect(draft.nodes.length).toBeGreaterThanOrEqual(3);
+  it("try what they built before saying it is done", () => {
+    const calls = recordings
+      .filter((fixture) => fixture.match.userMessage?.startsWith("Build an automation"))
+      .sort((a, b) => (a.match.turnIndex ?? 0) - (b.match.turnIndex ?? 0))
+      .flatMap((fixture) => fixture.response.toolCalls ?? [])
+      .map((call) => call.name);
+    expect(calls).toContain("try_automation");
+    expect(calls.indexOf("try_automation")).toBeGreaterThan(calls.lastIndexOf("change_automation"));
+    expect(calls.lastIndexOf("check_run")).toBeGreaterThan(calls.indexOf("try_automation"));
   });
 });

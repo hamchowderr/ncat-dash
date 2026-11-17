@@ -12,59 +12,59 @@
           {
             "name": "list_step_types",
             "arguments": "{\"type\": \"clips\"}",
-            "id": "toolu_01Q4PGm6TiQf3W4RXuEftV42"
+            "id": "toolu_017pt7gykifL9rMtCStSKumU"
           },
           {
             "name": "list_step_types",
             "arguments": "{\"type\": \"step:video-caption\"}",
-            "id": "toolu_016fZufqbdEaHnCHzFMvJB8t"
+            "id": "toolu_01TBY5qRgDomaD2FwLFGBfWk"
           },
           {
             "name": "list_step_types",
             "arguments": "{\"type\": \"trigger:upload\"}",
-            "id": "toolu_01LijXFuKE9X58AQChygd4PP"
+            "id": "toolu_011Mtt8sPq8xir7Ysc3Dc4nF"
           }
         ],
         "usage": {
           "input_tokens": 2,
-          "cache_creation_input_tokens": 3749,
-          "cache_read_input_tokens": 13632,
+          "cache_creation_input_tokens": 4745,
+          "cache_read_input_tokens": 13494,
           "cache_creation": {
-            "ephemeral_5m_input_tokens": 3749,
+            "ephemeral_5m_input_tokens": 4745,
             "ephemeral_1h_input_tokens": 0
           },
           "output_tokens": 152
         }
       },
       "recordedTimings": {
-        "ttftMs": 1081,
+        "ttftMs": 939,
         "interChunkDelaysMs": [
+          1,
           0,
           0,
+          435,
           0,
-          425,
           0,
           0,
           0,
           0,
           0,
           1,
-          391,
           0,
           0,
           0,
+          344,
           0,
           0,
-          6,
           0,
-          0,
+          2,
           0
         ],
-        "totalDurationMs": 1904
+        "totalDurationMs": 1722
       },
       "metadata": {
-        "systemHash": "0d51c4cd",
-        "toolsHash": "49fe857c"
+        "systemHash": "c86be00d",
+        "toolsHash": "7ea793fd"
       }
     }
   ]

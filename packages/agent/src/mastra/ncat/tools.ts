@@ -257,6 +257,174 @@ export const switchAutomation = createTool({
   },
 });
 
+export const listUploads = createTool({
+  id: "list_uploads",
+  description:
+    "The team's uploaded files, newest first: name, kind of file and length. Use it to pick a file to try an automation on.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    uploads: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        kind: z.string(),
+        seconds: z.number().nullable(),
+      }),
+    ),
+  }),
+  execute: async (_input, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    if (!session.organizationId) return { uploads: [] };
+    try {
+      const rows = (await client.query(dash.storage.listUploads, {
+        organizationId: session.organizationId,
+      })) as {
+        _id: string;
+        fileName: string;
+        contentType: string;
+        status: string;
+        purpose: string | null;
+        details: { duration?: number } | null;
+      }[];
+      return {
+        uploads: rows
+          // Brand files (a logo, music) are for steps to use, never to start a run.
+          .filter((row) => row.status === "ready" && !row.purpose)
+          .slice(0, 20)
+          .map((row) => ({
+            id: row._id,
+            name: row.fileName,
+            kind: row.contentType.split("/")[0] ?? "file",
+            seconds: row.details?.duration ?? null,
+          })),
+      };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+export const tryAutomation = createTool({
+  id: "try_automation",
+  description:
+    "Try an automation on one of the team's uploads, the way that upload would start it, whether or not it is switched on. It runs the real steps on the team's toolkit, so it takes time and uses their server. Leave uploadId out to use the newest upload the automation would take. Then call check_run with the runId to see how it went. Try an automation before offering to switch it on.",
+  inputSchema: z.object({
+    automationId,
+    uploadId: z.string().optional().describe("An upload id from list_uploads."),
+  }),
+  outputSchema: z.object({ runId: z.string(), fileName: z.string(), address: z.string() }),
+  execute: async (input, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    const id = need(input.automationId, workingAutomationOf(session));
+    try {
+      const { runId, fileName } = (await client.action(dash.automations.tryOnUpload, {
+        automationId: id,
+        ...(input.uploadId ? { uploadId: input.uploadId } : {}),
+      })) as { runId: string; fileName: string };
+      return { runId, fileName, address: `/automations/${id}/runs/${runId}` };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+type RunStep = {
+  nodeId: string;
+  status: string;
+  error: string | null;
+  outputs: string[];
+  retries: number;
+};
+type RunView = {
+  _id: string;
+  automationId: string;
+  status: string;
+  error: string | null;
+  nodes: { id: string; kind: string; stepId?: string; label?: string }[];
+  steps: RunStep[];
+};
+
+/** A file's name from its link, without the signing that follows "?". */
+function fileNameOf(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).pathname.split("/").pop() || url);
+  } catch {
+    return url;
+  }
+}
+
+/** A run as the model reads it: each step in canvas order, what it made, what went wrong. */
+export function runReport(run: RunView) {
+  const byNode = new Map(run.steps.map((step) => [step.nodeId, step]));
+  return {
+    runId: run._id,
+    status: run.status,
+    finished: !["running", "waiting"].includes(run.status),
+    error: run.error,
+    address: `/automations/${run.automationId}/runs/${run._id}`,
+    steps: run.nodes.map((node) => {
+      const step = byNode.get(node.id);
+      return {
+        id: node.id,
+        // The step's type, as list_step_types names it; the panel shows its title.
+        type: node.kind === "step" ? `step:${node.stepId ?? ""}` : node.kind,
+        name: node.label ?? null,
+        status: step?.status ?? "pending",
+        error: step?.error ?? null,
+        made: (step?.outputs ?? []).slice(0, 10).map(fileNameOf),
+        madeCount: step?.outputs.length ?? 0,
+        triedAgain: step?.retries ?? 0,
+      };
+    }),
+  };
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export const checkRun = createTool({
+  id: "check_run",
+  description:
+    'How a run is going: its status ("running", "waiting" for a person or a timer, "done", "failed", "cancelled") and each step with what it made and any error. Waits up to waitSeconds for the run to finish or stop at an approval before answering.',
+  inputSchema: z.object({
+    runId: z.string(),
+    waitSeconds: z.number().int().min(0).max(120).default(60),
+  }),
+  outputSchema: z.object({
+    runId: z.string(),
+    status: z.string(),
+    finished: z.boolean(),
+    error: z.string().nullable(),
+    address: z.string(),
+    steps: z.array(
+      z.object({
+        id: z.string(),
+        type: z.string(),
+        name: z.string().nullable(),
+        status: z.string(),
+        error: z.string().nullable(),
+        made: z.array(z.string()),
+        madeCount: z.number(),
+        triedAgain: z.number(),
+      }),
+    ),
+  }),
+  execute: async ({ runId, waitSeconds }, ctx) => {
+    const { client } = dashFor(userOf(ctx));
+    const until = Date.now() + (waitSeconds ?? 60) * 1000;
+    try {
+      for (;;) {
+        const run = (await client.query(dash.runs.get, { runId })) as RunView | null;
+        if (!run) throw new Error("There is no such run for this team.");
+        // "waiting" means a person or a timer has to act, so there is no point waiting.
+        if (run.status !== "running" || Date.now() >= until) return runReport(run);
+        await sleep(3000);
+      }
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
 /** Keyed by tool id: the key is the name the model, approvals and categories use. */
 export const ncatTools = {
   dash_overview: dashOverview,
@@ -265,10 +433,19 @@ export const ncatTools = {
   change_automation: changeAutomation,
   create_automation: createAutomation,
   switch_automation: switchAutomation,
+  list_uploads: listUploads,
+  try_automation: tryAutomation,
+  check_run: checkRun,
 };
 
 /** Tools that only look. They run without an approval card and are offered in Plan mode. */
-export const NCAT_READ_TOOLS = ["dash_overview", "describe_automation", "list_step_types"] as const;
+export const NCAT_READ_TOOLS = [
+  "dash_overview",
+  "describe_automation",
+  "list_step_types",
+  "list_uploads",
+  "check_run",
+] as const;
 
 /** Tools that change an automation's design: one "Always allow" covers them together. */
 export const NCAT_EDIT_TOOLS = ["change_automation", "create_automation"] as const;
@@ -280,6 +457,8 @@ How to work:
 - Build with change_automation. Look up type names with list_step_types, and a type's settings by passing its name, before you add a step you have not used in this conversation.
 - Never ask the person to type addresses, file links or placeholders. Leave file settings empty so each step takes the nearest fitting file before it; logo, colour, font and music come from the team's brand in Settings.
 - After a change, read back what describe_automation or change_automation returned. If it lists problems, fix them or say plainly what the person must do (for example add a logo in Settings).
+- Once it has no problems, try it before calling it done: try_automation runs it on one of the team's uploads (the newest it would take, unless the person named one; list_uploads shows them), then check_run tells you how each step went. If a step failed, read its error, fix what you can with change_automation and try again; say plainly what you could not fix. If the run stops at an approval step, that is it working: tell the person it is waiting for them, with a link to the run. If there are no uploads, ask the person to upload a file on the Uploads page rather than skipping the try.
+- Report a try in plain words: which file it ran on, what each step made (how many clips, for example), and any step that failed and why. Link to the run with the address try_automation returned, like [See the run](/automations/.../runs/...).
 - Only switch an automation on when the person asked for it to run, and it has no problems.
 - Say what you built in plain words: what starts it and what each step does. No ids, no JSON, no jargon unless they ask. After making a new automation, link to it with the address create_automation returned, like [Open it](/automations/...).
 - You do not post to social platforms, generate video from text, dub voices or make avatars. Say so if asked.`;
