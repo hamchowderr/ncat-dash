@@ -8,11 +8,15 @@ import {
   CLIP_CAPTION_SETTINGS,
   clipRequest,
   durationOf,
+  type Frame,
   formatLimit,
+  frameName,
+  frameSize,
   getPlatform,
   parseSilences,
   planClips,
   PLATFORMS,
+  tooShortFor,
 } from "../src";
 
 const total = (plan: { seconds: number }[]) => plan.reduce((sum, clip) => sum + clip.seconds, 0);
@@ -101,10 +105,13 @@ describe("reading toolkit results", () => {
 });
 
 describe("platforms", () => {
-  it("lists the same twelve platforms as Social Clips", () => {
-    expect(PLATFORMS).toHaveLength(12);
+  it("keeps Social Clips' twelve platforms and adds the feeds and YouTube", () => {
+    expect(PLATFORMS).toHaveLength(15);
     expect(getPlatform("TikTok")).toMatchObject({ maxSeconds: 180, frame: "9:16" });
     expect(getPlatform("X")).toMatchObject({ maxSeconds: 140, frame: "original" });
+    expect(getPlatform("Instagram feed")).toMatchObject({ frame: "4:5" });
+    expect(getPlatform("Facebook feed")).toMatchObject({ frame: "4:5" });
+    expect(getPlatform("YouTube")).toMatchObject({ maxSeconds: 900, frame: "16:9" });
     expect(getPlatform("Myspace")).toBeUndefined();
     expect(formatLimit(60)).toBe("60 s");
     expect(formatLimit(180)).toBe("3 min");
@@ -112,12 +119,48 @@ describe("platforms", () => {
   });
 });
 
+describe("shapes and lengths", () => {
+  it("makes each shape at its size", () => {
+    expect(frameSize("9:16")).toEqual({ width: 1080, height: 1920 });
+    expect(frameSize("4:5")).toEqual({ width: 1080, height: 1350 });
+    expect(frameSize("1:1")).toEqual({ width: 1080, height: 1080 });
+    expect(frameSize("16:9")).toEqual({ width: 1920, height: 1080 });
+    expect(frameSize("original")).toBeNull();
+    expect(frameName("4:5")).toBe("Portrait 4:5");
+  });
+
+  it("says when a video is too short for a platform", () => {
+    expect(tooShortFor(getPlatform("Pinterest")!, 2.5)).toBe(
+      "The video is 2.5 s long; Pinterest needs at least 4 s.",
+    );
+    expect(tooShortFor(getPlatform("Pinterest")!, 4)).toBeNull();
+    expect(tooShortFor(getPlatform("TikTok")!, 1)).toBeNull();
+  });
+});
+
 describe("clipRequest", () => {
   const compose = getStep("ffmpeg-compose")!;
   const caption = getStep("video-caption")!;
 
-  it.each(["9:16", "original"] as const)("builds a %s request the toolkit accepts", (frame) => {
-    const request = clipRequest("https://files.example.com/a.mp4", { start: 3, seconds: 9 }, frame);
+  it.each(["9:16", "4:5", "1:1", "16:9", "original"] as const)(
+    "builds a %s request the toolkit accepts",
+    (frame) => {
+      const request = clipRequest(
+        "https://files.example.com/a.mp4",
+        { start: 3, seconds: 9 },
+        frame,
+      );
+      expect(() => compose.input.strict().parse(request)).not.toThrow();
+    },
+  );
+
+  it("builds a scaled-down request the toolkit accepts", () => {
+    const request = clipRequest(
+      "https://files.example.com/a.mp4",
+      { start: 3, seconds: 9 },
+      "original",
+      { width: 1280, height: 1024 },
+    );
     expect(() => compose.input.strict().parse(request)).not.toThrow();
   });
 
@@ -157,11 +200,17 @@ describe.skipIf(!hasFfmpeg)("clips on a real FFmpeg", () => {
   });
 
   type Option = { option: string; argument?: string | number };
-  function make(source: string, frame: "9:16" | "original", name: string) {
+  function make(
+    source: string,
+    frame: Frame,
+    name: string,
+    box?: { width: number; height: number },
+  ) {
     const request = clipRequest(
       "https://files.example.com/x.mp4",
       { start: 1.5, seconds: 2 },
       frame,
+      box,
     ) as {
       inputs: { options: Option[] }[];
       filters?: { filter: string }[];
@@ -211,6 +260,35 @@ describe.skipIf(!hasFfmpeg)("clips on a real FFmpeg", () => {
     expect(clip).toMatchObject({ width: 1280, height: 720, hasSound: true });
     expect(clip.seconds).toBeGreaterThan(1.8);
     expect(clip.seconds).toBeLessThan(2.3);
+  }, 60_000);
+
+  it.each([
+    ["4:5", 1080, 1350],
+    ["1:1", 1080, 1080],
+    ["16:9", 1920, 1080],
+  ] as const)(
+    "makes a %s clip at its size",
+    (frame, width, height) => {
+      const clip = make("wide.mp4", frame, `${width}x${height}.mp4`);
+      expect(clip).toMatchObject({ width, height, hasSound: true });
+    },
+    60_000,
+  );
+
+  it("scales a video down to fit a platform's largest picture, keeping its shape", () => {
+    execFileSync("ffmpeg", [
+      ...["-hide_banner", "-loglevel", "error", "-y"],
+      ...["-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=10:duration=4"],
+      ...["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"],
+      path.join(dir, "full-hd.mp4"),
+    ]);
+    const big = make("full-hd.mp4", "original", "x-big.mp4", { width: 1280, height: 1024 });
+    expect(big).toMatchObject({ width: 1280, height: 720 });
+    // Smaller than the box: left as it is.
+    const small = make("wide.mp4", "original", "x-small.mp4", { width: 1280, height: 1024 });
+    expect(small).toMatchObject({ width: 1280, height: 720 });
+    const tiny = make("silent.mp4", "original", "x-tiny.mp4", { width: 1280, height: 1024 });
+    expect(tiny).toMatchObject({ width: 640, height: 360 });
   }, 60_000);
 
   it("still makes a vertical clip from a video with no sound", () => {

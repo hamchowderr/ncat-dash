@@ -14,6 +14,7 @@ import {
   durationOf,
   type FileKind,
   getPlatform,
+  tooShortFor,
   graphProblem,
   type NodeStatus,
   nodeTypeOf,
@@ -437,6 +438,11 @@ async function cutClips(
       );
       return;
     }
+    const short = tooShortFor(platform, duration);
+    if (short) {
+      await failStep(ctx, run, step, byNode, short);
+      return;
+    }
     // Kept so the cuts can be opened in a video editor. A video whose frame rate or
     // picture size could not be read is still cut, it just cannot be exported.
     const details = readFileDetails(metadata.result);
@@ -479,7 +485,7 @@ async function cutClips(
     step,
     plan.map((clip) => ({
       stepId: "ffmpeg-compose",
-      input: clipRequest(clip.source, clip, platform.frame),
+      input: clipRequest(clip.source, clip, platform.frame, platform.box),
     })),
   );
   if (!queued.ok) {

@@ -18,3 +18,4 @@ export * from "./structured";
 export * from "./retry";
 export * from "./approval";
 export * from "./agent-settings";
+export * from "./platform-guide";
