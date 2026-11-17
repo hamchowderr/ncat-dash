@@ -83,6 +83,17 @@ export function freeName(name: string, taken: (candidate: string) => boolean): s
 export interface BucketAddress {
   endpoint: string;
   bucket: string;
+  /**
+   * The public address files are handed out under, when there is one: the toolkit's
+   * S3_PUBLIC_URL, such as "https://files.example.com". A file's link is this, a slash
+   * and its key.
+   */
+  publicUrl?: string;
+}
+
+function publicBase(address: BucketAddress): string | null {
+  const base = address.publicUrl?.trim().replace(/\/+$/, "");
+  return base ? base : null;
 }
 
 function decoded(path: string): string | null {
@@ -96,7 +107,8 @@ function decoded(path: string): string | null {
 /**
  * The key a plain link points at, when the link is to this bucket: either
  * "<endpoint>/<bucket>/<key>" (how the toolkit writes its results) or
- * "<bucket>.<endpoint host>/<key>". A signed link, or one to anywhere else, gives null.
+ * "<bucket>.<endpoint host>/<key>", or "<public address>/<key>" when the bucket has a
+ * public address. A signed link, or one to anywhere else, gives null.
  */
 export function keyOfUrl(address: BucketAddress, link: string): string | null {
   let url: URL;
@@ -110,6 +122,18 @@ export function keyOfUrl(address: BucketAddress, link: string): string | null {
   if (url.search || url.hash) return null;
   const path = decoded(url.pathname);
   if (path === null) return null;
+  const shared = publicBase(address);
+  if (shared) {
+    try {
+      const open = new URL(shared);
+      const under = decoded(open.pathname.replace(/\/+$/, ""));
+      if (url.origin === open.origin && under !== null && path.startsWith(`${under}/`)) {
+        return path.slice(under.length + 1) || null;
+      }
+    } catch {
+      // Not an address: fall through to the bucket's own.
+    }
+  }
   const base = endpoint.pathname.replace(/\/+$/, "");
   if (url.host === endpoint.host && path.startsWith(`${base}/${address.bucket}/`)) {
     return path.slice(base.length + address.bucket.length + 2) || null;
@@ -126,6 +150,10 @@ export function urlWithKey(address: BucketAddress, link: string, key: string): s
   const endpoint = new URL(address.endpoint);
   const base = endpoint.pathname.replace(/\/+$/, "");
   const path = key.split("/").map(encodeURIComponent).join("/");
+  const shared = publicBase(address);
+  if (shared && url.origin === new URL(shared).origin && url.host !== endpoint.host) {
+    return `${shared}/${path}`;
+  }
   url.pathname =
     url.host === endpoint.host ? `${base}/${address.bucket}/${path}` : `${base}/${path}`;
   return url.toString();

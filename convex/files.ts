@@ -18,19 +18,24 @@ import {
   moveProblem,
   nameProblem,
   parentOf,
+  readFileDetails,
   readUploadRef,
   renamedKey,
 } from "@ncat-dash/automation-core";
+import { callStep, getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
   type ActionCtx,
+  internalAction,
   internalMutation,
   internalQuery,
+  query,
   type QueryCtx,
 } from "./_generated/server";
+import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
 import {
   type BucketConfig,
@@ -154,6 +159,25 @@ export const list = action({
       organizationId: args.organizationId,
       keys: objects.map((object) => object.key),
     });
+    // A file that did not come through this app has not been read yet. Hand back what an
+    // earlier visit read, and have the toolkit read the rest; they show up as they finish.
+    const outside: {
+      details: Record<string, Doc<"uploads">["details"]>;
+      fresh: { key: string; etag: string }[];
+    } = await ctx.runMutation(internal.files.claimOutside, {
+      organizationId: args.organizationId,
+      files: objects
+        .filter(
+          (object) => !known[object.key] && object.size > 0 && fileFamily(object.key) !== "other",
+        )
+        .map(({ key, etag }) => ({ key, etag })),
+    });
+    for (const [index, file] of outside.fresh.entries()) {
+      await ctx.scheduler.runAfter(index * 250, internal.files.readOutside, {
+        organizationId: args.organizationId,
+        ...file,
+      });
+    }
     return {
       bucket: config.bucket,
       folders: page.folders.map((key) => ({ key, name: baseName(key) })),
@@ -164,7 +188,7 @@ export const list = action({
         lastModified: object.lastModified,
         kind: fileFamily(object.key),
         uploadId: known[object.key]?.uploadId ?? null,
-        details: known[object.key]?.details ?? null,
+        details: known[object.key]?.details ?? outside.details[object.key] ?? null,
         usedAs: known[object.key]?.usedAs ?? null,
       })),
       next: page.next,
@@ -431,7 +455,143 @@ export const remove = action({
   },
 });
 
+/**
+ * The details read so far for files straight inside a folder that did not come through
+ * this app. Live, so each one appears on the page as the toolkit finishes reading it.
+ */
+export const detailsIn = query({
+  args: { organizationId: v.string(), prefix: v.string() },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const rows = await ctx.db
+      .query("bucketFiles")
+      .withIndex("by_organization_and_key", (q) =>
+        q
+          .eq("organizationId", args.organizationId)
+          .gte("key", args.prefix)
+          .lt("key", `${args.prefix}\uffff`),
+      )
+      .take(2000);
+    return rows
+      .filter((row) => row.details && !row.key.slice(args.prefix.length).includes("/"))
+      .map((row) => ({ key: row.key, details: row.details! }));
+  },
+});
+
 // Internal: only reachable from the actions above.
+
+// The most files one visit to a folder sends to the toolkit; the rest go on the next visit.
+const READ_PER_VISIT = 25;
+// A file the toolkit could not read is tried again after this long.
+const READ_AGAIN_AFTER_MS = 60 * 60 * 1000;
+
+/**
+ * For files that did not come through this app: returns the details already read, and
+ * marks the ones still to read as taken so two visits never read the same file twice.
+ */
+export const claimOutside = internalMutation({
+  args: {
+    organizationId: v.string(),
+    files: v.array(v.object({ key: v.string(), etag: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const details: Record<string, Doc<"uploads">["details"]> = {};
+    const fresh: { key: string; etag: string }[] = [];
+    const toolkit = await ctx.db
+      .query("toolkitConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    const now = Date.now();
+    for (const file of args.files) {
+      const row = await ctx.db
+        .query("bucketFiles")
+        .withIndex("by_organization_and_key", (q) =>
+          q.eq("organizationId", args.organizationId).eq("key", file.key),
+        )
+        .first();
+      if (row && row.etag === file.etag && row.details) {
+        details[file.key] = row.details;
+        continue;
+      }
+      if (!toolkit || fresh.length >= READ_PER_VISIT) continue;
+      if (row && row.etag === file.etag && now - row.askedAt < READ_AGAIN_AFTER_MS) continue;
+      if (row) await ctx.db.patch(row._id, { etag: file.etag, details: undefined, askedAt: now });
+      else {
+        await ctx.db.insert("bucketFiles", {
+          organizationId: args.organizationId,
+          ...file,
+          askedAt: now,
+        });
+      }
+      fresh.push(file);
+    }
+    return { details, fresh };
+  },
+});
+
+export const toolkitOf = internalQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    const connections = await ctx.db
+      .query("toolkitConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .take(10);
+    return connections.find((one) => one.status === "ok") ?? connections[0] ?? null;
+  },
+});
+
+/** Has the toolkit read one file (it runs FFprobe) and keeps what it finds. */
+export const readOutside = internalAction({
+  args: { organizationId: v.string(), key: v.string(), etag: v.string() },
+  handler: async (ctx, args) => {
+    const storage = await ctx.runQuery(internal.storage.load, {
+      organizationId: args.organizationId,
+    });
+    const connection = await ctx.runQuery(internal.files.toolkitOf, {
+      organizationId: args.organizationId,
+    });
+    const step = getStep("media-metadata");
+    if (!storage || !connection || !step) return;
+    try {
+      const config: BucketConfig = {
+        endpoint: storage.endpoint,
+        region: storage.region,
+        bucket: storage.bucket,
+        accessKeyId: storage.accessKeyId,
+        secretAccessKey: await decryptSecret(storage.secretCipher),
+      };
+      const answer = (await callStep(
+        { baseUrl: connection.baseUrl, apiKey: await decryptSecret(connection.apiKeyCipher) },
+        step,
+        { media_url: await presign(config, "GET", args.key, VIEW_LINK_SECONDS) },
+        { signal: AbortSignal.timeout(60_000) },
+      )) as { response?: unknown } | null;
+      const details = readFileDetails(answer?.response);
+      if (details) await ctx.runMutation(internal.files.saveOutside, { ...args, details });
+    } catch {
+      // Left without details; the next visit after an hour tries again.
+    }
+  },
+});
+
+export const saveOutside = internalMutation({
+  args: {
+    organizationId: v.string(),
+    key: v.string(),
+    etag: v.string(),
+    details: fileDetailsValidator,
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("bucketFiles")
+      .withIndex("by_organization_and_key", (q) =>
+        q.eq("organizationId", args.organizationId).eq("key", args.key),
+      )
+      .first();
+    // A file moved or replaced while it was being read keeps nothing from the old read.
+    if (row && row.etag === args.etag) await ctx.db.patch(row._id, { details: args.details });
+  },
+});
 
 /** The upload ids the team's brand points at: its logo and its music tracks. */
 async function brandUploads(
@@ -541,6 +701,18 @@ export const followRecords = internalMutation({
         }
       }
 
+      // Details read for a file that did not come through this app go with it.
+      const read = await ctx.db
+        .query("bucketFiles")
+        .withIndex("by_organization_and_key", (q) =>
+          q.eq("organizationId", args.organizationId).eq("key", from),
+        )
+        .take(10);
+      for (const row of read) {
+        if (to === null) await ctx.db.delete(row._id);
+        else await ctx.db.patch(row._id, { key: to, etag: etag || row.etag });
+      }
+
       for (const watcher of watchers) {
         const seen = await ctx.db
           .query("watchedFiles")
@@ -574,7 +746,8 @@ const RECENT_STEPS = 500;
  * run steps (what the Outputs page and a run show), a brand file kept as an address, and
  * the folder a watched-folder automation looks in. A link to a deleted file leaves the
  * outputs. Only links to this bucket at its own address are followed; a signed link, or
- * one through a separate public domain, cannot be told apart from any other address.
+ * one through an address the storage settings do not name, cannot be told apart from any
+ * other address. A public address (the toolkit's S3_PUBLIC_URL) is followed once it is set.
  */
 export const followLinks = internalMutation({
   args: {

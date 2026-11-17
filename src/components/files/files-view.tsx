@@ -202,6 +202,11 @@ export function FilesView() {
   const storage = useQuery(api.storage.get, { organizationId: team.id });
   // Live, so a file's details appear as soon as they are read, without reading the folder again.
   const uploads = useQuery(api.storage.listUploads, connectedArgs(storage, team.id));
+  // Also live: details of files that did not come through this app, as each is read.
+  const readSince = useQuery(
+    api.files.detailsIn,
+    storage ? { organizationId: team.id, prefix } : "skip",
+  );
   const list = useAction(api.files.list);
   const createFolder = useAction(api.files.createFolder);
   const renameEntry = useAction(api.files.rename);
@@ -254,15 +259,19 @@ export function FilesView() {
   const listing = useMemo(() => {
     if (loaded?.prefix !== prefix) return null;
     const fresh = new Map(uploads?.map((upload) => [upload._id, upload.details]));
+    const outside = new Map(readSince?.map((row) => [row.key, row.details]));
     return {
       ...loaded.listing,
       files: loaded.listing.files.map((file) =>
-        file.details || !file.uploadId
+        file.details
           ? file
-          : { ...file, details: fresh.get(file.uploadId) ?? null },
+          : {
+              ...file,
+              details: (file.uploadId ? fresh.get(file.uploadId) : outside.get(file.key)) ?? null,
+            },
       ),
     };
-  }, [loaded, prefix, uploads]);
+  }, [loaded, prefix, uploads, readSince]);
   const error = failed?.prefix === prefix ? failed.message : null;
   const selected = selection.prefix === prefix ? selection.keys : new Set<string>();
   const refresh = () => setVersion((current) => current + 1);

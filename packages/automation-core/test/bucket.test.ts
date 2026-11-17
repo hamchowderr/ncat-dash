@@ -115,6 +115,24 @@ describe("links to moved files", () => {
     });
   });
 
+  it("follows links handed out under a public address", () => {
+    const shared = { ...bucket, publicUrl: "https://files.example.com/media/" };
+    expect(keyOfUrl(shared, "https://files.example.com/media/out/my%20clip.mp4")).toBe(
+      "out/my clip.mp4",
+    );
+    // The bucket's own address still works beside it, and other sites still do not.
+    expect(keyOfUrl(shared, "https://s3.example.com/team/out/a.mp4")).toBe("out/a.mp4");
+    expect(keyOfUrl(shared, "https://files.example.com/other/a.mp4")).toBeNull();
+    expect(keyOfUrl(shared, "https://cdn.example.com/media/a.mp4")).toBeNull();
+    expect(urlWithKey(shared, "https://files.example.com/media/a.mp4", "done/a b.mp4")).toBe(
+      "https://files.example.com/media/done/a%20b.mp4",
+    );
+    const moved = new Map<string, string | null>([["out/a.mp4", "keep/a.mp4"]]);
+    expect(followMoves(shared, ["https://files.example.com/media/out/a.mp4"], moved)).toEqual([
+      "https://files.example.com/media/keep/a.mp4",
+    ]);
+  });
+
   it("hands back the very same value when nothing moved", () => {
     const outputs = ["https://s3.example.com/team/untouched.mp4"];
     const result = { url: outputs[0], nested: { list: outputs } };
