@@ -146,7 +146,7 @@ export function runFailedEmail(
         `What went wrong: ${oneLine(args.message, 600)}`,
       ],
       button: { label: "Open the run", url: args.runUrl },
-      footnote: `You get this because you are on the team. To stop these emails, switch them off in Settings: ${args.settingsUrl}`,
+      footnote: `You get this because you are on the team. To stop these emails, change your notification settings: ${args.settingsUrl}`,
     },
     branding,
   );
@@ -175,7 +175,91 @@ export function approvalWaitingEmail(
         oneLine(args.note, 300),
       ],
       button: { label: "Review it", url: args.runUrl },
-      footnote: `You get this because you were asked to review. To stop these emails, switch them off in Settings: ${args.settingsUrl}`,
+      footnote: `You get this because you were asked to review. To stop these emails, change your notification settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
+export function approvalTimedOutEmail(
+  args: {
+    teamName?: string;
+    automationName: string;
+    stepName?: string;
+    /** What it decided, in a sentence, such as "Nobody decided within 1 day, so it was rejected." */
+    outcome: string;
+    runUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const automation = oneLine(args.automationName, 80);
+  const step = args.stepName ? oneLine(args.stepName, 80) : "Approval";
+  return compose(
+    `An approval ran out of time: ${automation}`,
+    {
+      heading: `Nobody decided ${automation} in time`,
+      paragraphs: [
+        `The step "${step}"${args.teamName ? ` in ${oneLine(args.teamName, 60)}` : ""} reached its time limit and decided by itself.`,
+        oneLine(args.outcome, 300),
+      ],
+      button: { label: "Open the run", url: args.runUrl },
+      footnote: `You get this because you were asked to review. To stop these emails, change your notification settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
+export function mentionEmail(
+  args: {
+    teamName?: string;
+    from: string;
+    reviewTitle: string;
+    comment: string;
+    reviewUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const from = oneLine(args.from, 60);
+  const review = oneLine(args.reviewTitle, 80);
+  return compose(
+    `${from} mentioned you in ${review}`,
+    {
+      heading: `${from} mentioned you`,
+      paragraphs: [
+        `In the review "${review}"${args.teamName ? ` in ${oneLine(args.teamName, 60)}` : ""}:`,
+        `"${oneLine(args.comment, 600)}"`,
+      ],
+      button: { label: "Open the review", url: args.reviewUrl },
+      footnote: `To stop these emails, change your notification settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
+/** One line in a daily summary. */
+export type DigestItem = { title: string; detail?: string; url: string };
+
+export function digestEmail(
+  args: { teamName?: string; items: DigestItem[]; settingsUrl: string },
+  branding: Branding,
+) {
+  const count = args.items.length;
+  const shown = args.items.slice(0, 50);
+  const team = args.teamName ? ` in ${oneLine(args.teamName, 60)}` : "";
+  return compose(
+    `Your daily summary: ${count} ${count === 1 ? "thing" : "things"} to know${team}`,
+    {
+      heading: `${count} ${count === 1 ? "thing" : "things"} since your last summary`,
+      paragraphs: [
+        ...shown.map(
+          (item) =>
+            `${oneLine(item.title, 160)}${item.detail ? `: ${oneLine(item.detail, 240)}` : ""} (${item.url})`,
+        ),
+        ...(count > shown.length ? [`And ${count - shown.length} more under the bell.`] : []),
+      ],
+      footnote: `You get one summary a day because you chose it. To get emails as they happen instead, change your notification settings: ${args.settingsUrl}`,
     },
     branding,
   );

@@ -5,7 +5,10 @@ import {
   invitationEmail,
   isEmailAddress,
   passwordResetEmail,
+  approvalTimedOutEmail,
   approvalWaitingEmail,
+  digestEmail,
+  mentionEmail,
   runFailedEmail,
   sendEmail,
   senderProblem,
@@ -176,5 +179,55 @@ describe("messages", () => {
     expect(waiting.html).toContain("Review it");
     expect(waiting.html).toContain("https://dash.example.com/automations/a/runs/r");
     expect(waiting.text).toContain("https://dash.example.com/settings");
+  });
+
+  it("says an approval decided by itself when time ran out", () => {
+    const timedOut = approvalTimedOutEmail(
+      {
+        automationName: "Clips for social",
+        stepName: "Check the clips",
+        outcome: "Nobody decided within 1 day, so it was rejected and the run stopped.",
+        runUrl: "https://dash.example.com/automations/a/runs/r",
+        settingsUrl: "https://dash.example.com/settings#notifications",
+      },
+      branding,
+    );
+    expect(timedOut.subject).toBe("An approval ran out of time: Clips for social");
+    expect(timedOut.text).toContain("rejected and the run stopped");
+    expect(timedOut.text).toContain("https://dash.example.com/settings#notifications");
+  });
+
+  it("tells a person they were mentioned, quoting the comment, escaped", () => {
+    const mention = mentionEmail(
+      {
+        from: "Maya Ortiz",
+        reviewTitle: "Weekly clips",
+        comment: "@Dev Patel <b>tighten</b> the cut",
+        reviewUrl: "https://dash.example.com/review/r?clip=c&comment=m",
+        settingsUrl: "https://dash.example.com/settings#notifications",
+      },
+      branding,
+    );
+    expect(mention.subject).toBe("Maya Ortiz mentioned you in Weekly clips");
+    expect(mention.text).toContain('"@Dev Patel <b>tighten</b> the cut"');
+    expect(mention.html).toContain("&lt;b&gt;tighten&lt;/b&gt;");
+    expect(mention.html).toContain("Open the review");
+  });
+
+  it("gathers a day's news into one summary", () => {
+    const digest = digestEmail(
+      {
+        teamName: "Acme",
+        items: [
+          { title: "Clips failed", detail: "Captions: no reply", url: "https://d/runs/1" },
+          { title: "Maya mentioned you in Weekly clips", url: "https://d/review/2" },
+        ],
+        settingsUrl: "https://d/settings#notifications",
+      },
+      branding,
+    );
+    expect(digest.subject).toBe("Your daily summary: 2 things to know in Acme");
+    expect(digest.text).toContain("Clips failed: Captions: no reply (https://d/runs/1)");
+    expect(digest.text).toContain("Maya mentioned you in Weekly clips (https://d/review/2)");
   });
 });

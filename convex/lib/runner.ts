@@ -533,9 +533,12 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
           error: failed?.error ?? null,
           finishedAt: Date.now(),
         });
-        // A person who rejects at an approval step already knows; anything else that
-        // ends a run is something the team should hear about.
-        const broken = steps.find((step) => step.status === "failed" && !step.decidedBy);
+        // A person who rejects at an approval step already knows, and one that ran out
+        // of time has its own alert; anything else that ends a run is something the
+        // team should hear about.
+        const broken = steps.find(
+          (step) => step.status === "failed" && !step.decidedBy && !step.decidedAutomatically,
+        );
         if (broken && !run.test) await alertTeam(ctx, run, broken);
       } else {
         const working = open.some((step) => step.status === "running");
@@ -817,6 +820,24 @@ export async function decideApproval(
     .withIndex("by_runStep", (q) => q.eq("runStepId", step._id))
     .take(10);
   for (const alert of waiting) await ctx.db.delete(alert._id);
+  // Nobody decided in time: the people who were asked hear what it decided by itself.
+  if (userId === null && !run.test) {
+    const limit = node ? approvalSettings(node.input).limit : null;
+    const within = limit ? ` within ${limitWords(limit)}` : " in time";
+    await notify(ctx, {
+      organizationId: run.organizationId,
+      kind: "approval_timed_out",
+      recipients: waiting.find((alert) => alert.kind === "approval_waiting")?.recipients,
+      runId: run._id,
+      automationId: run.automationId,
+      automationName: run.automationName,
+      stepName: node ? (node.label ?? nodeTypeOf(node)?.title) : undefined,
+      message: approved
+        ? `Nobody decided${within}, so it was approved and the run carried on.`
+        : `Nobody decided${within}, so it was rejected and the run stopped.`,
+      retries: 0,
+    });
+  }
   await closeReviewForStep(ctx, step._id, approved, userId);
   await advance(ctx, run._id);
 }
