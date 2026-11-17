@@ -54,7 +54,22 @@ export function RunsList({ automationId }: { automationId: Id<"automations"> }) 
                 {TRIGGER_LABELS[run.triggerKind]}
               </TableCell>
               <TableCell>
-                <RunStatusBadge status={run.status} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <RunStatusBadge status={run.status} />
+                  {run.retries > 0 && (
+                    <span className="text-muted-foreground text-xs">
+                      {run.retries === 1 ? "Tried again once" : `Tried again ${run.retries} times`}
+                    </span>
+                  )}
+                </div>
+                {run.status === "failed" && run.error && (
+                  <p
+                    className="text-muted-foreground mt-1 max-w-md truncate text-xs"
+                    title={run.error}
+                  >
+                    {run.error}
+                  </p>
+                )}
               </TableCell>
               <TableCell className="text-muted-foreground tabular-nums">
                 {run.finishedAt ? formatDuration(run.finishedAt - run.startedAt) : ""}

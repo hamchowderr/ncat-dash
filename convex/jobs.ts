@@ -1,3 +1,4 @@
+import { isTransientStatus } from "@ncat-dash/automation-core";
 import { callStep, getStep, ToolkitError } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -129,6 +130,7 @@ export const dispatch = internalAction({
         jobId: job._id,
         ok: false,
         error: "This step is no longer in the catalog.",
+        permanent: true,
       });
       return;
     }
@@ -161,11 +163,22 @@ export const dispatch = internalAction({
     } catch (error) {
       const message =
         error instanceof ToolkitError
-          ? `The toolkit refused the job (HTTP ${error.status}). ${error.body.slice(0, 300)}`
+          ? `The toolkit ${isTransientStatus(error.status) ? "was not ready for" : "refused"} the job (HTTP ${error.status}). ${error.body.slice(0, 300)}`
           : error instanceof UploadLinkError
             ? error.message
             : "The toolkit could not be reached.";
-      await ctx.runMutation(internal.jobs.finish, { jobId: job._id, ok: false, error: message });
+      // A request the toolkit refuses, or a file that is gone, fails the same way every
+      // time. A toolkit that is busy, restarting or out of reach may be back shortly.
+      const permanent =
+        error instanceof ToolkitError
+          ? !isTransientStatus(error.status)
+          : error instanceof UploadLinkError;
+      await ctx.runMutation(internal.jobs.finish, {
+        jobId: job._id,
+        ok: false,
+        error: message,
+        permanent,
+      });
     }
   },
 });
@@ -192,6 +205,8 @@ export const finish = internalMutation({
     error: v.optional(v.string()),
     // Present when the call comes from the webhook, which must prove it knows the token.
     token: v.optional(v.string()),
+    // True when trying the same job again could not end differently.
+    permanent: v.optional(v.boolean()),
   },
   returns: v.union(v.literal("recorded"), v.literal("ignored"), v.literal("forbidden")),
   handler: async (ctx, args) => {
@@ -214,6 +229,7 @@ export const finish = internalMutation({
       error: args.ok ? null : (args.error ?? "The step failed."),
       startedAt: job.startedAt ?? now,
       finishedAt: now,
+      ...(!args.ok && args.permanent ? { permanent: true } : {}),
     });
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
     await pump(ctx, job.organizationId);

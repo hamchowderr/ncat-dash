@@ -23,7 +23,8 @@ function clipState(index: number, cut: Step | undefined, caption: Step | undefin
   const cutJob = cut?.stage === "cut" ? cut.jobs[index] : undefined;
   if (!cutJob || cutJob.status === "queued") return { state: "waiting" };
   if (cutJob.status === "running") return { state: "cutting" };
-  if (cutJob.status === "failed") return { state: "failed" };
+  // A clip whose job failed is waiting, not lost, while the step is due another try.
+  if (cutJob.status === "failed") return { state: cut?.retryAt ? "waiting" : "failed" };
   if (!caption) {
     return cutJob.outputs[0] ? { state: "ready", url: cutJob.outputs[0] } : { state: "failed" };
   }
@@ -32,7 +33,9 @@ function clipState(index: number, cut: Step | undefined, caption: Step | undefin
   if (captionJob?.status === "done" && captionJob.outputs[0]) {
     return { state: "ready", url: captionJob.outputs[0] };
   }
-  if (captionJob?.status === "failed") return { state: "failed" };
+  if (captionJob?.status === "failed") {
+    return { state: caption.retryAt ? "captioning" : "failed" };
+  }
   return { state: "captioning" };
 }
 
