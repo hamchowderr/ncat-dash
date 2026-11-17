@@ -38,6 +38,7 @@ import {
   triggerEdges,
   triggerPosition,
 } from "./flow-nodes";
+import { ApprovalWaitingNote, decidedSentence } from "./approval-status";
 import { ClipsRun } from "./clips-run";
 import { EditorExport } from "./editor-export";
 import { RunStatusBadge, shownStatus } from "./run-status";
@@ -335,16 +336,25 @@ export function RunView({
                       <AlertDescription>{step.error}</AlertDescription>
                     </Alert>
                   )}
+                  {step.approval &&
+                    (step.status === "done" ||
+                      (step.status === "failed" && !step.approval.decidedAutomatically)) &&
+                    decidedSentence(step.approval, step.status === "done") && (
+                      <p className="text-muted-foreground text-sm" data-decided>
+                        {decidedSentence(step.approval, step.status === "done")}
+                      </p>
+                    )}
                   {step.status === "waiting_approval" && (
                     <div className="flex flex-col gap-3">
                       <p className="text-muted-foreground text-sm">
                         Check the files from the step before, then decide. Approving sends them on.
                       </p>
+                      {step.approval && <ApprovalWaitingNote view={step.approval} />}
                       <ReviewLink runStepId={step._id} />
                       <div className="flex gap-2">
                         <Button
                           size="sm"
-                          disabled={busy}
+                          disabled={busy || step.approval?.mayDecide === false}
                           onClick={() =>
                             act(
                               () => decide({ runStepId: step._id, approved: true }),
@@ -358,7 +368,7 @@ export function RunView({
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={busy}
+                          disabled={busy || step.approval?.mayDecide === false}
                           onClick={() =>
                             act(
                               () => decide({ runStepId: step._id, approved: false }),

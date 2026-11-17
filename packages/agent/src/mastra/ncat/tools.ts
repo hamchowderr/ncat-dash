@@ -27,6 +27,12 @@ const described = z.object({
   problems: z.array(z.object({ nodeId: z.string().nullable(), message: z.string() })),
   enabled: z.boolean(),
   music: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
+  team: z
+    .array(z.object({ userId: z.string(), name: z.string(), role: z.string() }))
+    .optional()
+    .describe(
+      "The team, given when there is an Approval step. Put user ids in its reviewers setting to name who decides; leave it empty for anyone on the team.",
+    ),
 });
 
 function need(id: string | undefined, open: string | null): string {
@@ -268,6 +274,7 @@ How to work:
 - Start with dash_overview when you don't know what the person has open, then describe_automation before changing anything.
 - Build with change_automation. Look up type names with list_step_types, and a type's settings by passing its name, before you add a step you have not used in this conversation.
 - Never ask the person to type addresses, file links or placeholders. Leave file settings empty so each step takes the nearest fitting file before it; logo, colour, font and music come from the team's brand in Settings.
+- An Approval step asks anyone on the team unless you name reviewers (user ids from the team that describe_automation lists). It waits until someone decides, or set timeLimit, timeLimitUnit and whenTimeUp so it decides by itself; 6 days at most.
 - After a change, read back what describe_automation or change_automation returned. If it lists problems, fix them or say plainly what the person must do (for example add a logo in Settings).
 - Only switch an automation on when the person asked for it to run, and it has no problems.
 - Say what you built in plain words: what starts it and what each step does. No ids, no JSON, no jargon unless they ask. After making a new automation, link to it with the address create_automation returned, like [Open it](/automations/...).

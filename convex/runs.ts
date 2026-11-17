@@ -1,12 +1,19 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { approvalView, membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { finishWait } from "./lib/logic";
 import { pump } from "./lib/queue";
 import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
-import { decideApproval, retriesFor, retryStepNow, startRun } from "./lib/runner";
+import {
+  approvalTimeUp as decideWhenTimeIsUp,
+  decideApproval,
+  retriesFor,
+  retryStepNow,
+  startRun,
+} from "./lib/runner";
 
 function summary(run: Doc<"runs">) {
   return {
@@ -46,10 +53,17 @@ export const get = query({
     const run = await ctx.db.get(args.runId);
     if (!run) return null;
     if (!(await isMember(ctx, run.organizationId))) return null;
+    const { userId } = await requireMember(ctx, run.organizationId);
     const steps = await ctx.db
       .query("runSteps")
       .withIndex("by_run", (q) => q.eq("runId", args.runId))
       .take(200);
+    const approvalNodes = new Set(
+      (run.nodes as { id: string; kind: string }[])
+        .filter((node) => node.kind === "approval")
+        .map((node) => node.id),
+    );
+    const members = approvalNodes.size > 0 ? await membersOf(ctx, run.organizationId) : [];
     return {
       ...summary(run),
       // Whether the run's cuts can be opened in a video editor.
@@ -82,6 +96,10 @@ export const get = query({
             // Set while the step waits to try again.
             retryAt: step.retryAt ?? null,
             retryError: step.retryError ?? null,
+            // For an approval step: who is asked, by when, and who decided.
+            approval: approvalNodes.has(step.nodeId)
+              ? approvalView(step, run, members, userId)
+              : null,
           };
         }),
       ),
@@ -121,7 +139,8 @@ export const editorFiles = query({
 export const waitingApprovals = query({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
-    await requireMember(ctx, args.organizationId);
+    const { userId } = await requireMember(ctx, args.organizationId);
+    const members = await membersOf(ctx, args.organizationId);
     const steps = await ctx.db
       .query("runSteps")
       .withIndex("by_organization_and_status", (q) =>
@@ -138,13 +157,17 @@ export const waitingApprovals = query({
         automationId: run.automationId,
         automationName: run.automationName,
         waitingSince: step.startedAt,
+        ...approvalView(step, run, members, userId),
       });
     }
     return found;
   },
 });
 
-/** Approves or rejects an approval step. Any team member may decide. */
+/**
+ * Approves or rejects an approval step. The reviewers it names may decide, and so may the
+ * team's owners and admins; with no reviewers named, anyone on the team.
+ */
 export const decide = mutation({
   args: { runStepId: v.id("runSteps"), approved: v.boolean() },
   handler: async (ctx, args) => {
@@ -199,6 +222,14 @@ export const wake = internalMutation({
   args: { runStepId: v.id("runSteps") },
   handler: async (ctx, args) => {
     await finishWait(ctx, args.runStepId);
+  },
+});
+
+/** Decides an approval step whose time limit has passed. Scheduled by the runner. */
+export const approvalTimeUp = internalMutation({
+  args: { runStepId: v.id("runSteps") },
+  handler: async (ctx, args) => {
+    await decideWhenTimeIsUp(ctx, args.runStepId);
   },
 });
 

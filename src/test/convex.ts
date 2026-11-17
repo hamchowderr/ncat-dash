@@ -49,6 +49,9 @@ export const convexReact = {
   useMutation(mutation: FunctionReference<"mutation">) {
     return mutationOf(mutation);
   },
+  useAction() {
+    return vi.fn(async () => ({ ok: true }));
+  },
 };
 
 export const presenceReact = { default: () => present };
@@ -56,4 +59,4 @@ export const nextNavigation = {
   useRouter: () => ({ push: pushed }),
   usePathname: () => "/review",
 };
-export const sonner = { toast: { error: toastError, info: toastInfo } };
+export const sonner = { toast: { error: toastError, info: toastInfo, success: vi.fn() } };
