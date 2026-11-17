@@ -172,6 +172,18 @@ export default defineSchema({
     // For a watched folder: only files added after this moment start a run, so
     // switching it on never reprocesses what was already there.
     watchFrom: v.optional(v.number()),
+    // Changes not yet published. The fields above are the live version, the one triggers
+    // run; while the automation is on, edits are kept here until someone publishes them.
+    draft: v.optional(
+      v.object({
+        name: v.string(),
+        trigger: triggerValidator,
+        nodes: v.array(nodeValidator),
+        edges: v.array(edgeValidator),
+        updatedBy: v.string(),
+        updatedAt: v.number(),
+      }),
+    ),
     createdBy: v.string(),
     updatedAt: v.number(),
   })
