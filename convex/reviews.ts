@@ -1,9 +1,10 @@
-import { AGENT, asksAgent, COMMENT_LIMIT } from "@ncat-dash/review-core";
+import { AGENT, asksAgent, COMMENT_LIMIT, mentionedIn } from "@ncat-dash/review-core";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
 import { authComponent } from "./auth";
+import { notify } from "./lib/alerts";
 import { isMember, requireMember } from "./lib/authz";
 import { CLIP_LIMIT, openReview, VERSION_LIMIT } from "./lib/reviews";
 import { decideApproval } from "./lib/runner";
@@ -308,6 +309,27 @@ export const comment = mutation({
       parentId,
       resolved: false,
     });
+
+    // Teammates named after "@" hear about it, under the bell and by email as they chose.
+    const team = await ctx.runQuery(components.betterAuth.members.people, {
+      organizationId: clip.organizationId,
+    });
+    const mentioned = mentionedIn(body, team).filter((id) => id !== userId);
+    if (mentioned.length > 0) {
+      const review = await ctx.db.get(clip.reviewId);
+      await notify(ctx, {
+        organizationId: clip.organizationId,
+        kind: "mention",
+        recipients: mentioned,
+        automationName: review?.title || clip.title,
+        message: body,
+        retries: 0,
+        reviewId: clip.reviewId,
+        clipId: clip._id,
+        commentId: parentId ?? id,
+        from: user?.name?.trim() || "Someone",
+      });
+    }
 
     // "@Agent" asks for an answer in the same thread. It shows as thinking at once, and
     // the agent server fills it in (convex/reviewAgent.ts).

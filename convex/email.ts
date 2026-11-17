@@ -5,6 +5,10 @@ import {
   isEmailAddress,
   runFailedEmail,
   approvalWaitingEmail,
+  approvalTimedOutEmail,
+  digestEmail,
+  type DigestItem,
+  mentionEmail,
   sendEmail,
   senderProblem,
   testEmail,
@@ -12,6 +16,7 @@ import {
 } from "@ncat-dash/email";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import {
   action,
   type ActionCtx,
@@ -24,6 +29,8 @@ import {
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { getEdition } from "./lib/edition";
+import { isFor } from "./lib/alerts";
+import { alertHref, emailsRightAway, preferenceOf, wants } from "./lib/notifications";
 
 // Email goes out through toSend (https://tosend.com). There is one sending account for
 // the whole dashboard, because sign-in emails are sent before anyone is on a team. It is
@@ -57,19 +64,14 @@ export const status = query({
   },
 });
 
-/** How email is set up, for the Settings page, and whether the person asking gets alert emails. */
+/**
+ * How email is set up, for the Settings page. Which emails each member gets is in their
+ * notification settings (convex/notifications.ts).
+ */
 export const get = query({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
-    const { userId, role } = await requireMember(ctx, args.organizationId);
-    const preference = await ctx.db
-      .query("emailPreferences")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", userId),
-      )
-      .first();
-    const alertEmails = preference?.runFailed ?? true;
-    const approvalEmails = preference?.approvalWaiting ?? true;
+    const { role } = await requireMember(ctx, args.organizationId);
     const environment = fromEnvironment();
     if (environment) {
       return {
@@ -80,8 +82,6 @@ export const get = query({
         apiKeyHint: null,
         failing: null,
         canEdit: false,
-        alertEmails,
-        approvalEmails,
       };
     }
     const saved = await ctx.db.query("emailConnections").first();
@@ -96,8 +96,6 @@ export const get = query({
         apiKeyHint: null,
         failing: null,
         canEdit: mayManage,
-        alertEmails,
-        approvalEmails,
       };
     }
     const own = saved.organizationId === args.organizationId;
@@ -109,8 +107,6 @@ export const get = query({
       apiKeyHint: own ? saved.apiKeyHint : null,
       failing: own && saved.status === "failing" ? saved.lastError : null,
       canEdit: mayManage && own,
-      alertEmails,
-      approvalEmails,
     };
   },
 });
@@ -209,37 +205,6 @@ export const remove = mutation({
   },
 });
 
-/**
- * Each member chooses for themselves which alerts are emailed to them: failed runs
- * (`kind` left out, or "run_failed") and approvals waiting for them ("approval_waiting").
- */
-export const setAlertEmails = mutation({
-  args: {
-    organizationId: v.string(),
-    enabled: v.boolean(),
-    kind: v.optional(v.union(v.literal("run_failed"), v.literal("approval_waiting"))),
-  },
-  handler: async (ctx, args) => {
-    const field = args.kind === "approval_waiting" ? "approvalWaiting" : "runFailed";
-    const { userId } = await requireMember(ctx, args.organizationId);
-    const existing = await ctx.db
-      .query("emailPreferences")
-      .withIndex("by_organization_and_user", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", userId),
-      )
-      .first();
-    if (existing) await ctx.db.patch(existing._id, { [field]: args.enabled });
-    else {
-      await ctx.db.insert("emailPreferences", {
-        organizationId: args.organizationId,
-        userId,
-        runFailed: true,
-        [field]: args.enabled,
-      });
-    }
-  },
-});
-
 // Internal: only reachable from the actions above, the runner and sign-in.
 
 /** Sends one email. Does nothing, quietly, when email is not set up. */
@@ -255,9 +220,17 @@ export const send = internalAction({
   },
 });
 
+/** Where a link in an email goes, on this dashboard's own address. */
+function siteUrl(path: string): string {
+  return `${(process.env.SITE_URL ?? "").replace(/\/+$/, "")}${path}`;
+}
+
+const SETTINGS_PATH = "/settings#notifications";
+
 /**
- * Emails an alert to the members it is for who have not switched that kind off: a failed
- * run, or an approval waiting for them.
+ * Emails an alert straight away to the members it is for who want that kind by email.
+ * Members who chose a daily summary get it in that instead (`sendDigest`), except for
+ * approvals waiting, which have a deadline.
  */
 export const sendAlert = internalAction({
   args: { alertId: v.id("alerts") },
@@ -265,40 +238,92 @@ export const sendAlert = internalAction({
     const sending = await loadSending(ctx);
     if (!sending) return;
     const found = await ctx.runQuery(internal.email.alertRecipients, { alertId: args.alertId });
-    if (!found) return;
-    const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
+    if (!found || found.recipients.length === 0) return;
     const { alert } = found;
-    const runUrl = `${site}/automations/${alert.automationId}/runs/${alert.runId}`;
+    const link = siteUrl(alertHref(alert));
+    const settingsUrl = siteUrl(SETTINGS_PATH);
+    const teamName = found.teamName ?? undefined;
+    const branding = { appName: sending.fromName };
     const composed =
       alert.kind === "approval_waiting"
         ? approvalWaitingEmail(
             {
-              teamName: found.teamName ?? undefined,
+              teamName,
               automationName: alert.automationName,
               stepName: alert.stepName,
               note: alert.message,
-              runUrl,
-              settingsUrl: `${site}/settings`,
+              runUrl: link,
+              settingsUrl,
             },
-            { appName: sending.fromName },
+            branding,
           )
-        : runFailedEmail(
-            {
-              teamName: found.teamName ?? undefined,
-              automationName: alert.automationName,
-              stepName: alert.stepName,
-              message: alert.message,
-              retries: alert.retries,
-              runUrl,
-              settingsUrl: `${site}/settings`,
-            },
-            { appName: sending.fromName },
-          );
+        : alert.kind === "approval_timed_out"
+          ? approvalTimedOutEmail(
+              {
+                teamName,
+                automationName: alert.automationName,
+                stepName: alert.stepName,
+                outcome: alert.message,
+                runUrl: link,
+                settingsUrl,
+              },
+              branding,
+            )
+          : alert.kind === "mention"
+            ? mentionEmail(
+                {
+                  teamName,
+                  from: alert.from ?? "Someone",
+                  reviewTitle: alert.automationName,
+                  comment: alert.message,
+                  reviewUrl: link,
+                  settingsUrl,
+                },
+                branding,
+              )
+            : runFailedEmail(
+                {
+                  teamName,
+                  automationName: alert.automationName,
+                  stepName: alert.stepName,
+                  message: alert.message,
+                  retries: alert.retries,
+                  runUrl: link,
+                  settingsUrl,
+                },
+                branding,
+              );
     for (const to of found.recipients) {
       const result = await deliver(ctx, sending, { to, ...composed });
       // A bad key, an unpaid account or an unverified domain fails for everyone alike.
       if (!result.ok && ["unauthorized", "billing", "domain"].includes(result.reason)) break;
     }
+  },
+});
+
+/**
+ * Sends one member their daily summary of what they chose to hear about by email since
+ * the last one. Booked by `notifications.bookDigests`, which has already moved the
+ * member's `lastDigestAt` on, so a summary is never sent twice.
+ */
+export const sendDigest = internalAction({
+  args: { preferenceId: v.id("notificationPreferences"), since: v.number(), until: v.number() },
+  handler: async (ctx, args) => {
+    const sending = await loadSending(ctx);
+    if (!sending) return;
+    const found = await ctx.runQuery(internal.email.digestFor, args);
+    if (!found || found.items.length === 0) return;
+    await deliver(ctx, sending, {
+      to: found.email,
+      ...digestEmail(
+        {
+          teamName: found.teamName ?? undefined,
+          items: found.items,
+          settingsUrl: siteUrl(SETTINGS_PATH),
+        },
+        { appName: sending.fromName },
+      ),
+    });
   },
 });
 
@@ -332,6 +357,7 @@ export const saved = internalQuery({
   },
 });
 
+/** The addresses an alert is emailed to straight away. */
 export const alertRecipients = internalQuery({
   args: { alertId: v.id("alerts") },
   handler: async (ctx, args) => {
@@ -342,22 +368,72 @@ export const alertRecipients = internalQuery({
     });
     const recipients: string[] = [];
     for (const member of team.members) {
-      if (alert.recipients && !alert.recipients.includes(member.userId)) continue;
-      const preference = await ctx.db
-        .query("emailPreferences")
-        .withIndex("by_organization_and_user", (q) =>
-          q.eq("organizationId", alert.organizationId).eq("userId", member.userId),
-        )
-        .first();
-      const wanted =
-        alert.kind === "approval_waiting"
-          ? (preference?.approvalWaiting ?? true)
-          : (preference?.runFailed ?? true);
-      if (wanted) recipients.push(member.email);
+      if (!isFor(alert, member.userId)) continue;
+      const preference = await preferenceOf(ctx, alert.organizationId, member.userId);
+      if (!wants(preference, alert.kind, "email")) continue;
+      if (!emailsRightAway(preference, alert.kind)) continue;
+      recipients.push(member.email);
     }
     return { alert, teamName: team.teamName, recipients };
   },
 });
+
+/** What goes in one member's daily summary, and where it is sent. */
+export const digestFor = internalQuery({
+  args: { preferenceId: v.id("notificationPreferences"), since: v.number(), until: v.number() },
+  handler: async (ctx, args) => {
+    const preference = await ctx.db.get(args.preferenceId);
+    if (!preference) return null;
+    const team = await ctx.runQuery(components.betterAuth.members.contactsFor, {
+      organizationId: preference.organizationId,
+    });
+    const member = team.members.find((candidate) => candidate.userId === preference.userId);
+    if (!member) return null;
+    const alerts = await ctx.db
+      .query("alerts")
+      .withIndex("by_organization", (q) =>
+        q
+          .eq("organizationId", preference.organizationId)
+          .gt("_creationTime", args.since)
+          .lte("_creationTime", args.until),
+      )
+      .take(500);
+    const items: DigestItem[] = [];
+    for (const alert of alerts) {
+      if (!isFor(alert, member.userId)) continue;
+      if (!wants(preference, alert.kind, "email")) continue;
+      // Those were emailed when they happened.
+      if (emailsRightAway(preference, alert.kind)) continue;
+      items.push({ ...digestLine(alert), url: siteUrl(alertHref(alert)) });
+    }
+    return { email: member.email, teamName: team.teamName, items };
+  },
+});
+
+function digestLine(alert: Doc<"alerts">): Omit<DigestItem, "url"> {
+  switch (alert.kind) {
+    case "mention":
+      return {
+        title: `${alert.from ?? "Someone"} mentioned you in ${alert.automationName}`,
+        detail: alert.message,
+      };
+    case "approval_timed_out":
+      return {
+        title: `${alert.automationName}: an approval ran out of time`,
+        detail: alert.message,
+      };
+    case "approval_waiting":
+      return {
+        title: `${alert.automationName} is waiting for your approval`,
+        detail: alert.message,
+      };
+    default:
+      return {
+        title: `${alert.automationName} failed`,
+        detail: alert.stepName ? `${alert.stepName}: ${alert.message}` : alert.message,
+      };
+  }
+}
 
 export const save = internalMutation({
   args: {
