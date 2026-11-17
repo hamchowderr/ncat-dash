@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "How many automations does our team have",
+        "model": "claude-haiku-4-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "usage": {
+          "input_tokens": 175,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 13
+        },
+        "content": "Your team has one automation called \"New automation.\""
+      },
+      "metadata": {
+        "systemHash": "f8067d0b"
+      }
+    }
+  ]
+}

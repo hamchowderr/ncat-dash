@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 
 import { AGENT_SECRET } from "../playwright.config";
+import { SLACK_API } from "./slack-shared";
 
 const HOOK = "http://127.0.0.1:3211/automations/hook";
 
@@ -35,4 +36,6 @@ export default async function globalSetup() {
   // agent server's, even when `pnpm setup:agent` gave this backend other values.
   execSync("npx convex env set AGENT_URL http://127.0.0.1:4111", { stdio: "ignore" });
   execSync(`npx convex env set MASTRA_JWT_SECRET ${AGENT_SECRET}`, { stdio: "ignore" });
+  // Slack's Web API, as the Slack stand-in (e2e/slack-stand-in.mjs) plays it.
+  execSync(`npx convex env set SLACK_API_URL ${SLACK_API}`, { stdio: "ignore" });
 }

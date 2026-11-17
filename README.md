@@ -121,6 +121,18 @@ Everything the dashboard tells people about goes through one helper, `notify` in
 
 Settings, Notifications lets each member choose, for themselves and per team, whether each kind shows under the bell and whether it is emailed (`convex/notifications.ts`, table `notificationPreferences`). Everything starts on. A kind switched off for the bell is left out of that person's bell, count and pop-up notices (`alerts.list`); the row stays, so switching it back on shows it again. Emails can come as they happen, or as one summary a day at an hour the member picks in their own time zone (taken from the browser): an hourly cron (`notifications.bookDigests`) books `email.sendDigest` for each member whose hour it is. Approvals waiting are always emailed at once, because they have a deadline.
 
+### Slack
+
+People can tag the agent in a Slack channel or message it directly, and it answers in that thread. Each team runs it on its own Slack app, so nothing goes through an outside service and there is nothing to pay for. It is a regular self-managed Mastra channel (`packages/agent/src/mastra/ncat/slack.ts`), not Mastra Connect.
+
+1. Open the dashboard at its public address (Slack cannot reach `localhost`), then Settings, Slack, and press "Create the Slack app". Slack opens with the app's manifest filled in (`src/lib/slack-manifest.ts`): its name, the bot permissions, and this dashboard's `/api/slack/events` as the address for events and button presses. Pick the workspace and press Create.
+2. In the app, open Install App and press Install to Workspace.
+3. Paste the Bot User OAuth Token (`xoxb-...`, under OAuth & Permissions) and the Signing Secret (under Basic Information) into Settings and press "Connect Slack". The token is checked with Slack before anything is saved, and both are stored encrypted (`convex/slack.ts`). One workspace belongs to one team.
+
+How it works: Slack posts to the dashboard's `/api/slack/events`, which passes the request as it came to the agent server. The agent server asks the dashboard for that workspace's token and signing secret (`POST /slack/installation` on the Convex site, signed with `MASTRA_JWT_SECRET`), checks Slack's signature with that workspace's own secret, and answers with its own token. Whoever wrote is found on the team by the email address on their Slack profile (`POST /slack/person`), and the agent works in the dashboard as them, with their rights and nothing more. Someone the team does not have is told to ask an owner for an invitation, and nothing else happens. The agent server needs `MASTRA_JWT_SECRET` and the Convex address (`CONVEX_URL`, or `CONVEX_SITE_URL` when the HTTP actions live elsewhere); without them the Slack channel is off.
+
+The browser tests play Slack with a stand-in (`e2e/slack-stand-in.mjs`, port 8768), which the dashboard and the agent server reach through `SLACK_API_URL`.
+
 ### The agent
 
 The Agent button in the top bar opens a chat beside whatever is on screen. Describe what should run by itself and the agent builds the automation; ask for a change to the one that is open and it makes it on the canvas. It asks before it makes, changes or switches on anything, on a card that lists the change in plain words.

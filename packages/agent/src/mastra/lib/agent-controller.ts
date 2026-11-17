@@ -23,6 +23,7 @@ import {
   type Session,
 } from '@mastra/core/agent-controller';
 import type { MastraBrowser } from '@mastra/core/browser';
+import type { AgentControllerChannelsConfig } from '@mastra/core/channels';
 import { InMemoryStore, type MastraStorage } from '@mastra/core/storage';
 import type { Workspace } from '@mastra/core/workspace';
 import { env } from '../../lib/env';
@@ -32,6 +33,7 @@ import { dataSubagent } from '../agents/data';
 import { researchSubagentFor } from '../agents/research';
 import { reviewerSubagent } from '../agents/reviewer';
 import { writerSubagent } from '../agents/writer';
+import { slackChannels } from '../ncat/slack';
 import type { ScreencastBrowser } from '../routes/types';
 import { type ChatFeatures, features as defaultFeatures } from './features';
 import { DISCOVERY_BACKOFF_MS, disconnectFirecrawl, getFirecrawlTools } from './firecrawl';
@@ -128,6 +130,8 @@ export function createChatAgentController(opts?: {
    * the `browser` option instead, keeping AIMock runs hermetic.
    */
   workspace?: Workspace;
+  /** Chat apps (Slack) the controller also answers in. The live singleton passes the team apps. */
+  channels?: AgentControllerChannelsConfig;
 }): AgentController {
   const f = defaultFeatures;
   const agent = chatAgent;
@@ -189,6 +193,17 @@ export function createChatAgentController(opts?: {
     ],
     storage,
     resourceId: opts?.resourceId ?? CHAT_RESOURCE_ID,
+    // A Slack thread gets its own session; it runs the same tools unasked as the web chat.
+    ...(opts?.channels
+      ? {
+          channels: {
+            ...opts.channels,
+            onSessionStart: ({ session }) => {
+              for (const tool of AUTO_ALLOWED_TOOLS) session.grantTool(tool);
+            },
+          },
+        }
+      : {}),
     // Controller-level memory (shared across modes + subagents). REQUIRED for
     // subagents: a spawned subagent has no memory of its own, and Mastra's
     // controller-injected state-signal processors (`browser-context`) call
@@ -326,6 +341,7 @@ export function getChatAgentControllerInstance(): AgentController {
   instance ??= createChatAgentController({
     workspace: getChatWorkspace(),
     storage: createAgentControllerStore(),
+    channels: slackChannels(),
   });
   return instance;
 }

@@ -39,6 +39,11 @@ export default defineConfig({
       reuseExistingServer: true,
     },
     {
+      command: "node e2e/slack-stand-in.mjs",
+      url: "http://127.0.0.1:8768/stand-in/posted",
+      reuseExistingServer: true,
+    },
+    {
       // Starts a local backend, pushes the functions to it, and keeps it running.
       command: "npx convex dev",
       env: { CONVEX_AGENT_MODE: "anonymous" },
@@ -62,6 +67,7 @@ export default defineConfig({
         APP_SECRET: "browser-tests-app-secret-at-least-32-characters",
         MASTRA_JWT_SECRET: AGENT_SECRET,
         CONVEX_URL: CONVEX,
+        SLACK_API_URL: "http://127.0.0.1:8768/api/",
         USE_AIMOCK: "true",
         AIMOCK_URL: AIMOCK,
         ANTHROPIC_BASE_URL: `${AIMOCK}/v1`,
