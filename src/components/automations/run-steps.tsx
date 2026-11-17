@@ -17,6 +17,7 @@ import { nodeTitle, TRIGGER_LABELS } from "@/lib/automations";
 import { formatDuration } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
+import { ApprovalWaitingNote, decidedSentence } from "./approval-status";
 import { nodeLook, TRIGGER_ICONS, TRIGGER_TINT } from "./flow-nodes";
 import { RunStatusBadge, shownStatus } from "./run-status";
 
@@ -365,16 +366,31 @@ export function RunSteps({
                   <AlertDescription>{step.error}</AlertDescription>
                 </Alert>
               )}
+              {step.approval &&
+                (step.status === "done" ||
+                  (step.status === "failed" && !step.approval.decidedAutomatically)) &&
+                decidedSentence(step.approval, step.status === "done") && (
+                  <p className="text-muted-foreground text-sm" data-decided>
+                    {decidedSentence(step.approval, step.status === "done")}
+                  </p>
+                )}
+              {step.status === "waiting_approval" && step.approval && (
+                <ApprovalWaitingNote view={step.approval} />
+              )}
               {step.status === "waiting_approval" && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button size="sm" disabled={busy} onClick={() => onDecide(step._id, true)}>
+                  <Button
+                    size="sm"
+                    disabled={busy || step.approval?.mayDecide === false}
+                    onClick={() => onDecide(step._id, true)}
+                  >
                     <Check />
                     Approve
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={busy}
+                    disabled={busy || step.approval?.mayDecide === false}
                     onClick={() => onDecide(step._id, false)}
                   >
                     <X />

@@ -38,7 +38,9 @@ import {
   mutation,
   type MutationCtx,
   query,
+  type QueryCtx,
 } from "./_generated/server";
+import { membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
@@ -446,6 +448,9 @@ const describedValidator = v.object({
   // True when what is described is a draft: the live version is different and keeps
   // running until `automations.publish`.
   draft: v.optional(v.boolean()),
+  // The team, when the automation has an Approval step: put user ids in its `reviewers`
+  // setting to name who decides. Owners and admins can always decide.
+  team: v.optional(v.array(v.object({ userId: v.string(), name: v.string(), role: v.string() }))),
 });
 
 /**
@@ -465,9 +470,19 @@ export const describe = query({
       enabled: automation.enabled,
       draft: automation.draft !== undefined,
       music: music.map((track) => ({ name: track.name, value: track.file })),
+      ...(await teamFor(ctx, automation.organizationId, draft)),
     };
   },
 });
+
+/** The team for an automation with an Approval step, so the agent can name reviewers. */
+async function teamFor(ctx: QueryCtx, organizationId: string, draft: AutomationDraft) {
+  if (!draft.nodes.some((node) => node.kind === "approval")) return {};
+  const members = await membersOf(ctx, organizationId);
+  return {
+    team: members.map(({ userId, name, role }) => ({ userId, name, role })),
+  };
+}
 
 /**
  * Makes changes to an automation, in order, and saves the result. All of them are made or

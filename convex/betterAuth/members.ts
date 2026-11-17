@@ -46,7 +46,9 @@ export const contactsFor = query({
   args: { organizationId: v.string() },
   returns: v.object({
     teamName: v.union(v.null(), v.string()),
-    members: v.array(v.object({ userId: v.string(), email: v.string(), name: v.string() })),
+    members: v.array(
+      v.object({ userId: v.string(), email: v.string(), name: v.string(), role: v.string() }),
+    ),
   }),
   handler: async (ctx, args) => {
     const organizationId = ctx.db.normalizeId("organization", args.organizationId);
@@ -59,7 +61,14 @@ export const contactsFor = query({
     for (const membership of memberships) {
       const userId = ctx.db.normalizeId("user", membership.userId);
       const user = userId ? await ctx.db.get(userId) : null;
-      if (user) members.push({ userId: user._id, email: user.email, name: user.name });
+      if (user) {
+        members.push({
+          userId: user._id,
+          email: user.email,
+          name: user.name,
+          role: membership.role,
+        });
+      }
     }
     return { teamName: organization?.name ?? null, members };
   },

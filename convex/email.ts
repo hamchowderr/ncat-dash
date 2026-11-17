@@ -4,6 +4,7 @@ import {
   failureText,
   isEmailAddress,
   runFailedEmail,
+  approvalWaitingEmail,
   sendEmail,
   senderProblem,
   testEmail,
@@ -68,6 +69,7 @@ export const get = query({
       )
       .first();
     const alertEmails = preference?.runFailed ?? true;
+    const approvalEmails = preference?.approvalWaiting ?? true;
     const environment = fromEnvironment();
     if (environment) {
       return {
@@ -79,6 +81,7 @@ export const get = query({
         failing: null,
         canEdit: false,
         alertEmails,
+        approvalEmails,
       };
     }
     const saved = await ctx.db.query("emailConnections").first();
@@ -94,6 +97,7 @@ export const get = query({
         failing: null,
         canEdit: mayManage,
         alertEmails,
+        approvalEmails,
       };
     }
     const own = saved.organizationId === args.organizationId;
@@ -106,6 +110,7 @@ export const get = query({
       failing: own && saved.status === "failing" ? saved.lastError : null,
       canEdit: mayManage && own,
       alertEmails,
+      approvalEmails,
     };
   },
 });
@@ -204,10 +209,18 @@ export const remove = mutation({
   },
 });
 
-/** Each member chooses for themselves whether failed runs are emailed to them. */
+/**
+ * Each member chooses for themselves which alerts are emailed to them: failed runs
+ * (`kind` left out, or "run_failed") and approvals waiting for them ("approval_waiting").
+ */
 export const setAlertEmails = mutation({
-  args: { organizationId: v.string(), enabled: v.boolean() },
+  args: {
+    organizationId: v.string(),
+    enabled: v.boolean(),
+    kind: v.optional(v.union(v.literal("run_failed"), v.literal("approval_waiting"))),
+  },
   handler: async (ctx, args) => {
+    const field = args.kind === "approval_waiting" ? "approvalWaiting" : "runFailed";
     const { userId } = await requireMember(ctx, args.organizationId);
     const existing = await ctx.db
       .query("emailPreferences")
@@ -215,12 +228,13 @@ export const setAlertEmails = mutation({
         q.eq("organizationId", args.organizationId).eq("userId", userId),
       )
       .first();
-    if (existing) await ctx.db.patch(existing._id, { runFailed: args.enabled });
+    if (existing) await ctx.db.patch(existing._id, { [field]: args.enabled });
     else {
       await ctx.db.insert("emailPreferences", {
         organizationId: args.organizationId,
         userId,
-        runFailed: args.enabled,
+        runFailed: true,
+        [field]: args.enabled,
       });
     }
   },
@@ -241,8 +255,11 @@ export const send = internalAction({
   },
 });
 
-/** Emails a failed run to every member of the team who has not switched that off. */
-export const sendRunFailed = internalAction({
+/**
+ * Emails an alert to the members it is for who have not switched that kind off: a failed
+ * run, or an approval waiting for them.
+ */
+export const sendAlert = internalAction({
   args: { alertId: v.id("alerts") },
   handler: async (ctx, args) => {
     const sending = await loadSending(ctx);
@@ -251,18 +268,32 @@ export const sendRunFailed = internalAction({
     if (!found) return;
     const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
     const { alert } = found;
-    const composed = runFailedEmail(
-      {
-        teamName: found.teamName ?? undefined,
-        automationName: alert.automationName,
-        stepName: alert.stepName,
-        message: alert.message,
-        retries: alert.retries,
-        runUrl: `${site}/automations/${alert.automationId}/runs/${alert.runId}`,
-        settingsUrl: `${site}/settings`,
-      },
-      { appName: sending.fromName },
-    );
+    const runUrl = `${site}/automations/${alert.automationId}/runs/${alert.runId}`;
+    const composed =
+      alert.kind === "approval_waiting"
+        ? approvalWaitingEmail(
+            {
+              teamName: found.teamName ?? undefined,
+              automationName: alert.automationName,
+              stepName: alert.stepName,
+              note: alert.message,
+              runUrl,
+              settingsUrl: `${site}/settings`,
+            },
+            { appName: sending.fromName },
+          )
+        : runFailedEmail(
+            {
+              teamName: found.teamName ?? undefined,
+              automationName: alert.automationName,
+              stepName: alert.stepName,
+              message: alert.message,
+              retries: alert.retries,
+              runUrl,
+              settingsUrl: `${site}/settings`,
+            },
+            { appName: sending.fromName },
+          );
     for (const to of found.recipients) {
       const result = await deliver(ctx, sending, { to, ...composed });
       // A bad key, an unpaid account or an unverified domain fails for everyone alike.
@@ -311,13 +342,18 @@ export const alertRecipients = internalQuery({
     });
     const recipients: string[] = [];
     for (const member of team.members) {
+      if (alert.recipients && !alert.recipients.includes(member.userId)) continue;
       const preference = await ctx.db
         .query("emailPreferences")
         .withIndex("by_organization_and_user", (q) =>
           q.eq("organizationId", alert.organizationId).eq("userId", member.userId),
         )
         .first();
-      if (preference?.runFailed ?? true) recipients.push(member.email);
+      const wanted =
+        alert.kind === "approval_waiting"
+          ? (preference?.approvalWaiting ?? true)
+          : (preference?.runFailed ?? true);
+      if (wanted) recipients.push(member.email);
     }
     return { alert, teamName: team.teamName, recipients };
   },
