@@ -1,10 +1,11 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
+import { KIND_WORDS, wantedKind } from "@ncat-dash/automation-core";
 import { getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
 import { useAction, useQuery } from "convex/react";
 import { Upload } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -62,6 +63,8 @@ function exampleOf(schema: JsonSchema): unknown {
 }
 
 const UNSET = "__unset__";
+const AUTO = "__auto__";
+const FIXED = "__fixed__";
 
 /** Lets a URL field be filled from one of the team's uploads. */
 export function UploadPicker({ onPick }: { onPick: (url: string) => void }) {
@@ -158,9 +161,15 @@ export function StepFields({
   fields: StepFieldList;
   values: Record<string, string>;
   onChange: (name: string, value: string) => void;
-  automatic?: { field: string | null };
+  automatic?: {
+    field: string | null;
+    /** Where a file setting can come from besides a fixed file: the start, earlier steps. */
+    sources?: { value: string; label: string }[];
+  };
   idPrefix?: string;
 }) {
+  // File settings a person has switched to "a fixed file" but not filled in yet.
+  const [fixed, setFixed] = useState<Record<string, boolean>>({});
   return (
     <>
       {fields.map(({ name, schema: field, required }) => {
@@ -168,6 +177,78 @@ export function StepFields({
         const id = `${idPrefix}-${name}`;
         const isRequired = required && !automatic;
         const filledForYou = automatic?.field === name;
+        if (automatic && filledForYou && kind === "json" && !values[name]) {
+          const what = KIND_WORDS[wantedKind(name)];
+          return (
+            <Field key={name}>
+              <FieldLabel>{fieldLabel(name).replace(/ URLs?$/, "s")}</FieldLabel>
+              <FieldDescription>
+                Automatic. Uses every {what} that reaches this step, in the order the steps before
+                made them.
+              </FieldDescription>
+            </Field>
+          );
+        }
+        if (automatic && kind === "url") {
+          const sources = automatic.sources ?? [];
+          const value = values[name] ?? "";
+          const pointed = sources.find((source) => source.value === value);
+          const mode = pointed
+            ? pointed.value
+            : value !== "" || fixed[name] || !filledForYou
+              ? FIXED
+              : AUTO;
+          const what = KIND_WORDS[wantedKind(name)];
+          return (
+            <Field key={name}>
+              <FieldLabel htmlFor={id}>
+                {fieldLabel(name).replace(/ URLs?$/, "")}
+                {!required && <span className="text-muted-foreground font-normal">optional</span>}
+              </FieldLabel>
+              <Select
+                value={mode}
+                onValueChange={(next) => {
+                  setFixed((current) => ({ ...current, [name]: next === FIXED }));
+                  onChange(name, next === AUTO || next === FIXED ? "" : next);
+                }}
+              >
+                <SelectTrigger id={id} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {filledForYou && <SelectItem value={AUTO}>Automatic</SelectItem>}
+                  {sources.map((source) => (
+                    <SelectItem key={source.value} value={source.value}>
+                      {source.label}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={FIXED}>A fixed file</SelectItem>
+                </SelectContent>
+              </Select>
+              {mode === FIXED && (
+                <div className="flex items-center gap-2">
+                  <Input
+                    aria-label={`${fieldLabel(name)}: address of the file`}
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://"
+                    value={value}
+                    onChange={(event) => onChange(name, event.target.value)}
+                    autoComplete="off"
+                  />
+                  <UploadPicker onPick={(url) => onChange(name, url)} />
+                </div>
+              )}
+              <FieldDescription>
+                {mode === AUTO
+                  ? `Uses the nearest ${what} before this step: the step before if it made one, otherwise further back, and last the file that started the run.`
+                  : mode === FIXED
+                    ? "The same file on every run. Paste its address or pick one of your uploads."
+                    : field.description}
+              </FieldDescription>
+            </Field>
+          );
+        }
         return (
           <Field key={name}>
             <div className="flex items-center justify-between gap-2">

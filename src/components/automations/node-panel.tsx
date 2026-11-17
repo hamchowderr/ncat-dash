@@ -1,7 +1,7 @@
 "use client";
 
 import type { AutomationNode } from "@ncat-dash/automation-core";
-import { getPlatform } from "@ncat-dash/automation-core";
+import { getPlatform, nodeTypeOf, writeSource } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -14,20 +14,22 @@ import { Input } from "@/components/ui/input";
 import { nodeTitle } from "@/lib/automations";
 
 import { PlatformPicker } from "./platform-picker";
-import { CopyButton } from "./trigger-panel";
 
 type NodeContent = Omit<AutomationNode, "position">;
 
 /** Settings for the step selected on the canvas. Mount with key={node.id}. */
 export function NodePanel({
   node,
-  others,
+  before,
+  startGivesFile,
   onChange,
   onRemove,
 }: {
   node: NodeContent;
-  /** The other steps, whose files this one can point at. */
-  others: NodeContent[];
+  /** The steps that run before this one, nearest first. Their files can be used here. */
+  before: NodeContent[];
+  /** Whether the automation's start hands over a file. */
+  startGivesFile: boolean;
   onChange: (patch: Partial<NodeContent>) => void;
   onRemove: () => void;
 }) {
@@ -36,12 +38,19 @@ export function NodePanel({
   const [values, setValues] = useState(() => fromInput(node.input));
   const [problem, setProblem] = useState<string | null>(null);
 
-  const placeholders = [
-    { text: "{{trigger.file_url}}", hint: "The file that started the run" },
-    ...others.map((other) => ({
-      text: `{{steps.${other.id}.url}}`,
-      hint: `The file from ${nodeTitle(other)}`,
-    })),
+  // Where a file setting can come from, in plain words. What is saved is a reference the
+  // runner fills in; nobody sees or types it.
+  const sources = [
+    ...(startGivesFile
+      ? [{ value: writeSource({ from: "trigger" })!, label: "The file that started the run" }]
+      : []),
+    // A step that makes text or data, such as a transcript, has no file to offer.
+    ...before
+      .filter((other) => nodeTypeOf(other)?.gives !== "data")
+      .map((other) => ({
+        value: writeSource({ from: "step", id: other.id })!,
+        label: `The file from ${nodeTitle(other)}`,
+      })),
   ];
 
   return (
@@ -81,7 +90,7 @@ export function NodePanel({
           fields={fields}
           values={values}
           idPrefix={`node-${node.id}`}
-          automatic={{ field: step?.primaryInput ?? step?.listInput?.field ?? null }}
+          automatic={{ field: step?.primaryInput ?? step?.listInput?.field ?? null, sources }}
           onChange={(name, value) => {
             const next = { ...values, [name]: value };
             setValues(next);
@@ -95,26 +104,6 @@ export function NodePanel({
         <Alert variant="destructive">
           <AlertDescription>{problem}</AlertDescription>
         </Alert>
-      )}
-
-      {node.kind === "step" && (
-        <div className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium">Placeholders</h3>
-          <p className="text-muted-foreground text-sm">
-            Paste one into any text field to fill it in when the run reaches this step.
-          </p>
-          <ul className="flex flex-col gap-2">
-            {placeholders.map((placeholder) => (
-              <li key={placeholder.text} className="flex items-center justify-between gap-2">
-                <div className="grid min-w-0">
-                  <code className="truncate text-xs">{placeholder.text}</code>
-                  <span className="text-muted-foreground truncate text-xs">{placeholder.hint}</span>
-                </div>
-                <CopyButton text={placeholder.text} label="Copy" />
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
 
       <Button type="button" variant="outline" size="sm" className="self-start" onClick={onRemove}>
