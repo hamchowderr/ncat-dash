@@ -102,3 +102,14 @@ describe("an approval on the run page", () => {
     expect(card.getAllByText(/Nobody decided/)).toHaveLength(1);
   });
 });
+
+describe("the run's canvas", () => {
+  test("has its view buttons in a strip above it, with nothing floating over the steps", () => {
+    show({});
+    const view = document.querySelector("[role=group][aria-label=View]") as HTMLElement;
+    expect(view).not.toBeNull();
+    expect(view.closest("[data-canvas-bar]")).not.toBeNull();
+    expect(view.closest(".react-flow")).toBeNull();
+    expect(document.querySelector(".react-flow__controls")).toBeNull();
+  });
+});

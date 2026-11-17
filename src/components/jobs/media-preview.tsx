@@ -16,7 +16,7 @@ export function fileNameOf(url: string): string {
 /** Plays or shows a result file where the browser can, with a link to open it either way. */
 export function MediaPreview({ url }: { url: string }) {
   return (
-    <figure className="bg-muted/40 flex flex-col overflow-hidden rounded-lg border">
+    <figure className="bg-surface flex flex-col overflow-hidden rounded-lg">
       {VIDEO.test(url) ? (
         <video src={url} controls preload="metadata" className="aspect-video w-full bg-black" />
       ) : AUDIO.test(url) ? (

@@ -454,7 +454,7 @@ export function FilesView() {
     return (
       <>
         {heading}
-        <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-6">
+        <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
           <p className="text-muted-foreground text-sm">
             Connect a bucket you own first. Its files show up here as soon as it is connected.
           </p>
@@ -625,7 +625,7 @@ export function FilesView() {
       {active.length > 0 && (
         <ul className="flex flex-col gap-3" aria-live="polite">
           {active.map(([id, file]) => (
-            <li key={id} className="flex flex-col gap-1.5 rounded-lg border p-3">
+            <li key={id} className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="truncate font-medium">{file.name}</span>
                 <span className="text-muted-foreground tabular-nums">{file.percent}%</span>
@@ -637,7 +637,7 @@ export function FilesView() {
       )}
 
       {error && !listing ? (
-        <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-6">
+        <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
           <p className="text-muted-foreground text-sm">{error}</p>
           <Button size="sm" variant="outline" onClick={refresh}>
             Try again
@@ -648,7 +648,7 @@ export function FilesView() {
       ) : (
         <div
           data-dragging={draggingIn}
-          className="data-[dragging=true]:border-primary data-[dragging=true]:bg-accent/40 overflow-hidden rounded-xl border transition-colors"
+          className="data-[dragging=true]:border-primary data-[dragging=true]:bg-accent/40 overflow-hidden rounded-xl bg-surface transition-colors"
           onDragOver={(event) => {
             if (!event.dataTransfer.types.includes("Files")) return;
             event.preventDefault();
@@ -794,7 +794,7 @@ export function FilesView() {
             </TableBody>
           </Table>
           {listing.next && (
-            <div className="flex justify-center border-t p-2">
+            <div className="flex justify-center p-2">
               <Button
                 variant="ghost"
                 size="sm"

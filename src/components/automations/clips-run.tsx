@@ -110,7 +110,7 @@ export function ClipsRun({
 
   return (
     <div className="mx-auto grid w-full max-w-3xl gap-5 pb-8">
-      <section className="bg-card grid gap-3 rounded-2xl border p-5">
+      <section className="grid gap-3 rounded-2xl bg-surface p-5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span
             aria-hidden="true"
@@ -168,7 +168,7 @@ export function ClipsRun({
           )
         )}
         {approval?.status === "waiting_approval" && (
-          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <div className="mr-auto flex flex-col gap-0.5">
               <p className="text-muted-foreground text-sm">
                 Happy with them? Approving finishes the run.
@@ -200,10 +200,7 @@ export function ClipsRun({
         className={cn("grid gap-4", vertical ? "sm:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2")}
       >
         {clips.map((clip) => (
-          <section
-            key={clip.part}
-            className="bg-card grid content-start gap-3 rounded-2xl border p-4"
-          >
+          <section key={clip.part} className="grid content-start gap-3 rounded-2xl bg-surface p-4">
             <div className="text-muted-foreground flex items-center justify-between font-mono text-[11.5px]">
               <h3 className="text-foreground tracking-[0.08em] uppercase">
                 Part {clip.part} of {clip.parts}
@@ -239,10 +236,10 @@ export function ClipsRun({
                   "flex items-center justify-center gap-2 rounded-lg text-sm",
                   vertical ? "aspect-[9/16]" : "aspect-video",
                   clip.state === "failed"
-                    ? "border-destructive/40 text-destructive border"
+                    ? "bg-destructive/10 text-destructive"
                     : clip.state === "waiting"
                       ? "bg-muted text-muted-foreground"
-                      : "border-primary/30 bg-primary/5 border font-medium",
+                      : "bg-primary/10 font-medium",
                 )}
               >
                 {(clip.state === "cutting" || clip.state === "captioning") && (

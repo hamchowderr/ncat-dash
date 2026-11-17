@@ -35,7 +35,7 @@ export function ReviewsView() {
       {reviews === undefined ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : reviews.length === 0 ? (
-        <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-6">
+        <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
           <p className="text-muted-foreground max-w-prose text-sm">
             Nothing to review yet. A review opens by itself when an automation reaches an approval
             step, and you can send any finished files here from Outputs.
@@ -55,7 +55,7 @@ export function ReviewsView() {
             <li key={review._id}>
               <Link
                 href={`/review/${review._id}`}
-                className="group bg-card hover:border-foreground/25 focus-visible:ring-ring/50 flex h-full gap-3 rounded-xl border p-3 outline-none transition-colors focus-visible:ring-3"
+                className="group hover:bg-muted focus-visible:ring-ring/50 flex h-full gap-3 rounded-xl bg-surface p-3 outline-none transition-colors focus-visible:ring-3"
               >
                 <span className="flex h-24 w-[4.25rem] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-black">
                   {review.cover &&

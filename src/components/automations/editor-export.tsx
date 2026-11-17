@@ -62,7 +62,7 @@ async function saveClips(clips: string[]) {
 /** One thing to download, with what it is for. */
 function Row(props: { name: string; note: string; busy?: boolean; onDownload: () => void }) {
   return (
-    <li className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+    <li className="flex items-center justify-between gap-3 rounded-lg bg-surface px-3 py-2">
       <div className="grid min-w-0 gap-0.5">
         <p className="truncate text-sm font-medium">{props.name}</p>
         <p className="text-muted-foreground text-xs">{props.note}</p>

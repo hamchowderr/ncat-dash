@@ -5,16 +5,17 @@ import { useQuery } from "convex/react";
 import { MessagesSquare } from "lucide-react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { type ReactNode, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useRef, ViewTransition } from "react";
 
 import { useAgentContext } from "@/components/agent/agent-context";
 import { FullPageLoader } from "@/components/full-page-loader";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { showAgent, useAgentOpen } from "@/lib/agent-open";
 import { TeamContext } from "@/lib/team-context";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
+import { cn } from "@/lib/utils";
 
 import { AlertsBell } from "./alerts-bell";
 import { AppSidebar, navItemFor } from "./app-sidebar";
@@ -49,34 +50,6 @@ const AgentPanel = dynamic(
   { ssr: false },
 );
 
-// Whether the agent was left open is remembered on this browser.
-const AGENT_OPEN_KEY = "ncat-agent-open";
-const AGENT_OPEN_EVENT = "ncat:agent-open";
-
-function readAgentOpen(): boolean {
-  try {
-    return localStorage.getItem(AGENT_OPEN_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function watchAgentOpen(onChange: () => void) {
-  window.addEventListener(AGENT_OPEN_EVENT, onChange);
-  window.addEventListener("storage", onChange);
-  return () => {
-    window.removeEventListener(AGENT_OPEN_EVENT, onChange);
-    window.removeEventListener("storage", onChange);
-  };
-}
-
-function showAgent(open: boolean) {
-  try {
-    localStorage.setItem(AGENT_OPEN_KEY, open ? "1" : "0");
-  } catch {}
-  window.dispatchEvent(new Event(AGENT_OPEN_EVENT));
-}
-
 function Shell({
   state,
   edition,
@@ -88,41 +61,102 @@ function Shell({
 }) {
   const pathname = usePathname();
   const { onAutomation } = useAgentContext();
-  const agentOpen = useSyncExternalStore(watchAgentOpen, readAgentOpen, () => false);
+  const agentOpen = useAgentOpen();
 
   return (
-    <>
-      <SidebarProvider>
-        <AppSidebar teamName={state.team.name} edition={edition} user={state.user} />
-        <SidebarInset>
-          <header className="flex h-16 shrink-0 items-center gap-2 px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator
-              orientation="vertical"
-              className="mr-2 data-vertical:h-4 data-vertical:self-center"
-            />
-            <span className="text-sm font-medium">{navItemFor(pathname).title}</span>
-            <div className="ml-auto flex items-center gap-2">
-              <AlertsBell />
-              {!agentOpen && (
-                <Button variant="outline" size="sm" onClick={() => showAgent(true)}>
-                  <MessagesSquare />
-                  Agent
-                </Button>
-              )}
-            </div>
-          </header>
-          <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">{children}</div>
-        </SidebarInset>
-        {agentOpen && (
-          <aside
-            aria-label="Agent"
-            className="bg-background fixed inset-0 z-40 flex flex-col border-l lg:sticky lg:top-0 lg:z-auto lg:h-svh lg:w-[26rem] lg:shrink-0"
-          >
-            <AgentPanel onAutomation={onAutomation} onClose={() => showAgent(false)} />
-          </aside>
+    <SidebarProvider className="md:h-svh md:overflow-hidden">
+      <RoomForAgent agentOpen={agentOpen} />
+      <AppSidebar teamName={state.team.name} edition={edition} user={state.user} />
+      {/* The page scrolls inside its own frame, so the bar along the top always stays put
+          and a page can fill exactly the height that is left. */}
+      <SidebarInset className="min-w-0 md:overflow-hidden">
+        <header className="flex h-16 shrink-0 items-center gap-2 px-4">
+          <SidebarTrigger className="-ml-1" />
+          <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
+          <div className="ml-auto flex items-center gap-2">
+            <AlertsBell />
+            {!agentOpen && (
+              <Button variant="outline" size="sm" onClick={() => showAgent(true)}>
+                <MessagesSquare />
+                Agent
+              </Button>
+            )}
+          </div>
+        </header>
+        <div
+          data-page-frame
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
+        >
+          <PageTransition key={pathname}>
+            <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">{children}</div>
+          </PageTransition>
+        </div>
+      </SidebarInset>
+      {/* Always in place on a wide screen and opened by growing, so the page makes room
+          for the chat instead of jumping. On a narrow screen it takes the whole screen. */}
+      <aside
+        aria-label="Agent"
+        aria-hidden={!agentOpen}
+        inert={!agentOpen}
+        className={cn(
+          "bg-background flex-col overflow-hidden lg:z-auto lg:flex lg:h-svh lg:shrink-0",
+          "motion-safe:lg:transition-[width] motion-safe:lg:duration-300 motion-safe:lg:ease-[cubic-bezier(0.16,1,0.3,1)]",
+          agentOpen ? "fixed inset-0 z-40 flex lg:static lg:w-[26rem]" : "hidden lg:w-0",
         )}
-      </SidebarProvider>
-    </>
+      >
+        {agentOpen && (
+          <div className="flex h-full min-h-0 flex-col lg:w-[26rem] lg:min-w-[26rem]">
+            <AgentPanel onAutomation={onAutomation} onClose={() => showAgent(false)} />
+          </div>
+        )}
+      </aside>
+    </SidebarProvider>
   );
 }
+
+/**
+ * Pages fade in as they open. Keyed by the address, so each page is its own element that
+ * leaves and arrives; the bars around it stay still.
+ */
+function PageTransition({ children }: { children: ReactNode }) {
+  return (
+    <ViewTransition enter="page-enter" exit="page-exit" default="none">
+      {children}
+    </ViewTransition>
+  );
+}
+
+/**
+ * On a screen too narrow for the menu, the page and the chat side by side, opening the
+ * chat folds the menu away, and closing it brings the menu back if it was folded for it.
+ * The edges of the window also tell the pop-up notices where the page is.
+ */
+function RoomForAgent({ agentOpen }: { agentOpen: boolean }) {
+  const { open, setOpen, isMobile } = useSidebar();
+  const folded = useRef(false);
+  useEffect(() => {
+    if (isMobile) return;
+    if (agentOpen && open && window.innerWidth < ROOM_FOR_ALL) {
+      folded.current = true;
+      setOpen(false);
+    } else if (!agentOpen && folded.current) {
+      folded.current = false;
+      setOpen(true);
+    }
+    // Only a change to the chat folds or unfolds the menu, never the menu itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentOpen]);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.toggleAttribute("data-agent-open", agentOpen);
+    root.toggleAttribute("data-sidebar-open", open && !isMobile);
+    return () => {
+      root.removeAttribute("data-agent-open");
+      root.removeAttribute("data-sidebar-open");
+    };
+  }, [agentOpen, open, isMobile]);
+  return null;
+}
+
+/** Below this width the menu, a page worth working in and the chat do not all fit. */
+const ROOM_FOR_ALL = 1600;

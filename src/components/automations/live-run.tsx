@@ -64,7 +64,7 @@ const ENDED: Record<string, string> = {
 };
 
 /**
- * A small badge on the canvas: "Running now" with how far the run has got while it goes,
+ * A small badge in the bar above the canvas: "Running now" with how far the run has got while it goes,
  * then for a couple of minutes how it ended. Either way it opens the run.
  */
 export function LiveRunBadge({
@@ -89,7 +89,7 @@ export function LiveRunBadge({
       aria-live="polite"
       data-live-run={active ? "running" : latest.status}
       className={cn(
-        "bg-card hover:bg-muted focus-visible:ring-ring/50 absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border py-1 pr-2.5 pl-3 text-xs shadow-sm outline-none focus-visible:ring-3",
+        "bg-background hover:bg-muted focus-visible:ring-ring/50 flex max-w-full min-w-0 items-center gap-2 overflow-hidden rounded-full py-1 shadow-xs pr-2.5 pl-3 text-xs whitespace-nowrap outline-none focus-visible:ring-3 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300",
       )}
     >
       {active ? (
@@ -113,15 +113,15 @@ export function LiveRunBadge({
           className="size-3.5"
         />
       )}
-      <span className="font-medium">
+      <span className="truncate font-medium">
         {active ? (waiting ? "Waiting for approval" : "Running now") : ENDED[latest.status]}
       </span>
       {active && (
-        <span className="text-muted-foreground tabular-nums">
+        <span className="text-muted-foreground shrink-0 tabular-nums">
           {finished} of {latest.steps.length} steps
         </span>
       )}
-      <span className="text-muted-foreground flex items-center gap-0.5">
+      <span className="text-muted-foreground flex shrink-0 items-center gap-0.5">
         {active ? "Watch" : "Open"}
         <ArrowRight className="size-3" aria-hidden="true" />
       </span>

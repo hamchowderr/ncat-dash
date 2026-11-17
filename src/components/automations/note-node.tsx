@@ -85,7 +85,7 @@ function NoteNode({ data, selected }: NodeProps<NoteFlowNode>) {
     <div
       data-note={data.noteId}
       className={cn(
-        "flex size-full flex-col overflow-hidden rounded-lg border border-amber-300/70 bg-amber-50 shadow-sm dark:border-amber-500/30 dark:bg-amber-950/60",
+        "flex size-full flex-col overflow-hidden rounded-lg bg-amber-50 shadow-[0_1px_2px_rgb(0_0_0/0.05),0_6px_16px_-4px_rgb(0_0_0/0.10)] dark:bg-amber-950/60",
         selected && "ring-ring/50 ring-3",
       )}
     >

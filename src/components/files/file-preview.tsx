@@ -68,7 +68,7 @@ export function FilePreview({
         </DialogHeader>
 
         {playable && (
-          <div className="bg-muted/40 overflow-hidden rounded-lg border">
+          <div className="bg-surface overflow-hidden rounded-lg">
             {!url ? (
               <Skeleton className="aspect-video w-full rounded-none" />
             ) : file.kind === "video" ? (
