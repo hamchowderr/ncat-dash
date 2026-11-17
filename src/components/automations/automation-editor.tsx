@@ -5,12 +5,16 @@ import "@xyflow/react/style.css";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
+  actionTypesByGroup,
+  applyOperations,
+  type AutomationDraft,
   type AutomationEdge,
   type AutomationNode,
   graphProblem,
-  NODE_GAP,
+  newNodeId,
+  type Operation,
+  OperationError,
 } from "@ncat-dash/automation-core";
-import { stepsByCategory } from "@ncat-dash/step-catalog";
 import {
   Background,
   type Connection,
@@ -26,17 +30,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
-import {
-  ArrowLeft,
-  LayoutGrid,
-  Play,
-  Plus,
-  Save,
-  Scissors,
-  Search,
-  UserCheck,
-  X,
-} from "lucide-react";
+import { ArrowLeft, LayoutGrid, Play, Plus, Save, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -49,13 +43,12 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { newNodeId, type Trigger } from "@/lib/automations";
-import { CATEGORY_LABELS, CATEGORY_ORDER, errorMessage } from "@/lib/catalog";
+import type { Trigger } from "@/lib/automations";
+import { errorMessage } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 import {
   AddAfterContext,
-  CATEGORY_ICONS,
   edgeTypes,
   FIT_VIEW,
   flowEdge,
@@ -64,7 +57,7 @@ import {
   lastNodeIds,
   nodeTypes,
   type StepFlowNode,
-  tidyPositions,
+  GROUP_ICONS,
   TRIGGER_ID,
   triggerEdges,
   triggerPosition,
@@ -77,6 +70,15 @@ import { TriggerPanel } from "./trigger-panel";
 const FIT = { ...FIT_VIEW, duration: 200 };
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.automations.get>>>;
+
+/** JSON with keys in a fixed order, so two copies of the same automation compare equal. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, inner: unknown) =>
+    inner && typeof inner === "object" && !Array.isArray(inner)
+      ? Object.fromEntries(Object.entries(inner).sort(([a], [b]) => a.localeCompare(b)))
+      : inner,
+  );
+}
 
 function toFlowNode(node: AutomationNode): StepFlowNode {
   const { position, ...content } = node;
@@ -147,15 +149,42 @@ function Editor({ automation }: { automation: Loaded }) {
     }));
     return { name, trigger, nodes: savedNodes, edges: savedEdges };
   }, [name, trigger, nodes, edges]);
-  const [savedJson, setSavedJson] = useState(() =>
-    JSON.stringify({
-      name: automation.name,
-      trigger: automation.trigger,
-      nodes: automation.nodes,
-      edges: automation.edges,
-    }),
-  );
-  const dirty = JSON.stringify(draft) !== savedJson;
+  // The automation as the server has it. It changes under an open editor when the agent
+  // or a teammate edits it.
+  const incoming = canonical({
+    name: automation.name,
+    trigger: automation.trigger,
+    nodes: automation.nodes,
+    edges: automation.edges,
+  });
+  const [savedJson, setSavedJson] = useState(incoming);
+  const dirty = canonical(draft) !== savedJson;
+  const [seen, setSeen] = useState(incoming);
+  if (incoming !== seen) {
+    setSeen(incoming);
+    // Show the change straight away, unless the person has unsaved work of their own.
+    if (!dirty && incoming !== savedJson) {
+      const chosen = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
+      setName(automation.name);
+      setTrigger(automation.trigger);
+      setNodes([
+        {
+          id: TRIGGER_ID,
+          type: "trigger",
+          position: triggerPosition(automation.nodes),
+          data: { trigger: automation.trigger },
+          deletable: false,
+          selected: chosen.has(TRIGGER_ID),
+        },
+        ...(automation.nodes as AutomationNode[]).map((node) => ({
+          ...toFlowNode(node),
+          selected: chosen.has(node.id),
+        })),
+      ]);
+      setEdges(automation.edges.map((edge) => ({ ...edge })));
+      setSavedJson(incoming);
+    }
+  }
 
   const [tab, setTab] = useState("editor");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -207,45 +236,49 @@ function Editor({ automation }: { automation: Loaded }) {
     if (from && from !== TRIGGER_ID) addAfter(from);
   };
 
-  /** Removes a step and joins what fed it to what it fed, so the flow stays in one piece. */
-  function bridge(removed: string[], current: Edge[]): Edge[] {
-    let next = current;
-    for (const id of removed) {
-      const sources = next.filter((edge) => edge.target === id).map((edge) => edge.source);
-      const targets = next.filter((edge) => edge.source === id).map((edge) => edge.target);
-      next = next.filter((edge) => edge.source !== id && edge.target !== id);
-      for (const source of sources) {
-        for (const target of targets) {
-          if (!next.some((edge) => edge.source === source && edge.target === target)) {
-            next = [...next, { id: `${source}>${target}`, source, target }];
-          }
-        }
-      }
+  /**
+   * Makes changes through the same operations the agent uses (automation-core/operations),
+   * then shows the result. Returns the new draft, or null when a change could not be made.
+   */
+  function change(ops: Operation[], options: { select?: string; moveTrigger?: boolean } = {}) {
+    let next: AutomationDraft;
+    try {
+      next = applyOperations(draft, ops);
+    } catch (caught) {
+      toast.error(caught instanceof OperationError ? caught.message : "That could not be done.");
+      return null;
     }
+    setNodes((current) => {
+      const known = new Map(current.map((node) => [node.id, node]));
+      const steps = next.nodes.map((node): FlowNode => {
+        const flow = toFlowNode(node);
+        const shown = known.get(node.id);
+        return {
+          ...(shown?.type === "step" ? shown : {}),
+          ...flow,
+          selected: options.select ? node.id === options.select : (shown?.selected ?? false),
+        };
+      });
+      const start = current
+        .filter((node) => node.type === "trigger")
+        .map((node) => ({
+          ...node,
+          selected: options.select ? false : node.selected,
+          position: options.moveTrigger ? triggerPosition(next.nodes) : node.position,
+        }));
+      return [...start, ...steps];
+    });
+    setEdges(next.edges.map((edge) => ({ ...edge })));
     return next;
   }
 
+  /** Removes steps and joins what fed each one to what it fed, so the flow stays in one piece. */
   function removeSteps(ids: string[]) {
-    const all = edges;
-    setNodes((current) => current.filter((node) => !ids.includes(node.id)));
-    setEdges(bridge(ids, all));
+    change([{ op: "remove", ids }]);
   }
 
   function tidy() {
-    const positions = tidyPositions(
-      stepNodes.map((node) => node.id),
-      edges,
-    );
-    setNodes((current) => {
-      const steps = current
-        .filter((node) => node.type === "step")
-        .map((node) => ({ ...node, position: positions.get(node.id) ?? node.position }));
-      return current.map((node) =>
-        node.type === "trigger"
-          ? { ...node, position: triggerPosition(steps) }
-          : (steps.find((step) => step.id === node.id) ?? node),
-      );
-    });
+    change([{ op: "tidy" }], { moveTrigger: true });
     setTimeout(() => void fitView(FIT), 60);
   }
 
@@ -269,71 +302,27 @@ function Editor({ automation }: { automation: Loaded }) {
     );
   }
 
-  function addNode(kind: AutomationNode["kind"], stepId?: string) {
-    const id = newNodeId(stepNodes, stepId ?? kind);
-    const content = {
-      id,
-      kind,
-      stepId,
-      input: kind === "clips" ? { platform: "Instagram Reels" } : {},
-    };
+  function addNode(type: string) {
+    const id = newNodeId(draft.nodes, type);
     setPaletteOpen(false);
     setSearch("");
-    const onLine = insertOn && stepNodes.find((node) => node.id === insertOn.target);
-    if (insertOn && onLine) {
-      // The new step takes the place of the one after it, and everything from there moves along.
-      const { source, target } = insertOn;
-      const from = onLine.position.x;
-      setNodes((current) => [
-        ...current.map((node) => ({
-          ...node,
-          selected: false,
-          position:
-            node.type === "step" && node.position.x >= from
-              ? { ...node.position, x: node.position.x + NODE_GAP }
-              : node.position,
-        })),
-        {
-          id,
-          type: "step" as const,
-          position: { ...onLine.position },
-          selected: true,
-          data: { node: content },
-        },
-      ]);
-      setEdges((current) => [
-        ...current.filter((edge) => !(edge.source === source && edge.target === target)),
-        ...(source === TRIGGER_ID ? [] : [{ id: `${source}>${id}`, source, target: id }]),
-        { id: `${id}>${target}`, source: id, target },
-      ]);
-      setInsertOn(null);
-      return;
-    }
-    const after = selected?.type === "step" ? selected : undefined;
-    const rightmost = stepNodes.reduce<StepFlowNode | undefined>(
-      (far, node) => (!far || node.position.x > far.position.x ? node : far),
-      undefined,
+    const onLine = insertOn && draft.nodes.some((node) => node.id === insertOn.target);
+    const after = selected?.type === "step" ? selected.id : undefined;
+    change(
+      [
+        insertOn && onLine
+          ? {
+              op: "add",
+              type,
+              id,
+              before: insertOn.target,
+              after: insertOn.source === TRIGGER_ID ? undefined : insertOn.source,
+            }
+          : { op: "add", type, id, after },
+      ],
+      { select: id },
     );
-    const anchor = after ?? rightmost;
-    const position = anchor
-      ? { x: anchor.position.x + NODE_GAP, y: anchor.position.y }
-      : { x: 0, y: 0 };
-    setNodes((current) => [
-      ...current.map((node) => ({ ...node, selected: false })),
-      {
-        id,
-        type: "step" as const,
-        position,
-        selected: true,
-        data: { node: content },
-      },
-    ]);
-    if (after) {
-      setEdges((current) => [
-        ...current,
-        { id: `${after.id}>${id}`, source: after.id, target: id },
-      ]);
-    }
+    setInsertOn(null);
   }
 
   const onConnect = useCallback(
@@ -361,7 +350,7 @@ function Editor({ automation }: { automation: Loaded }) {
     if (!dirty) return true;
     try {
       const result = await save({ automationId: automation._id, ...draft });
-      setSavedJson(JSON.stringify(draft));
+      setSavedJson(canonical(draft));
       if (automation.enabled && !result.enabled) {
         toast.warning(`Saved and switched off. ${result.problem ?? ""}`);
       } else {
@@ -401,7 +390,6 @@ function Editor({ automation }: { automation: Loaded }) {
     router.push(`/automations/${automation._id}/runs/${runId}`);
   }
 
-  const grouped = stepsByCategory();
   const query = search.trim().toLowerCase();
 
   return (
@@ -483,76 +471,38 @@ function Editor({ automation }: { automation: Loaded }) {
                   </Button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2">
-                  {(!query || "clips for a platform".includes(query)) && (
-                    <div className="mb-3">
-                      <h3 className="text-muted-foreground px-2 py-1 text-xs font-medium">
-                        Ready-made
-                      </h3>
-                      <button
-                        type="button"
-                        title="Cuts each video at pauses in speech into clips that fit a platform, and reframes them for it."
-                        onClick={() => addNode("clips")}
-                        className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
-                      >
-                        <Scissors
-                          className="text-muted-foreground size-4 shrink-0"
-                          aria-hidden="true"
-                        />
-                        <span className="truncate">Clips for a platform</span>
-                      </button>
-                    </div>
-                  )}
-                  {CATEGORY_ORDER.map((category) => {
-                    const Icon = CATEGORY_ICONS[category];
-                    const matches = (grouped[category] ?? []).filter(
-                      (step) =>
+                  {actionTypesByGroup().map(({ group, label, types }) => {
+                    const matches = types.filter(
+                      (nodeType) =>
                         !query ||
-                        step.title.toLowerCase().includes(query) ||
-                        step.description.toLowerCase().includes(query),
+                        nodeType.title.toLowerCase().includes(query) ||
+                        nodeType.description.toLowerCase().includes(query),
                     );
                     if (matches.length === 0) return null;
+                    const Icon = GROUP_ICONS[group];
                     return (
-                      <div key={category} className="mb-3">
+                      <div key={group} className="mb-3">
                         <h3 className="text-muted-foreground px-2 py-1 text-xs font-medium">
-                          {CATEGORY_LABELS[category]}
+                          {label}
                         </h3>
-                        {matches.map((step) => (
+                        {matches.map((nodeType) => (
                           <button
-                            key={step.id}
+                            key={nodeType.type}
                             type="button"
-                            title={step.description}
-                            onClick={() => addNode("step", step.id)}
+                            title={nodeType.description}
+                            onClick={() => addNode(nodeType.type)}
                             className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
                           >
                             <Icon
                               className="text-muted-foreground size-4 shrink-0"
                               aria-hidden="true"
                             />
-                            <span className="truncate">{step.title}</span>
+                            <span className="truncate">{nodeType.title}</span>
                           </button>
                         ))}
                       </div>
                     );
                   })}
-                  {(!query || "approval".includes(query)) && (
-                    <div className="mb-3">
-                      <h3 className="text-muted-foreground px-2 py-1 text-xs font-medium">
-                        People
-                      </h3>
-                      <button
-                        type="button"
-                        title="Stops the run until someone on the team approves."
-                        onClick={() => addNode("approval")}
-                        className="hover:bg-muted focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-3"
-                      >
-                        <UserCheck
-                          className="text-muted-foreground size-4 shrink-0"
-                          aria-hidden="true"
-                        />
-                        <span className="truncate">Approval</span>
-                      </button>
-                    </div>
-                  )}
                 </div>
               </aside>
             )}

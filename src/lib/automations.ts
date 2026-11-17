@@ -45,16 +45,6 @@ export function nodeTitle(node: Pick<AutomationNode, "kind" | "stepId" | "label"
   return getStep(node.stepId ?? "")?.title ?? node.stepId ?? "Step";
 }
 
-/** A short readable id such as "caption_2", used in {{steps.caption_2.url}}. */
-export function newNodeId(existing: { id: string }[], base: string): string {
-  const stem = (base.split("-").pop() ?? "step").replace(/[^a-z0-9]/gi, "").toLowerCase() || "step";
-  const taken = new Set(existing.map((node) => node.id));
-  for (let n = 1; ; n++) {
-    const id = `${stem}_${n}`;
-    if (!taken.has(id)) return id;
-  }
-}
-
 /** The address that starts a webhook automation. */
 export function hookUrl(automationId: string, token: string): string {
   const base = process.env.NEXT_PUBLIC_CONVEX_SITE_URL ?? "";
