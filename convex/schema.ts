@@ -442,9 +442,6 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_runStep", ["runStepId"]),
 
-  // The toSend account this dashboard sends email through: failed-run alerts, sign-in
-  // emails and team invitations. One for the whole deployment, set once in Settings by
-  // the team named here. TOSEND_API_KEY and EMAIL_FROM on the deployment win over it.
   // A team's own Slack app, so its people can talk to the agent in Slack. One Slack
   // workspace belongs to one team. The token and signing secret are stored encrypted and
   // never leave the server.
@@ -457,9 +454,36 @@ export default defineSchema({
     signingSecretCipher: v.string(),
     connectedBy: v.string(),
     connectedAt: v.number(),
+    // The channel review activity is posted to: new reviews, client feedback, mentions.
+    // Left out: nothing is posted.
+    alertChannelId: v.optional(v.string()),
+    alertChannelName: v.optional(v.string()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_slack_team", ["slackTeamId"]),
+
+  // A review comment thread and the Slack thread it was posted as. Replies written in
+  // that Slack thread come back to the review thread, and the other way round.
+  slackThreads: defineTable({
+    organizationId: v.string(),
+    slackTeamId: v.string(),
+    channelId: v.string(),
+    threadTs: v.string(),
+    reviewId: v.id("reviews"),
+    commentId: v.id("reviewComments"),
+  })
+    .index("by_comment", ["commentId"])
+    .index("by_slack_thread", ["slackTeamId", "channelId", "threadTs"])
+    .index("by_review", ["reviewId"]),
+
+  // Slack messages already brought into a review, so Slack sending one again (it does,
+  // when an answer is slow) does not add it twice.
+  slackReplies: defineTable({
+    slackTeamId: v.string(),
+    channelId: v.string(),
+    ts: v.string(),
+    commentId: v.id("reviewComments"),
+  }).index("by_message", ["slackTeamId", "channelId", "ts"]),
 
   // Who a Slack user is on the dashboard, found by their email address, and the
   // sign-in the agent uses to act as them. Rows go when the connection goes.
@@ -472,6 +496,9 @@ export default defineSchema({
     sessionExpiresAt: v.number(),
   }).index("by_slack_user", ["slackTeamId", "slackUserId"]),
 
+  // The toSend account this dashboard sends email through: failed-run alerts, sign-in
+  // emails and team invitations. One for the whole deployment, set once in Settings by
+  // the team named here. TOSEND_API_KEY and EMAIL_FROM on the deployment win over it.
   emailConnections: defineTable({
     organizationId: v.string(),
     // AES-GCM ciphertext of the toSend API key.
@@ -646,6 +673,8 @@ export default defineSchema({
     // Written through the review's share link by someone outside the team. Their
     // authorId is "guest:" and a random id their browser keeps.
     client: v.optional(v.boolean()),
+    // Written by a teammate as a reply in the team's Slack thread for this comment.
+    slack: v.optional(v.boolean()),
     // Marks drawn over the paused frame, on a thread's first comment only.
     drawing: v.optional(drawingValidator),
     // Set on the agent's answer to an "@Agent" comment. The answer is written by the

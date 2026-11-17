@@ -11,6 +11,7 @@ import { BOT_USER, teamOfToken, TOKEN_PREFIX } from "./slack-shared";
 // Someone Slack knows but the team does not is told so, and a forged request is refused.
 
 const TOOLKIT = "http://127.0.0.1:8767";
+const FILES = "http://127.0.0.1:8766";
 const SLACK = "http://127.0.0.1:8768";
 const APP = "http://localhost:3000";
 const PASSWORD = "slack-e2e-1";
@@ -32,6 +33,8 @@ async function signUp(browser: Browser, name: string, email: string): Promise<Pa
 }
 
 type Posted = {
+  method: string;
+  ts: string;
   channel: string;
   thread_ts: string | null;
   text: string;
@@ -88,6 +91,16 @@ async function slackUser(id: string, email: string, name: string) {
 }
 
 const card = (page: Page) => page.locator("[data-slack-card]");
+const comments = (page: Page) => page.locator('section[aria-label="Comments"]');
+const commentBox = (page: Page) => page.getByRole("textbox", { name: /^Comment at this moment/ });
+
+/** What the bot has posted to a channel outside any thread, newest last. */
+async function channelPosts(channel: string): Promise<Posted[]> {
+  return (await posted()).filter(
+    (message) =>
+      message.channel === channel && !message.thread_ts && message.method === "chat.postMessage",
+  );
+}
 
 test.describe.configure({ mode: "serial" });
 
@@ -179,6 +192,109 @@ test("someone in Slack who is not on the team is told so, and nothing else happe
     .toContain(`Ask a team owner to invite ${stranger}`);
 });
 
+test("an owner picks the channel review activity goes to, and the app joins it", async () => {
+  await jordan.goto("/settings");
+  const select = card(jordan).getByRole("combobox", { name: "Review activity" });
+  await expect(select).toBeEnabled({ timeout: 30_000 });
+  await expect(select).toHaveText(/Not posted/);
+  await select.click();
+  await jordan.getByRole("option", { name: "#video-team" }).click();
+  await expect(select).toHaveText(/video-team/);
+  const joined = (await (await fetch(`${SLACK}/stand-in/joined`)).json()) as string[];
+  expect(joined).toContain("C0VIDEOTEAM");
+});
+
+let shareUrl = "";
+let threadTs = "";
+
+test("a review an automation opens is posted to the channel", async () => {
+  await jordan.goto("/automations");
+  await jordan
+    .getByLabel("Automation file to import")
+    .setInputFiles("e2e/fixtures/weekly-clips.automation.json");
+  await expect(jordan).toHaveURL(/\/automations\/.+/);
+  await jordan.getByRole("switch").first().click();
+  await expect(jordan.getByRole("switch").first()).toBeChecked();
+  await jordan.locator(".react-flow__node-trigger").click();
+  const address = await jordan.locator("#trigger-address").inputValue();
+  const started = await fetch(address, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file_url: `${FILES}/station-interview.webm` }),
+  });
+  expect(started.status).toBe(202);
+
+  await expect
+    .poll(
+      async () => (await channelPosts("C0VIDEOTEAM")).map((message) => message.text).join("\n"),
+      {
+        timeout: 60_000,
+      },
+    )
+    .toMatch(
+      /New review: <http:\/\/localhost:3000\/review\/[^|]+\|Weekly clips> \(2 clips\)\. The automation is waiting for someone to approve it\./,
+    );
+});
+
+test("a client's comment starts a Slack thread, and a teammate's reply there lands in the review", async ({
+  browser,
+}) => {
+  await jordan.goto("/review");
+  await jordan.getByRole("link", { name: /Weekly clips/ }).click();
+  await expect(jordan).toHaveURL(/\/review\/.+/);
+  await jordan.getByRole("button", { name: "Share" }).click();
+  const dialog = jordan.getByRole("dialog", { name: "Share with a client" });
+  await dialog.getByRole("button", { name: "Create link" }).click();
+  const link = dialog.getByRole("textbox", { name: "Share link" });
+  await expect(link).toHaveValue(/\/share\/[a-f0-9]{64}$/);
+  shareUrl = await link.inputValue();
+  await jordan.keyboard.press("Escape");
+
+  const client = await (await browser.newContext()).newPage();
+  await client.goto(shareUrl);
+  await client.getByLabel("Your name").fill("Riley Client");
+  await client.getByRole("button", { name: "Continue" }).click();
+  await commentBox(client).fill("Can the end card stay up a little longer?");
+  await commentBox(client).press("Enter");
+
+  await expect
+    .poll(async () => (await channelPosts("C0VIDEOTEAM")).at(-1)?.text ?? "", { timeout: 30_000 })
+    .toMatch(
+      /^\*Riley Client\* \(client\) commented on <.+\|Weekly clips>, .+ at 0:00:\n> Can the end card stay up a little longer\?$/,
+    );
+  threadTs = (await channelPosts("C0VIDEOTEAM")).at(-1)!.ts;
+
+  // Jordan answers in Slack, in that thread.
+  const ts = `${Math.floor(Date.now() / 1000)}.000500`;
+  const response = await sendEvent({
+    type: "message",
+    user: "U0JORDAN",
+    text: "Sure, two more seconds.",
+    ts,
+    thread_ts: threadTs,
+    channel: "C0VIDEOTEAM",
+    channel_type: "channel",
+  });
+  expect(response.status).toBe(200);
+
+  // It shows in the review room as Jordan's reply, for the team and for the client.
+  const thread = comments(jordan).getByRole("listitem").filter({ hasText: "Can the end card" });
+  await expect(thread.getByText("Sure, two more seconds.")).toBeVisible({ timeout: 30_000 });
+  await expect(thread).toContainText("Jordan Lee");
+  await expect(comments(client).getByText("Sure, two more seconds.")).toBeVisible();
+
+  // A reply written in the room goes the other way, into the Slack thread.
+  await thread.getByRole("button", { name: "Reply" }).click();
+  await jordan.getByRole("textbox", { name: "Reply" }).fill("Done, version 2 is up.");
+  await jordan.getByRole("textbox", { name: "Reply" }).press("Enter");
+  await expect
+    .poll(async () => (await repliesIn(threadTs)).join("\n"), { timeout: 30_000 })
+    .toContain("*Jordan Lee*: Done, version 2 is up.");
+  // What came from Slack is not posted back to it.
+  expect((await repliesIn(threadTs)).join("\n")).not.toContain("Sure, two more seconds.");
+  await client.context().close();
+});
+
 test("a request not signed with the team's secret is refused", async () => {
   const ts = `${Math.floor(Date.now() / 1000)}.000400`;
   const response = await sendEvent(
@@ -199,6 +315,7 @@ test("a request not signed with the team's secret is refused", async () => {
 });
 
 test("disconnecting stops the agent answering in that workspace", async () => {
+  await jordan.goto("/settings");
   await card(jordan).getByRole("button", { name: "Disconnect" }).click();
   await expect(card(jordan).getByRole("link", { name: "Create the Slack app" })).toBeVisible();
 });

@@ -12,7 +12,13 @@ describe("the Slack app manifest", () => {
       "https://dash.example.test/api/slack/events",
     );
     expect(manifest.oauth_config.scopes.bot).toEqual(
-      expect.arrayContaining(["app_mentions:read", "chat:write", "users:read.email"]),
+      expect.arrayContaining([
+        "app_mentions:read",
+        "chat:write",
+        "users:read.email",
+        "channels:read",
+        "channels:join",
+      ]),
     );
     expect(manifest.settings.event_subscriptions.bot_events).toContain("app_mention");
   });

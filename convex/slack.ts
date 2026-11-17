@@ -45,6 +45,9 @@ export const forTeam = query({
       slackTeamName: row.slackTeamName,
       connectedAt: row.connectedAt,
       connectedBy: by?.name ?? null,
+      alertChannel: row.alertChannelId
+        ? { id: row.alertChannelId, name: row.alertChannelName ?? row.alertChannelId }
+        : null,
     };
   },
 });
@@ -121,6 +124,11 @@ export const disconnect = mutation({
       .withIndex("by_slack_user", (q) => q.eq("slackTeamId", row.slackTeamId))
       .collect();
     for (const person of people) await ctx.db.delete(person._id);
+    const threads = await ctx.db
+      .query("slackThreads")
+      .withIndex("by_slack_thread", (q) => q.eq("slackTeamId", row.slackTeamId))
+      .collect();
+    for (const thread of threads) await ctx.db.delete(thread._id);
   },
 });
 
@@ -162,7 +170,12 @@ export const save = internalMutation({
           .collect();
         for (const person of people) await ctx.db.delete(person._id);
       }
-      await ctx.db.replace(mine._id, fields);
+      // The same workspace keeps the channel review activity goes to.
+      const keep =
+        mine.slackTeamId === args.slackTeamId
+          ? { alertChannelId: mine.alertChannelId, alertChannelName: mine.alertChannelName }
+          : {};
+      await ctx.db.replace(mine._id, { ...fields, ...keep });
     } else {
       await ctx.db.insert("slackConnections", fields);
     }
