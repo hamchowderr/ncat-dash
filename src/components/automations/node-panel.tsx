@@ -30,6 +30,7 @@ import { nodeTitle } from "@/lib/automations";
 import { fieldLabel } from "@/lib/catalog";
 
 import { nodeLook } from "./flow-nodes";
+import { LogicSettings } from "./logic-panel";
 import { PlatformPicker } from "./platform-picker";
 
 type NodeContent = Omit<AutomationNode, "position">;
@@ -195,6 +196,17 @@ export function NodePanel({
         </Alert>
       )}
 
+      {node.kind === "export" && (
+        <p className="text-muted-foreground text-sm text-pretty">
+          Nothing to set up. When a run finishes, press Open in editor on the run to download the
+          timeline. Your editors are picked once in{" "}
+          <Link href="/settings" className="text-foreground underline underline-offset-4">
+            Settings
+          </Link>
+          .
+        </p>
+      )}
+
       {node.kind === "clips" && (
         <Field>
           <FieldLabel>Platform</FieldLabel>
@@ -204,6 +216,10 @@ export function NodePanel({
             onChange={(platform) => onChange({ input: { ...node.input, platform } })}
           />
         </Field>
+      )}
+
+      {(node.kind === "if" || node.kind === "wait") && (
+        <LogicSettings node={node} onChange={onChange} />
       )}
 
       {node.kind === "step" && fields && needed.length > 0 && (

@@ -4,13 +4,20 @@ import "@xyflow/react/style.css";
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { type AutomationNode, readClipsSetup } from "@ncat-dash/automation-core";
+import {
+  type AutomationEdge,
+  type AutomationNode,
+  BRANCH_LABELS,
+  IF_BRANCHES,
+  readClipsSetup,
+} from "@ncat-dash/automation-core";
 import { Background, Controls, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Check, CircleStop, X } from "lucide-react";
+import { ArrowLeft, Check, CircleStop, RotateCw, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { MediaPreview } from "@/components/jobs/media-preview";
@@ -21,6 +28,7 @@ import { nodeTitle, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib
 import { errorMessage, formatDuration } from "@/lib/catalog";
 
 import {
+  canvasEdge,
   edgeTypes,
   FIT_VIEW,
   flowEdge,
@@ -31,7 +39,8 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { ClipsRun } from "./clips-run";
-import { RunStatusBadge } from "./run-status";
+import { EditorExport } from "./editor-export";
+import { RunStatusBadge, shownStatus } from "./run-status";
 
 /** A run only records which kind of trigger started it, which is all the canvas shows. */
 function runTrigger(kind: TriggerKind): Trigger {
@@ -42,6 +51,59 @@ function runTrigger(kind: TriggerKind): Trigger {
 }
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const timeOnly = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
+
+/**
+ * What a logic step did, in a few words: which way an If sent its files, or when a Wait
+ * carries on. Null for every other step.
+ */
+function logicNote(step: {
+  status: string;
+  branches?: Record<string, string[]>;
+  stage?: string;
+  resumeAt?: number;
+}): string | null {
+  if (step.branches) {
+    const went = IF_BRANCHES.filter((way) => (step.branches?.[way]?.length ?? 0) > 0);
+    const total = went.reduce((sum, way) => sum + step.branches![way].length, 0);
+    if (total === 1) return `Went ${BRANCH_LABELS[went[0]]}`;
+    return went.map((way) => `${step.branches![way].length} ${BRANCH_LABELS[way]}`).join(", ");
+  }
+  if (step.stage === "check" && step.status === "running") return "Reading the files";
+  if (step.stage === "wait" && step.status === "running" && step.resumeAt) {
+    return `Until ${until(step.resumeAt)}`;
+  }
+  return null;
+}
+
+/** A moment as a person says it: just the time when it is today, the date too when it is not. */
+function until(moment: number): string {
+  const today = new Date().toDateString() === new Date(moment).toDateString();
+  return today ? timeOnly.format(moment) : when.format(moment);
+}
+
+/** What an If did with its files, as a sentence. */
+function sortedSentence(branches: Record<string, string[]>): string {
+  const counts = IF_BRANCHES.map(
+    (way) => [BRANCH_LABELS[way], branches[way]?.length ?? 0] as const,
+  );
+  const total = counts.reduce((sum, [, count]) => sum + count, 0);
+  if (total === 1) return `The file went out by ${counts.find(([, count]) => count === 1)![0]}.`;
+  return `${counts
+    .map(([label, count]) => `${count} ${count === 1 ? "file" : "files"} went out by ${label}`)
+    .join(", ")}.`;
+}
+
+/** Counts down to a step's next try. */
+function RetryCountdown({ at }: { at: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const left = at - now;
+  return <>{left > 0 ? `in ${formatDuration(left)}` : "now"}</>;
+}
 
 /** One run: the canvas with each step's live state, and what each step produced. */
 export function RunView({
@@ -54,6 +116,8 @@ export function RunView({
   const run = useQuery(api.runs.get, { runId });
   const decide = useMutation(api.runs.decide);
   const cancel = useMutation(api.runs.cancel);
+  const runAgain = useMutation(api.runs.runAgain);
+  const router = useRouter();
   const { resolvedTheme } = useTheme();
   const [busy, setBusy] = useState(false);
   const [showClips, setShowClips] = useState(false);
@@ -74,8 +138,9 @@ export function RunView({
         position,
         data: {
           node,
-          status: byNode.get(node.id)?.status,
+          status: byNode.has(node.id) ? shownStatus(byNode.get(node.id)!) : undefined,
           jobCount: byNode.get(node.id)?.jobs.length,
+          note: logicNote(byNode.get(node.id) ?? { status: "pending" }) ?? undefined,
         },
       })),
     ];
@@ -84,9 +149,10 @@ export function RunView({
         run.nodes.map((node) => node.id),
         run.edges,
       ),
-      ...run.edges.map((edge) => ({
-        ...flowEdge(edge),
-        animated: byNode.get(edge.target)?.status === "running",
+      ...(run.edges as AutomationEdge[]).map((edge) => ({
+        ...flowEdge(canvasEdge(edge)),
+        animated:
+          byNode.get(edge.target)?.status === "running" && !byNode.get(edge.target)?.retryAt,
       })),
     ];
     return { nodes, edges, byNode };
@@ -129,6 +195,7 @@ export function RunView({
         </div>
         <div className="ml-auto flex items-center gap-3">
           <RunStatusBadge status={run.status} />
+          {run.hasCuts && <EditorExport runId={runId} />}
           {clipsSetup && (
             <Button variant="ghost" size="sm" onClick={() => setShowClips((shown) => !shown)}>
               {showClips ? "Show the canvas" : "Show clips"}
@@ -143,6 +210,22 @@ export function RunView({
             >
               <CircleStop />
               Stop run
+            </Button>
+          )}
+          {!active && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                act(async () => {
+                  const next = await runAgain({ runId });
+                  router.push(`/automations/${automationId}/runs/${next}`);
+                }, "The run could not be started again.")
+              }
+            >
+              <RotateCw />
+              Run again
             </Button>
           )}
         </div>
@@ -195,11 +278,42 @@ export function RunView({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <h2 className="truncate text-sm font-medium">{nodeTitle(node)}</h2>
-                    <RunStatusBadge status={step.status} />
+                    <RunStatusBadge status={shownStatus(step)} />
                   </div>
+                  {step.retryAt && step.status === "running" && (
+                    <div data-retry="waiting" className="flex flex-col gap-1 text-sm">
+                      <p className="font-medium tabular-nums">
+                        Trying again <RetryCountdown at={step.retryAt} />, try {step.retries + 1} of{" "}
+                        {Math.max(run.retryLimit, step.retries) + 1}
+                      </p>
+                      {step.retryError && (
+                        <p className="text-muted-foreground break-words">
+                          The last try failed: {step.retryError}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {step.retries > 0 && !step.retryAt && step.status !== "skipped" && (
+                    <p data-retry="used" className="text-muted-foreground text-sm">
+                      {step.status === "done"
+                        ? `Worked on try ${step.retries + 1}.`
+                        : step.status === "failed"
+                          ? `Gave up after ${step.retries + 1} tries.`
+                          : `On try ${step.retries + 1}.`}
+                    </p>
+                  )}
                   {step.status === "running" && step.jobs.length > 1 && (
                     <p className="text-muted-foreground text-sm tabular-nums">
                       {finished} of {step.jobs.length} files finished
+                    </p>
+                  )}
+                  {logicNote(step) && (
+                    <p className="text-muted-foreground text-sm" data-note>
+                      {node.kind === "if" && step.branches
+                        ? sortedSentence(step.branches)
+                        : node.kind === "wait" && step.resumeAt
+                          ? `Carries on at ${until(step.resumeAt)}.`
+                          : `${logicNote(step)}.`}
                     </p>
                   )}
                   {step.error && (

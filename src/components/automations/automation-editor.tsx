@@ -9,14 +9,22 @@ import {
   applyOperations,
   type AutomationDraft,
   type AutomationEdge,
+  automationFileName,
   type AutomationNode,
   type Brand,
-  graphProblem,
+  canonical,
+  canRedo,
+  canUndo,
+  exportAutomation,
   newNodeId,
   type Operation,
   OperationError,
+  record,
+  redo,
+  startHistory,
   stepsBefore,
   triggerTypeOf,
+  undo,
   valueSources,
 } from "@ncat-dash/automation-core";
 import {
@@ -34,11 +42,22 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, LayoutGrid, Play, Plus, Save, Search, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  LayoutGrid,
+  Play,
+  Plus,
+  Redo2,
+  Save,
+  Search,
+  Undo2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -49,12 +68,14 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { nodeTitle, type Trigger } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
+import { downloadJson } from "@/lib/download";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import {
   AddAfterContext,
   BrandContext,
+  canvasEdge,
   edgeTypes,
   FIT_VIEW,
   flowEdge,
@@ -62,12 +83,15 @@ import {
   InsertOnEdgeContext,
   lastNodeIds,
   nodeTypes,
+  openWaysOf,
+  savedEdge,
   type StepFlowNode,
   GROUP_ICONS,
   TRIGGER_ID,
   triggerEdges,
   triggerPosition,
 } from "./flow-nodes";
+import { DraftBar } from "./draft-bar";
 import { NodePanel } from "./node-panel";
 import { STEP_ICONS } from "./step-icons";
 import { RunDialog } from "./run-dialog";
@@ -80,12 +104,11 @@ const FIT = { ...FIT_VIEW, duration: 200 };
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.automations.get>>>;
 
-/** JSON with keys in a fixed order, so two copies of the same automation compare equal. */
-function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, inner: unknown) =>
-    inner && typeof inner === "object" && !Array.isArray(inner)
-      ? Object.fromEntries(Object.entries(inner).sort(([a], [b]) => a.localeCompare(b)))
-      : inner,
+/** True when the keyboard is in something that has its own undo, such as a text box. */
+function isTyping(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
   );
 }
 
@@ -124,6 +147,8 @@ function Editor({ automation }: { automation: Loaded }) {
   const save = useMutation(api.automations.save);
   const setEnabled = useMutation(api.automations.setEnabled);
   const runNow = useMutation(api.automations.runNow);
+  const publish = useMutation(api.automations.publish);
+  const discardDraft = useMutation(api.automations.discardDraft);
 
   const [name, setName] = useState(automation.name);
   const [trigger, setTrigger] = useState<Trigger>(automation.trigger);
@@ -138,7 +163,7 @@ function Editor({ automation }: { automation: Loaded }) {
     ...(automation.nodes as AutomationNode[]).map(toFlowNode),
   ]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(
-    automation.edges.map((edge) => ({ ...edge })),
+    (automation.edges as AutomationEdge[]).map(canvasEdge),
   );
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
@@ -155,21 +180,65 @@ function Editor({ automation }: { automation: Loaded }) {
         ...node.data.node,
         position: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
       }));
-    const savedEdges: AutomationEdge[] = edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-    }));
+    const savedEdges: AutomationEdge[] = edges.map(savedEdge);
     return { name, trigger, nodes: savedNodes, edges: savedEdges };
   }, [name, trigger, nodes, edges]);
+  /** Puts a whole automation on the canvas, keeping what is selected and where the trigger sits. */
+  const [revision, setRevision] = useState(0);
+  function show(next: AutomationDraft) {
+    const chosen = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
+    setName(next.name);
+    setTrigger(next.trigger);
+    setNodes((current) => [
+      ...current
+        .filter((node) => node.type === "trigger")
+        .map((node) => ({ ...node, data: { trigger: next.trigger } })),
+      ...next.nodes.map((node) => ({ ...toFlowNode(node), selected: chosen.has(node.id) })),
+    ]);
+    setEdges(next.edges.map(canvasEdge));
+    // The settings panel keeps what is being typed; a new revision makes it read again.
+    setRevision((current) => current + 1);
+  }
+
+  // Every state the canvas has been in, for undo and redo.
+  const [history, setHistory] = useState(() => startHistory(draft));
+  useEffect(() => {
+    const timer = setTimeout(() => setHistory((current) => record(current, draft, Date.now())));
+    return () => clearTimeout(timer);
+  }, [draft]);
+
+  function step(move: typeof undo) {
+    const next = move(history);
+    if (next === history) return;
+    setHistory(next);
+    show(next.present);
+  }
+  const onUndo = () => step(undo);
+  const onRedo = () => step(redo);
+
+  const onKey = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || isTyping(event.target)) return;
+    const key = event.key.toLowerCase();
+    if (key !== "z" && key !== "y") return;
+    event.preventDefault();
+    if (key === "y" || event.shiftKey) onRedo();
+    else onUndo();
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onKey(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
+
   // The automation as the server has it. It changes under an open editor when the agent
   // or a teammate edits it.
-  const incoming = canonical({
+  const incomingDraft: AutomationDraft = {
     name: automation.name,
     trigger: automation.trigger,
-    nodes: automation.nodes,
+    nodes: automation.nodes as AutomationNode[],
     edges: automation.edges,
-  });
+  };
+  const incoming = canonical(incomingDraft);
   const [savedJson, setSavedJson] = useState(incoming);
   const dirty = canonical(draft) !== savedJson;
   const [seen, setSeen] = useState(incoming);
@@ -177,27 +246,19 @@ function Editor({ automation }: { automation: Loaded }) {
     setSeen(incoming);
     // Show the change straight away, unless the person has unsaved work of their own.
     if (!dirty && incoming !== savedJson) {
-      const chosen = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
-      setName(automation.name);
-      setTrigger(automation.trigger);
-      setNodes([
-        {
-          id: TRIGGER_ID,
-          type: "trigger",
-          position: triggerPosition(automation.nodes),
-          data: { trigger: automation.trigger },
-          deletable: false,
-          selected: chosen.has(TRIGGER_ID),
-        },
-        ...(automation.nodes as AutomationNode[]).map((node) => ({
-          ...toFlowNode(node),
-          selected: chosen.has(node.id),
-        })),
-      ]);
-      setEdges(automation.edges.map((edge) => ({ ...edge })));
+      show(incomingDraft);
+      // Its own step in the history, so it can be undone by itself.
+      setHistory((current) => record(current, incomingDraft, 0, { merge: false }));
       setSavedJson(incoming);
     }
   }
+
+  // The version triggers run. It differs from the canvas while there is a draft.
+  const live = (automation.live as AutomationDraft | null) ?? null;
+  const hasDraft = live !== null;
+  // Saving goes to a draft while the automation is on, or once it has one.
+  const drafting = hasDraft || automation.enabled;
+  const draftShown = hasDraft || (automation.enabled && dirty);
 
   const [tab, setTab] = useState("editor");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -213,28 +274,37 @@ function Editor({ automation }: { automation: Loaded }) {
     return () => timers.forEach(clearTimeout);
   }, [fitView, nodeCount, tab, panelShown]);
 
-  // Each step nothing follows offers a "+" to carry on from it.
+  // Each step nothing follows offers a "+" to carry on from it, and so does each way out
+  // of an If that nothing hangs off yet.
   const shownNodes = useMemo(() => {
     const last = lastNodeIds(
       stepNodes.map((node) => node.id),
       edges,
     );
+    const open = openWaysOf(draft.nodes, draft.edges);
     return nodes.map((node) =>
-      node.type === "step" ? { ...node, data: { ...node.data, last: last.has(node.id) } } : node,
+      node.type === "step"
+        ? { ...node, data: { ...node.data, last: last.has(node.id), openWays: open.get(node.id) } }
+        : node,
     );
-  }, [nodes, stepNodes, edges]);
+  }, [nodes, stepNodes, edges, draft]);
 
   // The line a new step is being put on, when it was started from a plus on a line.
   const [insertOn, setInsertOn] = useState<{ source: string; target: string } | null>(null);
 
+  // The way out of an If a new step is being hung on, when it was started from that way's plus.
+  const [onWay, setOnWay] = useState<string | undefined>(undefined);
+
   function openPalette() {
     setInsertOn(null);
+    setOnWay(undefined);
     setPaletteOpen(true);
   }
 
-  function addAfter(nodeId: string) {
+  function addAfter(nodeId: string, way?: string) {
     setNodes((current) => current.map((node) => ({ ...node, selected: node.id === nodeId })));
     openPalette();
+    setOnWay(way);
   }
 
   function insertOnEdge(source: string, target: string) {
@@ -246,7 +316,7 @@ function Editor({ automation }: { automation: Loaded }) {
   const onConnectEnd: OnConnectEnd = (_event, connection) => {
     if (connection.isValid || connection.fromHandle?.type !== "source") return;
     const from = connection.fromNode?.id;
-    if (from && from !== TRIGGER_ID) addAfter(from);
+    if (from && from !== TRIGGER_ID) addAfter(from, connection.fromHandle?.id ?? undefined);
   };
 
   /**
@@ -281,7 +351,7 @@ function Editor({ automation }: { automation: Loaded }) {
         }));
       return [...start, ...steps];
     });
-    setEdges(next.edges.map((edge) => ({ ...edge })));
+    setEdges(next.edges.map(canvasEdge));
     return next;
   }
 
@@ -331,40 +401,48 @@ function Editor({ automation }: { automation: Loaded }) {
               before: insertOn.target,
               after: insertOn.source === TRIGGER_ID ? undefined : insertOn.source,
             }
-          : { op: "add", type, id, after },
+          : { op: "add", type, id, after, ...(after && onWay ? { branch: onWay } : {}) },
       ],
       { select: id },
     );
     setInsertOn(null);
+    setOnWay(undefined);
   }
 
-  const onConnect = useCallback(
-    (connection: Connection) => {
-      if (connection.source === TRIGGER_ID || connection.target === TRIGGER_ID) return;
-      const next = [
-        ...draft.edges,
-        {
-          id: `${connection.source}>${connection.target}`,
-          source: connection.source,
-          target: connection.target,
-        },
-      ];
-      const problem = graphProblem(draft.nodes, next);
-      if (problem) {
-        toast.error(problem);
-        return;
-      }
-      setEdges((current) => [...current, next[next.length - 1]]);
-    },
-    [draft, setEdges],
-  );
+  // Drawing a line goes the same way as the agent's "connect", so a line out of an If
+  // carries the way it left by.
+  function onConnect(connection: Connection) {
+    if (connection.source === TRIGGER_ID || connection.target === TRIGGER_ID) return;
+    change([
+      {
+        op: "connect",
+        source: connection.source,
+        target: connection.target,
+        ...(connection.sourceHandle ? { branch: connection.sourceHandle } : {}),
+      },
+    ]);
+  }
 
-  async function persist(): Promise<boolean> {
+  /** Saves the automation on the canvas to the person's computer as a file. */
+  function onExport() {
+    const { file, notes } = exportAutomation(draft);
+    downloadJson(automationFileName(draft.name), file);
+    toast.success("Saved as a file", { description: notes[0] });
+  }
+
+  async function persist(quiet = false): Promise<boolean> {
     if (!dirty) return true;
     try {
       const result = await save({ automationId: automation._id, ...draft });
       setSavedJson(canonical(draft));
-      if (automation.enabled && !result.enabled) {
+      if (quiet) return true;
+      if (result.draft) {
+        toast.success(
+          automation.enabled
+            ? "Draft saved. The live version keeps running until you publish."
+            : "Draft saved.",
+        );
+      } else if (automation.enabled && !result.enabled) {
         toast.warning(`Saved and switched off. ${result.problem ?? ""}`);
       } else {
         toast.success("Saved");
@@ -387,9 +465,33 @@ function Editor({ automation }: { automation: Loaded }) {
 
   const onSave = () => withBusy(async () => void (await persist()));
 
+  const onPublish = () =>
+    withBusy(async () => {
+      if (!(await persist(true))) return;
+      try {
+        await publish({ automationId: automation._id });
+        toast.success(automation.enabled ? "Published. This version is live now." : "Published.");
+      } catch (caught) {
+        toast.error(errorMessage(caught, "The draft could not be published."));
+      }
+    });
+
+  const onDiscard = () =>
+    withBusy(async () => {
+      // Unsaved work goes too: back to what was last saved, then the saved draft is dropped
+      // and the live version arrives from the server. Undo brings the changes back.
+      if (dirty) show(JSON.parse(savedJson) as AutomationDraft);
+      try {
+        await discardDraft({ automationId: automation._id });
+        toast.success("Draft discarded. The canvas shows the live version.");
+      } catch (caught) {
+        toast.error(errorMessage(caught, "The draft could not be discarded."));
+      }
+    });
+
   const onToggle = (enabled: boolean) =>
     withBusy(async () => {
-      if (!(await persist())) return;
+      if (!(await persist(true))) return;
       try {
         await setEnabled({ automationId: automation._id, enabled });
       } catch (caught) {
@@ -398,7 +500,7 @@ function Editor({ automation }: { automation: Loaded }) {
     });
 
   async function onRun(fileUrl?: string) {
-    if (!(await persist())) return;
+    if (!(await persist(true))) return;
     const runId = await runNow({ automationId: automation._id, fileUrl });
     router.push(`/automations/${automation._id}/runs/${runId}`);
   }
@@ -422,6 +524,28 @@ function Editor({ automation }: { automation: Loaded }) {
           className="h-9 max-w-xs text-base font-semibold"
         />
         <div className="ml-auto flex items-center gap-3">
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={!canUndo(history)}
+              title="Undo (Ctrl+Z)"
+              onClick={onUndo}
+            >
+              <Undo2 />
+              <span className="sr-only">Undo</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={!canRedo(history)}
+              title="Redo (Ctrl+Shift+Z)"
+              onClick={onRedo}
+            >
+              <Redo2 />
+              <span className="sr-only">Redo</span>
+            </Button>
+          </div>
           <div className="flex items-center gap-2">
             <Switch
               id="automation-on"
@@ -431,9 +555,13 @@ function Editor({ automation }: { automation: Loaded }) {
             />
             <Label htmlFor="automation-on">{automation.enabled ? "On" : "Off"}</Label>
           </div>
+          <Button variant="ghost" size="sm" onClick={onExport}>
+            <Download />
+            Export
+          </Button>
           <Button variant="outline" size="sm" disabled={busy || !dirty} onClick={onSave}>
             <Save />
-            {dirty ? "Save" : "Saved"}
+            {dirty ? (drafting ? "Save draft" : "Save") : hasDraft ? "Draft saved" : "Saved"}
           </Button>
           <Button size="sm" disabled={busy} onClick={() => setRunOpen(true)}>
             <Play />
@@ -441,6 +569,17 @@ function Editor({ automation }: { automation: Loaded }) {
           </Button>
         </div>
       </div>
+
+      {draftShown && (
+        <DraftBar
+          enabled={automation.enabled}
+          live={live ?? (JSON.parse(savedJson) as AutomationDraft)}
+          draft={draft}
+          busy={busy}
+          onPublish={onPublish}
+          onDiscard={onDiscard}
+        />
+      )}
 
       <Tabs value={tab} onValueChange={setTab} className="flex-1">
         <TabsList>
@@ -451,7 +590,9 @@ function Editor({ automation }: { automation: Loaded }) {
         <TabsContent value="editor">
           <div
             className={cn(
-              "relative grid overflow-hidden rounded-xl border lg:h-[calc(100vh-13.5rem)] lg:min-h-[32rem] lg:grid-rows-[minmax(0,1fr)]",
+              "relative grid overflow-hidden rounded-xl border lg:min-h-[32rem] lg:grid-rows-[minmax(0,1fr)]",
+              // The draft bar takes a row of its own above the canvas.
+              draftShown ? "lg:h-[calc(100vh-17.5rem)]" : "lg:h-[calc(100vh-13.5rem)]",
               selected && "lg:grid-cols-[minmax(0,1fr)_20rem]",
             )}
           >
@@ -594,7 +735,7 @@ function Editor({ automation }: { automation: Loaded }) {
                     <NodePanel
                       brand={brand}
                       music={music}
-                      key={selected.id}
+                      key={`${selected.id}:${revision}`}
                       node={selected.data.node}
                       before={stepsBefore(selected.id, draft.edges)
                         .flat()
@@ -650,7 +791,7 @@ function Editor({ automation }: { automation: Loaded }) {
       <RunDialog
         open={runOpen}
         onOpenChange={setRunOpen}
-        startsOnUpload={automation.enabled && !dirty && trigger.kind === "upload"}
+        startsOnUpload={automation.enabled && !dirty && !hasDraft && trigger.kind === "upload"}
         start={onRun}
         onUploadedOnly={() => {
           setRunOpen(false);

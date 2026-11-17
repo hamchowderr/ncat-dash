@@ -16,6 +16,7 @@ import { TeamContext } from "@/lib/team-context";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
 
+import { AlertsBell } from "./alerts-bell";
 import { AppSidebar, navItemFor } from "./app-sidebar";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -101,17 +102,15 @@ function Shell({
               className="mr-2 data-vertical:h-4 data-vertical:self-center"
             />
             <span className="text-sm font-medium">{navItemFor(pathname).title}</span>
-            {!agentOpen && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="ml-auto"
-                onClick={() => showAgent(true)}
-              >
-                <MessagesSquare />
-                Agent
-              </Button>
-            )}
+            <div className="ml-auto flex items-center gap-2">
+              <AlertsBell />
+              {!agentOpen && (
+                <Button variant="outline" size="sm" onClick={() => showAgent(true)}>
+                  <MessagesSquare />
+                  Agent
+                </Button>
+              )}
+            </div>
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">{children}</div>
         </SidebarInset>

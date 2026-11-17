@@ -14,6 +14,7 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
 import { BrandCard } from "./brand-card";
+import { EditorsCard } from "./editors-card";
 
 export function SettingsView() {
   const team = useActiveTeam();
@@ -21,6 +22,24 @@ export function SettingsView() {
   const setLimit = useMutation(api.teamSettings.setMaxParallelJobs);
   const [typed, setTyped] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const setRetries = useMutation(api.teamSettings.setStepRetries);
+  const [typedRetries, setTypedRetries] = useState<string | null>(null);
+  const [savingRetries, setSavingRetries] = useState(false);
+
+  async function onSubmitRetries(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (typedRetries === null) return;
+    setSavingRetries(true);
+    try {
+      await setRetries({ organizationId: team.id, stepRetries: Number(typedRetries) });
+      setTypedRetries(null);
+      toast.success("Saved");
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The setting could not be saved. Try again."));
+    } finally {
+      setSavingRetries(false);
+    }
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,6 +67,7 @@ export function SettingsView() {
       ) : (
         <>
           <BrandCard brand={settings.brand} music={settings.music} canEdit={settings.canEdit} />
+          <EditorsCard editors={settings.editors} canEdit={settings.canEdit} />
           <Card className="max-w-xl">
             <CardHeader>
               <CardTitle>
@@ -89,6 +109,55 @@ export function SettingsView() {
                         disabled={pending || typed === null}
                       >
                         {pending ? "Saving" : "Save"}
+                      </Button>
+                    </Field>
+                  )}
+                </FieldGroup>
+              </form>
+            </CardContent>
+          </Card>
+          <Card className="max-w-xl">
+            <CardHeader>
+              <CardTitle>
+                <h2>When a step fails</h2>
+              </CardTitle>
+              <CardDescription>
+                A step that fails in an automation waits a little and tries again, a bit longer each
+                time. If it still fails, the run stops and everyone on the team gets an alert under
+                the bell at the top of the page.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={onSubmitRetries}>
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="step-retries">Times to try again</FieldLabel>
+                    <Input
+                      id="step-retries"
+                      type="number"
+                      min={0}
+                      max={settings.mostRetries}
+                      step={1}
+                      className="w-28"
+                      value={typedRetries ?? String(settings.stepRetries)}
+                      onChange={(event) => setTypedRetries(event.target.value)}
+                      disabled={!settings.canEdit}
+                      required
+                    />
+                    <FieldDescription>
+                      {settings.canEdit
+                        ? `From 0 to ${settings.mostRetries}. With 0 a step that fails stops the run straight away.`
+                        : "Only a team owner or admin can change this."}
+                    </FieldDescription>
+                  </Field>
+                  {settings.canEdit && (
+                    <Field>
+                      <Button
+                        type="submit"
+                        className="self-start"
+                        disabled={savingRetries || typedRetries === null}
+                      >
+                        {savingRetries ? "Saving" : "Save"}
                       </Button>
                     </Field>
                   )}

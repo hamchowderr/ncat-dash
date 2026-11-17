@@ -3,14 +3,34 @@ import { v } from "convex/values";
 
 export const nodeValidator = v.object({
   id: v.string(),
-  kind: v.union(v.literal("step"), v.literal("approval"), v.literal("clips")),
+  kind: v.union(
+    v.literal("step"),
+    v.literal("approval"),
+    v.literal("clips"),
+    v.literal("export"),
+    v.literal("if"),
+    v.literal("wait"),
+  ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
   input: v.record(v.string(), v.any()),
   position: v.object({ x: v.number(), y: v.number() }),
 });
 
-export const edgeValidator = v.object({ id: v.string(), source: v.string(), target: v.string() });
+export const editorValidator = v.union(
+  v.literal("premiere"),
+  v.literal("resolve"),
+  v.literal("finalcut"),
+  v.literal("capcut"),
+);
+
+export const edgeValidator = v.object({
+  id: v.string(),
+  source: v.string(),
+  target: v.string(),
+  // Which way out of an If the connection leaves by: "yes" or "no".
+  branch: v.optional(v.string()),
+});
 
 const fileTypeValidator = v.union(
   v.literal("any"),
@@ -51,11 +71,17 @@ export const operationValidator = v.union(
     id: v.optional(v.string()),
     after: v.optional(v.string()),
     before: v.optional(v.string()),
+    branch: v.optional(v.string()),
     settings: v.optional(v.record(v.string(), v.any())),
     label: v.optional(v.string()),
   }),
   v.object({ op: v.literal("remove"), ids: v.array(v.string()) }),
-  v.object({ op: v.literal("connect"), source: v.string(), target: v.string() }),
+  v.object({
+    op: v.literal("connect"),
+    source: v.string(),
+    target: v.string(),
+    branch: v.optional(v.string()),
+  }),
   v.object({ op: v.literal("disconnect"), source: v.string(), target: v.string() }),
   v.object({ op: v.literal("set"), id: v.string(), settings: v.record(v.string(), v.any()) }),
   v.object({ op: v.literal("use"), id: v.string(), field: v.string(), from: v.string() }),
@@ -139,6 +165,9 @@ export default defineSchema({
     dispatchedAt: v.optional(v.number()),
     // Set when an automation run created the job, so its result moves the run on.
     runStepId: v.optional(v.id("runSteps")),
+    // True when the failure is one another try cannot fix, such as a setting the
+    // toolkit refuses. A step in a run does not try such a job again.
+    permanent: v.optional(v.boolean()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
@@ -154,6 +183,10 @@ export default defineSchema({
     // The team's music library. A step that adds music uses the first track unless it
     // picks another by name.
     music: v.optional(musicValidator),
+    // How many times a failed step in a run tries again before the run fails.
+    stepRetries: v.optional(v.number()),
+    // The video editors the team uses, which decides the files an export makes.
+    editors: v.optional(v.array(editorValidator)),
   }).index("by_organization", ["organizationId"]),
 
   // A saved automation: what starts it, and the steps it runs.
@@ -172,6 +205,18 @@ export default defineSchema({
     // For a watched folder: only files added after this moment start a run, so
     // switching it on never reprocesses what was already there.
     watchFrom: v.optional(v.number()),
+    // Changes not yet published. The fields above are the live version, the one triggers
+    // run; while the automation is on, edits are kept here until someone publishes them.
+    draft: v.optional(
+      v.object({
+        name: v.string(),
+        trigger: triggerValidator,
+        nodes: v.array(nodeValidator),
+        edges: v.array(edgeValidator),
+        updatedBy: v.string(),
+        updatedAt: v.number(),
+      }),
+    ),
     createdBy: v.string(),
     updatedAt: v.number(),
   })
@@ -214,6 +259,8 @@ export default defineSchema({
     // The person who pressed "Run now"; null when a trigger started it.
     startedBy: v.union(v.null(), v.string()),
     finishedAt: v.union(v.null(), v.number()),
+    // How many times steps in this run have tried again after failing.
+    retries: v.optional(v.number()),
   })
     .index("by_automation", ["automationId"])
     .index("by_organization", ["organizationId"])
@@ -240,7 +287,15 @@ export default defineSchema({
     // For a "clips" step, which works in two stages: first it reads each video's length
     // and pauses ("probe"), then it cuts the clips ("cut"). jobIds holds the current
     // stage's jobs.
-    stage: v.optional(v.union(v.literal("probe"), v.literal("cut"))),
+    // An "if" step reading its files' details is at "check"; a "wait" step is at "wait".
+    stage: v.optional(
+      v.union(v.literal("probe"), v.literal("cut"), v.literal("check"), v.literal("wait")),
+    ),
+    // For a finished "if" step: the files that left by each way out. `outputs` holds all
+    // of them; a later step is handed only those of the way that leads to it.
+    branches: v.optional(v.record(v.string(), v.array(v.string()))),
+    // For a "wait" step: when it lets the run carry on.
+    resumeAt: v.optional(v.number()),
     // The planned clips, in the same order as the cut jobs.
     plan: v.optional(
       v.array(
@@ -253,13 +308,52 @@ export default defineSchema({
         }),
       ),
     ),
+    // What is known about each video a "clips" step cut, kept so its cuts can be opened
+    // in a video editor later.
+    sources: v.optional(
+      v.array(
+        v.object({
+          url: v.string(),
+          fps: v.number(),
+          width: v.number(),
+          height: v.number(),
+          duration: v.number(),
+          hasAudio: v.boolean(),
+          audioChannels: v.optional(v.number()),
+          audioSampleRate: v.optional(v.number()),
+        }),
+      ),
+    ),
     // Who approved or rejected, for an approval step.
     decidedBy: v.optional(v.string()),
+    // How many times this step has tried again after failing.
+    retries: v.optional(v.number()),
+    // Set while the step waits to try again: when the next try starts, and why the
+    // last one failed.
+    retryAt: v.optional(v.number()),
+    retryError: v.optional(v.string()),
     startedAt: v.union(v.null(), v.number()),
     finishedAt: v.union(v.null(), v.number()),
   })
     .index("by_run", ["runId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
+
+  // Something the team should know about: a run that failed after all its tries. Shown
+  // under the bell to every member until that member has seen it.
+  alerts: defineTable({
+    organizationId: v.string(),
+    kind: v.literal("run_failed"),
+    runId: v.id("runs"),
+    automationId: v.id("automations"),
+    automationName: v.string(),
+    // The step that failed, as it is named on the canvas.
+    stepName: v.optional(v.string()),
+    message: v.string(),
+    // How many times that step tried again before giving up.
+    retries: v.number(),
+    // The members who have seen it.
+    seenBy: v.array(v.string()),
+  }).index("by_organization", ["organizationId"]),
 
   // A team's own S3-compatible bucket (AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces).
   storageConnections: defineTable({
@@ -270,8 +364,24 @@ export default defineSchema({
     accessKeyId: v.string(),
     // AES-GCM ciphertext of the secret access key.
     secretCipher: v.string(),
+    // The public address the toolkit hands files out under (its S3_PUBLIC_URL), when it
+    // has one. Lets links in outputs be followed when a file is renamed or moved.
+    publicUrl: v.optional(v.string()),
     createdBy: v.string(),
   }).index("by_organization", ["organizationId"]),
+
+  // What the toolkit read from a file that reached the bucket without going through this
+  // app (dropped in by another tool, or made by a step). Uploads keep theirs on the upload.
+  bucketFiles: defineTable({
+    organizationId: v.string(),
+    key: v.string(),
+    // The contents these details were read from. A file replaced under the same name is
+    // read again.
+    etag: v.string(),
+    // Missing while the read is under way, or when the toolkit could not read the file.
+    details: v.optional(fileDetailsValidator),
+    askedAt: v.number(),
+  }).index("by_organization_and_key", ["organizationId", "key"]),
 
   // Files people upload from the browser. The bytes go straight to the team's bucket;
   // this row only records where they are.
@@ -289,5 +399,8 @@ export default defineSchema({
     // Read from the file by the toolkit once the upload finishes. Missing while that is
     // still to happen, or when the toolkit could not read the file.
     details: v.optional(fileDetailsValidator),
-  }).index("by_organization", ["organizationId"]),
+  })
+    .index("by_organization", ["organizationId"])
+    // Finds the upload behind a file in the bucket, for the Files page.
+    .index("by_organization_and_key", ["organizationId", "key"]),
 });
