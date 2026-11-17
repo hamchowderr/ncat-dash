@@ -1,24 +1,37 @@
 "use client";
 
-import type { AutomationNode } from "@ncat-dash/automation-core";
+import { type AutomationNode, missingSettings, NODE_GAP } from "@ncat-dash/automation-core";
 import { getStep, type StepCategory } from "@ncat-dash/step-catalog";
 import { type Edge, Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import {
+  CalendarClock,
   Code,
   Film,
+  FolderInput,
+  Hand,
   HardDriveUpload,
   Image as ImageIcon,
   type LucideIcon,
   Music,
+  Plus,
   Scissors,
   Shapes,
   Terminal,
+  TriangleAlert,
+  Upload,
   UserCheck,
   Wand2,
-  Zap,
+  Webhook,
 } from "lucide-react";
+import { createContext, useContext } from "react";
 
-import { nodeTitle, type Trigger, TRIGGER_LABELS, triggerSummary } from "@/lib/automations";
+import {
+  nodeTitle,
+  type Trigger,
+  type TriggerKind,
+  TRIGGER_LABELS,
+  triggerSummary,
+} from "@/lib/automations";
 import { CATEGORY_LABELS } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
@@ -37,100 +50,184 @@ export const CATEGORY_ICONS: Record<StepCategory, LucideIcon> = {
   storage: HardDriveUpload,
 };
 
+export const TRIGGER_ICONS: Record<TriggerKind, LucideIcon> = {
+  manual: Hand,
+  webhook: Webhook,
+  schedule: CalendarClock,
+  upload: Upload,
+  folder: FolderInput,
+};
+
+// One colour per kind of step, so a graph can be read at a glance.
+const CATEGORY_TINTS: Record<StepCategory, string> = {
+  video: "text-violet-600 dark:text-violet-400",
+  audio: "text-sky-600 dark:text-sky-400",
+  media: "text-teal-600 dark:text-teal-400",
+  image: "text-pink-600 dark:text-pink-400",
+  recipe: "text-amber-600 dark:text-amber-400",
+  ffmpeg: "text-slate-600 dark:text-slate-300",
+  code: "text-emerald-600 dark:text-emerald-400",
+  storage: "text-blue-600 dark:text-blue-400",
+};
+export const TRIGGER_TINT = "text-rose-600 dark:text-rose-400";
+
+/** The icon, colour and second line for a step, shared by the canvas and the small previews. */
+export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">): {
+  icon: LucideIcon;
+  tint: string;
+  kind: string;
+} {
+  if (node.kind === "approval") {
+    return {
+      icon: UserCheck,
+      tint: "text-amber-600 dark:text-amber-400",
+      kind: "Waits for a person",
+    };
+  }
+  if (node.kind === "clips") {
+    return {
+      icon: Scissors,
+      tint: "text-orange-600 dark:text-orange-400",
+      kind: String(node.input.platform ?? "No platform picked"),
+    };
+  }
+  const step = getStep(node.stepId ?? "");
+  if (!step)
+    return { icon: Shapes, tint: "text-muted-foreground", kind: "No longer in the catalog" };
+  return {
+    icon: CATEGORY_ICONS[step.category],
+    tint: CATEGORY_TINTS[step.category],
+    kind: CATEGORY_LABELS[step.category],
+  };
+}
+
 export type StepNodeData = {
   node: Omit<AutomationNode, "position">;
   status?: StepStatus;
   /** How many jobs the step fanned out to, in a run. */
   jobCount?: number;
+  /** Nothing follows this step yet, so it offers to add one. */
+  last?: boolean;
 };
 export type TriggerNodeData = { trigger: Trigger; summary?: string };
 export type StepFlowNode = Node<StepNodeData, "step">;
 export type TriggerFlowNode = Node<TriggerNodeData, "trigger">;
 export type FlowNode = StepFlowNode | TriggerFlowNode;
 
-const shell =
-  "bg-card text-card-foreground flex w-60 items-center gap-3 rounded-xl border p-3 shadow-xs transition-shadow";
+/** Set by the editor; absent on a run, where nothing can be added. */
+export const AddAfterContext = createContext<((nodeId: string) => void) | null>(null);
+
+const tile =
+  "bg-card relative flex size-20 items-center justify-center border shadow-sm transition-[box-shadow,border-color]";
+const caption =
+  "pointer-events-none absolute top-full left-1/2 mt-2 grid w-44 -translate-x-1/2 text-center leading-tight";
 const handle = "!size-2.5 !border-2 !border-background !bg-muted-foreground";
 
-function StepNode({ data, selected }: NodeProps<StepFlowNode>) {
-  const { node, status, jobCount } = data;
-  const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
-  const Icon =
-    node.kind === "approval"
-      ? UserCheck
-      : node.kind === "clips"
-        ? Scissors
-        : step
-          ? CATEGORY_ICONS[step.category]
-          : Shapes;
+function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
+  const { node, status, jobCount, last } = data;
+  const look = nodeLook({ ...node, input: node.input });
+  const addAfter = useContext(AddAfterContext);
+  const missing = status ? [] : missingSettings({ ...node, position: { x: 0, y: 0 } });
+  const second =
+    jobCount && jobCount > 1 && status && status !== "pending"
+      ? `${jobCount} ${node.kind === "clips" ? "clips" : "files"}`
+      : missing.length > 0
+        ? "Needs settings"
+        : look.kind;
   return (
-    <div
-      className={cn(
-        shell,
-        selected && "ring-ring/50 border-ring ring-3",
-        status === "failed" && "border-destructive/60",
-        status === "skipped" && "opacity-60",
-      )}
-    >
-      <Handle type="target" position={Position.Top} className={handle} />
-      <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
-        <Icon className="size-4" aria-hidden="true" />
+    <div className="relative" data-node={id}>
+      <div
+        className={cn(
+          tile,
+          "rounded-2xl",
+          selected && "ring-ring/50 border-ring ring-3",
+          status === "running" && "border-primary",
+          status === "done" && "border-emerald-600/60",
+          status === "failed" && "border-destructive",
+          status === "skipped" && "opacity-50",
+        )}
+      >
+        <Handle type="target" position={Position.Left} className={handle} />
+        <look.icon className={cn("size-8", look.tint)} strokeWidth={1.6} aria-hidden="true" />
+        {status && status !== "pending" && (
+          <span className="bg-card absolute -right-1.5 -bottom-1.5 rounded-full p-0.5">
+            <StatusIcon status={status} />
+          </span>
+        )}
+        {missing.length > 0 && (
+          <span
+            className="bg-card absolute -top-1.5 -right-1.5 rounded-full p-0.5 text-amber-600 dark:text-amber-400"
+            title={`Still needs: ${missing.join(", ")}`}
+          >
+            <TriangleAlert className="size-4" aria-hidden="true" />
+          </span>
+        )}
+        <Handle type="source" position={Position.Right} className={handle} />
       </div>
-      <div className="grid min-w-0 flex-1 leading-tight">
+      {last && addAfter && (
+        <button
+          type="button"
+          aria-label={`Add a step after ${nodeTitle(node)}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            addAfter(id);
+          }}
+          className="nodrag bg-card text-muted-foreground hover:text-foreground hover:border-foreground/40 focus-visible:ring-ring/50 absolute top-1/2 left-full ml-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-md border outline-none before:absolute before:right-full before:h-px before:w-10 before:bg-[var(--xy-edge-stroke-default,#b1b1b7)] focus-visible:ring-3"
+        >
+          <Plus className="size-4" aria-hidden="true" />
+        </button>
+      )}
+      <div className={caption}>
         <span className="truncate text-sm font-medium">{nodeTitle(node)}</span>
-        <span className="text-muted-foreground truncate text-xs">
-          {node.kind === "approval"
-            ? "Waits for a person"
-            : node.kind === "clips"
-              ? jobCount && jobCount > 1 && status !== "pending"
-                ? `${jobCount} clips`
-                : String(node.input.platform ?? "No platform picked")
-              : step
-                ? jobCount && jobCount > 1
-                  ? `${jobCount} files`
-                  : CATEGORY_LABELS[step.category]
-                : "No longer in the catalog"}
+        <span
+          className={cn(
+            "truncate text-xs",
+            missing.length > 0 ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground",
+          )}
+        >
+          {second}
         </span>
       </div>
-      {status && <StatusIcon status={status} />}
-      <Handle type="source" position={Position.Bottom} className={handle} />
     </div>
   );
 }
 
 function TriggerNode({ data, selected }: NodeProps<TriggerFlowNode>) {
+  const Icon = TRIGGER_ICONS[data.trigger.kind];
   return (
-    <div
-      className={cn(
-        shell,
-        "border-primary/30 bg-primary/5",
-        selected && "ring-ring/50 border-ring ring-3",
-      )}
-    >
-      <div className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-lg">
-        <Zap className="size-4" aria-hidden="true" />
+    <div className="relative" data-node={TRIGGER_ID}>
+      <div
+        className={cn(
+          tile,
+          "rounded-l-[2.5rem] rounded-r-2xl",
+          selected && "ring-ring/50 border-ring ring-3",
+        )}
+      >
+        <Icon className={cn("size-8", TRIGGER_TINT)} strokeWidth={1.6} aria-hidden="true" />
+        <Handle type="source" position={Position.Right} className={handle} />
       </div>
-      <div className="grid min-w-0 flex-1 leading-tight">
+      <div className={caption}>
         <span className="truncate text-sm font-medium">{TRIGGER_LABELS[data.trigger.kind]}</span>
-        <span className="text-muted-foreground truncate text-xs">
+        <span className="text-muted-foreground line-clamp-2 text-xs">
           {data.summary ?? triggerSummary(data.trigger)}
         </span>
       </div>
-      <Handle type="source" position={Position.Bottom} className={handle} />
     </div>
   );
 }
 
 export const nodeTypes = { step: StepNode, trigger: TriggerNode };
 
-/** Where the trigger box sits: centred above the highest step. */
+/** Where the trigger sits: one place to the left of the first step. */
 export function triggerPosition(nodes: { position: { x: number; y: number } }[]) {
-  if (nodes.length === 0) return { x: 0, y: 0 };
-  const top = nodes.reduce((a, b) => (b.position.y < a.position.y ? b : a));
-  return { x: top.position.x, y: top.position.y - 130 };
+  if (nodes.length === 0) return { x: -NODE_GAP, y: 0 };
+  const left = Math.min(...nodes.map((node) => node.position.x));
+  const firsts = nodes.filter((node) => node.position.x === left);
+  const y = firsts.reduce((sum, node) => sum + node.position.y, 0) / firsts.length;
+  return { x: left - NODE_GAP, y };
 }
 
-/** Dashed lines from the trigger to every step that nothing else feeds. */
+/** Lines from the trigger to every step that nothing else feeds. */
 export function triggerEdges(nodeIds: string[], edges: { target: string }[]): Edge[] {
   const fed = new Set(edges.map((edge) => edge.target));
   return nodeIds
@@ -142,6 +239,11 @@ export function triggerEdges(nodeIds: string[], edges: { target: string }[]): Ed
       deletable: false,
       selectable: false,
       focusable: false,
-      style: { strokeDasharray: "5 5" },
     }));
+}
+
+/** Ids of the steps nothing follows. */
+export function lastNodeIds(nodeIds: string[], edges: { source: string }[]): Set<string> {
+  const feeding = new Set(edges.map((edge) => edge.source));
+  return new Set(nodeIds.filter((id) => !feeding.has(id)));
 }
