@@ -439,11 +439,15 @@ describe("caption files", () => {
     });
   }
 
-  /** Runs what was scheduled, then puts the clock back so sign-ins have not run out. */
+  /**
+   * Lets what was just scheduled (reading the caption file) run to its end, on the real clock:
+   * moving a fake clock far ahead would run the sign-in clean-up too.
+   */
   async function settle(t: ReturnType<typeof backend>) {
-    vi.useFakeTimers();
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-    vi.useRealTimers();
+    for (let round = 0; round < 3; round++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await t.finishInProgressScheduledFunctions();
+    }
   }
 
   test("an uploaded SRT shows its lines with their times, and they can be searched", async () => {
