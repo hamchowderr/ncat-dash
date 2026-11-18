@@ -43,7 +43,7 @@ export const videoReframe = defineStep({
       .number()
       .min(0)
       .max(10)
-      .default(0.5)
+      .default(1)
       .describe("Seconds someone must talk before the camera moves to them")
       .meta({ title: "Wait before switching" }),
     min_hold: z
