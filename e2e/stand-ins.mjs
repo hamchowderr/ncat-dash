@@ -153,13 +153,19 @@ createServer((request, response) => {
     // The fork's storage requests: its bucket is the file server above.
     if (request.url.startsWith("/v1/storage/")) {
       const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
-      const prefix = String(body.prefix ?? "");
-      if (request.url === "/v1/storage/folder") folders.add(prefix);
+      // The dashboard keeps each team inside teams/<id>/; every team here gets the same
+      // folders, kept from inside its own.
+      const asked = String(body.prefix ?? "");
+      const team = /^teams\/[^/]+\//.exec(asked)?.[0] ?? "";
+      const prefix = asked.slice(team.length);
+      if (request.url === "/v1/storage/folder" && prefix) folders.add(prefix);
       // The folders straight inside the one asked about.
-      const inside = [...folders].filter(
-        (key) =>
-          key.startsWith(prefix) && key !== prefix && !key.slice(prefix.length, -1).includes("/"),
-      );
+      const inside = [...folders]
+        .filter(
+          (key) =>
+            key.startsWith(prefix) && key !== prefix && !key.slice(prefix.length, -1).includes("/"),
+        )
+        .map((key) => `${team}${key}`);
       const answers = {
         info: { provider: "s3", bucket: "stand-in", endpoint: FILES, public_url: null },
         sign: { url: `${FILES}/${body.key}`, method: body.method ?? "GET" },

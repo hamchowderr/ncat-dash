@@ -49,7 +49,7 @@ async function studio({ storage = true } = {}) {
 
 describe("trying an automation on an upload", () => {
   test("takes the newest upload the trigger wants, and starts a run on a link to it", async () => {
-    const { t, maya, automationId, upload } = await studio();
+    const { t, team, maya, automationId, upload } = await studio();
     await upload("older.mp4", "video/mp4");
     await upload("newest.mp4", "video/mp4");
     // Not a video, and a brand file: neither starts this automation.
@@ -66,15 +66,17 @@ describe("trying an automation on an upload", () => {
     const trigger = run?.trigger as { file_url: string; file_name: string };
     expect(trigger.file_name).toBe("newest.mp4");
     // A read link the toolkit signed, made for the toolkit's own bucket.
-    expect(trigger.file_url).toMatch(/^https:\/\/r2\.example\/test-bucket\/uploads\/newest\.mp4\?/);
+    expect(trigger.file_url).toMatch(
+      /^https:\/\/r2\.example\/test-bucket\/teams\/[^/]+\/uploads\/newest\.mp4\?/,
+    );
     expect(toolkit?.calls).toContainEqual({
       request: "sign",
-      body: { key: "uploads/newest.mp4", method: "GET", expires_in: 604800 },
+      body: { key: `teams/${team}/uploads/newest.mp4`, method: "GET", expires_in: 604800 },
     });
   });
 
   test("runs while the automation is still switched off", async () => {
-    const { t, maya, automationId, upload } = await studio();
+    const { t, team, maya, automationId, upload } = await studio();
     await upload("talk.mp4", "video/mp4");
     const automation = await t.run((ctx) => ctx.db.get(automationId));
     expect(automation?.enabled).toBe(false);

@@ -1,4 +1,6 @@
-// The Files page: everything in the team's bucket, read as folders and files.
+// The Files page: everything in the team's folder of the bucket, read as folders and files.
+// Keys here are written from inside the team's folder (see lib/bucket.ts), so "" is the
+// top of the team's storage and no team can name another team's files.
 //
 // A bucket has no folders and no rename. A folder is every key that starts with its
 // prefix, an empty folder is a zero-byte object whose key ends in a slash, and a rename or
@@ -11,8 +13,10 @@ import {
   fileFamily,
   followFolder,
   followMoves,
+  fileNameOfLink,
   freeName,
   isFolderKey,
+  keyOfUrl,
   keyInsideMovedFolder,
   movedKey,
   moveProblem,
@@ -21,6 +25,7 @@ import {
   readFileDetails,
   readUploadRef,
   renamedKey,
+  teamFolder,
 } from "@ncat-dash/automation-core";
 import { callStep, getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
@@ -48,6 +53,8 @@ import {
   putFolder,
   storageConnection,
 } from "./lib/bucket";
+import { finishedFiles } from "./lib/exports";
+import { outputNamesOf } from "./lib/outputs";
 import { fileDetailsValidator } from "./schema";
 
 const UPLOAD_LINK_SECONDS = 60 * 60;
@@ -741,6 +748,7 @@ export const followLinks = internalMutation({
       endpoint: connection.storage.endpoint,
       bucket: connection.storage.bucket,
       ...(connection.storage.publicUrl ? { publicUrl: connection.storage.publicUrl } : {}),
+      root: teamFolder(args.organizationId),
     };
     const moved = new Map(args.moves.map(({ from, to }) => [from, to]));
 
@@ -835,5 +843,141 @@ export const followLinks = internalMutation({
         }
       }
     }
+  },
+});
+
+// ---------------------------------------------------------------------------------------
+// The team's folder. Many teams can share one toolkit, and so one bucket, so each team
+// works inside "teams/<id>/" (see lib/bucket.ts).
+
+/**
+ * Makes the team's folder, so Files shows it right away, and brings in what this app put
+ * in the bucket before teams had folders: every upload the team made, which used to sit
+ * at its key from the top of the bucket. Their records keep the same key, which now reads
+ * from inside the team's folder. Runs when a toolkit is connected; safe to run again.
+ */
+export const settleTeamFolder = internalAction({
+  args: { organizationId: v.string() },
+  returns: v.object({ moved: v.number(), leftBehind: v.number() }),
+  handler: async (ctx, args): Promise<{ moved: number; leftBehind: number }> => {
+    const connection = await ctx.runQuery(internal.storage.load, {
+      organizationId: args.organizationId,
+    });
+    if (!connection) return { moved: 0, leftBehind: 0 };
+    const config = await bucketFor(connection);
+    if (!(await keyExists(config, ""))) await putFolder(config, "");
+
+    // The whole bucket, for reaching the old places outside the team's folder.
+    const whole: Bucket = { ...config, root: "" };
+    const keys: string[] = await ctx.runQuery(internal.files.uploadKeys, {
+      organizationId: args.organizationId,
+    });
+    let moved = 0;
+    const leftBehind = await eachOf(keys, async (key) => {
+      if (await keyExists(config, key)) return;
+      if (!(await keyExists(whole, key))) return;
+      await copyObject(whole, key, `${config.root}${key}`);
+      await deleteObject(whole, key);
+      moved++;
+    });
+    return { moved, leftBehind: leftBehind.length };
+  },
+});
+
+/** Every file key the team's uploads point at (what `settleTeamFolder` brings in). */
+export const uploadKeys = internalQuery({
+  args: { organizationId: v.string() },
+  returns: v.array(v.string()),
+  handler: async (ctx, args) => {
+    const uploads = await ctx.db
+      .query("uploads")
+      .withIndex("by_organization_and_key", (q) => q.eq("organizationId", args.organizationId))
+      .take(MAX_OBJECTS);
+    return [...new Set(uploads.map((upload) => upload.key))].filter(
+      (key) => key && !isFolderKey(key),
+    );
+  },
+});
+
+/** Where a finished run's files are kept in the team's folder. */
+export const FINISHED_FOLDER = "Finished/";
+
+/** "clip.mp4" gives ".mp4"; a name without one gives "". */
+function endingOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(dot).toLowerCase() : "";
+}
+
+/**
+ * The toolkit saves what it makes at the top of its bucket, outside every team's folder.
+ * When a run finishes, its finished files are copied into the team's folder, under
+ * Finished/<automation>/, with readable names, so they show in Files. The run keeps its
+ * own links, so nothing that already points at a file changes.
+ */
+export const keepFinished = internalAction({
+  args: { runId: v.id("runs") },
+  returns: v.array(v.string()),
+  handler: async (ctx, args): Promise<string[]> => {
+    const found: {
+      organizationId: string;
+      automationName: string;
+      files: { link: string; name: string }[];
+    } | null = await ctx.runQuery(internal.files.finishedOfRun, { runId: args.runId });
+    if (!found || found.files.length === 0) return [];
+    const connection = await ctx.runQuery(internal.storage.load, {
+      organizationId: found.organizationId,
+    });
+    if (!connection?.storage?.endpoint) return [];
+    const config = await bucketFor(connection);
+    const whole: Bucket = { ...config, root: "" };
+    const address = {
+      endpoint: connection.storage.endpoint,
+      bucket: connection.storage.bucket,
+      ...(connection.storage.publicUrl ? { publicUrl: connection.storage.publicUrl } : {}),
+    };
+    const folderName = (found.automationName.trim() || "Automation").replace(/[/\\]/g, "-");
+    const folder = `${FINISHED_FOLDER}${nameProblem(folderName) ? "Automation" : folderName}/`;
+    const taken = new Set(
+      (await listObjects(config, folder, 1)).map((object) => object.key.slice(folder.length)),
+    );
+    const kept: string[] = [];
+    for (const file of found.files) {
+      const from = keyOfUrl(address, file.link);
+      // Already in a team's folder (or not in this bucket at all): nothing to copy.
+      if (from === null || from.startsWith("teams/")) continue;
+      const ending = endingOf(from);
+      const wanted = file.name.toLowerCase().endsWith(ending) ? file.name : `${file.name}${ending}`;
+      const name = freeName(wanted.replace(/[/\\]/g, "-"), (candidate) => taken.has(candidate));
+      taken.add(name);
+      try {
+        await copyObject(whole, from, `${config.root}${folder}${name}`);
+        kept.push(`${folder}${name}`);
+      } catch {
+        // Left where the toolkit put it; the run still links to it there.
+      }
+    }
+    return kept;
+  },
+});
+
+/** A finished run's last files with their readable names, for `keepFinished`. */
+export const finishedOfRun = internalQuery({
+  args: { runId: v.id("runs") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run || run.status !== "done") return null;
+    const steps = await ctx.db
+      .query("runSteps")
+      .withIndex("by_run", (q) => q.eq("runId", run._id))
+      .take(200);
+    const names = outputNamesOf(run, steps);
+    return {
+      organizationId: run.organizationId,
+      automationName: run.automationName,
+      files: finishedFiles(run, steps).map((link) => ({
+        link,
+        name: names[link] ?? fileNameOfLink(link),
+      })),
+    };
   },
 });

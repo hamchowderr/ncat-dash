@@ -3,6 +3,15 @@
 // followed by deleting the old one. These helpers work out the new keys and keep the
 // links that point at a moved file in step.
 
+/**
+ * Where one team's files live in the bucket. Many teams can share one toolkit (and so one
+ * bucket), so each team only ever sees inside its own folder: to the team, this folder is
+ * the top of its storage, and every key the app keeps is written from here.
+ */
+export function teamFolder(organizationId: string): string {
+  return `teams/${organizationId}/`;
+}
+
 /** A folder is written as its prefix, ending in a slash: "clips/tuesday/". */
 export function isFolderKey(key: string): boolean {
   return key.endsWith("/");
@@ -89,6 +98,11 @@ export interface BucketAddress {
    * and its key.
    */
   publicUrl?: string;
+  /**
+   * The team's folder ("teams/<id>/"). Keys are then written from inside it, and a link
+   * to anything outside it has no key.
+   */
+  root?: string;
 }
 
 function publicBase(address: BucketAddress): string | null {
@@ -111,6 +125,14 @@ function decoded(path: string): string | null {
  * public address. A signed link, or one to anywhere else, gives null.
  */
 export function keyOfUrl(address: BucketAddress, link: string): string | null {
+  const key = bucketKeyOfUrl(address, link);
+  if (key === null || !address.root) return key;
+  return key.startsWith(address.root) && key.length > address.root.length
+    ? key.slice(address.root.length)
+    : null;
+}
+
+function bucketKeyOfUrl(address: BucketAddress, link: string): string | null {
   let url: URL;
   let endpoint: URL;
   try {
@@ -149,7 +171,7 @@ export function urlWithKey(address: BucketAddress, link: string, key: string): s
   const url = new URL(link);
   const endpoint = new URL(address.endpoint);
   const base = endpoint.pathname.replace(/\/+$/, "");
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const path = `${address.root ?? ""}${key}`.split("/").map(encodeURIComponent).join("/");
   const shared = publicBase(address);
   if (shared && url.origin === new URL(shared).origin && url.host !== endpoint.host) {
     return `${shared}/${path}`;

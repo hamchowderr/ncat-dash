@@ -37,11 +37,13 @@ describe("the Watched folder trigger panel", () => {
       <TriggerPanel trigger={folderTrigger} onChange={vi.fn()} automationId="a" hookToken="t" />,
     );
     expect(screen.getByText("incoming")).toBeTruthy();
-    expect(screen.getByText("salt-house/incoming/")).toBeTruthy();
+    expect(screen.getByText("Your files/incoming/")).toBeTruthy();
+    // The bucket is the toolkit's, shared with other teams; its name is never shown.
+    expect(document.body.textContent).not.toContain("salt-house");
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  test("picks a folder from the bucket", async () => {
+  test("picks a folder from the team's files", async () => {
     answerQuery(api.storage.get, { bucket: "salt-house", publicUrl: null, baseUrl: "" });
     actionOf(api.files.folders).mockImplementation(async (args: { prefix: string }) =>
       args.prefix === ""
@@ -58,7 +60,7 @@ describe("the Watched folder trigger panel", () => {
       <TriggerPanel trigger={folderTrigger} onChange={onChange} automationId="a" hookToken="t" />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Folder" }));
-    fireEvent.click(await screen.findByRole("button", { name: /^salt-house$/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Your files$/ }));
     fireEvent.click(await screen.findByRole("button", { name: "podcast" }));
     fireEvent.click(await screen.findByRole("button", { name: "raw" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Watch raw" })).toBeTruthy());
@@ -66,7 +68,7 @@ describe("the Watched folder trigger panel", () => {
     expect(onChange).toHaveBeenCalledWith({ ...folderTrigger, prefix: "podcast/raw/" });
   });
 
-  test("can watch the whole bucket", async () => {
+  test("can watch all of the team's files", async () => {
     answerQuery(api.storage.get, { bucket: "salt-house", publicUrl: null, baseUrl: "" });
     actionOf(api.files.folders).mockResolvedValue([]);
     const onChange = vi.fn();
@@ -74,8 +76,8 @@ describe("the Watched folder trigger panel", () => {
       <TriggerPanel trigger={folderTrigger} onChange={onChange} automationId="a" hookToken="t" />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Folder" }));
-    fireEvent.click(await screen.findByRole("button", { name: /^salt-house$/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Watch the whole bucket" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Your files$/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Watch all your files" }));
     expect(onChange).toHaveBeenCalledWith({ ...folderTrigger, prefix: "" });
   });
 

@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 // The watched-folder trigger, in a real browser: the folder is picked from the bucket,
-// or made there, and nobody types a path. The bucket is the stand-in toolkit's.
+// or made there, and nobody types a path. The bucket is the stand-in toolkit's, and the
+// team only sees its own folder in it, shown as "Your files".
 
 const stamp = Date.now().toString(36);
 const TOOLKIT = "http://127.0.0.1:8767";
@@ -27,18 +28,18 @@ test("the watched folder is picked from the bucket", async ({ page }) => {
 
   // The starter watches incoming/, shown by name with nothing to type.
   const panel = page.locator("aside");
-  await expect(panel.getByText("stand-in/incoming/")).toBeVisible();
+  await expect(panel.getByText("Your files/incoming/")).toBeVisible();
   await expect(panel.getByRole("textbox")).toHaveCount(0);
 
   // Walks to podcast/raw/ and watches it.
   await panel.getByRole("button", { name: "Folder" }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "stand-in", exact: true }).click();
+  await dialog.getByRole("button", { name: "Your files", exact: true }).click();
   await dialog.getByRole("button", { name: "podcast" }).click();
   await dialog.getByRole("button", { name: "raw" }).click();
   await dialog.getByRole("button", { name: "Watch raw" }).click();
   await expect(dialog).toBeHidden();
-  await expect(panel.getByText("stand-in/podcast/raw/")).toBeVisible();
+  await expect(panel.getByText("Your files/podcast/raw/")).toBeVisible();
 
   // A new folder is made in the bucket and watched.
   await panel.getByRole("button", { name: "Folder" }).click();
@@ -46,12 +47,12 @@ test("the watched folder is picked from the bucket", async ({ page }) => {
   await dialog.getByLabel("New folder name").fill("week 12");
   await dialog.getByRole("button", { name: "Make it" }).click();
   await dialog.getByRole("button", { name: "Watch week 12" }).click();
-  await expect(panel.getByText("stand-in/podcast/raw/week 12/")).toBeVisible();
+  await expect(panel.getByText("Your files/podcast/raw/week 12/")).toBeVisible();
 
   // It is saved with the automation.
   await page.getByRole("button", { name: /^Save( draft)?$/ }).click();
   await expect(page.getByRole("button", { name: /^(Saved|Draft saved)$/ })).toBeVisible();
   await page.reload();
   await page.locator(".react-flow__node-trigger").click();
-  await expect(page.locator("aside").getByText("stand-in/podcast/raw/week 12/")).toBeVisible();
+  await expect(page.locator("aside").getByText("Your files/podcast/raw/week 12/")).toBeVisible();
 });
