@@ -79,7 +79,7 @@ export function ApprovalSettings({
           {named.length === 0
             ? "Nobody picked, so anyone on the team can approve."
             : `Only ${named.map((member) => member.name).join(" and ")} can approve, plus team owners and admins.`}{" "}
-          They are told under the bell and by email.
+          They are told in their Inbox and by email.
         </FieldDescription>
         {members === undefined ? (
           <p className="text-muted-foreground text-sm">Loading the team…</p>
@@ -177,7 +177,7 @@ export function ApprovalSettings({
           ) : (
             <FieldDescription>
               {settings.whenTimeUp === "reject"
-                ? "A run rejected this way shows up under the bell like any failed run."
+                ? "A run rejected this way shows up in the Inbox like any failed run."
                 : "The files it was shown carry on as if someone had approved."}
             </FieldDescription>
           )}

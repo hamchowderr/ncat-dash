@@ -4,8 +4,8 @@ import { isFor } from "./lib/alerts";
 import { requireMember } from "./lib/authz";
 import { alertHref, preferenceOf, wants } from "./lib/notifications";
 
-// The bell shows this many; older ones are still on each automation's list of runs.
-const SHOWN = 30;
+// The Inbox shows this many; older ones are still on each automation's list of runs.
+export const SHOWN = 100;
 
 /**
  * The team's latest alerts for the person asking, newest first, with whether they have
@@ -53,7 +53,7 @@ export const markSeen = mutation({
           .query("alerts")
           .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
           .order("desc")
-          .take(SHOWN);
+          .take(SHOWN * 3);
     for (const alert of alerts) {
       if (!alert || alert.organizationId !== args.organizationId) continue;
       if (alert.seenBy.includes(userId)) continue;

@@ -292,7 +292,7 @@ const APPROVAL: NodeType = {
   group: "people",
   title: "Approval",
   description:
-    "Stops the run until a reviewer approves. The files it was shown carry on to the next step. Reviewers are told in the bell and by email; it can decide by itself when nobody does in time.",
+    "Stops the run until a reviewer approves. The files it was shown carry on to the next step. Reviewers are told in their Inbox and by email; it can decide by itself when nobody does in time.",
   takes: "files",
   gives: "files",
   settings: {
