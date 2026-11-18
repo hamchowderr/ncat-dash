@@ -34,3 +34,10 @@ export function toolkitMessageText(message: unknown, depth = 0): string {
   }
   return FALLBACK;
 }
+
+// FFmpeg's log opens with a long banner and says what went wrong at the end, so a long
+// error keeps its start and its end rather than being cut after the banner.
+export function keepEnds(text: string, max = 6000): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, 1500)}\n…\n${text.slice(text.length - (max - 1500))}`;
+}

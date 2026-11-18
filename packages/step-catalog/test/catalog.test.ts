@@ -6,6 +6,7 @@ import {
   RUNNER_FIELDS,
   steps,
   testConnection,
+  jobStatus,
   ToolkitError,
   userInputJsonSchema,
   userInputSchema,
@@ -150,5 +151,46 @@ describe("testConnection", () => {
       ok: false,
       reason: "unreachable",
     });
+  });
+});
+
+describe("jobStatus", () => {
+  // The shape the toolkit fork answers with: its own envelope around the job's record.
+  const record = (job_status: string, response: unknown = null) => ({
+    code: 200,
+    response: { job_id: "tk-1", job_status, process_id: 10, response },
+  });
+
+  it("hands back the result envelope of a job the toolkit finished", async () => {
+    const envelope = { code: 200, response: [{ file_url: "https://x.test/1.mp4" }] };
+    const { fn, calls } = fakeFetch(200, record("done", envelope));
+    expect(await jobStatus(connection, "tk-1", { fetch: fn })).toEqual({
+      state: "finished",
+      envelope,
+    });
+    expect(calls[0].url).toBe("https://toolkit.example.com/v1/toolkit/job/status");
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ job_id: "tk-1" });
+  });
+
+  it("says a queued or running job is still being worked on", async () => {
+    for (const status of ["queued", "running"]) {
+      const { fn } = fakeFetch(200, record(status));
+      expect(await jobStatus(connection, "tk-1", { fetch: fn })).toEqual({ state: "working" });
+    }
+  });
+
+  it("says the job is unknown when the toolkit has no record of it", async () => {
+    const { fn } = fakeFetch(404, { code: 404, response: { error: "Job not found" } });
+    expect(await jobStatus(connection, "tk-1", { fetch: fn })).toEqual({ state: "unknown" });
+  });
+
+  it("says the job is unknown when the toolkit marked it failed without a result", async () => {
+    const { fn } = fakeFetch(200, record("failed"));
+    expect(await jobStatus(connection, "tk-1", { fetch: fn })).toEqual({ state: "unknown" });
+  });
+
+  it("throws on a toolkit error so the caller asks again later", async () => {
+    const { fn } = fakeFetch(502, "bad gateway");
+    await expect(jobStatus(connection, "tk-1", { fetch: fn })).rejects.toBeInstanceOf(ToolkitError);
   });
 });
