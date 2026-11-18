@@ -38,6 +38,7 @@ import { NeedsToolkit } from "./needs-toolkit";
 import {
   UploadFrame,
   UploadingCard,
+  UploadingRow,
   UploadPlayer,
   usePreviewLinks,
   type UploadKind,
@@ -146,6 +147,23 @@ export function UploadsView() {
     [uploads],
   );
   const links = usePreviewLinks(team.id, ready);
+  // A file still going up sits where it will land, as a skeleton with its percentage.
+  const shown = useMemo(
+    () =>
+      uploads
+        ?.filter((upload) => upload.status === "ready" || inFlight[upload._id])
+        .map((upload) => {
+          const going = upload.status === "ready" ? undefined : inFlight[upload._id];
+          return going
+            ? ({ going: true, id: upload._id, ...going } as const)
+            : ({
+                going: false,
+                id: upload._id,
+                upload: ready!.find((each) => each._id === upload._id)!,
+              } as const);
+        }),
+    [uploads, ready, inFlight],
+  );
 
   async function send(files: FileList | File[]) {
     for (const file of Array.from(files)) {
@@ -226,7 +244,6 @@ export function UploadsView() {
     );
   }
 
-  const active = Object.entries(inFlight);
   const openedUpload = ready?.find((upload) => upload._id === opened);
 
   return (
@@ -264,27 +281,13 @@ export function UploadsView() {
         </p>
       </div>
 
-      {active.length > 0 && (
-        <ul
-          className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-x-5 gap-y-6"
-          aria-label="Uploading"
-          aria-live="polite"
-        >
-          {active.map(([id, upload]) => (
-            <li key={id}>
-              <UploadingCard name={upload.name} percent={upload.percent} />
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {ready === undefined ? (
+      {shown === undefined ? (
         <Skeleton className="h-32 rounded-xl" />
-      ) : ready.length === 0 ? null : (
+      ) : shown.length === 0 ? null : (
         <section className="flex flex-col gap-4" aria-label="Your uploads">
           <div className="flex items-center justify-between gap-3">
             <p className="text-muted-foreground text-sm tabular-nums">
-              {ready.length === 1 ? "1 file" : `${ready.length} files`}
+              {shown.length === 1 ? "1 file" : `${shown.length} files`}
             </p>
             <div className="bg-surface flex rounded-lg p-0.5" role="group" aria-label="Show as">
               {(
@@ -309,54 +312,63 @@ export function UploadsView() {
 
           {layout === "tiles" ? (
             <ul className="reveal grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-x-5 gap-y-6">
-              {ready.map((upload) => (
-                <li
-                  key={upload._id}
-                  className="group flex flex-col gap-2.5"
-                  onPointerEnter={() => setHovered(upload._id)}
-                  onPointerLeave={() =>
-                    setHovered((current) => (current === upload._id ? null : current))
-                  }
-                >
-                  <button
-                    type="button"
-                    className="focus-visible:ring-ring/50 overflow-hidden rounded-xl outline-none focus-visible:ring-3"
-                    aria-label={`Open ${upload.fileName}`}
-                    onClick={() => setOpened(upload._id)}
-                    onFocus={() => setHovered(upload._id)}
-                    onBlur={() =>
+              {shown.map((entry) => {
+                if (entry.going)
+                  return (
+                    <li key={entry.id}>
+                      <UploadingCard name={entry.name} percent={entry.percent} />
+                    </li>
+                  );
+                const upload = entry.upload;
+                return (
+                  <li
+                    key={upload._id}
+                    className="group flex flex-col gap-2.5"
+                    onPointerEnter={() => setHovered(upload._id)}
+                    onPointerLeave={() =>
                       setHovered((current) => (current === upload._id ? null : current))
                     }
                   >
-                    <UploadFrame
-                      kind={upload.kind}
-                      url={links.get(upload._id)}
-                      hovering={hovered === upload._id}
-                      className="transition-transform duration-300 ease-out group-hover:scale-[1.02]"
-                    />
-                  </button>
-                  <div className="flex items-start gap-2">
-                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <button
-                        type="button"
-                        className="truncate text-left text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:underline"
-                        onClick={() => setOpened(upload._id)}
-                        tabIndex={-1}
-                      >
-                        {upload.fileName}
-                      </button>
-                      <p className="text-muted-foreground truncate text-xs tabular-nums">
-                        {summaryOf(upload)}
-                      </p>
+                    <button
+                      type="button"
+                      className="focus-visible:ring-ring/50 overflow-hidden rounded-xl outline-none focus-visible:ring-3"
+                      aria-label={`Open ${upload.fileName}`}
+                      onClick={() => setOpened(upload._id)}
+                      onFocus={() => setHovered(upload._id)}
+                      onBlur={() =>
+                        setHovered((current) => (current === upload._id ? null : current))
+                      }
+                    >
+                      <UploadFrame
+                        kind={upload.kind}
+                        url={links.get(upload._id)}
+                        hovering={hovered === upload._id}
+                        className="transition-transform duration-300 ease-out group-hover:scale-[1.02]"
+                      />
+                    </button>
+                    <div className="flex items-start gap-2">
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <button
+                          type="button"
+                          className="truncate text-left text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:underline"
+                          onClick={() => setOpened(upload._id)}
+                          tabIndex={-1}
+                        >
+                          {upload.fileName}
+                        </button>
+                        <p className="text-muted-foreground truncate text-xs tabular-nums">
+                          {summaryOf(upload)}
+                        </p>
+                      </div>
+                      <UploadActions
+                        upload={upload}
+                        onCopy={() => copyLink(upload._id)}
+                        onRemove={() => removeUpload({ uploadId: upload._id })}
+                      />
                     </div>
-                    <UploadActions
-                      upload={upload}
-                      onCopy={() => copyLink(upload._id)}
-                      onRemove={() => removeUpload({ uploadId: upload._id })}
-                    />
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <div className="reveal overflow-hidden rounded-xl bg-surface">
@@ -379,63 +391,70 @@ export function UploadsView() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ready.map((upload) => (
-                    <TableRow
-                      key={upload._id}
-                      onPointerEnter={() => setHovered(upload._id)}
-                      onPointerLeave={() =>
-                        setHovered((current) => (current === upload._id ? null : current))
-                      }
-                    >
-                      <TableCell className="py-1.5">
-                        <button
-                          type="button"
-                          className="focus-visible:ring-ring/50 block w-24 overflow-hidden rounded-md outline-none focus-visible:ring-3"
-                          aria-label={`Open ${upload.fileName}`}
-                          tabIndex={-1}
-                          onClick={() => setOpened(upload._id)}
-                        >
-                          <UploadFrame
-                            kind={upload.kind}
-                            url={links.get(upload._id)}
-                            hovering={hovered === upload._id}
-                          />
-                        </button>
-                      </TableCell>
-                      <TableCell className="w-1/3 max-w-0 truncate font-medium">
-                        <button
-                          type="button"
-                          className="max-w-full truncate rounded-sm underline-offset-4 outline-none hover:underline focus-visible:underline"
-                          onClick={() => setOpened(upload._id)}
-                        >
-                          {upload.fileName}
-                        </button>
-                      </TableCell>
-                      {(() => {
-                        const columns = upload.details ? fileDetailColumns(upload.details) : null;
-                        return (["type", "length", "picture", "frameRate", "format"] as const).map(
-                          (key) => (
+                  {shown.map((entry) => {
+                    if (entry.going)
+                      return (
+                        <UploadingRow key={entry.id} name={entry.name} percent={entry.percent} />
+                      );
+                    const upload = entry.upload;
+                    return (
+                      <TableRow
+                        key={upload._id}
+                        onPointerEnter={() => setHovered(upload._id)}
+                        onPointerLeave={() =>
+                          setHovered((current) => (current === upload._id ? null : current))
+                        }
+                      >
+                        <TableCell className="py-1.5">
+                          <button
+                            type="button"
+                            className="focus-visible:ring-ring/50 block w-24 overflow-hidden rounded-md outline-none focus-visible:ring-3"
+                            aria-label={`Open ${upload.fileName}`}
+                            tabIndex={-1}
+                            onClick={() => setOpened(upload._id)}
+                          >
+                            <UploadFrame
+                              kind={upload.kind}
+                              url={links.get(upload._id)}
+                              hovering={hovered === upload._id}
+                            />
+                          </button>
+                        </TableCell>
+                        <TableCell className="w-1/3 max-w-0 truncate font-medium">
+                          <button
+                            type="button"
+                            className="max-w-full truncate rounded-sm underline-offset-4 outline-none hover:underline focus-visible:underline"
+                            onClick={() => setOpened(upload._id)}
+                          >
+                            {upload.fileName}
+                          </button>
+                        </TableCell>
+                        {(() => {
+                          const columns = upload.details ? fileDetailColumns(upload.details) : null;
+                          return (
+                            ["type", "length", "picture", "frameRate", "format"] as const
+                          ).map((key) => (
                             <TableCell
                               key={key}
                               className="text-muted-foreground whitespace-nowrap tabular-nums"
                             >
                               {columns?.[key] ?? "–"}
                             </TableCell>
-                          ),
-                        );
-                      })()}
-                      <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
-                        {formatBytes(upload.size)}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap">
-                        <UploadActions
-                          upload={upload}
-                          onCopy={() => copyLink(upload._id)}
-                          onRemove={() => removeUpload({ uploadId: upload._id })}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          ));
+                        })()}
+                        <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
+                          {formatBytes(upload.size)}
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap">
+                          <UploadActions
+                            upload={upload}
+                            onCopy={() => copyLink(upload._id)}
+                            onRemove={() => removeUpload({ uploadId: upload._id })}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
