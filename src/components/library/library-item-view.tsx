@@ -280,6 +280,10 @@ export function LibraryItemView({
   }
 
   const speaks = item.kind === "video" || item.kind === "audio";
+  // A caption file (SRT, WebVTT, ASS) shows its lines the same way; a line opens the video
+  // it captions at that moment.
+  const captions = item.captionFormat !== null;
+  const captionsFor = item.captionsFor;
 
   return (
     <>
@@ -331,10 +335,29 @@ export function LibraryItemView({
             />
           )}
 
-          {speaks && (
-            <section className="flex flex-col gap-3" aria-label="What was said">
+          {(speaks || captions) && (
+            <section
+              className="flex flex-col gap-3"
+              aria-label={captions ? "What the captions say" : "What was said"}
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-base font-semibold">What was said</h2>
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <h2 className="text-base font-semibold">
+                    {captions ? "What the captions say" : "What was said"}
+                  </h2>
+                  {captions && captionsFor && (
+                    <p className="text-muted-foreground text-sm">
+                      Captions for{" "}
+                      <Link
+                        href={`/library/${captionsFor._id}`}
+                        className="text-foreground underline-offset-4 hover:underline"
+                      >
+                        {captionsFor.shortId} {captionsFor.title}
+                      </Link>
+                      . Pick a line to play it there.
+                    </p>
+                  )}
+                </div>
                 {item.searchable === "ready" && (
                   <Input
                     value={find}
@@ -349,51 +372,85 @@ export function LibraryItemView({
                 shownPieces.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
                     {pieces.length === 0
-                      ? "Nothing was said in this file."
-                      : "Not said in this file."}
+                      ? captions
+                        ? "There are no captions in this file."
+                        : "Nothing was said in this file."
+                      : captions
+                        ? "Not in these captions."
+                        : "Not said in this file."}
                   </p>
                 ) : (
                   <ol
                     className="flex max-h-[32rem] flex-col gap-0.5 overflow-y-auto"
                     data-testid="transcript"
                   >
-                    {shownPieces.map((piece) => (
-                      <li key={piece.start}>
-                        <button
-                          type="button"
-                          onClick={() => seek(piece.start)}
-                          className={cn(
-                            "hover:bg-surface flex w-full gap-4 rounded-lg px-3 py-2 text-left text-sm",
-                            playing === piece.start && "bg-surface",
-                          )}
-                        >
+                    {shownPieces.map((piece) => {
+                      const line = (
+                        <>
                           <span className="text-primary w-14 shrink-0 font-medium tabular-nums">
                             {formatMoment(piece.start)}
                           </span>
                           <span>{marked(piece.text, words)}</span>
-                        </button>
-                      </li>
-                    ))}
+                        </>
+                      );
+                      const look = "flex w-full gap-4 rounded-lg px-3 py-2 text-left text-sm";
+                      return (
+                        <li key={piece.start}>
+                          {!captions ? (
+                            <button
+                              type="button"
+                              onClick={() => seek(piece.start)}
+                              className={cn(
+                                look,
+                                "hover:bg-surface",
+                                playing === piece.start && "bg-surface",
+                              )}
+                            >
+                              {line}
+                            </button>
+                          ) : captionsFor ? (
+                            <Link
+                              href={`/library/${captionsFor._id}?t=${Math.floor(piece.start)}`}
+                              className={cn(look, "hover:bg-surface")}
+                            >
+                              {line}
+                            </Link>
+                          ) : (
+                            <div className={look}>{line}</div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ol>
                 )
               ) : item.searchable === "working" ? (
                 <p className="text-muted-foreground text-sm">
-                  Being transcribed on your toolkit. The words show here when it is done.
+                  {captions
+                    ? "Reading the caption file."
+                    : "Being transcribed on your toolkit. The words show here when it is done."}
                 </p>
               ) : (
                 <div className="bg-surface flex flex-col items-start gap-3 rounded-xl p-5">
                   <p className="text-sm">
                     {item.searchable === "failed"
                       ? `The last try did not work${item.transcriptError ? `: ${item.transcriptError}` : "."}`
-                      : "Make this file searchable to find any moment by what was said in it."}
+                      : captions
+                        ? "The caption file has not been read yet."
+                        : "Make this file searchable to find any moment by what was said in it."}
                   </p>
                   <Button size="sm" variant="secondary" onClick={() => void sendToSearch()}>
                     <Sparkles />
-                    {item.searchable === "failed" ? "Try again" : "Make searchable"}
+                    {item.searchable === "failed"
+                      ? "Try again"
+                      : captions
+                        ? "Read it"
+                        : "Make searchable"}
                   </Button>
-                  <p className="text-muted-foreground text-xs">
-                    Transcribed once on your own toolkit, with no AI tokens spent.
-                  </p>
+                  {!captions && (
+                    <p className="text-muted-foreground text-xs">
+                      Transcribed once on your own toolkit, with no AI tokens spent.
+                    </p>
+                  )}
                 </div>
               )}
             </section>

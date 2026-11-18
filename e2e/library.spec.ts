@@ -88,3 +88,40 @@ test("an upload joins the library, is searched by what was said, and is tagged",
     expect(sideways, `the page scrolls sideways at ${width}`).toBe(false);
   }
 });
+
+test("a caption file shows its lines, and they are searched like what was said", async ({
+  page,
+}) => {
+  await page.goto("/sign-up");
+  await page.locator("#name").fill("Ines Duarte");
+  await page.locator("#email").fill(`ines.captions.${stamp}@example.test`);
+  await page.locator("#password").fill("library-e2e-123456");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
+  await page.getByPlaceholder("Your company or channel").fill("Duarte Captions");
+  await page.getByRole("button", { name: "Create team" }).click();
+  await page.locator("#baseUrl").fill(TOOLKIT);
+  await page.locator("#apiKey").fill("stand-in-key-1234");
+  await page.getByRole("button", { name: "Test and connect" }).click();
+  await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
+
+  await page.goto("/uploads");
+  await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.srt");
+  // Finished uploading (the name shows while it is still on its way).
+  await expect(page.getByRole("button", { name: "Open clip.srt" })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  await page.goto("/library");
+  await page.getByRole("link", { name: "Open F1 clip" }).click();
+  const lines = page.getByTestId("transcript");
+  await expect(page.getByRole("heading", { name: "What the captions say" })).toBeVisible();
+  await expect(lines.getByText("Today we talk about pricing your edits.")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(lines.getByText("0:03")).toBeVisible();
+
+  await page.getByRole("link", { name: "Library", exact: true }).first().click();
+  await page.getByLabel("Search the library").fill("pricing");
+  await expect(page.getByTestId("library-hit").getByText("F1", { exact: true })).toBeVisible();
+});
