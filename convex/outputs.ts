@@ -121,7 +121,9 @@ export const byHand = query({
     return {
       ...page,
       page: page.page
-        .filter((job) => job.runStepId === undefined && job.outputs.length > 0)
+        .filter(
+          (job) => job.runStepId === undefined && job.outputs.length > 0 && !job.libraryItemId,
+        )
         .map((job) => ({
           jobId: job._id,
           stepId: job.stepId,
