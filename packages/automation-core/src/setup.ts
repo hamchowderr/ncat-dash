@@ -1,4 +1,4 @@
-import { CLIP_CAPTION_SETTINGS, getPlatform, type PlatformName } from "./clips";
+import { getPlatform, type PlatformName } from "./clips";
 import { type AutomationEdge, type AutomationNode, NODE_GAP } from "./graph";
 
 /**
@@ -32,7 +32,8 @@ export function clipsGraph(setup: ClipsSetup): {
       id: CAPTIONS,
       kind: "step",
       stepId: "video-caption",
-      input: { settings: { ...CLIP_CAPTION_SETTINGS } },
+      // No look of its own: it takes the team's caption style for the clip's shape.
+      input: {},
       position: at(1),
     });
   }

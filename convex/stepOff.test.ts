@@ -39,7 +39,8 @@ describe("a step that is turned off", () => {
             id: "caption",
             kind: "step",
             stepId: "video-caption",
-            input: { video_url: "{{steps.trim.url}}" },
+            // Its own look, so it does not stop to read the video's shape first.
+            input: { video_url: "{{steps.trim.url}}", settings: { style: "classic" } },
             position: { x: 220, y: 0 },
           },
         ],

@@ -24,7 +24,7 @@ const MAX_FILES_PER_IF = 100;
 type StepsByNode = Map<string, Doc<"runSteps">>;
 
 /** The details read from the file that started the run when it was uploaded, if any. */
-function knownDetails(trigger: unknown): Map<string, FileDetails> {
+export function knownDetails(trigger: unknown): Map<string, FileDetails> {
   const { file_url: url, details } = (trigger ?? {}) as { file_url?: unknown; details?: unknown };
   const known = new Map<string, FileDetails>();
   if (typeof url === "string" && details && typeof details === "object") {

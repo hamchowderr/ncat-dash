@@ -3,6 +3,11 @@ import {
   agentSettingsProblem,
   agentSettingsText,
   BRAND_KEYS,
+  BUILT_IN_BY_SHAPE,
+  BUILT_IN_STYLES,
+  type CaptionSetup,
+  captionSetupText,
+  tidyCaptionSetup,
   MAX_HOUSE_RULES_CHARS,
   NO_AGENT_SETTINGS,
   brandProblem,
@@ -20,8 +25,15 @@ import {
   parallelLimit,
   pump,
 } from "./lib/queue";
+import { captionSetupOf } from "./lib/captions";
 import { editorsOf } from "./lib/exports";
-import { agentSettingsValidator, brandValidator, editorValidator, musicValidator } from "./schema";
+import {
+  agentSettingsValidator,
+  brandValidator,
+  captionSetupValidator,
+  editorValidator,
+  musicValidator,
+} from "./schema";
 
 const MAX_TRACKS = 100;
 
@@ -40,6 +52,9 @@ export const get = query({
       ...(await brandAndMusicOf(ctx, args.organizationId)),
       editors: await editorsOf(ctx, args.organizationId),
       agent: settings?.agent ?? NO_AGENT_SETTINGS,
+      captions: await captionSetupOf(ctx, args.organizationId),
+      builtInCaptionStyles: BUILT_IN_STYLES,
+      builtInByShape: BUILT_IN_BY_SHAPE,
       agentModels: AGENT_MODELS.map(({ id, name, note }) => ({ id, name, note })),
       mostHouseRules: MAX_HOUSE_RULES_CHARS,
       mostAllowed: MAX_PARALLEL_JOBS,
@@ -194,6 +209,32 @@ export const setBrand = mutation({
 });
 
 /**
+ * Sets the team's captions: words the transcript gets wrong and how to write them, saved
+ * caption styles, and the style each video shape gets. Owners and admins only.
+ */
+export const setCaptions = mutation({
+  args: { organizationId: v.string(), captions: captionSetupValidator },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId, MANAGER_ROLES);
+    const tidied = tidyCaptionSetup(args.captions as CaptionSetup);
+    if (!tidied.ok) throw new ConvexError({ code: "invalid_input", message: tidied.message });
+    const captions = tidied.setup;
+    const existing = await ctx.db
+      .query("teamSettings")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, { captions });
+    else {
+      await ctx.db.insert("teamSettings", {
+        organizationId: args.organizationId,
+        maxParallelJobs: DEFAULT_PARALLEL_JOBS,
+        captions,
+      });
+    }
+  },
+});
+
+/**
  * Sets how the agent works for the team: the model it runs on, house rules it always
  * follows, and the platforms it makes clips for when nobody names any. Owners and admins
  * only.
@@ -238,6 +279,11 @@ export const agentBrief = query({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .first();
     const agent = settings?.agent ?? NO_AGENT_SETTINGS;
-    return { model: agent.model, text: agentSettingsText(agent) ?? null };
+    // What caption steps do by themselves, so the agent leaves their look blank.
+    const setup = await captionSetupOf(ctx, args.organizationId);
+    const custom = setup.fixes.length + setup.styles.length + Object.keys(setup.byShape).length;
+    const captions = custom > 0 ? captionSetupText(setup) : null;
+    const text = [agentSettingsText(agent), captions].filter(Boolean).join("\n\n");
+    return { model: agent.model, text: text || null };
   },
 });

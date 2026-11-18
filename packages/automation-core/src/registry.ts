@@ -8,6 +8,7 @@ import { allSteps, getStep, userInputJsonSchema } from "@ncat-dash/step-catalog"
 import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
+import { CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
 import { FINISH_CHOICES } from "./chain";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
@@ -430,16 +431,35 @@ function gives(step: StepDefinition): Carries {
   return step.output === "json" ? "data" : step.output;
 }
 
+/** A caption step also takes the name of one of the team's caption styles. */
+function stepSettings(step: StepDefinition): JsonSchema {
+  const settings = userInputJsonSchema(step) as JsonSchema;
+  if (!isCaptionStep(step.id)) return settings;
+  return {
+    ...settings,
+    properties: {
+      ...settings.properties,
+      [CAPTION_STYLE_SETTING]: {
+        type: "string",
+        description:
+          "The name of a caption style from Settings. Leave it and settings blank to use the team's style for the video's shape.",
+      },
+    },
+  };
+}
+
 function stepType(step: StepDefinition): NodeType {
   return {
     type: `step:${step.id}`,
     role: "action",
     group: step.category,
     title: step.title,
-    description: step.description,
+    description: isCaptionStep(step.id)
+      ? `${step.description} Styles itself from the team's caption styles in Settings (one per video shape) and fixes the team's misheard words.`
+      : step.description,
     takes: step.listInput ? "files" : step.primaryInput ? "file" : "nothing",
     gives: gives(step),
-    settings: userInputJsonSchema(step) as JsonSchema,
+    settings: stepSettings(step),
     automatic: step.primaryInput ?? step.listInput?.field ?? null,
     ...(step.values ? { makes: Object.keys(step.values) } : {}),
     ...(step.brandInputs ? { brand: step.brandInputs } : {}),

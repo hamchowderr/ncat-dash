@@ -2,7 +2,6 @@ import { moreRecipes, recipes } from "@ncat-dash/step-catalog";
 
 import { type AutomationEdge, type AutomationNode, NODE_GAP } from "./graph";
 import type { Schedule } from "./schedule";
-import { CLIP_CAPTION_SETTINGS } from "./clips";
 import { FOLLOW_SPEAKER_STEP } from "./follow";
 import { clipsGraph } from "./setup";
 
@@ -104,7 +103,7 @@ const WORKFLOWS: Starter[] = [
         position: { x: 0, y: 0 },
       },
       step("follow_1", FOLLOW_SPEAKER_STEP, 1),
-      step("caption_1", "video-caption", 2, 0, { settings: { ...CLIP_CAPTION_SETTINGS } }),
+      step("caption_1", "video-caption", 2),
     ],
     edges: chain("clips", "follow_1", "caption_1"),
   },

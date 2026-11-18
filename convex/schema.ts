@@ -138,6 +138,42 @@ export const brandValidator = v.object({
   music: v.optional(v.string()),
 });
 
+const captionLookValidator = v.object({
+  style: v.optional(
+    v.union(
+      v.literal("highlight"),
+      v.literal("karaoke"),
+      v.literal("word_by_word"),
+      v.literal("underline"),
+      v.literal("classic"),
+    ),
+  ),
+  font_family: v.optional(v.string()),
+  font_size: v.optional(v.number()),
+  bold: v.optional(v.boolean()),
+  all_caps: v.optional(v.boolean()),
+  max_words_per_line: v.optional(v.number()),
+  line_color: v.optional(v.string()),
+  word_color: v.optional(v.string()),
+  outline_color: v.optional(v.string()),
+  outline_width: v.optional(v.number()),
+  shadow_offset: v.optional(v.number()),
+  position: v.optional(
+    v.union(v.literal("top_center"), v.literal("middle_center"), v.literal("bottom_center")),
+  ),
+});
+
+/** A team's captions: misheard words and how to write them, saved looks, a look per shape. */
+export const captionSetupValidator = v.object({
+  fixes: v.array(v.object({ find: v.string(), replace: v.string() })),
+  styles: v.array(v.object({ name: v.string(), look: captionLookValidator })),
+  byShape: v.object({
+    vertical: v.optional(v.string()),
+    wide: v.optional(v.string()),
+    square: v.optional(v.string()),
+  }),
+});
+
 // Users, sessions, organizations (teams), members and invitations live in the
 // Better Auth component (convex/betterAuth). App tables point at a team by its
 // organization id, and every read or write checks membership first (lib/authz.ts).
@@ -224,6 +260,8 @@ export default defineSchema({
     editors: v.optional(v.array(editorValidator)),
     // How the agent works for this team: its model, house rules and default platforms.
     agent: v.optional(agentSettingsValidator),
+    // How captions read and look: word fixes, saved styles and a style per video shape.
+    captions: v.optional(captionSetupValidator),
   }).index("by_organization", ["organizationId"]),
 
   // A saved automation: what starts it, and the steps it runs.
@@ -380,8 +418,15 @@ export default defineSchema({
     // and pauses ("probe"), then it cuts the clips ("cut"). jobIds holds the current
     // stage's jobs.
     // An "if" step reading its files' details is at "check"; a "wait" step is at "wait".
+    // A caption step reading its videos' sizes, to pick the style for each shape, is at "size".
     stage: v.optional(
-      v.union(v.literal("probe"), v.literal("cut"), v.literal("check"), v.literal("wait")),
+      v.union(
+        v.literal("probe"),
+        v.literal("cut"),
+        v.literal("check"),
+        v.literal("wait"),
+        v.literal("size"),
+      ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
     // of them; a later step is handed only those of the way that leads to it.

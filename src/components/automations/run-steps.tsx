@@ -75,6 +75,7 @@ export function logicNote(step: {
     return went.map((way) => `${step.branches![way].length} ${BRANCH_LABELS[way]}`).join(", ");
   }
   if (step.stage === "check" && step.status === "running") return "Reading the files";
+  if (step.stage === "size" && step.status === "running") return "Reading each video's shape";
   if (step.stage === "wait" && step.status === "running" && step.resumeAt) {
     return `Until ${until(step.resumeAt)}`;
   }

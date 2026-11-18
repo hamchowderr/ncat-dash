@@ -23,3 +23,4 @@ export * from "./platform-guide";
 export * from "./failure-text";
 export * from "./chain";
 export * from "./output-names";
+export * from "./captions";
