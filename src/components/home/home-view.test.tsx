@@ -79,7 +79,10 @@ describe("the home page", () => {
       "/automations/auto2/runs/run9",
     );
     expect(within(needs).getByText("Asks you")).toBeTruthy();
-    expect(within(needs).getByText(/failed/).textContent).toContain("on episode 2.mp4");
+    expect(within(needs).getByText(/failed on/).textContent).toContain("on episode 2.mp4");
+    expect(
+      within(needs).getByRole("link", { name: "Pick up failed runs" }).getAttribute("href"),
+    ).toBe("/runs?show=failed");
     expect(within(needs).getByText("The toolkit did not answer.")).toBeTruthy();
     expect(
       within(needs).getByRole("link", { name: "See what happened" }).getAttribute("href"),

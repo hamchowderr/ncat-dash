@@ -233,3 +233,86 @@ export async function jobStatus(
   // "failed" or anything else the toolkit may write: it will not send a result.
   return { state: "unknown" };
 }
+
+/** How busy the toolkit's server is, from GET /v1/toolkit/health (the toolkit fork). */
+export type ToolkitHealth = {
+  buildNumber: string | null;
+  /** CPUs the toolkit may use, and how much of them it is using, 0 to 100. */
+  cpus: number;
+  cpuPercent: number;
+  /** Bytes. The limit is the container's, or the machine's when it has none. */
+  memory: { used: number; limit: number };
+  /** Space for the files the toolkit works on, in bytes. */
+  disk: { free: number; total: number } | null;
+  uptimeSeconds: number;
+  /** The shared Redis queue: jobs waiting, workers and how many are busy. Null counts
+   * when each toolkit process keeps its own queue. */
+  queue: { shared: boolean; waiting: number | null; workers: number | null; busy: number | null };
+  /** Every team's jobs in the toolkit's last hour. */
+  jobs: { queued: number; running: number; done: number };
+};
+
+export type ToolkitHealthResult =
+  | { ok: true; health: ToolkitHealth }
+  | { ok: false; reason: "unreachable" | "unauthorized" | "no_health" | "error"; detail: string };
+
+const num = (value: unknown, fallback = 0) =>
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
+const numOrNull = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+/** Reads the toolkit's health. "no_health": a toolkit build from before the request. */
+export async function toolkitHealth(
+  connection: ToolkitConnection,
+  options: Pick<CallOptions, "signal" | "fetch"> = {},
+): Promise<ToolkitHealthResult> {
+  const doFetch = options.fetch ?? fetch;
+  let res: Response;
+  try {
+    res = await doFetch(joinUrl(connection.baseUrl, "/v1/toolkit/health"), {
+      method: "GET",
+      headers: { "X-API-Key": connection.apiKey },
+      signal: options.signal,
+    });
+  } catch (error) {
+    return { ok: false, reason: "unreachable", detail: String(error) };
+  }
+  const text = await res.text();
+  if (res.status === 401 || res.status === 403) {
+    return { ok: false, reason: "unauthorized", detail: text.slice(0, 300) };
+  }
+  if (res.status === 404) return { ok: false, reason: "no_health", detail: text.slice(0, 300) };
+  let json: { response?: Record<string, unknown> } | null = null;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = null;
+  }
+  const report = json?.response;
+  if (!res.ok || !report || typeof report !== "object" || !("cpu_percent" in report)) {
+    return { ok: false, reason: "error", detail: `HTTP ${res.status}: ${text.slice(0, 300)}` };
+  }
+  const memory = (report.memory ?? {}) as Record<string, unknown>;
+  const disk = report.disk as Record<string, unknown> | null | undefined;
+  const queue = (report.queue ?? {}) as Record<string, unknown>;
+  const jobs = (report.jobs ?? {}) as Record<string, unknown>;
+  return {
+    ok: true,
+    health: {
+      buildNumber: report.build_number == null ? null : String(report.build_number),
+      cpus: num(report.cpus, 1),
+      cpuPercent: num(report.cpu_percent),
+      memory: { used: num(memory.used), limit: num(memory.limit) },
+      disk:
+        disk && typeof disk === "object" ? { free: num(disk.free), total: num(disk.total) } : null,
+      uptimeSeconds: num(report.uptime_seconds),
+      queue: {
+        shared: queue.shared === true,
+        waiting: numOrNull(queue.waiting),
+        workers: numOrNull(queue.workers),
+        busy: numOrNull(queue.busy),
+      },
+      jobs: { queued: num(jobs.queued), running: num(jobs.running), done: num(jobs.done) },
+    },
+  };
+}

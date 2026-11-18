@@ -37,6 +37,7 @@ import {
   triggerEdges,
   triggerPosition,
 } from "./flow-nodes";
+import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -63,6 +64,7 @@ function howItCame(version: Listed): string {
 
 /** A version's steps on a still canvas: nothing can be moved, joined or changed. */
 function VersionCanvas({ version }: { version: AutomationDraft }) {
+  useTeamStepsVersion();
   const canvasRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
   const flow = useMemo(() => {

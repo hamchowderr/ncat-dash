@@ -40,9 +40,11 @@ import {
   valueSources,
   wantedKind,
   withBrand,
+  withDownloadLinks,
   withStart,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
+import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
 import { components, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -85,7 +87,9 @@ export async function startRun(
     automationName: automation.name,
     status: "running",
     triggerKind,
-    trigger,
+    // A Drive or Dropbox share link the trigger handed over becomes its download link,
+    // so every step, and the run page, works with the file itself.
+    trigger: withDownloadLinks(trigger),
     nodes: automation.nodes,
     edges: automation.edges,
     error: null,
@@ -264,6 +268,7 @@ async function startNode(
     return;
   }
 
+  await withTeamSteps(ctx, run.organizationId);
   const definition = node.stepId ? getStep(node.stepId) : undefined;
   if (!definition) {
     await failStep(ctx, run, step, byNode, "This step is no longer in the catalog.");

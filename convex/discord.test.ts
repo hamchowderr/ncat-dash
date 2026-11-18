@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
+import { settingsUrl } from "./discord";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 // The dashboard's one Discord bot: an owner adds it to the team's Discord server from
@@ -264,5 +265,16 @@ describe("who the agent server is told wrote", () => {
         await askPerson(t, { guildId: "300000000000000099", discordUserId: JORDAN.id })
       ).json(),
     ).toEqual({ ok: false, reason: "not_connected" });
+  });
+});
+
+describe("after the Discord sign-in", () => {
+  test("it returns to the Discord settings page, saying how it went", () => {
+    vi.stubEnv("SITE_URL", "https://dash.example.test/");
+    expect(settingsUrl("linked")).toBe("https://dash.example.test/settings/discord?discord=linked");
+    expect(settingsUrl("not yours")).toBe(
+      "https://dash.example.test/settings/discord?discord=not%20yours",
+    );
+    vi.unstubAllEnvs();
   });
 });

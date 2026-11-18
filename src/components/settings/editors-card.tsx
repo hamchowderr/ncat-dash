@@ -6,11 +6,11 @@ import { useMutation } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
+
+import { SettingRow, SettingsSection } from "./settings-shell";
 
 const NOTES: Record<EditorId, string> = {
   premiere: "Gets a timeline with every cut adjustable.",
@@ -42,37 +42,25 @@ export function EditorsCard({ editors, canEdit }: { editors: EditorId[]; canEdit
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <h2>Video editors</h2>
-        </CardTitle>
-        <CardDescription>
-          Tick the editors your team finishes videos in. Any run that makes cuts can then be opened
-          in them, and no automation step has to ask.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <FieldGroup className="gap-3">
-          {EDITORS.map((editor) => (
-            <Field key={editor.id} orientation="horizontal">
-              <Checkbox
-                id={`editor-${editor.id}`}
-                checked={editors.includes(editor.id)}
-                disabled={!canEdit || pending}
-                onCheckedChange={(checked) => toggle(editor.id, checked === true)}
-              />
-              <div className="grid gap-0.5">
-                <FieldLabel htmlFor={`editor-${editor.id}`}>{editor.name}</FieldLabel>
-                <FieldDescription>{NOTES[editor.id]}</FieldDescription>
-              </div>
-            </Field>
-          ))}
-          {!canEdit && (
-            <FieldDescription>Only a team owner or admin can change this.</FieldDescription>
-          )}
-        </FieldGroup>
-      </CardContent>
-    </Card>
+    <SettingsSection>
+      {EDITORS.map((editor) => (
+        <SettingRow
+          key={editor.id}
+          label={editor.name}
+          htmlFor={`editor-${editor.id}`}
+          description={NOTES[editor.id]}
+        >
+          <Switch
+            id={`editor-${editor.id}`}
+            checked={editors.includes(editor.id)}
+            disabled={!canEdit || pending}
+            onCheckedChange={(checked) => toggle(editor.id, checked)}
+          />
+        </SettingRow>
+      ))}
+      {!canEdit && (
+        <p className="text-muted-foreground text-sm">Only a team owner or admin can change this.</p>
+      )}
+    </SettingsSection>
   );
 }

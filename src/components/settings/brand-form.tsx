@@ -10,11 +10,18 @@ import { toast } from "sonner";
 
 import { FileChoice, UploadPicker } from "@/components/steps/step-fields";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { useBrandUpload } from "@/lib/use-brand-upload";
+import { cn } from "@/lib/utils";
 
 export type MusicTrack = { name: string; file: string };
 
@@ -49,12 +56,15 @@ export function BrandForm({
   canEdit,
   submitLabel = "Save brand",
   onSaved,
+  rows = false,
 }: {
   brand: Brand;
   music: MusicTrack[];
   canEdit: boolean;
   submitLabel?: string;
   onSaved?: () => void;
+  /** Settings shows each setting as a row, its control on the right. */
+  rows?: boolean;
 }) {
   const team = useActiveTeam();
   const setBrand = useMutation(api.teamSettings.setBrand);
@@ -66,6 +76,7 @@ export function BrandForm({
   const shown = typed ?? { brand, music };
   const set = (key: SingleKey, value: string) =>
     setTyped({ ...shown, brand: { ...shown.brand, [key]: value } });
+  const orientation = rows ? "responsive" : "vertical";
   const hex = /^#[0-9A-Fa-f]{6}$/.test(shown.brand.color ?? "") ? shown.brand.color : "#000000";
 
   const fileNameOf = (file: string) => {
@@ -124,22 +135,29 @@ export function BrandForm({
   return (
     <form onSubmit={onSubmit}>
       <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="brand-logo">Logo</FieldLabel>
-          <FileChoice
-            id="brand-logo"
-            label="Logo"
-            value={shown.brand.logo ?? ""}
-            onChange={(value) => set("logo", value)}
-            disabled={!canEdit}
-            upload="image"
-            preview
-          />
-          <FieldDescription>A PNG with a clear background works best.</FieldDescription>
+        <Field orientation={orientation}>
+          <FieldContent>
+            <FieldLabel htmlFor="brand-logo">Logo</FieldLabel>
+            <FieldDescription>A PNG with a clear background works best.</FieldDescription>
+          </FieldContent>
+          <div className={rows ? "@md/field-group:w-72" : undefined}>
+            <FileChoice
+              id="brand-logo"
+              label="Logo"
+              value={shown.brand.logo ?? ""}
+              onChange={(value) => set("logo", value)}
+              disabled={!canEdit}
+              upload="image"
+              preview
+            />
+          </div>
         </Field>
-        <Field>
-          <FieldLabel htmlFor="brand-color">Brand colour</FieldLabel>
-          <div className="flex items-center gap-2">
+        <Field orientation={orientation}>
+          <FieldContent>
+            <FieldLabel htmlFor="brand-color">Brand colour</FieldLabel>
+            <FieldDescription>Used for text written on videos and pictures.</FieldDescription>
+          </FieldContent>
+          <div className={cn("flex items-center gap-2", rows && "@md/field-group:w-72")}>
             <input
               type="color"
               aria-label="Pick the brand colour"
@@ -153,15 +171,19 @@ export function BrandForm({
               value={shown.brand.color ?? ""}
               onChange={(event) => set("color", event.target.value)}
               placeholder="#FFCC00"
-              className="w-36"
+              className={rows ? "flex-1" : "w-36"}
               autoComplete="off"
               disabled={!canEdit}
             />
           </div>
-          <FieldDescription>Used for text written on videos and pictures.</FieldDescription>
         </Field>
-        <Field>
-          <FieldLabel htmlFor="brand-font">Font</FieldLabel>
+        <Field orientation={orientation}>
+          <FieldContent>
+            <FieldLabel htmlFor="brand-font">Font</FieldLabel>
+            <FieldDescription>
+              A font installed on your toolkit. Left empty, text uses The Bold Font.
+            </FieldDescription>
+          </FieldContent>
           <Input
             id="brand-font"
             value={shown.brand.font ?? ""}
@@ -169,54 +191,73 @@ export function BrandForm({
             placeholder="The Bold Font"
             autoComplete="off"
             disabled={!canEdit}
-          />
-          <FieldDescription>
-            The name of a font installed on your toolkit. Left empty, text uses The Bold Font.
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="brand-card">Card template</FieldLabel>
-          <FileChoice
-            id="brand-card"
-            label="Card template"
-            value={shown.brand.card ?? ""}
-            onChange={(value) => set("card", value)}
-            disabled={!canEdit}
-            upload="image"
-            preview
-          />
-          <FieldDescription>
-            The picture quote cards and end cards are written on, such as your background with your
-            logo already on it. Make it the shape you post, for example 1080 by 1350.
-          </FieldDescription>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="brand-intro">Intro</FieldLabel>
-          <FileChoice
-            id="brand-intro"
-            label="Intro"
-            value={shown.brand.intro ?? ""}
-            onChange={(value) => set("intro", value)}
-            disabled={!canEdit}
-            upload="video"
+            className={rows ? "@md/field-group:w-72" : undefined}
           />
         </Field>
-        <Field>
-          <FieldLabel htmlFor="brand-outro">Outro</FieldLabel>
-          <FileChoice
-            id="brand-outro"
-            label="Outro"
-            value={shown.brand.outro ?? ""}
-            onChange={(value) => set("outro", value)}
-            disabled={!canEdit}
-            upload="video"
-          />
-          <FieldDescription>
-            Short videos played before and after your videos by the intro and outro step.
-          </FieldDescription>
+        <Field orientation={orientation}>
+          <FieldContent>
+            <FieldLabel htmlFor="brand-card">Card template</FieldLabel>
+            <FieldDescription>
+              The picture quote cards and end cards are written on, such as your background with
+              your logo already on it. Make it the shape you post, for example 1080 by 1350.
+            </FieldDescription>
+          </FieldContent>
+          <div className={rows ? "@md/field-group:w-72" : undefined}>
+            <FileChoice
+              id="brand-card"
+              label="Card template"
+              value={shown.brand.card ?? ""}
+              onChange={(value) => set("card", value)}
+              disabled={!canEdit}
+              upload="image"
+              preview
+            />
+          </div>
+        </Field>
+        <Field orientation={orientation}>
+          <FieldContent>
+            <FieldLabel htmlFor="brand-intro">Intro</FieldLabel>
+            <FieldDescription>
+              A short video played before your videos by the intro and outro step.
+            </FieldDescription>
+          </FieldContent>
+          <div className={rows ? "@md/field-group:w-72" : undefined}>
+            <FileChoice
+              id="brand-intro"
+              label="Intro"
+              value={shown.brand.intro ?? ""}
+              onChange={(value) => set("intro", value)}
+              disabled={!canEdit}
+              upload="video"
+            />
+          </div>
+        </Field>
+        <Field orientation={orientation}>
+          <FieldContent>
+            <FieldLabel htmlFor="brand-outro">Outro</FieldLabel>
+            <FieldDescription>
+              A short video played after your videos by the intro and outro step.
+            </FieldDescription>
+          </FieldContent>
+          <div className={rows ? "@md/field-group:w-72" : undefined}>
+            <FileChoice
+              id="brand-outro"
+              label="Outro"
+              value={shown.brand.outro ?? ""}
+              onChange={(value) => set("outro", value)}
+              disabled={!canEdit}
+              upload="video"
+            />
+          </div>
         </Field>
         <Field>
-          <FieldLabel>Music library</FieldLabel>
+          <FieldContent>
+            <FieldLabel>Music library</FieldLabel>
+            <FieldDescription>
+              Add as many tracks as you like. A step that adds music lets you pick one by name, and
+              uses the first one until you do.
+            </FieldDescription>
+          </FieldContent>
           {shown.music.length > 0 && (
             <ul className="flex flex-col gap-2" aria-label="Music tracks">
               {shown.music.map((track, index) => (
@@ -294,13 +335,9 @@ export function BrandForm({
               />
             </div>
           )}
-          <FieldDescription>
-            Add as many tracks as you like. A step that adds music lets you pick one by name, and
-            uses the first one until you do.
-          </FieldDescription>
         </Field>
         {canEdit ? (
-          <Field>
+          <Field orientation="horizontal">
             <Button type="submit" className="w-fit" disabled={pending || (!typed && !onSaved)}>
               {pending ? "Saving" : submitLabel}
             </Button>

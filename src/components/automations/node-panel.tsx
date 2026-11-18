@@ -36,6 +36,7 @@ import { AutomationPicker } from "./automation-picker";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { PlatformPicker } from "./platform-picker";
+import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
 type NodeContent = Omit<AutomationNode, "position">;
 
@@ -98,6 +99,7 @@ export function NodePanel({
   /** A Clips step whose clips go straight to Follow the speaker, so they keep their shape. */
   feedsFollow?: boolean;
 }) {
+  useTeamStepsVersion();
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
   const nodeType = nodeTypeOf(node);
   const allFields = useStepFields(node.stepId ?? "");
