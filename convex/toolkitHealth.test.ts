@@ -16,7 +16,11 @@ const REPORT = {
   jobs: { queued: 3, running: 4, done: 120 },
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete process.env.HOSTED_TOOLKIT_URL;
+  delete process.env.NCAT_EDITION;
+});
 
 async function setUp({ toolkit = true } = {}) {
   const t = backend();
@@ -100,6 +104,41 @@ describe("the toolkit's health", () => {
     ).rejects.toThrow();
     await expect(
       outsider.as.query(api.toolkitHealth.activity, { organizationId: team }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("a toolkit run for the team", () => {
+  test("a team on its own toolkit sees the Toolkit page", async () => {
+    const { team, maya } = await setUp();
+    process.env.HOSTED_TOOLKIT_URL = "https://media.example";
+    expect(await maya.as.query(api.toolkitHealth.shown, { organizationId: team })).toBe(true);
+  });
+
+  test("a team on the toolkit the operator runs does not, and its load is not read", async () => {
+    const { team, maya } = await setUp();
+    // The same address, written another way.
+    process.env.HOSTED_TOOLKIT_URL = "HTTPS://Toolkit.example/";
+    expect(await maya.as.query(api.toolkitHealth.shown, { organizationId: team })).toBe(false);
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    expect(await maya.as.action(api.toolkitHealth.read, { organizationId: team })).toMatchObject({
+      ok: false,
+      reason: "hosted",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("on the hosted edition no team sees it", async () => {
+    const { team, maya } = await setUp();
+    process.env.NCAT_EDITION = "hosted";
+    expect(await maya.as.query(api.toolkitHealth.shown, { organizationId: team })).toBe(false);
+  });
+
+  test("only the team's own members can ask", async () => {
+    const { team, outsider } = await setUp();
+    await expect(
+      outsider.as.query(api.toolkitHealth.shown, { organizationId: team }),
     ).rejects.toThrow();
   });
 });
