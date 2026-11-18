@@ -91,6 +91,7 @@ export async function startRun(
     startedBy,
     finishedAt: null,
     ...(options.test ? { test: options.test } : {}),
+    ...(automation.clientId ? { clientId: automation.clientId } : {}),
     ...(parent
       ? {
           parentRunId: parent.runId,
@@ -293,7 +294,7 @@ async function startNode(
   const settings: Record<string, unknown> = {
     // The team's logo, colour, font and music fill whatever the step leaves empty.
     ...(nodeType
-      ? withBrand(nodeType, node.input, await brandOf(ctx, run.organizationId))
+      ? withBrand(nodeType, node.input, await brandOf(ctx, run.organizationId, run.clientId))
       : node.input),
     ...settingsForLaterSteps(node, nodes, edges),
   };

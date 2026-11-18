@@ -10,6 +10,7 @@ import {
   digestEmail,
   type DigestItem,
   clientFeedbackEmail,
+  readyForReviewEmail,
   mentionEmail,
   sendEmail,
   senderProblem,
@@ -283,7 +284,19 @@ export const sendAlert = internalAction({
                 },
                 branding,
               )
-            : alert.kind === "client_feedback"
+            : alert.kind === "ready_for_review"
+              ? readyForReviewEmail(
+                  {
+                    teamName,
+                    from: alert.from ?? "Someone",
+                    projectName: alert.automationName,
+                    slot: alert.stepName ?? "A deliverable",
+                    reviewUrl: link,
+                    settingsUrl,
+                  },
+                  branding,
+                )
+              : alert.kind === "client_feedback"
               ? clientFeedbackEmail(
                   {
                     teamName,
@@ -430,6 +443,10 @@ function digestLine(alert: Doc<"alerts">): Omit<DigestItem, "url"> {
       return {
         title: `${alert.from ?? "Someone"} mentioned you in ${alert.automationName}`,
         detail: alert.message,
+      };
+    case "ready_for_review":
+      return {
+        title: `${alert.stepName ?? "A deliverable"} in ${alert.automationName} is ready for review`,
       };
     case "client_feedback":
       return {

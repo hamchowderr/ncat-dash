@@ -5,6 +5,8 @@ import { useQuery } from "convex/react";
 import * as React from "react";
 import {
   Clapperboard,
+  Contact,
+  FolderKanban,
   FolderOutput,
   FolderTree,
   Home,
@@ -46,7 +48,9 @@ const navEveryday: NavItem[] = [
   { title: "Home", url: "/", icon: Home },
   { title: "Inbox", url: "/inbox", icon: Inbox },
   { title: "Automations", url: "/automations", icon: Workflow },
+  { title: "Projects", url: "/projects", icon: FolderKanban },
   { title: "Review", url: "/review", icon: MessagesSquare },
+  { title: "Clients", url: "/clients", icon: Contact },
   { title: "Outputs", url: "/outputs", icon: FolderOutput },
   { title: "Uploads", url: "/uploads", icon: UploadCloud },
   { title: "Files", url: "/files", icon: FolderTree },

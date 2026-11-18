@@ -45,12 +45,15 @@ export function BrandForm({
   canEdit,
   submitLabel = "Save brand",
   onSaved,
+  save,
 }: {
   brand: Brand;
   music: MusicTrack[];
   canEdit: boolean;
   submitLabel?: string;
   onSaved?: () => void;
+  /** Saves somewhere other than the team's own brand, such as a client's. */
+  save?: (typed: Typed) => Promise<unknown>;
 }) {
   const team = useActiveTeam();
   const setBrand = useMutation(api.teamSettings.setBrand);
@@ -98,15 +101,15 @@ export function BrandForm({
     if (!typed) return onSaved?.();
     setPending(true);
     try {
-      await setBrand({
-        organizationId: team.id,
+      const cleaned = {
         brand: Object.fromEntries(
           (["logo", "color", "font"] as const).flatMap((key) =>
             typed.brand[key]?.trim() ? [[key, typed.brand[key]!.trim()]] : [],
           ),
         ),
         music: typed.music,
-      });
+      };
+      await (save ? save(cleaned) : setBrand({ organizationId: team.id, ...cleaned }));
       setTyped(null);
       toast.success("Saved");
       onSaved?.();
