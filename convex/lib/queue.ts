@@ -1,8 +1,9 @@
-import type { Brand } from "@ncat-dash/automation-core";
-import { getStep, userInputSchema } from "@ncat-dash/step-catalog";
+import { type Brand, unusableShareLink, withDownloadLinks } from "@ncat-dash/automation-core";
+import { getStep, isTeamStepId, userInputSchema } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { withTeamSteps } from "./teamSteps";
 
 export const DEFAULT_PARALLEL_JOBS = 3;
 export const MAX_PARALLEL_JOBS = 20;
@@ -64,10 +65,34 @@ export async function enqueueJob(
     runStepId?: Id<"runSteps">;
   },
 ): Promise<Enqueued> {
-  const step = getStep(args.stepId);
-  if (!step) return { ok: false, code: "not_found", message: "Unknown step." };
+  await withTeamSteps(ctx, args.organizationId);
+  const found = getStep(args.stepId);
+  if (!found) return { ok: false, code: "not_found", message: "Unknown step." };
+  // A team step is sent as the FFmpeg compose request it fills in, so the job needs
+  // nothing of the team step once queued, even if the step is changed or removed later.
+  // A Drive or Dropbox share link opens a preview page, so the toolkit is handed the
+  // address that downloads the file instead; a folder link cannot work at all.
+  const unusable = unusableShareLink(args.input);
+  if (unusable) return { ok: false, code: "invalid_input", message: unusable.problem };
+  const step = isTeamStepId(found.id) ? null : found;
+  if (!step) {
+    const parsedBlanks = userInputSchema(found).safeParse(withDownloadLinks(args.input));
+    if (!parsedBlanks.success) {
+      const issue = parsedBlanks.error.issues[0];
+      return {
+        ok: false,
+        code: "invalid_input",
+        message: `${issue.path.join(".") || "Input"}: ${issue.message}`,
+      };
+    }
+    return await enqueueJob(ctx, {
+      ...args,
+      stepId: "ffmpeg-compose",
+      input: found.toRequest!(parsedBlanks.data),
+    });
+  }
 
-  const parsed = userInputSchema(step).safeParse(args.input);
+  const parsed = userInputSchema(step).safeParse(withDownloadLinks(args.input));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return {

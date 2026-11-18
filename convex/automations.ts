@@ -51,6 +51,7 @@ import { membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
+import { withTeamSteps } from "./lib/teamSteps";
 import { deleteVersions, recordVersion } from "./lib/versions";
 import { deleteNotes, notesOf } from "./notes";
 import { bucketOf, presign, storageConnection } from "./lib/bucket";
@@ -356,6 +357,7 @@ async function problemOf(
   version: Version,
 ): Promise<string | null> {
   const { organizationId } = automation;
+  await withTeamSteps(ctx, organizationId);
   return (
     automationProblem(
       version.trigger,
@@ -736,6 +738,7 @@ export const tryOnUpload = action({
         content_type: upload.contentType,
         size: upload.size,
         details: upload.details ?? null,
+        upload_id: upload._id,
       },
     });
     return { runId, fileName: upload.fileName };
@@ -899,6 +902,8 @@ export const uploadFinished = internalAction({
         size: upload.size,
         // What the toolkit read from the file: duration, width, height and so on.
         details: upload.details ?? null,
+        // So what the run makes joins the content library as made from this upload.
+        upload_id: upload._id,
       },
     });
   },
@@ -935,11 +940,13 @@ function withoutReservedKeys<T>(value: T): T {
 }
 
 export const nodeTypes = query({
-  args: { type: v.optional(v.string()) },
+  // With a team, its own steps (teamSteps.ts) are listed too.
+  args: { type: v.optional(v.string()), organizationId: v.optional(v.string()) },
   returns: v.object({ index: v.optional(v.string()), type: v.optional(v.any()) }),
   handler: async (ctx, args) => {
     const user = await authComponent.safeGetAuthUser(ctx);
     if (!user) fail("unauthenticated", "Sign in first.");
+    if (args.organizationId) await requireMember(ctx, args.organizationId);
     if (!args.type) return { index: nodeTypeIndex() };
     const found = getNodeType(args.type);
     if (!found) fail("not_found", `There is no step type called ${args.type}.`);

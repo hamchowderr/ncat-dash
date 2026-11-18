@@ -1,7 +1,9 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { dash, dashFor, plainError } from "./convex";
+import { LIBRARY_INSTRUCTIONS, libraryTools } from "./library";
 import { rememberMade, workingAutomationOf } from "./session-store";
+import { TEAM_STEP_INSTRUCTIONS, teamStepTools } from "./team-steps";
 
 /**
  * The agent's hands on the dashboard. Each tool calls the same Convex function the
@@ -128,9 +130,11 @@ export const listStepTypes = createTool({
   execute: async ({ type }, ctx) => {
     // Asked of the dashboard, not bundled here, so the agent always sees the step types
     // the running dashboard really has.
-    const { client } = dashFor(userOf(ctx));
+    const { client, session } = dashFor(userOf(ctx));
+    // With the team, so its own steps (save_team_step) are listed too.
+    const team = session.organizationId ? { organizationId: session.organizationId } : {};
     try {
-      return await client.query(dash.automations.nodeTypes, type ? { type } : {});
+      return await client.query(dash.automations.nodeTypes, type ? { type, ...team } : team);
     } catch (caught) {
       throw new Error(plainError(caught));
     }
@@ -639,6 +643,8 @@ export const ncatTools = {
   make_folder: makeFolder,
   move_files: moveFiles,
   rename_file: renameFile,
+  ...teamStepTools,
+  ...libraryTools,
 };
 
 /** Tools that only look. They run without an approval card and are offered in Plan mode. */
@@ -650,6 +656,8 @@ export const NCAT_READ_TOOLS = [
   "list_uploads",
   "check_run",
   "list_folder",
+  "check_job",
+  "find_in_library",
 ] as const;
 
 /** Tools that change an automation's design: one "Always allow" covers them together. */
@@ -669,6 +677,8 @@ How to work:
 - After a change, read back what describe_automation or change_automation returned. If it lists problems, fix them or say plainly what the person must do (for example add a logo in Settings).
 - Once it has no problems, try it before calling it done: try_automation runs it on one of the team's uploads (the newest it would take, unless the person named one; list_uploads shows them), then check_run tells you how each step went. If a step failed, read its error, fix what you can with change_automation and try again; say plainly what you could not fix. If the run stops at an approval step, that is it working: tell the person it is waiting for them, with a link to the run. If there are no uploads, ask the person to upload a file on the Uploads page rather than skipping the try.
 - Report a try in plain words: which file it ran on, what each step made (how many clips, for example), and any step that failed and why. Link to the run with the address try_automation returned, like [See the run](/automations/.../runs/...).
+${TEAM_STEP_INSTRUCTIONS}
 - Only switch an automation on when the person asked for it to run, and it has no problems.
 - Say what you built in plain words: what starts it and what each step does. No ids, no JSON, no jargon unless they ask. After making a new automation, link to it with the address create_automation returned, like [Open it](/automations/...).
+${LIBRARY_INSTRUCTIONS}
 - You do not post to social platforms, generate video from text, dub voices or make avatars. Say so if asked.`;

@@ -9,6 +9,8 @@ export const APPROVAL_VIEWS: ApprovalViews = Object.fromEntries(
     "create_automation",
     "switch_automation",
     "try_automation",
+    "try_team_step",
+    "save_team_step",
     "make_folder",
     "move_files",
     "rename_file",

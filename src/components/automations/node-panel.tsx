@@ -54,6 +54,7 @@ import { AutomationPicker } from "./automation-picker";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { PlatformPicker } from "./platform-picker";
+import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
 type NodeContent = Omit<AutomationNode, "position">;
 
@@ -119,6 +120,7 @@ export function NodePanel({
   /** The team's captions from Settings, for a caption step. */
   captions?: TeamCaptions;
 }) {
+  useTeamStepsVersion();
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
   const nodeType = nodeTypeOf(node);
   const fields = useStepFields(node.stepId ?? "");

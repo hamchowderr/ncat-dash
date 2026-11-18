@@ -35,7 +35,7 @@ export const replaced = vi.fn();
 /** The stand-in behind "load more" on a paginated query. */
 export const loadMore = vi.fn();
 /** The page the screen under test thinks it is on. Back to "/review" after each test. */
-export const place = { pathname: "/review" };
+export const place = { pathname: "/review", search: "" };
 export const toastError = vi.fn();
 export const toastInfo = vi.fn();
 export const toastSuccess = vi.fn();
@@ -50,6 +50,7 @@ export const present: {
 
 export function resetConvex() {
   place.pathname = "/review";
+  place.search = "";
   queries.clear();
   mutations.clear();
   pushed.mockReset();
@@ -92,7 +93,7 @@ export const presenceReact = { default: () => present };
 export const nextNavigation = {
   useRouter: () => ({ push: pushed, replace: replaced }),
   usePathname: () => place.pathname,
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(place.search),
 };
 export const sonner = {
   toast: { error: toastError, info: toastInfo, success: toastSuccess, dismiss: toastDismiss },

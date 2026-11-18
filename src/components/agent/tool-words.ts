@@ -109,6 +109,34 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords | 
           "It runs whether or not the automation is switched on.",
         ],
       };
+    case "try_team_step": {
+      const step = (given?.step ?? {}) as { title?: unknown };
+      return {
+        title: "Trying a new FFmpeg step",
+        question: "Try this step on a file?",
+        lines: [
+          isText(step.title) ? `"${step.title}"` : "A step written for you",
+          "It runs once on your toolkit, so it takes a moment and uses your server.",
+        ],
+      };
+    }
+    case "check_job":
+      return { title: "Checking how the step went", question: "", lines: [] };
+    case "save_team_step": {
+      const step = (given?.step ?? {}) as { title?: unknown; blanks?: unknown };
+      const settings = Array.isArray(step.blanks)
+        ? (step.blanks as { label?: unknown }[]).map((blank) => blank.label).filter(isText)
+        : [];
+      return {
+        title: given?.stepId ? "Changing your team's step" : "Saving a step for your team",
+        question: given?.stepId ? "Change this step?" : "Add this step to your team's steps?",
+        lines: [
+          isText(step.title) ? `"${step.title}"` : "A step written for you",
+          settings.length ? `Settings: ${settings.join(", ")}` : "No settings to fill in",
+          "It runs as plain FFmpeg, with no AI each time.",
+        ],
+      };
+    }
     case "list_folder":
       return {
         title: folderText(given?.folder)
@@ -200,6 +228,19 @@ export function resultWords(name: string | undefined, result: unknown): string[]
   }
   if (name === "try_automation" && typeof value.fileName === "string") {
     return [`Started on ${value.fileName}`];
+  }
+  if (name === "check_job") {
+    if (value.status === "done") {
+      const made = Array.isArray(value.made) ? value.made.filter(isText) : [];
+      return made.length ? [`Made ${made.join(", ")}`] : ["It finished."];
+    }
+    if (value.status === "failed") {
+      return [`It failed${isText(value.error) ? `: ${String(value.error).slice(0, 200)}` : "."}`];
+    }
+    return ["Still going."];
+  }
+  if (name === "save_team_step" && isText(value.title)) {
+    return [`"${value.title}" is now in your step list`];
   }
   if (name === "check_run") {
     const steps = (Array.isArray(value.steps) ? value.steps : []) as {
