@@ -350,6 +350,8 @@ export default defineSchema({
     finishedAt: v.union(v.null(), v.number()),
     // How many times steps in this run have tried again after failing.
     retries: v.optional(v.number()),
+    // How many times someone picked this run up where it stopped after it failed.
+    pickedUp: v.optional(v.number()),
     // Set when someone tested one step on its own: that step's node id. Nobody is
     // alerted when a test fails, since the person testing is watching it.
     test: v.optional(v.string()),

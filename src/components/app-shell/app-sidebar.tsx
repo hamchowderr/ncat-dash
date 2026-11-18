@@ -7,6 +7,8 @@ import {
   Clapperboard,
   FolderOutput,
   FolderTree,
+  Gauge,
+  History,
   Home,
   Inbox,
   Library,
@@ -47,6 +49,7 @@ const navEveryday: NavItem[] = [
   { title: "Home", url: "/", icon: Home },
   { title: "Inbox", url: "/inbox", icon: Inbox },
   { title: "Automations", url: "/automations", icon: Workflow },
+  { title: "Runs", url: "/runs", icon: History },
   { title: "Review", url: "/review", icon: MessagesSquare },
   { title: "Library", url: "/library", icon: Library },
   { title: "Outputs", url: "/outputs", icon: FolderOutput },
@@ -59,6 +62,7 @@ const navEveryday: NavItem[] = [
 const navBuilder: NavItem[] = [
   { title: "Steps", url: "/steps", icon: SquareFunction },
   { title: "Jobs", url: "/jobs", icon: ListChecks },
+  { title: "Toolkit", url: "/toolkit", icon: Gauge },
 ];
 
 export const navMain: NavItem[] = [...navEveryday, ...navBuilder];
