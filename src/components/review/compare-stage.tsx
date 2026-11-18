@@ -13,14 +13,16 @@ const DRIFT = 0.15;
 
 /** The "Compare" button beside the version switch, shown when a clip has two versions or more. */
 export function CompareButton({ onClick }: { onClick: () => void }) {
+  // Only an icon, so a tall clip's narrow header still fits on one line.
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:bg-white/15 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60"
+      aria-label="Compare"
+      title="Compare two versions side by side"
+      className="flex size-7 items-center justify-center rounded-lg bg-white/10 text-zinc-200 outline-none transition-colors hover:bg-white/15 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60"
     >
       <Columns2 className="size-3.5" aria-hidden="true" />
-      Compare
     </button>
   );
 }
