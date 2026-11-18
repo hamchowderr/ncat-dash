@@ -184,6 +184,11 @@ export function AppSidebar({
   const pathname = usePathname();
   const back = useBackToApp(pathname);
   const inSettings = isSettingsPath(pathname);
+  const team = useActiveTeam();
+  // Teams on a toolkit run for them have no server to watch, so no Toolkit page.
+  const toolkitShown = useQuery(api.toolkitHealth.shown, { organizationId: team.id });
+  const builder =
+    toolkitShown === false ? navBuilder.filter((item) => item.url !== "/toolkit") : navBuilder;
 
   return (
     <Sidebar variant="inset" {...props}>
@@ -196,7 +201,7 @@ export function AppSidebar({
         <SidebarContent>
           {[
             { label: null, items: navEveryday },
-            { label: "Builder", items: navBuilder },
+            { label: "Builder", items: builder },
           ].map((group) => (
             <SidebarGroup key={group.label ?? "everyday"}>
               {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
