@@ -42,6 +42,7 @@ import {
   withBrand,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
+import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
 import { components, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -263,6 +264,7 @@ async function startNode(
     return;
   }
 
+  await withTeamSteps(ctx, run.organizationId);
   const definition = node.stepId ? getStep(node.stepId) : undefined;
   if (!definition) {
     await failStep(ctx, run, step, byNode, "This step is no longer in the catalog.");

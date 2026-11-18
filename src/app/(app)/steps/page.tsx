@@ -2,6 +2,7 @@ import { stepsByCategory } from "@ncat-dash/step-catalog";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { TeamStepsList } from "@/components/steps/team-steps-list";
 import { Badge } from "@/components/ui/badge";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/catalog";
 
@@ -21,7 +22,7 @@ export default function StepsPage() {
           hand on a sample file. Day to day, an automation runs these for you.
         </p>
       </div>
-      {CATEGORY_ORDER.filter((category) => grouped[category]?.length).map((category) => (
+      {CATEGORY_ORDER.filter((category) => category !== "team" && grouped[category]?.length).map((category) => (
         <section key={category} className="flex flex-col gap-3">
           <h2 className="text-sm font-medium">{CATEGORY_LABELS[category]}</h2>
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -44,6 +45,7 @@ export default function StepsPage() {
           </ul>
         </section>
       ))}
+      <TeamStepsList />
     </>
   );
 }

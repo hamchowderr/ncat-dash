@@ -229,6 +229,36 @@ export default defineSchema({
   // A saved automation: what starts it, and the steps it runs.
   // Sticky notes on an automation's canvas, for the team. Not part of its versions: they
   // explain the automation and never change what it does, so they save as they are typed.
+  // A team's own FFmpeg steps, written by the agent (or a person) when no ready-made step
+  // fits: a compose request with {{name}} blanks. See step-catalog's team-steps.ts.
+  teamSteps: defineTable({
+    organizationId: v.string(),
+    title: v.string(),
+    description: v.string(),
+    blanks: v.array(
+      v.object({
+        name: v.string(),
+        label: v.string(),
+        kind: v.union(
+          v.literal("file"),
+          v.literal("text"),
+          v.literal("number"),
+          v.literal("color"),
+          v.literal("choice"),
+        ),
+        default: v.optional(v.union(v.string(), v.number())),
+        min: v.optional(v.number()),
+        max: v.optional(v.number()),
+        options: v.optional(v.array(v.string())),
+        whole: v.optional(v.boolean()),
+      }),
+    ),
+    primary: v.union(v.string(), v.null()),
+    request: v.any(),
+    createdBy: v.string(),
+    updatedAt: v.number(),
+  }).index("by_organization", ["organizationId"]),
+
   automationNotes: defineTable({
     organizationId: v.string(),
     automationId: v.id("automations"),

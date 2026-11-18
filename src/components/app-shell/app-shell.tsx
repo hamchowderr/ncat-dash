@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { showAgent, useAgentOpen } from "@/lib/agent-open";
 import { TeamContext } from "@/lib/team-context";
+import { TeamStepsSync } from "@/lib/team-steps-sync";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
 import { cn } from "@/lib/utils";
@@ -37,7 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <TeamContext.Provider value={state.team}>
       <Shell state={state} edition={settings?.edition === "hosted" ? "Hosted" : "Self-hosted"}>
-        {children}
+        <TeamStepsSync organizationId={state.team.id}>{children}</TeamStepsSync>
       </Shell>
     </TeamContext.Provider>
   );
