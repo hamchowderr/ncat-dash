@@ -6,8 +6,6 @@ import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
@@ -17,7 +15,7 @@ import { BrandCard } from "./brand-card";
 import { EditorsCard } from "./editors-card";
 import { EmailCard } from "./email-card";
 import { NotificationsCard } from "./notifications-card";
-import { SettingsLoading, useTeamSettings } from "./settings-shell";
+import { SettingRow, SettingsLoading, SettingsSection, useTeamSettings } from "./settings-shell";
 import { DiscordCard } from "./discord-card";
 import { SlackCard } from "./slack-card";
 import { TeamCard } from "./team-card";
@@ -98,102 +96,62 @@ function RunsForms({ settings }: { settings: Loaded }) {
     }
   }
 
+  const onlyManagers = "Only a team owner or admin can change these.";
+
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2>Jobs at once</h2>
-          </CardTitle>
-          <CardDescription>
-            How many jobs this team sends to its toolkit at the same time. The rest wait their turn,
-            so one big automation cannot swamp a small server.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit}>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="max-parallel">Most jobs at once</FieldLabel>
-                <Input
-                  id="max-parallel"
-                  type="number"
-                  min={1}
-                  max={settings.mostAllowed}
-                  step={1}
-                  className="w-28"
-                  value={typed ?? String(settings.maxParallelJobs)}
-                  onChange={(event) => setTyped(event.target.value)}
-                  disabled={!settings.canEdit}
-                  required
-                />
-                <FieldDescription>
-                  {settings.canEdit
-                    ? `From 1 to ${settings.mostAllowed}. Raise it if your toolkit server has room to spare.`
-                    : "Only a team owner or admin can change this."}
-                </FieldDescription>
-              </Field>
-              {settings.canEdit && (
-                <Field>
-                  <Button type="submit" className="self-start" disabled={pending || typed === null}>
-                    {pending ? "Saving" : "Save"}
-                  </Button>
-                </Field>
-              )}
-            </FieldGroup>
-          </form>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2>When a step fails</h2>
-          </CardTitle>
-          <CardDescription>
-            A step that fails in an automation waits a little and tries again, a bit longer each
-            time. If it still fails, the run stops and everyone on the team is told, in their Inbox
-            or by email, as each person chose under Notifications.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmitRetries}>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="step-retries">Times to try again</FieldLabel>
-                <Input
-                  id="step-retries"
-                  type="number"
-                  min={0}
-                  max={settings.mostRetries}
-                  step={1}
-                  className="w-28"
-                  value={typedRetries ?? String(settings.stepRetries)}
-                  onChange={(event) => setTypedRetries(event.target.value)}
-                  disabled={!settings.canEdit}
-                  required
-                />
-                <FieldDescription>
-                  {settings.canEdit
-                    ? `From 0 to ${settings.mostRetries}. With 0 a step that fails stops the run straight away.`
-                    : "Only a team owner or admin can change this."}
-                </FieldDescription>
-              </Field>
-              {settings.canEdit && (
-                <Field>
-                  <Button
-                    type="submit"
-                    className="self-start"
-                    disabled={savingRetries || typedRetries === null}
-                  >
-                    {savingRetries ? "Saving" : "Save"}
-                  </Button>
-                </Field>
-              )}
-            </FieldGroup>
-          </form>
-        </CardContent>
-      </Card>
-    </>
+    <SettingsSection>
+      <form onSubmit={onSubmit}>
+        <SettingRow
+          label="Jobs at once"
+          htmlFor="max-parallel"
+          description={`How many jobs your toolkit works on at the same time. The rest wait their turn. 1 to ${settings.mostAllowed}.`}
+        >
+          <Input
+            id="max-parallel"
+            type="number"
+            min={1}
+            max={settings.mostAllowed}
+            step={1}
+            className="w-20 tabular-nums"
+            value={typed ?? String(settings.maxParallelJobs)}
+            onChange={(event) => setTyped(event.target.value)}
+            disabled={!settings.canEdit}
+            required
+          />
+          {settings.canEdit && typed !== null && (
+            <Button type="submit" disabled={pending}>
+              {pending ? "Saving" : "Save"}
+            </Button>
+          )}
+        </SettingRow>
+      </form>
+      <form onSubmit={onSubmitRetries}>
+        <SettingRow
+          label="Tries after a failure"
+          htmlFor="step-retries"
+          description={`How many more times a failed step tries before the run stops and the team is told. 0 to ${settings.mostRetries}.`}
+        >
+          <Input
+            id="step-retries"
+            type="number"
+            min={0}
+            max={settings.mostRetries}
+            step={1}
+            className="w-20 tabular-nums"
+            value={typedRetries ?? String(settings.stepRetries)}
+            onChange={(event) => setTypedRetries(event.target.value)}
+            disabled={!settings.canEdit}
+            required
+          />
+          {settings.canEdit && typedRetries !== null && (
+            <Button type="submit" disabled={savingRetries}>
+              {savingRetries ? "Saving" : "Save"}
+            </Button>
+          )}
+        </SettingRow>
+      </form>
+      {!settings.canEdit && <p className="text-muted-foreground text-sm">{onlyManagers}</p>}
+    </SettingsSection>
   );
 }
 
@@ -207,14 +165,14 @@ export function EmailSettings() {
   return <EmailCard />;
 }
 
-/** Slack and Discord, where the team talks to the agent. */
-export function ChatSettings() {
-  return (
-    <>
-      <SlackCard />
-      <DiscordCard />
-    </>
-  );
+/** Slack, where the team can talk to the agent. */
+export function SlackSettings() {
+  return <SlackCard />;
+}
+
+/** Discord, where the team can talk to the agent. */
+export function DiscordSettings() {
+  return <DiscordCard />;
 }
 
 /** Who is on the team and what they may do. */

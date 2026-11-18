@@ -4,21 +4,39 @@ import { api } from "@convex/_generated/api";
 import { useQuery } from "convex/react";
 import * as React from "react";
 import {
+  ArrowLeft,
+  Bell,
+  ChevronsUpDown,
   Clapperboard,
+  Film,
   FolderOutput,
   FolderTree,
   Home,
   Inbox,
   ListChecks,
+  Mail,
   MessagesSquare,
+  Palette,
+  RotateCcw,
   Settings,
   type LucideIcon,
   SquareFunction,
+  UserPlus,
+  Users,
   UploadCloud,
   Workflow,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import { DiscordLogo, SlackLogo } from "@/components/brand-logos";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { SETTINGS_GROUPS, type SettingsSlug } from "@/components/settings/settings-pages";
 
 import {
   Sidebar,
@@ -31,6 +49,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { useActiveTeam } from "@/lib/team-context";
 import { useFileLink } from "@/lib/use-brand-upload";
@@ -50,7 +69,6 @@ const navEveryday: NavItem[] = [
   { title: "Outputs", url: "/outputs", icon: FolderOutput },
   { title: "Uploads", url: "/uploads", icon: UploadCloud },
   { title: "Files", url: "/files", icon: FolderTree },
-  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 // For building and testing automations: single steps run by hand, and every job sent.
@@ -64,6 +82,48 @@ export const navMain: NavItem[] = [...navEveryday, ...navBuilder];
 /** The nav entry a path belongs to: "/steps/video-trim" belongs to Steps. */
 export function navItemFor(pathname: string) {
   return navMain.find((item) => item.url !== "/" && pathname.startsWith(item.url)) ?? navMain[0];
+}
+
+export const isSettingsPath = (pathname: string) =>
+  pathname === "/settings" || pathname.startsWith("/settings/");
+
+const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: string }>> = {
+  notifications: Bell,
+  brand: Palette,
+  team: Users,
+  agent: MessagesSquare,
+  runs: RotateCcw,
+  editors: Film,
+  email: Mail,
+  slack: SlackLogo,
+  discord: DiscordLogo,
+};
+
+const LAST_APP_PAGE = "ncat:last-app-page";
+
+/**
+ * Remembers the last page outside settings, so "Back to app" returns there, the way
+ * Linear's settings do.
+ */
+function useBackToApp(pathname: string) {
+  React.useEffect(() => {
+    try {
+      if (!isSettingsPath(pathname)) sessionStorage.setItem(LAST_APP_PAGE, pathname);
+    } catch {
+      // Storage can be blocked; Home is a fine place to go back to.
+    }
+  }, [pathname]);
+  return React.useSyncExternalStore(noChanges, readLastAppPage, () => "/");
+}
+
+const noChanges = () => () => {};
+
+function readLastAppPage() {
+  try {
+    return sessionStorage.getItem(LAST_APP_PAGE) ?? "/";
+  } catch {
+    return "/";
+  }
 }
 
 /** How many alerts are new, beside Inbox in the menu; nothing when all are seen. */
@@ -116,59 +176,150 @@ export function AppSidebar({
   user: ShellUser;
 }) {
   const pathname = usePathname();
+  const back = useBackToApp(pathname);
+  const inSettings = isSettingsPath(pathname);
 
   return (
     <Sidebar variant="inset" {...props}>
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <Link href="/">
-                <TeamMark />
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{teamName}</span>
-                  <span className="truncate text-xs">{edition}</span>
-                </div>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <TeamMenu teamName={teamName} edition={edition} />
       </SidebarHeader>
-      <SidebarContent>
-        {[
-          { label: null, items: navEveryday },
-          { label: "Builder", items: navBuilder },
-        ].map((group) => (
-          <SidebarGroup key={group.label ?? "everyday"}>
-            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.url}>
-                    <SidebarMenuButton
-                      asChild
-                      tooltip={item.title}
-                      isActive={navItemFor(pathname).url === item.url}
-                    >
-                      <Link
-                        href={item.url}
-                        {...(item.url === "/inbox" ? { "data-alerts-bell": true } : {})}
+      {inSettings ? (
+        <SettingsMenu pathname={pathname} back={back} />
+      ) : (
+        <SidebarContent>
+          {[
+            { label: null, items: navEveryday },
+            { label: "Builder", items: navBuilder },
+          ].map((group) => (
+            <SidebarGroup key={group.label ?? "everyday"}>
+              {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {group.items.map((item) => (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton
+                        asChild
+                        tooltip={item.title}
+                        isActive={navItemFor(pathname).url === item.url}
                       >
-                        <item.icon />
-                        <span>{item.title}</span>
-                        {item.url === "/inbox" && <InboxCount />}
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
-      </SidebarContent>
+                        <Link
+                          href={item.url}
+                          {...(item.url === "/inbox" ? { "data-alerts-bell": true } : {})}
+                        >
+                          <item.icon />
+                          <span>{item.title}</span>
+                          {item.url === "/inbox" && <InboxCount />}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))}
+        </SidebarContent>
+      )}
       <SidebarFooter>
         <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+/**
+ * The team's name at the top of the menu. It opens the team's menu, where settings live,
+ * as in Linear and Notion: settings are not an everyday page.
+ */
+function TeamMenu({ teamName, edition }: { teamName: string; edition: string }) {
+  const { isMobile } = useSidebar();
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              aria-label={`${teamName} menu`}
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <TeamMark />
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-medium">{teamName}</span>
+                <span className="truncate text-xs">{edition}</span>
+              </div>
+              <ChevronsUpDown className="ml-auto size-4" aria-hidden="true" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+            side={isMobile ? "bottom" : "right"}
+            align="start"
+            sideOffset={4}
+          >
+            <DropdownMenuItem asChild>
+              <Link href="/settings/brand">
+                <Settings />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/settings/team">
+                <UserPlus />
+                Invite people
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
+/** While settings are open, the menu becomes the list of settings pages. */
+function SettingsMenu({ pathname, back }: { pathname: string; back: string }) {
+  return (
+    <SidebarContent>
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild className="text-muted-foreground">
+                <Link href={back}>
+                  <ArrowLeft />
+                  <span>Back to app</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+      <nav aria-label="Settings" className="contents">
+        {SETTINGS_GROUPS.map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.pages.map((page) => {
+                  const href = `/settings/${page.slug}`;
+                  const Icon = SETTINGS_ICONS[page.slug];
+                  const active = pathname === href;
+                  return (
+                    <SidebarMenuItem key={page.slug}>
+                      <SidebarMenuButton asChild tooltip={page.title} isActive={active}>
+                        <Link href={href} aria-current={active ? "page" : undefined}>
+                          <Icon />
+                          <span>{page.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+      </nav>
+    </SidebarContent>
   );
 }
