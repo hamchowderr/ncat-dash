@@ -144,3 +144,53 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await covered(page), "new automation page").toEqual([]);
 });
+
+test("settings are separate pages with a menu beside them, using the page's width", async ({
+  page,
+}) => {
+  await page.goto("/sign-up");
+  await page.locator("#name").fill("Ines Moreau");
+  await page.locator("#email").fill(`ines.${stamp}@example.test`);
+  await page.locator("#password").fill("layout-e2e-12345");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
+  await page.getByPlaceholder("Your company or channel").fill("Wide Shop");
+  await page.getByRole("button", { name: "Create team" }).click();
+  await expect(page.locator("#baseUrl")).toBeVisible();
+
+  // Settings opens on its first page; an old link to a section opens that section's page.
+  await page.goto("/settings");
+  await expect(page).toHaveURL(/\/settings\/brand$/);
+  await page.goto("/settings#notifications");
+  await expect(page).toHaveURL(/\/settings\/notifications$/);
+
+  const menu = page.getByRole("navigation", { name: "Settings" });
+  for (const size of [{ width: 1440, height: 900 }, ...SIZES]) {
+    await page.setViewportSize(size);
+    await page.goto("/settings/brand");
+    await expect(page.getByRole("heading", { name: "Brand" })).toBeVisible();
+    // One page holds one subject: the brand page has no other settings on it.
+    await expect(page.getByRole("heading", { name: "Team" })).toHaveCount(0);
+    await page.waitForTimeout(400);
+    const frame = await box(page, "[data-page-frame]");
+    const block = await box(page, "[data-settings]");
+    const nav = await box(page, 'nav[aria-label="Settings"]');
+    const card = await box(page, "[data-settings] [data-slot=card]");
+    // The menu sits left of the page, and the page reaches the right edge of the block.
+    expect(nav.x + nav.width).toBeLessThan(card.x);
+    expect(block.x + block.width - (card.x + card.width)).toBeLessThanOrEqual(1);
+    // The block fills the window, or sits centred when the window is wider still.
+    const left = block.x - frame.x;
+    const right = frame.x + frame.width - (block.x + block.width);
+    expect(Math.abs(left - right), `centred at ${size.width}`).toBeLessThanOrEqual(24);
+    expect(right, `no empty strip at ${size.width}`).toBeLessThan(frame.width * 0.2);
+    expect(await covered(page), `settings at ${size.width}`).toEqual([]);
+  }
+
+  // Each menu entry opens its own page and is marked as the one open.
+  await menu.getByRole("link", { name: /^Team/ }).click();
+  await expect(page).toHaveURL(/\/settings\/team$/);
+  await expect(page.getByRole("heading", { name: "Team" })).toBeVisible();
+  await expect(menu.locator("[aria-current=page]")).toHaveText(/^Team/);
+  await expect(page.getByRole("heading", { name: "Brand" })).toHaveCount(0);
+});

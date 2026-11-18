@@ -59,7 +59,7 @@ export function DiscordCard() {
     window.history.replaceState(null, "", url.toString());
   }, []);
 
-  if (discord === undefined) return <Skeleton className="h-40 max-w-xl rounded-xl" />;
+  if (discord === undefined) return <Skeleton className="h-40 rounded-xl" />;
   if (discord === null) return null;
 
   async function go(kind: "server" | "person") {
@@ -85,7 +85,7 @@ export function DiscordCard() {
   }
 
   return (
-    <Card className="max-w-xl" data-discord-card>
+    <Card data-discord-card>
       <CardHeader>
         <CardTitle>
           <h2>Discord</h2>

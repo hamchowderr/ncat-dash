@@ -73,7 +73,7 @@ test.afterAll(async () => {
 });
 
 test("each member sees every kind of news with a bell and an email switch", async () => {
-  await maya.goto("/settings#notifications");
+  await maya.goto("/settings/notifications");
   await expect(card(maya).getByRole("heading", { name: "Notifications" })).toBeVisible();
   const rows = card(maya).locator("[data-notification]");
   await expect(rows).toHaveCount(5);

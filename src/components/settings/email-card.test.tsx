@@ -24,7 +24,7 @@ describe("the email card", () => {
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute(
       "href",
-      "#notifications",
+      "/settings/notifications",
     );
   });
 });

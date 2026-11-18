@@ -19,7 +19,8 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
-type Kind = "run_failed" | "approval_waiting" | "approval_timed_out" | "mention" | "client_feedback";
+type Kind =
+  "run_failed" | "approval_waiting" | "approval_timed_out" | "mention" | "client_feedback";
 type Channel = "bell" | "email";
 
 /** "8 AM", "12 PM", in the reader's own way of writing times. */
@@ -47,7 +48,7 @@ export function NotificationsCard() {
   const set = useMutation(api.notifications.set);
   const setTiming = useMutation(api.notifications.setEmailTiming);
 
-  if (settings === undefined) return <Skeleton className="h-72 max-w-xl rounded-xl" />;
+  if (settings === undefined) return <Skeleton className="h-72 rounded-xl" />;
 
   async function onToggle(kind: Kind, channel: Channel, enabled: boolean) {
     try {
@@ -74,7 +75,7 @@ export function NotificationsCard() {
   const anyEmail = settings.kinds.some((entry) => entry.email);
 
   return (
-    <Card className="max-w-xl scroll-mt-20" id="notifications">
+    <Card className="scroll-mt-20" id="notifications">
       <CardHeader>
         <CardTitle>
           <h2>Notifications</h2>

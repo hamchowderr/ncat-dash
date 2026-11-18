@@ -176,7 +176,7 @@ export function AlertsBell() {
             Nothing to report. Failed runs, approvals for you and mentions show up here. Choose what
             you hear about in{" "}
             <Link
-              href="/settings#notifications"
+              href="/settings/notifications"
               className="underline"
               onClick={() => showList(false)}
             >

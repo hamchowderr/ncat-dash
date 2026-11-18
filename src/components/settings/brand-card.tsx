@@ -17,7 +17,7 @@ export function BrandCard({
   canEdit: boolean;
 }) {
   return (
-    <Card className="max-w-xl">
+    <Card>
       <CardHeader>
         <CardTitle>
           <h2>Brand</h2>

@@ -148,7 +148,7 @@ describe("the home page", () => {
       within(setup)
         .getByRole("link", { name: /Add your logo/ })
         .getAttribute("href"),
-    ).toBe("/settings");
+    ).toBe("/settings/brand");
     expect(within(setup).queryByRole("link", { name: /Connect your toolkit/ })).toBeNull();
     unmount();
     answerQuery(api.home.summary, summary());
