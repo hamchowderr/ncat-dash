@@ -1,9 +1,13 @@
 "use client";
 
 import {
+  type AutomationEdge,
   type AutomationNode,
   type Chapter,
+  clipsKeepShape,
   clock,
+  frameSize,
+  getPlatform,
   showNotes,
   youtubeChapters,
 } from "@ncat-dash/automation-core";
@@ -58,6 +62,7 @@ export function PicksPanel({
           <MomentsSection
             key={step._id}
             title={nodeTitle(node)}
+            shape={clipShape(node, nodes, run.edges as AutomationEdge[])}
             step={step}
             canFindMore={!active && !run.testOf}
             busy={busy}
@@ -71,14 +76,28 @@ export function PicksPanel({
   );
 }
 
+/**
+ * The clips' own width over height: the platform's frame, or the video's when the clips go
+ * on to Follow the speaker in their original shape (taken as 16:9 until one loads).
+ */
+function clipShape(node: AutomationNode, nodes: AutomationNode[], edges: AutomationEdge[]) {
+  const size = clipsKeepShape(node.id, nodes, edges)
+    ? null
+    : frameSize(getPlatform(node.input.platform)?.frame);
+  return size ? size.width / size.height : 16 / 9;
+}
+
 function MomentsSection({
   title,
+  shape,
   step,
   canFindMore,
   busy,
   onFindMore,
 }: {
   title: string;
+  /** Width over height of the clips. */
+  shape: number;
   step: RunStep;
   canFindMore: boolean;
   busy: boolean;
@@ -104,7 +123,13 @@ function MomentsSection({
           </Button>
         )}
       </header>
-      <ol className="grid gap-3 px-4 pb-4 sm:grid-cols-2 xl:grid-cols-3">
+      <ol
+        className="grid gap-3 px-4 pb-4"
+        // Tall clips sit side by side like a feed; wide ones get room to be seen.
+        style={{
+          gridTemplateColumns: `repeat(auto-fill, minmax(${shape < 1 ? 13 : 18}rem, 1fr))`,
+        }}
+      >
         {moments.map((moment, index) => {
           const job = step.jobs[index];
           const clip = job?.status === "done" ? job.outputs.find((url) => VIDEO.test(url)) : null;
@@ -115,10 +140,14 @@ function MomentsSection({
                   src={clip}
                   controls
                   preload="metadata"
-                  className="aspect-video w-full rounded-t-lg bg-black object-contain"
+                  style={{ aspectRatio: shape }}
+                  className="w-full rounded-t-lg bg-black object-cover"
                 />
               ) : (
-                <div className="bg-muted text-muted-foreground flex aspect-video w-full items-center justify-center rounded-t-lg text-xs">
+                <div
+                  style={{ aspectRatio: shape }}
+                  className="bg-muted text-muted-foreground flex w-full items-center justify-center rounded-t-lg text-xs"
+                >
                   {job?.status === "failed"
                     ? "This clip could not be cut"
                     : cutting

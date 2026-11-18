@@ -14,6 +14,7 @@ function runWith(step: Partial<Step>, over: Partial<RunDetails> = {}): RunDetail
     _id: "run_1",
     status: "done",
     testOf: undefined,
+    edges: [],
     nodes: [
       { id: "moments", kind: "moments", input: { platform: "TikTok" }, position: { x: 0, y: 0 } },
       { id: "chapters", kind: "chapters", input: {}, position: { x: 0, y: 200 } },
@@ -69,6 +70,26 @@ describe("what Best moments picked", () => {
       "https://files.example/out/moment-1.mp4",
     );
     expect(screen.getByText("This clip could not be cut")).toBeTruthy();
+  });
+
+  test("shows TikTok clips tall, in the shape they were cut", () => {
+    renderInApp(<PicksPanel run={runWith(MOMENTS)} busy={false} onFindMore={vi.fn()} />);
+    expect(document.querySelector("video")?.style.aspectRatio).toBe("0.5625 / 1");
+  });
+
+  test("keeps the video's own shape when the clips go on to Follow the speaker", () => {
+    const run = runWith(MOMENTS, {
+      edges: [{ id: "m>f", source: "moments", target: "follow" }],
+    } as Partial<RunDetails>);
+    (run.nodes as unknown[]).push({
+      id: "follow",
+      kind: "step",
+      stepId: "video-reframe",
+      input: {},
+      position: { x: 300, y: 0 },
+    });
+    renderInApp(<PicksPanel run={run} busy={false} onFindMore={vi.fn()} />);
+    expect(document.querySelector("video")?.style.aspectRatio).toBe("1.77778 / 1");
   });
 
   test("finds more moments once the run has finished", () => {
