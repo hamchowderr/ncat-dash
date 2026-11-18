@@ -15,6 +15,7 @@ const review = (over: Record<string, unknown>) => ({
   fromRun: false,
   clips: 4,
   cover: "https://files.example/clip.mp4",
+  covers: ["https://files.example/clip.mp4"],
   comments: 0,
   open: 0,
   ...over,
@@ -42,9 +43,16 @@ describe("the Review list", () => {
     answerQuery(api.reviews.list, [
       review({ _id: "r1", fromRun: true, comments: 5, open: 2 }),
       review({ _id: "r2", title: "Podcast cut", status: "approved", clips: 1, comments: 3 }),
-      review({ _id: "r3", title: "Promo", status: "rejected", cover: "https://f.example/a.png" }),
+      review({
+        _id: "r3",
+        title: "Promo",
+        status: "rejected",
+        clips: 1,
+        cover: "https://f.example/a.png",
+        covers: ["https://f.example/a.png"],
+      }),
     ]);
-    const { container } = renderInApp(<ReviewsView />);
+    renderInApp(<ReviewsView />);
     const cards = screen.getAllByRole("link");
     expect(cards.map((card) => card.getAttribute("href"))).toEqual([
       "/review/r1",
@@ -61,10 +69,67 @@ describe("the Review list", () => {
     expect(within(cards[1]).getByText("Approved")).toBeInTheDocument();
     expect(within(cards[1]).queryByText("From an automation")).not.toBeInTheDocument();
 
-    expect(within(cards[2]).getByText(/no comments/)).toBeInTheDocument();
+    expect(within(cards[2]).getByText(/1 clip · no comments/)).toBeInTheDocument();
     expect(within(cards[2]).getByText("Changes needed")).toBeInTheDocument();
     // A picture is shown as a picture, a video as its first frame.
     expect(cards[2].querySelector("img")).toHaveAttribute("src", "https://f.example/a.png");
-    expect(container.querySelectorAll("video")).toHaveLength(2);
+    expect(cards[1].querySelector("video")).toHaveAttribute(
+      "src",
+      "https://files.example/clip.mp4#t=0.1",
+    );
+  });
+
+  test("puts what is waiting for a decision first, apart from what is decided", () => {
+    answerQuery(api.reviews.list, [
+      review({ _id: "r1", title: "Podcast cut", status: "approved" }),
+      review({ _id: "r2", title: "Weekly clips", open: 2, comments: 3 }),
+      review({ _id: "r3", title: "Promo", open: 1, comments: 1 }),
+    ]);
+    renderInApp(<ReviewsView />);
+
+    const waiting = screen.getByRole("region", { name: "Waiting for a decision" });
+    const decided = screen.getByRole("region", { name: "Decided" });
+    expect(
+      within(waiting)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual([expect.stringContaining("Weekly clips"), expect.stringContaining("Promo")]);
+    expect(within(decided).getByRole("link")).toHaveAttribute("href", "/review/r1");
+
+    // The numbers at the top: two waiting, three comments to resolve on them, one decided.
+    const glance = screen.getByLabelText("At a glance");
+    expect(within(glance).getByText("Waiting for a decision").nextSibling).toHaveTextContent("2");
+    expect(within(glance).getByText("Comments to resolve").nextSibling).toHaveTextContent("3");
+    expect(within(glance).getByText("Decided").nextSibling).toHaveTextContent("1");
+  });
+
+  test("says so when nothing is waiting", () => {
+    answerQuery(api.reviews.list, [review({ status: "approved" })]);
+    renderInApp(<ReviewsView />);
+    expect(screen.getByText("Nothing is waiting for a decision right now.")).toBeInTheDocument();
+  });
+
+  test("leaves out the Decided section until something is decided", () => {
+    answerQuery(api.reviews.list, [review({})]);
+    renderInApp(<ReviewsView />);
+    expect(screen.queryByRole("region", { name: "Decided" })).not.toBeInTheDocument();
+  });
+
+  test("shows a picture of every listed clip, and how many more there are", () => {
+    const covers = [1, 2, 3, 4, 5, 6].map((n) => `https://files.example/clip-${n}.mp4`);
+    answerQuery(api.reviews.list, [review({ clips: 9, covers })]);
+    renderInApp(<ReviewsView />);
+    const row = screen.getByRole("link");
+    expect(row.querySelectorAll("[data-strip] video")).toHaveLength(6);
+    expect(within(row).getByText("+3")).toBeInTheDocument();
+  });
+
+  test("gives the facts their own columns on a wide screen", () => {
+    answerQuery(api.reviews.list, [review({ clips: 4, comments: 5, open: 2 })]);
+    renderInApp(<ReviewsView />);
+    const row = screen.getByRole("link");
+    expect(row.querySelector('[data-fact="Clips"]')).toHaveTextContent("Clips4");
+    expect(row.querySelector('[data-fact="Comments"]')).toHaveTextContent("2 to resolve");
+    expect(row.querySelector('[data-fact="Opened"]')).toHaveTextContent(/Opened.*2023/);
   });
 });

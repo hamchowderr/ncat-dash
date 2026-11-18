@@ -219,7 +219,7 @@ function Workspace({
   }
 
   return (
-    <div className="grid min-h-0 min-w-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_23rem]">
+    <div className="stage-row flex min-h-0 min-w-0 flex-1 flex-col gap-3 lg:flex-row">
       <ClipStage
         url={url}
         video={video}

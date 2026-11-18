@@ -34,6 +34,9 @@ function openThreads(comments: Doc<"reviewComments">[]) {
 }
 
 /** The team's reviews, newest first, with what is left to do on each. */
+/** How many clip pictures a review's row on the Review page shows. */
+const LISTED_COVERS = 6;
+
 export const list = query({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
@@ -59,6 +62,10 @@ export const list = query({
           fromRun: review.runStepId !== undefined,
           clips: clips.length,
           cover: first ? first.versions[first.versions.length - 1].url : null,
+          // The newest version of the first few clips, for the row's strip of pictures.
+          covers: clips
+            .slice(0, LISTED_COVERS)
+            .map((clip) => clip.versions[clip.versions.length - 1].url),
           comments: comments.length,
           open: openThreads(comments),
         };
