@@ -55,7 +55,7 @@ function ready(): boolean {
 /** Back to Settings, saying how the Discord sign-in went. */
 export function settingsUrl(result: string): string {
   const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  return `${site}/settings?discord=${encodeURIComponent(result)}`;
+  return `${site}/settings/chat?discord=${encodeURIComponent(result)}`;
 }
 
 /** What Settings shows about Discord: the team's servers and the viewer's own link. */

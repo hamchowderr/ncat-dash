@@ -74,7 +74,7 @@ export function TeamCard({ canEdit }: { canEdit: boolean }) {
   }
 
   return (
-    <Card className="max-w-xl">
+    <Card>
       <CardHeader>
         <CardTitle>
           <h2>Team</h2>

@@ -92,7 +92,7 @@ export function AgentCard({
   }
 
   return (
-    <Card id="agent" className="max-w-xl scroll-mt-20">
+    <Card id="agent" className="scroll-mt-20">
       <CardHeader>
         <CardTitle>
           <h2>Agent</h2>

@@ -86,7 +86,7 @@ describe("the Discord card", () => {
   });
 
   test("coming back from Discord says how it went, then tidies the address", async () => {
-    window.history.replaceState(null, "", "/settings?discord=taken");
+    window.history.replaceState(null, "", "/settings/chat?discord=taken");
     answerQuery(api.discord.forTeam, empty);
     renderInApp(<DiscordCard />);
     await waitFor(() =>

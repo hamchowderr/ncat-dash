@@ -68,7 +68,7 @@ test.afterAll(async () => {
 });
 
 test("the owner sets the model, house rules and default platforms, and they are kept", async () => {
-  await jordan.goto("/settings#agent");
+  await jordan.goto("/settings/agent");
   await expect(card(jordan).getByRole("heading", { name: "Agent" })).toBeVisible();
   const save = card(jordan).getByRole("button", { name: "Save" });
   await expect(save).toBeDisabled();
@@ -103,7 +103,7 @@ test("the owner sets the model, house rules and default platforms, and they are 
 });
 
 test("a member sees the team's settings but cannot change them", async () => {
-  await maya.goto("/settings#agent");
+  await maya.goto("/settings/agent");
   await expect(card(maya).getByRole("textbox", { name: "House rules" })).toHaveValue(
     /Clips no longer than 45 seconds\./,
   );

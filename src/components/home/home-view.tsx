@@ -352,7 +352,7 @@ function GettingStarted({ setup }: { setup: Summary["setup"] }) {
       done: setup.brand,
       label: "Add your logo",
       detail: "Set once, then every automation that needs it uses it.",
-      href: "/settings",
+      href: "/settings/brand",
     },
     {
       done: setup.automationOn,

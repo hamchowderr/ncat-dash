@@ -185,7 +185,7 @@ export function EditorExport({ runId }: { runId: Id<"runs"> }) {
             )}
             <p className="text-muted-foreground text-xs">
               Editors are picked once in{" "}
-              <Link href="/settings" className="underline underline-offset-4">
+              <Link href="/settings/editors" className="underline underline-offset-4">
                 Settings
               </Link>
               .
