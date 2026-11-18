@@ -156,7 +156,19 @@ export function HomeView() {
       ) : (
         <div className="reveal grid gap-8">
           {needsYou > 0 && (
-            <Section title="Needs you">
+            <Section
+              title="Needs you"
+              action={
+                summary.failures.length > 0 && (
+                  <Button asChild variant="ghost" size="sm">
+                    <Link href="/runs?show=failed" transitionTypes={["nav-forward"]}>
+                      Pick up failed runs
+                      <ArrowRight />
+                    </Link>
+                  </Button>
+                )
+              }
+            >
               <ul className="bg-surface divide-background grid divide-y-2 rounded-xl">
                 {approvals.map((approval) => (
                   <li key={approval.runStepId} className="flex items-center gap-3 px-4 py-3">
@@ -233,8 +245,8 @@ export function HomeView() {
               action={
                 summary.recentRuns.length > 0 && (
                   <Button asChild variant="ghost" size="sm">
-                    <Link href="/outputs" transitionTypes={["nav-forward"]}>
-                      Everything made
+                    <Link href="/runs" transitionTypes={["nav-forward"]}>
+                      All runs
                       <ArrowRight />
                     </Link>
                   </Button>
@@ -483,6 +495,13 @@ function ToolkitStatus({ connections }: { connections: Connection[] | undefined 
           {!ok && connection.lastError && (
             <FailureText className="text-destructive" text={connection.lastError} />
           )}
+          <Link
+            href="/toolkit"
+            transitionTypes={["nav-forward"]}
+            className="text-muted-foreground hover:text-foreground text-sm underline-offset-2 hover:underline"
+          >
+            See how busy it is
+          </Link>
         </div>
       )}
     </div>
