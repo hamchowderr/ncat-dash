@@ -141,7 +141,7 @@ const RUN_APP_HTML = `<!doctype html>
     return new Promise(function (resolve, reject) { pending[id] = { resolve: resolve, reject: reject }; });
   }
   function el(tag, cls, text) { var node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; }
-  function size() { send({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { height: Math.ceil(document.documentElement.scrollHeight) } }); }
+  function size() { send({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { height: Math.ceil(document.body.getBoundingClientRect().height) } }); }
   function show(run) {
     if (!run || typeof run !== "object") return;
     if (run.run_id) runId = run.run_id;
@@ -151,6 +151,12 @@ const RUN_APP_HTML = `<!doctype html>
     status.className = "status " + (run.status || "");
     var list = document.getElementById("steps");
     list.textContent = "";
+    if (!(run.steps || []).length && (run.status === "running" || run.status === "waiting")) {
+      var first = el("li", "running");
+      first.appendChild(el("span", "dot"));
+      first.appendChild(el("div", "name", "Starting the first step"));
+      list.appendChild(first);
+    }
     (run.steps || []).forEach(function (step) {
       var item = el("li", step.status);
       item.appendChild(el("span", "dot"));
@@ -167,7 +173,7 @@ const RUN_APP_HTML = `<!doctype html>
     } else files.hidden = true;
     size();
     clearTimeout(timer);
-    if (runId && (run.status === "running" || run.status === "waiting")) timer = setTimeout(poll, 4000);
+    if (runId && (run.status === "running" || run.status === "waiting")) timer = setTimeout(poll, (run.steps || []).length ? 4000 : 1500);
   }
   function fromResult(result) {
     if (!result) return null;
