@@ -51,6 +51,7 @@ import { membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
+import { withTeamSteps } from "./lib/teamSteps";
 import { deleteVersions, recordVersion } from "./lib/versions";
 import { deleteNotes, notesOf } from "./notes";
 import { bucketOf, presign, storageConnection } from "./lib/bucket";
@@ -356,6 +357,7 @@ async function problemOf(
   version: Version,
 ): Promise<string | null> {
   const { organizationId } = automation;
+  await withTeamSteps(ctx, organizationId);
   return (
     automationProblem(
       version.trigger,
@@ -938,11 +940,13 @@ function withoutReservedKeys<T>(value: T): T {
 }
 
 export const nodeTypes = query({
-  args: { type: v.optional(v.string()) },
+  // With a team, its own steps (teamSteps.ts) are listed too.
+  args: { type: v.optional(v.string()), organizationId: v.optional(v.string()) },
   returns: v.object({ index: v.optional(v.string()), type: v.optional(v.any()) }),
   handler: async (ctx, args) => {
     const user = await authComponent.safeGetAuthUser(ctx);
     if (!user) fail("unauthenticated", "Sign in first.");
+    if (args.organizationId) await requireMember(ctx, args.organizationId);
     if (!args.type) return { index: nodeTypeIndex() };
     const found = getNodeType(args.type);
     if (!found) fail("not_found", `There is no step type called ${args.type}.`);

@@ -4,7 +4,7 @@
  * builds its step list from this and the agent reads the same list, so a node added here
  * shows up for both.
  */
-import { allSteps, getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
+import { allSteps, currentTeamSteps, getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
 import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
@@ -82,6 +82,7 @@ export const GROUP_LABELS: Record<NodeGroup, string> = {
   media: "Media",
   image: "Image",
   recipe: "Recipes",
+  team: "Your team's steps",
   ffmpeg: "FFmpeg",
   code: "Code",
   storage: "Storage",
@@ -98,6 +99,7 @@ export const GROUP_ORDER: NodeGroup[] = [
   "media",
   "image",
   "recipe",
+  "team",
   "ffmpeg",
   "code",
   "storage",
@@ -467,8 +469,25 @@ export const NODE_TYPES: NodeType[] = [
 
 const byType = new Map(NODE_TYPES.map((nodeType) => [nodeType.type, nodeType]));
 
+/** The team's own steps (step-catalog's `setTeamSteps`), as node types. */
+function teamNodeTypes(): NodeType[] {
+  return currentTeamSteps().map(stepType);
+}
+
+/** Every node type, with the team's own steps after the recipes. */
+export function allNodeTypes(): NodeType[] {
+  const team = teamNodeTypes();
+  if (team.length === 0) return NODE_TYPES;
+  return [...NODE_TYPES, ...team].sort(
+    (a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group),
+  );
+}
+
 export function getNodeType(type: string): NodeType | undefined {
-  return byType.get(type);
+  const found = byType.get(type);
+  if (found || !type.startsWith("step:")) return found;
+  const step = getStep(type.slice("step:".length));
+  return step ? stepType(step) : undefined;
 }
 
 /** The types that can be added as steps, grouped for the step list. */
@@ -476,7 +495,9 @@ export function actionTypesByGroup(): { group: NodeGroup; label: string; types: 
   return GROUP_ORDER.map((group) => ({
     group,
     label: GROUP_LABELS[group],
-    types: NODE_TYPES.filter((nodeType) => nodeType.role === "action" && nodeType.group === group),
+    types: allNodeTypes().filter(
+      (nodeType) => nodeType.role === "action" && nodeType.group === group,
+    ),
   })).filter((entry) => entry.types.length > 0);
 }
 
@@ -486,7 +507,7 @@ export function typeNameOf(node: Pick<AutomationNode, "kind" | "stepId">): strin
 }
 
 export function nodeTypeOf(node: Pick<AutomationNode, "kind" | "stepId">): NodeType | undefined {
-  return byType.get(typeNameOf(node));
+  return getNodeType(typeNameOf(node));
 }
 
 export function triggerTypeOf(trigger: StarterTrigger): NodeType {
@@ -572,7 +593,7 @@ export function withBrand(
  * The full settings of one type come from `getNodeType(type).settings`.
  */
 export function nodeTypeIndex(): string {
-  return NODE_TYPES.map(
+  return allNodeTypes().map(
     (nodeType) =>
       `${nodeType.type} (${GROUP_LABELS[nodeType.group]}; takes ${nodeType.takes}, gives ${nodeType.gives}${
         nodeType.makes ? `, makes ${nodeType.makes.join(" and ")}` : ""
