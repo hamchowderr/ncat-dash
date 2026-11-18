@@ -69,11 +69,25 @@ export type SpeechInputProps = ComponentProps<typeof Button> & {
    */
   onAudioRecorded?: (audioBlob: Blob) => Promise<string>;
   lang?: string;
+  /**
+   * ncat-dash: record with MediaRecorder even where the browser has the Web Speech API,
+   * so every browser sends the recording to `onAudioRecorded` (a voice note).
+   */
+  preferRecorder?: boolean;
 };
 
-const detectSpeechInputMode = (): SpeechInputMode => {
+const canRecord = () =>
+  typeof window !== "undefined" &&
+  "MediaRecorder" in window &&
+  "mediaDevices" in navigator;
+
+const detectSpeechInputMode = (preferRecorder = false): SpeechInputMode => {
   if (typeof window === "undefined") {
     return "none";
+  }
+
+  if (preferRecorder) {
+    return canRecord() ? "media-recorder" : "none";
   }
 
   if ("SpeechRecognition" in window || "webkitSpeechRecognition" in window) {
@@ -92,11 +106,14 @@ export const SpeechInput = ({
   onTranscriptionChange,
   onAudioRecorded,
   lang = "en-US",
+  preferRecorder = false,
   ...props
 }: SpeechInputProps) => {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [mode] = useState<SpeechInputMode>(detectSpeechInputMode);
+  const [mode] = useState<SpeechInputMode>(() =>
+    detectSpeechInputMode(preferRecorder)
+  );
   const [isRecognitionReady, setIsRecognitionReady] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -216,8 +233,9 @@ export const SpeechInput = ({
         }
         streamRef.current = null;
 
+        // Safari records MP4, Chrome and Firefox WebM: keep what was really recorded.
         const audioBlob = new Blob(audioChunksRef.current, {
-          type: "audio/webm",
+          type: mediaRecorder.mimeType || "audio/webm",
         });
 
         if (audioBlob.size > 0 && onAudioRecordedRef.current) {
@@ -303,6 +321,10 @@ export const SpeechInput = ({
 
       {/* Main record button */}
       <Button
+        aria-pressed={isListening}
+        data-state={
+          isProcessing ? "processing" : isListening ? "recording" : "idle"
+        }
         className={cn(
           "relative z-10 rounded-full transition-all duration-300",
           isListening

@@ -176,6 +176,36 @@ http.route({
   }),
 });
 
+// The agent server sends a voice note someone sent it in Slack or Discord, and gets its
+// words back. It has already found who sent it, and on which team (?organizationId=).
+// Only a caller holding MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/agent/voice-note",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    const organizationId = new URL(request.url).searchParams.get("organizationId") ?? "";
+    if (!organizationId || organizationId.length > 200) {
+      return new Response("Missing organizationId", { status: 400 });
+    }
+    const contentType = request.headers.get("content-type") ?? "";
+    const audio = await request.arrayBuffer();
+    try {
+      const { text } = await ctx.runAction(internal.voiceNotes.transcribeAudio, {
+        organizationId,
+        audio,
+        contentType,
+      });
+      return Response.json({ text });
+    } catch (error) {
+      const data = (error as { data?: { message?: unknown } }).data;
+      const message =
+        typeof data?.message === "string" ? data.message : "The voice note could not be read.";
+      return Response.json({ error: message }, { status: 422 });
+    }
+  }),
+});
+
 // Discord sends people back here after they add the bot to a server or link their own
 // account from Settings. The state is the one-time id Settings started the sign-in with.
 http.route({
