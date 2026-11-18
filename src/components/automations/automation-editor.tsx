@@ -111,6 +111,7 @@ import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
 import { VersionsPanel } from "./versions-panel";
 import { TriggerPanel } from "./trigger-panel";
+import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
 const EMPTY_BRAND: Brand = {};
 const EMPTY_MUSIC: { name: string; file: string }[] = [];
@@ -180,6 +181,7 @@ function EditorSkeleton() {
 }
 
 function Editor({ automation }: { automation: Loaded }) {
+  useTeamStepsVersion();
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const team = useActiveTeam();

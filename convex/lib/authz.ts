@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import { components } from "../_generated/api";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { authComponent } from "../auth";
+import { withTeamSteps } from "./teamSteps";
 
 export type TeamRole = "owner" | "admin" | "member";
 
@@ -32,6 +33,8 @@ export async function requireMember(
       message: "Only a team owner or admin can do this.",
     });
   }
+  // Whatever this call does next with the team's automations knows the team's own steps.
+  await withTeamSteps(ctx, organizationId);
   return { userId: user._id, role };
 }
 

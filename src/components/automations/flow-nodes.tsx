@@ -42,6 +42,7 @@ import {
   FolderKanban,
   Hand,
   Layers,
+  WandSparkles,
   HardDriveUpload,
   Image as ImageIcon,
   type LucideIcon,
@@ -77,6 +78,7 @@ import { cn } from "@/lib/utils";
 import { STEP_ICONS } from "./step-icons";
 
 import { type ShownStepStatus, StatusIcon } from "./run-status";
+import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
 export const TRIGGER_ID = "__trigger";
 
@@ -86,6 +88,7 @@ export const CATEGORY_ICONS: Record<StepCategory, LucideIcon> = {
   media: Shapes,
   image: ImageIcon,
   recipe: Layers,
+  team: WandSparkles,
   ffmpeg: Terminal,
   code: Code,
   storage: HardDriveUpload,
@@ -122,6 +125,7 @@ const CATEGORY_TINTS: Record<StepCategory, string> = {
   media: "text-teal-600 dark:text-teal-400",
   image: "text-pink-600 dark:text-pink-400",
   recipe: "text-amber-600 dark:text-amber-400",
+  team: "text-fuchsia-600 dark:text-fuchsia-400",
   ffmpeg: "text-slate-600 dark:text-slate-300",
   code: "text-emerald-600 dark:text-emerald-400",
   storage: "text-blue-600 dark:text-blue-400",
@@ -221,6 +225,7 @@ const WAY_TOP = [28, 72];
 const FAIL_TOP = 84;
 
 function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
+  useTeamStepsVersion();
   const { node, status, jobCount, last, openWays, note, failWay } = data;
   const ways = branchesOfKind(node.kind);
   const look = nodeLook({ ...node, input: node.input });

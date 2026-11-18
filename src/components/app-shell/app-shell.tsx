@@ -14,11 +14,12 @@ import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { showAgent, useAgentOpen } from "@/lib/agent-open";
 import { TeamContext } from "@/lib/team-context";
+import { TeamStepsSync } from "@/lib/team-steps-sync";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
 import { cn } from "@/lib/utils";
 
-import { AppSidebar, navItemFor } from "./app-sidebar";
+import { AppSidebar, isSettingsPath, navItemFor } from "./app-sidebar";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const state = useTeam();
@@ -37,7 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <TeamContext.Provider value={state.team}>
       <Shell state={state} edition={settings?.edition === "hosted" ? "Hosted" : "Self-hosted"}>
-        {children}
+        <TeamStepsSync organizationId={state.team.id}>{children}</TeamStepsSync>
       </Shell>
     </TeamContext.Provider>
   );
@@ -73,7 +74,10 @@ function Shell({
       <SidebarInset className={cn("min-w-0 md:overflow-hidden", agentOpen && "max-lg:hidden")}>
         <header className="flex h-16 shrink-0 items-center gap-2 px-4">
           <MenuButton />
-          <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
+          {/* Settings name their page in the menu and the page itself, so the bar says nothing. */}
+          {!isSettingsPath(pathname) && (
+            <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
+          )}
           <div className="ml-auto flex items-center gap-2">
             {!agentOpen && (
               <Button variant="outline" size="sm" onClick={() => showAgent(true)}>
