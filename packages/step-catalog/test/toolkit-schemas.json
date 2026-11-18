@@ -1054,6 +1054,71 @@
     "required": ["video_url", "cuts"],
     "type": "object"
   },
+  "/v1/video/reframe": {
+    "additionalProperties": false,
+    "properties": {
+      "video_url": {
+        "type": "string",
+        "format": "uri"
+      },
+      "aspect": {
+        "type": "string",
+        "enum": ["9:16", "1:1", "4:5", "16:9"]
+      },
+      "follow": {
+        "type": "string",
+        "enum": ["speaker", "largest_face", "center"]
+      },
+      "switch_after": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10
+      },
+      "min_hold": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 30
+      },
+      "smoothing": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10
+      },
+      "output_width": {
+        "type": "integer",
+        "minimum": 144,
+        "maximum": 4320
+      },
+      "path": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "properties": {
+            "time": {
+              "type": "number",
+              "minimum": 0
+            },
+            "x": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": ["time", "x"],
+          "additionalProperties": false
+        }
+      },
+      "webhook_url": {
+        "type": "string",
+        "format": "uri"
+      },
+      "id": {
+        "type": "string"
+      }
+    },
+    "required": ["video_url"],
+    "type": "object"
+  },
   "/v1/video/split": {
     "additionalProperties": false,
     "properties": {

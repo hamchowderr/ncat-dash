@@ -29,6 +29,8 @@ import {
   triggerTypeOf,
   undo,
   valueSources,
+  clipsKeepShape,
+  followShapeLine,
 } from "@ncat-dash/automation-core";
 import {
   Background,
@@ -966,16 +968,24 @@ function Editor({ automation }: { automation: Loaded }) {
                           .flatMap((id) => stepNodes.find((node) => node.id === id) ?? [])
                           .map((node) => node.data.node)}
                         startGivesFile={triggerTypeOf(trigger).gives === "file"}
-                        filled={Object.fromEntries(
-                          valueSources(
+                        filled={{
+                          ...Object.fromEntries(
+                            valueSources(
+                              { ...selected.data.node, position: selected.position },
+                              draft.nodes,
+                              draft.edges,
+                            ).map(({ field, value, from }) => [
+                              field,
+                              `Automatic. Uses the ${value} from ${nodeTitle(from)}. Fill it in to use your own instead.`,
+                            ]),
+                          ),
+                          ...followShapeLine(
                             { ...selected.data.node, position: selected.position },
                             draft.nodes,
                             draft.edges,
-                          ).map(({ field, value, from }) => [
-                            field,
-                            `Automatic. Uses the ${value} from ${nodeTitle(from)}. Fill it in to use your own instead.`,
-                          ]),
-                        )}
+                          ),
+                        }}
+                        feedsFollow={clipsKeepShape(selected.id, draft.nodes, draft.edges)}
                         onChange={(patch) =>
                           setNodes((current) =>
                             current.map((node) =>

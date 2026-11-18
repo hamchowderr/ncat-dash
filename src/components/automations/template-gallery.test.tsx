@@ -20,7 +20,7 @@ describe("the ready-made automations", () => {
     for (const starter of STARTERS) {
       expect(screen.getAllByText(starter.name, { exact: true }).length).toBeGreaterThan(0);
     }
-    expect(screen.getByRole("button", { name: /^All 43$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^All 45$/ })).toBeTruthy();
   });
 
   test("narrows to one category", () => {
@@ -56,5 +56,19 @@ describe("the ready-made automations", () => {
     expect(onPick).toHaveBeenCalledWith(STARTERS.find((s) => s.id === "music-release-pack"));
     fireEvent.click(screen.getByText("Empty canvas"));
     expect(onPick).toHaveBeenLastCalledWith(null);
+  });
+
+  test("lists the follow-the-speaker automations under Clips and shapes", () => {
+    renderInApp(<TemplateGallery onPick={vi.fn()} />);
+    const clips = screen.getByRole("region", { name: /^Clips and shapes/ });
+    expect(within(clips).getByText("Clips that follow the speaker")).toBeTruthy();
+    expect(within(clips).getByText("Vertical that follows the speaker")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Find a ready-made automation"), {
+      target: { value: "speaker" },
+    });
+    expect(cards().map((card) => card.textContent)).toEqual([
+      expect.stringContaining("Clips that follow the speaker"),
+      expect.stringContaining("Vertical that follows the speaker"),
+    ]);
   });
 });

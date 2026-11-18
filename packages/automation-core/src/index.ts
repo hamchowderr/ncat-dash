@@ -5,6 +5,7 @@ export * from "./schedule";
 export * from "./starters";
 export * from "./templates";
 export * from "./clips";
+export * from "./follow";
 export * from "./setup";
 export * from "./registry";
 export * from "./operations";
