@@ -111,6 +111,7 @@ describe("once connected", () => {
       },
     ]);
     renderInApp(<HomeView />);
+    fireEvent.click(screen.getByRole("button", { name: "Toolkit connected" }));
     expect(screen.getByText("Kept in the toolkit's bucket, ncat")).toBeTruthy();
   });
 });

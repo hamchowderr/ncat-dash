@@ -1,5 +1,5 @@
 import type { StepDefinition } from "./define";
-import { recipes } from "./recipes";
+import { moreRecipes, recipes } from "./recipes";
 import { steps } from "./steps";
 
 export * from "./define";
@@ -8,7 +8,7 @@ export * from "./recipes";
 export * from "./steps";
 
 /** Every step a person can run: the toolkit's endpoints, then the ready-made recipes. */
-export const allSteps: StepDefinition[] = [...steps, ...recipes];
+export const allSteps: StepDefinition[] = [...steps, ...recipes, ...moreRecipes];
 
 const byId = new Map<string, StepDefinition>(allSteps.map((step) => [step.id, step]));
 

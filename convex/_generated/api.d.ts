@@ -14,6 +14,7 @@ import type * as automations from "../automations.js";
 import type * as crons from "../crons.js";
 import type * as email from "../email.js";
 import type * as files from "../files.js";
+import type * as home from "../home.js";
 import type * as http from "../http.js";
 import type * as jobs from "../jobs.js";
 import type * as lib_agentToken from "../lib/agentToken.js";
@@ -71,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   email: typeof email;
   files: typeof files;
+  home: typeof home;
   http: typeof http;
   jobs: typeof jobs;
   "lib/agentToken": typeof lib_agentToken;
