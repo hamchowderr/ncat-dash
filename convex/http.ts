@@ -6,6 +6,7 @@ import { authComponent, createAuth } from "./auth";
 import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
+import { noStream, serve } from "./mcp";
 
 const http = httpRouter();
 
@@ -230,5 +231,9 @@ http.route({
     return new Response(null, { status: 302, headers: { location } });
   }),
 });
+
+// The dashboard as an MCP server, for Claude and other AI agents (mcp.ts).
+http.route({ path: "/mcp", method: "POST", handler: serve });
+http.route({ path: "/mcp", method: "GET", handler: noStream });
 
 export default http;

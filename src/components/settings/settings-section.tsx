@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentAccessCard } from "./agent-access-card";
 import type { SettingsSlug } from "./settings-pages";
 import {
   AgentSettings,
@@ -20,6 +21,7 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   notifications: NotificationsSettings,
   email: EmailSettings,
   chat: ChatSettings,
+  "ai-agents": AgentAccessCard,
   team: TeamSettings,
 };
 

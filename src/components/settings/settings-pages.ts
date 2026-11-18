@@ -7,6 +7,7 @@ export const SETTINGS_PAGES = [
   { slug: "notifications", title: "Notifications", description: "What you hear about" },
   { slug: "email", title: "Email", description: "How the dashboard sends email" },
   { slug: "chat", title: "Chat apps", description: "Slack and Discord" },
+  { slug: "ai-agents", title: "AI agents", description: "Let Claude start your automations" },
   { slug: "team", title: "Team", description: "Members and invitations" },
 ] as const;
 
