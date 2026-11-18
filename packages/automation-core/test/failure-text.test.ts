@@ -57,4 +57,54 @@ describe("explainFailure", () => {
     expect(explained.details).toContain("at line 9");
     expect(explainFailure("x".repeat(500)).reason.length).toBeLessThanOrEqual(240);
   });
+
+  test("network errors from code are said plainly, with the raw text kept for details", () => {
+    const local = explainFailure("Error: connect ECONNREFUSED 127.0.0.1:8080");
+    expect(local.reason).toBe(
+      "The toolkit could not be reached. It is set to an address on this computer, so check the toolkit's address in Settings.",
+    );
+    expect(local.details).toBe("Error: connect ECONNREFUSED 127.0.0.1:8080");
+    expect(explainFailure("TypeError: fetch failed").reason).toBe(
+      "The connection to the toolkit dropped. Try again in a moment.",
+    );
+    expect(explainFailure("getaddrinfo ENOTFOUND toolkit.example.com").reason).toBe(
+      "That address could not be found. Check the toolkit's address in Settings.",
+    );
+    expect(explainFailure("TimeoutError: The operation was aborted due to timeout").reason).toBe(
+      "This took too long and was stopped. Try again in a moment.",
+    );
+    expect(explainFailure("connect ECONNREFUSED 10.0.0.5:8080").reason).toContain(
+      "Check that it is running",
+    );
+  });
+
+  test("toolkit refusals say what the toolkit said, not its raw body", () => {
+    const refused = explainFailure(
+      'The toolkit refused the job (HTTP 400). {"message": "video_url must be a link"}',
+    );
+    expect(refused.reason).toBe("The toolkit refused the job: video_url must be a link");
+    expect(explainFailure("The toolkit was not ready for the job (HTTP 503). <html>").reason).toBe(
+      "The toolkit ran into a problem of its own. Try again in a moment.",
+    );
+    expect(explainFailure("Toolkit answered 401 for /v1/media/convert").reason).toContain(
+      "API key",
+    );
+  });
+
+  test("crashes and raw data never reach people as they are", () => {
+    for (const raw of [
+      "TypeError: Cannot read properties of undefined (reading 'url')",
+      "KeyError: 'response'",
+      '{"status": "error"}',
+      "Error: something\n    at run (runner.js:10:3)",
+    ]) {
+      const { reason, details } = explainFailure(raw);
+      expect(reason).toMatch(/^Something went wrong in this step\./);
+      expect(details).toBe(raw);
+    }
+  });
+
+  test("plain sentences with numbers are left alone", () => {
+    expect(explainFailure("The file is over 500 MB.").reason).toBe("The file is over 500 MB.");
+  });
 });

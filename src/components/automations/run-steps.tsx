@@ -26,7 +26,7 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { fileNameOf, MediaPreview } from "@/components/jobs/media-preview";
+import { MediaPreview, OutputNamesProvider, useFileName } from "@/components/jobs/media-preview";
 import { FailureText } from "@/components/failure-text";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -166,7 +166,7 @@ function ReviewLink({ runStepId }: { runStepId: Id<"runSteps"> }) {
 
 /** A small picture of one file a step made. Choosing it plays the file in a larger view. */
 function FileTile({ url, onOpen }: { url: string; onOpen: () => void }) {
-  const name = fileNameOf(url);
+  const name = useFileName()(url);
   return (
     <li>
       <button
@@ -241,6 +241,7 @@ export function StepFiles({
   className?: string;
 }) {
   const [playing, setPlaying] = useState<string | null>(null);
+  const nameOf = useFileName();
   if (files.length === 0) return null;
   return (
     <>
@@ -267,7 +268,7 @@ export function StepFiles({
       <Dialog open={playing !== null} onOpenChange={(open) => !open && setPlaying(null)}>
         <DialogContent className="sm:max-w-3xl">
           <DialogTitle className="truncate pr-8 text-sm">
-            {playing ? fileNameOf(playing) : ""}
+            {playing ? nameOf(playing) : ""}
           </DialogTitle>
           {playing && <MediaPreview url={playing} />}
         </DialogContent>
@@ -324,8 +325,8 @@ function receivedBy(nodeId: string, passed: Map<string, string[]>): string[] {
 }
 
 /** "a.mp4, b.mp4 and 3 more". */
-function fileList(files: string[]): string {
-  const names = files.slice(0, 2).map(fileNameOf);
+function fileList(files: string[], nameOf: (url: string) => string): string {
+  const names = files.slice(0, 2).map(nameOf);
   return files.length > 2
     ? `${names.join(", ")} and ${files.length - 2} more`
     : names.join(" and ");
@@ -380,164 +381,167 @@ export function RunSteps({
   });
 
   return (
-    <section aria-labelledby="run-steps-title" className="rounded-xl bg-surface">
-      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3">
-        <h2 id="run-steps-title" className="text-sm font-semibold">
-          What happened
-        </h2>
-        <p className="text-muted-foreground text-xs">{tally(run.steps)}</p>
-      </header>
+    <OutputNamesProvider names={run.outputNames}>
+      <section aria-labelledby="run-steps-title" className="rounded-xl bg-surface">
+        <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3">
+          <h2 id="run-steps-title" className="text-sm font-semibold">
+            What happened
+          </h2>
+          <p className="text-muted-foreground text-xs">{tally(run.steps)}</p>
+        </header>
 
-      <ol className="py-2">
-        <Row
-          icon={<TriggerIcon className={cn("size-4", TRIGGER_TINT)} aria-hidden="true" />}
-          title={run.testOf ? "Test of one step" : RUN_TRIGGER_LABELS[run.triggerKind]}
-          sentence={
-            run.startedWith ? (
-              <>
-                Started with <span className="text-foreground font-medium">{run.startedWith}</span>
-              </>
-            ) : (
-              "Started this run."
-            )
-          }
-          aside={<span className="tabular-nums">{until(run.startedAt)}</span>}
-          last={rows.length === 0}
-        />
-        {rows.map((node, index) => {
-          const step = byNode.get(node.id)!;
-          const look = nodeLook(node);
-          const Icon = look.icon;
-          const quiet = step.status === "skipped" || step.status === "pending";
-          const took =
-            // Under a second says nothing worth reading, so it is left out.
-            step.startedAt && step.finishedAt && step.finishedAt - step.startedAt >= 1000
-              ? formatDuration(step.finishedAt - step.startedAt)
-              : null;
-          // A step joining others that have not all finished says which it is waiting for.
-          const sources = (run.edges as AutomationEdge[])
-            .filter((edge) => edge.target === node.id)
-            .map((edge) => edge.source);
-          const unfinished = sources.filter((source) =>
-            ["pending", "running", "waiting_approval"].includes(byNode.get(source)?.status ?? ""),
-          );
-          const waitingFor =
-            step.status === "pending" && sources.length > 1 && unfinished.length < sources.length
-              ? unfinished.flatMap((source) => {
-                  const other = run.nodes.find((candidate) => candidate.id === source);
-                  return other ? [nodeTitle(other as AutomationNode)] : [];
-                })
-              : [];
-          // Only what the step made: not what it handed on while off or after failing.
-          const files =
-            (node.kind === "step" || (node.kind === "automation" && waitsForRun(node))) &&
-            !node.off &&
-            step.status !== "failed"
-              ? step.outputs
-              : [];
-          const child = step.childRunId
-            ? run.startedRuns.find((started) => started.runId === step.childRunId)
-            : undefined;
-          return (
-            <Row
-              key={node.id}
-              stepId={node.id}
-              quiet={quiet}
-              marked={highlighted === node.id}
-              last={index === rows.length - 1}
-              icon={<Icon className={cn("size-4", look.tint)} aria-hidden="true" />}
-              title={nodeTitle(node)}
-              sentence={
-                waitingFor.length > 0
-                  ? `Waiting for ${waitingFor.join(" and ")} to finish.`
-                  : stepSentence(
-                      node,
-                      step,
-                      run.status,
-                      failsOver(node.id, run.edges as AutomationEdge[]),
-                    )
-              }
-              got={quiet ? undefined : receivedBy(node.id, passed)}
-              aside={
+        <ol className="py-2">
+          <Row
+            icon={<TriggerIcon className={cn("size-4", TRIGGER_TINT)} aria-hidden="true" />}
+            title={run.testOf ? "Test of one step" : RUN_TRIGGER_LABELS[run.triggerKind]}
+            sentence={
+              run.startedWith ? (
                 <>
-                  {took && <span className="tabular-nums">{took}</span>}
-                  <RunStatusBadge status={shownStatus(step)} />
+                  Started with{" "}
+                  <span className="text-foreground font-medium">{run.startedWith}</span>
                 </>
-              }
-            >
-              {step.retryAt && step.status === "running" && (
-                <div data-retry="waiting" className="flex flex-col gap-0.5 text-sm">
-                  <p className="font-medium tabular-nums">
-                    Trying again <RetryCountdown at={step.retryAt} />, try {step.retries + 1} of{" "}
-                    {Math.max(run.retryLimit, step.retries) + 1}
-                  </p>
-                  {step.retryError && (
-                    <FailureText
-                      className="text-muted-foreground"
-                      lead="The last try failed: "
-                      text={step.retryError}
-                    />
-                  )}
-                </div>
-              )}
-              {step.retries > 0 && !step.retryAt && step.status !== "skipped" && (
-                <p data-retry="used" className="text-muted-foreground text-sm">
-                  {step.status === "done"
-                    ? `Worked on try ${step.retries + 1}.`
-                    : step.status === "failed"
-                      ? `Gave up after ${step.retries + 1} tries.`
-                      : `On try ${step.retries + 1}.`}
-                </p>
-              )}
-              {step.error && (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    <FailureText text={step.error} />
-                  </AlertDescription>
-                </Alert>
-              )}
-              {step.approval &&
-                (step.status === "done" ||
-                  (step.status === "failed" && !step.approval.decidedAutomatically)) &&
-                decidedSentence(step.approval, step.status === "done") && (
-                  <p className="text-muted-foreground text-sm" data-decided>
-                    {decidedSentence(step.approval, step.status === "done")}
+              ) : (
+                "Started this run."
+              )
+            }
+            aside={<span className="tabular-nums">{until(run.startedAt)}</span>}
+            last={rows.length === 0}
+          />
+          {rows.map((node, index) => {
+            const step = byNode.get(node.id)!;
+            const look = nodeLook(node);
+            const Icon = look.icon;
+            const quiet = step.status === "skipped" || step.status === "pending";
+            const took =
+              // Under a second says nothing worth reading, so it is left out.
+              step.startedAt && step.finishedAt && step.finishedAt - step.startedAt >= 1000
+                ? formatDuration(step.finishedAt - step.startedAt)
+                : null;
+            // A step joining others that have not all finished says which it is waiting for.
+            const sources = (run.edges as AutomationEdge[])
+              .filter((edge) => edge.target === node.id)
+              .map((edge) => edge.source);
+            const unfinished = sources.filter((source) =>
+              ["pending", "running", "waiting_approval"].includes(byNode.get(source)?.status ?? ""),
+            );
+            const waitingFor =
+              step.status === "pending" && sources.length > 1 && unfinished.length < sources.length
+                ? unfinished.flatMap((source) => {
+                    const other = run.nodes.find((candidate) => candidate.id === source);
+                    return other ? [nodeTitle(other as AutomationNode)] : [];
+                  })
+                : [];
+            // Only what the step made: not what it handed on while off or after failing.
+            const files =
+              (node.kind === "step" || (node.kind === "automation" && waitsForRun(node))) &&
+              !node.off &&
+              step.status !== "failed"
+                ? step.outputs
+                : [];
+            const child = step.childRunId
+              ? run.startedRuns.find((started) => started.runId === step.childRunId)
+              : undefined;
+            return (
+              <Row
+                key={node.id}
+                stepId={node.id}
+                quiet={quiet}
+                marked={highlighted === node.id}
+                last={index === rows.length - 1}
+                icon={<Icon className={cn("size-4", look.tint)} aria-hidden="true" />}
+                title={nodeTitle(node)}
+                sentence={
+                  waitingFor.length > 0
+                    ? `Waiting for ${waitingFor.join(" and ")} to finish.`
+                    : stepSentence(
+                        node,
+                        step,
+                        run.status,
+                        failsOver(node.id, run.edges as AutomationEdge[]),
+                      )
+                }
+                got={quiet ? undefined : receivedBy(node.id, passed)}
+                aside={
+                  <>
+                    {took && <span className="tabular-nums">{took}</span>}
+                    <RunStatusBadge status={shownStatus(step)} />
+                  </>
+                }
+              >
+                {step.retryAt && step.status === "running" && (
+                  <div data-retry="waiting" className="flex flex-col gap-0.5 text-sm">
+                    <p className="font-medium tabular-nums">
+                      Trying again <RetryCountdown at={step.retryAt} />, try {step.retries + 1} of{" "}
+                      {Math.max(run.retryLimit, step.retries) + 1}
+                    </p>
+                    {step.retryError && (
+                      <FailureText
+                        className="text-muted-foreground"
+                        lead="The last try failed: "
+                        text={step.retryError}
+                      />
+                    )}
+                  </div>
+                )}
+                {step.retries > 0 && !step.retryAt && step.status !== "skipped" && (
+                  <p data-retry="used" className="text-muted-foreground text-sm">
+                    {step.status === "done"
+                      ? `Worked on try ${step.retries + 1}.`
+                      : step.status === "failed"
+                        ? `Gave up after ${step.retries + 1} tries.`
+                        : `On try ${step.retries + 1}.`}
                   </p>
                 )}
-              {step.status === "waiting_approval" && step.approval && (
-                <ApprovalWaitingNote view={step.approval} />
-              )}
-              {step.status === "waiting_approval" && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    disabled={busy || step.approval?.mayDecide === false}
-                    onClick={() => onDecide(step._id, true)}
-                  >
-                    <Check />
-                    Approve
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy || step.approval?.mayDecide === false}
-                    onClick={() => onDecide(step._id, false)}
-                  >
-                    <X />
-                    Reject
-                  </Button>
-                  <ReviewLink runStepId={step._id} />
-                </div>
-              )}
-              {child && <StartedRunLink run={child} />}
-              {/* A logic step reads its files only to decide; that is not news to anyone. */}
-              {node.kind === "step" && <StepFacts facts={step.facts} />}
-              <StepFiles label={`Files from ${nodeTitle(node)}`} files={files} />
-            </Row>
-          );
-        })}
-      </ol>
-    </section>
+                {step.error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      <FailureText text={step.error} />
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {step.approval &&
+                  (step.status === "done" ||
+                    (step.status === "failed" && !step.approval.decidedAutomatically)) &&
+                  decidedSentence(step.approval, step.status === "done") && (
+                    <p className="text-muted-foreground text-sm" data-decided>
+                      {decidedSentence(step.approval, step.status === "done")}
+                    </p>
+                  )}
+                {step.status === "waiting_approval" && step.approval && (
+                  <ApprovalWaitingNote view={step.approval} />
+                )}
+                {step.status === "waiting_approval" && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      disabled={busy || step.approval?.mayDecide === false}
+                      onClick={() => onDecide(step._id, true)}
+                    >
+                      <Check />
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy || step.approval?.mayDecide === false}
+                      onClick={() => onDecide(step._id, false)}
+                    >
+                      <X />
+                      Reject
+                    </Button>
+                    <ReviewLink runStepId={step._id} />
+                  </div>
+                )}
+                {child && <StartedRunLink run={child} />}
+                {/* A logic step reads its files only to decide; that is not news to anyone. */}
+                {node.kind === "step" && <StepFacts facts={step.facts} />}
+                <StepFiles label={`Files from ${nodeTitle(node)}`} files={files} />
+              </Row>
+            );
+          })}
+        </ol>
+      </section>
+    </OutputNamesProvider>
   );
 }
 
@@ -590,6 +594,7 @@ function Row({
   last?: boolean;
   children?: React.ReactNode;
 }) {
+  const nameOf = useFileName();
   return (
     <li
       data-step={stepId}
@@ -621,9 +626,9 @@ function Row({
               <p
                 className="text-muted-foreground truncate text-xs"
                 data-got
-                title={got.map(fileNameOf).join(", ")}
+                title={got.map(nameOf).join(", ")}
               >
-                Got {fileList(got)}
+                Got {fileList(got, nameOf)}
               </p>
             )}
             <p className="text-muted-foreground text-sm" data-note>

@@ -2,10 +2,10 @@ import { api } from "@convex/_generated/api";
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
-import { answerQuery, mutationOf } from "@/test/convex";
+import { answerQuery, mutationOf, toastDismiss, toastError } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
-import { AlertsBell, alertTitle } from "./alerts-bell";
+import { AlertsBell, alertDetail, alertTitle } from "./alerts-bell";
 
 const alert = (over: Record<string, unknown>) => ({
   _id: "a1",
@@ -96,5 +96,62 @@ describe("the bell", () => {
       "href",
       "/settings#notifications",
     );
+  });
+});
+
+describe("failures in plain words", () => {
+  test("a developer error from the toolkit is never shown as it came", () => {
+    const raw = alert({ message: "Error: connect ECONNREFUSED 127.0.0.1:8080" });
+    expect(alertDetail(raw as Parameters<typeof alertDetail>[0])).toBe(
+      "Captions: The toolkit could not be reached. It is set to an address on this computer, so check the toolkit's address in Settings.",
+    );
+    answerQuery(api.alerts.list, { unseen: 1, alerts: [raw] });
+    renderInApp(<AlertsBell />);
+    fireEvent.click(screen.getByRole("button", { name: /Alerts, 1 you have not seen/ }));
+    const link = screen.getByRole("link", { name: /Weekly clips failed/ });
+    expect(link).toHaveTextContent("The toolkit could not be reached.");
+    expect(link).not.toHaveTextContent("ECONNREFUSED");
+  });
+
+  test("other kinds keep their words as they are", () => {
+    expect(
+      alertDetail({
+        kind: "mention",
+        automationName: "Cut review",
+        retries: 0,
+        stepName: null,
+        message: "Error: this is what Maya typed",
+      }),
+    ).toBe("Error: this is what Maya typed");
+  });
+});
+
+describe("the failure notice", () => {
+  test("pops up in plain words and goes away when the list opens, so nothing covers it", () => {
+    answerQuery(api.alerts.list, { unseen: 0, alerts: [] });
+    const { rerender } = renderInApp(<AlertsBell />);
+    answerQuery(api.alerts.list, {
+      unseen: 1,
+      alerts: [alert({ message: "Error: connect ECONNREFUSED 127.0.0.1:8080" })],
+    });
+    rerender(<AlertsBell />);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    const [title, options] = toastError.mock.calls[0];
+    expect(title).toBe("Weekly clips failed");
+    expect(options.description).not.toContain("ECONNREFUSED");
+    expect(options.id).toBe("alert-a1");
+
+    fireEvent.click(screen.getByRole("button", { name: /Alerts, 1 you have not seen/ }));
+    expect(toastDismiss).toHaveBeenCalledWith("alert-a1");
+  });
+
+  test("an alert that arrives while the list is open is not announced on top of it", () => {
+    answerQuery(api.alerts.list, { unseen: 0, alerts: [] });
+    const { rerender } = renderInApp(<AlertsBell />);
+    fireEvent.click(screen.getByRole("button", { name: "Alerts" }));
+    answerQuery(api.alerts.list, { unseen: 1, alerts: [alert({})] });
+    rerender(<AlertsBell />);
+    expect(toastError).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: /Weekly clips failed/ })).toBeInTheDocument();
   });
 });

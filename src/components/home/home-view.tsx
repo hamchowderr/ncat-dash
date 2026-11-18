@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { FailureText } from "@/components/failure-text";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -107,7 +108,7 @@ export function HomeView() {
                   <dd>{checkedAt.format(connection.lastCheckedAt)}</dd>
                 </dl>
                 {!ok && connection.lastError && (
-                  <p className="text-destructive text-sm">{connection.lastError}</p>
+                  <FailureText className="text-destructive text-sm" text={connection.lastError} />
                 )}
                 <div>
                   <Button

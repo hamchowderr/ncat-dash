@@ -137,6 +137,7 @@ export async function connectToolkit(
   {
     baseUrl = "https://toolkit.example",
     bucket = "test-bucket",
+    endpoint = "https://r2.example",
     publicUrl = null as string | null,
   } = {},
 ) {
@@ -152,7 +153,7 @@ export async function connectToolkit(
       buildNumber: "fork",
       lastCheckedAt: Date.now(),
       lastError: null,
-      storage: { bucket, endpoint: "https://r2.example", publicUrl },
+      storage: { bucket, endpoint, publicUrl },
       createdBy,
     }),
   );

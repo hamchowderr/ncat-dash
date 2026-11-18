@@ -29,6 +29,7 @@ function run(overrides: Record<string, unknown> = {}) {
       { nodeId: "caps", kind: "step", stepId: "video-caption", label: null, files: captioned },
     ],
     along: [{ nodeId: "cut", kind: "clips", stepId: null, label: "TikTok clips", files: clips }],
+    names: {},
     ...overrides,
   };
 }
@@ -72,6 +73,26 @@ describe("Outputs, by run", () => {
     expect(screen.getByText("clip-1.mp4")).toBeInTheDocument();
   });
 
+  test("shows files the toolkit named after its job ids by readable names, and reviews them so", async () => {
+    const made = "https://files.example/ca4934e3-5b1f-4c3e-9a77-0d2f1b6e8a10_output_0.mp4";
+    const names = { [made]: "Podcast episode 12 clip 1" };
+    show([
+      run({
+        finished: [
+          { nodeId: "cut", kind: "step", stepId: "video-split", label: null, files: [made] },
+        ],
+        along: [],
+        names,
+      }),
+    ]);
+    expect(screen.getByText("Podcast episode 12 clip 1")).toBeInTheDocument();
+    expect(screen.queryByText(/ca4934e3/)).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Send to review" }));
+    expect(mutationOf(api.reviews.create)).toHaveBeenCalledWith(
+      expect.objectContaining({ urls: [made], names }),
+    );
+  });
+
   test("marks a run that did not finish, and a test of one step", () => {
     show([
       run({ status: "failed", runId: "run_2" }),
@@ -89,6 +110,7 @@ describe("Outputs, by run", () => {
       organizationId: TEAM.id,
       title: "Shorts: podcast episode 12.mp4",
       urls: captioned,
+      names: {},
     });
     await waitFor(() =>
       expect(pushed).toHaveBeenCalledWith("/review/rev_9", { transitionTypes: ["nav-forward"] }),
@@ -151,6 +173,7 @@ describe("Outputs, steps run by hand", () => {
           stepId: "video-split",
           finishedAt: 1_700_000_000_000,
           urls: ["https://files.example/a.mp4"],
+          names: {},
         },
       ],
     );
@@ -163,6 +186,7 @@ describe("Outputs, steps run by hand", () => {
       organizationId: TEAM.id,
       title: "Split video",
       urls: ["https://files.example/a.mp4"],
+      names: {},
     });
   });
 });

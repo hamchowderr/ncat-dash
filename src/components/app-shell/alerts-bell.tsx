@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
+import { explainFailure } from "@ncat-dash/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import { AtSign, Bell, CircleAlert, Clock, MessageSquareQuote, UserCheck } from "lucide-react";
 import Link from "next/link";
@@ -19,7 +20,8 @@ function tries(retries: number): string {
   return retries > 0 ? ` after ${retries + 1} tries` : "";
 }
 
-type Kind = "run_failed" | "approval_waiting" | "approval_timed_out" | "mention" | "client_feedback";
+type Kind =
+  "run_failed" | "approval_waiting" | "approval_timed_out" | "mention" | "client_feedback";
 type Shown = { kind: Kind; automationName: string; retries: number; from?: string | null };
 
 /** The first line of an alert: what happened, in a few words. */
@@ -36,6 +38,16 @@ export function alertTitle(alert: Shown): string {
     default:
       return `${alert.automationName} failed${tries(alert.retries)}`;
   }
+}
+
+/**
+ * The second line of an alert: the step and what it said. A failure is said in plain
+ * words, since older alerts kept the toolkit's own text ("connect ECONNREFUSED …").
+ */
+export function alertDetail(alert: Shown & { stepName?: string | null; message: string }): string {
+  const message =
+    alert.kind === "run_failed" ? explainFailure(alert.message).reason : alert.message;
+  return alert.stepName ? `${alert.stepName}: ${message}` : message;
 }
 
 /** How each kind looks under the bell: its icon, and its colour while unseen. */
@@ -80,6 +92,20 @@ export function AlertsBell() {
   const [open, setOpen] = useState(false);
   // Alerts that were already there when the page opened are not announced again.
   const announced = useRef<Set<string> | null>(null);
+  // The notices showing now, so opening the list can take them away: the list says the
+  // same, and nothing should sit on top of it.
+  const notices = useRef<Set<string>>(new Set());
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+
+  function showList(next: boolean) {
+    setOpen(next);
+    if (!next) return;
+    for (const id of notices.current) toast.dismiss(id);
+    notices.current.clear();
+  }
 
   useEffect(() => {
     if (!data) return;
@@ -90,10 +116,15 @@ export function AlertsBell() {
     for (const alert of data.alerts) {
       if (announced.current.has(alert._id)) continue;
       announced.current.add(alert._id);
-      if (alert.seen) continue;
+      // Already in front of them in the open list.
+      if (alert.seen || openRef.current) continue;
+      const id = `alert-${alert._id}`;
       (alert.kind === "run_failed" ? toast.error : toast.info)(alertTitle(alert), {
-        description: alert.stepName ? `${alert.stepName}: ${alert.message}` : alert.message,
+        id,
+        description: alertDetail(alert),
         duration: 15_000,
+        onDismiss: () => notices.current.delete(id),
+        onAutoClose: () => notices.current.delete(id),
         action: {
           label: LOOK[alert.kind].action,
           onClick: () => {
@@ -102,13 +133,14 @@ export function AlertsBell() {
           },
         },
       });
+      notices.current.add(id);
     }
   }, [data, markSeen, router, team.id]);
 
   const unseen = data?.unseen ?? 0;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={showList}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="relative" data-alerts-bell>
           <Bell />
@@ -146,7 +178,7 @@ export function AlertsBell() {
             <Link
               href="/settings#notifications"
               className="underline"
-              onClick={() => setOpen(false)}
+              onClick={() => showList(false)}
             >
               Settings
             </Link>
@@ -165,7 +197,7 @@ export function AlertsBell() {
                     !alert.seen && LOOK[alert.kind].wash,
                   )}
                   onClick={() => {
-                    setOpen(false);
+                    showList(false);
                     if (!alert.seen) void markSeen({ organizationId: team.id, alertId: alert._id });
                   }}
                 >
@@ -175,8 +207,7 @@ export function AlertsBell() {
                       {alertTitle(alert)}
                     </span>
                     <span className="text-muted-foreground line-clamp-2 text-xs break-words">
-                      {alert.stepName ? `${alert.stepName}: ` : ""}
-                      {alert.message}
+                      {alertDetail(alert)}
                     </span>
                     <span className="text-muted-foreground text-xs">{when.format(alert.at)}</span>
                   </span>
