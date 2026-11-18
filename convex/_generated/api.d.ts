@@ -58,6 +58,7 @@ import type * as teamSettings from "../teamSettings.js";
 import type * as teams from "../teams.js";
 import type * as toolkitConnections from "../toolkitConnections.js";
 import type * as versions from "../versions.js";
+import type * as voiceNotes from "../voiceNotes.js";
 import type * as watch from "../watch.js";
 
 import type {
@@ -117,6 +118,7 @@ declare const fullApi: ApiFromModules<{
   teams: typeof teams;
   toolkitConnections: typeof toolkitConnections;
   versions: typeof versions;
+  voiceNotes: typeof voiceNotes;
   watch: typeof watch;
 }>;
 
