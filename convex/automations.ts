@@ -736,6 +736,7 @@ export const tryOnUpload = action({
         content_type: upload.contentType,
         size: upload.size,
         details: upload.details ?? null,
+        upload_id: upload._id,
       },
     });
     return { runId, fileName: upload.fileName };
@@ -899,6 +900,8 @@ export const uploadFinished = internalAction({
         size: upload.size,
         // What the toolkit read from the file: duration, width, height and so on.
         details: upload.details ?? null,
+        // So what the run makes joins the content library as made from this upload.
+        upload_id: upload._id,
       },
     });
   },

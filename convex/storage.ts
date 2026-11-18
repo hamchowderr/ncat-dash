@@ -14,6 +14,7 @@ import {
 } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { bucketOf, presign, storageConnection } from "./lib/bucket";
+import { addUploadToLibrary, deleteLibraryItem } from "./lib/library";
 import { fileDetailsValidator } from "./schema";
 
 const UPLOAD_LINK_SECONDS = 60 * 60;
@@ -100,6 +101,8 @@ export const finishUpload = mutation({
     await requireMember(ctx, upload.organizationId);
     if (upload.status === "ready") return;
     await ctx.db.patch(args.uploadId, { status: "ready" });
+    // Every file someone brings in joins the content library, with its short ID.
+    await addUploadToLibrary(ctx, { ...upload, status: "ready" });
     // Reads the file's details, then starts any automation set to run on an upload.
     await ctx.scheduler.runAfter(0, internal.storage.readDetails, { uploadId: args.uploadId });
   },
@@ -112,6 +115,11 @@ export const removeUpload = mutation({
     const upload = await ctx.db.get(args.uploadId);
     if (!upload) return;
     await requireMember(ctx, upload.organizationId);
+    const item = await ctx.db
+      .query("libraryItems")
+      .withIndex("by_upload", (q) => q.eq("uploadId", args.uploadId))
+      .first();
+    if (item) await deleteLibraryItem(ctx, item._id);
     await ctx.db.delete(args.uploadId);
   },
 });
@@ -251,8 +259,19 @@ export const loadForDetails = internalQuery({
 export const saveDetails = internalMutation({
   args: { uploadId: v.id("uploads"), details: fileDetailsValidator },
   handler: async (ctx, args) => {
-    if (await ctx.db.get(args.uploadId)) {
-      await ctx.db.patch(args.uploadId, { details: args.details });
+    const upload = await ctx.db.get(args.uploadId);
+    if (!upload) return;
+    await ctx.db.patch(args.uploadId, { details: args.details });
+    // The library's copy goes with it, and the details may say better what kind it is.
+    const item = await ctx.db
+      .query("libraryItems")
+      .withIndex("by_upload", (q) => q.eq("uploadId", args.uploadId))
+      .first();
+    if (item) {
+      await ctx.db.patch(item._id, {
+        details: args.details,
+        kind: uploadKind(upload.contentType, args.details),
+      });
     }
   },
 });
