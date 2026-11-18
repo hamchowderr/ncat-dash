@@ -49,7 +49,8 @@ async function setUp({ fallback = true } = {}) {
                 id: "caption",
                 kind: "step" as const,
                 stepId: "video-caption",
-                input: {},
+                // Its own look, so it does not stop to read the video's shape first.
+                input: { settings: { style: "classic" } },
                 position: { x: 220, y: 150 },
               },
             ]

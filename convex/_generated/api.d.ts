@@ -25,6 +25,7 @@ import type * as lib_approvals from "../lib/approvals.js";
 import type * as lib_authz from "../lib/authz.js";
 import type * as lib_brand from "../lib/brand.js";
 import type * as lib_bucket from "../lib/bucket.js";
+import type * as lib_captions from "../lib/captions.js";
 import type * as lib_chain from "../lib/chain.js";
 import type * as lib_clients from "../lib/clients.js";
 import type * as lib_crypto from "../lib/crypto.js";
@@ -98,6 +99,7 @@ declare const fullApi: ApiFromModules<{
   "lib/authz": typeof lib_authz;
   "lib/brand": typeof lib_brand;
   "lib/bucket": typeof lib_bucket;
+  "lib/captions": typeof lib_captions;
   "lib/chain": typeof lib_chain;
   "lib/clients": typeof lib_clients;
   "lib/crypto": typeof lib_crypto;

@@ -22,6 +22,7 @@ import {
   Mail,
   MessagesSquare,
   Palette,
+  Captions,
   RotateCcw,
   Settings,
   type LucideIcon,
@@ -100,6 +101,7 @@ export const isSettingsPath = (pathname: string) =>
 const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: string }>> = {
   notifications: Bell,
   brand: Palette,
+  captions: Captions,
   team: Users,
   agent: MessagesSquare,
   runs: RotateCcw,

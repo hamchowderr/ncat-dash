@@ -12,6 +12,7 @@ import { useActiveTeam } from "@/lib/team-context";
 
 import { AgentCard } from "./agent-card";
 import { BrandCard } from "./brand-card";
+import { CaptionsCard } from "./captions-card";
 import { EditorsCard } from "./editors-card";
 import { EmailCard } from "./email-card";
 import { NotificationsCard } from "./notifications-card";
@@ -27,6 +28,21 @@ export function BrandSettings() {
   const settings = useTeamSettings();
   if (!settings) return <SettingsLoading />;
   return <BrandCard brand={settings.brand} music={settings.music} canEdit={settings.canEdit} />;
+}
+
+/** Captions: word fixes, saved styles, and the style for each video shape. */
+export function CaptionsSettings() {
+  const settings = useTeamSettings();
+  if (!settings) return <SettingsLoading />;
+  return (
+    <CaptionsCard
+      captions={settings.captions}
+      builtIn={settings.builtInCaptionStyles}
+      builtInByShape={settings.builtInByShape}
+      font={settings.brand.font}
+      canEdit={settings.canEdit}
+    />
+  );
 }
 
 /** The editors the team finishes videos in. */
