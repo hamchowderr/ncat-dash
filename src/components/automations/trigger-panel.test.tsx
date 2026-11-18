@@ -112,3 +112,20 @@ describe("the Watched folder trigger panel", () => {
     );
   });
 });
+
+describe("the project slot trigger panel", () => {
+  test("picks which slots and the status they move to", async () => {
+    const onChange = vi.fn();
+    renderInApp(
+      <TriggerPanel
+        trigger={{ kind: "slot", status: "approved", slotKind: "any" }}
+        onChange={onChange}
+        automationId="a"
+        hookToken="t"
+      />,
+    );
+    expect(screen.getByText("Any slot")).toBeTruthy();
+    expect(screen.getByText("Approved")).toBeTruthy();
+    expect(screen.getByText(/fill the project's empty slots/)).toBeTruthy();
+  });
+});

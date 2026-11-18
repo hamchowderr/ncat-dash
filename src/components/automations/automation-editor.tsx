@@ -99,6 +99,7 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { isNoteId, notePlace, useCanvasNotes } from "./canvas-notes";
+import { ClientPicker } from "./client-picker";
 import { DraftBar } from "./draft-bar";
 import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 import { LiveRunBadge, useLiveRun } from "./live-run";
@@ -110,6 +111,7 @@ import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
 import { VersionsPanel } from "./versions-panel";
 import { TriggerPanel } from "./trigger-panel";
+import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
 const EMPTY_BRAND: Brand = {};
 const EMPTY_MUSIC: { name: string; file: string }[] = [];
@@ -179,6 +181,7 @@ function EditorSkeleton() {
 }
 
 function Editor({ automation }: { automation: Loaded }) {
+  useTeamStepsVersion();
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const team = useActiveTeam();
@@ -671,6 +674,7 @@ function Editor({ automation }: { automation: Loaded }) {
           onChange={(event) => setName(event.target.value)}
           className="h-9 max-w-xs text-base font-semibold"
         />
+        <ClientPicker automationId={automation._id} clientId={automation.clientId ?? null} />
         <div className="ml-auto flex items-center gap-3">
           <div className="flex items-center">
             <Button

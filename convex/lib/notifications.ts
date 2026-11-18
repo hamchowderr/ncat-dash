@@ -45,6 +45,14 @@ export const NOTIFICATION_KINDS = [
     bell: true,
     email: true,
   },
+  {
+    kind: "ready_for_review",
+    title: "A project's deliverable is ready for review",
+    description:
+      "A new version went into a slot of a project, such as a short or a thumbnail. Goes to everyone on the team.",
+    bell: true,
+    email: true,
+  },
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];
@@ -128,7 +136,12 @@ export function alertHref(
     "kind" | "runId" | "automationId" | "reviewId" | "clipId" | "commentId"
   >,
 ): string {
-  if ((alert.kind === "mention" || alert.kind === "client_feedback") && alert.reviewId) {
+  if (
+    (alert.kind === "mention" ||
+      alert.kind === "client_feedback" ||
+      alert.kind === "ready_for_review") &&
+    alert.reviewId
+  ) {
     const query = new URLSearchParams();
     if (alert.clipId) query.set("clip", alert.clipId);
     if (alert.commentId) query.set("comment", alert.commentId);

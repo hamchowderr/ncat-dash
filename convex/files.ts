@@ -23,6 +23,7 @@ import {
   nameProblem,
   parentOf,
   readFileDetails,
+  type BrandFileKey,
   readUploadRef,
   renamedKey,
   teamFolder,
@@ -54,6 +55,7 @@ import {
   storageConnection,
 } from "./lib/bucket";
 import { finishedFiles } from "./lib/exports";
+import { deliveryFolderOf } from "./lib/clients";
 import { followLibraryKey } from "./lib/library";
 import { outputNamesOf } from "./lib/outputs";
 import { fileDetailsValidator } from "./schema";
@@ -129,7 +131,14 @@ const fileValidator = v.object({
   uploadId: v.union(v.null(), v.id("uploads")),
   details: v.union(v.null(), fileDetailsValidator),
   // Set when the team's brand uses this file, so it is not deleted by mistake.
-  usedAs: v.union(v.null(), v.literal("logo"), v.literal("music")),
+  usedAs: v.union(
+    v.null(),
+    v.literal("logo"),
+    v.literal("music"),
+    v.literal("card"),
+    v.literal("intro"),
+    v.literal("outro"),
+  ),
 });
 
 /** One folder of the bucket: the folders and files straight inside it. */
@@ -159,7 +168,7 @@ export const list = action({
       {
         uploadId: Id<"uploads">;
         details: Doc<"uploads">["details"] | null;
-        usedAs: "logo" | "music" | null;
+        usedAs: BrandFileKey | null;
       }
     > = await ctx.runQuery(internal.files.uploadsAt, {
       organizationId: args.organizationId,
@@ -581,18 +590,21 @@ export const saveOutside = internalMutation({
 async function brandUploads(
   ctx: QueryCtx,
   organizationId: string,
-): Promise<Map<string, "logo" | "music">> {
+): Promise<Map<string, BrandFileKey>> {
   const settings = await ctx.db
     .query("teamSettings")
     .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
     .first();
-  const used = new Map<string, "logo" | "music">();
-  const add = (value: string | undefined, as: "logo" | "music") => {
+  const used = new Map<string, BrandFileKey>();
+  const add = (value: string | undefined, as: BrandFileKey) => {
     const id = readUploadRef(value);
     if (id) used.set(id, as);
   };
   add(settings?.brand?.logo, "logo");
   add(settings?.brand?.music, "music");
+  add(settings?.brand?.card, "card");
+  add(settings?.brand?.intro, "intro");
+  add(settings?.brand?.outro, "outro");
   for (const track of settings?.music ?? []) add(track.file, "music");
   return used;
 }
@@ -607,7 +619,7 @@ export const uploadsAt = internalQuery({
       {
         uploadId: Id<"uploads">;
         details: Doc<"uploads">["details"] | null;
-        usedAs: "logo" | "music" | null;
+        usedAs: BrandFileKey | null;
       }
     > = {};
     for (const key of args.keys) {
@@ -925,6 +937,8 @@ export const keepFinished = internalAction({
     const found: {
       organizationId: string;
       automationName: string;
+      /** The client's folder when the automation was for a client, such as "Clients/Acme/". */
+      deliveryFolder: string | null;
       files: { link: string; name: string }[];
     } | null = await ctx.runQuery(internal.files.finishedOfRun, { runId: args.runId });
     if (!found || found.files.length === 0) return [];
@@ -943,7 +957,7 @@ export const keepFinished = internalAction({
         ...(connection.storage.publicUrl ? { publicUrl: connection.storage.publicUrl } : {}),
       };
       const folderName = (found.automationName.trim() || "Automation").replace(/[/\\]/g, "-");
-      const folder = `${FINISHED_FOLDER}${nameProblem(folderName) ? "Automation" : folderName}/`;
+      const folder = `${found.deliveryFolder ?? FINISHED_FOLDER}${nameProblem(folderName) ? "Automation" : folderName}/`;
       const taken = new Set(
         (await listObjects(config, folder, 1)).map((object) => object.key.slice(folder.length)),
       );
@@ -988,9 +1002,12 @@ export const finishedOfRun = internalQuery({
       .withIndex("by_run", (q) => q.eq("runId", run._id))
       .take(200);
     const names = outputNamesOf(run, steps);
+    const client = run.clientId ? await ctx.db.get(run.clientId) : null;
     return {
       organizationId: run.organizationId,
       automationName: run.automationName,
+      deliveryFolder:
+        client && client.organizationId === run.organizationId ? deliveryFolderOf(client) : null,
       files: finishedFiles(run, steps).map((link) => ({
         link,
         name: names[link] ?? fileNameOfLink(link),

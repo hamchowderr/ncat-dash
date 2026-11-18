@@ -10,12 +10,22 @@ import { connectToolkit, fakeToolkitStorage } from "./test.toolkit";
  * so the only setup a team does is the toolkit's address and API key.
  */
 let toolkit: ReturnType<typeof fakeToolkitStorage> | null = null;
-afterEach(() => toolkit?.restore());
+let current: ReturnType<typeof backend> | null = null;
+afterEach(async () => {
+  // Connecting schedules settleTeamFolder at once. Let it finish while this test's stand-in
+  // toolkit is still answering, so it cannot land in the next test's bucket (every test's
+  // team has the same id) or fail against the real fetch.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await current?.finishInProgressScheduledFunctions();
+  current = null;
+  toolkit?.restore();
+});
 
 async function studio(options: Parameters<typeof fakeToolkitStorage>[0] = {}) {
   process.env.CONNECTIONS_SECRET = "a-test-secret-that-is-long-enough-1234";
   toolkit = fakeToolkitStorage(options);
   const t = backend();
+  current = t;
   const team = await addTeam(t, "Salt House");
   const owner = await addPerson(t, "Maya Ortiz", [team], "owner");
   const outsider = await addPerson(t, "Someone Else", [await addTeam(t, "Other Team")]);
@@ -33,6 +43,10 @@ describe("connecting a toolkit sets up storage too", () => {
       apiKey: "toolkit-key",
     });
     expect(result).toEqual({ ok: true, buildNumber: "210" });
+    // Connecting sets up the team's folder afterwards. Let it finish here: test backends
+    // reuse ids, so left running it would write into a later test's stand-in bucket.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await t.finishInProgressScheduledFunctions();
     expect(await owner.as.query(api.storage.get, { organizationId: team })).toEqual({
       bucket: "test-bucket",
       publicUrl: "https://files.example",

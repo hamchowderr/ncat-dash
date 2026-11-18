@@ -6,6 +6,7 @@ import type { Doc } from "./_generated/dataModel";
 import { action, internalQuery, query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
+import { onOperatorToolkit } from "./lib/edition";
 import { parallelLimit } from "./lib/queue";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -37,6 +38,7 @@ const healthResult = v.union(
     checkedAt: v.number(),
     reason: v.union(
       v.literal("no_toolkit"),
+      v.literal("hosted"),
       v.literal("unreachable"),
       v.literal("unauthorized"),
       v.literal("no_health"),
@@ -61,11 +63,34 @@ export const read = action({
     if (!connection) {
       return { ok: false as const, checkedAt, reason: "no_toolkit" as const, detail: "" };
     }
+    // A toolkit run for many teams: its load is everyone's, and not this team's to manage.
+    if (onOperatorToolkit(connection.baseUrl)) {
+      return { ok: false as const, checkedAt, reason: "hosted" as const, detail: "" };
+    }
     const result = await toolkitHealth(
       { baseUrl: connection.baseUrl, apiKey: await decryptSecret(connection.apiKeyCipher) },
       { signal: AbortSignal.timeout(15_000) },
     );
     return { ...result, checkedAt };
+  },
+});
+
+/**
+ * Whether the team looks after its own toolkit, so the Toolkit page is for it. False for a
+ * team on a toolkit the operator runs for customers.
+ */
+export const shown = query({
+  args: { organizationId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const connections = await ctx.db
+      .query("toolkitConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .take(50);
+    const connection =
+      connections.find((candidate) => candidate.status === "ok") ?? connections[0] ?? null;
+    return !onOperatorToolkit(connection?.baseUrl);
   },
 });
 

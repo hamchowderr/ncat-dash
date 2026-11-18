@@ -6,6 +6,7 @@ import { useAction } from "convex/react";
 import { AudioLines, FileIcon, ImageIcon, Video } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 export type UploadKind = "video" | "audio" | "image" | "other";
@@ -178,5 +179,106 @@ export function UploadPlayer({ kind, url }: { kind: UploadKind; url: string | un
       className="bg-muted max-h-[70vh] w-full rounded-lg object-contain"
       data-testid="upload-player"
     />
+  );
+}
+
+/** A circle that spins and fills as the file goes up, its percentage in the middle. */
+function UploadRing({ percent, size }: { percent: number; size: "sm" | "lg" }) {
+  const radius = 26;
+  const around = 2 * Math.PI * radius;
+  return (
+    <span className="relative flex items-center justify-center">
+      <svg
+        viewBox="0 0 64 64"
+        className={cn(
+          "animate-spin [animation-duration:1.4s]",
+          size === "lg" ? "size-16" : "size-9",
+        )}
+        aria-hidden="true"
+      >
+        <circle cx="32" cy="32" r={radius} fill="none" strokeWidth="5" className="stroke-border" />
+        <circle
+          cx="32"
+          cy="32"
+          r={radius}
+          fill="none"
+          strokeWidth="5"
+          strokeLinecap="round"
+          className="stroke-primary transition-[stroke-dashoffset] duration-300 ease-out"
+          strokeDasharray={around}
+          // Never a bare dot at 0%, so it always reads as spinning.
+          strokeDashoffset={around * (1 - Math.max(percent, 8) / 100)}
+        />
+      </svg>
+      <span
+        className={cn(
+          "absolute font-medium tabular-nums",
+          size === "lg" ? "text-sm" : "text-[0.625rem]",
+        )}
+      >
+        {percent}%
+      </span>
+    </span>
+  );
+}
+
+const clamp = (percent: number) => Math.min(100, Math.max(0, Math.round(percent)));
+
+function progressProps(name: string, percent: number) {
+  return {
+    role: "progressbar",
+    "aria-label": `Uploading ${name}`,
+    "aria-valuemin": 0,
+    "aria-valuemax": 100,
+    "aria-valuenow": percent,
+  } as const;
+}
+
+/**
+ * A file on its way up, in the spot its tile will take: a skeleton of the tile with the
+ * spinning circle and percentage, and the file's name underneath.
+ */
+export function UploadingCard({ name, percent }: { name: string; percent: number }) {
+  const done = clamp(percent);
+  return (
+    <div className="flex flex-col gap-2.5" data-uploading>
+      <div
+        {...progressProps(name, done)}
+        className="bg-muted relative flex aspect-video items-center justify-center overflow-hidden rounded-xl"
+      >
+        <span className="bg-muted-foreground/5 absolute inset-0 animate-pulse" aria-hidden="true" />
+        <UploadRing percent={done} size="lg" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <p className="text-muted-foreground truncate text-sm font-medium">{name}</p>
+        <span className="bg-muted h-3 w-2/5 animate-pulse rounded" aria-hidden="true" />
+      </div>
+    </div>
+  );
+}
+
+/** The same, as a row of the list: a skeleton frame with the circle, the name, empty cells. */
+export function UploadingRow({ name, percent }: { name: string; percent: number }) {
+  const done = clamp(percent);
+  return (
+    <TableRow data-uploading>
+      <TableCell className="py-1.5">
+        <div
+          {...progressProps(name, done)}
+          className="bg-muted flex aspect-video w-24 items-center justify-center rounded-md"
+        >
+          <UploadRing percent={done} size="sm" />
+        </div>
+      </TableCell>
+      <TableCell className="text-muted-foreground w-1/3 max-w-0 truncate font-medium">
+        {name}
+      </TableCell>
+      {Array.from({ length: 6 }, (_, cell) => (
+        <TableCell key={cell}>
+          <span className="bg-muted block h-3 w-12 animate-pulse rounded" aria-hidden="true" />
+        </TableCell>
+      ))}
+      <TableCell />
+    </TableRow>
   );
 }

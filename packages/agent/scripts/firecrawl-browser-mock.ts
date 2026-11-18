@@ -18,18 +18,18 @@
  * Run it on its own (it prints the URL to put in FIRECRAWL_API_URL):
  *   pnpm --filter @mastra-chat-kit/server exec tsx scripts/firecrawl-browser-mock.ts [port]
  */
-import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { createServer, type IncomingMessage } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright-core';
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer, type IncomingMessage } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright-core";
 
 /** The key the mock accepts (any other gets a 401, as Firecrawl answers a bad key). */
-export const MOCK_API_KEY = 'fc-test-key';
+export const MOCK_API_KEY = "fc-test-key";
 
 /** A page for the agent to browse, as a data: URL so no server or network is needed. */
 export const DEMO_PAGE_HTML =
@@ -49,18 +49,18 @@ function chromePath(): string {
   const candidates = [
     process.env.BROWSER_EXECUTABLE_PATH,
     chromium.executablePath(),
-    'C:/Program Files/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
+    "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
   ];
   const found = candidates.find((p) => p && existsSync(p));
   if (!found) {
     throw new Error(
-      'firecrawl-browser-mock needs a Chrome: set BROWSER_EXECUTABLE_PATH, or run `pnpm --filter @mastra-chat-kit/server setup:browser`',
+      "firecrawl-browser-mock needs a Chrome: set BROWSER_EXECUTABLE_PATH, or run `pnpm --filter @mastra-chat-kit/server setup:browser`",
     );
   }
   return found;
@@ -68,23 +68,23 @@ function chromePath(): string {
 
 /** Start a headless Chrome with a CDP port and return its DevTools WebSocket URL. */
 async function startChrome(): Promise<{ chrome: ChildProcess; profile: string; cdpUrl: string }> {
-  const profile = mkdtempSync(path.join(tmpdir(), 'fc-browser-mock-'));
+  const profile = mkdtempSync(path.join(tmpdir(), "fc-browser-mock-"));
   const chrome = spawn(
     chromePath(),
     [
-      '--headless=new',
-      '--remote-debugging-port=0',
+      "--headless=new",
+      "--remote-debugging-port=0",
       `--user-data-dir=${profile}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--disable-gpu',
-      ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []),
-      'about:blank',
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-gpu",
+      ...(process.getuid?.() === 0 ? ["--no-sandbox"] : []),
+      "about:blank",
     ],
-    { stdio: 'ignore' },
+    { stdio: "ignore" },
   );
   // Chrome writes the port it picked, and the browser target's path, to this file.
-  const portFile = path.join(profile, 'DevToolsActivePort');
+  const portFile = path.join(profile, "DevToolsActivePort");
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     if (chrome.exitCode !== null) throw new Error(`Chrome exited with code ${chrome.exitCode}`);
@@ -99,13 +99,13 @@ async function startChrome(): Promise<{ chrome: ChildProcess; profile: string; c
     await new Promise((r) => setTimeout(r, 50));
   }
   stopChrome(chrome, profile);
-  throw new Error('Chrome did not open a CDP port within 15s');
+  throw new Error("Chrome did not open a CDP port within 15s");
 }
 
 /** The port and target lines, or none while Chrome still holds the file (Windows locks it). */
 function readPortFile(file: string): string[] {
   try {
-    return readFileSync(file, 'utf8').trim().split(/\r?\n/);
+    return readFileSync(file, "utf8").trim().split(/\r?\n/);
   } catch {
     return [];
   }
@@ -115,7 +115,7 @@ async function hasPage(port: string): Promise<boolean> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/json/list`);
     const targets = (await res.json()) as { type: string }[];
-    return targets.some((t) => t.type === 'page');
+    return targets.some((t) => t.type === "page");
   } catch {
     return false;
   }
@@ -123,14 +123,14 @@ async function hasPage(port: string): Promise<boolean> {
 
 function stopChrome(chrome: ChildProcess, profile: string) {
   if (chrome.exitCode === null && chrome.pid) {
-    if (process.platform === 'win32') {
+    if (process.platform === "win32") {
       try {
-        execFileSync('taskkill', ['/pid', String(chrome.pid), '/T', '/F'], { stdio: 'ignore' });
+        execFileSync("taskkill", ["/pid", String(chrome.pid), "/T", "/F"], { stdio: "ignore" });
       } catch {
         /* already gone */
       }
     } else {
-      chrome.kill('SIGKILL');
+      chrome.kill("SIGKILL");
     }
   }
   try {
@@ -143,7 +143,7 @@ function stopChrome(chrome: ChildProcess, profile: string) {
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
-  const text = Buffer.concat(chunks).toString('utf8');
+  const text = Buffer.concat(chunks).toString("utf8");
   return text ? (JSON.parse(text) as Record<string, unknown>) : {};
 }
 
@@ -163,24 +163,38 @@ export async function startFirecrawlBrowserMock(port = 0): Promise<FirecrawlBrow
   const sessions = new Map<string, MockSession>();
   const chromes = new Map<string, { chrome: ChildProcess; profile: string; cdpUrl: string }>();
   let createError: string | null = null;
+  // One Chrome is kept started ahead of the next session. Starting Chrome can take many
+  // seconds on a busy machine (CI runs every package's tests at once), and a hosted
+  // session is ready the moment Firecrawl answers, so the wait stays out of the tests.
+  type Started = Awaited<ReturnType<typeof startChrome>>;
+  const warm = (): Promise<Started | Error> =>
+    startChrome().catch((err) => (err instanceof Error ? err : new Error(String(err))));
+  let spare: Promise<Started | Error> | null = warm();
+  const take = async (): Promise<Started> => {
+    const next = spare ?? warm();
+    spare = warm();
+    const started = await next;
+    if (started instanceof Error) throw started;
+    return started;
+  };
 
   const server = createServer(async (req, res) => {
     const send = (status: number, body: unknown) => {
-      res.writeHead(status, { 'content-type': 'application/json' });
+      res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(body));
     };
     if (req.headers.authorization !== `Bearer ${MOCK_API_KEY}`) {
-      return send(401, { success: false, error: 'Unauthorized: Invalid token' });
+      return send(401, { success: false, error: "Unauthorized: Invalid token" });
     }
-    const { pathname } = new URL(req.url ?? '/', 'http://localhost');
+    const { pathname } = new URL(req.url ?? "/", "http://localhost");
     try {
-      if (req.method === 'POST' && pathname === '/v2/browser') {
+      if (req.method === "POST" && pathname === "/v2/browser") {
         const options = await readJson(req);
         if (createError) return send(402, { success: false, error: createError });
         const id = randomUUID();
-        const started = await startChrome();
+        const started = await take();
         chromes.set(id, started);
-        const ttl = typeof options.ttl === 'number' ? options.ttl : 600;
+        const ttl = typeof options.ttl === "number" ? options.ttl : 600;
         sessions.set(id, { id, options, createdAt: Date.now() });
         return send(200, {
           success: true,
@@ -192,23 +206,23 @@ export async function startFirecrawlBrowserMock(port = 0): Promise<FirecrawlBrow
         });
       }
       const match = pathname.match(/^\/v2\/browser\/([^/]+)$/);
-      if (req.method === 'DELETE' && match) {
+      if (req.method === "DELETE" && match) {
         const id = match[1] as string;
         const session = sessions.get(id);
         const started = chromes.get(id);
-        if (!session || !started) return send(404, { success: false, error: 'Session not found' });
+        if (!session || !started) return send(404, { success: false, error: "Session not found" });
         chromes.delete(id);
         stopChrome(started.chrome, started.profile);
         session.deletedAt = Date.now();
         return send(200, { success: true });
       }
-      if (req.method === 'GET' && pathname === '/v2/browser') {
+      if (req.method === "GET" && pathname === "/v2/browser") {
         return send(200, {
           success: true,
           sessions: [...sessions.values()].map((s) => ({
             id: s.id,
-            status: s.deletedAt ? 'destroyed' : 'active',
-            cdpUrl: chromes.get(s.id)?.cdpUrl ?? '',
+            status: s.deletedAt ? "destroyed" : "active",
+            cdpUrl: chromes.get(s.id)?.cdpUrl ?? "",
             createdAt: new Date(s.createdAt).toISOString(),
           })),
         });
@@ -218,7 +232,7 @@ export async function startFirecrawlBrowserMock(port = 0): Promise<FirecrawlBrow
       return send(500, { success: false, error: err instanceof Error ? err.message : String(err) });
     }
   });
-  await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
   const { port: bound } = server.address() as AddressInfo;
 
   return {
@@ -229,6 +243,10 @@ export async function startFirecrawlBrowserMock(port = 0): Promise<FirecrawlBrow
       createError = error;
     },
     stop: async () => {
+      const left = spare;
+      spare = null;
+      const unused = left ? await left : null;
+      if (unused && !(unused instanceof Error)) stopChrome(unused.chrome, unused.profile);
       for (const [id, started] of chromes) {
         stopChrome(started.chrome, started.profile);
         chromes.delete(id);
@@ -250,6 +268,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     await mock.stop();
     process.exit(0);
   };
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }

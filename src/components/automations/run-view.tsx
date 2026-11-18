@@ -40,6 +40,7 @@ import { ClipsRun } from "./clips-run";
 import { logicNote, passedAlong, RunSteps, StartedRunLink } from "./run-steps";
 import { EditorExport } from "./editor-export";
 import { RunStatusBadge, shownStatus } from "./run-status";
+import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
 /** A run only records which kind of trigger started it, which is all the canvas shows. */
 function runTrigger(kind: RunTriggerKind): Trigger {
@@ -49,6 +50,7 @@ function runTrigger(kind: RunTriggerKind): Trigger {
   if (kind === "schedule") return { kind, schedule: { mode: "interval", minutes: 60 } };
   if (kind === "upload") return { kind, fileType: "any" };
   if (kind === "folder") return { kind, prefix: "", fileType: "any" };
+  if (kind === "slot") return { kind, status: "approved", slotKind: "any" };
   return { kind };
 }
 
@@ -62,6 +64,7 @@ export function RunView({
   automationId: Id<"automations">;
   runId: Id<"runs">;
 }) {
+  useTeamStepsVersion();
   const run = useQuery(api.runs.get, { runId });
   const decide = useMutation(api.runs.decide);
   const cancel = useMutation(api.runs.cancel);

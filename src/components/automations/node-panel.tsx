@@ -36,6 +36,7 @@ import { AutomationPicker } from "./automation-picker";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { PlatformPicker } from "./platform-picker";
+import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
 type NodeContent = Omit<AutomationNode, "position">;
 
@@ -98,9 +99,12 @@ export function NodePanel({
   /** A Clips step whose clips go straight to Follow the speaker, so they keep their shape. */
   feedsFollow?: boolean;
 }) {
+  useTeamStepsVersion();
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
   const nodeType = nodeTypeOf(node);
-  const fields = useStepFields(node.stepId ?? "");
+  const allFields = useStepFields(node.stepId ?? "");
+  // Settings taken from the file that started the run are never filled in by hand.
+  const fields = allFields?.filter(({ name }) => !nodeType?.fromStart?.[name]);
   const [values, setValues] = useState(() => fromInput(node.input));
   const [problem, setProblem] = useState<string | null>(null);
   const look = nodeLook(node);
@@ -157,6 +161,11 @@ export function NodePanel({
         label: fieldLabel(name),
         text: note.replace(/^Automatic\. Uses /, "").replace(/\. Fill it in.*$/, ""),
       });
+    }
+  }
+  for (const name of Object.keys(nodeType?.fromStart ?? {})) {
+    if (isBlank(node.input[name])) {
+      handled.push({ label: fieldLabel(name), text: "the name of the file that started the run" });
     }
   }
   const unset: string[] = [];
