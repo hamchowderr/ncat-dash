@@ -81,7 +81,7 @@ describe("filling a team step in", () => {
       video_url: "https://files.example/a.mp4",
       logo_url: "https://files.example/logo.png",
     });
-    const request = step.toRequest!(parsed) as Compose;
+    const request = step.toRequest!(parsed, {}) as Compose;
     expect(request.inputs).toEqual([
       { file_url: "https://files.example/a.mp4" },
       { file_url: "https://files.example/logo.png" },
@@ -97,7 +97,7 @@ describe("filling a team step in", () => {
     expect(userInputSchema(step).safeParse({ ...base, tag: "a':x=1,scale=1" }).success).toBe(false);
     // An apostrophe is fine: it becomes ’, which cannot end the quoted text.
     const parsed = userInputSchema(step).parse({ ...base, tag: "Maya's show" });
-    const request = step.toRequest!(parsed) as Compose;
+    const request = step.toRequest!(parsed, {}) as Compose;
     expect(request.filters[0].filter).toContain("text='Maya’s show'");
   });
 

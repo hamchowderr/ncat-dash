@@ -109,7 +109,33 @@ function useNow(): number {
  * queue), its build, and every job of the team's it is working on now, like a hosting
  * dashboard's resource view beside a job queue's.
  */
+/** A team on a toolkit run for it has nothing to look after here; its own team does. */
 export function ToolkitView() {
+  const team = useActiveTeam();
+  const shown = useQuery(api.toolkitHealth.shown, { organizationId: team.id });
+  if (shown === undefined) return <Skeleton className="h-64 rounded-xl" />;
+  if (!shown) return <RunForYou />;
+  return <ToolkitDetails />;
+}
+
+function RunForYou() {
+  return (
+    <div className="flex w-full flex-col gap-6">
+      <h1 className="text-2xl font-semibold tracking-tight">Toolkit</h1>
+      <div className="bg-surface flex flex-col items-start gap-3 rounded-xl p-6">
+        <p className="text-muted-foreground max-w-prose text-sm">
+          Your toolkit is run for you, so there is no server here to look after. Your runs and jobs
+          are on the Runs and Jobs pages.
+        </p>
+        <Button asChild size="sm" variant="outline">
+          <Link href="/runs">See your runs</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ToolkitDetails() {
   const team = useActiveTeam();
   const connections = useQuery(api.toolkitConnections.list, { organizationId: team.id });
   const activity = useQuery(api.toolkitHealth.activity, { organizationId: team.id });
@@ -173,6 +199,7 @@ function ServerLoad({ reading, failed }: { reading: Reading | null; failed: bool
       );
     }
     const text = {
+      hosted: "This toolkit is run for you, so its load is not shown here.",
       unreachable: "The toolkit did not answer at its address. It may be restarting or stopped.",
       unauthorized: "The toolkit no longer accepts the saved key. Connect it again with its key.",
       no_health:

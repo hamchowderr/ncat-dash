@@ -1,4 +1,10 @@
-import { RUNNER_FIELDS, type StepDefinition, userInputSchema } from "./define";
+import {
+  type FileFacts,
+  type MediaFacts,
+  RUNNER_FIELDS,
+  type StepDefinition,
+  userInputSchema,
+} from "./define";
 
 /** Where a team's toolkit lives. Works for the Python NCA Toolkit and ncat-engine alike. */
 export interface ToolkitConnection {
@@ -37,6 +43,61 @@ function compact(input: Record<string, unknown>): Record<string, unknown> {
   );
 }
 
+const number = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+const flag = (value: unknown) => (typeof value === "boolean" ? value : undefined);
+
+/** The facts in the toolkit's answer to /v1/media/metadata. */
+export function readMediaFacts(answer: unknown): MediaFacts | undefined {
+  if (!answer || typeof answer !== "object") return undefined;
+  const raw = answer as Record<string, unknown>;
+  const facts: MediaFacts = {
+    duration: number(raw.duration),
+    width: number(raw.width),
+    height: number(raw.height),
+    fps: number(raw.fps),
+    hasVideo: flag(raw.has_video),
+    hasAudio: flag(raw.has_audio),
+  };
+  const known = Object.fromEntries(
+    Object.entries(facts).filter(([, value]) => value !== undefined),
+  ) as MediaFacts;
+  return Object.keys(known).length > 0 ? known : undefined;
+}
+
+/**
+ * Reads the length, size and sound of the files a step names in `readsFirst`, by asking
+ * the toolkit's metadata route straight away (no webhook, so it answers at once). A file
+ * that cannot be read is left out; the step decides what to do without it.
+ */
+export async function readFacts(
+  connection: ToolkitConnection,
+  step: StepDefinition,
+  input: Record<string, unknown>,
+  options: Pick<CallOptions, "signal" | "fetch"> = {},
+): Promise<FileFacts> {
+  const facts: FileFacts = {};
+  const doFetch = options.fetch ?? fetch;
+  for (const field of step.readsFirst ?? []) {
+    const url = input[field];
+    if (typeof url !== "string" || !/^https?:\/\//.test(url)) continue;
+    try {
+      const res = await doFetch(joinUrl(connection.baseUrl, "/v1/media/metadata"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": connection.apiKey },
+        body: JSON.stringify({ media_url: url }),
+        signal: options.signal,
+      });
+      if (!res.ok) continue;
+      const envelope = (await res.json()) as { response?: unknown } | null;
+      facts[field] = readMediaFacts(envelope?.response);
+    } catch {
+      // Left out: the step works without it or says what it needs.
+    }
+  }
+  return facts;
+}
+
 /**
  * Validates the input against the step's schema, then sends it to the toolkit.
  * Returns the toolkit's response envelope as parsed JSON.
@@ -48,8 +109,11 @@ export async function callStep(
   options: CallOptions = {},
 ): Promise<unknown> {
   const parsed = userInputSchema(step).parse(input);
+  const facts = step.readsFirst
+    ? await readFacts(connection, step, parsed as Record<string, unknown>, options)
+    : {};
   const body = compact(
-    step.toRequest ? step.toRequest(parsed) : (parsed as Record<string, unknown>),
+    step.toRequest ? step.toRequest(parsed, facts) : (parsed as Record<string, unknown>),
   );
   if (options.webhookUrl) body[RUNNER_FIELDS[0]] = options.webhookUrl;
   if (options.id) body[RUNNER_FIELDS[1]] = options.id;

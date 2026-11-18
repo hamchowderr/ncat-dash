@@ -105,7 +105,7 @@ export async function enqueueJob(
     return await enqueueJob(ctx, {
       ...args,
       stepId: "ffmpeg-compose",
-      input: found.toRequest!(parsedBlanks.data),
+      input: found.toRequest!(parsedBlanks.data, {}),
     });
   }
 

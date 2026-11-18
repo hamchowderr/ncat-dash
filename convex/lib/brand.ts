@@ -1,4 +1,10 @@
-import { BRAND_KEYS, brandProblem, readUploadRef } from "@ncat-dash/automation-core";
+import {
+  BRAND_KEYS,
+  type BrandKey,
+  brandProblem,
+  isBrandFile,
+  readUploadRef,
+} from "@ncat-dash/automation-core";
 import { ConvexError } from "convex/values";
 import type { MutationCtx } from "../_generated/server";
 
@@ -6,11 +12,11 @@ const MAX_TRACKS = 100;
 
 const invalid = (message: string) => new ConvexError({ code: "invalid_input", message });
 
-/** Checks a logo or music file: a link that looks right, or one of the team's ready uploads. */
+/** Checks a brand file (logo, card, intro, music and so on): a link that looks right, or one of the team's ready uploads. */
 async function checkFile(
   ctx: MutationCtx,
   organizationId: string,
-  key: "logo" | "music",
+  key: BrandKey,
   value: string,
 ): Promise<void> {
   const problem = brandProblem(key, value);
@@ -39,7 +45,7 @@ export async function checkedBrand(
     if (key === "music") continue;
     const value = input[key]?.trim();
     if (!value) continue;
-    if (key === "logo") await checkFile(ctx, organizationId, key, value);
+    if (isBrandFile(key)) await checkFile(ctx, organizationId, key, value);
     else {
       const problem = brandProblem(key, value);
       if (problem) throw invalid(problem);
