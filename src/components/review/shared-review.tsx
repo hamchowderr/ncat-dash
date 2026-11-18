@@ -17,6 +17,7 @@ import { errorMessage } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 import { ClipStage, isStill, type Mark } from "./clip-stage";
+import { CompareButton, CompareStage } from "./compare-stage";
 import { CommentPanel } from "./comment-panel";
 import { useFrameDrawing } from "./frame-drawing";
 import { ClipList, type Here, HereNow } from "./review-room";
@@ -188,6 +189,7 @@ function Workspace({
       void sayTyping({ token, guestId: guest.id, name: guest.name, typing: place }).catch(() => {}),
   );
 
+  const [comparing, setComparing] = useState(false);
   const url = clip.versions[version - 1].url;
   const timed = !isStill(url);
   const threads = threadComments((all ?? []).filter((entry) => entry.version === version));
@@ -216,6 +218,20 @@ function Workspace({
       video.current?.pause();
       seek(root.time);
     }
+  }
+
+  if (comparing) {
+    return (
+      <CompareStage
+        title={clip.title}
+        versions={clip.versions}
+        initial={version}
+        onClose={(next) => {
+          setComparing(false);
+          onVersion(next);
+        }}
+      />
+    );
   }
 
   return (
@@ -273,6 +289,7 @@ function Workspace({
                 ))}
               </div>
             )}
+            {clip.versions.length > 1 && <CompareButton onClick={() => setComparing(true)} />}
           </>
         }
       />
