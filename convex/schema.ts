@@ -531,6 +531,42 @@ export default defineSchema({
     sessionExpiresAt: v.number(),
   }).index("by_slack_user", ["slackTeamId", "slackUserId"]),
 
+  // Discord servers a team added the dashboard's one Discord bot to. The bot itself is
+  // the deployment's (DISCORD_* env on the agent server and here), never a team's.
+  discordServers: defineTable({
+    organizationId: v.string(),
+    guildId: v.string(),
+    guildName: v.string(),
+    addedBy: v.string(),
+    addedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_guild", ["guildId"]),
+
+  // A team member's own Discord account, linked by signing in with Discord once. Discord
+  // gives bots no email address, so this is how the agent knows who wrote to it. The
+  // sign-in the agent acts with is kept here and renewed when it runs low.
+  discordPeople: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    discordUserId: v.string(),
+    discordName: v.string(),
+    linkedAt: v.number(),
+    sessionToken: v.optional(v.string()),
+    sessionExpiresAt: v.optional(v.number()),
+  })
+    .index("by_discord_user", ["discordUserId", "organizationId"])
+    .index("by_member", ["organizationId", "userId"]),
+
+  // A Discord sign-in someone started from Settings, matched when Discord sends them back.
+  discordLinkStarts: defineTable({
+    nonce: v.string(),
+    organizationId: v.string(),
+    userId: v.string(),
+    kind: v.union(v.literal("server"), v.literal("person")),
+    createdAt: v.number(),
+  }).index("by_nonce", ["nonce"]),
+
   // The toSend account this dashboard sends email through: failed-run alerts, sign-in
   // emails and team invitations. One for the whole deployment, set once in Settings by
   // the team named here. TOSEND_API_KEY and EMAIL_FROM on the deployment win over it.

@@ -12,6 +12,7 @@ import type * as alerts from "../alerts.js";
 import type * as auth from "../auth.js";
 import type * as automations from "../automations.js";
 import type * as crons from "../crons.js";
+import type * as discord from "../discord.js";
 import type * as email from "../email.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
@@ -69,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   automations: typeof automations;
   crons: typeof crons;
+  discord: typeof discord;
   email: typeof email;
   files: typeof files;
   http: typeof http;

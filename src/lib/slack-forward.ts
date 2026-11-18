@@ -14,6 +14,18 @@ const PASSED = [
   "x-slack-retry-reason",
 ];
 
+/** The challenge in Slack's address check, or null for anything else. */
+export function urlCheckChallenge(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as { type?: unknown; challenge?: unknown };
+    return parsed.type === "url_verification" && typeof parsed.challenge === "string"
+      ? parsed.challenge
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Whether a Slack event is someone's reply inside a thread: what the dashboard brings
  * into a review when the thread is one of its review threads.
@@ -49,6 +61,11 @@ export async function forwardSlack(
   convexSiteUrl = CONVEX_SITE_URL,
 ): Promise<Response> {
   const body = await request.text();
+  // Slack's one-time address check carries no data and gives up after 3 seconds, which a
+  // trip to an idle agent server can take. It is answered here, at once, with the
+  // challenge Slack sent; the agent server would answer the same.
+  const challenge = urlCheckChallenge(body);
+  if (challenge !== null) return Response.json({ challenge });
   const headers = new Headers();
   for (const name of PASSED) {
     const value = request.headers.get(name);

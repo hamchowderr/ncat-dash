@@ -1,10 +1,32 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { forwardSlack, isThreadReply, SLACK_WEBHOOK_PATH } from "./slack-forward";
+import {
+  forwardSlack,
+  isThreadReply,
+  SLACK_WEBHOOK_PATH,
+  urlCheckChallenge,
+} from "./slack-forward";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("passing Slack's requests to the agent server", () => {
+  test("answers Slack's address check at once, without waking the agent server", async () => {
+    const agent = vi.fn();
+    vi.stubGlobal("fetch", agent);
+    const answer = await forwardSlack(
+      new Request("https://dash.test/api/slack/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: "t", type: "url_verification", challenge: "abc123" }),
+      }),
+      "http://agent.test",
+    );
+    expect(await answer.json()).toEqual({ challenge: "abc123" });
+    expect(agent).not.toHaveBeenCalled();
+    expect(urlCheckChallenge('{"type":"event_callback","challenge":"x"}')).toBeNull();
+    expect(urlCheckChallenge("not json")).toBeNull();
+  });
+
   test("sends the body and Slack's signature headers as they came, and nothing else", async () => {
     const seen: { url: string; headers: Headers; body: string }[] = [];
     vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
