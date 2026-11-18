@@ -9,6 +9,7 @@ import {
   callStep,
   drawtextValue,
   getStep,
+  moreRecipes,
   recipes,
   type StepDefinition,
   userInputJsonSchema,
@@ -16,7 +17,7 @@ import {
 
 type Option = { option: string; argument?: string | number };
 type ComposeRequest = {
-  inputs: { file_url: string }[];
+  inputs: { file_url: string; options?: Option[] }[];
   filters: { filter: string }[];
   outputs: { options: Option[] }[];
 };
@@ -54,9 +55,11 @@ function minimalInput(step: StepDefinition): Record<string, unknown> {
             ? "music.mp3"
             : name === "reaction_url"
               ? "b.mp4"
-              : name.startsWith("video")
-                ? "a.mp4"
-                : "picture.png";
+              : name === "audio_url"
+                ? "music.mp3"
+                : name.startsWith("video")
+                  ? "a.mp4"
+                  : "picture.png";
       input[name] = urlFor(file);
     } else if (property.type === "string") {
       input[name] = AWKWARD;
@@ -74,6 +77,8 @@ function toRequest(step: StepDefinition, input: Record<string, unknown>): Compos
   return step.toRequest!(step.input.parse(input)) as ComposeRequest;
 }
 
+const everyRecipe = [...recipes, ...moreRecipes];
+
 describe("recipes", () => {
   it("has 22 recipes with unique ids that do not clash with the toolkit steps", () => {
     expect(recipes).toHaveLength(22);
@@ -85,7 +90,21 @@ describe("recipes", () => {
     }
   });
 
-  it.each(recipes.map((recipe) => [recipe.id, recipe] as const))(
+  it("has the dashboard's own recipes as steps too, each with its own id", () => {
+    expect(moreRecipes.length).toBeGreaterThanOrEqual(6);
+    for (const recipe of moreRecipes) {
+      expect(recipe.category).toBe("recipe");
+      expect(recipe.id).toMatch(/^recipe-/);
+      expect(getStep(recipe.id)).toBe(recipe);
+    }
+  });
+
+  it("refuses odd sizes, which H.264 cannot make", () => {
+    const fill = getStep("recipe-blur-fill")!;
+    expect(() => fill.input.parse({ ...minimalInput(fill), width: 1081 })).toThrow();
+  });
+
+  it.each(everyRecipe.map((recipe) => [recipe.id, recipe] as const))(
     "%s builds a request the toolkit's compose route accepts",
     (_id, recipe) => {
       const compose = getStep("ffmpeg-compose")!;
@@ -95,7 +114,7 @@ describe("recipes", () => {
   );
 
   it("names a real, required blank as the one the step before fills in", () => {
-    for (const recipe of recipes) {
+    for (const recipe of everyRecipe) {
       const schema = userInputJsonSchema(recipe) as { required?: string[] };
       const filled = recipe.listInput?.field ?? recipe.primaryInput;
       expect(filled, recipe.id).toBeTruthy();
@@ -187,7 +206,13 @@ describe.skipIf(!hasFfmpeg)("recipes on a real FFmpeg", () => {
   /** The same command the toolkit builds from a compose request. */
   function run(request: ComposeRequest, name: string): string {
     const args: string[] = [];
-    for (const input of request.inputs) args.push("-i", path.join(dir, MEDIA[input.file_url]));
+    for (const input of request.inputs) {
+      for (const item of input.options ?? []) {
+        args.push(item.option);
+        if (item.argument !== undefined) args.push(String(item.argument));
+      }
+      args.push("-i", path.join(dir, MEDIA[input.file_url]));
+    }
     args.push("-filter_complex", request.filters.map((item) => item.filter).join(";"));
     const options = request.outputs[0].options;
     const format = options.find((item) => item.option === "-f")?.argument;
@@ -195,12 +220,15 @@ describe.skipIf(!hasFfmpeg)("recipes on a real FFmpeg", () => {
       args.push(item.option);
       if (item.argument !== undefined) args.push(String(item.argument));
     }
-    const output = path.join(dir, `${name}.${format === "image2" ? "png" : "mp4"}`);
+    // The extension the toolkit gives each output format.
+    const extension =
+      format === "image2" ? "png" : ["gif", "mp3"].includes(String(format)) ? format : "mp4";
+    const output = path.join(dir, `${name}.${extension}`);
     ffmpeg([...args, output]);
     return output;
   }
 
-  it.each(recipes.map((recipe) => [recipe.id, recipe] as const))(
+  it.each(everyRecipe.map((recipe) => [recipe.id, recipe] as const))(
     "%s runs and makes a file",
     (id, recipe) => {
       const output = run(toRequest(recipe, minimalInput(recipe)), id);

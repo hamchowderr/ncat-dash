@@ -491,3 +491,184 @@ export const recipes: StepDefinition[] = [
       `[0:v]${drawtext(b, `:${CENTRED}`)}[text]; [text]hflip[mirrored_text]; [0:v][mirrored_text]overlay=(W-w)/2:(H-h)/2`,
   }),
 ];
+
+const even = (what: string, min: number, max: number) =>
+  whole(what, min, max).refine((value) => value % 2 === 0, "Use an even number of pixels.");
+
+/**
+ * More ready-made FFmpeg jobs, written for this dashboard rather than taken from the
+ * toolkit's examples. They are the jobs people ask for most (see the FFmpeg automation
+ * research) that one compose request can do today.
+ */
+export const moreRecipes: StepDefinition[] = [
+  recipe({
+    id: "recipe-blur-fill",
+    title: "Fit with a blurred background",
+    description:
+      "Fits the whole picture into a new shape, such as vertical for Shorts, Reels and TikTok, and fills the empty space with a blurred copy of it. Nothing is cut off.",
+    primaryInput: "video_url",
+    blanks: {
+      video_url: url("The video"),
+      width: even("Width of the finished video", 2, 8000).default(1080),
+      height: even("Height of the finished video", 2, 8000).default(1920),
+      blur: whole("How blurred the background is", 1, 100).default(20),
+    },
+    toRequest: (b) => {
+      const size = `${b.width}:${b.height}`;
+      // The blur's reach cannot be more than half the shorter side.
+      const blur = Math.min(b.blur, Math.floor(Math.min(b.width, b.height) / 2) - 1);
+      return request(
+        [b.video_url],
+        [
+          `[0:v]split=2[back][front];[back]scale=${size}:force_original_aspect_ratio=increase,crop=${size},boxblur=${blur}:1[blurred];[front]scale=${size}:force_original_aspect_ratio=decrease[fitted];[blurred][fitted]overlay=(W-w)/2:(H-h)/2,setsar=1,format=yuv420p[v]`,
+        ],
+        [
+          opt("-map", "[v]"),
+          opt("-map", "0:a?"),
+          ...X264.slice(0, 3),
+          opt("-c:a", "aac"),
+          opt("-movflags", "+faststart"),
+          opt("-f", "mp4"),
+        ],
+      );
+    },
+  }),
+  recipe({
+    id: "recipe-cover-art-video",
+    title: "Audio with cover art",
+    description:
+      "Turns a song or episode into a video: the cover art for the whole length, with a moving sound wave under it if you want one. Your logo is used until you pick cover art.",
+    primaryInput: "audio_url",
+    brandInputs: { image_url: "logo", wave_color: "color" },
+    blanks: {
+      audio_url: url("The song or episode"),
+      image_url: url("The cover art"),
+      width: even("Width of the video", 2, 8000).default(1920),
+      height: even("Height of the video", 2, 8000).default(1080),
+      waveform: z.boolean().default(true).describe("Show a moving sound wave"),
+      wave_color: color.default("white"),
+    },
+    toRequest: (b) => {
+      const size = `${b.width}:${b.height}`;
+      const background = `[0:v]scale=${size}:force_original_aspect_ratio=decrease,pad=${size}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=25`;
+      const waveHeight = Math.max(2, Math.round(b.height / 5 / 2) * 2);
+      const filter = b.waveform
+        ? `${background}[art];[1:a]showwaves=s=${b.width}x${waveHeight}:mode=cline:rate=25:colors=${b.wave_color}[wave];[art][wave]overlay=0:H-h-${Math.round(b.height / 20)},format=yuv420p[v]`
+        : `${background},format=yuv420p[v]`;
+      return {
+        // The picture repeats for as long as the sound plays.
+        inputs: [{ file_url: b.image_url, options: [opt("-loop", 1)] }, { file_url: b.audio_url }],
+        filters: [{ filter }],
+        outputs: [
+          {
+            options: [
+              opt("-map", "[v]"),
+              opt("-map", "1:a"),
+              opt("-c:v", "libx264"),
+              opt("-preset", "medium"),
+              opt("-tune", "stillimage"),
+              opt("-crf", 23),
+              opt("-c:a", "aac"),
+              opt("-b:a", "192k"),
+              opt("-shortest"),
+              opt("-movflags", "+faststart"),
+              opt("-f", "mp4"),
+            ],
+          },
+        ],
+      };
+    },
+  }),
+  recipe({
+    id: "recipe-loudness",
+    title: "Even out loudness for platforms",
+    description:
+      "Brings a video's sound to the loudness platforms expect, so it is not quieter or louder than everything around it. YouTube, Spotify and TikTok use about -14, Apple Podcasts -16, broadcast -23. The picture is not touched. One pass, not two.",
+    primaryInput: "video_url",
+    blanks: {
+      video_url: url("The video"),
+      loudness: number("Target loudness in LUFS", -31, -5).default(-14),
+      peak: number("Highest peak allowed, in dBTP", -9, 0).default(-1.5),
+    },
+    toRequest: (b) =>
+      request(
+        [b.video_url],
+        [`[0:a]loudnorm=I=${b.loudness}:TP=${b.peak}:LRA=11[a]`],
+        [
+          opt("-map", "0:v?"),
+          opt("-map", "[a]"),
+          opt("-c:v", "copy"),
+          opt("-c:a", "aac"),
+          opt("-b:a", "192k"),
+          opt("-ar", 48000),
+          opt("-movflags", "+faststart"),
+          opt("-f", "mp4"),
+        ],
+      ),
+  }),
+  recipe({
+    id: "recipe-web-ready",
+    title: "Make it web-ready",
+    description:
+      "A smaller MP4 that starts playing at once on a website or in a feed. Taller videos are scaled down; smaller ones are left at their size.",
+    primaryInput: "video_url",
+    blanks: {
+      video_url: url("The video"),
+      max_height: even("Tallest it may be, in pixels", 144, 4320).default(1080),
+    },
+    toRequest: (b) =>
+      request(
+        [b.video_url],
+        [`[0:v]scale=-2:'min(${b.max_height},ih)',format=yuv420p[v]`],
+        [
+          opt("-map", "[v]"),
+          opt("-map", "0:a?"),
+          ...X264.slice(0, 3),
+          opt("-c:a", "aac"),
+          opt("-b:a", "128k"),
+          opt("-movflags", "+faststart"),
+          opt("-f", "mp4"),
+        ],
+      ),
+  }),
+  recipe({
+    id: "recipe-gif-preview",
+    title: "GIF preview",
+    description: "A short looping GIF from the start of a video, for previews and link cards.",
+    primaryInput: "video_url",
+    blanks: {
+      video_url: url("The video"),
+      seconds: number("How many seconds from the start", 0.5, 15).default(4),
+      width: even("Width in pixels", 64, 1280).default(480),
+      frames_per_second: whole("Frames each second", 1, 30).default(12),
+    },
+    toRequest: (b) =>
+      request(
+        [b.video_url],
+        [
+          `[0:v]trim=duration=${b.seconds},fps=${b.frames_per_second},scale=${b.width}:-2:flags=lanczos,split[a][b];[a]palettegen[palette];[b][palette]paletteuse[v]`,
+        ],
+        [opt("-map", "[v]"), opt("-loop", 0), opt("-f", "gif")],
+      ),
+  }),
+  recipe({
+    id: "recipe-voice-master",
+    title: "Clean up a voice recording",
+    description:
+      "Takes out rumble and steady background hiss, evens out the voice, brings it to podcast loudness and saves an MP3. Works on audio or video. Fixed settings, so very noisy rooms still need an editor.",
+    primaryInput: "audio_url",
+    blanks: {
+      audio_url: url("The recording, audio or video"),
+      loudness: number("Target loudness in LUFS", -31, -5).default(-16),
+      reduce_noise: z.boolean().default(true).describe("Reduce steady background noise"),
+    },
+    toRequest: (b) =>
+      request(
+        [b.audio_url],
+        [
+          `[0:a]highpass=f=80,${b.reduce_noise ? "afftdn=nf=-25," : ""}acompressor=threshold=0.089:ratio=3:attack=20:release=250,loudnorm=I=${b.loudness}:TP=-1.5:LRA=11,aresample=44100[a]`,
+        ],
+        [opt("-map", "[a]"), opt("-c:a", "libmp3lame"), opt("-b:a", "128k"), opt("-f", "mp3")],
+      ),
+  }),
+];
