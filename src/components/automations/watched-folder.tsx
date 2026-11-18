@@ -61,11 +61,9 @@ export function WatchedFolder({
         )}
         <div className="min-w-0 flex-1">
           <p id={`${id}-name`} className="truncate text-sm font-medium">
-            {whole ? "The whole bucket" : baseName(prefix)}
+            {whole ? "All your files" : baseName(prefix)}
           </p>
-          <p className="text-muted-foreground truncate text-xs">
-            {storage.bucket}/{prefix}
-          </p>
+          <p className="text-muted-foreground truncate text-xs">Your files/{prefix}</p>
         </div>
         <Button
           type="button"
@@ -81,7 +79,7 @@ export function WatchedFolder({
       {picking && (
         <FolderPickerDialog
           organizationId={team.id}
-          bucket={storage.bucket}
+          bucket="Your files"
           startAt={prefix}
           onPick={(picked) => {
             onChange(picked);
@@ -108,7 +106,7 @@ function FolderPickerDialog({
   onClose: () => void;
 }) {
   const [at, setAt] = useState(startAt);
-  const here = at === "" ? "the whole bucket" : baseName(at);
+  const here = at === "" ? "all your files" : baseName(at);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">

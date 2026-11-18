@@ -126,6 +126,10 @@ export const connect = action({
       storage,
       createdBy: userId,
     });
+    // The team's own folder in the bucket, ready for Files (see lib/bucket.ts).
+    await ctx.scheduler.runAfter(0, internal.files.settleTeamFolder, {
+      organizationId: args.organizationId,
+    });
     return result;
   },
 });

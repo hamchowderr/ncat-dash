@@ -497,7 +497,7 @@ export const checkRun = createTool({
 
 /**
  * A folder as the person or the model writes it ("Podcasts/Raw", "/podcasts/raw/") in
- * the form the bucket uses: no slash in front, one after, "" for the top of the bucket.
+ * the form the bucket uses: no slash in front, one after, "" for the top of the team's files (its own folder in the bucket).
  */
 export function folderKey(path: string | undefined): string {
   const parts = (path ?? "")
@@ -509,7 +509,7 @@ export function folderKey(path: string | undefined): string {
 
 const folderPath = z
   .string()
-  .describe('A folder, written like "Podcasts/Raw". Leave empty for the top of the bucket.');
+  .describe('A folder, written like "Podcasts/Raw". Leave empty for the top of the team’s files.');
 
 export const listFolder = createTool({
   id: "list_folder",

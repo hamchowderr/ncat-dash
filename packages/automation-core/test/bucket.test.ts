@@ -12,6 +12,7 @@ import {
   nameProblem,
   parentOf,
   renamedKey,
+  teamFolder,
   urlWithKey,
 } from "../src";
 
@@ -147,5 +148,35 @@ describe("links to moved files", () => {
     expect(followFolder("incoming/", folders)).toBe("inbox/");
     expect(followFolder("incoming/shorts/", folders)).toBe("inbox/shorts/");
     expect(followFolder("other/", folders)).toBe("other/");
+  });
+});
+
+describe("a team's folder in a shared bucket", () => {
+  const shared = { ...bucket, root: teamFolder("org_1") };
+
+  it("is teams/<id>/", () => {
+    expect(teamFolder("org_1")).toBe("teams/org_1/");
+  });
+
+  it("reads keys from inside the folder, and has no key for anything outside it", () => {
+    expect(keyOfUrl(shared, "https://s3.example.com/team/teams/org_1/out/clip.mp4")).toBe(
+      "out/clip.mp4",
+    );
+    expect(keyOfUrl(shared, "https://s3.example.com/team/teams/org_2/out/clip.mp4")).toBeNull();
+    expect(keyOfUrl(shared, "https://s3.example.com/team/job_output.mp4")).toBeNull();
+    expect(keyOfUrl(shared, "https://s3.example.com/team/teams/org_1/")).toBeNull();
+  });
+
+  it("writes a moved file's link back inside the folder", () => {
+    expect(
+      urlWithKey(shared, "https://s3.example.com/team/teams/org_1/a.mp4", "Shows/b c.mp4"),
+    ).toBe("https://s3.example.com/team/teams/org_1/Shows/b%20c.mp4");
+    expect(
+      followMoves(
+        shared,
+        ["https://s3.example.com/team/teams/org_1/a.mp4"],
+        new Map([["a.mp4", "b.mp4"]]),
+      ),
+    ).toEqual(["https://s3.example.com/team/teams/org_1/b.mp4"]);
   });
 });
