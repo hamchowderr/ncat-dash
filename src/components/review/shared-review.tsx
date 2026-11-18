@@ -4,7 +4,8 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { threadComments } from "@ncat-dash/review-core";
 import { useMutation, useQuery } from "convex/react";
-import { Check, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, Undo2 } from "lucide-react";
+import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
@@ -402,7 +403,7 @@ function Verdict({ token, guest, room }: { token: string; guest: Guest; room: Ro
 }
 
 /** A review as a client sees it through its share link, with no account. */
-export function SharedReview({ token }: { token: string }) {
+export function SharedReview({ token, backHref }: { token: string; backHref?: string }) {
   const room = useQuery(api.sharedReview.room, { token });
   const guest = useGuest();
   const here = useGuestPresence(token, guest);
@@ -433,6 +434,14 @@ export function SharedReview({ token }: { token: string }) {
   return (
     <div className="flex min-h-[36rem] flex-col gap-3 p-3 sm:p-4 lg:h-svh">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {backHref && (
+          <Button asChild variant="ghost" size="icon" className="-mr-2">
+            <Link href={backHref}>
+              <ArrowLeft />
+              <span className="sr-only">Back to the project</span>
+            </Link>
+          </Button>
+        )}
         <div className="min-w-0 flex-1">
           {room.teamName && (
             <p className="text-muted-foreground truncate text-xs">From {room.teamName}</p>

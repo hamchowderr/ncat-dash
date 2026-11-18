@@ -39,6 +39,7 @@ import {
   Code,
   Film,
   FolderInput,
+  FolderKanban,
   Hand,
   Layers,
   WandSparkles,
@@ -109,6 +110,7 @@ export const TRIGGER_ICONS: Record<TriggerKind, LucideIcon> = {
   upload: Upload,
   folder: FolderInput,
   finished: CircleCheckBig,
+  slot: FolderKanban,
 };
 
 export const RUN_TRIGGER_ICONS: Record<RunTriggerKind, LucideIcon> = {
