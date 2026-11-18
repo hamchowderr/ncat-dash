@@ -127,7 +127,7 @@ describe("the home page", () => {
     const ready = screen.getByRole("region", { name: "Ready-made automations" });
     expect(
       within(ready)
-        .getByRole("link", { name: /See all 45/ })
+        .getByRole("link", { name: /See all 61/ })
         .getAttribute("href"),
     ).toBe("/automations/new");
     fireEvent.click(within(ready).getByText("Podcast master and transcript"));
@@ -167,5 +167,19 @@ describe("the home page", () => {
     renderInApp(<HomeView />);
     expect(screen.getByTestId("connection-status").textContent).toBe("Toolkit not responding");
     expect(screen.getByText("https://toolkit.example")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "See how busy it is" }).getAttribute("href")).toBe(
+      "/toolkit",
+    );
+  });
+
+  test("leaves out the toolkit's load for a team whose toolkit is run for it", () => {
+    answerQuery(api.home.summary, summary());
+    answerQuery(api.toolkitHealth.shown, false);
+    answerQuery(api.toolkitConnections.list, [
+      { ...CONNECTION, status: "failing", lastError: "Connection refused." },
+    ]);
+    renderInApp(<HomeView />);
+    expect(screen.getByText("https://toolkit.example")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "See how busy it is" })).toBeNull();
   });
 });

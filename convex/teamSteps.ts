@@ -189,7 +189,7 @@ export const tryOut = mutation({
     const queued = await enqueueJob(ctx, {
       organizationId: args.organizationId,
       stepId: "ffmpeg-compose",
-      input: definition.toRequest!(parsed.data),
+      input: definition.toRequest!(parsed.data, {}),
       createdBy: userId,
     });
     if (!queued.ok) fail(queued.code, queued.message);

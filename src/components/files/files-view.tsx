@@ -4,6 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
   baseName,
+  type BrandFileKey,
   fileDetailColumns,
   type FileDetails,
   folderTrail,
@@ -83,9 +84,16 @@ export type FileEntry = {
   kind: "video" | "audio" | "image" | "other";
   uploadId: Id<"uploads"> | null;
   details: FileDetails | null;
-  usedAs: "logo" | "music" | null;
+  usedAs: BrandFileKey | null;
 };
 type FolderEntry = { key: string; name: string };
+const USED_AS: Record<BrandFileKey, string> = {
+  logo: "Your logo",
+  music: "Your music",
+  card: "Your card",
+  intro: "Your intro",
+  outro: "Your outro",
+};
 // The top of the team's own folder. Many teams can share one toolkit's bucket, so the
 // bucket's name means nothing to a team; its files are simply "your files".
 const TOP_NAME = "Your files";
@@ -753,11 +761,7 @@ export function FilesView() {
                           />
                           <span className="truncate">{file.name}</span>
                         </button>
-                        {file.usedAs && (
-                          <Badge variant="secondary">
-                            {file.usedAs === "logo" ? "Your logo" : "Your music"}
-                          </Badge>
-                        )}
+                        {file.usedAs && <Badge variant="secondary">{USED_AS[file.usedAs]}</Badge>}
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground whitespace-nowrap">

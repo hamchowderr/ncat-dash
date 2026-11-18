@@ -8,7 +8,6 @@ import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,6 +21,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { createSlackAppUrl, slackManifest } from "@/lib/slack-manifest";
 import { useActiveTeam } from "@/lib/team-context";
+
+import { SettingsSection } from "./settings-shell";
 
 function origin(): string {
   return typeof window === "undefined" ? "" : window.location.origin;
@@ -236,143 +237,132 @@ export function SlackCard() {
   }
 
   return (
-    <Card data-slack-card>
-      <CardHeader>
-        <CardTitle>
-          <h2>Slack</h2>
-        </CardTitle>
-        <CardDescription>
-          Tag the agent in a Slack channel or message it directly, and it answers there. It runs on
-          your own Slack app, so nothing goes through anyone else.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-6">
-        {slack.connected && !showForm && (
-          <div className="flex flex-col gap-3">
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-              <dt className="text-muted-foreground">Workspace</dt>
-              <dd>{slack.slackTeamName}</dd>
-              <dt className="text-muted-foreground">Connected</dt>
-              <dd>
-                {new Date(slack.connectedAt).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-                {slack.connectedBy ? ` by ${slack.connectedBy}` : ""}
-              </dd>
-            </dl>
-            <p className="text-muted-foreground text-sm">
-              The agent knows people by the email address on their Slack profile, and does only what
-              they could do here. Someone not on the team gets a note saying so.
-            </p>
-            <ReviewAlerts channel={slack.alertChannel} canEdit={slack.canEdit} />
-            {slack.canEdit && (
+    <SettingsSection data-slack-card className="gap-6">
+      {slack.connected && !showForm && (
+        <div className="flex flex-col gap-3">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+            <dt className="text-muted-foreground">Workspace</dt>
+            <dd>{slack.slackTeamName}</dd>
+            <dt className="text-muted-foreground">Connected</dt>
+            <dd>
+              {new Date(slack.connectedAt).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+              {slack.connectedBy ? ` by ${slack.connectedBy}` : ""}
+            </dd>
+          </dl>
+          <p className="text-muted-foreground text-sm">
+            The agent knows people by the email address on their Slack profile, and does only what
+            they could do here. Someone not on the team gets a note saying so.
+          </p>
+          <ReviewAlerts channel={slack.alertChannel} canEdit={slack.canEdit} />
+          {slack.canEdit && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setEditing(true)} disabled={busy !== null}>
+                Change
+              </Button>
+              <Button variant="ghost" onClick={onRemove} disabled={busy !== null}>
+                {busy === "remove" ? "Disconnecting" : "Disconnect"}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!slack.connected && !slack.canEdit && (
+        <p className="text-muted-foreground text-sm">
+          Slack is not connected yet. A team owner or admin can connect it here.
+        </p>
+      )}
+
+      {showForm && (
+        <div className="flex flex-col gap-5">
+          {isPrivate(here) && (
+            <Alert>
+              <AlertTitle>Slack can&apos;t reach this address</AlertTitle>
+              <AlertDescription>
+                You opened the dashboard at {here}, which only works on this computer. Open it at
+                its public address before you make the app, so Slack knows where to send messages.
+              </AlertDescription>
+            </Alert>
+          )}
+          <ol className="flex flex-col gap-4">
+            <Step n={1} title="Make the app">
+              <p className="text-muted-foreground">
+                Slack opens with everything filled in. Pick your workspace and press Create.
+              </p>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => setEditing(true)} disabled={busy !== null}>
-                  Change
+                <Button asChild size="sm">
+                  <a href={createSlackAppUrl(here, team.name)} target="_blank" rel="noreferrer">
+                    <ExternalLink />
+                    Create the Slack app
+                  </a>
                 </Button>
-                <Button variant="ghost" onClick={onRemove} disabled={busy !== null}>
-                  {busy === "remove" ? "Disconnecting" : "Disconnect"}
+                <Button size="sm" variant="ghost" type="button" onClick={copyManifest}>
+                  {copied ? <Check /> : <Copy />}
+                  {copied ? "Copied" : "Copy the manifest"}
                 </Button>
               </div>
-            )}
-          </div>
-        )}
-
-        {!slack.connected && !slack.canEdit && (
-          <p className="text-muted-foreground text-sm">
-            Slack is not connected yet. A team owner or admin can connect it here.
-          </p>
-        )}
-
-        {showForm && (
-          <div className="flex flex-col gap-5">
-            {isPrivate(here) && (
-              <Alert>
-                <AlertTitle>Slack can&apos;t reach this address</AlertTitle>
-                <AlertDescription>
-                  You opened the dashboard at {here}, which only works on this computer. Open it at
-                  its public address before you make the app, so Slack knows where to send messages.
-                </AlertDescription>
-              </Alert>
-            )}
-            <ol className="flex flex-col gap-4">
-              <Step n={1} title="Make the app">
-                <p className="text-muted-foreground">
-                  Slack opens with everything filled in. Pick your workspace and press Create.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button asChild size="sm">
-                    <a href={createSlackAppUrl(here, team.name)} target="_blank" rel="noreferrer">
-                      <ExternalLink />
-                      Create the Slack app
-                    </a>
-                  </Button>
-                  <Button size="sm" variant="ghost" type="button" onClick={copyManifest}>
-                    {copied ? <Check /> : <Copy />}
-                    {copied ? "Copied" : "Copy the manifest"}
-                  </Button>
-                </div>
-              </Step>
-              <Step n={2} title="Install it to your workspace">
-                <p className="text-muted-foreground">
-                  In the app, open Install App and press Install to Workspace.
-                </p>
-              </Step>
-              <Step n={3} title="Paste two values here">
-                <form onSubmit={onSubmit} aria-label="Connect Slack">
-                  <FieldGroup>
-                    <Field>
-                      <FieldLabel htmlFor="slack-bot-token">Bot User OAuth Token</FieldLabel>
-                      <Input
-                        id="slack-bot-token"
-                        name="botToken"
-                        type="password"
-                        autoComplete="off"
-                        placeholder="xoxb-"
-                        required
-                      />
-                      <FieldDescription>
-                        Under OAuth & Permissions. It starts with xoxb-.
-                      </FieldDescription>
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="slack-signing-secret">Signing Secret</FieldLabel>
-                      <Input
-                        id="slack-signing-secret"
-                        name="signingSecret"
-                        type="password"
-                        autoComplete="off"
-                        required
-                      />
-                      <FieldDescription>
-                        Under Basic Information, in App Credentials.
-                      </FieldDescription>
-                    </Field>
-                    {problem && (
-                      <Alert variant="destructive">
-                        <AlertTitle>Slack is not connected</AlertTitle>
-                        <AlertDescription>{problem}</AlertDescription>
-                      </Alert>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="submit" disabled={busy !== null}>
-                        {busy === "save" ? "Checking" : "Connect Slack"}
+            </Step>
+            <Step n={2} title="Install it to your workspace">
+              <p className="text-muted-foreground">
+                In the app, open Install App and press Install to Workspace.
+              </p>
+            </Step>
+            <Step n={3} title="Paste two values here">
+              <form onSubmit={onSubmit} aria-label="Connect Slack">
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="slack-bot-token">Bot User OAuth Token</FieldLabel>
+                    <Input
+                      id="slack-bot-token"
+                      name="botToken"
+                      type="password"
+                      autoComplete="off"
+                      placeholder="xoxb-"
+                      required
+                    />
+                    <FieldDescription>
+                      Under OAuth & Permissions. It starts with xoxb-.
+                    </FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="slack-signing-secret">Signing Secret</FieldLabel>
+                    <Input
+                      id="slack-signing-secret"
+                      name="signingSecret"
+                      type="password"
+                      autoComplete="off"
+                      required
+                    />
+                    <FieldDescription>
+                      Under Basic Information, in App Credentials.
+                    </FieldDescription>
+                  </Field>
+                  {problem && (
+                    <Alert variant="destructive">
+                      <AlertTitle>Slack is not connected</AlertTitle>
+                      <AlertDescription>{problem}</AlertDescription>
+                    </Alert>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="submit" disabled={busy !== null}>
+                      {busy === "save" ? "Checking" : "Connect Slack"}
+                    </Button>
+                    {slack.connected && (
+                      <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
+                        Cancel
                       </Button>
-                      {slack.connected && (
-                        <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
-                          Cancel
-                        </Button>
-                      )}
-                    </div>
-                  </FieldGroup>
-                </form>
-              </Step>
-            </ol>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                    )}
+                  </div>
+                </FieldGroup>
+              </form>
+            </Step>
+          </ol>
+        </div>
+      )}
+    </SettingsSection>
   );
 }

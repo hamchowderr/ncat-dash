@@ -8,12 +8,13 @@ import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
+
+import { SettingsSection } from "./settings-shell";
 
 /** Where agents reach the dashboard's MCP server. */
 export function mcpUrl(): string {
@@ -77,7 +78,7 @@ export function AgentAccessCard() {
   const [made, setMade] = useState<{ name: string; key: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  if (access === undefined) return <Skeleton className="h-60 rounded-xl" />;
+  if (access === undefined) return <Skeleton className="h-60 rounded-lg" />;
   const url = mcpUrl();
 
   async function onCreate(event: FormEvent<HTMLFormElement>) {
@@ -109,19 +110,12 @@ export function AgentAccessCard() {
   const command = `claude mcp add --transport http content-automations ${url} --header "Authorization: Bearer ${made?.key ?? "<your key>"}"`;
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2>Connect an AI agent</h2>
-          </CardTitle>
-          <CardDescription>
-            Claude Code, Cursor and other agents that speak MCP can list your automations and
-            uploads, start an automation on a file, and see how its runs went. They cannot change
-            your automations.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+    <div className="flex flex-col gap-10">
+      <SettingsSection
+        title="Connect an AI agent"
+        description="Claude Code, Cursor and other agents that speak MCP can list your automations and uploads, start an automation on a file, and see how its runs went. They cannot change your automations."
+      >
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">MCP server address</span>
             <Line text={url} label="Copy the MCP server address" />
@@ -134,20 +128,14 @@ export function AgentAccessCard() {
               <code className="font-mono text-xs">Authorization: Bearer &lt;your key&gt;</code>.
             </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </SettingsSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <h2>Keys</h2>
-          </CardTitle>
-          <CardDescription>
-            Each key acts for the whole team. Make one for each place you connect, so you can
-            remove one without the others.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-6">
+      <SettingsSection
+        title="Keys"
+        description="Each key acts for the whole team. Make one for each place you connect, so you can remove one without the others."
+      >
+        <div className="flex flex-col gap-6">
           {!access.canEdit ? (
             <p className="text-muted-foreground text-sm">
               Only a team owner or admin can make or remove keys.
@@ -155,10 +143,7 @@ export function AgentAccessCard() {
           ) : (
             <>
               {made && (
-                <div
-                  role="status"
-                  className="flex flex-col gap-2 rounded-lg bg-emerald-50 p-3"
-                >
+                <div role="status" className="flex flex-col gap-2 rounded-lg bg-emerald-50 p-3">
                   <p className="text-sm font-medium">
                     {made.name}: copy this key now. It is not shown again.
                   </p>
@@ -183,7 +168,9 @@ export function AgentAccessCard() {
                         {busy === "create" ? "Making" : "Make a key"}
                       </Button>
                     </div>
-                    <FieldDescription>Where the key will be used, to tell keys apart.</FieldDescription>
+                    <FieldDescription>
+                      Where the key will be used, to tell keys apart.
+                    </FieldDescription>
                   </Field>
                 </FieldGroup>
               </form>
@@ -213,8 +200,8 @@ export function AgentAccessCard() {
               )}
             </>
           )}
-        </CardContent>
-      </Card>
-    </>
+        </div>
+      </SettingsSection>
+    </div>
   );
 }

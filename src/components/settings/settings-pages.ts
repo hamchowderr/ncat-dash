@@ -1,26 +1,101 @@
-/** The settings pages, in the order the menu lists them. */
-export const SETTINGS_PAGES = [
-  { slug: "brand", title: "Brand", description: "Logo, colour, font and music" },
-  { slug: "editors", title: "Video editors", description: "Where your team finishes videos" },
-  { slug: "agent", title: "Agent", description: "Model, house rules and platforms" },
-  { slug: "runs", title: "Runs", description: "Jobs at once and retries" },
-  { slug: "notifications", title: "Notifications", description: "What you hear about" },
-  { slug: "email", title: "Email", description: "How the dashboard sends email" },
-  { slug: "chat", title: "Chat apps", description: "Slack and Discord" },
-  { slug: "ai-agents", title: "AI agents", description: "Let Claude start your automations" },
-  { slug: "team", title: "Team", description: "Members and invitations" },
+/**
+ * The settings pages, grouped the way the settings menu lists them. Each has one short
+ * line that sits under its title on the page itself (never in the menu).
+ */
+export const SETTINGS_GROUPS = [
+  {
+    label: "You",
+    pages: [
+      {
+        slug: "notifications",
+        title: "Notifications",
+        description: "What you hear about, and how. Everyone on the team picks their own.",
+      },
+    ],
+  },
+  {
+    label: "Team",
+    pages: [
+      {
+        slug: "brand",
+        title: "Brand",
+        description: "Set once. Any step that adds a logo, text or music uses these by itself.",
+      },
+      {
+        slug: "team",
+        title: "Members",
+        description: "Who is on the team and what they can do.",
+      },
+    ],
+  },
+  {
+    label: "Automations",
+    pages: [
+      {
+        slug: "agent",
+        title: "Agent",
+        description: "How the agent builds automations for your team, in every chat.",
+      },
+      {
+        slug: "runs",
+        title: "Runs",
+        description: "How runs use your toolkit, and what happens when a step fails.",
+      },
+      {
+        slug: "editors",
+        title: "Video editors",
+        description: "Where your team finishes videos. Runs with cuts can open in these.",
+      },
+    ],
+  },
+  {
+    label: "Connections",
+    pages: [
+      {
+        slug: "email",
+        title: "Email",
+        description:
+          "Every email the dashboard sends, from alerts to invitations, goes out through toSend.",
+      },
+      {
+        slug: "slack",
+        title: "Slack",
+        description: "Talk to the agent in Slack. It runs on your own Slack app.",
+      },
+      {
+        slug: "discord",
+        title: "Discord",
+        description: "Talk to the agent in your Discord server.",
+      },
+      {
+        slug: "ai-agents",
+        title: "AI agents",
+        description: "Let Claude and other AI agents start your automations and follow their runs.",
+      },
+    ],
+  },
 ] as const;
 
-export type SettingsSlug = (typeof SETTINGS_PAGES)[number]["slug"];
+type SettingsPage = (typeof SETTINGS_GROUPS)[number]["pages"][number];
 
-/** Old links pointed at sections of one long page; this finds the page each now lives on. */
-export function settingsPageFor(hash: string): SettingsSlug {
-  const id = hash.replace(/^#/, "");
-  const old: Record<string, SettingsSlug> = {
-    jobs: "runs",
-    failures: "runs",
-    slack: "chat",
-    discord: "chat",
-  };
-  return SETTINGS_PAGES.find((page) => page.slug === id)?.slug ?? old[id] ?? "brand";
+export const SETTINGS_PAGES: readonly SettingsPage[] = SETTINGS_GROUPS.flatMap(
+  (group): readonly SettingsPage[] => group.pages,
+);
+
+export type SettingsSlug = SettingsPage["slug"];
+
+export const settingsPage = (slug: string) => SETTINGS_PAGES.find((page) => page.slug === slug);
+
+/** Addresses settings used to have, and the page each now lives on. */
+const MOVED: Record<string, SettingsSlug> = {
+  jobs: "runs",
+  failures: "runs",
+  chat: "slack",
+  members: "team",
+};
+
+/** The page an old address (`/settings/chat`) or old section link (`#jobs`) now lives on. */
+export function settingsPageFor(hashOrSlug: string): SettingsSlug {
+  const id = hashOrSlug.replace(/^#/, "");
+  return settingsPage(id)?.slug ?? MOVED[id] ?? "brand";
 }

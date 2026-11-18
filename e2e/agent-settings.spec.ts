@@ -69,7 +69,7 @@ test.afterAll(async () => {
 
 test("the owner sets the model, house rules and default platforms, and they are kept", async () => {
   await jordan.goto("/settings/agent");
-  await expect(card(jordan).getByRole("heading", { name: "Agent" })).toBeVisible();
+  await expect(jordan.getByRole("heading", { level: 1, name: "Agent" })).toBeVisible();
   const save = card(jordan).getByRole("button", { name: "Save" });
   await expect(save).toBeDisabled();
 

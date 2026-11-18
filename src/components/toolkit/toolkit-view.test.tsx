@@ -1,6 +1,6 @@
 import { api } from "@convex/_generated/api";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { actionOf, answerQuery } from "@/test/convex";
 import { renderInApp } from "@/test/render";
@@ -36,6 +36,7 @@ const ACTIVITY = {
   lastDay: { done: 12, failed: 1, typicalMs: 80_000 },
 };
 
+beforeEach(() => answerQuery(api.toolkitHealth.shown, true));
 afterEach(() => vi.useRealTimers());
 
 describe("the Toolkit page", () => {
@@ -129,6 +130,16 @@ describe("the Toolkit page", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/Update it to the latest build/);
     // The team's own jobs still show.
     expect(screen.getByText("Cover picture")).toBeInTheDocument();
+  });
+
+  test("tells a team whose toolkit is run for it that there is nothing to look after", () => {
+    answerQuery(api.toolkitHealth.shown, false);
+    const read = actionOf(api.toolkitHealth.read);
+    renderInApp(<ToolkitView />);
+    expect(screen.getByText(/Your toolkit is run for you/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See your runs" })).toHaveAttribute("href", "/runs");
+    expect(screen.queryByRole("region", { name: "CPU" })).not.toBeInTheDocument();
+    expect(read).not.toHaveBeenCalled();
   });
 
   test("writes sizes and times the way people say them", () => {
