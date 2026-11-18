@@ -6,10 +6,11 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
+
+import { SettingsSection } from "./settings-shell";
 
 /** What Settings says when Discord sends someone back, by the result in the address. */
 export const DISCORD_RESULTS: Record<string, { ok: boolean; text: string }> = {
@@ -85,131 +86,121 @@ export function DiscordCard() {
   }
 
   return (
-    <Card data-discord-card>
-      <CardHeader>
-        <CardTitle>
-          <h2>Discord</h2>
-        </CardTitle>
-        <CardDescription>
-          Tag the agent in your Discord server or message it directly, and it answers there.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-6">
-        {!discord.ready ? (
-          <p className="text-muted-foreground text-sm">
-            Discord is not set up on this dashboard yet. Whoever runs the dashboard sets up its
-            Discord bot once, then every team can add it here.
-          </p>
-        ) : (
-          <>
-            <section className="flex flex-col gap-3" aria-label="Your Discord servers">
-              {discord.servers.length > 0 ? (
-                <ul className="flex flex-col gap-2 text-sm">
-                  {discord.servers.map((server) => (
-                    <li key={server.guildId} className="flex items-center justify-between gap-3">
-                      <span>
-                        <span className="font-medium">{server.guildName}</span>
-                        <span className="text-muted-foreground">
-                          {" "}
-                          · added {day(server.addedAt)}
-                          {server.addedBy ? ` by ${server.addedBy}` : ""}
-                        </span>
+    <SettingsSection data-discord-card className="gap-6">
+      {!discord.ready ? (
+        <p className="text-muted-foreground text-sm">
+          Discord is not set up on this dashboard yet. Whoever runs the dashboard sets up its
+          Discord bot once, then every team can add it here.
+        </p>
+      ) : (
+        <>
+          <section className="flex flex-col gap-3" aria-label="Your Discord servers">
+            {discord.servers.length > 0 ? (
+              <ul className="flex flex-col gap-2 text-sm">
+                {discord.servers.map((server) => (
+                  <li key={server.guildId} className="flex items-center justify-between gap-3">
+                    <span>
+                      <span className="font-medium">{server.guildName}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · added {day(server.addedAt)}
+                        {server.addedBy ? ` by ${server.addedBy}` : ""}
                       </span>
-                      {discord.canEdit && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={busy !== null}
-                          onClick={() =>
-                            run(
-                              `remove-${server.guildId}`,
-                              () =>
-                                removeServer({ organizationId: team.id, guildId: server.guildId }),
-                              `The agent no longer answers in ${server.guildName}`,
-                            )
-                          }
-                        >
-                          Remove
-                        </Button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
+                    </span>
+                    {discord.canEdit && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy !== null}
+                        onClick={() =>
+                          run(
+                            `remove-${server.guildId}`,
+                            () =>
+                              removeServer({ organizationId: team.id, guildId: server.guildId }),
+                            `The agent no longer answers in ${server.guildName}`,
+                          )
+                        }
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                {discord.canEdit
+                  ? "Add the agent to your team's Discord server. Discord asks which server, then you're back here."
+                  : "The agent is not in a Discord server yet. A team owner or admin can add it here."}
+              </p>
+            )}
+            {discord.canEdit && (
+              <div>
+                <Button
+                  size="sm"
+                  variant={discord.servers.length ? "outline" : "default"}
+                  disabled={busy !== null}
+                  onClick={() => go("server")}
+                >
+                  {busy === "server"
+                    ? "Opening Discord"
+                    : discord.servers.length
+                      ? "Add to another server"
+                      : "Add to Discord"}
+                </Button>
+              </div>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-2" aria-label="Your Discord account">
+            <p className="text-sm font-medium">Your Discord account</p>
+            {discord.me ? (
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span>
+                  Linked as <span className="font-medium">{discord.me.discordName}</span>
+                  <span className="text-muted-foreground"> · {day(discord.me.linkedAt)}</span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy !== null}
+                  onClick={() =>
+                    run(
+                      "unlink",
+                      () => unlinkMe({ organizationId: team.id }),
+                      "Your Discord is unlinked",
+                    )
+                  }
+                >
+                  Unlink
+                </Button>
+              </div>
+            ) : (
+              <>
                 <p className="text-muted-foreground text-sm">
-                  {discord.canEdit
-                    ? "Add the agent to your team's Discord server. Discord asks which server, then you're back here."
-                    : "The agent is not in a Discord server yet. A team owner or admin can add it here."}
+                  Discord doesn&apos;t share email addresses, so link your account once. The agent
+                  then knows it&apos;s you and does only what you could do here.
                 </p>
-              )}
-              {discord.canEdit && (
                 <div>
                   <Button
                     size="sm"
-                    variant={discord.servers.length ? "outline" : "default"}
+                    variant="outline"
                     disabled={busy !== null}
-                    onClick={() => go("server")}
+                    onClick={() => go("person")}
                   >
-                    {busy === "server"
-                      ? "Opening Discord"
-                      : discord.servers.length
-                        ? "Add to another server"
-                        : "Add to Discord"}
+                    {busy === "person" ? "Opening Discord" : "Link my Discord"}
                   </Button>
                 </div>
-              )}
-            </section>
-
-            <section className="flex flex-col gap-2" aria-label="Your Discord account">
-              <p className="text-sm font-medium">Your Discord account</p>
-              {discord.me ? (
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span>
-                    Linked as <span className="font-medium">{discord.me.discordName}</span>
-                    <span className="text-muted-foreground"> · {day(discord.me.linkedAt)}</span>
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy !== null}
-                    onClick={() =>
-                      run(
-                        "unlink",
-                        () => unlinkMe({ organizationId: team.id }),
-                        "Your Discord is unlinked",
-                      )
-                    }
-                  >
-                    Unlink
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <p className="text-muted-foreground text-sm">
-                    Discord doesn&apos;t share email addresses, so link your account once. The agent
-                    then knows it&apos;s you and does only what you could do here.
-                  </p>
-                  <div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={busy !== null}
-                      onClick={() => go("person")}
-                    >
-                      {busy === "person" ? "Opening Discord" : "Link my Discord"}
-                    </Button>
-                  </div>
-                </>
-              )}
-              <p className="text-muted-foreground text-sm">
-                {discord.linkedCount === 1
-                  ? "1 person on the team has linked their Discord."
-                  : `${discord.linkedCount} people on the team have linked their Discord.`}
-              </p>
-            </section>
-          </>
-        )}
-      </CardContent>
-    </Card>
+              </>
+            )}
+            <p className="text-muted-foreground text-sm">
+              {discord.linkedCount === 1
+                ? "1 person on the team has linked their Discord."
+                : `${discord.linkedCount} people on the team have linked their Discord.`}
+            </p>
+          </section>
+        </>
+      )}
+    </SettingsSection>
   );
 }
