@@ -70,6 +70,20 @@ async function compose(body) {
 
 // Every name serves the same short clip, and every .jpg the same still of it.
 createServer((request, response) => {
+  // An upload from the browser: the bucket takes the bytes (and allows the PUT first).
+  if (request.method === "OPTIONS" || request.method === "PUT") {
+    request.resume();
+    request.on("end", () =>
+      response
+        .writeHead(200, {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, PUT",
+          "Access-Control-Allow-Headers": "*",
+        })
+        .end(),
+    );
+    return;
+  }
   if (request.url.startsWith("/made/")) {
     const file = join(made, basename(request.url));
     const type = TYPES[file.split(".").pop()] ?? "application/octet-stream";
@@ -157,6 +171,26 @@ createServer((request, response) => {
       };
       const answer = answers[request.url.slice("/v1/storage/".length)];
       response.end(JSON.stringify({ code: 200, response: answer ?? null, message: "success" }));
+      return;
+    }
+    // What the toolkit reads from a file: the stand-in clip's own details.
+    if (request.url.startsWith("/v1/media/metadata")) {
+      response.end(
+        JSON.stringify({
+          code: 200,
+          response: {
+            duration: 6,
+            format: "matroska,webm",
+            has_video: true,
+            has_audio: false,
+            width: 180,
+            height: 320,
+            fps: 25,
+            video_codec: "vp9",
+          },
+          message: "success",
+        }),
+      );
       return;
     }
     // A split answers with its clips, a thumbnail with a still; anything else with one file.

@@ -1,11 +1,16 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { fileDetailColumns, fileDetailRows } from "@ncat-dash/automation-core";
+import {
+  fileDetailColumns,
+  fileDetailRows,
+  uploadKind,
+  type FileDetails,
+} from "@ncat-dash/automation-core";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Copy, Trash2, UploadCloud } from "lucide-react";
-import { useRef, useState, type DragEvent } from "react";
+import { Copy, LayoutGrid, List, Trash2, UploadCloud } from "lucide-react";
+import { useMemo, useRef, useSyncExternalStore, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -31,8 +36,86 @@ import { useActiveTeam } from "@/lib/team-context";
 import { putWithProgress } from "@/lib/upload";
 
 import { NeedsToolkit } from "./needs-toolkit";
+import { UploadFrame, UploadPlayer, usePreviewLinks, type UploadKind } from "./upload-media";
 
 type InFlight = { name: string; percent: number };
+type Layout = "tiles" | "list";
+
+const LAYOUT_KEY = "uploads-layout";
+
+// Kept here as well as in the browser's storage, so the choice holds where storage is blocked.
+let chosenLayout: Layout | null = null;
+const layoutWatchers = new Set<() => void>();
+
+function readLayout(): Layout {
+  if (chosenLayout) return chosenLayout;
+  try {
+    return window.localStorage.getItem(LAYOUT_KEY) === "list" ? "list" : "tiles";
+  } catch {
+    return "tiles";
+  }
+}
+
+function watchLayout(onChange: () => void) {
+  layoutWatchers.add(onChange);
+  return () => layoutWatchers.delete(onChange);
+}
+
+function chooseLayout(next: Layout) {
+  chosenLayout = next;
+  try {
+    window.localStorage.setItem(LAYOUT_KEY, next);
+  } catch {
+    // Remembering the choice is a nicety; the page works without it.
+  }
+  layoutWatchers.forEach((onChange) => onChange());
+}
+
+/** "Video · 6:52 · 1920×1080 · 48 MB": what a tile says under its frame. */
+function summaryOf(upload: {
+  kind: UploadKind;
+  size: number;
+  details: FileDetails | null;
+}): string {
+  const columns = upload.details ? fileDetailColumns(upload.details) : null;
+  const kindLabel = { video: "Video", audio: "Sound", image: "Picture", other: "File" }[
+    upload.kind
+  ];
+  return [kindLabel, columns?.length, columns?.picture, formatBytes(upload.size)]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function UploadActions({
+  upload,
+  onCopy,
+  onRemove,
+}: {
+  upload: { fileName: string };
+  onCopy: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Copy a link to ${upload.fileName}`}
+        onClick={onCopy}
+      >
+        <Copy />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Remove ${upload.fileName} from this list`}
+        onClick={onRemove}
+      >
+        <Trash2 />
+      </Button>
+    </div>
+  );
+}
 
 export function UploadsView() {
   const team = useActiveTeam();
@@ -47,6 +130,17 @@ export function UploadsView() {
   const [inFlight, setInFlight] = useState<Record<string, InFlight>>({});
   const [dragging, setDragging] = useState(false);
   const [opened, setOpened] = useState<Id<"uploads"> | null>(null);
+  const [hovered, setHovered] = useState<Id<"uploads"> | null>(null);
+  // The server always draws tiles; the browser then uses the viewer's own choice.
+  const layout = useSyncExternalStore(watchLayout, readLayout, () => "tiles" as const);
+  const ready = useMemo(
+    () =>
+      uploads
+        ?.filter((upload) => upload.status === "ready")
+        .map((upload) => ({ ...upload, kind: uploadKind(upload.contentType, upload.details) })),
+    [uploads],
+  );
+  const links = usePreviewLinks(team.id, ready);
 
   async function send(files: FileList | File[]) {
     for (const file of Array.from(files)) {
@@ -128,7 +222,6 @@ export function UploadsView() {
   }
 
   const active = Object.entries(inFlight);
-  const ready = uploads?.filter((upload) => upload.status === "ready");
   const openedUpload = ready?.find((upload) => upload._id === opened);
 
   return (
@@ -183,95 +276,220 @@ export function UploadsView() {
       {ready === undefined ? (
         <Skeleton className="h-32 rounded-xl" />
       ) : ready.length === 0 ? null : (
-        <div className="reveal overflow-hidden rounded-xl bg-surface">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>File</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Length</TableHead>
-                <TableHead>Picture size</TableHead>
-                <TableHead>Frame rate</TableHead>
-                <TableHead>Format</TableHead>
-                <TableHead>Size</TableHead>
-                <TableHead>
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        <section className="flex flex-col gap-4" aria-label="Your uploads">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-muted-foreground text-sm tabular-nums">
+              {ready.length === 1 ? "1 file" : `${ready.length} files`}
+            </p>
+            <div className="bg-surface flex rounded-lg p-0.5" role="group" aria-label="Show as">
+              {(
+                [
+                  ["tiles", LayoutGrid, "Tiles"],
+                  ["list", List, "List"],
+                ] as const
+              ).map(([value, Icon, label]) => (
+                <Button
+                  key={value}
+                  variant={layout === value ? "secondary" : "ghost"}
+                  size="sm"
+                  aria-pressed={layout === value}
+                  onClick={() => chooseLayout(value)}
+                >
+                  <Icon />
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {layout === "tiles" ? (
+            <ul className="reveal grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-x-5 gap-y-6">
               {ready.map((upload) => (
-                <TableRow key={upload._id}>
-                  <TableCell className="w-1/3 max-w-0 truncate font-medium">
-                    {upload.details ? (
+                <li
+                  key={upload._id}
+                  className="group flex flex-col gap-2.5"
+                  onPointerEnter={() => setHovered(upload._id)}
+                  onPointerLeave={() =>
+                    setHovered((current) => (current === upload._id ? null : current))
+                  }
+                >
+                  <button
+                    type="button"
+                    className="focus-visible:ring-ring/50 overflow-hidden rounded-xl outline-none focus-visible:ring-3"
+                    aria-label={`Open ${upload.fileName}`}
+                    onClick={() => setOpened(upload._id)}
+                    onFocus={() => setHovered(upload._id)}
+                    onBlur={() =>
+                      setHovered((current) => (current === upload._id ? null : current))
+                    }
+                  >
+                    <UploadFrame
+                      kind={upload.kind}
+                      url={links.get(upload._id)}
+                      hovering={hovered === upload._id}
+                      className="transition-transform duration-300 ease-out group-hover:scale-[1.02]"
+                    />
+                  </button>
+                  <div className="flex items-start gap-2">
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <button
                         type="button"
-                        className="max-w-full truncate rounded-sm underline-offset-4 outline-none hover:underline focus-visible:underline"
+                        className="truncate text-left text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:underline"
                         onClick={() => setOpened(upload._id)}
+                        tabIndex={-1}
                       >
                         {upload.fileName}
                       </button>
-                    ) : (
-                      upload.fileName
-                    )}
-                  </TableCell>
-                  {(() => {
-                    const columns = upload.details ? fileDetailColumns(upload.details) : null;
-                    return (["type", "length", "picture", "frameRate", "format"] as const).map(
-                      (key) => (
-                        <TableCell
-                          key={key}
-                          className="text-muted-foreground whitespace-nowrap tabular-nums"
-                        >
-                          {columns?.[key] ?? "–"}
-                        </TableCell>
-                      ),
-                    );
-                  })()}
-                  <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
-                    {formatBytes(upload.size)}
-                  </TableCell>
-                  <TableCell className="text-right whitespace-nowrap">
-                    <Button variant="ghost" size="sm" onClick={() => copyLink(upload._id)}>
-                      <Copy />
-                      Copy link
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Remove ${upload.fileName} from this list`}
-                      onClick={() => removeUpload({ uploadId: upload._id })}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                      <p className="text-muted-foreground truncate text-xs tabular-nums">
+                        {summaryOf(upload)}
+                      </p>
+                    </div>
+                    <UploadActions
+                      upload={upload}
+                      onCopy={() => copyLink(upload._id)}
+                      onRemove={() => removeUpload({ uploadId: upload._id })}
+                    />
+                  </div>
+                </li>
               ))}
-            </TableBody>
-          </Table>
-        </div>
+            </ul>
+          ) : (
+            <div className="reveal overflow-hidden rounded-xl bg-surface">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-28">
+                      <span className="sr-only">Preview</span>
+                    </TableHead>
+                    <TableHead>File</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Length</TableHead>
+                    <TableHead>Picture size</TableHead>
+                    <TableHead>Frame rate</TableHead>
+                    <TableHead>Format</TableHead>
+                    <TableHead>Size</TableHead>
+                    <TableHead>
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ready.map((upload) => (
+                    <TableRow
+                      key={upload._id}
+                      onPointerEnter={() => setHovered(upload._id)}
+                      onPointerLeave={() =>
+                        setHovered((current) => (current === upload._id ? null : current))
+                      }
+                    >
+                      <TableCell className="py-1.5">
+                        <button
+                          type="button"
+                          className="focus-visible:ring-ring/50 block w-24 overflow-hidden rounded-md outline-none focus-visible:ring-3"
+                          aria-label={`Open ${upload.fileName}`}
+                          tabIndex={-1}
+                          onClick={() => setOpened(upload._id)}
+                        >
+                          <UploadFrame
+                            kind={upload.kind}
+                            url={links.get(upload._id)}
+                            hovering={hovered === upload._id}
+                          />
+                        </button>
+                      </TableCell>
+                      <TableCell className="w-1/3 max-w-0 truncate font-medium">
+                        <button
+                          type="button"
+                          className="max-w-full truncate rounded-sm underline-offset-4 outline-none hover:underline focus-visible:underline"
+                          onClick={() => setOpened(upload._id)}
+                        >
+                          {upload.fileName}
+                        </button>
+                      </TableCell>
+                      {(() => {
+                        const columns = upload.details ? fileDetailColumns(upload.details) : null;
+                        return (["type", "length", "picture", "frameRate", "format"] as const).map(
+                          (key) => (
+                            <TableCell
+                              key={key}
+                              className="text-muted-foreground whitespace-nowrap tabular-nums"
+                            >
+                              {columns?.[key] ?? "–"}
+                            </TableCell>
+                          ),
+                        );
+                      })()}
+                      <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
+                        {formatBytes(upload.size)}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        <UploadActions
+                          upload={upload}
+                          onCopy={() => copyLink(upload._id)}
+                          onRemove={() => removeUpload({ uploadId: upload._id })}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </section>
       )}
       <Dialog open={openedUpload !== undefined} onOpenChange={(open) => !open && setOpened(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className={openedUpload?.kind === "other" ? "sm:max-w-md" : "sm:max-w-5xl"}>
           <DialogHeader>
             <DialogTitle className="truncate pr-6">{openedUpload?.fileName}</DialogTitle>
             <DialogDescription>
-              Read from the file when it was uploaded. A run this file starts is given the same
-              details.
+              {openedUpload?.details
+                ? "Read from the file when it was uploaded. A run this file starts is given the same details."
+                : "Your toolkit is still reading this file's details, or could not read them."}
             </DialogDescription>
           </DialogHeader>
-          {openedUpload?.details && (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-              {[
-                ...fileDetailRows(openedUpload.details, openedUpload.fileName),
-                ["File size", formatBytes(openedUpload.size)],
-              ].map(([label, value]) => (
-                <div key={label} className="col-span-2 grid grid-cols-subgrid">
-                  <dt className="text-muted-foreground">{label}</dt>
-                  <dd className="min-w-0 break-words tabular-nums">{value}</dd>
+          {openedUpload && (
+            <div
+              className={
+                openedUpload.kind === "other"
+                  ? "flex flex-col gap-4"
+                  : "grid gap-6 lg:grid-cols-[minmax(0,1fr)_17rem]"
+              }
+            >
+              <UploadPlayer kind={openedUpload.kind} url={links.get(openedUpload._id)} />
+              <div className="flex flex-col gap-5">
+                <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+                  {[
+                    ...(openedUpload.details
+                      ? fileDetailRows(openedUpload.details, openedUpload.fileName)
+                      : []),
+                    ["File size", formatBytes(openedUpload.size)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="col-span-2 grid grid-cols-subgrid">
+                      <dt className="text-muted-foreground">{label}</dt>
+                      <dd className="min-w-0 break-words tabular-nums">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => copyLink(openedUpload._id)}>
+                    <Copy />
+                    Copy link
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const id = openedUpload._id;
+                      setOpened(null);
+                      void removeUpload({ uploadId: id });
+                    }}
+                  >
+                    <Trash2 />
+                    Remove from this list
+                  </Button>
                 </div>
-              ))}
-            </dl>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>
