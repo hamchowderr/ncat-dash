@@ -86,6 +86,31 @@ describe("two teams on one toolkit", () => {
     expect(toolkit.files.has(`teams/${pine}/secret.mp4`)).toBe(true);
   });
 
+  test("a team makes folders and folders inside them, all inside its own folder", async () => {
+    const { salt, maya, toolkit } = await twoTeamsOneToolkit();
+    const shows = await maya.as.action(api.files.createFolder, {
+      organizationId: salt,
+      prefix: "",
+      name: "Shows",
+    });
+    const raw = await maya.as.action(api.files.createFolder, {
+      organizationId: salt,
+      prefix: shows,
+      name: "Raw",
+    });
+    expect([shows, raw]).toEqual(["Shows/", "Shows/Raw/"]);
+    expect(toolkit.files.has(`teams/${salt}/Shows/Raw/`)).toBe(true);
+    toolkit.put(`teams/${salt}/talk.mp4`);
+    await maya.as.action(api.files.move, {
+      organizationId: salt,
+      keys: ["talk.mp4"],
+      toFolder: raw,
+    });
+    expect(toolkit.files.has(`teams/${salt}/Shows/Raw/talk.mp4`)).toBe(true);
+    const inside = await maya.as.action(api.files.folders, { organizationId: salt, prefix: shows });
+    expect(inside.map((folder) => folder.key)).toEqual(["Shows/Raw/"]);
+  });
+
   test("a team cannot use another team's toolkit connection", async () => {
     const { salt, olu } = await twoTeamsOneToolkit();
     await expect(
