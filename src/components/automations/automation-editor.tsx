@@ -188,6 +188,17 @@ function Editor({ automation }: { automation: Loaded }) {
   const settings = useQuery(api.teamSettings.get, { organizationId: team.id });
   const brand = settings?.brand ?? EMPTY_BRAND;
   const music = settings?.music ?? EMPTY_MUSIC;
+  const captions = useMemo(
+    () =>
+      settings
+        ? {
+            setup: settings.captions,
+            builtIn: settings.builtInCaptionStyles,
+            builtInByShape: settings.builtInByShape,
+          }
+        : undefined,
+    [settings],
+  );
   const save = useMutation(api.automations.save);
   const setEnabled = useMutation(api.automations.setEnabled);
   const runNow = useMutation(api.automations.runNow);
@@ -965,6 +976,7 @@ function Editor({ automation }: { automation: Loaded }) {
                         automationId={automation._id}
                         brand={brand}
                         music={music}
+                        captions={captions}
                         key={`${selected.id}:${revision}`}
                         node={selected.data.node}
                         before={stepsBefore(selected.id, draft.edges)

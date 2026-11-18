@@ -217,16 +217,3 @@ export function clipRequest(
     ],
   };
 }
-
-/** Caption look for clips: big, upper case, the word being spoken highlighted. */
-export const CLIP_CAPTION_SETTINGS = {
-  style: "highlight",
-  all_caps: true,
-  bold: true,
-  max_words_per_line: 4,
-  position: "bottom_center",
-  line_color: "#FFFFFF",
-  word_color: "#F2B33D",
-  outline_color: "#000000",
-  outline_width: 3,
-} as const;

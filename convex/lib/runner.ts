@@ -14,6 +14,10 @@ import {
   followShapeFrom,
   downstreamOf,
   failsOver,
+  type FileDetails,
+  isCaptionStep,
+  needsDetails,
+  withCaptionSetup,
   durationOf,
   type FileKind,
   getPlatform,
@@ -52,7 +56,8 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { notify } from "./alerts";
 import { runEnded, startAutomationStep, startingFiles } from "./chain";
 import { cutListOf } from "./exports";
-import { finishCheck, startIf, startWait } from "./logic";
+import { captionSetupOf } from "./captions";
+import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
@@ -284,6 +289,22 @@ async function startNode(
     return;
   }
 
+  await startToolkitStep(ctx, run, node, step, byNode);
+}
+
+/**
+ * Starts a toolkit step: works out its settings and queues one job per file. A caption
+ * step may first read its videos' sizes ("size" stage); it comes back here with them.
+ */
+async function startToolkitStep(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  node: AutomationNode,
+  step: Doc<"runSteps">,
+  byNode: Map<string, Doc<"runSteps">>,
+  sizes?: Map<string, FileDetails | null>,
+) {
+  const now = Date.now();
   await withTeamSteps(ctx, run.organizationId);
   const definition = node.stepId ? getStep(node.stepId) : undefined;
   if (!definition) {
@@ -354,6 +375,43 @@ async function startNode(
     return;
   }
 
+  if (isCaptionStep(definition.id)) {
+    // The team's word fixes, and its caption style for each video's shape, from Settings.
+    const setup = await captionSetupOf(ctx, run.organizationId);
+    const field = definition.primaryInput ?? "";
+    const urlOf = (input: Record<string, unknown>) =>
+      typeof input[field] === "string" ? (input[field] as string) : "";
+    if (!sizes && needsDetails(node.input, setup)) {
+      const known = knownDetails(run.trigger);
+      const unknown = [...new Set(planned.map(urlOf))].filter((url) => url && !known.has(url));
+      if (unknown.length > 0) {
+        // Read each video's size first; the caption jobs are planned again once it is known.
+        const probes = await enqueueAll(
+          ctx,
+          run,
+          step,
+          unknown.map((url) => ({ stepId: "media-metadata", input: { media_url: url } })),
+        );
+        if (!probes.ok) {
+          await failStep(ctx, run, step, byNode, probes.message);
+          return;
+        }
+        await ctx.db.patch(step._id, {
+          status: "running",
+          stage: "size",
+          jobIds: probes.jobIds,
+          startedAt: now,
+        });
+        return;
+      }
+    }
+    const details = new Map([...knownDetails(run.trigger), ...(sizes ?? [])]);
+    const brandFont = (await brandOf(ctx, run.organizationId, run.clientId)).font;
+    planned = planned.map((input) =>
+      withCaptionSetup(input, setup, { details: details.get(urlOf(input)), brandFont }),
+    );
+  }
+
   const queued = await enqueueAll(
     ctx,
     run,
@@ -365,7 +423,12 @@ async function startNode(
     return;
   }
   const { jobIds } = queued;
-  await ctx.db.patch(step._id, { status: "running", jobIds, startedAt: now });
+  await ctx.db.patch(step._id, {
+    status: "running",
+    stage: undefined,
+    jobIds,
+    startedAt: step.startedAt ?? now,
+  });
 }
 
 // A pause must last this long, and be this quiet, to count as a place to cut.
@@ -791,6 +854,29 @@ export async function retryStepNow(
   await pump(ctx, run.organizationId);
 }
 
+/** A caption step's videos have been read: queue its caption jobs with the style for each. */
+async function finishSizes(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  jobs: Doc<"jobs">[],
+) {
+  const steps = await ctx.db
+    .query("runSteps")
+    .withIndex("by_run", (q) => q.eq("runId", run._id))
+    .take(200);
+  const byNode = new Map(steps.map((other) => [other.nodeId, other]));
+  const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
+  if (!node) return;
+  // A video that could not be read is still captioned, with the toolkit's own look.
+  const sizes = new Map<string, FileDetails | null>();
+  for (const job of jobs) {
+    const url = (job.input as { media_url?: string }).media_url;
+    if (url) sizes.set(url, job.status === "done" ? readFileDetails(job.result) : null);
+  }
+  await startToolkitStep(ctx, run, node, step, byNode, sizes);
+}
+
 /** Called when a job that belongs to a run reaches a final state. */
 export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">): Promise<void> {
   const step = await ctx.db.get(runStepId);
@@ -817,6 +903,12 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
 
   if (step.stage === "check") {
     await finishCheck(ctx, run, step, jobs);
+    await advance(ctx, run._id);
+    return;
+  }
+
+  if (step.stage === "size") {
+    await finishSizes(ctx, run, step, jobs);
     await advance(ctx, run._id);
     return;
   }

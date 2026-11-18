@@ -16,7 +16,8 @@ const step = (id: string, stepId: string, x: number): Node => ({
   id,
   kind: "step",
   stepId,
-  input: {},
+  // A caption step with its own look does not stop to read the video's shape first.
+  input: stepId === "video-caption" ? { settings: { style: "classic" } } : {},
   position: at(x),
 });
 const runs = (id: string, automation: string, x: number, wait = true): Node => ({
