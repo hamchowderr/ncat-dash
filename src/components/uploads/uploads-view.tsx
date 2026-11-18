@@ -21,7 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -36,7 +35,13 @@ import { useActiveTeam } from "@/lib/team-context";
 import { putWithProgress } from "@/lib/upload";
 
 import { NeedsToolkit } from "./needs-toolkit";
-import { UploadFrame, UploadPlayer, usePreviewLinks, type UploadKind } from "./upload-media";
+import {
+  UploadFrame,
+  UploadingCard,
+  UploadPlayer,
+  usePreviewLinks,
+  type UploadKind,
+} from "./upload-media";
 
 type InFlight = { name: string; percent: number };
 type Layout = "tiles" | "list";
@@ -260,14 +265,14 @@ export function UploadsView() {
       </div>
 
       {active.length > 0 && (
-        <ul className="flex flex-col gap-3" aria-live="polite">
+        <ul
+          className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-x-5 gap-y-6"
+          aria-label="Uploading"
+          aria-live="polite"
+        >
           {active.map(([id, upload]) => (
-            <li key={id} className="flex flex-col gap-1.5 rounded-lg bg-surface p-3">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="truncate font-medium">{upload.name}</span>
-                <span className="text-muted-foreground tabular-nums">{upload.percent}%</span>
-              </div>
-              <Progress value={upload.percent} aria-label={`Uploading ${upload.name}`} />
+            <li key={id}>
+              <UploadingCard name={upload.name} percent={upload.percent} />
             </li>
           ))}
         </ul>

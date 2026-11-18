@@ -180,3 +180,54 @@ export function UploadPlayer({ kind, url }: { kind: UploadKind; url: string | un
     />
   );
 }
+
+/**
+ * A file on its way up, shown as a card the size of a finished tile: a circle that spins
+ * and fills as it goes, the percentage in its middle, and the file's name underneath.
+ */
+export function UploadingCard({ name, percent }: { name: string; percent: number }) {
+  const done = Math.min(100, Math.max(0, Math.round(percent)));
+  const radius = 26;
+  const around = 2 * Math.PI * radius;
+  return (
+    <div className="flex flex-col gap-2.5" data-uploading>
+      <div
+        role="progressbar"
+        aria-label={`Uploading ${name}`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={done}
+        className="bg-muted relative flex aspect-video items-center justify-center rounded-xl"
+      >
+        <svg
+          viewBox="0 0 64 64"
+          className="size-16 animate-spin [animation-duration:1.4s]"
+          aria-hidden="true"
+        >
+          <circle
+            cx="32"
+            cy="32"
+            r={radius}
+            fill="none"
+            strokeWidth="5"
+            className="stroke-border"
+          />
+          <circle
+            cx="32"
+            cy="32"
+            r={radius}
+            fill="none"
+            strokeWidth="5"
+            strokeLinecap="round"
+            className="stroke-primary transition-[stroke-dashoffset] duration-300 ease-out"
+            strokeDasharray={around}
+            // Never a bare dot at 0%, so it always reads as spinning.
+            strokeDashoffset={around * (1 - Math.max(done, 8) / 100)}
+          />
+        </svg>
+        <span className="absolute text-sm font-medium tabular-nums">{done}%</span>
+      </div>
+      <p className="truncate text-sm font-medium">{name}</p>
+    </div>
+  );
+}
