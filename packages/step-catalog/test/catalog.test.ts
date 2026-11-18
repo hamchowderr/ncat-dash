@@ -52,6 +52,20 @@ describe("catalog", () => {
   });
 });
 
+describe("follow the speaker", () => {
+  it("uses the toolkit's own camera defaults", () => {
+    const reframe = getStep("video-reframe")!;
+    expect(reframe.input.parse({ video_url: "https://x.test/a.mp4" })).toMatchObject({
+      aspect: "9:16",
+      follow: "speaker",
+      switch_after: 1,
+      min_hold: 1.5,
+      smoothing: 1.5,
+      output_width: 1080,
+    });
+  });
+});
+
 describe("callStep", () => {
   const trim = getStep("video-trim")!;
 
