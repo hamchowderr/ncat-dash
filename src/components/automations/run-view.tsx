@@ -12,7 +12,7 @@ import {
 } from "@ncat-dash/automation-core";
 import { Background, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, CircleStop, RotateCw } from "lucide-react";
+import { ArrowLeft, CircleStop, RotateCw, StepForward } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -68,6 +68,7 @@ export function RunView({
   const decide = useMutation(api.runs.decide);
   const cancel = useMutation(api.runs.cancel);
   const runAgain = useMutation(api.runs.runAgain);
+  const pickUp = useMutation(api.runs.pickUp);
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const [busy, setBusy] = useState(false);
@@ -197,6 +198,25 @@ export function RunView({
             >
               <CircleStop />
               Stop run
+            </Button>
+          )}
+          {run.pickUp?.ok && (
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() =>
+                act(async () => {
+                  const result = await pickUp({ runId });
+                  toast.success(
+                    result.withCurrentSettings
+                      ? "Picked up where it stopped."
+                      : "Picked up where it stopped. The automation's steps have changed since, so it carries on with the steps it had.",
+                  );
+                }, "The run could not be picked up.")
+              }
+            >
+              <StepForward />
+              Pick up from {run.pickUp.stepName ?? "the failed step"}
             </Button>
           )}
           {!active && (

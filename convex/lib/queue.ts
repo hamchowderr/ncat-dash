@@ -1,4 +1,4 @@
-import type { Brand } from "@ncat-dash/automation-core";
+import { type Brand, unusableShareLink, withDownloadLinks } from "@ncat-dash/automation-core";
 import { getStep, isTeamStepId, userInputSchema } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -70,9 +70,13 @@ export async function enqueueJob(
   if (!found) return { ok: false, code: "not_found", message: "Unknown step." };
   // A team step is sent as the FFmpeg compose request it fills in, so the job needs
   // nothing of the team step once queued, even if the step is changed or removed later.
+  // A Drive or Dropbox share link opens a preview page, so the toolkit is handed the
+  // address that downloads the file instead; a folder link cannot work at all.
+  const unusable = unusableShareLink(args.input);
+  if (unusable) return { ok: false, code: "invalid_input", message: unusable.problem };
   const step = isTeamStepId(found.id) ? null : found;
   if (!step) {
-    const parsedBlanks = userInputSchema(found).safeParse(args.input);
+    const parsedBlanks = userInputSchema(found).safeParse(withDownloadLinks(args.input));
     if (!parsedBlanks.success) {
       const issue = parsedBlanks.error.issues[0];
       return {
@@ -88,7 +92,7 @@ export async function enqueueJob(
     });
   }
 
-  const parsed = userInputSchema(step).safeParse(args.input);
+  const parsed = userInputSchema(step).safeParse(withDownloadLinks(args.input));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return {

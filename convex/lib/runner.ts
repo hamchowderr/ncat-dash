@@ -40,6 +40,7 @@ import {
   valueSources,
   wantedKind,
   withBrand,
+  withDownloadLinks,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
@@ -85,7 +86,9 @@ export async function startRun(
     automationName: automation.name,
     status: "running",
     triggerKind,
-    trigger,
+    // A Drive or Dropbox share link the trigger handed over becomes its download link,
+    // so every step, and the run page, works with the file itself.
+    trigger: withDownloadLinks(trigger),
     nodes: automation.nodes,
     edges: automation.edges,
     error: null,

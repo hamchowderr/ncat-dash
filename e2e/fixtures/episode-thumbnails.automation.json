@@ -1,0 +1,28 @@
+{
+  "format": "ncat-dash-automation",
+  "version": 1,
+  "name": "Episode thumbnails",
+  "trigger": { "kind": "webhook" },
+  "nodes": [
+    {
+      "id": "split_1",
+      "kind": "step",
+      "stepId": "video-split",
+      "input": {
+        "splits": [
+          { "start": "00:00:00", "end": "00:00:06" },
+          { "start": "00:00:06", "end": "00:00:12" }
+        ]
+      },
+      "position": { "x": 0, "y": 0 }
+    },
+    {
+      "id": "thumb_1",
+      "kind": "step",
+      "stepId": "video-thumbnail",
+      "input": { "second": 1 },
+      "position": { "x": 320, "y": 0 }
+    }
+  ],
+  "edges": [{ "id": "split_1>thumb_1", "source": "split_1", "target": "thumb_1" }]
+}
