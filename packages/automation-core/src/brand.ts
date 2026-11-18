@@ -1,13 +1,22 @@
 /**
- * Things a team sets once and every automation uses: its logo, colour, font and music.
+ * Things a team sets once and every automation uses: its logo, colour, font and music,
+ * the card picture that quote cards and end cards are written on, and its intro and outro.
  * They live in the team's settings. A step that needs one takes it from there, so nobody
  * fills in a logo on every step.
  */
-export type BrandKey = "logo" | "color" | "font" | "music";
+export type BrandKey = "logo" | "color" | "font" | "music" | "card" | "intro" | "outro";
 
 export type Brand = Partial<Record<BrandKey, string>>;
 
-export const BRAND_KEYS: BrandKey[] = ["logo", "color", "font", "music"];
+export const BRAND_KEYS: BrandKey[] = ["logo", "color", "font", "music", "card", "intro", "outro"];
+
+/** The brand items that are a file: an upload or an address. */
+export const BRAND_FILES = ["logo", "music", "card", "intro", "outro"] as const;
+export type BrandFileKey = (typeof BRAND_FILES)[number];
+
+export function isBrandFile(key: BrandKey): key is BrandFileKey {
+  return (BRAND_FILES as readonly string[]).includes(key);
+}
 
 /** How each one is named in a sentence: "Uses your team's logo." */
 export const BRAND_WORDS: Record<BrandKey, string> = {
@@ -15,6 +24,9 @@ export const BRAND_WORDS: Record<BrandKey, string> = {
   color: "brand colour",
   font: "font",
   music: "background music",
+  card: "card template",
+  intro: "intro",
+  outro: "outro",
 };
 
 const UPLOAD_REF = /^upload:([A-Za-z0-9_-]+)$/;
@@ -35,7 +47,7 @@ export function readUploadRef(value: unknown): string | null {
 
 /** A problem with a brand value in plain words, or null when it is fine. */
 export function brandProblem(key: BrandKey, value: string): string | null {
-  if (key === "logo" || key === "music") {
+  if (isBrandFile(key)) {
     if (readUploadRef(value) || /^https?:\/\/\S+$/.test(value)) return null;
     return "Pick one of your uploads, or paste an address that starts with https://.";
   }

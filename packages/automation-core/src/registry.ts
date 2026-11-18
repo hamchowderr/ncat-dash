@@ -62,6 +62,11 @@ export interface NodeType {
   /** Settings filled from the team's brand in Settings when left empty. */
   brand?: Record<string, BrandKey>;
   /**
+   * Settings filled from the file that started the run when left empty, such as its name.
+   * Nobody fills these in; they are not shown as settings.
+   */
+  fromStart?: Record<string, "file_name">;
+  /**
    * Settings only the person can decide, such as which platform clips are for. The agent
    * asks for these before building rather than picking them itself.
    */
@@ -445,6 +450,7 @@ function stepType(step: StepDefinition): NodeType {
     automatic: step.primaryInput ?? step.listInput?.field ?? null,
     ...(step.values ? { makes: Object.keys(step.values) } : {}),
     ...(step.brandInputs ? { brand: step.brandInputs } : {}),
+    ...(step.startInputs ? { fromStart: step.startInputs } : {}),
     ...(step.valueInputs
       ? {
           fills: Object.fromEntries(
@@ -589,6 +595,28 @@ export function withBrand(
 }
 
 /**
+ * A node's settings with every blank setting that comes from the file that started the run
+ * filled in from it, such as that file's name for a title.
+ */
+export function withStart(
+  nodeType: NodeType,
+  input: Record<string, unknown>,
+  trigger: Record<string, unknown>,
+): Record<string, unknown> {
+  const filled = { ...input };
+  for (const [name, key] of Object.entries(nodeType.fromStart ?? {})) {
+    const value = filled[name];
+    if (
+      (value === undefined || value === null || value === "") &&
+      typeof trigger[key] === "string"
+    ) {
+      filled[name] = trigger[key];
+    }
+  }
+  return filled;
+}
+
+/**
  * The registry as short text for a model: one line per type with what it takes and gives.
  * The full settings of one type come from `getNodeType(type).settings`.
  */
@@ -601,8 +629,10 @@ export function nodeTypeIndex(): string {
         nodeType.brand
           ? `, takes the team's ${Object.values(nodeType.brand).join(" and ")} from Settings`
           : ""
-      }${
-        nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""
+      }${nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""}${
+        nodeType.fromStart
+          ? ", fills an empty title from the name of the file that started the run"
+          : ""
       }${nodeType.branches ? `, ways out: ${nodeType.branches.join(" and ")}` : ""}${
         nodeType.ask ? `, ask the person for its ${nodeType.ask.join(" and ")}` : ""
       }): ${nodeType.title}. ${nodeType.description}`,
