@@ -231,6 +231,26 @@
 }
 
 /*
+ * Review: the clip and its comments side by side. On a wide screen the clip's stage is as
+ * wide as the clip needs to fill the row's height (its shape comes from --clip-ratio, set
+ * by the stage once the clip loads; tall until then), and the comments take the rest.
+ * The stage never gets narrower than 22rem, and always leaves the comments 24rem.
+ */
+@utility stage-row {
+  @media (width >= 64rem) {
+    container-type: size;
+    & > [data-stage] {
+      flex: none;
+      width: clamp(
+        22rem,
+        calc((100cqh - 8rem) * var(--clip-ratio, 0.5625) + 2rem),
+        calc(100cqw - 24rem)
+      );
+    }
+  }
+}
+
+/*
  * Pop-up notices sit in the empty middle of the top bar, centred on the page between the
  * menu and the agent, so they never cover a button, a step or the chat.
  */

@@ -77,6 +77,16 @@ describe("a review shared with a client", () => {
     expect(kept.id).toMatch(/^[A-Za-z0-9-]{16,64}$/);
   });
 
+  test("the client sees the clip and comments in the same full-width row as the team", () => {
+    signedAs();
+    open();
+    const stage = screen.getByRole("region", { name: "Clip" });
+    expect(stage.parentElement).toHaveClass("stage-row");
+    expect(stage.parentElement).toBe(
+      screen.getByRole("region", { name: "Comments" }).parentElement,
+    );
+  });
+
   test("a comment is sent with the link, the client's name and the moment", async () => {
     signedAs();
     const { user, container } = open();

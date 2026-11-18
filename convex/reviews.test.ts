@@ -32,6 +32,25 @@ describe("opening and reading a review", () => {
     expect(list[0]).toMatchObject({ clips: 2, comments: 0, open: 0, fromRun: false });
   });
 
+  test("lists the newest version of each clip for the row's pictures", async () => {
+    const { maya, team, clip } = await room();
+    const NEWER = "https://files.example/opening_hello_v2.mp4";
+    await maya.as.mutation(api.reviews.addVersion, { clipId: clip._id, url: NEWER });
+    const [listed] = await maya.as.query(api.reviews.list, { organizationId: team });
+    expect(listed.covers).toEqual([NEWER, OTHER]);
+    expect(listed.cover).toBe(NEWER);
+  });
+
+  test("lists at most six clip pictures, while still counting every clip", async () => {
+    const { maya, team } = await room();
+    const urls = Array.from({ length: 8 }, (_, n) => `https://files.example/clip_${n}.mp4`);
+    await maya.as.mutation(api.reviews.create, { organizationId: team, title: "Big", urls });
+    const listed = await maya.as.query(api.reviews.list, { organizationId: team });
+    const big = listed.find((review) => review.title === "Big")!;
+    expect(big.clips).toBe(8);
+    expect(big.covers).toEqual(urls.slice(0, 6));
+  });
+
   test("needs at least one real file address", async () => {
     const { maya, team } = await room();
     await expect(

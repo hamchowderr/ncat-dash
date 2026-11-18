@@ -288,7 +288,7 @@ function ClipWorkspace({
   }, [focus, all, version]);
 
   return (
-    <div className="grid min-h-0 min-w-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_23rem]">
+    <div className="stage-row flex min-h-0 min-w-0 flex-1 flex-col gap-3 lg:flex-row">
       <ClipStage
         url={url}
         video={video}
@@ -420,26 +420,36 @@ export function ClipList({
   onSelect: (id: Id<"reviewClips">) => void;
 }) {
   return (
-    <nav aria-label="Clips in this review" className="min-w-0 lg:w-52 lg:shrink-0">
-      <ul className="flex gap-1 overflow-x-auto lg:max-h-full lg:flex-col lg:overflow-x-visible lg:overflow-y-auto">
-        {clips.map((clip) => {
+    <nav aria-label="Clips in this review" className="min-w-0 lg:w-44 lg:shrink-0 xl:w-56">
+      <ul className="flex gap-1 overflow-x-auto lg:max-h-full lg:flex-col lg:gap-2 lg:overflow-x-visible lg:overflow-y-auto">
+        {clips.map((clip, at) => {
           const url = clip.versions[clip.versions.length - 1].url;
+          const current = clip._id === selected;
           return (
             <li key={clip._id} className="w-44 shrink-0 lg:w-auto">
               <button
                 type="button"
-                aria-current={clip._id === selected}
+                aria-current={current}
                 data-clip-id={clip._id}
                 onClick={() => onSelect(clip._id)}
                 className={cn(
-                  "hover:bg-muted/70 focus-visible:ring-ring/50 flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left outline-none focus-visible:ring-3",
-                  clip._id === selected && "bg-muted",
+                  "hover:bg-muted/70 focus-visible:ring-ring/50 flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left outline-none focus-visible:ring-3 lg:flex-col lg:items-stretch lg:gap-2 lg:p-2",
+                  current && "bg-muted",
                 )}
               >
-                <span className="bg-muted flex h-14 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-black">
+                {/* A big picture of each clip on a wide screen, in its own shape. */}
+                <span
+                  data-clip-preview=""
+                  className="relative flex h-14 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-black lg:h-auto lg:max-h-72 lg:w-full"
+                >
                   {isStill(url) ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={url} alt="" loading="lazy" className="size-full object-cover" />
+                    <img
+                      src={url}
+                      alt=""
+                      loading="lazy"
+                      className="size-full object-cover lg:h-auto lg:max-h-72"
+                    />
                   ) : (
                     <video
                       src={`${url}#t=0.1`}
@@ -448,11 +458,17 @@ export function ClipList({
                       preload="metadata"
                       tabIndex={-1}
                       aria-hidden="true"
-                      className="size-full object-cover"
+                      className="size-full object-cover lg:h-auto lg:max-h-72"
                     />
                   )}
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1.5 left-1.5 hidden rounded-md bg-black/60 px-1.5 py-0.5 text-[0.7rem] font-medium text-white tabular-nums lg:block"
+                  >
+                    {at + 1}
+                  </span>
                 </span>
-                <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex min-w-0 flex-col gap-0.5 lg:px-0.5">
                   <span className="line-clamp-2 text-sm leading-snug font-medium">
                     {clip.title}
                   </span>
@@ -563,7 +579,9 @@ function OpenRoom({
   }
 
   return (
-    <div className="flex min-h-[36rem] flex-col gap-3 lg:h-[calc(100svh-5rem)]">
+    // Exactly the page's height on a wide screen (the top bar is 4rem, the page's frame and
+    // bottom padding 2rem), so nothing scrolls and the clip gets every bit of height.
+    <div className="flex min-h-[36rem] flex-col gap-3 lg:h-[calc(100svh-6rem)]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <nav
           aria-label="Breadcrumb"

@@ -200,7 +200,7 @@ export function CommentPanel({
   return (
     <section
       aria-label="Comments"
-      className="flex min-h-96 min-w-0 flex-col overflow-hidden rounded-xl bg-surface"
+      className="flex min-h-96 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface"
     >
       <header className="flex items-baseline gap-2 px-4 py-3">
         <h2 className="text-sm font-semibold">Comments</h2>

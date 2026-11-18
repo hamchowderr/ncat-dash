@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 import { describe, expect, test, vi } from "vitest";
 
-import { ClipStage, isStill, type Mark } from "./clip-stage";
+import { ClipStage, isStill, type Mark, shapeOf } from "./clip-stage";
 
 const MARKS: Mark[] = [
   { id: "a", time: 2, authorId: "u1", authorName: "Maya Ortiz", resolved: false },
@@ -120,5 +120,33 @@ describe("the clip and its timeline", () => {
     expect(view.container.querySelector("video")).toBeNull();
     expect(screen.queryByRole("button", { name: "Play" })).not.toBeInTheDocument();
     expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  });
+
+  test("reads the clip's own shape once it loads, so the stage can fit it", () => {
+    const { video } = setup();
+    const stage = screen.getByRole("region", { name: "Clip" });
+    expect(stage).toHaveAttribute("data-stage");
+    // Unknown until the clip loads: the stage keeps its tall default.
+    expect(stage).not.toHaveAttribute("data-shape");
+
+    Object.defineProperty(video.current!, "videoWidth", { value: 1080, configurable: true });
+    Object.defineProperty(video.current!, "videoHeight", { value: 1920, configurable: true });
+    fireEvent.loadedMetadata(video.current!);
+    expect(stage).toHaveAttribute("data-shape", "0.563");
+    expect(stage.style.getPropertyValue("--clip-ratio")).toBe("0.5625");
+  });
+
+  test("a picture's shape comes from its own size", () => {
+    setup({ url: "https://files.example/frame.png" });
+    const picture = screen.getByRole("region", { name: "Clip" }).querySelector("img")!;
+    Object.defineProperty(picture, "naturalWidth", { value: 1920, configurable: true });
+    Object.defineProperty(picture, "naturalHeight", { value: 1080, configurable: true });
+    fireEvent.load(picture);
+    expect(screen.getByRole("region", { name: "Clip" })).toHaveAttribute("data-shape", "1.778");
+  });
+
+  test("knows no shape for a clip that has not loaded", () => {
+    expect(shapeOf(document.createElement("video"))).toBeUndefined();
+    expect(shapeOf(document.createElement("img"))).toBeUndefined();
   });
 });
