@@ -10,6 +10,7 @@ import {
   clientFeedbackEmail,
   digestEmail,
   mentionEmail,
+  readyForReviewEmail,
   runFailedEmail,
   sendEmail,
   senderProblem,
@@ -215,6 +216,24 @@ describe("messages", () => {
     expect(feedback.text).toContain("https://dash.example.com/review/r?clip=c&comment=m");
     expect(feedback.html).toContain("&lt;i&gt;ship&lt;/i&gt;");
     expect(feedback.html).not.toContain("<i>ship</i>");
+  });
+
+  it("tells the team a project's slot has a new version to review", () => {
+    const ready = readyForReviewEmail(
+      {
+        teamName: "Salt House",
+        from: "Dev Patel",
+        projectName: "Episode <12>",
+        slot: "Short 3",
+        reviewUrl: "https://dash.example.com/review/r?clip=c",
+        settingsUrl: "https://dash.example.com/settings#notifications",
+      },
+      branding,
+    );
+    expect(ready.subject).toBe("Short 3 in Episode <12> is ready for review");
+    expect(ready.text).toContain("Dev Patel added a new version");
+    expect(ready.text).toContain("https://dash.example.com/review/r?clip=c");
+    expect(ready.html).toContain("Episode &lt;12&gt;");
   });
 
   it("tells a person they were mentioned, quoting the comment, escaped", () => {

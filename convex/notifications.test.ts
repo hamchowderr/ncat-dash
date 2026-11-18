@@ -82,6 +82,7 @@ describe("notification settings", () => {
       "approval_timed_out",
       "mention",
       "client_feedback",
+      "ready_for_review",
     ]);
     expect(settings.kinds.every((entry) => entry.bell && entry.email)).toBe(true);
     expect(settings).toMatchObject({ emailTiming: "now", digestHour: 8, emailReady: true });

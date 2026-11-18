@@ -56,6 +56,7 @@ export function BrandForm({
   canEdit,
   submitLabel = "Save brand",
   onSaved,
+  save,
   rows = false,
 }: {
   brand: Brand;
@@ -63,6 +64,8 @@ export function BrandForm({
   canEdit: boolean;
   submitLabel?: string;
   onSaved?: () => void;
+  /** Saves somewhere other than the team's own brand, such as a client's. */
+  save?: (typed: Typed) => Promise<unknown>;
   /** Settings shows each setting as a row, its control on the right. */
   rows?: boolean;
 }) {
@@ -113,15 +116,15 @@ export function BrandForm({
     if (!typed) return onSaved?.();
     setPending(true);
     try {
-      await setBrand({
-        organizationId: team.id,
+      const cleaned = {
         brand: Object.fromEntries(
           SINGLE_KEYS.flatMap((key) =>
             typed.brand[key]?.trim() ? [[key, typed.brand[key]!.trim()]] : [],
           ),
         ),
         music: typed.music,
-      });
+      };
+      await (save ? save(cleaned) : setBrand({ organizationId: team.id, ...cleaned }));
       setTyped(null);
       toast.success("Saved");
       onSaved?.();

@@ -44,6 +44,26 @@ const fileTypeValidator = v.union(
   v.literal("image"),
 );
 
+/** What a slot in a project holds, which decides the files it takes. */
+export const deliverableKindValidator = v.union(
+  // The full-length video, such as a podcast episode.
+  v.literal("video"),
+  v.literal("short"),
+  v.literal("thumbnail"),
+  v.literal("audio"),
+  // Anything else the team agreed to deliver.
+  v.literal("other"),
+);
+
+/** Where a deliverable is, as a column on the project's board. */
+export const deliverableStatusValidator = v.union(
+  v.literal("todo"),
+  v.literal("in_progress"),
+  v.literal("review"),
+  v.literal("approved"),
+  v.literal("published"),
+);
+
 export const triggerValidator = v.union(
   v.object({ kind: v.literal("manual") }),
   v.object({ kind: v.literal("webhook") }),
@@ -68,6 +88,11 @@ export const triggerValidator = v.union(
     kind: v.literal("finished"),
     automationId: v.string(),
     when: v.union(v.literal("done"), v.literal("failed"), v.literal("either")),
+  }),
+  v.object({
+    kind: v.literal("slot"),
+    status: deliverableStatusValidator,
+    slotKind: v.union(v.literal("any"), deliverableKindValidator),
   }),
 );
 
@@ -314,8 +339,12 @@ export default defineSchema({
     ),
     createdBy: v.string(),
     updatedAt: v.number(),
+    // The client this automation works for. Its runs use that client's brand over the
+    // team's, and keep their finished files in the client's folder. Not part of versions.
+    clientId: v.optional(v.id("clients")),
   })
     .index("by_organization", ["organizationId"])
+    .index("by_client", ["clientId"])
     .index("by_enabled_and_nextRunAt", ["enabled", "nextRunAt"])
     .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"]),
 
@@ -372,6 +401,8 @@ export default defineSchema({
       v.literal("finished"),
       // A "Run an automation" step in another run started it.
       v.literal("automation"),
+      // A project slot moved to the status its trigger waits for.
+      v.literal("slot"),
     ),
     // What the trigger handed over: file_url, the webhook body, the upload's details.
     trigger: v.any(),
@@ -396,6 +427,12 @@ export default defineSchema({
     // The automations whose runs led to this one, the first one first, this one last. A
     // run never starts one of them again, nor goes deeper than MAX_CHAIN_DEPTH.
     chain: v.optional(v.array(v.id("automations"))),
+    // The client the automation was for when the run started.
+    clientId: v.optional(v.id("clients")),
+    // The project the run works for, and the slot it started from. Its finished files
+    // fill the project's empty slots.
+    projectId: v.optional(v.id("projects")),
+    deliverableId: v.optional(v.id("deliverables")),
   })
     .index("by_automation", ["automationId"])
     .index("by_parentRun", ["parentRunId"])
@@ -498,6 +535,8 @@ export default defineSchema({
       v.literal("approval_timed_out"),
       v.literal("mention"),
       v.literal("client_feedback"),
+      // "ready_for_review": a new version went into a project's slot and waits for review.
+      v.literal("ready_for_review"),
     ),
     // The members it is for. Left out: everyone on the team.
     recipients: v.optional(v.array(v.string())),
@@ -654,6 +693,9 @@ export default defineSchema({
         client_feedback: v.optional(
           v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
         ),
+        ready_for_review: v.optional(
+          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
+        ),
       }),
     ),
     // "now": each email as it happens. "daily": one summary a day at `digestHour` in
@@ -741,6 +783,22 @@ export default defineSchema({
     .index("by_token", ["token"])
     .index("by_review", ["reviewId"]),
 
+  // A client's portal: one link where the client sees only their own projects, in the
+  // team's logo and colours, and opens each project's review room. At most one per client;
+  // switching it off deletes it, so the old link stops working for good.
+  clientPortals: defineTable({
+    clientId: v.id("clients"),
+    organizationId: v.string(),
+    // The secret in the link (/portal/<token>).
+    token: v.string(),
+    createdBy: v.string(),
+    // Passed on to each review room the client opens from the portal.
+    allowVerdict: v.boolean(),
+    showTeamComments: v.boolean(),
+  })
+    .index("by_token", ["token"])
+    .index("by_client", ["clientId"]),
+
   // One clip in a review. A changed clip is added as a new version, so comments on the
   // earlier ones stay where they were made.
   reviewClips: defineTable({
@@ -792,6 +850,63 @@ export default defineSchema({
   })
     .index("by_clip", ["clipId"])
     .index("by_review", ["reviewId"]),
+
+  // A client an agency works for, inside one team. Its brand fills in before the team's
+  // for the automations that are for it, and its finished files are kept in its own folder.
+  clients: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    // Only what the client sets; anything left out comes from the team's brand.
+    brand: v.optional(brandValidator),
+    // The client's own music. Left out, its automations use the team's.
+    music: v.optional(musicValidator),
+    // Where its finished files go, inside the team's folder. Left out: Clients/<name>/.
+    deliveryFolder: v.optional(v.string()),
+    createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
+  // A project: one piece of work, such as an episode, with a slot for each thing to
+  // deliver. A package picked when it was made decides the slots it starts with.
+  projects: defineTable({
+    organizationId: v.string(),
+    clientId: v.optional(v.id("clients")),
+    name: v.string(),
+    // The package it started from, such as "video_podcast".
+    package: v.string(),
+    // The review room its slots go to when a version is added. Opened the first time.
+    reviewId: v.optional(v.id("reviews")),
+    createdBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_client", ["clientId"])
+    .index("by_review", ["reviewId"]),
+
+  // One thing a project delivers, such as "Short 3" or "Episode thumbnail". It starts
+  // empty; each file put in it is a new version, which goes to the project's review room.
+  deliverables: defineTable({
+    projectId: v.id("projects"),
+    organizationId: v.string(),
+    kind: deliverableKindValidator,
+    label: v.string(),
+    // Its place in the project's list.
+    order: v.number(),
+    status: deliverableStatusValidator,
+    versions: v.array(
+      v.object({
+        url: v.string(),
+        // The person who added it; null when a run did.
+        addedBy: v.union(v.null(), v.string()),
+        addedAt: v.number(),
+      }),
+    ),
+    // Its clip in the project's review room, once it has a version.
+    clipId: v.optional(v.id("reviewClips")),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_clip", ["clipId"])
+    .index("by_organization_and_status", ["organizationId", "status"]),
 
   // The content library: one row per file the team has, whether someone uploaded it or an
   // automation made it. Gives each file a short ID ("V12", "C99") people and the agent can

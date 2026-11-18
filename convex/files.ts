@@ -55,6 +55,7 @@ import {
   storageConnection,
 } from "./lib/bucket";
 import { finishedFiles } from "./lib/exports";
+import { deliveryFolderOf } from "./lib/clients";
 import { followLibraryKey } from "./lib/library";
 import { outputNamesOf } from "./lib/outputs";
 import { fileDetailsValidator } from "./schema";
@@ -936,6 +937,8 @@ export const keepFinished = internalAction({
     const found: {
       organizationId: string;
       automationName: string;
+      /** The client's folder when the automation was for a client, such as "Clients/Acme/". */
+      deliveryFolder: string | null;
       files: { link: string; name: string }[];
     } | null = await ctx.runQuery(internal.files.finishedOfRun, { runId: args.runId });
     if (!found || found.files.length === 0) return [];
@@ -954,7 +957,7 @@ export const keepFinished = internalAction({
         ...(connection.storage.publicUrl ? { publicUrl: connection.storage.publicUrl } : {}),
       };
       const folderName = (found.automationName.trim() || "Automation").replace(/[/\\]/g, "-");
-      const folder = `${FINISHED_FOLDER}${nameProblem(folderName) ? "Automation" : folderName}/`;
+      const folder = `${found.deliveryFolder ?? FINISHED_FOLDER}${nameProblem(folderName) ? "Automation" : folderName}/`;
       const taken = new Set(
         (await listObjects(config, folder, 1)).map((object) => object.key.slice(folder.length)),
       );
@@ -999,9 +1002,12 @@ export const finishedOfRun = internalQuery({
       .withIndex("by_run", (q) => q.eq("runId", run._id))
       .take(200);
     const names = outputNamesOf(run, steps);
+    const client = run.clientId ? await ctx.db.get(run.clientId) : null;
     return {
       organizationId: run.organizationId,
       automationName: run.automationName,
+      deliveryFolder:
+        client && client.organizationId === run.organizationId ? deliveryFolderOf(client) : null,
       files: finishedFiles(run, steps).map((link) => ({
         link,
         name: names[link] ?? fileNameOfLink(link),

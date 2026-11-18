@@ -21,7 +21,12 @@ import { cn } from "@/lib/utils";
 import { SettingsSection } from "./settings-shell";
 
 type Kind =
-  "run_failed" | "approval_waiting" | "approval_timed_out" | "mention" | "client_feedback";
+  | "run_failed"
+  | "approval_waiting"
+  | "approval_timed_out"
+  | "mention"
+  | "client_feedback"
+  | "ready_for_review";
 type Channel = "bell" | "email";
 
 /** "8 AM", "12 PM", in the reader's own way of writing times. */
