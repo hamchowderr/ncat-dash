@@ -7,6 +7,15 @@ import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { noStream, serve } from "./mcp";
+import {
+  authorizationServer,
+  authorize,
+  preflight,
+  protectedResource,
+  register,
+  revoke,
+  token,
+} from "./oauth";
 
 const http = httpRouter();
 
@@ -235,5 +244,34 @@ http.route({
 // The dashboard as an MCP server, for Claude and other AI agents (mcp.ts).
 http.route({ path: "/mcp", method: "POST", handler: serve });
 http.route({ path: "/mcp", method: "GET", handler: noStream });
+http.route({ path: "/mcp", method: "DELETE", handler: noStream });
+
+// Agents sign in with OAuth (oauth.ts). They find how from the MCP address's metadata.
+for (const path of [
+  "/.well-known/oauth-protected-resource",
+  "/.well-known/oauth-protected-resource/mcp",
+]) {
+  http.route({ path, method: "GET", handler: protectedResource });
+}
+http.route({
+  path: "/.well-known/oauth-authorization-server",
+  method: "GET",
+  handler: authorizationServer,
+});
+http.route({ path: "/oauth/authorize", method: "GET", handler: authorize });
+http.route({ path: "/oauth/token", method: "POST", handler: token });
+http.route({ path: "/oauth/register", method: "POST", handler: register });
+http.route({ path: "/oauth/revoke", method: "POST", handler: revoke });
+for (const path of [
+  "/mcp",
+  "/oauth/token",
+  "/oauth/register",
+  "/oauth/revoke",
+  "/.well-known/oauth-protected-resource",
+  "/.well-known/oauth-protected-resource/mcp",
+  "/.well-known/oauth-authorization-server",
+]) {
+  http.route({ path, method: "OPTIONS", handler: preflight });
+}
 
 export default http;

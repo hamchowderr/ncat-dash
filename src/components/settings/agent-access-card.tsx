@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
+import { AgentConnections } from "./agent-connections";
 import { SettingsSection } from "./settings-shell";
 
 /** Where agents reach the dashboard's MCP server. */
@@ -107,33 +108,46 @@ export function AgentAccessCard() {
     }
   }
 
-  const command = `claude mcp add --transport http content-automations ${url} --header "Authorization: Bearer ${made?.key ?? "<your key>"}"`;
+  const command = `claude mcp add --transport http content-automations ${url}`;
+  const keyHeader = `Authorization: Bearer ${made?.key ?? "<your key>"}`;
 
   return (
     <div className="flex flex-col gap-10">
       <SettingsSection
         title="Connect an AI agent"
-        description="Claude Code, Cursor and other agents that speak MCP can list your automations and uploads, start an automation on a file, and see how its runs went. They cannot change your automations."
+        description="Claude, Claude Code, Cursor and other agents that speak MCP can see your automations, uploads and runs, build and change automations as drafts for you to publish, and start runs. They sign in as you, on the team you pick."
       >
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">MCP server address</span>
             <Line text={url} label="Copy the MCP server address" />
+            <p className="text-muted-foreground text-sm">
+              In Claude, open Settings, then Connectors, choose Add custom connector and paste this
+              address. Claude opens a page here to sign in and pick the team.
+            </p>
           </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">Add it to Claude Code</span>
             <Line text={command} label="Copy the Claude Code command" />
             <p className="text-muted-foreground text-sm">
-              Other agents take the same address with the header{" "}
-              <code className="font-mono text-xs">Authorization: Bearer &lt;your key&gt;</code>.
+              Then run <code className="font-mono text-xs">/mcp</code> in Claude Code to sign in.
             </p>
           </div>
         </div>
       </SettingsSection>
 
+      <AgentConnections />
+
       <SettingsSection
         title="Keys"
-        description="Each key acts for the whole team. Make one for each place you connect, so you can remove one without the others."
+        description={
+          <>
+            For agents that cannot sign in: send a key with the header{" "}
+            <code className="font-mono text-xs">{keyHeader}</code>. A key acts for the whole team as
+            the person who made it. Make one for each place you use it, so you can remove one
+            without the others.
+          </>
+        }
       >
         <div className="flex flex-col gap-6">
           {!access.canEdit ? (
@@ -148,6 +162,7 @@ export function AgentAccessCard() {
                     {made.name}: copy this key now. It is not shown again.
                   </p>
                   <Line text={made.key} label="Copy the new key" />
+                  <Line text={keyHeader} label="Copy the header with the new key" />
                 </div>
               )}
               <form onSubmit={onCreate}>

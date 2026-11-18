@@ -1,14 +1,15 @@
 import { callStep, getStep, ToolkitError } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { action, type ActionCtx, internalAction } from "./_generated/server";
+import { type ActionCtx, internalAction } from "./_generated/server";
 import { bucketOf, deleteObject, presign, type Bucket } from "./lib/bucket";
 
 /**
- * Voice notes to the agent. A note recorded in the agent panel, or sent to the agent in
- * Slack or Discord, is put in the team's bucket, turned into words by the team's own
- * toolkit (its transcribe request, faster-whisper on Chowderr's fork), and removed again.
- * The words are what the agent reads. No audio goes to anyone but the team's toolkit.
+ * Voice notes sent to the agent in Slack or Discord. Each is put in the team's bucket,
+ * turned into words by the team's own toolkit (its transcribe request, faster-whisper on
+ * Chowderr's fork), and removed again. The words are what the agent reads. No audio goes
+ * to anyone but the team's toolkit. (In the dashboard's own chat the browser dictates
+ * live instead, which is faster.)
  */
 
 /** Voice notes longer than this are refused: a note is a few minutes at most. */
@@ -42,7 +43,7 @@ export function voiceNoteExtension(contentType: string): string | null {
 
 const KEY = /^voice-notes\/[0-9a-f-]{36}\.(webm|ogg|m4a|mp4|mp3|wav)$/;
 
-/** True for a key `start` could have made, so nothing else in the bucket can be read. */
+/** True for a key a voice note is stored under, so nothing else in the bucket is read. */
 export function isVoiceNoteKey(key: string): boolean {
   return KEY.test(key);
 }
@@ -84,46 +85,6 @@ async function transcribeKey(bucket: Bucket, key: string): Promise<string> {
     await deleteObject(bucket, key).catch(() => undefined);
   }
 }
-
-/** Starts a voice note from the agent panel: a one-time link the browser sends it to. */
-export const start = action({
-  args: { organizationId: v.string(), contentType: v.string(), size: v.number() },
-  returns: v.object({ key: v.string(), uploadUrl: v.string() }),
-  handler: async (ctx, args) => {
-    await ctx.runQuery(internal.storage.authorize, {
-      organizationId: args.organizationId,
-      managersOnly: false,
-    });
-    const extension = voiceNoteExtension(args.contentType);
-    if (!extension) {
-      throw new ConvexError({ code: "not_audio", message: "That recording is not audio." });
-    }
-    if (args.size <= 0 || args.size > MAX_VOICE_NOTE_BYTES) {
-      throw new ConvexError({ code: "too_large", message: "Voice notes can be up to 25 MB." });
-    }
-    const bucket = await teamBucket(ctx, args.organizationId);
-    const key = `voice-notes/${crypto.randomUUID()}.${extension}`;
-    const uploadUrl = await presign(bucket, "PUT", key, UPLOAD_LINK_SECONDS);
-    return { key, uploadUrl };
-  },
-});
-
-/** The words of a voice note the browser has sent to the link from `start`. */
-export const transcribe = action({
-  args: { organizationId: v.string(), key: v.string() },
-  returns: v.object({ text: v.string() }),
-  handler: async (ctx, args) => {
-    await ctx.runQuery(internal.storage.authorize, {
-      organizationId: args.organizationId,
-      managersOnly: false,
-    });
-    if (!isVoiceNoteKey(args.key)) {
-      throw new ConvexError({ code: "not_found", message: "That voice note is not there." });
-    }
-    const bucket = await teamBucket(ctx, args.organizationId);
-    return { text: await transcribeKey(bucket, args.key) };
-  },
-});
 
 /**
  * The words of a voice note sent to the agent in Slack or Discord. The agent server

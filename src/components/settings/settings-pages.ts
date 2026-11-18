@@ -70,7 +70,8 @@ export const SETTINGS_GROUPS = [
       {
         slug: "ai-agents",
         title: "AI agents",
-        description: "Let Claude and other AI agents start your automations and follow their runs.",
+        description:
+          "Let Claude and other AI agents build your automations, run them and follow their runs.",
       },
     ],
   },

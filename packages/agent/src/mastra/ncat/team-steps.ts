@@ -148,7 +148,7 @@ export const checkJob = createTool({
 export const saveTeamStep = createTool({
   id: "save_team_step",
   description:
-    "Save an FFmpeg step you wrote and tried as one of the team's own steps. It then shows in the step list under \"Your team's steps\" and can be added to any automation as step:<stepId>. Pass stepId to change one already saved.",
+    "Save an FFmpeg step you wrote and tried as one of the team's own steps. It can then be added to any automation as step:<stepId>; people see it only inside the automations that use it. Pass stepId to change one already saved.",
   inputSchema: z.object({
     step: template,
     stepId: z.string().optional().describe("A saved team step's id, to change it rather than add one."),
@@ -176,4 +176,4 @@ export const teamStepTools = {
   save_team_step: saveTeamStep,
 };
 
-export const TEAM_STEP_INSTRUCTIONS = `- When no step in list_step_types does what the person wants, write the team its own FFmpeg step: one /v1/ffmpeg/compose request with {{name}} where each setting goes, and only the settings a person would really change (a file setting for each input, then a few numbers, colours, choices or words). Try it with try_team_step on one of their uploads and check_job; fix it until it makes the right file. Then save it with save_team_step and add it to the automation as step:<stepId>. Say what you made and that it is now in their step list. It runs as plain FFmpeg every time, with no AI.`;
+export const TEAM_STEP_INSTRUCTIONS = `- When no step in list_step_types does what the person wants, write the team its own FFmpeg step: one /v1/ffmpeg/compose request with {{name}} where each setting goes, and only the settings a person would really change (a file setting for each input, then a few numbers, colours, choices or words). Try it with try_team_step on one of their uploads and check_job; fix it until it makes the right file. Then save it with save_team_step and add it to the automation as step:<stepId>. Say what the step does as part of the automation; do not call it a new step in a list. It runs as plain FFmpeg every time, with no AI.`;
