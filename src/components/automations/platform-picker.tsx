@@ -29,8 +29,10 @@ const ICON: Record<Frame, typeof Smartphone> = {
 };
 
 /** What the clips look like, under the tiles. */
-export function frameSentence(frame: Frame): string {
+export function frameSentence(frame: Frame, followed = false): string {
   if (frame === "original") return "Keeps the video's own shape.";
+  if (followed)
+    return `Cut in the video's own shape, then Follow the speaker makes them ${frameName(frame).toLowerCase()} and keeps the person talking in frame.`;
   return `${frameName(frame)}. The whole picture is kept, on a blurred background.`;
 }
 
@@ -40,12 +42,15 @@ export function PlatformPicker({
   onChange,
   disabled,
   compact,
+  followed,
 }: {
   value: PlatformName | undefined;
   onChange: (platform: PlatformName) => void;
   disabled?: boolean;
   /** Two columns, for narrow side panels. */
   compact?: boolean;
+  /** The clips go straight to Follow the speaker, which makes the shape instead. */
+  followed?: boolean;
 }) {
   const selected = PLATFORMS.find((platform) => platform.name === value);
   return (
@@ -100,7 +105,7 @@ export function PlatformPicker({
             const Icon = ICON[selected.frame];
             return <Icon className="text-foreground size-4" aria-hidden="true" />;
           })()}
-          {frameSentence(selected.frame)}
+          {frameSentence(selected.frame, followed)}
         </p>
       )}
     </div>

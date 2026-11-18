@@ -35,6 +35,10 @@ type JsonSchema = {
   format?: string;
   enum?: string[];
   description?: string;
+  /** A step's own name for the setting, when its field name reads badly. */
+  title?: string;
+  /** Plain words for each choice, when the toolkit's values read badly. */
+  choiceLabels?: Record<string, string>;
   default?: string | number | boolean;
   properties?: Record<string, JsonSchema>;
   items?: JsonSchema;
@@ -268,7 +272,7 @@ export function toInput(
       } catch {
         return {
           ok: false,
-          message: `${fieldLabel(name)} could not be read. Remove it and add it again.`,
+          message: `${schema.title ?? fieldLabel(name)} could not be read. Remove it and add it again.`,
         };
       }
     } else input[name] = raw;
@@ -339,7 +343,7 @@ export function StepFields({
           const what = KIND_WORDS[wantedKind(name)];
           return (
             <Field key={name}>
-              <FieldLabel>{fieldLabel(name).replace(/ URLs?$/, "s")}</FieldLabel>
+              <FieldLabel>{(field.title ?? fieldLabel(name)).replace(/ URLs?$/, "s")}</FieldLabel>
               <FieldDescription>
                 Automatic. Uses every {what} that reaches this step, in the order the steps before
                 made them.
@@ -365,7 +369,7 @@ export function StepFields({
                   ? AUTO
                   : FIXED;
           const what = KIND_WORDS[wantedKind(name)];
-          const label = fieldLabel(name).replace(/ URLs?$/, "");
+          const label = (field.title ?? fieldLabel(name)).replace(/ URLs?$/, "");
           return (
             <Field key={name}>
               <FieldLabel htmlFor={id}>{label}</FieldLabel>
@@ -426,7 +430,7 @@ export function StepFields({
           <Field key={name}>
             <div className="flex items-center justify-between gap-2">
               <FieldLabel htmlFor={id}>
-                {fieldLabel(name)}
+                {field.title ?? fieldLabel(name)}
                 {!required && <span className="text-muted-foreground font-normal">optional</span>}
               </FieldLabel>
               {kind === "url" && !automatic && (
@@ -442,13 +446,17 @@ export function StepFields({
                   {!isRequired && (
                     <SelectItem value={UNSET}>
                       {field.default !== undefined
-                        ? `Default (${field.default})`
+                        ? `Default (${field.choiceLabels?.[String(field.default)] ?? field.default})`
                         : "Toolkit default"}
                     </SelectItem>
                   )}
                   {(kind === "yesno" ? ["true", "false"] : (field.enum ?? [])).map((option) => (
                     <SelectItem key={option} value={option}>
-                      {kind === "yesno" ? (option === "true" ? "Yes" : "No") : option}
+                      {kind === "yesno"
+                        ? option === "true"
+                          ? "Yes"
+                          : "No"
+                        : (field.choiceLabels?.[option] ?? option)}
                     </SelectItem>
                   ))}
                 </SelectContent>

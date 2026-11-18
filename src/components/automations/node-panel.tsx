@@ -70,6 +70,7 @@ export function NodePanel({
   onAddOnFailure,
   waitsFor,
   automationId,
+  feedsFollow,
 }: {
   node: NodeContent;
   /** The steps that run before this one, nearest first. Their files can be used here. */
@@ -94,6 +95,8 @@ export function NodePanel({
   waitsFor?: string[];
   /** The automation being edited, which a Run an automation step cannot pick. */
   automationId?: string;
+  /** A Clips step whose clips go straight to Follow the speaker, so they keep their shape. */
+  feedsFollow?: boolean;
 }) {
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
   const nodeType = nodeTypeOf(node);
@@ -282,6 +285,7 @@ export function NodePanel({
           <FieldLabel>Platform</FieldLabel>
           <PlatformPicker
             compact
+            followed={feedsFollow}
             value={getPlatform(node.input.platform)?.name}
             onChange={(platform) => onChange({ input: { ...node.input, platform } })}
           />

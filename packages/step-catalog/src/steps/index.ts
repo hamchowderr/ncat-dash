@@ -15,6 +15,7 @@ import { storageUploadS3 } from "./storage/upload-s3";
 import { videoCaption } from "./video/caption";
 import { videoConcatenate } from "./video/concatenate";
 import { videoCut } from "./video/cut";
+import { videoReframe } from "./video/reframe";
 import { videoSplit } from "./video/split";
 import { videoThumbnail } from "./video/thumbnail";
 import { videoTrim } from "./video/trim";
@@ -37,6 +38,7 @@ export const steps = [
   videoCaption,
   videoConcatenate,
   videoCut,
+  videoReframe,
   videoSplit,
   videoThumbnail,
   videoTrim,
@@ -60,6 +62,7 @@ export {
   videoCaption,
   videoConcatenate,
   videoCut,
+  videoReframe,
   videoSplit,
   videoThumbnail,
   videoTrim,
