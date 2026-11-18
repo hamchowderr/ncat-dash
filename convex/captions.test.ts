@@ -115,7 +115,11 @@ describe("the team's caption settings", () => {
     });
     const settings = await member.as.query(api.teamSettings.get, { organizationId: team });
     expect(settings.captions.fixes).toEqual(CAPTIONS.fixes);
-    expect(settings.captions.byShape).toEqual({ vertical: "Tall", wide: "Plain", square: "Karaoke" });
+    expect(settings.captions.byShape).toEqual({
+      vertical: "Tall",
+      wide: "Plain",
+      square: "Karaoke",
+    });
     const brief = await member.as.query(api.teamSettings.agentBrief, { organizationId: team });
     expect(brief.text).toContain('vertical videos get "Tall"');
   });
@@ -123,7 +127,10 @@ describe("the team's caption settings", () => {
   test("can only be changed by owners and admins, and must make sense", async () => {
     const { team, owner, member } = await setUp();
     await expect(
-      member.as.mutation(api.teamSettings.setCaptions, { organizationId: team, captions: CAPTIONS }),
+      member.as.mutation(api.teamSettings.setCaptions, {
+        organizationId: team,
+        captions: CAPTIONS,
+      }),
     ).rejects.toThrow();
     await expect(
       owner.as.mutation(api.teamSettings.setCaptions, {

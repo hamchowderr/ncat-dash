@@ -38,7 +38,13 @@ export const SHAPE_HEIGHT: Record<CaptionShape, number> = {
   square: 1080,
 };
 
-export const CAPTION_LOOKS = ["highlight", "karaoke", "word_by_word", "underline", "classic"] as const;
+export const CAPTION_LOOKS = [
+  "highlight",
+  "karaoke",
+  "word_by_word",
+  "underline",
+  "classic",
+] as const;
 export type CaptionLookKind = (typeof CAPTION_LOOKS)[number];
 
 export const LOOK_WORDS: Record<CaptionLookKind, { name: string; text: string }> = {
@@ -247,7 +253,9 @@ export function withCaptionSetup(
   setup: CaptionSetup,
   file: { details?: Pick<FileDetails, "width" | "height"> | null; brandFont?: string },
 ): Record<string, unknown> {
-  const { [CAPTION_STYLE_SETTING]: _picked, ...rest } = input;
+  const rest = Object.fromEntries(
+    Object.entries(input).filter(([name]) => name !== CAPTION_STYLE_SETTING),
+  );
   const shape = shapeOf(file.details);
   const style = styleFor(setup, input, shape);
   const out: Record<string, unknown> = { ...rest };
@@ -326,7 +334,8 @@ export function tidyCaptionSetup(
     const name = style.name.trim();
     if (!name || name.length > 40) return fail("Give each style a name of up to 40 letters.");
     const clash = (other: CaptionStyle) => other.name.toLowerCase() === name.toLowerCase();
-    if (BUILT_IN_STYLES.some(clash)) return fail(`"${name}" is a built-in style. Pick another name.`);
+    if (BUILT_IN_STYLES.some(clash))
+      return fail(`"${name}" is a built-in style. Pick another name.`);
     if (styles.some(clash)) return fail(`Two styles are called "${name}".`);
     const look = Object.fromEntries(
       Object.entries(style.look).filter(([, value]) => !isBlank(value)),

@@ -23,6 +23,7 @@ import type * as lib_alerts from "../lib/alerts.js";
 import type * as lib_approvals from "../lib/approvals.js";
 import type * as lib_authz from "../lib/authz.js";
 import type * as lib_bucket from "../lib/bucket.js";
+import type * as lib_captions from "../lib/captions.js";
 import type * as lib_chain from "../lib/chain.js";
 import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_drawing from "../lib/drawing.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   "lib/approvals": typeof lib_approvals;
   "lib/authz": typeof lib_authz;
   "lib/bucket": typeof lib_bucket;
+  "lib/captions": typeof lib_captions;
   "lib/chain": typeof lib_chain;
   "lib/crypto": typeof lib_crypto;
   "lib/drawing": typeof lib_drawing;
