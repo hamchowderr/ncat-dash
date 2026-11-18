@@ -1,5 +1,5 @@
 import { isTransientStatus } from "@ncat-dash/automation-core";
-import { callStep, getStep, ToolkitError } from "@ncat-dash/step-catalog";
+import { callStep, getStep, jobStatus, ToolkitError } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -16,6 +16,7 @@ import { decryptSecret } from "./lib/crypto";
 import { collectUrls, handOutputNames, outputNamesOf } from "./lib/outputs";
 import { enqueueJob, pump } from "./lib/queue";
 import { onJobFinished } from "./lib/runner";
+import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { UploadLinkError, withUploadLinks } from "./storage";
 
 // A Convex document holds at most 1 MB, so a larger result is kept as its links only.
@@ -263,5 +264,90 @@ export const giveUp = internalMutation({
     });
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
     await pump(ctx, job.organizationId);
+  },
+});
+
+// Late results. The toolkit posts each result to our webhook, but a post can be lost: the
+// toolkit restarts in the middle of a job, or this backend cannot be reached at that
+// moment. Rather than leave the run "Running" until the job gives up hours later, the
+// dashboard asks the toolkit about any job whose result is late.
+
+/** A job running this long without a result is asked about. */
+export const ASK_AFTER_MS = 2 * 60 * 1000;
+/** Then it is asked about again this often. */
+export const ASK_EVERY_MS = 2 * 60 * 1000;
+/** A job the toolkit has no record of, this long after it started, is lost. */
+export const LOST_AFTER_MS = 5 * 60 * 1000;
+
+export const LOST_JOB_ERROR =
+  "The toolkit lost this job before it finished, most likely because it restarted.";
+
+/** Every minute: books a question to the toolkit for each running job that is late. */
+export const checkLate = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const running = await ctx.db
+      .query("jobs")
+      .withIndex("by_status", (q) => q.eq("status", "running"))
+      .take(500);
+    for (const job of running) {
+      if (!job.toolkitJobId) continue;
+      if ((job.startedAt ?? now) > now - ASK_AFTER_MS) continue;
+      if ((job.lastAskedAt ?? 0) > now - ASK_EVERY_MS) continue;
+      await ctx.db.patch(job._id, { lastAskedAt: now });
+      await ctx.scheduler.runAfter(0, internal.jobs.askToolkit, { jobId: job._id });
+    }
+  },
+});
+
+export const loadForAsking = internalQuery({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.status !== "running" || !job.toolkitJobId) return null;
+    const connection = await ctx.db.get(job.connectionId);
+    if (!connection) return null;
+    return { job, connection };
+  },
+});
+
+/** Asks the toolkit about one late job and records what it says. */
+export const askToolkit = internalAction({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, args) => {
+    const loaded = await ctx.runQuery(internal.jobs.loadForAsking, { jobId: args.jobId });
+    if (!loaded) return;
+    const { job, connection } = loaded;
+    let answer;
+    try {
+      answer = await jobStatus(
+        { baseUrl: connection.baseUrl, apiKey: await decryptSecret(connection.apiKeyCipher) },
+        job.toolkitJobId!,
+        { signal: AbortSignal.timeout(30_000) },
+      );
+    } catch {
+      // The toolkit is busy or out of reach: ask again on the next round.
+      return;
+    }
+    if (answer.state === "finished") {
+      const ok = answer.envelope.code === 200;
+      await ctx.runMutation(internal.jobs.finish, {
+        jobId: job._id,
+        ok,
+        result: ok ? answer.envelope.response : undefined,
+        error: ok ? undefined : keepEnds(toolkitMessageText(answer.envelope.message)),
+      });
+    } else if (
+      answer.state === "unknown" &&
+      (job.startedAt ?? Date.now()) <= Date.now() - LOST_AFTER_MS
+    ) {
+      // Not permanent: the same job sent again may well work.
+      await ctx.runMutation(internal.jobs.finish, {
+        jobId: job._id,
+        ok: false,
+        error: LOST_JOB_ERROR,
+      });
+    }
   },
 });

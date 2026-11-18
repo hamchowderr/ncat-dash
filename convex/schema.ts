@@ -200,9 +200,12 @@ export default defineSchema({
     // True when the failure is one another try cannot fix, such as a setting the
     // toolkit refuses. A step in a run does not try such a job again.
     permanent: v.optional(v.boolean()),
+    // When the dashboard last asked the toolkit about a running job whose result is late.
+    lastAskedAt: v.optional(v.number()),
   })
     .index("by_organization", ["organizationId"])
-    .index("by_organization_and_status", ["organizationId", "status"]),
+    .index("by_organization_and_status", ["organizationId", "status"])
+    .index("by_status", ["status"]),
 
   // Per-team settings. A team without a row uses the defaults.
   teamSettings: defineTable({
