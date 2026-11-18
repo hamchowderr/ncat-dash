@@ -13,11 +13,12 @@ import {
   POSITION_WORDS,
 } from "@ncat-dash/automation-core";
 import { useMutation } from "convex/react";
-import { ArrowRight, Copy, Plus, Trash2, X } from "lucide-react";
+import { ArrowRight, ChevronRight, Copy, Plus, Trash2, X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -147,25 +148,17 @@ export function CaptionsCard({
     <form onSubmit={onSubmit} className="flex flex-col gap-12">
       <SettingsSection
         title="Word fixes"
-        description="Words the transcript gets wrong, such as your name, your web address or slang, and how they should read. Every caption is fixed before it goes on the video."
+        description="Words the transcript gets wrong, and how to write them. One word each."
         aria-label="Word fixes"
       >
         {shown.fixes.length > 0 ? (
           <ul className="flex flex-col gap-2">
-            <li
-              aria-hidden="true"
-              className="text-muted-foreground grid grid-cols-[1fr_1rem_1fr_2.25rem] items-center gap-2 text-xs font-medium"
-            >
-              <span>Heard as</span>
-              <span />
-              <span>Write as</span>
-            </li>
             {shown.fixes.map((fix, index) => (
               <li key={index} className="grid grid-cols-[1fr_1rem_1fr_2.25rem] items-center gap-2">
                 <Input
                   aria-label={`Word ${index + 1} heard as`}
                   value={fix.find}
-                  placeholder="chowder"
+                  placeholder="Heard as"
                   maxLength={60}
                   disabled={!canEdit}
                   autoComplete="off"
@@ -175,7 +168,7 @@ export function CaptionsCard({
                 <Input
                   aria-label={`Word ${index + 1} written as`}
                   value={fix.replace}
-                  placeholder="Chowderr"
+                  placeholder="Written as"
                   maxLength={60}
                   disabled={!canEdit}
                   autoComplete="off"
@@ -204,8 +197,9 @@ export function CaptionsCard({
           <div>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
+              className="text-muted-foreground -ml-2"
               onClick={() => change({ fixes: [...shown.fixes, { find: "", replace: "" }] })}
             >
               <Plus />
@@ -213,18 +207,14 @@ export function CaptionsCard({
             </Button>
           </div>
         )}
-        <p className="text-muted-foreground text-xs text-pretty">
-          One word on each line. Capitals do not matter, and a fix also catches the word inside a
-          longer one.
-        </p>
       </SettingsSection>
 
       <SettingsSection
         title="Styles"
-        description="Looks a caption step can use. Start from a built-in one and make it your own."
+        description="Pick one to see it. Copy a built-in one to make your own."
         aria-label="Styles"
       >
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-1">
           {all.map((style) => {
             const own = shown.styles.includes(style);
             const active = style.name === open;
@@ -236,30 +226,15 @@ export function CaptionsCard({
                 aria-label={`${style.name}${own ? "" : ", built in"}`}
                 onClick={() => setOpen(active ? null : style.name)}
                 className={cn(
-                  "hover:bg-muted focus-visible:ring-ring/50 flex w-[7.75rem] flex-col items-center gap-2 rounded-lg p-2 text-left outline-none transition-colors focus-visible:ring-3",
-                  active && "bg-primary/10 hover:bg-primary/15",
+                  "hover:bg-muted focus-visible:ring-ring/50 flex w-24 flex-col gap-1.5 rounded-lg p-1.5 text-left outline-none transition-colors focus-visible:ring-3",
+                  active && "bg-muted",
                 )}
               >
-                <CaptionPreview look={style.look} font={font} />
-                <span className="flex w-full flex-col">
-                  <span className="truncate text-sm font-medium">{style.name}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {own ? "Yours" : "Built in"}
-                  </span>
-                </span>
+                <CaptionPreview look={style.look} font={font} zoom={0.75} />
+                <span className="truncate px-0.5 text-xs font-medium">{style.name}</span>
               </button>
             );
           })}
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => addStyle(opened ?? builtIn[0])}
-              className="bg-surface hover:bg-muted text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex h-[192px] w-[108px] flex-col items-center justify-center gap-1.5 self-start mt-2 rounded-md text-sm font-medium outline-none transition-colors focus-visible:ring-3"
-            >
-              <Plus className="size-4" aria-hidden="true" />
-              New style
-            </button>
-          )}
         </div>
 
         {opened &&
@@ -274,38 +249,24 @@ export function CaptionsCard({
               onRemove={removeStyle}
             />
           ) : (
-            <div className="bg-surface flex flex-col gap-4 rounded-xl p-4 sm:flex-row sm:items-center">
-              <div className="flex items-end gap-3">
-                {CAPTION_SHAPES.map(({ shape }) => (
-                  <CaptionPreview key={shape} look={opened.look} shape={shape} font={font} />
-                ))}
-              </div>
-              <div className="flex min-w-0 flex-col gap-2">
-                <p className="text-sm font-medium">{opened.name}</p>
-                <p className="text-muted-foreground text-sm text-pretty">
-                  {LOOK_WORDS[opened.look.style ?? "classic"].text}. Built in, so it stays as it is.
-                </p>
-                {canEdit && (
-                  <div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addStyle(opened)}
-                    >
-                      <Copy />
-                      Make a copy to change
-                    </Button>
-                  </div>
-                )}
-              </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <p className="text-muted-foreground text-sm text-pretty">
+                {opened.name}: {LOOK_WORDS[opened.look.style ?? "classic"].text.toLowerCase()}.
+                Built in, so it stays as it is.
+              </p>
+              {canEdit && (
+                <Button type="button" variant="outline" size="sm" onClick={() => addStyle(opened)}>
+                  <Copy />
+                  Make a copy to change
+                </Button>
+              )}
             </div>
           ))}
       </SettingsSection>
 
       <SettingsSection
         title="Style for each shape"
-        description="A caption step that does not pick a style uses the one for its video's shape, read from the video itself."
+        description="Used by a caption step that does not pick its own style."
         aria-label="Style for each shape"
       >
         <div className="flex flex-col gap-4">
@@ -370,7 +331,10 @@ export function CaptionsCard({
   );
 }
 
-/** Changing one of the team's own styles, with how it looks on each shape beside it. */
+/**
+ * Changing one of the team's own styles: a still of it beside the few things people change
+ * most, with the rest folded under More options.
+ */
 function StyleEditor({
   style,
   font,
@@ -399,15 +363,11 @@ function StyleEditor({
     <div
       aria-label={`Change ${style.name}`}
       role="group"
-      className="bg-surface flex flex-col gap-6 rounded-xl p-4 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
+      className="bg-surface flex flex-col gap-6 rounded-xl p-5 sm:flex-row motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
     >
-      <div className="flex flex-wrap items-end gap-3">
-        {CAPTION_SHAPES.map(({ shape }) => (
-          <CaptionPreview key={shape} look={look} shape={shape} font={font} />
-        ))}
-      </div>
+      <CaptionPreview look={look} font={font} zoom={1.25} className="self-start" />
 
-      <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
         <LookField
           label="Name"
           htmlFor={id("name")}
@@ -428,40 +388,40 @@ function StyleEditor({
             }}
           />
         </LookField>
-        <LookField label="Word effect" htmlFor={id("effect")} hint={LOOK_WORDS[effect].text}>
-          <Select
-            value={effect}
-            disabled={!canEdit}
-            onValueChange={(value) => set({ style: value as CaptionLook["style"] })}
-          >
-            <SelectTrigger id={id("effect")} className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CAPTION_LOOKS.map((kind) => (
-                <SelectItem key={kind} value={kind}>
-                  {LOOK_WORDS[kind].name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </LookField>
-        <LookField
-          label="Font"
-          htmlFor={id("font")}
-          hint={font ? `Blank uses your brand font, ${font}.` : "Blank uses the toolkit's font."}
-        >
-          <Input
-            id={id("font")}
-            value={look.font_family ?? ""}
-            placeholder={font ?? "Arial"}
-            maxLength={80}
-            disabled={!canEdit}
-            autoComplete="off"
-            onChange={(event) => set({ font_family: event.target.value || undefined })}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <LookField label="Word effect" htmlFor={id("effect")}>
+            <Select
+              value={effect}
+              disabled={!canEdit}
+              onValueChange={(value) => set({ style: value as CaptionLook["style"] })}
+            >
+              <SelectTrigger id={id("effect")} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CAPTION_LOOKS.map((kind) => (
+                  <SelectItem key={kind} value={kind}>
+                    {LOOK_WORDS[kind].name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </LookField>
+          <ColourField
+            label="Highlight colour"
+            id={id("word")}
+            value={look.word_color}
+            fallback="#FFFF00"
+            disabled={
+              !canEdit ||
+              effect === "classic" ||
+              effect === "word_by_word" ||
+              effect === "underline"
+            }
+            onChange={(word_color) => set({ word_color })}
           />
-        </LookField>
-        <LookField label="Position" hint="Where the lines sit on the video.">
+        </div>
+        <LookField label="Position">
           <div role="radiogroup" aria-label="Position" className="bg-muted flex rounded-lg p-0.5">
             {CAPTION_POSITIONS.map((position) => {
               const on = (look.position ?? "bottom_center") === position;
@@ -484,85 +444,6 @@ function StyleEditor({
             })}
           </div>
         </LookField>
-        <LookField
-          label="Text size"
-          htmlFor={id("size")}
-          hint="In pixels on a 1080p video. Bigger videos get it scaled up."
-        >
-          <Input
-            id={id("size")}
-            type="number"
-            min={8}
-            max={400}
-            value={look.font_size ?? ""}
-            disabled={!canEdit}
-            onChange={(event) => number("font_size", event.target.value)}
-          />
-        </LookField>
-        <LookField label="Words per line" htmlFor={id("words")}>
-          <Input
-            id={id("words")}
-            type="number"
-            min={1}
-            max={20}
-            value={look.max_words_per_line ?? ""}
-            disabled={!canEdit || effect === "word_by_word"}
-            onChange={(event) => number("max_words_per_line", event.target.value)}
-          />
-        </LookField>
-        <ColourField
-          label="Text colour"
-          id={id("line")}
-          value={look.line_color}
-          fallback="#FFFFFF"
-          disabled={!canEdit}
-          onChange={(line_color) => set({ line_color })}
-        />
-        <ColourField
-          label="Highlight colour"
-          id={id("word")}
-          value={look.word_color}
-          fallback="#FFFF00"
-          disabled={
-            !canEdit || effect === "classic" || effect === "word_by_word" || effect === "underline"
-          }
-          onChange={(word_color) => set({ word_color })}
-        />
-        <ColourField
-          label="Outline colour"
-          id={id("outline-colour")}
-          value={look.outline_color}
-          fallback="#000000"
-          disabled={!canEdit}
-          onChange={(outline_color) => set({ outline_color })}
-        />
-        <div className="grid grid-cols-2 gap-3">
-          <LookField label="Outline" htmlFor={id("outline")}>
-            <Input
-              id={id("outline")}
-              type="number"
-              min={0}
-              max={20}
-              value={look.outline_width ?? ""}
-              disabled={!canEdit}
-              onChange={(event) => number("outline_width", event.target.value)}
-            />
-          </LookField>
-          <LookField label="Shadow" htmlFor={id("shadow")}>
-            <Input
-              id={id("shadow")}
-              type="number"
-              min={0}
-              max={20}
-              value={look.shadow_offset ?? ""}
-              disabled={!canEdit}
-              onChange={(event) => number("shadow_offset", event.target.value)}
-            />
-          </LookField>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-6">
         <label className="flex items-center gap-2 text-sm font-medium">
           <Switch
             checked={Boolean(look.all_caps)}
@@ -571,25 +452,119 @@ function StyleEditor({
           />
           All capitals
         </label>
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <Switch
-            checked={Boolean(look.bold)}
-            disabled={!canEdit}
-            onCheckedChange={(bold) => set({ bold })}
-          />
-          Bold
-        </label>
+
+        <Collapsible>
+          <CollapsibleTrigger className="group text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-md py-1 text-sm font-medium outline-none focus-visible:underline">
+            <ChevronRight
+              className="size-4 transition-transform group-data-[state=open]:rotate-90"
+              aria-hidden="true"
+            />
+            More options
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="grid gap-4 pt-3 sm:grid-cols-2">
+              <LookField
+                label="Font"
+                htmlFor={id("font")}
+                hint={font ? `Blank uses your brand font, ${font}.` : undefined}
+              >
+                <Input
+                  id={id("font")}
+                  value={look.font_family ?? ""}
+                  placeholder={font ?? "Arial"}
+                  maxLength={80}
+                  disabled={!canEdit}
+                  autoComplete="off"
+                  onChange={(event) => set({ font_family: event.target.value || undefined })}
+                />
+              </LookField>
+              <LookField label="Text size" htmlFor={id("size")} hint="Pixels on a 1080p video.">
+                <Input
+                  id={id("size")}
+                  type="number"
+                  min={8}
+                  max={400}
+                  value={look.font_size ?? ""}
+                  disabled={!canEdit}
+                  onChange={(event) => number("font_size", event.target.value)}
+                />
+              </LookField>
+              <LookField label="Words per line" htmlFor={id("words")}>
+                <Input
+                  id={id("words")}
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={look.max_words_per_line ?? ""}
+                  disabled={!canEdit || effect === "word_by_word"}
+                  onChange={(event) => number("max_words_per_line", event.target.value)}
+                />
+              </LookField>
+              <ColourField
+                label="Text colour"
+                id={id("line")}
+                value={look.line_color}
+                fallback="#FFFFFF"
+                disabled={!canEdit}
+                onChange={(line_color) => set({ line_color })}
+              />
+              <ColourField
+                label="Outline colour"
+                id={id("outline-colour")}
+                value={look.outline_color}
+                fallback="#000000"
+                disabled={!canEdit}
+                onChange={(outline_color) => set({ outline_color })}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <LookField label="Outline" htmlFor={id("outline")}>
+                  <Input
+                    id={id("outline")}
+                    type="number"
+                    min={0}
+                    max={20}
+                    value={look.outline_width ?? ""}
+                    disabled={!canEdit}
+                    onChange={(event) => number("outline_width", event.target.value)}
+                  />
+                </LookField>
+                <LookField label="Shadow" htmlFor={id("shadow")}>
+                  <Input
+                    id={id("shadow")}
+                    type="number"
+                    min={0}
+                    max={20}
+                    value={look.shadow_offset ?? ""}
+                    disabled={!canEdit}
+                    onChange={(event) => number("shadow_offset", event.target.value)}
+                  />
+                </LookField>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Switch
+                  checked={Boolean(look.bold)}
+                  disabled={!canEdit}
+                  onCheckedChange={(bold) => set({ bold })}
+                />
+                Bold
+              </label>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+
         {canEdit && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground ml-auto"
-            onClick={onRemove}
-          >
-            <Trash2 />
-            Remove style
-          </Button>
+          <div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground -ml-2"
+              onClick={onRemove}
+            >
+              <Trash2 />
+              Remove style
+            </Button>
+          </div>
         )}
       </div>
     </div>

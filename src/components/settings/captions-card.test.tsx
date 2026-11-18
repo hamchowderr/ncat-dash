@@ -113,6 +113,17 @@ describe("Captions in Settings", () => {
     );
   });
 
+  test("a style shows the few things people change most, with the rest folded away", () => {
+    card(OURS);
+    const editor = screen.getByRole("group", { name: "Change Night Shift" });
+    expect(within(editor).getByLabelText("Word effect")).toBeInTheDocument();
+    expect(within(editor).queryByLabelText("Font")).toBeNull();
+    expect(within(editor).queryByLabelText("Shadow")).toBeNull();
+    fireEvent.click(within(editor).getByRole("button", { name: "More options" }));
+    expect(within(editor).getByLabelText("Font")).toBeInTheDocument();
+    expect(within(editor).getByLabelText("Shadow")).toBeInTheDocument();
+  });
+
   test("a name another style has is refused", () => {
     card(OURS);
     const editor = screen.getByRole("group", { name: "Change Night Shift" });
