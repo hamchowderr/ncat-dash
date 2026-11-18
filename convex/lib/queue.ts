@@ -1,4 +1,4 @@
-import type { Brand } from "@ncat-dash/automation-core";
+import { type Brand, unusableShareLink, withDownloadLinks } from "@ncat-dash/automation-core";
 import { getStep, userInputSchema } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -84,7 +84,11 @@ export async function enqueueJob(
   const step = getStep(args.stepId);
   if (!step) return { ok: false, code: "not_found", message: "Unknown step." };
 
-  const parsed = userInputSchema(step).safeParse(args.input);
+  // A Drive or Dropbox share link opens a preview page, so the toolkit is handed the
+  // address that downloads the file instead; a folder link cannot work at all.
+  const unusable = unusableShareLink(args.input);
+  if (unusable) return { ok: false, code: "invalid_input", message: unusable.problem };
+  const parsed = userInputSchema(step).safeParse(withDownloadLinks(args.input));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return {

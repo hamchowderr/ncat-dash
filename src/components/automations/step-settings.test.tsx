@@ -82,3 +82,35 @@ describe("the platform tiles", () => {
     expect(onChange).toHaveBeenCalledWith("YouTube Shorts");
   });
 });
+
+describe("a share link pasted as a file", () => {
+  test("a Drive file link is taken as it is and said to work", () => {
+    fields("https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view");
+    expect(screen.getByText(/Google Drive share link\. The file is downloaded/)).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("a Dropbox folder link says to share one file instead", () => {
+    fields("https://www.dropbox.com/scl/fo/abc/xyz?rlkey=k&dl=0");
+    expect(screen.getByRole("alert").textContent).toBe(
+      "This is a link to a Dropbox folder. Share one file from it instead.",
+    );
+  });
+
+  test("an ordinary address gets no note", () => {
+    fields("https://files.example/talk.mp4");
+    expect(screen.queryByText(/share link/)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("a step run by hand says the same under its address box", () => {
+    renderInApp(
+      <StepFields
+        fields={FIELDS}
+        values={{ video_url: "https://www.dropbox.com/s/abc/talk.mp4?dl=0" }}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Dropbox share link\. The file is downloaded/)).toBeTruthy();
+  });
+});

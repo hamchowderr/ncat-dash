@@ -15,6 +15,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ShareLinkNote } from "@/components/steps/share-link-note";
 import { StructuredField, structuredHint } from "@/components/steps/structured-field";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -208,6 +209,7 @@ export function FileChoice({
         </>
       )}
       {!disabled && <UploadPicker lasting onPick={onChange} label="From uploads" />}
+      <ShareLinkNote value={value} className="basis-full" />
     </div>
   );
 }
@@ -494,6 +496,7 @@ export function StepFields({
                 autoComplete="off"
               />
             )}
+            {kind === "url" && <ShareLinkNote value={values[name] ?? ""} />}
             {filledForYou ? (
               <FieldDescription>
                 Leave empty to use each file from the step before. Fill it in to use one fixed file
