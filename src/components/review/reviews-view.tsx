@@ -50,7 +50,7 @@ function Fact({ label, value, wide }: { label: string; value: string; wide?: boo
   return (
     <span
       data-fact={label}
-      className={cn("hidden shrink-0 flex-col gap-0.5 xl:flex", wide ? "w-44" : "w-36")}
+      className={cn("hidden shrink-0 flex-col gap-0.5 2xl:flex", wide ? "w-44" : "w-36")}
     >
       <span className="text-muted-foreground text-xs">{label}</span>
       <span className="text-sm first-letter:uppercase">{value}</span>
@@ -90,10 +90,10 @@ function ReviewRow({ review }: { review: Listed }) {
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="line-clamp-2 text-base leading-snug font-medium">{review.title}</span>
           {/* On a narrow screen the facts sit under the title; wide, they get columns. */}
-          <span className="text-muted-foreground text-sm xl:hidden">
+          <span className="text-muted-foreground text-sm 2xl:hidden">
             {count(review.clips, "clip", "clips")} · {comments}
           </span>
-          <span className="text-muted-foreground text-xs xl:hidden">
+          <span className="text-muted-foreground text-xs 2xl:hidden">
             Opened {opened.format(review.createdAt)}
           </span>
           {review.fromRun && (
@@ -110,7 +110,7 @@ function ReviewRow({ review }: { review: Listed }) {
         <Fact label="Comments" value={comments} />
         <Fact label="Opened" value={opened.format(review.createdAt)} wide />
 
-        <span className="flex shrink-0 items-center justify-end gap-3 sm:pr-2 xl:w-40">
+        <span className="flex shrink-0 items-center justify-end gap-3 sm:pr-2 2xl:w-40">
           <Badge
             variant={
               review.status === "open"

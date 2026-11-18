@@ -579,7 +579,9 @@ function OpenRoom({
   }
 
   return (
-    <div className="flex min-h-[36rem] flex-col gap-3 lg:h-[calc(100svh-5rem)]">
+    // Exactly the page's height on a wide screen (the top bar is 4rem, the page's frame and
+    // bottom padding 2rem), so nothing scrolls and the clip gets every bit of height.
+    <div className="flex min-h-[36rem] flex-col gap-3 lg:h-[calc(100svh-6rem)]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <nav
           aria-label="Breadcrumb"

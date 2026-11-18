@@ -480,6 +480,12 @@ test("the room gives a tall clip only the width it needs and the comments the re
   // The comments get the rest of the row, so they are wider than the tall clip.
   expect(panel!.width).toBeGreaterThan(box!.width);
   expect(panel!.x).toBeGreaterThan(box!.x + box!.width);
+  // The room fits the window exactly: the page itself does not scroll.
+  expect(
+    await jordan
+      .locator("[data-page-frame]")
+      .evaluate((frame) => frame.scrollHeight - frame.clientHeight),
+  ).toBeLessThanOrEqual(1);
   // Nothing spills past the page.
   expect(await jordan.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     1440,
@@ -493,6 +499,7 @@ test("the Review list uses the whole width, with what waits for a decision first
   await expect(waiting.getByRole("link")).toContainText("station-interview");
   await expect(decided.getByRole("link")).toContainText("Approved");
   // Each review is a row across the page, with a picture of each of its clips.
+  await jordan.setViewportSize({ width: 1600, height: 900 });
   const row = await decided.getByRole("link").boundingBox();
   const heading = await jordan.getByRole("heading", { name: "Review", level: 1 }).boundingBox();
   const main = await jordan.locator("[data-page-frame]").boundingBox();
