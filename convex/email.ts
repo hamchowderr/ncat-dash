@@ -227,7 +227,7 @@ function siteUrl(path: string): string {
   return `${(process.env.SITE_URL ?? "").replace(/\/+$/, "")}${path}`;
 }
 
-const SETTINGS_PATH = "/settings#notifications";
+const SETTINGS_PATH = "/settings/notifications";
 
 /**
  * Emails an alert straight away to the members it is for who want that kind by email.

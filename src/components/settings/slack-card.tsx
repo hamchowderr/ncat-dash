@@ -184,7 +184,7 @@ export function SlackCard() {
   const [problem, setProblem] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  if (slack === undefined) return <Skeleton className="h-48 max-w-xl rounded-xl" />;
+  if (slack === undefined) return <Skeleton className="h-48 rounded-xl" />;
   if (slack === null) return null;
 
   const here = origin();
@@ -236,7 +236,7 @@ export function SlackCard() {
   }
 
   return (
-    <Card className="max-w-xl" data-slack-card>
+    <Card data-slack-card>
       <CardHeader>
         <CardTitle>
           <h2>Slack</h2>

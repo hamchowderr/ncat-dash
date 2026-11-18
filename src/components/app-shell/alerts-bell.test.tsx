@@ -94,7 +94,7 @@ describe("the bell", () => {
     expect(screen.getByText(/approvals for you and mentions show up here/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
       "href",
-      "/settings#notifications",
+      "/settings/notifications",
     );
   });
 });

@@ -42,7 +42,7 @@ export function EditorsCard({ editors, canEdit }: { editors: EditorId[]; canEdit
   }
 
   return (
-    <Card className="max-w-xl">
+    <Card>
       <CardHeader>
         <CardTitle>
           <h2>Video editors</h2>

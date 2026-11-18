@@ -2,6 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useAction, useMutation, useQuery } from "convex/react";
+import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -29,7 +30,7 @@ export function EmailCard() {
   const [busy, setBusy] = useState<"save" | "test" | "remove" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
-  if (email === undefined) return <Skeleton className="h-48 max-w-xl rounded-xl" />;
+  if (email === undefined) return <Skeleton className="h-48 rounded-xl" />;
 
   const showForm = email.canEdit && (editing || !email.configured);
 
@@ -83,7 +84,7 @@ export function EmailCard() {
   }
 
   return (
-    <Card className="max-w-xl">
+    <Card>
       <CardHeader>
         <CardTitle>
           <h2>Email</h2>
@@ -217,9 +218,9 @@ export function EmailCard() {
         <p className="text-muted-foreground pt-2 text-sm">
           Which emails you get, and whether they come as they happen or once a day, is up to you
           under{" "}
-          <a href="#notifications" className="underline">
+          <Link href="/settings/notifications" className="underline">
             Notifications
-          </a>
+          </Link>
           .
         </p>
       </CardContent>

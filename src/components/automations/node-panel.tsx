@@ -256,7 +256,7 @@ export function NodePanel({
           <AlertDescription>
             This step uses your team&apos;s {unset.join(" and ")}, which is not set yet.{" "}
             <Link
-              href="/settings"
+              href="/settings/brand"
               className="text-foreground font-medium underline underline-offset-4"
             >
               Add it in Settings
@@ -270,7 +270,7 @@ export function NodePanel({
         <p className="text-muted-foreground text-sm text-pretty">
           Nothing to set up. When a run finishes, press Open in editor on the run to download the
           timeline. Your editors are picked once in{" "}
-          <Link href="/settings" className="text-foreground underline underline-offset-4">
+          <Link href="/settings/editors" className="text-foreground underline underline-offset-4">
             Settings
           </Link>
           .
@@ -354,7 +354,7 @@ export function NodePanel({
                     <>
                       {" "}
                       (
-                      <Link href="/settings" className="underline underline-offset-2">
+                      <Link href="/settings/brand" className="underline underline-offset-2">
                         Settings
                       </Link>
                       )
