@@ -465,3 +465,45 @@ test("someone on another team cannot open the room", async ({ browser }) => {
   await expect(outsider.getByText(/Nothing to review yet/)).toBeVisible();
   await outsider.context().close();
 });
+
+test("the room gives a tall clip only the width it needs and the comments the rest", async () => {
+  await jordan.setViewportSize({ width: 1440, height: 900 });
+  await jordan.goto(roomUrl);
+  const clip = stage(jordan);
+  await expect(clip).toHaveAttribute("data-shape", /^0\./);
+  const picture = await clip.locator("video").boundingBox();
+  const box = await clip.boundingBox();
+  const panel = await comments(jordan).boundingBox();
+  // The clip fills the stage's height, and the stage is only its padding wider than it.
+  expect(picture!.height).toBeGreaterThan(box!.height * 0.75);
+  expect(box!.width - picture!.width).toBeLessThan(48);
+  // The comments get the rest of the row, so they are wider than the tall clip.
+  expect(panel!.width).toBeGreaterThan(box!.width);
+  expect(panel!.x).toBeGreaterThan(box!.x + box!.width);
+  // The room fits the window exactly: the page itself does not scroll.
+  expect(
+    await jordan
+      .locator("[data-page-frame]")
+      .evaluate((frame) => frame.scrollHeight - frame.clientHeight),
+  ).toBeLessThanOrEqual(1);
+  // Nothing spills past the page.
+  expect(await jordan.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    1440,
+  );
+});
+
+test("the Review list uses the whole width, with what waits for a decision first", async () => {
+  await jordan.goto("/review");
+  const waiting = jordan.getByRole("region", { name: "Waiting for a decision" });
+  const decided = jordan.getByRole("region", { name: "Decided" });
+  await expect(waiting.getByRole("link")).toContainText("station-interview");
+  await expect(decided.getByRole("link")).toContainText("Approved");
+  // Each review is a row across the page, with a picture of each of its clips.
+  await jordan.setViewportSize({ width: 1600, height: 900 });
+  const row = await decided.getByRole("link").boundingBox();
+  const heading = await jordan.getByRole("heading", { name: "Review", level: 1 }).boundingBox();
+  const main = await jordan.locator("[data-page-frame]").boundingBox();
+  expect(row!.x).toBeCloseTo(heading!.x, 0);
+  expect(row!.width).toBeGreaterThan(main!.width * 0.9);
+  await expect(decided.locator("[data-strip] video")).toHaveCount(2);
+});

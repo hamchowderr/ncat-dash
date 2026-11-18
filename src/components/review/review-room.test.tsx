@@ -153,6 +153,27 @@ describe("the review room", () => {
     expect(screen.queryByText("On version one")).not.toBeInTheDocument();
   });
 
+  test("the clip list shows a numbered picture of each clip's newest version", () => {
+    open();
+    const list = screen.getByRole("navigation", { name: "Clips in this review" });
+    const previews = list.querySelectorAll("[data-clip-preview]");
+    expect(previews).toHaveLength(2);
+    expect(previews[1].querySelector("video")).toHaveAttribute(
+      "src",
+      "https://files.example/b-v2.mp4#t=0.1",
+    );
+    expect(Array.from(previews).map((preview) => preview.textContent)).toEqual(["1", "2"]);
+  });
+
+  test("the clip and its comments share one row, which sizes the clip to its shape", () => {
+    open();
+    const stage = screen.getByRole("region", { name: "Clip" });
+    const comments = screen.getByRole("region", { name: "Comments" });
+    expect(stage.parentElement).toBe(comments.parentElement);
+    expect(stage.parentElement).toHaveClass("stage-row");
+    expect(stage).toHaveAttribute("data-stage");
+  });
+
   test("switching version changes the file and shows that version's comments", async () => {
     const { container, user } = open();
     await user.click(screen.getByRole("button", { name: /Why the station matters/ }));

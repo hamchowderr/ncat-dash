@@ -2,7 +2,14 @@
 
 import { formatMoment, momentPercent } from "@ncat-dash/review-core";
 import { Pause, Play } from "lucide-react";
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -24,9 +31,20 @@ export type Mark = {
   resolved: boolean;
 };
 
+/** Width over height of a loaded picture or video, or undefined while it is unknown. */
+export function shapeOf(media: HTMLVideoElement | HTMLImageElement): number | undefined {
+  const width = "videoWidth" in media ? media.videoWidth : media.naturalWidth;
+  const height = "videoHeight" in media ? media.videoHeight : media.naturalHeight;
+  return width > 0 && height > 0 ? width / height : undefined;
+}
+
 /**
  * The clip itself with its own play button and timeline. Faces on the timeline are
  * comments: pressing one jumps there and opens its thread.
+ *
+ * Inside a `stage-row` on a wide screen the stage is as wide as the clip needs to fill the
+ * full height, so a tall clip leaves the rest of the row to the comments instead of
+ * sitting in a wide black box (see globals.css).
  */
 export function ClipStage({
   url,
@@ -98,6 +116,21 @@ export function ClipStage({
     };
   }, [still, url, video]);
 
+  // The clip's own shape, which sets how wide the stage is.
+  const [shape, setShape] = useState<number>();
+  useEffect(() => {
+    const media = still ? picture.current : video.current;
+    if (!media) return;
+    const read = () => setShape(shapeOf(media));
+    read();
+    media.addEventListener("loadedmetadata", read);
+    media.addEventListener("load", read);
+    return () => {
+      media.removeEventListener("loadedmetadata", read);
+      media.removeEventListener("load", read);
+    };
+  }, [still, url, video]);
+
   const editing = drawing?.editing ?? null;
 
   function toggle() {
@@ -110,6 +143,9 @@ export function ClipStage({
   return (
     <section
       aria-label="Clip"
+      data-stage=""
+      data-shape={shape === undefined ? undefined : shape.toFixed(3)}
+      style={shape === undefined ? undefined : ({ "--clip-ratio": shape } as CSSProperties)}
       className="dark flex min-h-80 min-w-0 flex-col overflow-hidden rounded-xl bg-zinc-950 text-zinc-50"
     >
       <div className="flex min-h-12 flex-wrap items-center gap-2 px-4 py-2">{header}</div>
@@ -122,7 +158,7 @@ export function ClipStage({
             ref={picture}
             src={url}
             alt=""
-            className="max-h-full max-w-full rounded-md object-contain"
+            className="max-h-full max-w-full rounded-md object-contain lg:h-full lg:w-auto"
           />
         ) : (
           <video
@@ -137,7 +173,7 @@ export function ClipStage({
             onDurationChange={(event) => onDuration(event.currentTarget.duration)}
             onPlay={() => onPlaying(true)}
             onPause={() => onPlaying(false)}
-            className="max-h-full max-w-full cursor-pointer rounded-md bg-black object-contain"
+            className="max-h-full max-w-full cursor-pointer rounded-md bg-black object-contain lg:h-full lg:w-auto"
           />
         )}
         {drawing && (
