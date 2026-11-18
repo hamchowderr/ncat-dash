@@ -35,6 +35,7 @@ import { TeamApprovalSettings } from "./approval-panel";
 import { AutomationPicker } from "./automation-picker";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
+import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
 import { PlatformPicker } from "./platform-picker";
 
 type NodeContent = Omit<AutomationNode, "position">;
@@ -158,6 +159,12 @@ export function NodePanel({
         text: note.replace(/^Automatic\. Uses /, "").replace(/\. Fill it in.*$/, ""),
       });
     }
+  }
+  if (node.kind === "moments" || node.kind === "chapters") {
+    handled.push({
+      label: "Video",
+      text: "the nearest video before this step, transcribed with each word's timing",
+    });
   }
   const unset: string[] = [];
   for (const [name, { word, set }] of Object.entries(brandFields)) {
@@ -292,6 +299,18 @@ export function NodePanel({
         </Field>
       )}
 
+      {node.kind === "moments" && (
+        <MomentsMain
+          node={node}
+          feedsFollow={feedsFollow}
+          onChange={(input) => onChange({ input })}
+        />
+      )}
+
+      {node.kind === "chapters" && (
+        <ChaptersMain node={node} onChange={(input) => onChange({ input })} />
+      )}
+
       {node.kind === "approval" && <TeamApprovalSettings node={node} onChange={onChange} />}
 
       {(node.kind === "if" || node.kind === "wait") && (
@@ -396,6 +415,9 @@ export function NodePanel({
                 autoComplete="off"
               />
             </Field>
+            {node.kind === "moments" && (
+              <MomentsMore node={node} onChange={(input) => onChange({ input })} />
+            )}
             {node.kind === "step" && fields && (
               <StepFields
                 fields={rest}

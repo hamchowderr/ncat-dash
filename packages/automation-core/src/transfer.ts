@@ -147,7 +147,17 @@ export type ReadAutomationFile =
 const NOT_A_FILE =
   "This is not an automation file. Export one from an automation's page and choose that.";
 const FILE_TYPES = ["any", "video", "audio", "image"];
-const KINDS = ["step", "approval", "clips", "export", "if", "wait", "automation"];
+const KINDS = [
+  "step",
+  "approval",
+  "clips",
+  "export",
+  "if",
+  "wait",
+  "automation",
+  "moments",
+  "chapters",
+];
 const MAX_DEPTH = 12;
 // Names the database accepts for a setting: plain text that does not start with $ or _.
 const SAFE_KEY = /^(?![$_])[\x20-\x7e]{1,200}$/;

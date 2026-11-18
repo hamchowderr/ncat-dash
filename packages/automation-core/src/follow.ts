@@ -11,10 +11,14 @@ import { FAILURE_WAY } from "./logic";
 /** The step that reframes a video to follow whoever is talking (toolkit /v1/video/reframe). */
 export const FOLLOW_SPEAKER_STEP = "video-reframe";
 
+/** A step that cuts clips for a platform: Clips for a platform, or Best moments. */
+export const cutsClips = (node: AutomationNode | undefined): node is AutomationNode =>
+  node?.kind === "clips" || node?.kind === "moments";
+
 const isFollow = (node: AutomationNode | undefined) =>
   node?.kind === "step" && node.stepId === FOLLOW_SPEAKER_STEP && !node.off;
 
-/** True when the Clips step `clipsId` hands its clips straight to Follow the speaker. */
+/** True when the Clips or Best moments step `clipsId` hands its clips to Follow the speaker. */
 export function clipsKeepShape(
   clipsId: string,
   nodes: AutomationNode[],
@@ -41,7 +45,7 @@ export function followShapeFrom(
   for (const edge of edges) {
     if (edge.target !== node.id || edge.branch === FAILURE_WAY) continue;
     const source = nodes.find((candidate) => candidate.id === edge.source);
-    if (source?.kind !== "clips") continue;
+    if (!cutsClips(source)) continue;
     const frame = getPlatform(source.input.platform)?.frame;
     if (frame && frame !== "original") return frame;
   }
@@ -62,7 +66,7 @@ export function followShapeLine(
   const clips = edges
     .filter((edge) => edge.target === node.id)
     .map((edge) => nodes.find((candidate) => candidate.id === edge.source))
-    .find((source) => source?.kind === "clips");
+    .find(cutsClips);
   const platform = getPlatform(clips?.input.platform)?.name ?? "platform";
   return {
     aspect: `Automatic. Makes the ${frameName(frame).toLowerCase()} shape ${platform} clips need. Pick one to use your own instead.`,
