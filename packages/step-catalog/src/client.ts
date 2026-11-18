@@ -115,3 +115,57 @@ export async function testConnection(
   }
   return { ok: true, buildNumber: json.build_number == null ? null : String(json.build_number) };
 }
+
+/**
+ * What the toolkit knows about one of its jobs, from POST /v1/toolkit/job/status.
+ * "finished" carries the same envelope the webhook would have posted.
+ */
+export type ToolkitJobState =
+  | { state: "finished"; envelope: { code?: number; response?: unknown; message?: unknown } }
+  | { state: "working" }
+  | { state: "unknown" };
+
+/**
+ * Asks the toolkit about a job it was handed. Used when the job's webhook is late: the
+ * toolkit may have finished and failed to reach us, or lost the job when it restarted.
+ * Throws ToolkitError when the toolkit answers with anything but 200 or 404, and lets a
+ * network error through, so the caller can simply ask again later.
+ */
+export async function jobStatus(
+  connection: ToolkitConnection,
+  toolkitJobId: string,
+  options: Pick<CallOptions, "signal" | "fetch"> = {},
+): Promise<ToolkitJobState> {
+  const doFetch = options.fetch ?? fetch;
+  const res = await doFetch(joinUrl(connection.baseUrl, "/v1/toolkit/job/status"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-Key": connection.apiKey },
+    body: JSON.stringify({ job_id: toolkitJobId }),
+    signal: options.signal,
+  });
+  const text = await res.text();
+  if (res.status === 404) return { state: "unknown" };
+  if (!res.ok) {
+    throw new ToolkitError(`Toolkit answered ${res.status} for its job status`, res.status, text);
+  }
+  let json: { response?: { job_status?: unknown; response?: unknown } } | null = null;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = null;
+  }
+  const status = json?.response;
+  if (!status || typeof status !== "object") return { state: "unknown" };
+  if (status.job_status === "done") {
+    const envelope = status.response;
+    if (envelope && typeof envelope === "object") {
+      return { state: "finished", envelope: envelope as Record<string, unknown> };
+    }
+    return { state: "unknown" };
+  }
+  if (status.job_status === "queued" || status.job_status === "running") {
+    return { state: "working" };
+  }
+  // "failed" or anything else the toolkit may write: it will not send a result.
+  return { state: "unknown" };
+}
