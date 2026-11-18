@@ -421,6 +421,8 @@ type Connection = {
 /** The toolkit's state in one line, with the details and a fresh check one click away. */
 function ToolkitStatus({ connections }: { connections: Connection[] | undefined }) {
   const recheck = useAction(api.toolkitConnections.recheck);
+  const team = useActiveTeam();
+  const toolkitShown = useQuery(api.toolkitHealth.shown, { organizationId: team.id });
   const [checking, setChecking] = useState(false);
   const [open, setOpen] = useState(false);
   if (connections === undefined) return <Skeleton className="h-8 w-48" />;
@@ -495,13 +497,15 @@ function ToolkitStatus({ connections }: { connections: Connection[] | undefined 
           {!ok && connection.lastError && (
             <FailureText className="text-destructive" text={connection.lastError} />
           )}
-          <Link
-            href="/toolkit"
-            transitionTypes={["nav-forward"]}
-            className="text-muted-foreground hover:text-foreground text-sm underline-offset-2 hover:underline"
-          >
-            See how busy it is
-          </Link>
+          {toolkitShown !== false && (
+            <Link
+              href="/toolkit"
+              transitionTypes={["nav-forward"]}
+              className="text-muted-foreground hover:text-foreground text-sm underline-offset-2 hover:underline"
+            >
+              See how busy it is
+            </Link>
+          )}
         </div>
       )}
     </div>

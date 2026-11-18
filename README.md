@@ -191,6 +191,8 @@ On first start the agent server downloads a small text-embedding model (fastembe
 
 One codebase serves both editions. Self-hosted is the default. `npx convex env set NCAT_EDITION hosted` switches a deployment to the hosted edition.
 
+The Toolkit page (server load, queue, build) is for teams that run their own toolkit. On the hosted edition no team sees it. On a self-hosted copy that also lends a toolkit to teams, `npx convex env set HOSTED_TOOLKIT_URL https://your-toolkit` hides it from the teams connected to that address.
+
 ### Checks
 
 `pnpm test` runs three sets: each package's own tests, the Convex functions in memory (`convex/*.test.ts`, set up in `convex/test.setup.ts`), and the screens in a pretend browser (`src/**/*.test.ts(x)`). A change to a Convex function or a screen comes with a test in the matching set.
