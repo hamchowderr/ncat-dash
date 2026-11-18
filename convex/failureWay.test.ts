@@ -83,11 +83,11 @@ async function setUp({ fallback = true } = {}) {
       const alerts = await ctx.db.query("alerts").collect();
       return { run, byNode, jobs, alerts };
     });
-  const finishJob = async (jobId: Id<"jobs">, ok: boolean) =>
+  const finishJob = async (jobId: Id<"jobs">, ok: boolean, error = "FFmpeg gave up.") =>
     t.mutation(internal.jobs.finish, {
       jobId,
       ok,
-      ...(ok ? { result: "https://files.example/out/done.mp4" } : { error: "FFmpeg gave up." }),
+      ...(ok ? { result: "https://files.example/out/done.mp4" } : { error }),
       permanent: true,
     });
   return { look, finishJob };
@@ -127,5 +127,15 @@ describe("a way for when a step fails", () => {
     const end = await look();
     expect(end.run?.status).toBe("failed");
     expect(end.alerts).toHaveLength(1);
+  });
+
+  test("the alert says what went wrong in plain words; the run keeps the raw text", async () => {
+    const { look, finishJob } = await setUp({ fallback: false });
+    const raw = "Error: connect ECONNREFUSED 127.0.0.1:8080";
+    await finishJob((await look()).byNode.trim.jobIds[0], false, raw);
+    const end = await look();
+    expect(end.alerts[0].message).toMatch(/^The toolkit could not be reached\./);
+    expect(end.alerts[0].message).not.toContain("ECONNREFUSED");
+    expect(end.byNode.trim.error).toBe(raw);
   });
 });

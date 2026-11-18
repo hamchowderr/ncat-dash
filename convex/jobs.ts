@@ -9,10 +9,11 @@ import {
   internalQuery,
   mutation,
   query,
+  type QueryCtx,
 } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
-import { collectUrls } from "./lib/outputs";
+import { collectUrls, handOutputNames, outputNamesOf } from "./lib/outputs";
 import { enqueueJob, pump } from "./lib/queue";
 import { onJobFinished } from "./lib/runner";
 import { UploadLinkError, withUploadLinks } from "./storage";
@@ -82,6 +83,15 @@ export const get = query({
 });
 
 /** Finished jobs that produced files, newest first: the outputs library. */
+/** Readable names for a job's files: as its run names them, or else as a step run by hand. */
+async function namesOfJob(ctx: QueryCtx, job: Doc<"jobs">): Promise<Record<string, string>> {
+  const step = job.runStepId ? await ctx.db.get(job.runStepId) : null;
+  const run = step ? await ctx.db.get(step.runId) : null;
+  if (!step || !run) return handOutputNames(job);
+  const names = outputNamesOf(run, [step]);
+  return { ...handOutputNames(job), ...names };
+}
+
 export const outputs = query({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
@@ -93,14 +103,18 @@ export const outputs = query({
       )
       .order("desc")
       .take(100);
-    return done
-      .filter((job) => job.outputs.length > 0)
-      .map((job) => ({
-        jobId: job._id,
-        stepId: job.stepId,
-        finishedAt: job.finishedAt,
-        urls: job.outputs,
-      }));
+    return await Promise.all(
+      done
+        .filter((job) => job.outputs.length > 0)
+        .map(async (job) => ({
+          jobId: job._id,
+          stepId: job.stepId,
+          finishedAt: job.finishedAt,
+          urls: job.outputs,
+          // Readable names, by link: from the run the job was part of, if it was.
+          names: await namesOfJob(ctx, job),
+        })),
+    );
   },
 });
 

@@ -715,11 +715,14 @@ export const followRecords = internalMutation({
 
 // How far back links are followed. Older jobs keep the link they finished with.
 const RECENT_JOBS = 300;
-const RECENT_STEPS = 500;
+const RECENT_RUNS = 200;
+const RECENT_STEPS = 2000;
+const RECENT_REVIEWS = 100;
 
 /**
  * Moves the plain links that name a file by its address: the outputs of recent jobs and
- * run steps (what the Outputs page and a run show), a brand file kept as an address, and
+ * run steps (what the Outputs page and a run show), the clips in recent review rooms, a
+ * brand file kept as an address, and
  * the folder a watched-folder automation looks in. A link to a deleted file leaves the
  * outputs. Only links to this bucket at its own address are followed; a signed link, or
  * one through an address the storage settings do not name, cannot be told apart from any
@@ -754,14 +757,55 @@ export const followLinks = internalMutation({
       }
     }
 
-    const steps = await ctx.db
-      .query("runSteps")
-      .withIndex("by_organization_and_status", (q) => q.eq("organizationId", args.organizationId))
+    // By run, newest first: run steps listed by status would put the finished ones, which
+    // hold the files, behind every step still waiting or skipped.
+    const runs = await ctx.db
+      .query("runs")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .order("desc")
-      .take(RECENT_STEPS);
-    for (const step of steps) {
-      const outputs = followMoves(storage, step.outputs, moved);
-      if (outputs !== step.outputs) await ctx.db.patch(step._id, { outputs });
+      .take(RECENT_RUNS);
+    let stepsSeen = 0;
+    for (const run of runs) {
+      if (stepsSeen >= RECENT_STEPS) break;
+      // The file that started the run, so running it again finds the file.
+      const trigger = followMoves(storage, run.trigger, moved);
+      if (trigger !== run.trigger) await ctx.db.patch(run._id, { trigger });
+      const steps = await ctx.db
+        .query("runSteps")
+        .withIndex("by_run", (q) => q.eq("runId", run._id))
+        .take(200);
+      stepsSeen += steps.length;
+      for (const step of steps) {
+        const outputs = followMoves(storage, step.outputs, moved);
+        const branches = step.branches && followMoves(storage, step.branches, moved);
+        if (outputs !== step.outputs || branches !== step.branches) {
+          await ctx.db.patch(step._id, { outputs, ...(branches ? { branches } : {}) });
+        }
+      }
+    }
+
+    // Review rooms play each version of a clip from its link. A deleted file's version
+    // stays, so the comments made on it keep their place.
+    const reviews = await ctx.db
+      .query("reviews")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .order("desc")
+      .take(RECENT_REVIEWS);
+    for (const review of reviews) {
+      const clips = await ctx.db
+        .query("reviewClips")
+        .withIndex("by_review", (q) => q.eq("reviewId", review._id))
+        .take(100);
+      for (const clip of clips) {
+        let changed = false;
+        const versions = clip.versions.map((version) => {
+          const url = followMoves(storage, version.url, moved);
+          if (url === version.url) return version;
+          changed = true;
+          return { ...version, url };
+        });
+        if (changed) await ctx.db.patch(clip._id, { versions });
+      }
     }
 
     const settings = await ctx.db

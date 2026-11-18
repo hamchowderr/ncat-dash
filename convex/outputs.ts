@@ -5,7 +5,7 @@ import type { Doc } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { finishedFiles } from "./lib/exports";
-import { startingFileName } from "./runs";
+import { handOutputNames, outputNamesOf, startingFileName } from "./lib/outputs";
 
 /** Steps that hand on the files they were given rather than making new ones. */
 const PASSES_ON = new Set(["approval", "if", "wait"]);
@@ -97,6 +97,8 @@ export const byRun = query({
             startedWith: startingFileName(run.trigger),
             finished,
             along,
+            // Readable names for the files, by link.
+            names: outputNamesOf(run, steps),
           };
         }),
     );
@@ -125,6 +127,7 @@ export const byHand = query({
           stepId: job.stepId,
           finishedAt: job.finishedAt,
           urls: job.outputs,
+          names: handOutputNames(job),
         })),
     };
   },

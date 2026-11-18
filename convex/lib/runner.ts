@@ -1,4 +1,5 @@
 import {
+  explainFailure,
   approvalLimitMs,
   approvalSettings,
   askedToDecide,
@@ -656,7 +657,9 @@ async function alertTeam(ctx: MutationCtx, run: Doc<"runs">, step: Doc<"runSteps
     automationId: run.automationId,
     automationName: run.automationName,
     stepName: node ? (node.label ?? nodeTypeOf(node)?.title) : undefined,
-    message: step.error ?? "The step failed.",
+    // In plain words: the bell, email and Slack are read by people, not developers. The
+    // run keeps the full text for "Show details".
+    message: explainFailure(step.error).reason,
     retries: step.retries ?? 0,
   });
 }

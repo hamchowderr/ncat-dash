@@ -123,12 +123,17 @@ function AddVersion({ clip, organizationId }: { clip: Clip; organizationId: stri
   const addVersion = useMutation(api.reviews.addVersion);
   // Each file once, newest first, leaving out the ones this clip already has.
   const seen = new Set(clip.versions.map((version) => version.url));
-  const files: { url: string; stepId: string; finishedAt: number | null }[] = [];
+  const files: { url: string; name: string; stepId: string; finishedAt: number | null }[] = [];
   for (const group of groups ?? []) {
     for (const url of group.urls) {
       if (seen.has(url)) continue;
       seen.add(url);
-      files.push({ url, stepId: group.stepId, finishedAt: group.finishedAt });
+      files.push({
+        url,
+        name: group.names?.[url] ?? fileNameOf(url),
+        stepId: group.stepId,
+        finishedAt: group.finishedAt,
+      });
     }
   }
 
@@ -173,9 +178,7 @@ function AddVersion({ clip, organizationId }: { clip: Clip; organizationId: stri
                     onClick={() => void pick(file.url)}
                     className="hover:bg-accent focus-visible:bg-accent flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left outline-none"
                   >
-                    <span className="max-w-full truncate text-sm font-medium">
-                      {fileNameOf(file.url)}
-                    </span>
+                    <span className="max-w-full truncate text-sm font-medium">{file.name}</span>
                     <span className="text-muted-foreground text-xs">
                       {stepTitle(file.stepId)}
                       {file.finishedAt ? ` · ${finishedAt.format(file.finishedAt)}` : ""}

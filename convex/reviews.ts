@@ -165,7 +165,13 @@ export const people = query({
 
 /** Opens a review of some files, one clip each. */
 export const create = mutation({
-  args: { organizationId: v.string(), title: v.optional(v.string()), urls: v.array(v.string()) },
+  args: {
+    organizationId: v.string(),
+    title: v.optional(v.string()),
+    urls: v.array(v.string()),
+    // Readable names for the files, by link, as Outputs shows them.
+    names: v.optional(v.record(v.string(), v.string())),
+  },
   handler: async (ctx, args) => {
     const { userId } = await requireMember(ctx, args.organizationId);
     const urls = args.urls.filter((url) => /^https?:\/\//i.test(url));
@@ -174,6 +180,7 @@ export const create = mutation({
       title: args.title ?? "",
       urls,
       createdBy: userId,
+      names: args.names,
     });
     if (!reviewId) {
       throw new ConvexError({ code: "invalid", message: "Pick at least one file to review." });

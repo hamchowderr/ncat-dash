@@ -10,6 +10,7 @@ import { finishWait } from "./lib/logic";
 import { pump } from "./lib/queue";
 import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
+import { outputNamesOf, startingFileName } from "./lib/outputs";
 import {
   approvalTimeUp as decideWhenTimeIsUp,
   decideApproval,
@@ -18,18 +19,7 @@ import {
   startRun,
 } from "./lib/runner";
 
-/** The name of the file that started a run: as uploaded, or else from its address. */
-export function startingFileName(trigger: unknown): string | null {
-  const { file_name: name, file_url: url } = (trigger ?? {}) as Record<string, unknown>;
-  if (typeof name === "string" && name) return name;
-  if (typeof url !== "string") return null;
-  try {
-    const last = new URL(url).pathname.split("/").filter(Boolean).pop();
-    return last ? decodeURIComponent(last) : null;
-  } catch {
-    return null;
-  }
-}
+export { startingFileName };
 
 /** The name of the step a test run tried. */
 function testName(run: Doc<"runs">): string {
@@ -147,6 +137,8 @@ export const get = query({
       trigger: run.trigger,
       // The file that started the run, by name, when a file did.
       startedWith: startingFileName(run.trigger),
+      // Readable names for the run's files, by link.
+      outputNames: outputNamesOf(run, steps),
       // How many times a failed step tries again for this team.
       retryLimit: await retriesFor(ctx, run.organizationId),
       // The run that started this one, when another run did.
@@ -218,6 +210,8 @@ export const editorFiles = query({
       // The finished clips, for editors that open no timeline and for anyone who wants
       // everything in one folder.
       clips: finishedFiles(run, steps),
+      // Readable names for the clips, by link, to save them under.
+      clipNames: outputNamesOf(run, steps),
     };
   },
 });
