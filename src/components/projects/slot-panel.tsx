@@ -9,7 +9,7 @@ import {
   slotProblem,
 } from "@convex/lib/packages";
 import { useMutation, useQuery } from "convex/react";
-import { ExternalLink, Trash2, X } from "lucide-react";
+import { ExternalLink, Play, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
@@ -140,6 +140,65 @@ function AddFile({ slot }: { slot: Slot }) {
 }
 
 /**
+ * Runs one of the team's automations on the slot's newest file, for this project: the run
+ * uses the project's client, and its finished files come back into the project's slots.
+ */
+function RunAutomation({ slot }: { slot: Slot }) {
+  const team = useActiveTeam();
+  const automations = useQuery(api.automations.list, { organizationId: team.id });
+  const runOnSlot = useMutation(api.projects.runOnSlot);
+  const [picked, setPicked] = useState("");
+  const [pending, setPending] = useState(false);
+  if (!automations || automations.length === 0) return null;
+
+  async function onRun() {
+    const automation = automations?.find((entry) => entry._id === picked);
+    if (!automation) return;
+    setPending(true);
+    try {
+      await runOnSlot({ deliverableId: slot._id, automationId: automation._id });
+      setPicked("");
+      toast.success(`${automation.name} is running`, {
+        description: "Its finished files come back into this project.",
+      });
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The automation could not be started."));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section aria-label="Run an automation" className="flex flex-col gap-2">
+      <h3 className="text-sm font-semibold">Run an automation on it</h3>
+      <div className="flex gap-2">
+        <select
+          aria-label="Automation"
+          value={picked}
+          onChange={(event) => setPicked(event.target.value)}
+          className={cn(selectClass, "min-w-0 flex-1")}
+        >
+          <option value="">Pick one</option>
+          {automations.map((automation) => (
+            <option key={automation._id} value={automation._id}>
+              {automation.name}
+            </option>
+          ))}
+        </select>
+        <Button variant="outline" disabled={pending || !picked} onClick={() => void onRun()}>
+          <Play />
+          Run
+        </Button>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        Its finished files fill this project&apos;s empty slots. One file that fits this slot
+        becomes its next version.
+      </p>
+    </section>
+  );
+}
+
+/**
  * One slot's details beside the list or board, pushing it narrower rather than covering
  * it: the newest file, where it stands, a file to put in, and its review clip.
  */
@@ -254,6 +313,8 @@ export function SlotPanel({
       )}
 
       <AddFile key={slot._id} slot={slot} />
+
+      {slot.versions > 0 && <RunAutomation key={`run-${slot._id}`} slot={slot} />}
 
       <div className="pt-2">
         {confirming ? (

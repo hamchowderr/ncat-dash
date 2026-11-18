@@ -1,5 +1,6 @@
 "use client";
 
+import { KINDS, STATUSES } from "@convex/lib/packages";
 import { Check, Copy } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -30,6 +31,7 @@ function defaultFor(kind: TriggerKind): Trigger {
   if (kind === "upload") return { kind, fileType: "video" };
   if (kind === "folder") return { kind, prefix: "incoming/", fileType: "video" };
   if (kind === "finished") return { kind, automationId: "", when: "done" };
+  if (kind === "slot") return { kind, status: "approved", slotKind: "any" };
   return { kind: kind as "manual" | "webhook" };
 }
 
@@ -147,6 +149,57 @@ export function TriggerPanel({
                   ? "It gets the files that run finished with. After a failure, the files it started with."
                   : "It gets the files that run finished with."}{" "}
               Only runs of its published version count, and this automation has to be switched on.
+            </FieldDescription>
+          </Field>
+        </>
+      )}
+
+      {trigger.kind === "slot" && (
+        <>
+          <Field>
+            <FieldLabel htmlFor="trigger-slot-kind">Which slots</FieldLabel>
+            <Select
+              value={trigger.slotKind}
+              onValueChange={(slotKind) =>
+                onChange({ ...trigger, slotKind: slotKind as typeof trigger.slotKind })
+              }
+            >
+              <SelectTrigger id="trigger-slot-kind" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any slot</SelectItem>
+                {KINDS.map(({ kind, label }) => (
+                  <SelectItem key={kind} value={kind}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="trigger-slot-status">When it moves to</FieldLabel>
+            <Select
+              value={trigger.status}
+              onValueChange={(status) =>
+                onChange({ ...trigger, status: status as typeof trigger.status })
+              }
+            >
+              <SelectTrigger id="trigger-slot-status" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUSES.map(({ status, label }) => (
+                  <SelectItem key={status} value={status}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              It gets the slot&apos;s newest file, and works for the project&apos;s client. Its
+              finished files fill the project&apos;s empty slots. The automation has to be switched
+              on.
             </FieldDescription>
           </Field>
         </>

@@ -44,6 +44,26 @@ const fileTypeValidator = v.union(
   v.literal("image"),
 );
 
+/** What a slot in a project holds, which decides the files it takes. */
+export const deliverableKindValidator = v.union(
+  // The full-length video, such as a podcast episode.
+  v.literal("video"),
+  v.literal("short"),
+  v.literal("thumbnail"),
+  v.literal("audio"),
+  // Anything else the team agreed to deliver.
+  v.literal("other"),
+);
+
+/** Where a deliverable is, as a column on the project's board. */
+export const deliverableStatusValidator = v.union(
+  v.literal("todo"),
+  v.literal("in_progress"),
+  v.literal("review"),
+  v.literal("approved"),
+  v.literal("published"),
+);
+
 export const triggerValidator = v.union(
   v.object({ kind: v.literal("manual") }),
   v.object({ kind: v.literal("webhook") }),
@@ -68,6 +88,11 @@ export const triggerValidator = v.union(
     kind: v.literal("finished"),
     automationId: v.string(),
     when: v.union(v.literal("done"), v.literal("failed"), v.literal("either")),
+  }),
+  v.object({
+    kind: v.literal("slot"),
+    status: deliverableStatusValidator,
+    slotKind: v.union(v.literal("any"), deliverableKindValidator),
   }),
 );
 
@@ -137,26 +162,6 @@ export const brandValidator = v.object({
   font: v.optional(v.string()),
   music: v.optional(v.string()),
 });
-
-/** What a slot in a project holds, which decides the files it takes. */
-export const deliverableKindValidator = v.union(
-  // The full-length video, such as a podcast episode.
-  v.literal("video"),
-  v.literal("short"),
-  v.literal("thumbnail"),
-  v.literal("audio"),
-  // Anything else the team agreed to deliver.
-  v.literal("other"),
-);
-
-/** Where a deliverable is, as a column on the project's board. */
-export const deliverableStatusValidator = v.union(
-  v.literal("todo"),
-  v.literal("in_progress"),
-  v.literal("review"),
-  v.literal("approved"),
-  v.literal("published"),
-);
 
 // Users, sessions, organizations (teams), members and invitations live in the
 // Better Auth component (convex/betterAuth). App tables point at a team by its
@@ -354,6 +359,8 @@ export default defineSchema({
       v.literal("finished"),
       // A "Run an automation" step in another run started it.
       v.literal("automation"),
+      // A project slot moved to the status its trigger waits for.
+      v.literal("slot"),
     ),
     // What the trigger handed over: file_url, the webhook body, the upload's details.
     trigger: v.any(),
@@ -378,6 +385,10 @@ export default defineSchema({
     chain: v.optional(v.array(v.id("automations"))),
     // The client the automation was for when the run started.
     clientId: v.optional(v.id("clients")),
+    // The project the run works for, and the slot it started from. Its finished files
+    // fill the project's empty slots.
+    projectId: v.optional(v.id("projects")),
+    deliverableId: v.optional(v.id("deliverables")),
   })
     .index("by_automation", ["automationId"])
     .index("by_parentRun", ["parentRunId"])

@@ -4,8 +4,10 @@ import { components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { notify } from "./alerts";
-import { slotProblem } from "./packages";
+import { finishedFilesOf } from "./chain";
+import { type DeliverableKind, type DeliverableStatus, fileKindOf, slotProblem } from "./packages";
 import { CLIP_LIMIT, VERSION_LIMIT } from "./reviews";
+import { startRun } from "./runner";
 import { toSlack } from "./slackPosts";
 
 /** The project's review room, opened the first time a slot gets a version. */
@@ -33,6 +35,8 @@ export async function putInSlot(
   deliverable: Doc<"deliverables">,
   url: string,
   by: { userId: string | null; name: string },
+  // A run's own files go in without starting more automations, so runs cannot loop.
+  { quiet = false }: { quiet?: boolean } = {},
 ): Promise<void> {
   if (!/^https?:\/\//i.test(url)) {
     throw new ConvexError({ code: "invalid_input", message: "That is not a file address." });
@@ -86,6 +90,10 @@ export async function putInSlot(
     updatedAt: now,
   });
   await ctx.db.patch(project._id, { updatedAt: now });
+  if (!quiet && deliverable.status !== "review") {
+    const moved = await ctx.db.get(deliverable._id);
+    if (moved) await slotMoved(ctx, moved, "review");
+  }
 
   const count = deliverable.versions.length + 1;
   await notify(ctx, {
@@ -148,9 +156,126 @@ export async function decideProjectSlots(
     .withIndex("by_project", (q) => q.eq("projectId", project._id))
     .take(200);
   const now = Date.now();
+  const status = approved ? "approved" : "in_progress";
   for (const slot of slots) {
     if (slot.status !== "review") continue;
-    await ctx.db.patch(slot._id, { status: approved ? "approved" : "in_progress", updatedAt: now });
+    await ctx.db.patch(slot._id, { status, updatedAt: now });
+    await slotMoved(ctx, { ...slot, status }, status);
+  }
+}
+
+/**
+ * Starts the team's switched-on automations that wait for a slot of this kind to move to
+ * this status. Each gets the slot's newest file and works for the project's client.
+ */
+export async function slotMoved(
+  ctx: MutationCtx,
+  slot: Doc<"deliverables">,
+  status: DeliverableStatus,
+): Promise<void> {
+  const waiting = await ctx.db
+    .query("automations")
+    .withIndex("by_enabled_and_trigger_kind", (q) =>
+      q.eq("enabled", true).eq("trigger.kind", "slot"),
+    )
+    .take(500);
+  const starting = waiting.filter(
+    ({ organizationId, trigger }) =>
+      organizationId === slot.organizationId &&
+      trigger.kind === "slot" &&
+      trigger.status === status &&
+      (trigger.slotKind === "any" || trigger.slotKind === slot.kind),
+  );
+  if (starting.length === 0) return;
+  const project = await ctx.db.get(slot.projectId);
+  if (!project) return;
+  const newest = slot.versions[slot.versions.length - 1]?.url;
+  for (const automation of starting) {
+    await startRun(
+      ctx,
+      automation,
+      "slot",
+      {
+        ...(newest ? { file_url: newest } : {}),
+        project: project.name,
+        slot: slot.label,
+        status,
+      },
+      null,
+      { project: projectOf(project, slot._id) },
+    );
+  }
+}
+
+export function projectOf(project: Doc<"projects">, deliverableId?: Id<"deliverables">) {
+  return {
+    projectId: project._id,
+    ...(deliverableId ? { deliverableId } : {}),
+    ...(project.clientId ? { clientId: project.clientId } : {}),
+  };
+}
+
+/** The kinds of slot a file goes in, most fitting first. */
+function slotKindsFor(url: string, videos: number): DeliverableKind[] {
+  const kind = fileKindOf(url);
+  if (kind === "image") return ["thumbnail"];
+  if (kind === "audio") return ["audio"];
+  if (kind === "video") return videos > 1 ? ["short", "video"] : ["video", "short"];
+  return [];
+}
+
+/**
+ * A finished run for a project hands its files to the project. One file that fits the
+ * slot the run started from becomes that slot's next version, such as a captioned cut of
+ * the episode. Otherwise each file fills the next empty slot it fits: pictures go to
+ * thumbnails, sound to the audio slot, several videos to the shorts and one video to the
+ * full video first. Files with nowhere to go stay in the run's outputs.
+ */
+export async function fillProjectSlots(ctx: MutationCtx, run: Doc<"runs">): Promise<void> {
+  if (!run.projectId) return;
+  const project = await ctx.db.get(run.projectId);
+  if (!project || project.organizationId !== run.organizationId) return;
+  const steps = await ctx.db
+    .query("runSteps")
+    .withIndex("by_run", (q) => q.eq("runId", run._id))
+    .take(200);
+  const files = finishedFilesOf(run, steps).filter((url) => /^https?:\/\//i.test(url));
+  if (files.length === 0) return;
+  const slots = (
+    await ctx.db
+      .query("deliverables")
+      .withIndex("by_project", (q) => q.eq("projectId", project._id))
+      .take(200)
+  ).sort((a, b) => a.order - b.order);
+  const by = { userId: null, name: run.automationName };
+  const put = async (slot: Doc<"deliverables">, url: string) => {
+    try {
+      await putInSlot(ctx, slot, url, by, { quiet: true });
+      return true;
+    } catch (caught) {
+      // A full slot or review room keeps the file in the run's outputs; the run is fine.
+      if (caught instanceof ConvexError) return false;
+      throw caught;
+    }
+  };
+
+  const origin = run.deliverableId ? slots.find((slot) => slot._id === run.deliverableId) : null;
+  if (files.length === 1 && origin && fileKindOf(files[0]) && !slotProblem(origin.kind, files[0])) {
+    await put(origin, files[0]);
+    return;
+  }
+  const videos = files.filter((url) => fileKindOf(url) === "video").length;
+  const used = new Set<string>();
+  for (const url of files) {
+    for (const kind of slotKindsFor(url, videos)) {
+      const empty = slots.find(
+        (slot) => slot.kind === kind && slot.versions.length === 0 && !used.has(slot._id),
+      );
+      if (!empty) continue;
+      used.add(empty._id);
+      await put(empty, url);
+      break;
+    }
   }
 }
 

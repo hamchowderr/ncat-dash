@@ -11,7 +11,8 @@ import {
   slotsFor,
   STATUSES,
 } from "./lib/packages";
-import { putInSlot } from "./lib/projects";
+import { projectOf, putInSlot, slotMoved } from "./lib/projects";
+import { startRun } from "./lib/runner";
 import { deliverableKindValidator, deliverableStatusValidator } from "./schema";
 
 /** The most projects a team's list shows, and the longest name one can have. */
@@ -289,6 +290,36 @@ export const setStatus = mutation({
     const now = Date.now();
     await ctx.db.patch(slot._id, { status: args.status, updatedAt: now });
     await ctx.db.patch(slot.projectId, { updatedAt: now });
+    await slotMoved(ctx, { ...slot, status: args.status }, args.status);
+  },
+});
+
+/**
+ * Runs one of the team's automations on a slot's newest file, for the slot's project: the
+ * run uses the project's client, and its finished files go back into the project.
+ */
+export const runOnSlot = mutation({
+  args: { deliverableId: v.id("deliverables"), automationId: v.id("automations") },
+  handler: async (ctx, args) => {
+    const { slot, userId } = await loadSlot(ctx, args.deliverableId);
+    const automation = await ctx.db.get(args.automationId);
+    if (!automation || automation.organizationId !== slot.organizationId) {
+      return fail("not_found", "That automation is gone.");
+    }
+    const project = await ctx.db.get(slot.projectId);
+    if (!project) return fail("not_found", "That project is gone.");
+    const newest = slot.versions[slot.versions.length - 1]?.url;
+    if (!newest) return fail("invalid_input", "Put a file in this slot first.");
+    const started = await startRun(
+      ctx,
+      automation,
+      "manual",
+      { file_url: newest, project: project.name, slot: slot.label },
+      userId,
+      { project: projectOf(project, slot._id) },
+    );
+    if (!started.ok) return fail("invalid_input", started.message);
+    return started.runId;
   },
 });
 

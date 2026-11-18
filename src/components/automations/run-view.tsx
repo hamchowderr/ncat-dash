@@ -49,6 +49,7 @@ function runTrigger(kind: RunTriggerKind): Trigger {
   if (kind === "schedule") return { kind, schedule: { mode: "interval", minutes: 60 } };
   if (kind === "upload") return { kind, fileType: "any" };
   if (kind === "folder") return { kind, prefix: "", fileType: "any" };
+  if (kind === "slot") return { kind, status: "approved", slotKind: "any" };
   return { kind };
 }
 

@@ -28,6 +28,13 @@ export type StarterTrigger =
       automationId: string;
       /** "done": after it works. "failed": after it fails. "either": both. */
       when: "done" | "failed" | "either";
+    }
+  | {
+      /** Starts when a project slot moves to a status, on the slot's newest file. */
+      kind: "slot";
+      status: "todo" | "in_progress" | "review" | "approved" | "published";
+      /** Which slots: one kind, or "any". */
+      slotKind: "any" | "video" | "short" | "thumbnail" | "audio" | "other";
     };
 
 /** What a ready-made automation is for, so the whole list can be sorted and filtered. */

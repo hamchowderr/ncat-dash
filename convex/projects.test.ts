@@ -273,3 +273,186 @@ describe("the board and slots", () => {
     expect(await maya.as.query(api.reviews.get, { reviewId })).not.toBeNull();
   });
 });
+
+const SHORT_A = "https://files.example/clip-1.mp4";
+const SHORT_B = "https://files.example/clip-2.mp4";
+
+/** A switched-on automation with one step, waiting for a slot to move. */
+async function waitingFor(
+  t: Awaited<ReturnType<typeof podcast>>["t"],
+  team: string,
+  by: string,
+  trigger: { kind: "slot"; status: "review" | "approved"; slotKind: "any" | "video" | "short" },
+) {
+  return await t.run((ctx) =>
+    ctx.db.insert("automations", {
+      organizationId: team,
+      name: "Make the shorts",
+      enabled: true,
+      trigger,
+      nodes: [
+        {
+          id: "caps",
+          kind: "step",
+          stepId: "video-caption",
+          input: {},
+          position: { x: 0, y: 0 },
+        },
+      ],
+      edges: [],
+      hookToken: "token",
+      nextRunAt: null,
+      createdBy: by,
+      updatedAt: Date.now(),
+    }),
+  );
+}
+
+/** Ends a run's only step with these files, the way a finished job would. */
+async function finish(t: Awaited<ReturnType<typeof podcast>>["t"], runId: string, files: string[]) {
+  const { advance } = await import("./lib/runner");
+  await t.run(async (ctx) => {
+    const id = ctx.db.normalizeId("runs", runId)!;
+    // No toolkit here, so the step is ended by hand as if its job had worked.
+    await ctx.db.patch(id, { status: "running", error: null, finishedAt: null });
+    const steps = await ctx.db
+      .query("runSteps")
+      .withIndex("by_run", (q) => q.eq("runId", id))
+      .collect();
+    for (const step of steps) {
+      await ctx.db.patch(step._id, {
+        status: "done",
+        outputs: files,
+        startedAt: 0,
+        finishedAt: Date.now(),
+      });
+    }
+    await advance(ctx, id);
+  });
+}
+
+describe("automations and projects", () => {
+  test("a slot moving to a status starts the automations waiting for it, for the project's client", async () => {
+    const { t, team, maya, dev, projectId, slot } = await podcast();
+    const acme = await dev.as.mutation(api.clients.create, { organizationId: team, name: "Acme" });
+    await dev.as.mutation(api.projects.setClient, { projectId, clientId: acme });
+    await waitingFor(t, team, maya.id, { kind: "slot", status: "approved", slotKind: "video" });
+    const onShorts = await waitingFor(t, team, maya.id, {
+      kind: "slot",
+      status: "approved",
+      slotKind: "short",
+    });
+    const episode = slot("Full episode")._id;
+    await dev.as.mutation(api.projects.addVersion, { deliverableId: episode, url: VIDEO });
+    // In review is not what they wait for.
+    expect(await t.run((ctx) => ctx.db.query("runs").collect())).toHaveLength(0);
+
+    await dev.as.mutation(api.projects.setStatus, { deliverableId: episode, status: "approved" });
+    const runs = await t.run((ctx) => ctx.db.query("runs").collect());
+    expect(runs).toHaveLength(1);
+    expect(runs[0].automationId).not.toBe(onShorts);
+    expect(runs[0]).toMatchObject({
+      triggerKind: "slot",
+      projectId,
+      deliverableId: episode,
+      clientId: acme,
+      trigger: { file_url: VIDEO, project: "Episode 12", slot: "Full episode", status: "approved" },
+    });
+  });
+
+  test("approving the review room starts them too; a switched-off one never starts", async () => {
+    const { t, team, maya, dev, projectId, slot } = await podcast();
+    const automationId = await waitingFor(t, team, maya.id, {
+      kind: "slot",
+      status: "approved",
+      slotKind: "any",
+    });
+    await dev.as.mutation(api.projects.addVersion, {
+      deliverableId: slot("Full episode")._id,
+      url: VIDEO,
+    });
+    const project = (await dev.as.query(api.projects.get, { projectId }))!;
+    await t.run((ctx) => ctx.db.patch(automationId, { enabled: false }));
+    await maya.as.mutation(api.reviews.decide, { reviewId: project.review!._id, approved: true });
+    expect(await t.run((ctx) => ctx.db.query("runs").collect())).toHaveLength(0);
+    // A new version opens the room again for the next round.
+    await dev.as.mutation(api.projects.addVersion, {
+      deliverableId: slot("Full episode")._id,
+      url: VIDEO_2,
+    });
+    await t.run((ctx) => ctx.db.patch(automationId, { enabled: true }));
+    await maya.as.mutation(api.reviews.decide, { reviewId: project.review!._id, approved: true });
+    expect(await t.run((ctx) => ctx.db.query("runs").collect())).toHaveLength(1);
+  });
+
+  test("a project run's videos fill the empty shorts, and its picture the thumbnail", async () => {
+    const { t, team, maya, dev, projectId, slot } = await podcast();
+    await waitingFor(t, team, maya.id, { kind: "slot", status: "approved", slotKind: "video" });
+    const episode = slot("Full episode")._id;
+    await dev.as.mutation(api.projects.addVersion, { deliverableId: episode, url: VIDEO });
+    await dev.as.mutation(api.projects.setStatus, { deliverableId: episode, status: "approved" });
+    const [run] = await t.run((ctx) => ctx.db.query("runs").collect());
+    await finish(t, run._id, [SHORT_A, SHORT_B, PICTURE]);
+
+    const project = (await dev.as.query(api.projects.get, { projectId }))!;
+    const shown = Object.fromEntries(project.slots.map((entry) => [entry.label, entry]));
+    expect(shown["Short 1"]).toMatchObject({ url: SHORT_A, status: "review" });
+    expect(shown["Short 2"]).toMatchObject({ url: SHORT_B, status: "review" });
+    expect(shown["Episode thumbnail"]).toMatchObject({ url: PICTURE, status: "review" });
+    // The episode itself stays as it was, and nothing waiting for In review started.
+    expect(shown["Full episode"]).toMatchObject({ url: VIDEO, status: "approved", versions: 1 });
+    expect(await t.run((ctx) => ctx.db.query("runs").collect())).toHaveLength(1);
+    // The team hears about each, from the automation.
+    const alerts = await t.run((ctx) =>
+      ctx.db
+        .query("alerts")
+        .filter((q) => q.eq(q.field("from"), "Make the shorts"))
+        .collect(),
+    );
+    expect(alerts.map((alert) => alert.stepName).sort()).toEqual([
+      "Episode thumbnail",
+      "Short 1",
+      "Short 2",
+    ]);
+  });
+
+  test("one file that fits the slot a run started from becomes its next version", async () => {
+    const { t, dev, projectId, slot } = await podcast();
+    const automationId = await waitingFor(t, "unused", "nobody", {
+      kind: "slot",
+      status: "approved",
+      slotKind: "any",
+    });
+    const team = (await dev.as.query(api.projects.get, { projectId }))!.organizationId;
+    await t.run((ctx) => ctx.db.patch(automationId, { organizationId: team, enabled: false }));
+    const episode = slot("Full episode")._id;
+    await dev.as.mutation(api.projects.addVersion, { deliverableId: episode, url: VIDEO });
+    const runId = await dev.as.mutation(api.projects.runOnSlot, {
+      deliverableId: episode,
+      automationId,
+    });
+    const run = await t.run((ctx) => ctx.db.get(runId));
+    expect(run).toMatchObject({ projectId, deliverableId: episode, trigger: { file_url: VIDEO } });
+    await finish(t, runId, [VIDEO_2]);
+    const project = (await dev.as.query(api.projects.get, { projectId }))!;
+    const shown = project.slots.find((entry) => entry._id === episode)!;
+    expect(shown).toMatchObject({ url: VIDEO_2, versions: 2, status: "review" });
+  });
+
+  test("running on a slot needs a file in it, and the team's own automation", async () => {
+    const { t, dev, outsider, slot } = await podcast();
+    const theirs = await waitingFor(t, "other-team", outsider.id, {
+      kind: "slot",
+      status: "approved",
+      slotKind: "any",
+    });
+    const episode = slot("Full episode")._id;
+    await expect(
+      dev.as.mutation(api.projects.runOnSlot, { deliverableId: episode, automationId: theirs }),
+    ).rejects.toThrow(/gone/);
+    await dev.as.mutation(api.projects.addVersion, { deliverableId: episode, url: VIDEO });
+    await expect(
+      dev.as.mutation(api.projects.runOnSlot, { deliverableId: episode, automationId: theirs }),
+    ).rejects.toThrow(/gone/);
+  });
+});

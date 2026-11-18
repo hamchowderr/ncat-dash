@@ -311,3 +311,26 @@ describe("a project's page", () => {
     expect(screen.getByText("This project no longer exists.")).toBeInTheDocument();
   });
 });
+
+describe("running an automation on a slot", () => {
+  test("starts the picked automation on the slot's file, once it has one", async () => {
+    const user = userEvent.setup();
+    answerQuery(api.projects.get, project());
+    answerQuery(api.clients.list, []);
+    answerQuery(api.jobs.outputs, []);
+    answerQuery(api.automations.list, [{ _id: "a1", name: "Make the shorts" }]);
+    const runOnSlot = mutationOf(api.projects.runOnSlot);
+    renderInApp(<ProjectView projectId={"p1" as never} />);
+
+    // An empty slot has nothing to run on.
+    await user.click(screen.getByRole("button", { name: /Full episode/ }));
+    expect(screen.queryByRole("region", { name: "Run an automation" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Episode thumbnail/ }));
+    const run = screen.getByRole("region", { name: "Run an automation" });
+    expect(within(run).getByRole("button", { name: "Run" })).toBeDisabled();
+    await user.selectOptions(within(run).getByLabelText("Automation"), "a1");
+    await user.click(within(run).getByRole("button", { name: "Run" }));
+    expect(runOnSlot).toHaveBeenCalledWith({ deliverableId: "s2", automationId: "a1" });
+  });
+});
