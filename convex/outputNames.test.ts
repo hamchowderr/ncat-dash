@@ -119,7 +119,7 @@ describe("readable names for a run's files", () => {
     const reviewId = await olu.as.mutation(api.reviews.create, {
       organizationId: teamId,
       title: "Shorts",
-      urls: [captioned(0), `${BUCKET}/${JOB}.mp4`],
+      urls: [captioned(0), `${BUCKET}/${JOB}.mp4`, `${BUCKET}/opening-hello.mp4`],
       names: { [captioned(0)]: "Space interviews clip 1" },
     });
     const titles = await t.run(async (ctx) =>
@@ -131,7 +131,8 @@ describe("readable names for a run's files", () => {
       ).map((clip) => clip.title),
     );
     // A file with no name sent and a job id for a name is called by its place.
-    expect(titles).toEqual(["Space interviews clip 1", "Clip 2"]);
+    // A file a person named keeps its own name, said plainly.
+    expect(titles).toEqual(["Space interviews clip 1", "Clip 2", "Opening hello"]);
   });
 });
 

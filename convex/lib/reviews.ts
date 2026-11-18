@@ -1,4 +1,4 @@
-import { fileNameOfLink, plainName } from "@ncat-dash/automation-core";
+import { fileNameOfLink, isMachineName } from "@ncat-dash/automation-core";
 import { clipTitleFrom, TITLE_LIMIT } from "@ncat-dash/review-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -10,9 +10,11 @@ import { toSlack } from "./slackPosts";
  * its file name said plainly, else "Clip 2" for a file named after a toolkit job id.
  */
 export function clipTitle(url: string, at: number, names: Record<string, string> = {}): string {
+  // A name a person gave the file reads best as it is ("opening-hello.mp4" is "Opening hello").
+  if (!isMachineName(fileNameOfLink(url))) return clipTitleFrom(url);
   const known = names[url]?.trim();
   if (known) return known.replace(/\.[a-z0-9]{2,5}$/i, "").slice(0, TITLE_LIMIT);
-  return plainName(fileNameOfLink(url)) ? clipTitleFrom(url) : `Clip ${at + 1}`;
+  return `Clip ${at + 1}`;
 }
 
 /** The most clips one review holds, and the most versions one clip keeps. */
