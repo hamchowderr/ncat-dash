@@ -33,6 +33,10 @@ describe("connecting a toolkit sets up storage too", () => {
       apiKey: "toolkit-key",
     });
     expect(result).toEqual({ ok: true, buildNumber: "210" });
+    // Connecting sets up the team's folder afterwards. Let it finish here: test backends
+    // reuse ids, so left running it would write into a later test's stand-in bucket.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await t.finishInProgressScheduledFunctions();
     expect(await owner.as.query(api.storage.get, { organizationId: team })).toEqual({
       bucket: "test-bucket",
       publicUrl: "https://files.example",
