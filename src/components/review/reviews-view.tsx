@@ -60,7 +60,8 @@ function Fact({ label, value, wide }: { label: string; value: string; wide?: boo
 
 /** A review as one full-width row: every clip's picture, what it is, and where it stands. */
 function ReviewRow({ review }: { review: Listed }) {
-  const covers = review.covers;
+  // A backend older than this screen sends only the first clip's picture.
+  const covers: string[] = review.covers ?? (review.cover ? [review.cover] : []);
   const more = review.clips - covers.length;
   const comments =
     review.comments === 0

@@ -124,6 +124,14 @@ describe("the Review list", () => {
     expect(within(row).getByText("+3")).toBeInTheDocument();
   });
 
+  test("still shows the first clip's picture from a backend that sends only that", () => {
+    answerQuery(api.reviews.list, [review({ clips: 3, covers: undefined })]);
+    renderInApp(<ReviewsView />);
+    const row = screen.getByRole("link");
+    expect(row.querySelectorAll("[data-strip] video")).toHaveLength(1);
+    expect(within(row).getByText("+2")).toBeInTheDocument();
+  });
+
   test("gives the facts their own columns on a wide screen", () => {
     answerQuery(api.reviews.list, [review({ clips: 4, comments: 5, open: 2 })]);
     renderInApp(<ReviewsView />);
