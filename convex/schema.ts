@@ -739,6 +739,22 @@ export default defineSchema({
     .index("by_token", ["token"])
     .index("by_review", ["reviewId"]),
 
+  // A client's portal: one link where the client sees only their own projects, in the
+  // team's logo and colours, and opens each project's review room. At most one per client;
+  // switching it off deletes it, so the old link stops working for good.
+  clientPortals: defineTable({
+    clientId: v.id("clients"),
+    organizationId: v.string(),
+    // The secret in the link (/portal/<token>).
+    token: v.string(),
+    createdBy: v.string(),
+    // Passed on to each review room the client opens from the portal.
+    allowVerdict: v.boolean(),
+    showTeamComments: v.boolean(),
+  })
+    .index("by_token", ["token"])
+    .index("by_client", ["clientId"]),
+
   // One clip in a review. A changed clip is added as a new version, so comments on the
   // earlier ones stay where they were made.
   reviewClips: defineTable({

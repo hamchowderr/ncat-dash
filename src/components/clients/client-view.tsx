@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 
 import { ClientMark } from "./clients-view";
+import { PortalSettings } from "./portal-settings";
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.clients.get>>>;
 
@@ -238,6 +239,13 @@ function Client({ client }: { client: Loaded }) {
               save={(typed) => setBrand({ clientId: client._id, ...typed })}
             />
           </div>
+        </Section>
+
+        <Section
+          title="Client portal"
+          line="One link for this client: they see only their projects, in your logo and colours, and review each one. No account needed."
+        >
+          <PortalSettings clientId={client._id} />
         </Section>
 
         <Section title="Delivery folder" line="Where this client's finished files are kept.">

@@ -8,11 +8,18 @@ const stamp = Date.now().toString(36);
 const TOOLKIT = "http://127.0.0.1:8767";
 const FILES = "http://127.0.0.1:8766";
 
+const recording = process.env.RECORD_VIDEO
+  ? { dir: "test-results/portal", size: { width: 1440, height: 900 } }
+  : undefined;
+
 test.use({
-  video: process.env.RECORD_VIDEO ? { mode: "on", size: { width: 1440, height: 900 } } : "off",
+  video: recording ? { mode: "on", size: recording.size } : "off",
 });
 
-test("a client's project is laid out from a package and worked through", async ({ page }) => {
+test("a client's project is laid out from a package and worked through", async ({
+  page,
+  browser,
+}) => {
   await page.goto("/sign-up");
   await page.locator("#name").fill("Noa Fischer");
   await page.locator("#email").fill(`noa.${stamp}@example.test`);
@@ -95,6 +102,27 @@ test("a client's project is laid out from a package and worked through", async (
   const row = page.getByRole("link", { name: /Episode 12/ });
   await expect(row).toContainText("Acme Studio");
   await expect(row).toContainText("1 of 7");
+
+  // The client's portal: one link, only their projects, in the team's name.
+  await page.getByRole("link", { name: "Clients", exact: true }).click();
+  await page.getByRole("link", { name: /Acme Studio/ }).click();
+  await page.getByRole("button", { name: "Make the portal link" }).click();
+  const link = await page.getByLabel("Portal link", { exact: true }).inputValue();
+  expect(link).toMatch(/\/portal\/[a-f0-9]{64}$/);
+
+  const client = await browser.newContext({ recordVideo: recording });
+  const portal = await client.newPage();
+  await portal.goto(link);
+  await expect(portal.getByRole("heading", { name: "Projects for Acme Studio" })).toBeVisible();
+  await expect(portal.getByText("Fischer Studio").first()).toBeVisible();
+  await portal.getByRole("link", { name: /Episode 12/ }).click();
+  const piece = portal.getByRole("listitem").filter({ hasText: "Full episode" });
+  await expect(piece.getByText("Approved")).toBeVisible();
+  await expect(piece.locator("video")).toBeVisible();
+  await portal.getByRole("button", { name: "Review and comment" }).click();
+  await expect(portal).toHaveURL(/\/share\/[a-f0-9]{64}\?back=/);
+  await expect(portal.getByText(/will see this name/)).toBeVisible();
+  await client.close();
 
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });

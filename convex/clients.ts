@@ -211,6 +211,12 @@ export const remove = mutation({
       .withIndex("by_client", (q) => q.eq("clientId", client._id))
       .take(500);
     for (const project of projects) await ctx.db.patch(project._id, { clientId: undefined });
+    // Its portal link stops working.
+    const portals = await ctx.db
+      .query("clientPortals")
+      .withIndex("by_client", (q) => q.eq("clientId", client._id))
+      .take(10);
+    for (const portal of portals) await ctx.db.delete(portal._id);
     await ctx.db.delete(client._id);
   },
 });

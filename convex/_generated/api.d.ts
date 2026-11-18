@@ -48,6 +48,7 @@ import type * as lib_versions from "../lib/versions.js";
 import type * as notes from "../notes.js";
 import type * as notifications from "../notifications.js";
 import type * as outputs from "../outputs.js";
+import type * as portal from "../portal.js";
 import type * as presence from "../presence.js";
 import type * as projects from "../projects.js";
 import type * as reviewAgent from "../reviewAgent.js";
@@ -114,6 +115,7 @@ declare const fullApi: ApiFromModules<{
   notes: typeof notes;
   notifications: typeof notifications;
   outputs: typeof outputs;
+  portal: typeof portal;
   presence: typeof presence;
   projects: typeof projects;
   reviewAgent: typeof reviewAgent;
