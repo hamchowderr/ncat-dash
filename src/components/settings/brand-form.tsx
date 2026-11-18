@@ -27,6 +27,10 @@ export type MusicTrack = { name: string; file: string };
 
 type Typed = { brand: Brand; music: MusicTrack[] };
 
+/** The brand items that hold one value; music is a library of tracks. */
+const SINGLE_KEYS = ["logo", "color", "font", "card", "intro", "outro"] as const;
+type SingleKey = (typeof SINGLE_KEYS)[number];
+
 /** A track's name to start with: its file name without the ending, kept apart from the rest. */
 function trackName(fileName: string, taken: string[]): string {
   const base =
@@ -70,7 +74,7 @@ export function BrandForm({
   const [typed, setTyped] = useState<Typed | null>(null);
   const [pending, setPending] = useState(false);
   const shown = typed ?? { brand, music };
-  const set = (key: "logo" | "color" | "font", value: string) =>
+  const set = (key: SingleKey, value: string) =>
     setTyped({ ...shown, brand: { ...shown.brand, [key]: value } });
   const orientation = rows ? "responsive" : "vertical";
   const hex = /^#[0-9A-Fa-f]{6}$/.test(shown.brand.color ?? "") ? shown.brand.color : "#000000";
@@ -112,7 +116,7 @@ export function BrandForm({
       await setBrand({
         organizationId: team.id,
         brand: Object.fromEntries(
-          (["logo", "color", "font"] as const).flatMap((key) =>
+          SINGLE_KEYS.flatMap((key) =>
             typed.brand[key]?.trim() ? [[key, typed.brand[key]!.trim()]] : [],
           ),
         ),
@@ -189,6 +193,62 @@ export function BrandForm({
             disabled={!canEdit}
             className={rows ? "@md/field-group:w-72" : undefined}
           />
+        </Field>
+        <Field orientation={orientation}>
+          <FieldContent>
+            <FieldLabel htmlFor="brand-card">Card template</FieldLabel>
+            <FieldDescription>
+              The picture quote cards and end cards are written on, such as your background with
+              your logo already on it. Make it the shape you post, for example 1080 by 1350.
+            </FieldDescription>
+          </FieldContent>
+          <div className={rows ? "@md/field-group:w-72" : undefined}>
+            <FileChoice
+              id="brand-card"
+              label="Card template"
+              value={shown.brand.card ?? ""}
+              onChange={(value) => set("card", value)}
+              disabled={!canEdit}
+              upload="image"
+              preview
+            />
+          </div>
+        </Field>
+        <Field orientation={orientation}>
+          <FieldContent>
+            <FieldLabel htmlFor="brand-intro">Intro</FieldLabel>
+            <FieldDescription>
+              A short video played before your videos by the intro and outro step.
+            </FieldDescription>
+          </FieldContent>
+          <div className={rows ? "@md/field-group:w-72" : undefined}>
+            <FileChoice
+              id="brand-intro"
+              label="Intro"
+              value={shown.brand.intro ?? ""}
+              onChange={(value) => set("intro", value)}
+              disabled={!canEdit}
+              upload="video"
+            />
+          </div>
+        </Field>
+        <Field orientation={orientation}>
+          <FieldContent>
+            <FieldLabel htmlFor="brand-outro">Outro</FieldLabel>
+            <FieldDescription>
+              A short video played after your videos by the intro and outro step.
+            </FieldDescription>
+          </FieldContent>
+          <div className={rows ? "@md/field-group:w-72" : undefined}>
+            <FileChoice
+              id="brand-outro"
+              label="Outro"
+              value={shown.brand.outro ?? ""}
+              onChange={(value) => set("outro", value)}
+              disabled={!canEdit}
+              upload="video"
+            />
+          </div>
         </Field>
         <Field>
           <FieldContent>

@@ -3,6 +3,8 @@ import {
   agentSettingsProblem,
   agentSettingsText,
   BRAND_KEYS,
+  type BrandKey,
+  isBrandFile,
   MAX_HOUSE_RULES_CHARS,
   NO_AGENT_SETTINGS,
   brandProblem,
@@ -139,7 +141,7 @@ export const setBrand = mutation({
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId, MANAGER_ROLES);
     const invalid = (message: string) => new ConvexError({ code: "invalid_input", message });
-    const checkFile = async (key: "logo" | "music", value: string) => {
+    const checkFile = async (key: BrandKey, value: string) => {
       const problem = brandProblem(key, value);
       if (problem) throw invalid(problem);
       const uploadId = readUploadRef(value);
@@ -156,7 +158,7 @@ export const setBrand = mutation({
       if (key === "music") continue;
       const value = args.brand[key]?.trim();
       if (!value) continue;
-      if (key === "logo") await checkFile(key, value);
+      if (isBrandFile(key)) await checkFile(key, value);
       else {
         const problem = brandProblem(key, value);
         if (problem) throw invalid(problem);
