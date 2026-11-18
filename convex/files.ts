@@ -23,6 +23,7 @@ import {
   nameProblem,
   parentOf,
   readFileDetails,
+  type BrandFileKey,
   readUploadRef,
   renamedKey,
   teamFolder,
@@ -128,7 +129,14 @@ const fileValidator = v.object({
   uploadId: v.union(v.null(), v.id("uploads")),
   details: v.union(v.null(), fileDetailsValidator),
   // Set when the team's brand uses this file, so it is not deleted by mistake.
-  usedAs: v.union(v.null(), v.literal("logo"), v.literal("music")),
+  usedAs: v.union(
+    v.null(),
+    v.literal("logo"),
+    v.literal("music"),
+    v.literal("card"),
+    v.literal("intro"),
+    v.literal("outro"),
+  ),
 });
 
 /** One folder of the bucket: the folders and files straight inside it. */
@@ -158,7 +166,7 @@ export const list = action({
       {
         uploadId: Id<"uploads">;
         details: Doc<"uploads">["details"] | null;
-        usedAs: "logo" | "music" | null;
+        usedAs: BrandFileKey | null;
       }
     > = await ctx.runQuery(internal.files.uploadsAt, {
       organizationId: args.organizationId,
@@ -580,18 +588,21 @@ export const saveOutside = internalMutation({
 async function brandUploads(
   ctx: QueryCtx,
   organizationId: string,
-): Promise<Map<string, "logo" | "music">> {
+): Promise<Map<string, BrandFileKey>> {
   const settings = await ctx.db
     .query("teamSettings")
     .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
     .first();
-  const used = new Map<string, "logo" | "music">();
-  const add = (value: string | undefined, as: "logo" | "music") => {
+  const used = new Map<string, BrandFileKey>();
+  const add = (value: string | undefined, as: BrandFileKey) => {
     const id = readUploadRef(value);
     if (id) used.set(id, as);
   };
   add(settings?.brand?.logo, "logo");
   add(settings?.brand?.music, "music");
+  add(settings?.brand?.card, "card");
+  add(settings?.brand?.intro, "intro");
+  add(settings?.brand?.outro, "outro");
   for (const track of settings?.music ?? []) add(track.file, "music");
   return used;
 }
@@ -606,7 +617,7 @@ export const uploadsAt = internalQuery({
       {
         uploadId: Id<"uploads">;
         details: Doc<"uploads">["details"] | null;
-        usedAs: "logo" | "music" | null;
+        usedAs: BrandFileKey | null;
       }
     > = {};
     for (const key of args.keys) {

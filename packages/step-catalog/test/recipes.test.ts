@@ -74,7 +74,7 @@ function minimalInput(step: StepDefinition): Record<string, unknown> {
 }
 
 function toRequest(step: StepDefinition, input: Record<string, unknown>): ComposeRequest {
-  return step.toRequest!(step.input.parse(input)) as ComposeRequest;
+  return step.toRequest!(step.input.parse(input), {}) as ComposeRequest;
 }
 
 const everyRecipe = [...recipes, ...moreRecipes];

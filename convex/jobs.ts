@@ -1,5 +1,11 @@
 import { isTransientStatus } from "@ncat-dash/automation-core";
-import { callStep, getStep, jobStatus, ToolkitError } from "@ncat-dash/step-catalog";
+import {
+  callStep,
+  getStep,
+  jobStatus,
+  StepSetupError,
+  ToolkitError,
+} from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -179,7 +185,7 @@ export const dispatch = internalAction({
       const message =
         error instanceof ToolkitError
           ? `The toolkit ${isTransientStatus(error.status) ? "was not ready for" : "refused"} the job (HTTP ${error.status}). ${error.body.slice(0, 300)}`
-          : error instanceof UploadLinkError
+          : error instanceof UploadLinkError || error instanceof StepSetupError
             ? error.message
             : "The toolkit could not be reached.";
       // A request the toolkit refuses, or a file that is gone, fails the same way every
@@ -187,7 +193,7 @@ export const dispatch = internalAction({
       const permanent =
         error instanceof ToolkitError
           ? !isTransientStatus(error.status)
-          : error instanceof UploadLinkError;
+          : error instanceof UploadLinkError || error instanceof StepSetupError;
       await ctx.runMutation(internal.jobs.finish, {
         jobId: job._id,
         ok: false,

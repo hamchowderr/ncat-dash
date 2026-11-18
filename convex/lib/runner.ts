@@ -40,6 +40,7 @@ import {
   valueSources,
   wantedKind,
   withBrand,
+  withStart,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError } from "convex/values";
@@ -292,8 +293,13 @@ async function startNode(
   const nodeType = nodeTypeOf(node);
   const settings: Record<string, unknown> = {
     // The team's logo, colour, font and music fill whatever the step leaves empty.
+    // The name of the file that started the run fills a title left empty.
     ...(nodeType
-      ? withBrand(nodeType, node.input, await brandOf(ctx, run.organizationId))
+      ? withStart(
+          nodeType,
+          withBrand(nodeType, node.input, await brandOf(ctx, run.organizationId)),
+          (run.trigger ?? {}) as Record<string, unknown>,
+        )
       : node.input),
     ...settingsForLaterSteps(node, nodes, edges),
   };

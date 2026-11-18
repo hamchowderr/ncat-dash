@@ -124,7 +124,7 @@ describe("the home page", () => {
     const ready = screen.getByRole("region", { name: "Ready-made automations" });
     expect(
       within(ready)
-        .getByRole("link", { name: /See all 45/ })
+        .getByRole("link", { name: /See all 61/ })
         .getAttribute("href"),
     ).toBe("/automations/new");
     fireEvent.click(within(ready).getByText("Podcast master and transcript"));
