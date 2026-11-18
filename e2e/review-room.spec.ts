@@ -375,7 +375,7 @@ test("the client's comment reaches the team marked as theirs, with an alert", as
   await jordan.locator("[data-alerts-bell]").click();
   const alert = jordan.locator('[data-alert-kind="client_feedback"]').first();
   await expect(alert).toContainText("Riley Client left feedback on Weekly clips");
-  await jordan.keyboard.press("Escape");
+  await jordan.goBack();
 
   // A new team comment being written stays hidden from the client: it would be internal.
   await commentBox(jordan).pressSequentially("Internal: check the music licence");

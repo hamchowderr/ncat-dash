@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { Bell, Mail } from "lucide-react";
+import { Inbox, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,7 +39,7 @@ function browserZone(): string | undefined {
 
 /**
  * Each member's own notification settings on this team: for every kind of news, whether
- * it shows under the bell and whether it is emailed, and whether emails come as they
+ * it shows in the Inbox and whether it is emailed, and whether emails come as they
  * happen or as one summary a day.
  */
 export function NotificationsCard() {
@@ -93,8 +93,8 @@ export function NotificationsCard() {
           >
             <span role="columnheader">When</span>
             <span role="columnheader" className="flex flex-col items-center gap-1">
-              <Bell className="size-4" aria-hidden="true" />
-              Bell
+              <Inbox className="size-4" aria-hidden="true" />
+              Inbox
             </span>
             <span role="columnheader" className="flex flex-col items-center gap-1">
               <Mail className="size-4" aria-hidden="true" />
@@ -121,7 +121,7 @@ export function NotificationsCard() {
                 <Switch
                   checked={entry.bell}
                   onCheckedChange={(enabled) => onToggle(entry.kind, "bell", enabled)}
-                  aria-label={`${entry.title}: under the bell`}
+                  aria-label={`${entry.title}: in the Inbox`}
                 />
               </span>
               <span role="cell" className="flex justify-center">

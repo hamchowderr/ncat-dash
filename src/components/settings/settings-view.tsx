@@ -151,8 +151,8 @@ function RunsForms({ settings }: { settings: Loaded }) {
           </CardTitle>
           <CardDescription>
             A step that fails in an automation waits a little and tries again, a bit longer each
-            time. If it still fails, the run stops and everyone on the team is told, under the bell
-            at the top of the page or by email, as each person chose under Notifications.
+            time. If it still fails, the run stops and everyone on the team is told, in their Inbox
+            or by email, as each person chose under Notifications.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -197,7 +197,7 @@ function RunsForms({ settings }: { settings: Loaded }) {
   );
 }
 
-/** What each person hears about, under the bell and by email. */
+/** What each person hears about, in the Inbox and by email. */
 export function NotificationsSettings() {
   return <NotificationsCard />;
 }
