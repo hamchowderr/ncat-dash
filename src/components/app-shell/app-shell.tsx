@@ -9,6 +9,7 @@ import { type ReactNode, useEffect, useRef, ViewTransition } from "react";
 
 import { useAgentContext } from "@/components/agent/agent-context";
 import { FullPageLoader } from "@/components/full-page-loader";
+import { AlertNotices, useUnseenAlerts } from "@/components/inbox/alert-notices";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { showAgent, useAgentOpen } from "@/lib/agent-open";
@@ -17,7 +18,6 @@ import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
 import { cn } from "@/lib/utils";
 
-import { AlertsBell } from "./alerts-bell";
 import { AppSidebar, navItemFor } from "./app-sidebar";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -66,15 +66,15 @@ function Shell({
   return (
     <SidebarProvider className="md:h-svh md:overflow-hidden">
       <RoomForAgent agentOpen={agentOpen} />
+      <AlertNotices />
       <AppSidebar teamName={state.team.name} edition={edition} user={state.user} />
       {/* The page scrolls inside its own frame, so the bar along the top always stays put
           and a page can fill exactly the height that is left. */}
       <SidebarInset className={cn("min-w-0 md:overflow-hidden", agentOpen && "max-lg:hidden")}>
         <header className="flex h-16 shrink-0 items-center gap-2 px-4">
-          <SidebarTrigger className="-ml-1" />
+          <MenuButton />
           <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
           <div className="ml-auto flex items-center gap-2">
-            <AlertsBell />
             {!agentOpen && (
               <Button variant="outline" size="sm" onClick={() => showAgent(true)}>
                 <MessagesSquare />
@@ -166,3 +166,26 @@ function RoomForAgent({ agentOpen }: { agentOpen: boolean }) {
 
 /** Below this width the menu, a page worth working in and the chat do not all fit. */
 const ROOM_FOR_ALL = 1600;
+
+/**
+ * The button that folds the menu away and back. While the menu is folded away, a dot on
+ * it says there is news in the Inbox, so nothing is missed with the menu out of sight.
+ */
+function MenuButton() {
+  const { open, openMobile, isMobile } = useSidebar();
+  const unseen = useUnseenAlerts();
+  const hidden = isMobile ? !openMobile : !open;
+  return (
+    <span className="relative -ml-1 inline-flex">
+      <SidebarTrigger />
+      {hidden && unseen > 0 && (
+        <span
+          data-inbox-dot
+          aria-hidden="true"
+          className="bg-destructive pointer-events-none absolute top-1 right-1 size-2 rounded-full"
+        />
+      )}
+      {hidden && unseen > 0 && <span className="sr-only">{`${unseen} new in your Inbox`}</span>}
+    </span>
+  );
+}

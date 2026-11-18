@@ -286,7 +286,7 @@ export function digestEmail(
           (item) =>
             `${oneLine(item.title, 160)}${item.detail ? `: ${oneLine(item.detail, 240)}` : ""} (${item.url})`,
         ),
-        ...(count > shown.length ? [`And ${count - shown.length} more under the bell.`] : []),
+        ...(count > shown.length ? [`And ${count - shown.length} more in your Inbox.`] : []),
       ],
       footnote: `You get one summary a day because you chose it. To get emails as they happen instead, change your notification settings: ${args.settingsUrl}`,
     },

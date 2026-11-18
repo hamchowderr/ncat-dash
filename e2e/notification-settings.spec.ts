@@ -1,7 +1,7 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
 
 // Notification settings in a real browser against a real backend: a member switches
-// mentions and approvals off under the bell, so a teammate's @mention and a waiting
+// mentions and approvals off in the Inbox, so a teammate's @mention and a waiting
 // approval stay out of their bell; switched back on, the next mention shows up and opens
 // the review at its thread. The daily summary and its hour are kept across a reload.
 
@@ -77,9 +77,9 @@ test("each member sees every kind of news with a bell and an email switch", asyn
   await expect(card(maya).getByRole("heading", { name: "Notifications" })).toBeVisible();
   const rows = card(maya).locator("[data-notification]");
   await expect(rows).toHaveCount(5);
-  await expect(card(maya).getByRole("switch", { name: /under the bell/ })).toHaveCount(5);
+  await expect(card(maya).getByRole("switch", { name: /in the Inbox/ })).toHaveCount(5);
   await expect(card(maya).getByRole("switch", { name: /by email/ })).toHaveCount(5);
-  for (const name of [/: under the bell$/, /: by email$/]) {
+  for (const name of [/: in the Inbox$/, /: by email$/]) {
     for (const toggle of await card(maya).getByRole("switch", { name }).all()) {
       await expect(toggle).toBeChecked();
     }
@@ -103,10 +103,10 @@ test("a member chooses a daily summary at an hour of theirs, and it is kept", as
   await expect(card(maya).getByRole("combobox")).toHaveText("6 PM");
 });
 
-test("with mentions and approvals off under the bell, neither shows up there", async () => {
+test("with mentions and approvals off in the Inbox, neither shows up there", async () => {
   for (const name of [
-    "Someone mentions me in a review: under the bell",
-    "An approval is waiting for me: under the bell",
+    "Someone mentions me in a review: in the Inbox",
+    "An approval is waiting for me: in the Inbox",
   ]) {
     const toggle = card(maya).getByRole("switch", { name });
     await toggle.click();
@@ -148,14 +148,14 @@ test("with mentions and approvals off under the bell, neither shows up there", a
   await expect(bell(maya).locator("[data-alerts-count]")).toHaveCount(0);
   await bell(maya).click();
   await expect(maya.getByText(/Nothing to report/)).toBeVisible();
-  await maya.keyboard.press("Escape");
+  await maya.goBack();
 });
 
 test("switched back on, the next mention shows up and opens the review at its thread", async () => {
   await card(maya)
-    .getByRole("switch", { name: "Someone mentions me in a review: under the bell" })
+    .getByRole("switch", { name: "Someone mentions me in a review: in the Inbox" })
     .click();
-  // The earlier mention is shown again now that she wants mentions under the bell.
+  // The earlier mention is shown again now that she wants mentions in the Inbox.
   await expect(bell(maya).locator("[data-alerts-count]")).toHaveText("1");
 
   await commentBox(jordan).pressSequentially("@Ma");

@@ -38,7 +38,7 @@ describe("notification settings", () => {
     renderInApp(<NotificationsCard />);
     const rows = screen.getAllByRole("row").slice(1);
     expect(rows.map((row) => within(row).getAllByRole("switch").length)).toEqual([2, 2, 2, 2]);
-    expect(screen.getByRole("switch", { name: "A run fails: under the bell" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "A run fails: in the Inbox" })).toBeChecked();
     expect(
       screen.getByRole("switch", { name: "Someone mentions me in a review: by email" }),
     ).toBeChecked();
@@ -48,7 +48,7 @@ describe("notification settings", () => {
     answerQuery(api.notifications.get, settings());
     renderInApp(<NotificationsCard />);
     fireEvent.click(
-      screen.getByRole("switch", { name: "An approval ran out of time: under the bell" }),
+      screen.getByRole("switch", { name: "An approval ran out of time: in the Inbox" }),
     );
     expect(mutationOf(api.notifications.set)).toHaveBeenCalledWith({
       organizationId: TEAM.id,

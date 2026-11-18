@@ -8,6 +8,7 @@ import {
   FolderOutput,
   FolderTree,
   Home,
+  Inbox,
   ListChecks,
   MessagesSquare,
   Settings,
@@ -34,6 +35,8 @@ import {
 import { useActiveTeam } from "@/lib/team-context";
 import { useFileLink } from "@/lib/use-brand-upload";
 
+import { useUnseenAlerts } from "@/components/inbox/alert-notices";
+
 import { NavUser, type ShellUser } from "./nav-user";
 
 // The agent joins this list when its phase lands.
@@ -41,6 +44,7 @@ type NavItem = { title: string; url: string; icon: LucideIcon };
 
 const navEveryday: NavItem[] = [
   { title: "Home", url: "/", icon: Home },
+  { title: "Inbox", url: "/inbox", icon: Inbox },
   { title: "Automations", url: "/automations", icon: Workflow },
   { title: "Review", url: "/review", icon: MessagesSquare },
   { title: "Outputs", url: "/outputs", icon: FolderOutput },
@@ -60,6 +64,24 @@ export const navMain: NavItem[] = [...navEveryday, ...navBuilder];
 /** The nav entry a path belongs to: "/steps/video-trim" belongs to Steps. */
 export function navItemFor(pathname: string) {
   return navMain.find((item) => item.url !== "/" && pathname.startsWith(item.url)) ?? navMain[0];
+}
+
+/** How many alerts are new, beside Inbox in the menu; nothing when all are seen. */
+function InboxCount() {
+  const unseen = useUnseenAlerts();
+  if (unseen === 0) return null;
+  return (
+    <>
+      <span
+        data-alerts-count
+        aria-hidden="true"
+        className="bg-destructive ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs leading-none font-medium text-white tabular-nums"
+      >
+        {unseen > 99 ? "99+" : unseen}
+      </span>
+      <span className="sr-only">{`, ${unseen} new`}</span>
+    </>
+  );
 }
 
 /** The team's logo once it has one in Settings, and a plain mark until then. */
@@ -128,9 +150,13 @@ export function AppSidebar({
                       tooltip={item.title}
                       isActive={navItemFor(pathname).url === item.url}
                     >
-                      <Link href={item.url}>
+                      <Link
+                        href={item.url}
+                        {...(item.url === "/inbox" ? { "data-alerts-bell": true } : {})}
+                      >
                         <item.icon />
                         <span>{item.title}</span>
+                        {item.url === "/inbox" && <InboxCount />}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

@@ -2,7 +2,7 @@ import { type Browser, expect, type Page, test } from "@playwright/test";
 
 // Picking who reviews an Approval step, in a real browser against a real backend: the
 // owner names one teammate and a time limit, the run stops there, only that teammate is
-// told under the bell, a third teammate cannot decide, and the named one approves.
+// told in the Inbox, a third teammate cannot decide, and the named one approves.
 
 const TOOLKIT = "http://127.0.0.1:8767";
 const FILES = "http://127.0.0.1:8766";
@@ -109,14 +109,15 @@ test("the owner names a reviewer and a time limit on the Approval step", async (
   expect(started.status).toBe(202);
 });
 
-test("only the named reviewer is told under the bell", async () => {
+test("only the named reviewer is told in their Inbox", async () => {
   await maya.goto("/automations");
   await expect(bell(maya).locator("[data-alerts-count]")).toHaveText("1", { timeout: 60_000 });
+  await expect(maya.getByText("Asks you")).toBeVisible();
   await bell(maya).click();
+  await expect(maya).toHaveURL(/\/inbox$/);
   const alert = maya.getByRole("link", { name: /Weekly clips is waiting for your approval/ });
   await expect(alert).toContainText("If nobody decides within 24 hours, it is rejected by itself.");
   runPath = (await alert.getAttribute("href"))!;
-  await expect(maya.getByText("Asks you")).toBeVisible();
 
   await sam.goto("/automations");
   await expect(sam.getByText("Waiting for approval")).toBeVisible();
