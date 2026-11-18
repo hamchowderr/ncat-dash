@@ -107,6 +107,20 @@ export function detailsKind(details: FileDetails): "video" | "audio" | "image" |
   return details.hasAudio ? "audio" : "other";
 }
 
+/**
+ * What kind of file an upload is, for showing it: from its details once the toolkit has read
+ * them, otherwise from the type the browser gave when it was sent.
+ */
+export function uploadKind(
+  contentType: string,
+  details: FileDetails | null | undefined,
+): "video" | "audio" | "image" | "other" {
+  const fromDetails = details ? detailsKind(details) : "other";
+  if (fromDetails !== "other") return fromDetails;
+  const family = contentType.split("/")[0]?.toLowerCase();
+  return family === "video" || family === "audio" || family === "image" ? family : "other";
+}
+
 /** The details on one line: "6:52 · 1920×1080 · 30 fps · h264 / aac". */
 export function describeFileDetails(details: FileDetails): string {
   const kind = detailsKind(details);
