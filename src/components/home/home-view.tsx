@@ -495,6 +495,13 @@ function ToolkitStatus({ connections }: { connections: Connection[] | undefined 
           {!ok && connection.lastError && (
             <FailureText className="text-destructive" text={connection.lastError} />
           )}
+          <Link
+            href="/toolkit"
+            transitionTypes={["nav-forward"]}
+            className="text-muted-foreground hover:text-foreground text-sm underline-offset-2 hover:underline"
+          >
+            See how busy it is
+          </Link>
         </div>
       )}
     </div>

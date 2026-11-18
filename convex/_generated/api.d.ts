@@ -32,6 +32,7 @@ import type * as lib_facts from "../lib/facts.js";
 import type * as lib_logic from "../lib/logic.js";
 import type * as lib_notifications from "../lib/notifications.js";
 import type * as lib_outputs from "../lib/outputs.js";
+import type * as lib_pickUp from "../lib/pickUp.js";
 import type * as lib_queue from "../lib/queue.js";
 import type * as lib_reviews from "../lib/reviews.js";
 import type * as lib_runner from "../lib/runner.js";
@@ -57,6 +58,7 @@ import type * as storage from "../storage.js";
 import type * as teamSettings from "../teamSettings.js";
 import type * as teams from "../teams.js";
 import type * as toolkitConnections from "../toolkitConnections.js";
+import type * as toolkitHealth from "../toolkitHealth.js";
 import type * as versions from "../versions.js";
 import type * as watch from "../watch.js";
 
@@ -91,6 +93,7 @@ declare const fullApi: ApiFromModules<{
   "lib/logic": typeof lib_logic;
   "lib/notifications": typeof lib_notifications;
   "lib/outputs": typeof lib_outputs;
+  "lib/pickUp": typeof lib_pickUp;
   "lib/queue": typeof lib_queue;
   "lib/reviews": typeof lib_reviews;
   "lib/runner": typeof lib_runner;
@@ -116,6 +119,7 @@ declare const fullApi: ApiFromModules<{
   teamSettings: typeof teamSettings;
   teams: typeof teams;
   toolkitConnections: typeof toolkitConnections;
+  toolkitHealth: typeof toolkitHealth;
   versions: typeof versions;
   watch: typeof watch;
 }>;
