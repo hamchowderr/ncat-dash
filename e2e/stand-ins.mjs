@@ -15,6 +15,11 @@ export const FILES_PORT = 8766;
 export const TOOLKIT_PORT = 8767;
 export const FILES = `http://127.0.0.1:${FILES_PORT}`;
 export const CLIPS = ["opening-hello", "why-the-station-matters"];
+/** What the stand-in transcribe says was said in any file. */
+export const SEGMENTS = [
+  { id: 0, start: 0, end: 2.5, text: " Welcome back to the station.", tokens: [1] },
+  { id: 1, start: 2.5, end: 6, text: " Today we talk about pricing your edits.", tokens: [2] },
+];
 
 const clip = fileURLToPath(new URL("./fixtures/clip.webm", import.meta.url));
 const still = fileURLToPath(new URL("./fixtures/still.jpg", import.meta.url));
@@ -82,6 +87,12 @@ createServer((request, response) => {
         })
         .end(),
     );
+    return;
+  }
+  // What the stand-in transcribe "heard", in Whisper's shape, as the toolkit uploads it.
+  if (request.url.startsWith("/segments.json")) {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify(SEGMENTS));
     return;
   }
   if (request.url.startsWith("/made/")) {
@@ -230,6 +241,25 @@ createServer((request, response) => {
             height: 320,
             fps: 25,
             video_codec: "vp9",
+          },
+          message: "success",
+        }),
+      );
+      return;
+    }
+    // A transcription kept as files at the toolkit, as with response_type "cloud".
+    if (request.url.startsWith("/v1/media/transcribe")) {
+      response.end(
+        JSON.stringify({
+          code: 200,
+          job_id: "stand-in",
+          response: {
+            text: null,
+            srt: null,
+            segments: null,
+            text_url: null,
+            srt_url: null,
+            segments_url: `${FILES}/segments.json`,
           },
           message: "success",
         }),

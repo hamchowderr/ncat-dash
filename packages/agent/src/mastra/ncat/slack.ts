@@ -5,6 +5,7 @@ import type { Message } from 'chat';
 import { env } from '../../lib/env';
 import { TURN_USER_KEY } from '../lib/turn-user';
 import { rememberSession } from './session-store';
+import { hearVoiceNotes } from './voice-notes';
 
 /**
  * The agent in Slack, on each team's own Slack app: a regular self-managed Mastra
@@ -225,6 +226,8 @@ export const asTheWriter: ChannelHandler = async (thread, message, next, ctx) =>
     automationId: null,
   });
   ctx.requestContext.set(TURN_USER_KEY, resourceId);
+  // A voice note is read as the words said in it, by the team's own toolkit.
+  await hearVoiceNotes(thread, message, person.organizationId);
   await next(thread, message);
 };
 

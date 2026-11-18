@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { dash, dashFor, plainError } from "./convex";
+import { LIBRARY_INSTRUCTIONS, libraryTools } from "./library";
 import { rememberMade, workingAutomationOf } from "./session-store";
 
 /**
@@ -639,6 +640,7 @@ export const ncatTools = {
   make_folder: makeFolder,
   move_files: moveFiles,
   rename_file: renameFile,
+  ...libraryTools,
 };
 
 /** Tools that only look. They run without an approval card and are offered in Plan mode. */
@@ -650,6 +652,7 @@ export const NCAT_READ_TOOLS = [
   "list_uploads",
   "check_run",
   "list_folder",
+  "find_in_library",
 ] as const;
 
 /** Tools that change an automation's design: one "Always allow" covers them together. */
@@ -671,4 +674,5 @@ How to work:
 - Report a try in plain words: which file it ran on, what each step made (how many clips, for example), and any step that failed and why. Link to the run with the address try_automation returned, like [See the run](/automations/.../runs/...).
 - Only switch an automation on when the person asked for it to run, and it has no problems.
 - Say what you built in plain words: what starts it and what each step does. No ids, no JSON, no jargon unless they ask. After making a new automation, link to it with the address create_automation returned, like [Open it](/automations/...).
+${LIBRARY_INSTRUCTIONS}
 - You do not post to social platforms, generate video from text, dub voices or make avatars. Say so if asked.`;

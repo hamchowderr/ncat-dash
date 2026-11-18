@@ -123,6 +123,31 @@ describe("the review room", () => {
     NOTES.clip_b.pop();
   });
 
+  test("a clip with two versions can be compared side by side, then back to one", async () => {
+    const { container, user } = open(room(), { clip: "clip_b" });
+    // One version only: nothing to compare.
+    await user.click(screen.getByRole("button", { name: /Opening hello/ }));
+    expect(screen.queryByRole("button", { name: "Compare" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Why the station matters/ }));
+    await user.click(screen.getByRole("button", { name: "Compare" }));
+    const compare = screen.getByRole("region", { name: "Compare versions" });
+    expect(compare.querySelector("[data-compare-side=left] video")!.getAttribute("src")).toBe(
+      "https://files.example/b.mp4",
+    );
+    expect(compare.querySelector("[data-compare-side=right] video")!.getAttribute("src")).toBe(
+      "https://files.example/b-v2.mp4",
+    );
+
+    await user.selectOptions(
+      within(compare).getByRole("combobox", { name: "Version on the right" }),
+      "1",
+    );
+    await user.click(within(compare).getByRole("button", { name: "Done comparing" }));
+    expect(screen.queryByRole("region", { name: "Compare versions" })).not.toBeInTheDocument();
+    expect(video(container)).toHaveAttribute("src", "https://files.example/b.mp4");
+  });
+
   test("shows what the client said, and marks a client's comment", () => {
     NOTES.clip_a = [note({ id: "c", body: "Bigger logo", authorId: "guest:x", client: true })];
     const { container } = open(room({ clientVerdict: { name: "Riley", approved: false, at: 1 } }));

@@ -87,6 +87,29 @@ describe("a review shared with a client", () => {
     );
   });
 
+  test("the client can compare two versions of a clip side by side", async () => {
+    signedAs();
+    const { user } = open(
+      room({
+        clips: [
+          {
+            _id: "clip_a",
+            title: "Opening hello",
+            versions: [
+              { url: "https://files.example/a.mp4", addedAt: 1 },
+              { url: "https://files.example/a-v2.mp4", addedAt: 2 },
+            ],
+          },
+        ],
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Compare" }));
+    const compare = screen.getByRole("region", { name: "Compare versions" });
+    expect(compare.querySelectorAll("video")).toHaveLength(2);
+    await user.click(within(compare).getByRole("button", { name: "Done comparing" }));
+    expect(screen.getByRole("region", { name: "Clip" })).toBeInTheDocument();
+  });
+
   test("a comment is sent with the link, the client's name and the moment", async () => {
     signedAs();
     const { user, container } = open();

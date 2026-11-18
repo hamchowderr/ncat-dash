@@ -136,6 +136,14 @@ function SubmitButton({
  * Chrome, Edge, Safari 14.5+ incl. iOS). Checked after mount, so the server render and
  * the first client render agree; where it's missing the mic is simply not shown.
  */
+function useRecorderSupport(): boolean {
+  const [supported, setSupported] = useState(false);
+  useEffect(() => {
+    setSupported('MediaRecorder' in window && 'mediaDevices' in navigator);
+  }, []);
+  return supported;
+}
+
 function useSpeechRecognitionSupport(): boolean {
   const [supported, setSupported] = useState(false);
   useEffect(() => {
@@ -162,6 +170,7 @@ export function Composer({
   placeholder = 'Ask anything…',
   label = 'Message',
   speech = true,
+  voiceNote,
   disabled = false,
   onStop,
   globalDrop = true,
@@ -197,6 +206,12 @@ export function Composer({
    * button rather than a broken one.
    */
   speech?: boolean;
+  /**
+   * ncat-dash: the microphone records a voice note instead of dictating. The recording is
+   * handed here (in every browser that can record), the words come back, and they are
+   * sent as the message, after anything already typed. Throw to show why it failed.
+   */
+  voiceNote?: (audio: Blob) => Promise<string>;
   /** Nothing can be typed or sent (say, while a thread works on its own). */
   disabled?: boolean;
   /**
@@ -211,6 +226,7 @@ export function Composer({
   globalDrop?: boolean;
 }) {
   const speechSupported = useSpeechRecognitionSupport();
+  const recorderSupported = useRecorderSupport();
   const modelList = models === false ? [] : models;
   const MODEL_GROUPS = providerGroups(modelList);
   const [text, setText] = useState('');
@@ -388,7 +404,46 @@ export function Composer({
         </PromptInputTools>
         <div className="flex items-center gap-2">
           {footerExtra}
-          {speech && speechSupported && (
+          {voiceNote && recorderSupported && (
+            <SpeechInput
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              preferRecorder
+              aria-label="Record a voice note"
+              title="Record a voice note. Press again to send it."
+              disabled={disabled}
+              onAudioRecorded={async (audio) => {
+                setAttachError(null);
+                try {
+                  return await voiceNote(audio);
+                } catch (error) {
+                  setAttachError(
+                    error instanceof Error && error.message
+                      ? error.message
+                      : 'The voice note could not be turned into words.',
+                  );
+                  return '';
+                }
+              }}
+              onTranscriptionChange={(said) => {
+                const words = said.trim();
+                if (!words) return;
+                const typed = text.trim();
+                setText('');
+                void Promise.resolve(
+                  onSend({
+                    text: typed ? `${typed}\n\n${words}` : words,
+                    model,
+                    webSearch: showWebSearch && webSearch,
+                  }),
+                ).then((sent) => {
+                  if (sent === false) setText((now) => now || (typed ? `${typed} ${words}` : words));
+                });
+              }}
+            />
+          )}
+          {!voiceNote && speech && speechSupported && (
             <SpeechInput
               // A plain button: inside PromptInput's form, a default (submit) button would
               // send the half-typed message the moment the mic is tapped.
