@@ -9,6 +9,8 @@ import {
   snippetAround,
   titleFromFileName,
   transcriptPieces,
+  captionFileFormat,
+  captionLines,
 } from "../src";
 
 describe("short IDs", () => {
@@ -125,5 +127,50 @@ describe("snippets and moments", () => {
     expect(formatMoment(42.7)).toBe("0:42");
     expect(formatMoment(751)).toBe("12:31");
     expect(formatMoment(3725)).toBe("1:02:05");
+  });
+});
+
+describe("caption files", () => {
+  it("are known by their name or link", () => {
+    expect(captionFileFormat("Episode 4.srt")).toBe("srt");
+    expect(captionFileFormat("https://cdn.example/a/b.VTT?X-Amz=1")).toBe("vtt");
+    expect(captionFileFormat("teams/x/clip.ass")).toBe("ass");
+    expect(captionFileFormat("old.ssa")).toBe("ass");
+    expect(captionFileFormat("clip.mp4")).toBeNull();
+  });
+
+  it("read SRT cues into timed lines", () => {
+    const srt =
+      "1\r\n00:00:01,000 --> 00:00:03,500\r\nWelcome back\r\nto the show.\r\n\r\n2\r\n00:01:02,250 --> 00:01:04,000\r\n<i>Let's talk pricing.</i>\r\n";
+    expect(captionLines(srt, "srt")).toEqual([
+      { start: 1, end: 3.5, text: "Welcome back to the show." },
+      { start: 62.25, end: 64, text: "Let's talk pricing." },
+    ]);
+  });
+
+  it("read WebVTT cues, with or without hours", () => {
+    const vtt =
+      "WEBVTT\n\n00:02.000 --> 00:04.000 align:start\n<v Maya>Hello there</v>\n\nnote-2\n01:00:00.000 --> 01:00:01.000\nAn hour in\n";
+    expect(captionLines(vtt, "vtt")).toEqual([
+      { start: 2, end: 4, text: "Hello there" },
+      { start: 3600, end: 3601, text: "An hour in" },
+    ]);
+  });
+
+  it("read ASS dialogue without its styling, keeping commas in the words", () => {
+    const ass = [
+      "[Script Info]",
+      "PlayResX: 1080",
+      "[Events]",
+      "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+      "Dialogue: 0,0:00:05.10,0:00:06.00,Default,,0,0,0,,{\\an2\\c&H00FFFF&}So, pricing\\Nmatters",
+      "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\k20}First",
+      "Comment: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,not shown",
+      "Dialogue: 0,0:00:07.00,0:00:08.00,Default,,0,0,0,,{\\an2}",
+    ].join("\n");
+    expect(captionLines(ass, "ass")).toEqual([
+      { start: 1, end: 2, text: "First" },
+      { start: 5.1, end: 6, text: "So, pricing matters" },
+    ]);
   });
 });
