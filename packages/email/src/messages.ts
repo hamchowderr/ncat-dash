@@ -267,6 +267,34 @@ export function clientFeedbackEmail(
   );
 }
 
+/** A new version went into a project's slot and is waiting in its review room. */
+export function readyForReviewEmail(
+  args: {
+    teamName?: string;
+    from: string;
+    projectName: string;
+    slot: string;
+    reviewUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const project = oneLine(args.projectName, 80);
+  const slot = oneLine(args.slot, 80);
+  return compose(
+    `${slot} in ${project} is ready for review`,
+    {
+      heading: `${slot} is ready for review`,
+      paragraphs: [
+        `${oneLine(args.from, 60)} added a new version of "${slot}" to the project "${project}"${args.teamName ? ` in ${oneLine(args.teamName, 60)}` : ""}.`,
+      ],
+      button: { label: "Open the review", url: args.reviewUrl },
+      footnote: `To stop these emails, change your notification settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
 /** One line in a daily summary. */
 export type DigestItem = { title: string; detail?: string; url: string };
 

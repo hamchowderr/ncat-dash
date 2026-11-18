@@ -53,6 +53,7 @@ import { notify } from "./alerts";
 import { runEnded, startAutomationStep, startingFiles } from "./chain";
 import { cutListOf } from "./exports";
 import { finishCheck, startIf, startWait } from "./logic";
+import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
 
@@ -75,11 +76,19 @@ export async function startRun(
     test?: string;
     /** The run that started this one, and the step that waits for it when one does. */
     parent?: { runId: Id<"runs">; runStepId?: Id<"runSteps">; chain: Id<"automations">[] };
+    /** The project it works for: its finished files fill the project's empty slots. */
+    project?: {
+      projectId: Id<"projects">;
+      deliverableId?: Id<"deliverables">;
+      clientId?: Id<"clients">;
+    };
   } = {},
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
   if (problem) return { ok: false, message: problem };
-  const { parent } = options;
+  const { parent, project } = options;
+  // A project's client wins over the automation's own, so the run is for the right client.
+  const clientId = project ? project.clientId : automation.clientId;
 
   const runId = await ctx.db.insert("runs", {
     organizationId: automation.organizationId,
@@ -96,6 +105,13 @@ export async function startRun(
     startedBy,
     finishedAt: null,
     ...(options.test ? { test: options.test } : {}),
+    ...(clientId ? { clientId } : {}),
+    ...(project
+      ? {
+          projectId: project.projectId,
+          ...(project.deliverableId ? { deliverableId: project.deliverableId } : {}),
+        }
+      : {}),
     ...(parent
       ? {
           parentRunId: parent.runId,
@@ -302,7 +318,7 @@ async function startNode(
     ...(nodeType
       ? withStart(
           nodeType,
-          withBrand(nodeType, node.input, await brandOf(ctx, run.organizationId)),
+          withBrand(nodeType, node.input, await brandOf(ctx, run.organizationId, run.clientId)),
           (run.trigger ?? {}) as Record<string, unknown>,
         )
       : node.input),
@@ -593,6 +609,8 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
         });
         // A step waiting on this run moves on, and automations that follow it start.
         await runEnded(ctx, run, failed ? "failed" : "done", failed?.error ?? null);
+        // A run for a project puts its finished files in the project's empty slots.
+        if (!failed && run.projectId && !run.test) await fillProjectSlots(ctx, run);
         // Its finished files go into the team's folder, so they show in Files.
         if (!failed) await ctx.scheduler.runAfter(0, internal.files.keepFinished, { runId });
         // A person who rejects at an approval step already knows, one that ran out of
