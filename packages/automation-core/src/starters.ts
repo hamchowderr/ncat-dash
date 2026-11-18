@@ -2,6 +2,8 @@ import { moreRecipes, recipes } from "@ncat-dash/step-catalog";
 
 import { type AutomationEdge, type AutomationNode, NODE_GAP } from "./graph";
 import type { Schedule } from "./schedule";
+import { CLIP_CAPTION_SETTINGS } from "./clips";
+import { FOLLOW_SPEAKER_STEP } from "./follow";
 import { clipsGraph } from "./setup";
 
 type FileType = "any" | "video" | "audio" | "image";
@@ -85,6 +87,37 @@ const WORKFLOWS: Starter[] = [
     group: "workflow",
     trigger: { kind: "upload", fileType: "video" },
     ...clipsGraph({ platform: "Instagram Reels", captions: true, approve: false }),
+  },
+  {
+    id: "clips-follow-speaker",
+    category: "clips",
+    name: "Clips that follow the speaker",
+    description:
+      "Every long video that arrives is cut at pauses in speech into vertical clips. In each clip the frame follows whoever is talking and cuts across when someone else speaks, then captions go on.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [
+      {
+        id: "clips",
+        kind: "clips",
+        input: { platform: "Instagram Reels" },
+        position: { x: 0, y: 0 },
+      },
+      step("follow_1", FOLLOW_SPEAKER_STEP, 1),
+      step("caption_1", "video-caption", 2, 0, { settings: { ...CLIP_CAPTION_SETTINGS } }),
+    ],
+    edges: chain("clips", "follow_1", "caption_1"),
+  },
+  {
+    id: "follow-speaker-vertical",
+    category: "clips",
+    name: "Vertical that follows the speaker",
+    description:
+      "Each wide video you upload comes back vertical, with the frame on whoever is talking: it holds on them, drifts as they move and cuts across when someone else speaks.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [step("follow_1", FOLLOW_SPEAKER_STEP, 0, 0, { aspect: "9:16" })],
+    edges: [],
   },
   {
     id: "folder-vertical-captions",

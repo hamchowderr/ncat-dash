@@ -10,6 +10,8 @@ import {
   mayDecide,
   chooseFiles,
   clipRequest,
+  clipsKeepShape,
+  followShapeFrom,
   downstreamOf,
   failsOver,
   durationOf,
@@ -295,6 +297,9 @@ async function startNode(
       : node.input),
     ...settingsForLaterSteps(node, nodes, edges),
   };
+  // Follow the speaker straight after Clips makes the platform's shape unless one was picked.
+  const followShape = isEmptySetting(settings.aspect) ? followShapeFrom(node, nodes, edges) : null;
+  if (followShape) settings.aspect = followShape;
   for (const source of valueSources(node, nodes, edges)) {
     const found = valueFrom(source.from.stepId ?? "", source.value, steps[source.from.id]?.result);
     if (found !== undefined) settings[source.field] = found;
@@ -496,13 +501,21 @@ async function cutClips(
     return;
   }
 
+  const keepShape = clipsKeepShape(
+    step.nodeId,
+    run.nodes as AutomationNode[],
+    run.edges as AutomationEdge[],
+  );
   const queued = await enqueueAll(
     ctx,
     run,
     step,
     plan.map((clip) => ({
       stepId: "ffmpeg-compose",
-      input: clipRequest(clip.source, clip, platform.frame, platform.box),
+      // Clips handed straight to Follow the speaker keep the whole wide picture to follow in.
+      input: keepShape
+        ? clipRequest(clip.source, clip, "original")
+        : clipRequest(clip.source, clip, platform.frame, platform.box),
     })),
   );
   if (!queued.ok) {
@@ -893,4 +906,8 @@ export async function approvalTimeUp(ctx: MutationCtx, runStepId: Id<"runSteps">
   const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
   const approve = node ? approvalSettings(node.input).whenTimeUp === "approve" : false;
   await decideApproval(ctx, step, approve, null);
+}
+
+function isEmptySetting(value: unknown): boolean {
+  return value === undefined || value === null || value === "";
 }
