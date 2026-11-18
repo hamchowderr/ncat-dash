@@ -124,4 +124,19 @@ test("a caption file shows its lines, and they are searched like what was said",
   await page.getByRole("link", { name: "Library", exact: true }).first().click();
   await page.getByLabel("Search the library").fill("pricing");
   await expect(page.getByTestId("library-hit").getByText("F1", { exact: true })).toBeVisible();
+
+  // Said to be for a client, then found under that client.
+  await page.goto("/clients");
+  await page.getByLabel("Client name", { exact: true }).fill("Acme Studio");
+  await page.getByRole("button", { name: "Add client" }).click();
+  await expect(page).toHaveURL(/\/clients\/[a-z0-9]+$/);
+  await page.goto("/library");
+  await page.getByRole("link", { name: "Open F1 clip" }).click();
+  await page.getByLabel("Client", { exact: true }).selectOption({ label: "Acme Studio" });
+  await page.getByRole("link", { name: "Library", exact: true }).first().click();
+  const tile = page.getByTestId("library-tile").filter({ hasText: "F1" });
+  await expect(tile.getByText(/^Acme Studio · Uploaded/)).toBeVisible();
+  await page.getByRole("button", { name: "Client", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Your team" }).click();
+  await expect(page.getByText("No files of this kind for your team.")).toBeVisible();
 });

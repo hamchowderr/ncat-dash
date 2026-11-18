@@ -975,6 +975,9 @@ export default defineSchema({
     automationName: v.optional(v.string()),
     // The file it was made from, such as the episode a clip was cut from.
     parentId: v.optional(v.id("libraryItems")),
+    // The client it is for: copied from the run that made it (or the file it was made
+    // from), or set by hand. Left out for the team's own files.
+    clientId: v.optional(v.id("clients")),
     details: v.optional(fileDetailsValidator),
     tags: v.array(v.string()),
     // One to five stars, given once a file has been out in the world, so winners are easy
@@ -1002,6 +1005,7 @@ export default defineSchema({
     .index("by_upload", ["uploadId"])
     .index("by_parent", ["parentId"])
     .index("by_run", ["runId"])
+    .index("by_client", ["clientId"])
     .searchIndex("search_text", { searchField: "searchText", filterFields: ["organizationId"] }),
 
   // What was said in a library file, in pieces of about thirty seconds, so a search lands

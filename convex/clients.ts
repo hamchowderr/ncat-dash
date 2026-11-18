@@ -190,8 +190,8 @@ export const setDeliveryFolder = mutation({
 });
 
 /**
- * Deletes a client. Its automations and projects stay, for the team itself; their files
- * are not touched. Owners and admins only.
+ * Deletes a client. Its automations, projects and library files stay, for the team
+ * itself; their files are not touched. Owners and admins only.
  */
 export const remove = mutation({
   args: { clientId: v.id("clients") },
@@ -211,6 +211,12 @@ export const remove = mutation({
       .withIndex("by_client", (q) => q.eq("clientId", client._id))
       .take(500);
     for (const project of projects) await ctx.db.patch(project._id, { clientId: undefined });
+    // Library files made for it stay too, as the team's own.
+    const files = await ctx.db
+      .query("libraryItems")
+      .withIndex("by_client", (q) => q.eq("clientId", client._id))
+      .take(2000);
+    for (const file of files) await ctx.db.patch(file._id, { clientId: undefined });
     // Its portal link stops working.
     const portals = await ctx.db
       .query("clientPortals")

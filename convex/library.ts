@@ -65,6 +65,7 @@ type Summary = {
   duration: number | null;
   automationName: string | null;
   parent: { _id: Id<"libraryItems">; shortId: string; title: string } | null;
+  client: { _id: Id<"clients">; name: string } | null;
   made: number;
   searchable: "no" | "working" | "ready" | "failed";
 };
@@ -74,7 +75,9 @@ function summaryOf(
   item: Doc<"libraryItems">,
   byId: Map<string, Doc<"libraryItems">>,
   made: Map<string, number>,
+  clients: Map<string, Doc<"clients">>,
 ): Summary {
+  const client = item.clientId ? clients.get(item.clientId) : undefined;
   const parent = item.parentId ? byId.get(item.parentId) : undefined;
   return {
     _id: item._id,
@@ -88,9 +91,19 @@ function summaryOf(
     duration: item.details?.duration ?? null,
     automationName: item.automationName ?? null,
     parent: parent ? { _id: parent._id, shortId: parent.shortId, title: parent.title } : null,
+    client: client ? { _id: client._id, name: client.name } : null,
     made: made.get(item._id) ?? 0,
     searchable: item.transcript?.status ?? "no",
   };
+}
+
+/** The team's clients by ID, for naming the client each file is for. */
+async function clientsOf(ctx: QueryCtx, organizationId: string) {
+  const clients = await ctx.db
+    .query("clients")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .take(500);
+  return new Map(clients.map((client) => [client._id as string, client]));
 }
 
 async function loadItem(ctx: QueryCtx, itemId: Id<"libraryItems">) {
@@ -123,12 +136,16 @@ export const list = query({
       }
     }
     const settings = await librarySettingsOf(ctx, args.organizationId);
+    const clients = await clientsOf(ctx, args.organizationId);
     return {
-      items: items.map((item) => summaryOf(item, byId, made)),
+      items: items.map((item) => summaryOf(item, byId, made, clients)),
       searchNewFiles: settings.searchNewFiles,
       filled: settings.filledAt !== null,
       canChangeSettings: MANAGER_ROLES.includes(role),
       tags: [...new Set(items.flatMap((item) => item.tags))].sort(),
+      clients: [...clients.values()]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((client) => ({ _id: client._id, name: client.name })),
     };
   },
 });
@@ -153,8 +170,9 @@ export const get = query({
     byId.set(item._id, item);
     const captionFormat = captionFileFormat(item.key ?? item.url ?? "");
     const captionsFor = captionFormat ? await videoCaptioned(ctx, item, parent) : null;
+    const clients = await clientsOf(ctx, item.organizationId);
     return {
-      ...summaryOf(item, byId, new Map([[item._id as string, children.length]])),
+      ...summaryOf(item, byId, new Map([[item._id as string, children.length]]), clients),
       details: item.details ?? null,
       runId: item.runId ?? null,
       automationId: item.runId ? ((await ctx.db.get(item.runId))?.automationId ?? null) : null,
@@ -162,7 +180,7 @@ export const get = query({
         item.transcript?.status === "failed" ? (item.transcript.error ?? null) : null,
       children: children
         .sort((a, b) => a._creationTime - b._creationTime)
-        .map((child) => summaryOf(child, byId, new Map())),
+        .map((child) => summaryOf(child, byId, new Map(), clients)),
       pieces: pieces.map((piece) => ({ start: piece.start, end: piece.end, text: piece.text })),
       captionFormat,
       captionsFor: captionsFor
@@ -260,10 +278,11 @@ export const search = query({
         if (parent) byId.set(parent._id, parent);
       }
     }
+    const clients = await clientsOf(ctx, args.organizationId);
     return [...found.values()]
       .sort((a, b) => a.order - b.order)
       .map(({ item, moments }) => ({
-        ...summaryOf(item, byId, new Map()),
+        ...summaryOf(item, byId, new Map(), clients),
         moments: moments.sort((a, b) => a.start - b.start),
       }));
   },
@@ -322,6 +341,41 @@ export const setRating = mutation({
       fail("invalid_input", "A rating is one to five stars.");
     }
     await ctx.db.patch(item._id, { rating: args.rating ?? undefined });
+  },
+});
+
+/**
+ * Says which client a library file is for, or the team itself with null. Files made from
+ * it that went with its old client follow it, so a whole episode and its clips move at once.
+ */
+export const setClient = mutation({
+  args: { itemId: v.id("libraryItems"), clientId: v.union(v.id("clients"), v.null()) },
+  handler: async (ctx, args) => {
+    const { item } = await loadItem(ctx, args.itemId);
+    if (args.clientId) {
+      const client = await ctx.db.get(args.clientId);
+      if (!client || client.organizationId !== item.organizationId) {
+        fail("not_found", "That client is gone.");
+      }
+    }
+    const before = item.clientId;
+    const next = args.clientId ?? undefined;
+    if (before === next) return;
+    await ctx.db.patch(item._id, { clientId: next });
+    const waiting = [item._id];
+    let moved = 0;
+    while (waiting.length && moved < 500) {
+      const children = await ctx.db
+        .query("libraryItems")
+        .withIndex("by_parent", (q) => q.eq("parentId", waiting.pop()!))
+        .take(200);
+      for (const child of children) {
+        if (child.clientId !== before) continue;
+        await ctx.db.patch(child._id, { clientId: next });
+        waiting.push(child._id);
+        moved++;
+      }
+    }
   },
 });
 
@@ -420,6 +474,7 @@ async function addRunFiles(
   const parent = parentId ? await ctx.db.get(parentId) : null;
   // A file the run handed straight back (an approval of the upload) is not a new file.
   const started = new Set(startingFiles(run.trigger));
+  const clientId = run.clientId ?? parent?.clientId;
   for (const link of finishedFiles(run, steps)) {
     if (started.has(link)) continue;
     const key = kept.get(link);
@@ -434,6 +489,7 @@ async function addRunFiles(
       runId: run._id,
       automationName: run.automationName,
       ...(parentId ? { parentId } : {}),
+      ...(clientId ? { clientId } : {}),
       createdBy: null,
     });
   }
