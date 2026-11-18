@@ -135,6 +135,15 @@ Review activity: once Slack is connected, an owner picks a channel under "Review
 
 The browser tests play Slack with a stand-in (`e2e/slack-stand-in.mjs`, port 8768), which the dashboard and the agent server reach through `SLACK_API_URL`.
 
+### Discord
+
+People can tag the agent in their Discord server or message it directly, and it answers there. Unlike Slack, the dashboard has ONE Discord bot that every team uses: Discord only sends normal messages over a live connection per bot, so one bot that joins many servers is simpler. Whoever runs the dashboard sets it up once:
+
+1. In the [Discord Developer Portal](https://discord.com/developers/applications), press New Application. On Bot, press Reset Token and copy it, and switch on Message Content Intent. On General Information, copy the Application ID and the Public Key. Leave Interactions Endpoint URL empty: the agent server takes everything over its live connection. On OAuth2, copy the Client Secret and add the redirect `https://<your Convex site>/discord/callback`.
+2. On the agent server set `DISCORD_BOT_TOKEN`, `DISCORD_APPLICATION_ID` and `DISCORD_PUBLIC_KEY` (it also needs `MASTRA_JWT_SECRET` and the Convex address, as for Slack). On the Convex deployment set `DISCORD_CLIENT_ID` (the Application ID) and `DISCORD_CLIENT_SECRET`.
+
+Then, in Settings, Discord, a team owner presses "Add to Discord", picks the team's server on Discord and is sent back; that links the server to the team (one server belongs to one team). Discord gives bots no email address, so each member presses "Link my Discord" once. The agent finds who wrote by their Discord id on the team that owns the server (`POST /discord/person` on the Convex site, signed with `MASTRA_JWT_SECRET`) and works as them, with their rights and nothing more. Someone who has not linked is told how to, and nothing else happens. In a direct message it is the one team they linked; someone on several teams is asked to write in that team's server. The code is in `convex/discord.ts` and `packages/agent/src/mastra/ncat/discord.ts`.
+
 ### The agent
 
 The Agent button in the top bar opens a chat beside whatever is on screen. Describe what should run by itself and the agent builds the automation; ask for a change to the one that is open and it makes it on the canvas. It asks before it makes, changes or switches on anything, on a card that lists the change in plain words.

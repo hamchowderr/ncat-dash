@@ -143,6 +143,13 @@ const envSchema = z
     CONVEX_SITE_URL: z.string().url().optional(),
     // A stand-in Slack Web API for tests and local runs. Left out, Slack itself.
     SLACK_API_URL: z.string().url().optional(),
+    // The dashboard's one Discord bot (Discord Developer Portal: Bot token, Application
+    // ID, Public Key). Left out, the agent is not in Discord.
+    DISCORD_BOT_TOKEN: z.string().optional(),
+    DISCORD_APPLICATION_ID: z.string().optional(),
+    DISCORD_PUBLIC_KEY: z.string().optional(),
+    // A stand-in Discord API for tests and local runs. Left out, Discord itself.
+    DISCORD_API_URL: z.string().url().optional(),
 
     USE_AIMOCK: boolish.default(false),
     AIMOCK_URL: z.string().url().default('http://localhost:4010'),

@@ -33,7 +33,7 @@ import { dataSubagent } from '../agents/data';
 import { researchSubagentFor } from '../agents/research';
 import { reviewerSubagent } from '../agents/reviewer';
 import { writerSubagent } from '../agents/writer';
-import { slackChannels } from '../ncat/slack';
+import { chatChannels } from '../ncat/channels';
 import type { ScreencastBrowser } from '../routes/types';
 import { type ChatFeatures, features as defaultFeatures } from './features';
 import { DISCOVERY_BACKOFF_MS, disconnectFirecrawl, getFirecrawlTools } from './firecrawl';
@@ -130,7 +130,7 @@ export function createChatAgentController(opts?: {
    * the `browser` option instead, keeping AIMock runs hermetic.
    */
   workspace?: Workspace;
-  /** Chat apps (Slack) the controller also answers in. The live singleton passes the team apps. */
+  /** Chat apps (Slack, Discord) the controller also answers in. The live singleton passes the team apps. */
   channels?: AgentControllerChannelsConfig;
 }): AgentController {
   const f = defaultFeatures;
@@ -341,7 +341,7 @@ export function getChatAgentControllerInstance(): AgentController {
   instance ??= createChatAgentController({
     workspace: getChatWorkspace(),
     storage: createAgentControllerStore(),
-    channels: slackChannels(),
+    channels: chatChannels(),
   });
   return instance;
 }
