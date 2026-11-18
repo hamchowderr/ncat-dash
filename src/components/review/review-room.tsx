@@ -43,6 +43,7 @@ import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import { ClipStage, isStill, type Mark } from "./clip-stage";
+import { CompareButton, CompareStage } from "./compare-stage";
 import type { RoomData, Typing } from "@convex/lib/typing";
 
 import { CommentPanel } from "./comment-panel";
@@ -237,6 +238,7 @@ function ClipWorkspace({
     (place) => void sayTyping({ roomId: review._id, typing: place }).catch(() => {}),
   );
 
+  const [comparing, setComparing] = useState(false);
   const url = clip.versions[version - 1].url;
   const timed = !isStill(url);
   const threads = threadComments((all ?? []).filter((entry) => entry.version === version));
@@ -286,6 +288,20 @@ function ClipWorkspace({
     // Runs once the comments arrive; the handlers change on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, all, version]);
+
+  if (comparing) {
+    return (
+      <CompareStage
+        title={clip.title}
+        versions={clip.versions}
+        initial={version}
+        onClose={(next) => {
+          setComparing(false);
+          onVersion(next);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="stage-row flex min-h-0 min-w-0 flex-1 flex-col gap-3 lg:flex-row">
@@ -340,6 +356,7 @@ function ClipWorkspace({
                 ))}
               </div>
             )}
+            {clip.versions.length > 1 && <CompareButton onClick={() => setComparing(true)} />}
             <AddVersion clip={clip} organizationId={review.organizationId} />
           </>
         }

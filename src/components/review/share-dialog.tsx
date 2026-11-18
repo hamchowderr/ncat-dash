@@ -117,8 +117,8 @@ export function ShareDialog({ reviewId }: { reviewId: Id<"reviews"> }) {
         <DialogHeader>
           <DialogTitle>Share with a client</DialogTitle>
           <DialogDescription>
-            Anyone with the link can watch these clips and leave comments, without an account.
-            They give their name the first time.
+            Anyone with the link can watch these clips and leave comments, without an account. They
+            give their name the first time.
           </DialogDescription>
         </DialogHeader>
 

@@ -29,6 +29,7 @@ import type * as lib_drawing from "../lib/drawing.js";
 import type * as lib_edition from "../lib/edition.js";
 import type * as lib_exports from "../lib/exports.js";
 import type * as lib_facts from "../lib/facts.js";
+import type * as lib_library from "../lib/library.js";
 import type * as lib_logic from "../lib/logic.js";
 import type * as lib_notifications from "../lib/notifications.js";
 import type * as lib_outputs from "../lib/outputs.js";
@@ -40,6 +41,7 @@ import type * as lib_slackPosts from "../lib/slackPosts.js";
 import type * as lib_toolkitMessage from "../lib/toolkitMessage.js";
 import type * as lib_typing from "../lib/typing.js";
 import type * as lib_versions from "../lib/versions.js";
+import type * as library from "../library.js";
 import type * as notes from "../notes.js";
 import type * as notifications from "../notifications.js";
 import type * as outputs from "../outputs.js";
@@ -58,6 +60,7 @@ import type * as teamSettings from "../teamSettings.js";
 import type * as teams from "../teams.js";
 import type * as toolkitConnections from "../toolkitConnections.js";
 import type * as versions from "../versions.js";
+import type * as voiceNotes from "../voiceNotes.js";
 import type * as watch from "../watch.js";
 
 import type {
@@ -88,6 +91,7 @@ declare const fullApi: ApiFromModules<{
   "lib/edition": typeof lib_edition;
   "lib/exports": typeof lib_exports;
   "lib/facts": typeof lib_facts;
+  "lib/library": typeof lib_library;
   "lib/logic": typeof lib_logic;
   "lib/notifications": typeof lib_notifications;
   "lib/outputs": typeof lib_outputs;
@@ -99,6 +103,7 @@ declare const fullApi: ApiFromModules<{
   "lib/toolkitMessage": typeof lib_toolkitMessage;
   "lib/typing": typeof lib_typing;
   "lib/versions": typeof lib_versions;
+  library: typeof library;
   notes: typeof notes;
   notifications: typeof notifications;
   outputs: typeof outputs;
@@ -117,6 +122,7 @@ declare const fullApi: ApiFromModules<{
   teams: typeof teams;
   toolkitConnections: typeof toolkitConnections;
   versions: typeof versions;
+  voiceNotes: typeof voiceNotes;
   watch: typeof watch;
 }>;
 

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { APPROVAL_VIEWS } from "./approval-views";
 import { ToolRow } from "./tool-row";
 import { errorWords, toolWords } from "./tool-words";
+import { useVoiceNote } from "./use-voice-note";
 
 export function AgentPanel({
   onAutomation,
@@ -18,6 +19,7 @@ export function AgentPanel({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const voiceNote = useVoiceNote();
   return (
     <ChatPanel
       title="Agent"
@@ -58,6 +60,7 @@ export function AgentPanel({
         toolWords(call.name, call.args) ? <ToolRow call={call} result={result} /> : undefined
       }
       errorWords={errorWords}
+      voiceNote={voiceNote}
       onNavigate={(href) => router.push(href)}
       actions={
         <Button variant="ghost" size="icon" className="size-8" onClick={onClose}>

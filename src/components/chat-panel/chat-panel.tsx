@@ -76,6 +76,11 @@ export type ChatPanelProps = {
   ) => ReactNode | undefined;
   /** ncat-dash: the words shown when a turn fails, in place of the raw error. */
   errorWords?: (error: string) => string;
+  /**
+   * ncat-dash: the microphone records a voice note; this turns the recording into the
+   * words that are sent. Without it the microphone dictates where the browser can.
+   */
+  voiceNote?: (audio: Blob) => Promise<string>;
 };
 
 /**
@@ -105,6 +110,7 @@ export function ChatPanel({
   approvalViews,
   renderTool,
   errorWords,
+  voiceNote,
 }: ChatPanelProps) {
   const controller = useAgentControllerChat({ onToolEnd });
   const { transcript, status, sendMessage, answerQuestion, pendingSuspension } = controller;
@@ -262,6 +268,7 @@ export function ChatPanel({
             status={busy ? "streaming" : status === "error" ? "error" : "ready"}
             models={false}
             webSearch={false}
+            voiceNote={voiceNote}
             placeholder={placeholder}
             toolsExtra={
               plan ? <PlanModeToggle on={planMode.on} onToggle={planMode.toggle} /> : undefined

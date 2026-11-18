@@ -125,6 +125,13 @@ export const fileDetailsValidator = v.object({
   audioSampleRate: v.optional(v.number()),
 });
 
+export const libraryKindValidator = v.union(
+  v.literal("video"),
+  v.literal("audio"),
+  v.literal("image"),
+  v.literal("other"),
+);
+
 export const agentSettingsValidator = v.object({
   model: v.union(v.string(), v.null()),
   houseRules: v.string(),
@@ -205,6 +212,8 @@ export default defineSchema({
     permanent: v.optional(v.boolean()),
     // When the dashboard last asked the toolkit about a running job whose result is late.
     lastAskedAt: v.optional(v.number()),
+    // Set when the library asked for the job, to make one of its files searchable.
+    libraryItemId: v.optional(v.id("libraryItems")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
@@ -751,4 +760,83 @@ export default defineSchema({
   })
     .index("by_clip", ["clipId"])
     .index("by_review", ["reviewId"]),
+
+  // The content library: one row per file the team has, whether someone uploaded it or an
+  // automation made it. Gives each file a short ID ("V12", "C99") people and the agent can
+  // name it by, remembers where it came from, and holds its tags and stars.
+  libraryItems: defineTable({
+    organizationId: v.string(),
+    // "V12": a letter for the kind of file (see shortIdLetter) and the team's next number
+    // for that letter. Never reused, even after the file is removed.
+    shortId: v.string(),
+    kind: libraryKindValidator,
+    source: v.union(v.literal("upload"), v.literal("automation")),
+    title: v.string(),
+    // Where the file is: its key inside the team's folder of the bucket when it is there,
+    // or else the address the toolkit gave it.
+    key: v.optional(v.string()),
+    url: v.optional(v.string()),
+    // The upload it is, for an uploaded file.
+    uploadId: v.optional(v.id("uploads")),
+    // For a file an automation made: the run, and the automation's name at the time.
+    runId: v.optional(v.id("runs")),
+    automationName: v.optional(v.string()),
+    // The file it was made from, such as the episode a clip was cut from.
+    parentId: v.optional(v.id("libraryItems")),
+    details: v.optional(fileDetailsValidator),
+    tags: v.array(v.string()),
+    // One to five stars, given once a file has been out in the world, so winners are easy
+    // to find again.
+    rating: v.optional(v.number()),
+    // The ID, title, tags and automation on one line, for search (librarySearchText).
+    searchText: v.string(),
+    // Whether what was said in it can be searched yet. The words are in transcriptPieces.
+    transcript: v.optional(
+      v.object({
+        status: v.union(v.literal("working"), v.literal("ready"), v.literal("failed")),
+        jobId: v.optional(v.id("jobs")),
+        error: v.optional(v.string()),
+        language: v.optional(v.string()),
+        at: v.number(),
+      }),
+    ),
+    // Who brought it in; null for a file an automation made.
+    createdBy: v.union(v.null(), v.string()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_organization_and_shortId", ["organizationId", "shortId"])
+    .index("by_organization_and_key", ["organizationId", "key"])
+    .index("by_organization_and_url", ["organizationId", "url"])
+    .index("by_upload", ["uploadId"])
+    .index("by_parent", ["parentId"])
+    .index("by_run", ["runId"])
+    .searchIndex("search_text", { searchField: "searchText", filterFields: ["organizationId"] }),
+
+  // What was said in a library file, in pieces of about thirty seconds, so a search lands
+  // on the moment ("where did I talk about pricing?").
+  transcriptPieces: defineTable({
+    organizationId: v.string(),
+    itemId: v.id("libraryItems"),
+    start: v.number(),
+    end: v.number(),
+    text: v.string(),
+  })
+    .index("by_item_and_start", ["itemId", "start"])
+    .searchIndex("search_speech", { searchField: "text", filterFields: ["organizationId"] }),
+
+  // The next number for each short ID letter, per team.
+  libraryCounters: defineTable({
+    organizationId: v.string(),
+    letter: v.string(),
+    next: v.number(),
+  }).index("by_organization_and_letter", ["organizationId", "letter"]),
+
+  // Per-team library settings. A team without a row has the defaults.
+  librarySettings: defineTable({
+    organizationId: v.string(),
+    // Transcribe each new video and sound on the team's own toolkit, so it can be searched.
+    searchNewFiles: v.boolean(),
+    // When the files a team had before the library were added to it.
+    filledAt: v.optional(v.number()),
+  }).index("by_organization", ["organizationId"]),
 });

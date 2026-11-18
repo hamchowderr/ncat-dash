@@ -112,7 +112,7 @@ export const outputs = query({
       .take(100);
     return await Promise.all(
       done
-        .filter((job) => job.outputs.length > 0)
+        .filter((job) => job.outputs.length > 0 && !job.libraryItemId)
         .map(async (job) => ({
           jobId: job._id,
           stepId: job.stepId,
@@ -253,6 +253,10 @@ export const finish = internalMutation({
       ...(!args.ok && args.permanent ? { permanent: true } : {}),
     });
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
+    // A library file being made searchable: keep what was said in it.
+    if (job.libraryItemId) {
+      await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
+    }
     await pump(ctx, job.organizationId);
     return "recorded";
   },
@@ -269,6 +273,9 @@ export const giveUp = internalMutation({
       finishedAt: Date.now(),
     });
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
+    if (job.libraryItemId) {
+      await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
+    }
     await pump(ctx, job.organizationId);
   },
 });

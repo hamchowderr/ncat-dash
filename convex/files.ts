@@ -55,6 +55,7 @@ import {
   storageConnection,
 } from "./lib/bucket";
 import { finishedFiles } from "./lib/exports";
+import { followLibraryKey } from "./lib/library";
 import { outputNamesOf } from "./lib/outputs";
 import { fileDetailsValidator } from "./schema";
 
@@ -695,6 +696,9 @@ export const followRecords = internalMutation({
         }
       }
 
+      // The library follows the file too; a deleted file leaves it.
+      await followLibraryKey(ctx, args.organizationId, from, to);
+
       // Details read for a file that did not come through this app go with it.
       const read = await ctx.db
         .query("bucketFiles")
@@ -935,38 +939,51 @@ export const keepFinished = internalAction({
       files: { link: string; name: string }[];
     } | null = await ctx.runQuery(internal.files.finishedOfRun, { runId: args.runId });
     if (!found || found.files.length === 0) return [];
+    // Where each file ended up inside the team's folder, for the content library.
+    const placed: { link: string; key: string }[] = [];
+    const kept: string[] = [];
     const connection = await ctx.runQuery(internal.storage.load, {
       organizationId: found.organizationId,
     });
-    if (!connection?.storage?.endpoint) return [];
-    const config = await bucketFor(connection);
-    const whole: Bucket = { ...config, root: "" };
-    const address = {
-      endpoint: connection.storage.endpoint,
-      bucket: connection.storage.bucket,
-      ...(connection.storage.publicUrl ? { publicUrl: connection.storage.publicUrl } : {}),
-    };
-    const folderName = (found.automationName.trim() || "Automation").replace(/[/\\]/g, "-");
-    const folder = `${FINISHED_FOLDER}${nameProblem(folderName) ? "Automation" : folderName}/`;
-    const taken = new Set(
-      (await listObjects(config, folder, 1)).map((object) => object.key.slice(folder.length)),
-    );
-    const kept: string[] = [];
-    for (const file of found.files) {
-      const from = keyOfUrl(address, file.link);
-      // Already in a team's folder (or not in this bucket at all): nothing to copy.
-      if (from === null || from.startsWith("teams/")) continue;
-      const ending = endingOf(from);
-      const wanted = file.name.toLowerCase().endsWith(ending) ? file.name : `${file.name}${ending}`;
-      const name = freeName(wanted.replace(/[/\\]/g, "-"), (candidate) => taken.has(candidate));
-      taken.add(name);
-      try {
-        await copyObject(whole, from, `${config.root}${folder}${name}`);
-        kept.push(`${folder}${name}`);
-      } catch {
-        // Left where the toolkit put it; the run still links to it there.
+    if (connection?.storage?.endpoint) {
+      const config = await bucketFor(connection);
+      const whole: Bucket = { ...config, root: "" };
+      const address = {
+        endpoint: connection.storage.endpoint,
+        bucket: connection.storage.bucket,
+        ...(connection.storage.publicUrl ? { publicUrl: connection.storage.publicUrl } : {}),
+      };
+      const folderName = (found.automationName.trim() || "Automation").replace(/[/\\]/g, "-");
+      const folder = `${FINISHED_FOLDER}${nameProblem(folderName) ? "Automation" : folderName}/`;
+      const taken = new Set(
+        (await listObjects(config, folder, 1)).map((object) => object.key.slice(folder.length)),
+      );
+      for (const file of found.files) {
+        const from = keyOfUrl(address, file.link);
+        if (from === null) continue;
+        // Already in this team's folder: nothing to copy.
+        if (from.startsWith(config.root)) {
+          placed.push({ link: file.link, key: from.slice(config.root.length) });
+          continue;
+        }
+        // In another team's folder: not this team's to copy.
+        if (from.startsWith("teams/")) continue;
+        const ending = endingOf(from);
+        const wanted = file.name.toLowerCase().endsWith(ending)
+          ? file.name
+          : `${file.name}${ending}`;
+        const name = freeName(wanted.replace(/[/\\]/g, "-"), (candidate) => taken.has(candidate));
+        taken.add(name);
+        try {
+          await copyObject(whole, from, `${config.root}${folder}${name}`);
+          kept.push(`${folder}${name}`);
+          placed.push({ link: file.link, key: `${folder}${name}` });
+        } catch {
+          // Left where the toolkit put it; the run still links to it there.
+        }
       }
     }
+    await ctx.runMutation(internal.library.addFinished, { runId: args.runId, kept: placed });
     return kept;
   },
 });
