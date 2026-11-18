@@ -3,6 +3,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
+import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
 import { toolkitMessageText } from "./lib/toolkitMessage";
 
@@ -160,6 +161,50 @@ http.route({
       now: Date.now(),
     });
     return new Response(null, { status });
+  }),
+});
+
+// The agent server asks who a Discord user is on the team that owns the server they
+// wrote in. Only a caller holding MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/discord/person",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.guildId || !asked.discordUserId) {
+      return new Response("Missing guildId or discordUserId", { status: 400 });
+    }
+    const found = await ctx.runAction(internal.discord.person, {
+      guildId: asked.guildId,
+      discordUserId: asked.discordUserId,
+    });
+    return Response.json(found);
+  }),
+});
+
+// Discord sends people back here after they add the bot to a server or link their own
+// account from Settings. The state is the one-time id Settings started the sign-in with.
+http.route({
+  path: "/discord/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    let location: string;
+    if (!code || !state) {
+      location = settingsUrl(
+        url.searchParams.get("error") === "access_denied" ? "cancelled" : "refused",
+      );
+    } else {
+      location = await ctx.runAction(internal.discord.finishLink, {
+        code,
+        state,
+        ...(url.searchParams.get("guild_id") ? { guildId: url.searchParams.get("guild_id")! } : {}),
+      });
+    }
+    return new Response(null, { status: 302, headers: { location } });
   }),
 });
 
