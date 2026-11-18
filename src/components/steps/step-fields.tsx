@@ -125,7 +125,7 @@ export function FileChoice({
   id?: string;
   disabled?: boolean;
   /** Lets a file be sent from this computer: the kind of file to offer. */
-  upload?: "image" | "audio";
+  upload?: "image" | "audio" | "video";
   /** Shows the picture itself once one is chosen. */
   preview?: boolean;
 }) {

@@ -143,6 +143,9 @@ export const brandValidator = v.object({
   color: v.optional(v.string()),
   font: v.optional(v.string()),
   music: v.optional(v.string()),
+  card: v.optional(v.string()),
+  intro: v.optional(v.string()),
+  outro: v.optional(v.string()),
 });
 
 const captionLookValidator = v.object({

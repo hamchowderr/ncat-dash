@@ -22,9 +22,9 @@ export type FileKind = "video" | "audio" | "image" | "media" | "any";
 /** What kind of file a settings field wants, going by its name. */
 export function wantedKind(field: string | null | undefined): FileKind {
   if (!field) return "any";
-  if (/^(video|reaction)_urls?$/.test(field)) return "video";
+  if (/^(video|reaction|other_video|intro|outro)_urls?$/.test(field)) return "video";
   if (/^(audio|music)_urls?$/.test(field)) return "audio";
-  if (/^(image|background|overlay|logo)_urls?$/.test(field)) return "image";
+  if (/^(image|background|overlay|logo|template)_urls?$/.test(field)) return "image";
   if (/^media_urls?$/.test(field)) return "media";
   return "any";
 }

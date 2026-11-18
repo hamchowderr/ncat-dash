@@ -1,4 +1,4 @@
-import { moreRecipes, recipes } from "@ncat-dash/step-catalog";
+import { editingRecipes, moreRecipes, recipes } from "@ncat-dash/step-catalog";
 
 import { type AutomationEdge, type AutomationNode, NODE_GAP } from "./graph";
 import type { Schedule } from "./schedule";
@@ -314,6 +314,58 @@ const WORKFLOWS: Starter[] = [
       ...chain("loudness_1", "thumbnail_1"),
     ],
   },
+  {
+    id: "podcast-package",
+    category: "audio",
+    name: "Podcast package",
+    description:
+      "Upload a recorded episode. Your intro and outro from Settings go on each end, your music plays quietly underneath, the sound is brought to podcast loudness, and you get both the video and an MP3 for the feed.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [
+      step("intro_outro_1", "recipe-intro-outro", 0),
+      step("music_1", "recipe-background-music", 1),
+      step("loudness_1", "recipe-loudness", 2),
+      step("mp3_1", "media-to-mp3", 3),
+    ],
+    edges: chain("intro_outro_1", "music_1", "loudness_1", "mp3_1"),
+  },
+  {
+    id: "thumbnail-choices",
+    category: "pictures",
+    name: "Thumbnail choices with your title",
+    description:
+      "Each video you upload gives you frames from across it, each with the video's name in a band in your brand colour and font, so you can pick a thumbnail.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [
+      step("frames_1", "recipe-frame-choices", 0),
+      step("title_1", "recipe-title-on-picture", 1),
+    ],
+    edges: chain("frames_1", "title_1"),
+  },
+  {
+    id: "reaction-vertical",
+    category: "clips",
+    name: "Reaction stacked for vertical",
+    description:
+      "Start it with the video you react to and pick your reaction recording. They are stacked top and bottom in a vertical frame, then captioned.",
+    group: "workflow",
+    trigger: { kind: "manual" },
+    nodes: [step("stack_1", "recipe-stack", 0), step("caption_1", "video-caption", 1)],
+    edges: chain("stack_1", "caption_1"),
+  },
+  {
+    id: "clip-with-end-card",
+    category: "clips",
+    name: "Captioned video with your end card",
+    description:
+      "Each video you upload is captioned and finishes on your card from Settings with a line of your choosing, like a follow prompt.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [step("caption_1", "video-caption", 0), step("card_1", "recipe-video-card", 1)],
+    edges: chain("caption_1", "card_1"),
+  },
 ];
 
 const IMAGE_FIRST = new Set(["image_url", "background_url"]);
@@ -335,11 +387,23 @@ const RECIPE_CATEGORY: Record<string, StarterCategory> = {
   "recipe-cover-art-video": "music",
   "recipe-loudness": "delivery",
   "recipe-web-ready": "delivery",
+  "recipe-picture-in-picture": "clips",
+  "recipe-stack": "clips",
+  "recipe-side-by-side": "clips",
+  "recipe-green-screen": "clips",
+  "recipe-fit-to-voiceover": "clips",
+  "recipe-slideshow": "clips",
+  "recipe-quote-card": "pictures",
+  "recipe-title-on-picture": "pictures",
+  "recipe-frame-choices": "pictures",
+  "recipe-intro-outro": "delivery",
+  "recipe-change-format": "delivery",
 };
 
 /** One automation per ready-made FFmpeg step: the toolkit's examples and the dashboard's own. */
-const RECIPES: Starter[] = [...recipes, ...moreRecipes].map((recipe) => {
-  const many = Boolean(recipe.listInput);
+const RECIPES: Starter[] = [...recipes, ...moreRecipes, ...editingRecipes].map((recipe) => {
+  // With no file to start from, or a list of them, the team starts it by hand.
+  const many = Boolean(recipe.listInput) || recipe.primaryInput === null;
   return {
     id: recipe.id,
     name: recipe.title,
@@ -353,7 +417,7 @@ const RECIPES: Starter[] = [...recipes, ...moreRecipes].map((recipe) => {
           kind: "upload" as const,
           fileType: IMAGE_FIRST.has(recipe.primaryInput ?? "")
             ? ("image" as const)
-            : recipe.id === "recipe-voice-master"
+            : recipe.id === "recipe-voice-master" || recipe.primaryInput === "media_url"
               ? ("any" as const)
               : recipe.primaryInput === "audio_url"
                 ? ("audio" as const)
