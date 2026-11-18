@@ -156,6 +156,8 @@ const DETAIL = {
   runId: null,
   automationId: null,
   transcriptError: null,
+  captionFormat: null,
+  captionsFor: null,
   children: [CLIP],
   pieces: [
     { start: 0, end: 20, text: "Welcome back to the show." },
@@ -223,5 +225,58 @@ describe("a library file", () => {
       "/library/i1",
     );
     expect(screen.getByText("Made by Podcast clips")).toBeTruthy();
+  });
+
+  test("a caption file shows its lines, each opening the video it captions at that moment", () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      ...item("i4", "F1", "Episode 4 clip 1", {
+        kind: "other",
+        source: "automation",
+        searchable: "ready",
+      }),
+      details: null,
+      children: [],
+      captionFormat: "srt",
+      captionsFor: { _id: "i2", shortId: "C1", title: "Episode 4 clip 1" },
+      pieces: [
+        { start: 1, end: 3, text: "Welcome back." },
+        { start: 4.5, end: 7, text: "Let's talk about pricing." },
+      ],
+    });
+    renderInApp(<LibraryItemView itemId={"i4" as never} />);
+    const section = screen.getByRole("region", { name: "What the captions say" });
+    expect(
+      within(section).getByRole("link", { name: "C1 Episode 4 clip 1" }).getAttribute("href"),
+    ).toBe("/library/i2");
+    const lines = within(screen.getByTestId("transcript")).getAllByRole("link");
+    expect(lines.map((line) => line.getAttribute("href"))).toEqual([
+      "/library/i2?t=1",
+      "/library/i2?t=4",
+    ]);
+    expect(lines[1]!.textContent).toBe("0:04Let's talk about pricing.");
+    expect(screen.queryByRole("button", { name: "Make searchable" })).toBeNull();
+  });
+
+  test("a caption file that could not be read offers to read it again", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      ...item("i4", "F1", "Captions", { kind: "other", searchable: "failed" }),
+      details: null,
+      children: [],
+      captionFormat: "ass",
+      transcriptError: "The caption file could not be read.",
+      pieces: [],
+    });
+    actionOf(api.library.makeSearchable).mockResolvedValue(1);
+    renderInApp(<LibraryItemView itemId={"i4" as never} />);
+    expect(screen.getByText(/could not be read/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() =>
+      expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
+        organizationId: "team_1",
+        itemIds: ["i4"],
+      }),
+    );
   });
 });

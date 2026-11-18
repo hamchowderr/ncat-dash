@@ -1,4 +1,6 @@
 import {
+  captionFileFormat,
+  captionLines,
   cleanTags,
   keyOfUrl,
   librarySearchText,
@@ -149,6 +151,8 @@ export const get = query({
       .take(2000);
     const byId = new Map<string, Doc<"libraryItems">>(parent ? [[parent._id, parent]] : []);
     byId.set(item._id, item);
+    const captionFormat = captionFileFormat(item.key ?? item.url ?? "");
+    const captionsFor = captionFormat ? await videoCaptioned(ctx, item, parent) : null;
     return {
       ...summaryOf(item, byId, new Map([[item._id as string, children.length]])),
       details: item.details ?? null,
@@ -160,9 +164,36 @@ export const get = query({
         .sort((a, b) => a._creationTime - b._creationTime)
         .map((child) => summaryOf(child, byId, new Map())),
       pieces: pieces.map((piece) => ({ start: piece.start, end: piece.end, text: piece.text })),
+      captionFormat,
+      captionsFor: captionsFor
+        ? { _id: captionsFor._id, shortId: captionsFor.shortId, title: captionsFor.title }
+        : null,
     };
   },
 });
+
+/**
+ * The video a caption file goes with: the video its run made under the same name, else the
+ * only video that run made, else the video it was made from.
+ */
+async function videoCaptioned(
+  ctx: QueryCtx,
+  item: Doc<"libraryItems">,
+  parent: Doc<"libraryItems"> | null,
+): Promise<Doc<"libraryItems"> | null> {
+  if (item.runId) {
+    const madeTogether = (
+      await ctx.db
+        .query("libraryItems")
+        .withIndex("by_run", (q) => q.eq("runId", item.runId))
+        .take(100)
+    ).filter((other) => other.kind === "video");
+    const sameName = madeTogether.find((video) => video.title === item.title);
+    if (sameName) return sameName;
+    if (madeTogether.length === 1) return madeTogether[0]!;
+  }
+  return parent?.kind === "video" ? parent : null;
+}
 
 /**
  * Searches the team's library: what was said in each file (the moments it was said), and
@@ -618,8 +649,13 @@ export const startTranscript = internalMutation({
     const createdBy = args.asMember
       ? (await requireMember(ctx, item.organizationId)).userId
       : (item.createdBy ?? "library");
-    if (item.kind !== "video" && item.kind !== "audio") return false;
     if (item.transcript?.status === "working") return false;
+    if (captionFileFormat(item.key ?? item.url ?? "")) {
+      await ctx.db.patch(item._id, { transcript: { status: "working", at: Date.now() } });
+      await ctx.scheduler.runAfter(0, internal.library.readCaptions, { itemId: item._id });
+      return true;
+    }
+    if (item.kind !== "video" && item.kind !== "audio") return false;
     const queued = await enqueueJob(ctx, {
       organizationId: item.organizationId,
       stepId: "media-transcribe",
@@ -759,5 +795,73 @@ export const saveTranscript = internalMutation({
     await ctx.db.patch(item._id, {
       transcript: { status: "ready", jobId: args.jobId, at: Date.now() },
     });
+  },
+});
+
+// Caption files: their lines are read from the file itself and kept like a transcript.
+
+const MAX_CAPTION_BYTES = 2 * 1024 * 1024;
+
+/** Reads a caption file in the library (SRT, WebVTT or ASS) into timed lines. */
+export const readCaptions = internalAction({
+  args: { itemId: v.id("libraryItems") },
+  handler: async (ctx, args) => {
+    const item = await ctx.runQuery(internal.library.loadInternal, args);
+    if (!item) return;
+    const format = captionFileFormat(item.key ?? item.url ?? "");
+    if (!format) return;
+    let lines: { start: number; end: number; text: string }[] | null = null;
+    try {
+      const connection = await ctx.runQuery(internal.storage.load, {
+        organizationId: item.organizationId,
+      });
+      const url =
+        item.key && connection
+          ? await presign(await bucketOf(connection), "GET", item.key, 600)
+          : (item.url ?? null);
+      if (url) {
+        const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+        if (response.ok) {
+          const text = await response.text();
+          if (text.length <= MAX_CAPTION_BYTES) lines = captionLines(text, format);
+        }
+      }
+    } catch {
+      lines = null;
+    }
+    await ctx.runMutation(internal.library.saveCaptionLines, {
+      itemId: item._id,
+      lines: lines ?? undefined,
+    });
+  },
+});
+
+export const saveCaptionLines = internalMutation({
+  args: {
+    itemId: v.id("libraryItems"),
+    lines: v.optional(v.array(v.object({ start: v.number(), end: v.number(), text: v.string() }))),
+  },
+  handler: async (ctx, args) => {
+    const item = await ctx.db.get(args.itemId);
+    if (!item) return;
+    if (!args.lines) {
+      await ctx.db.patch(item._id, {
+        transcript: {
+          status: "failed",
+          error: "The caption file could not be read.",
+          at: Date.now(),
+        },
+      });
+      return;
+    }
+    await deletePieces(ctx, item._id);
+    for (const line of args.lines) {
+      await ctx.db.insert("transcriptPieces", {
+        organizationId: item.organizationId,
+        itemId: item._id,
+        ...line,
+      });
+    }
+    await ctx.db.patch(item._id, { transcript: { status: "ready", at: Date.now() } });
   },
 });
