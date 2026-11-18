@@ -212,7 +212,7 @@ export function AutomationsView() {
               </p>
             </div>
           </div>
-          <TemplateGallery recipes={false} disabled={pending} onPick={onPick} />
+          <TemplateGallery disabled={pending} onPick={onPick} />
         </div>
       ) : (
         <div className="reveal overflow-hidden rounded-xl bg-surface">

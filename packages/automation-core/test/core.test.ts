@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getStep } from "@ncat-dash/step-catalog";
 import {
   fileFamily,
+  STARTER_CATEGORIES,
   STARTERS,
   type AutomationEdge,
   type AutomationNode,
@@ -164,6 +165,46 @@ describe("starters", () => {
       expect(graphProblem(starter.nodes, starter.edges), starter.id).toBeNull();
       for (const node of starter.nodes) {
         if (node.kind === "step") expect(getStep(node.stepId!), node.stepId).toBeDefined();
+      }
+    }
+  });
+});
+
+describe("the ready-made list", () => {
+  it("puts every automation in a known category, and every category has some", () => {
+    const known = new Set(STARTER_CATEGORIES.map((category) => category.id));
+    for (const starter of STARTERS) expect(known.has(starter.category), starter.id).toBe(true);
+    for (const category of STARTER_CATEGORIES) {
+      expect(
+        STARTERS.filter((starter) => starter.category === category.id).length,
+        category.id,
+      ).toBeGreaterThan(1);
+    }
+  });
+
+  it("has every ready-made step and the researched workflows", () => {
+    expect(STARTERS.filter((starter) => starter.group === "workflow")).toHaveLength(15);
+    expect(STARTERS.filter((starter) => starter.group === "recipe")).toHaveLength(28);
+  });
+
+  it("starts audio-only automations from audio uploads", () => {
+    for (const id of ["audio-to-video", "lyric-video", "music-release-pack"]) {
+      expect(STARTERS.find((starter) => starter.id === id)?.trigger).toEqual({
+        kind: "upload",
+        fileType: "audio",
+      });
+    }
+  });
+});
+
+describe("ready-made step settings", () => {
+  it("are settings each step really has", () => {
+    for (const starter of STARTERS) {
+      for (const node of starter.nodes) {
+        if (node.kind !== "step") continue;
+        const step = getStep(node.stepId!)!;
+        const result = step.input.partial().safeParse(node.input);
+        expect(result.success, `${starter.id} ${node.id}`).toBe(true);
       }
     }
   });
