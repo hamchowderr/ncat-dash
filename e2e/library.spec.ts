@@ -107,7 +107,10 @@ test("a caption file shows its lines, and they are searched like what was said",
 
   await page.goto("/uploads");
   await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.srt");
-  await expect(page.getByText("clip.srt")).toBeVisible({ timeout: 30_000 });
+  // Finished uploading (the name shows while it is still on its way).
+  await expect(page.getByRole("button", { name: "Open clip.srt" })).toBeVisible({
+    timeout: 30_000,
+  });
 
   await page.goto("/library");
   await page.getByRole("link", { name: "Open F1 clip" }).click();
