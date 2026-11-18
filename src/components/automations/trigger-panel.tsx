@@ -16,6 +16,7 @@ import {
 import { hookUrl, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib/automations";
 
 import { AutomationPicker } from "./automation-picker";
+import { WatchedFolder } from "./watched-folder";
 
 const UNITS = { minutes: 1, hours: 60, days: 1440 } as const;
 type Unit = keyof typeof UNITS;
@@ -154,21 +155,14 @@ export function TriggerPanel({
       {trigger.kind === "folder" && (
         <Field>
           <FieldLabel htmlFor="trigger-folder">Folder</FieldLabel>
-          <Input
+          <WatchedFolder
             id="trigger-folder"
-            value={trigger.prefix}
-            placeholder="incoming/"
-            maxLength={500}
-            onChange={(event) =>
-              onChange({ ...trigger, prefix: event.target.value.replace(/^\/+/, "") })
-            }
-            autoComplete="off"
-            spellCheck={false}
+            prefix={trigger.prefix}
+            onChange={(prefix) => onChange({ ...trigger, prefix })}
           />
           <FieldDescription>
-            A folder in the bucket you connected on the Uploads page. It is checked every minute.
-            Files already there when you switch the automation on are left alone. Leave it empty to
-            watch the whole bucket.
+            It is checked every minute. Files already there when you switch the automation on are
+            left alone.
           </FieldDescription>
         </Field>
       )}
