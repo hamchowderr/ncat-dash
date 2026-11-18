@@ -125,6 +125,8 @@ createServer((request, response) => {
   }
 }).listen(FILES_PORT, "127.0.0.1");
 
+let failing = null;
+
 createServer((request, response) => {
   const chunks = [];
   request.on("data", (chunk) => chunks.push(chunk));
@@ -145,7 +147,42 @@ createServer((request, response) => {
       }
       return;
     }
+    // A test can make one endpoint refuse its jobs until it says otherwise:
+    // POST /__stand-in/fail {"path": "/v1/video/thumbnail"}, and {"path": null} to stop.
+    if (request.url === "/__stand-in/fail") {
+      failing = JSON.parse(Buffer.concat(chunks).toString() || "{}").path ?? null;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ failing }));
+      return;
+    }
+    if (failing && request.url.startsWith(failing)) {
+      response.writeHead(400, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({ code: 400, message: "The picture time is past the end of the video." }),
+      );
+      return;
+    }
     response.writeHead(200, { "Content-Type": "application/json" });
+    if (request.url.startsWith("/v1/toolkit/health")) {
+      // What the fork's health route says about a 4-CPU box with a little work on.
+      response.end(
+        JSON.stringify({
+          code: 200,
+          response: {
+            build_number: "214",
+            cpus: 4,
+            cpu_percent: 38.5,
+            memory: { used: 2_900_000_000, limit: 8_000_000_000 },
+            disk: { free: 59_000_000_000, total: 100_000_000_000 },
+            uptime_seconds: 273_600,
+            queue: { shared: true, waiting: 1, workers: 4, busy: 2 },
+            jobs: { queued: 1, running: 2, done: 318 },
+          },
+          message: "success",
+        }),
+      );
+      return;
+    }
     if (request.url.startsWith("/v1/toolkit/authenticate")) {
       response.end(JSON.stringify({ code: 200, response: "Authorized", build_number: "204" }));
       return;
