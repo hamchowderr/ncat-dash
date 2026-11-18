@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
+import { selectClass } from "@/components/projects/slot-status";
 import { UploadFrame } from "@/components/uploads/upload-media";
 import { Button } from "@/components/ui/button";
 import {
@@ -189,6 +190,51 @@ function RunMenu({ itemId, teamId }: { itemId: Id<"libraryItems">; teamId: strin
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * Who a file is for: the team itself or one of its clients. Files an automation made for a
+ * client come in set; this changes it, and files made from this one follow. Nothing shows
+ * until the team has a client.
+ */
+function ClientFact({
+  itemId,
+  teamId,
+  client,
+}: {
+  itemId: Id<"libraryItems">;
+  teamId: string;
+  client: { _id: Id<"clients">; name: string } | null;
+}) {
+  const clients = useQuery(api.clients.list, { organizationId: teamId });
+  const setClient = useMutation(api.library.setClient);
+  if (!clients || clients.length === 0) return null;
+
+  async function onChange(value: string) {
+    try {
+      await setClient({ itemId, clientId: value ? (value as Id<"clients">) : null });
+    } catch (caught) {
+      toast.error(errorMessage(caught, "That could not be changed."));
+    }
+  }
+
+  return (
+    <Fact label="Client">
+      <select
+        aria-label="Client"
+        value={client?._id ?? ""}
+        onChange={(event) => void onChange(event.target.value)}
+        className={cn(selectClass, "h-8 max-w-44")}
+      >
+        <option value="">Your team</option>
+        {clients.map((one) => (
+          <option key={one._id} value={one._id}>
+            {one.name}
+          </option>
+        ))}
+      </select>
+    </Fact>
   );
 }
 
@@ -489,6 +535,7 @@ export function LibraryItemView({
           <RunMenu itemId={item._id} teamId={team.id} />
 
           <dl className="flex flex-col gap-2.5">
+            <ClientFact itemId={item._id} teamId={team.id} client={item.client} />
             <Fact label="Kind">{KIND_LABELS[item.kind]}</Fact>
             <Fact label="Source">{sourceLabel(item)}</Fact>
             {item.parent && (

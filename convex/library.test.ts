@@ -191,6 +191,72 @@ describe("files join the library", () => {
   });
 });
 
+describe("files for a client", () => {
+  test("what a client's run makes is for that client; the episode can be moved, clips follow", async () => {
+    const { t, team, maya, olu, other, upload, itemOf, finishedRun, toolkit } = await studio();
+    const acme = await maya.as.mutation(api.clients.create, {
+      organizationId: team,
+      name: "Acme Coffee",
+    });
+    const episode = await upload("episode.mp4");
+    const { runId } = await finishedRun(episode, [`${LINK}/${JOB}_output_0.mp4`]);
+    await t.run((ctx) => ctx.db.patch(runId, { clientId: acme }));
+    toolkit.put(`${JOB}_output_0.mp4`);
+    await t.action(internal.files.keepFinished, { runId });
+
+    let list = await maya.as.query(api.library.list, { organizationId: team });
+    expect(list.clients).toEqual([{ _id: acme, name: "Acme Coffee" }]);
+    expect(list.items.map((item) => [item.shortId, item.client?.name ?? null])).toEqual([
+      ["C1", "Acme Coffee"],
+      ["V1", null],
+    ]);
+
+    // The episode is for Acme too; its clip already is, and stays.
+    const parent = await itemOf(episode);
+    await maya.as.mutation(api.library.setClient, { itemId: parent._id, clientId: acme });
+    // Back to the team: the clip that went with Acme follows.
+    await maya.as.mutation(api.library.setClient, { itemId: parent._id, clientId: null });
+    list = await maya.as.query(api.library.list, { organizationId: team });
+    expect(list.items.map((item) => item.client)).toEqual([null, null]);
+    await maya.as.mutation(api.library.setClient, { itemId: parent._id, clientId: acme });
+    list = await maya.as.query(api.library.list, { organizationId: team });
+    expect(list.items.map((item) => item.client?.name)).toEqual(["Acme Coffee", "Acme Coffee"]);
+
+    // Another team's client, or someone from another team, is turned away.
+    const theirs = await olu.as.mutation(api.clients.create, {
+      organizationId: other,
+      name: "Birch",
+    });
+    await expect(
+      maya.as.mutation(api.library.setClient, { itemId: parent._id, clientId: theirs }),
+    ).rejects.toThrow(/client is gone/);
+    await expect(
+      olu.as.mutation(api.library.setClient, { itemId: parent._id, clientId: theirs }),
+    ).rejects.toThrow();
+
+    // Search results say who a file is for.
+    const hits = await maya.as.query(api.library.search, { organizationId: team, text: "C1" });
+    expect(hits[0]?.client?.name).toBe("Acme Coffee");
+  });
+
+  test("deleting a client keeps its files, as the team's own", async () => {
+    const { team, maya, upload, itemOf, items } = await studio();
+    const acme = await maya.as.mutation(api.clients.create, {
+      organizationId: team,
+      name: "Acme Coffee",
+    });
+    const episode = await upload("episode.mp4");
+    await maya.as.mutation(api.library.setClient, {
+      itemId: (await itemOf(episode))._id,
+      clientId: acme,
+    });
+    await maya.as.mutation(api.clients.remove, { clientId: acme });
+    const left = await items();
+    expect(left.map((item) => [item.shortId, item.client])).toEqual([["V1", null]]);
+    expect((await itemOf(episode)).clientId).toBeUndefined();
+  });
+});
+
 describe("files follow the Files page", () => {
   test("a renamed file keeps its library entry; a deleted one leaves", async () => {
     const { t, team, upload, itemOf } = await studio();
