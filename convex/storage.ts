@@ -1,4 +1,4 @@
-import { readFileDetails, readUploadRef } from "@ncat-dash/automation-core";
+import { readFileDetails, readUploadRef, uploadKind } from "@ncat-dash/automation-core";
 import { callStep, getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -20,6 +20,9 @@ const UPLOAD_LINK_SECONDS = 60 * 60;
 // The longest a signed link may live (SigV4 limit). Long enough for a job to fetch it.
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
+// Previews on the Uploads page: long enough for a working session, then asked for again.
+const PREVIEW_LINK_SECONDS = 6 * 60 * 60;
+const MAX_PREVIEW_LINKS = 25;
 
 const NO_STORAGE = "Connect your toolkit first, so there is somewhere for your files to go.";
 
@@ -145,6 +148,61 @@ export const linkFor = action({
     });
     if (!storage) throw new ConvexError({ code: "no_storage", message: NO_STORAGE });
     return await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
+  },
+});
+
+/**
+ * Links the Uploads page plays and shows files from, for the uploads on screen. Only finished
+ * videos, sounds and pictures of the caller's own team get one; anything else is left out.
+ */
+export const previewLinks = action({
+  args: { organizationId: v.string(), uploadIds: v.array(v.id("uploads")) },
+  returns: v.array(v.object({ uploadId: v.id("uploads"), url: v.string() })),
+  handler: async (ctx, args): Promise<{ uploadId: Doc<"uploads">["_id"]; url: string }[]> => {
+    if (args.uploadIds.length > MAX_PREVIEW_LINKS) {
+      throw new ConvexError({
+        code: "too_many",
+        message: `Ask for up to ${MAX_PREVIEW_LINKS} previews at a time.`,
+      });
+    }
+    const targets = await ctx.runQuery(internal.storage.previewTargets, args);
+    if (targets.length === 0) return [];
+    const storage = await ctx.runQuery(internal.storage.load, {
+      organizationId: args.organizationId,
+    });
+    if (!storage) return [];
+    const bucket = await bucketOf(storage);
+    const links = await Promise.all(
+      targets.map(async (target) => {
+        try {
+          return {
+            uploadId: target.uploadId,
+            url: await presign(bucket, "GET", target.key, PREVIEW_LINK_SECONDS),
+          };
+        } catch {
+          // One file the toolkit cannot sign should not keep the others from showing.
+          return null;
+        }
+      }),
+    );
+    return links.filter((link) => link !== null);
+  },
+});
+
+/** The keys behind the uploads asked for, once the caller is checked as a team member. */
+export const previewTargets = internalQuery({
+  args: { organizationId: v.string(), uploadIds: v.array(v.id("uploads")) },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const targets: { uploadId: Doc<"uploads">["_id"]; key: string }[] = [];
+    for (const uploadId of new Set(args.uploadIds)) {
+      const upload = await ctx.db.get(uploadId);
+      if (!upload || upload.organizationId !== args.organizationId) continue;
+      if (upload.status !== "ready") continue;
+      if (uploadKind(upload.contentType, upload.details) === "other") continue;
+      targets.push({ uploadId, key: upload.key });
+    }
+    return targets;
   },
 });
 
