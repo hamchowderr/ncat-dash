@@ -57,15 +57,15 @@ describe("preview links for the Uploads page", () => {
       new Map([
         [
           talk,
-          `https://r2.example/test-bucket/uploads/${team}/talk.mp4?method=GET&expires=21600&signature=fake`,
+          `https://r2.example/test-bucket/teams/${team}/uploads/${team}/talk.mp4?method=GET&expires=21600&signature=fake`,
         ],
         [
           song,
-          `https://r2.example/test-bucket/uploads/${team}/song.mp3?method=GET&expires=21600&signature=fake`,
+          `https://r2.example/test-bucket/teams/${team}/uploads/${team}/song.mp3?method=GET&expires=21600&signature=fake`,
         ],
         [
           logo,
-          `https://r2.example/test-bucket/uploads/${team}/logo.png?method=GET&expires=21600&signature=fake`,
+          `https://r2.example/test-bucket/teams/${team}/uploads/${team}/logo.png?method=GET&expires=21600&signature=fake`,
         ],
       ]),
     );

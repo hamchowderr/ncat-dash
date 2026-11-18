@@ -75,7 +75,8 @@ export const startUpload = action({
       organizationId: args.organizationId,
     });
     if (!storage) throw new ConvexError({ code: "no_storage", message: NO_STORAGE });
-    const key = `uploads/${args.organizationId}/${crypto.randomUUID()}/${safeName(args.fileName)}`;
+    // Inside the team's own folder, like every key (see lib/bucket.ts).
+    const key = `uploads/${crypto.randomUUID()}/${safeName(args.fileName)}`;
     const uploadUrl = await presign(await bucketOf(storage), "PUT", key, UPLOAD_LINK_SECONDS);
     const uploadId = await ctx.runMutation(internal.storage.recordUpload, {
       organizationId: args.organizationId,

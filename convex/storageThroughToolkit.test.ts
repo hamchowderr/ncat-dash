@@ -95,13 +95,14 @@ describe("files go through the toolkit", () => {
       size: 5000,
     });
     const upload = await t.run((ctx) => ctx.db.get(uploadId));
-    expect(upload?.key).toMatch(new RegExp(`^uploads/${team}/[0-9a-f-]+/Big-Talk\\.mp4$`));
+    // Kept from inside the team's folder; the toolkit is asked for the bucket's full key.
+    expect(upload?.key).toMatch(/^uploads\/[0-9a-f-]+\/Big-Talk\.mp4$/);
     expect(uploadUrl).toBe(
-      `https://r2.example/test-bucket/${upload?.key}?method=PUT&expires=3600&signature=fake`,
+      `https://r2.example/test-bucket/teams/${team}/${upload?.key}?method=PUT&expires=3600&signature=fake`,
     );
     expect(toolkit.calls.at(-1)).toEqual({
       request: "sign",
-      body: { key: upload?.key, method: "PUT", expires_in: 3600 },
+      body: { key: `teams/${team}/${upload?.key}`, method: "PUT", expires_in: 3600 },
     });
   });
 
@@ -120,9 +121,13 @@ describe("files go through the toolkit", () => {
   test("the Files page lists, renames and deletes through the toolkit", async () => {
     const { t, team, owner, toolkit } = await studio();
     await connectToolkit(t, team, owner.id);
-    toolkit.put("shows/ep1.mp4");
-    toolkit.put("shows/raw/take.mp4");
-    toolkit.put("top.mp4");
+    const own = `teams/${team}/`;
+    toolkit.put(`${own}shows/ep1.mp4`);
+    toolkit.put(`${own}shows/raw/take.mp4`);
+    toolkit.put(`${own}top.mp4`);
+    // What the toolkit saved at the top of the bucket, and another team's files.
+    toolkit.put("job-output.mp4");
+    toolkit.put("teams/other-team/secret.mp4");
 
     const top = await owner.as.action(api.files.list, { organizationId: team, prefix: "" });
     expect(top.bucket).toBe("test-bucket");
@@ -135,13 +140,15 @@ describe("files go through the toolkit", () => {
       name: "Episode 1.mp4",
     });
     expect([...toolkit.files.keys()].sort()).toEqual([
-      "shows/Episode 1.mp4",
-      "shows/raw/take.mp4",
-      "top.mp4",
+      "job-output.mp4",
+      `${own}shows/Episode 1.mp4`,
+      `${own}shows/raw/take.mp4`,
+      `${own}top.mp4`,
+      "teams/other-team/secret.mp4",
     ]);
 
     await owner.as.action(api.files.remove, { organizationId: team, keys: ["top.mp4"] });
-    expect(toolkit.files.has("top.mp4")).toBe(false);
+    expect(toolkit.files.has(`${own}top.mp4`)).toBe(false);
   });
 
   test("a download link names the file", async () => {

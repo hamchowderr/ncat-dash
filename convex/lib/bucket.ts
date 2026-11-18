@@ -1,3 +1,4 @@
+import { teamFolder } from "@ncat-dash/automation-core";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { decryptSecret } from "./crypto";
@@ -6,12 +7,29 @@ import { decryptSecret } from "./crypto";
  * The team's bucket, reached through its toolkit. The toolkit (Chowderr's fork) signs
  * links and lists files with its own S3_* settings, so the storage keys never reach this
  * app; signed links go straight to the bucket, so file bytes never pass through either.
+ *
+ * One toolkit can serve many teams (the hosted toolkit does), so a team only ever works
+ * inside its own folder, `root`. Every key passed to and returned from the helpers below
+ * is written from inside that folder: "" is the top of the team's storage. Nothing here
+ * can reach a key outside it.
  */
 export interface Bucket {
   baseUrl: string;
   apiKey: string;
   /** The bucket's name, as the toolkit reports it. */
   bucket: string;
+  /** The team's folder in the bucket, "teams/<id>/". */
+  root: string;
+}
+
+/** The key in the bucket for a key inside the team's folder. */
+function inBucket(bucket: Bucket, key: string): string {
+  return `${bucket.root}${key}`;
+}
+
+/** The key inside the team's folder for a key in the bucket, or null when it is outside. */
+function inTeam(bucket: Bucket, key: string): string | null {
+  return key.startsWith(bucket.root) ? key.slice(bucket.root.length) : null;
 }
 
 export interface BucketObject {
@@ -137,6 +155,7 @@ export async function bucketOf(connection: Doc<"toolkitConnections">): Promise<B
     baseUrl: connection.baseUrl,
     apiKey: await decryptSecret(connection.apiKeyCipher),
     bucket: connection.storage?.bucket ?? "",
+    root: teamFolder(connection.organizationId),
   };
 }
 
@@ -150,7 +169,7 @@ export async function presign(
   options: { downloadName?: string } = {},
 ): Promise<string> {
   const answer = await ask<{ url: string }>(bucket, "sign", {
-    key,
+    key: inBucket(bucket, key),
     method,
     expires_in: expiresInSeconds,
     ...(options.downloadName ? { download_name: options.downloadName } : {}),
@@ -164,13 +183,13 @@ interface Page {
   next_token: string | null;
 }
 
-function objectsOf(page: Page): BucketObject[] {
-  return page.files.map((file) => ({
-    key: file.key,
-    etag: file.etag,
-    size: file.size,
-    lastModified: file.last_modified,
-  }));
+function objectsOf(bucket: Bucket, page: Page): BucketObject[] {
+  return page.files.flatMap((file) => {
+    const key = inTeam(bucket, file.key);
+    return key === null
+      ? []
+      : [{ key, etag: file.etag, size: file.size, lastModified: file.last_modified }];
+  });
 }
 
 /** Lists what is under a prefix, up to `maxPages` thousand objects. Throws if refused. */
@@ -183,10 +202,10 @@ export async function listObjects(
   let token: string | null = null;
   for (let page = 0; page < maxPages; page++) {
     const answer: Page = await ask<Page>(bucket, "list", {
-      prefix,
+      prefix: inBucket(bucket, prefix),
       ...(token ? { next_token: token } : {}),
     });
-    found.push(...objectsOf(answer));
+    found.push(...objectsOf(bucket, answer));
     if (!answer.next_token) break;
     token = answer.next_token;
   }
@@ -203,16 +222,20 @@ export async function listFolder(
   token?: string,
 ): Promise<{ objects: BucketObject[]; folders: string[]; next: string | null }> {
   const answer = await ask<Page>(bucket, "list", {
-    prefix,
+    prefix: inBucket(bucket, prefix),
     folders: true,
     ...(token ? { next_token: token } : {}),
   });
-  return { objects: objectsOf(answer), folders: answer.folders, next: answer.next_token };
+  const folders = answer.folders.flatMap((folder) => {
+    const key = inTeam(bucket, folder);
+    return key ? [key] : [];
+  });
+  return { objects: objectsOf(bucket, answer), folders, next: answer.next_token };
 }
 
 /** Whether a file, or anything at all inside a folder, is at this key. */
 export async function keyExists(bucket: Bucket, key: string): Promise<boolean> {
-  return (await ask<{ exists: boolean }>(bucket, "exists", { key })).exists;
+  return (await ask<{ exists: boolean }>(bucket, "exists", { key: inBucket(bucket, key) })).exists;
 }
 
 /** Copies a file to a new key inside the bucket and returns the copy's etag. Up to 5 GB. */
@@ -220,19 +243,24 @@ export async function copyObject(bucket: Bucket, from: string, to: string): Prom
   const answer = await ask<{ etag: string }>(
     bucket,
     "copy",
-    { source: from, destination: to },
+    { source: inBucket(bucket, from), destination: inBucket(bucket, to) },
     120_000,
   );
   return answer.etag;
 }
 
 export async function deleteObject(bucket: Bucket, key: string): Promise<void> {
-  const answer = await ask<{ failed: string[] }>(bucket, "delete", { keys: [key] }, 30_000);
+  const answer = await ask<{ failed: string[] }>(
+    bucket,
+    "delete",
+    { keys: [inBucket(bucket, key)] },
+    30_000,
+  );
   if (answer.failed.length > 0)
     throw new BucketError("The toolkit would not delete the file.", 502);
 }
 
 /** An empty object whose key ends in a slash: what every S3 console shows as an empty folder. */
 export async function putFolder(bucket: Bucket, prefix: string): Promise<void> {
-  await ask(bucket, "folder", { prefix }, 30_000);
+  await ask(bucket, "folder", { prefix: inBucket(bucket, prefix) }, 30_000);
 }

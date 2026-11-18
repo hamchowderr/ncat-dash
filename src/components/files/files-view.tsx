@@ -86,6 +86,10 @@ export type FileEntry = {
   usedAs: "logo" | "music" | null;
 };
 type FolderEntry = { key: string; name: string };
+// The top of the team's own folder. Many teams can share one toolkit's bucket, so the
+// bucket's name means nothing to a team; its files are simply "your files".
+const TOP_NAME = "Your files";
+
 type Listing = { bucket: string; folders: FolderEntry[]; files: FileEntry[]; next: string | null };
 type SortBy = "name" | "size" | "changed";
 
@@ -340,7 +344,7 @@ export function FilesView() {
       `Moving ${describe(staying)}…`,
       () => moveEntries({ organizationId: team.id, keys: staying, toFolder }),
       (result) =>
-        `Moved ${describe(staying)} to ${toFolder ? baseName(toFolder) : (listing?.bucket ?? "the top")}.${leftBehindNote(result.leftBehind)}`,
+        `Moved ${describe(staying)} to ${toFolder ? baseName(toFolder) : TOP_NAME}.${leftBehindNote(result.leftBehind)}`,
     );
   }
 
@@ -557,7 +561,7 @@ export function FilesView() {
             {...dropTarget("")}
           >
             <HardDrive className="size-4" aria-hidden="true" />
-            {storage.bucket}
+            {TOP_NAME}
           </button>
           {trail.map((folder, index) => (
             <span key={folder.prefix} className="flex min-w-0 items-center gap-1">
@@ -826,7 +830,7 @@ export function FilesView() {
       {naming === "folder" && (
         <NameDialog
           title="New folder"
-          description={`It is made inside ${prefix ? baseName(prefix) : storage.bucket}.`}
+          description={`It is made inside ${prefix ? baseName(prefix) : TOP_NAME}.`}
           action="Create folder"
           startWith=""
           onClose={() => setNaming(null)}
@@ -868,7 +872,7 @@ export function FilesView() {
       {moving && (
         <MoveDialog
           organizationId={team.id}
-          bucket={storage.bucket}
+          bucket={TOP_NAME}
           keys={moving}
           startAt={prefix}
           onClose={() => setMoving(null)}

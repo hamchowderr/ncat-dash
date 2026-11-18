@@ -5,9 +5,10 @@ import { addPerson, addTeam, backend } from "./test.setup";
 import { connectToolkit } from "./test.toolkit";
 
 const PAGE = { numItems: 10, cursor: null };
-const BUCKET = "https://s3.example.com/media";
+// Files the toolkit made, inside the team's own folder of the bucket (set by `team()`).
+let BUCKET = "";
 const JOB = "ca4934e3-5b1f-4c3e-9a77-0d2f1b6e8a10";
-const SOURCE = `${BUCKET}/uploads/space-interviews.mp4`;
+const source = () => `${BUCKET}/uploads/space-interviews.mp4`;
 const made = (n: number) => `${BUCKET}/${JOB}_output_${n}.mp4`;
 const captioned = (n: number) => `${BUCKET}/${JOB}${n}_captioned.mp4`;
 
@@ -18,6 +19,7 @@ const captioned = (n: number) => `${BUCKET}/${JOB}${n}_captioned.mp4`;
 async function team() {
   const t = backend();
   const teamId = await addTeam(t, "Salt House");
+  BUCKET = `https://s3.example.com/media/teams/${teamId}`;
   const olu = await addPerson(t, "Olu Bello", [teamId], "owner");
   const ids = await t.run(async (ctx) => {
     const automationId = await ctx.db.insert("automations", {
@@ -39,7 +41,7 @@ async function team() {
       automationName: "Shorts",
       status: "done",
       triggerKind: "upload",
-      trigger: { file_url: SOURCE, file_name: "space-interviews.mp4" },
+      trigger: { file_url: source(), file_name: "space-interviews.mp4" },
       nodes: [
         { id: "cut", kind: "step", stepId: "video-split", input: {}, position: at },
         { id: "caps", kind: "step", stepId: "video-caption", input: {}, position: at },
@@ -160,7 +162,7 @@ describe("renaming a file on the Files page", () => {
     });
 
     const renamed = `${BUCKET}/Space%20interviews%20clip%201.mp4`;
-    const source = `${BUCKET}/uploads/space%20interviews%20final.mp4`;
+    const sourceAfter = `${BUCKET}/uploads/space%20interviews%20final.mp4`;
     await t.mutation(internal.files.followLinks, {
       organizationId: teamId,
       moves: [
@@ -184,7 +186,7 @@ describe("renaming a file on the Files page", () => {
       };
     });
     expect(after.caps).toEqual([renamed, captioned(1)]);
-    expect(after.trigger.file_url).toBe(source);
+    expect(after.trigger.file_url).toBe(sourceAfter);
     expect(after.clip).toEqual([renamed]);
   });
 

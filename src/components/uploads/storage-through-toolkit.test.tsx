@@ -85,6 +85,30 @@ describe("before a toolkit is connected", () => {
 });
 
 describe("once connected", () => {
+  test("Files opens on the team's own files, never the shared bucket's name", async () => {
+    answerQuery(api.storage.get, {
+      bucket: "ncat",
+      publicUrl: null,
+      baseUrl: "https://toolkit.example",
+    });
+    answerQuery(api.storage.listUploads, []);
+    answerQuery(api.files.detailsIn, []);
+    actionOf(api.files.list).mockResolvedValue({
+      bucket: "ncat",
+      folders: [{ key: "Finished/", name: "Finished" }],
+      files: [],
+      next: null,
+    });
+    renderInApp(<FilesView />);
+    expect(await screen.findByRole("button", { name: "Your files" })).toBeTruthy();
+    expect(await screen.findByText("Finished")).toBeTruthy();
+    expect(actionOf(api.files.list)).toHaveBeenCalledWith({
+      organizationId: expect.any(String),
+      prefix: "",
+    });
+    expect(screen.queryByText("ncat")).toBeNull();
+  });
+
   test("Uploads names the toolkit's bucket and offers no way to change storage", async () => {
     answerQuery(api.storage.get, {
       bucket: "ncat",
