@@ -21,6 +21,8 @@ const still = fileURLToPath(new URL("./fixtures/still.jpg", import.meta.url));
 // Files the real jobs make, served at /made/<name>.
 const made = mkdtempSync(join(tmpdir(), "ncat-dash-e2e-made-"));
 let jobs = 0;
+// The bucket's folders, so a folder can be picked and made. Files are not kept.
+const folders = new Set(["incoming/", "podcast/", "podcast/raw/"]);
 
 const TYPES = { png: "image/png", jpg: "image/jpeg", mp3: "audio/mpeg", mp4: "video/mp4" };
 
@@ -137,10 +139,17 @@ createServer((request, response) => {
     // The fork's storage requests: its bucket is the file server above.
     if (request.url.startsWith("/v1/storage/")) {
       const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      const prefix = String(body.prefix ?? "");
+      if (request.url === "/v1/storage/folder") folders.add(prefix);
+      // The folders straight inside the one asked about.
+      const inside = [...folders].filter(
+        (key) =>
+          key.startsWith(prefix) && key !== prefix && !key.slice(prefix.length, -1).includes("/"),
+      );
       const answers = {
         info: { provider: "s3", bucket: "stand-in", endpoint: FILES, public_url: null },
         sign: { url: `${FILES}/${body.key}`, method: body.method ?? "GET" },
-        list: { files: [], folders: [], next_token: null },
+        list: { files: [], folders: inside.sort(), next_token: null },
         exists: { exists: false },
         copy: { key: body.destination, etag: "stand-in" },
         delete: { deleted: body.keys ?? [], failed: [] },
