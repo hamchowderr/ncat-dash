@@ -1,4 +1,4 @@
-import { type Browser, expect, type Page, test } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "./test";
 
 // The team's agent settings in a real browser against a real backend: the owner picks a
 // model, writes house rules and ticks default platforms; they are kept across a reload,

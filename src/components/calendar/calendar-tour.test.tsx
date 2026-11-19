@@ -73,7 +73,7 @@ describe("the tour of the calendar", () => {
     expect(mutationOf(api.tours.end)).toHaveBeenCalledWith({ tourId: "calendar", how: "finished" });
     await act(async () => {});
     expect(toastSuccess).toHaveBeenCalledWith(
-      "You can take this tour again from the top of the calendar.",
+      "You can take this tour again from the top of the page.",
     );
   });
 

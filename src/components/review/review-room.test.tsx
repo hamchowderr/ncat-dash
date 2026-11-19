@@ -8,6 +8,8 @@ import { answerQuery, mutationOf, present, pushed, toastError } from "@/test/con
 import { renderInApp, TEAM } from "@/test/render";
 
 import { ReviewRoom } from "./review-room";
+import { missingTourTargets } from "@/test/tours";
+import { REVIEW_TOUR } from "./review-tour";
 
 const REVIEW = "rev_1" as Id<"reviews">;
 
@@ -489,5 +491,12 @@ describe("who is here and new versions", () => {
     const { user } = open();
     await user.click(screen.getByRole("button", { name: "New version" }));
     expect(await screen.findByText(/No other files yet/)).toBeInTheDocument();
+  });
+});
+
+describe("the tour of the review room", () => {
+  test("has a place on the page for every part it points at", () => {
+    open();
+    expect(missingTourTargets(REVIEW_TOUR)).toEqual([]);
   });
 });

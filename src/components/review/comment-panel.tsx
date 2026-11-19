@@ -200,6 +200,7 @@ export function CommentPanel({
   return (
     <section
       aria-label="Comments"
+      data-tour-step-id="tour-review-comments"
       className="flex min-h-96 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface"
     >
       <header className="flex items-baseline gap-2 px-4 py-3">
@@ -333,6 +334,7 @@ export function CommentPanel({
                   variant={drawing.drawing ? "secondary" : "ghost"}
                   size={drawing.count > 0 ? "sm" : "icon-sm"}
                   aria-label="Draw on the frame"
+                  data-tour-step-id="tour-review-draw"
                   aria-pressed={drawing.drawing}
                   onClick={drawing.onToggle}
                   className={drawing.count > 0 ? "h-7 gap-1 px-2 text-xs" : undefined}

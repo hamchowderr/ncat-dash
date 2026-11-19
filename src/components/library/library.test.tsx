@@ -7,6 +7,8 @@ import { renderInApp } from "@/test/render";
 
 import { LibraryItemView } from "./library-item-view";
 import { LibraryView } from "./library-view";
+import { missingTourTargets } from "@/test/tours";
+import { LIBRARY_TOUR } from "./library-tour";
 
 /** The Library: every file with its short ID, where it came from, tags, stars and search. */
 
@@ -343,5 +345,12 @@ describe("a library file", () => {
         itemIds: ["i4"],
       }),
     );
+  });
+});
+
+describe("the tour of the library", () => {
+  test("has a place on the page for every part it points at, files and filters too", () => {
+    renderInApp(<LibraryView />);
+    expect(missingTourTargets(LIBRARY_TOUR, { includeOptional: true })).toEqual([]);
   });
 });

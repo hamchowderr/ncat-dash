@@ -1,4 +1,4 @@
-import { type Browser, expect, type Page, test } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "./test";
 
 // The Inbox, in a real browser against a real backend: news about runs and reviews is
 // counted beside Inbox in the menu, pops up once as it arrives, and is listed on its own

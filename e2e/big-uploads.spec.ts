@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // A big file goes up in parts in a real browser: the Uploads page sends it in 64 MiB pieces
 // to the bucket, the pieces are put together, and the file shows as ready like any upload.

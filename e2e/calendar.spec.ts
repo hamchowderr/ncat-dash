@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "./test";
 
 // The content calendar in a real browser against a real local backend: a repeating slot
 // for Instagram, a queued post taking its next time, a post dragged from the side list
@@ -57,8 +57,6 @@ test("posts are planned on the calendar, fill repeating slots, and move by dragg
   );
   await page.goto("/calendar");
   await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
-  // The calendar's own tour starts on a first visit; e2e/calendar-tour.spec.ts walks it.
-  await page.getByRole("dialog").getByRole("button", { name: "Close the tour" }).click();
   const side = page.getByRole("complementary", { name: "Side list" });
   await expect(
     side.getByRole("region", { name: "Project Slots" }).getByText("Full episode"),

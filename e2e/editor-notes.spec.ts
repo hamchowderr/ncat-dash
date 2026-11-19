@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // Sticky notes on the automation canvas, in a real browser: added, written in, moved,
 // resized, kept after a reload, and removed with the keyboard.

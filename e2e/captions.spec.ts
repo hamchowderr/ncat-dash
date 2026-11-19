@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./test";
 
 // Captions in Settings, in a real browser against a real backend: word fixes, a saved
 // style made from a built-in one, the style each shape gets, kept across a reload; then a

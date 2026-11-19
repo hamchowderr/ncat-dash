@@ -2,6 +2,8 @@
 
 import type { Brand } from "@ncat-dash/automation-core";
 
+import { StartPageTour } from "@/components/tours/page-tour";
+
 import { BrandForm, type MusicTrack } from "./brand-form";
 import { SettingsSection } from "./settings-shell";
 
@@ -17,6 +19,7 @@ export function BrandCard({
 }) {
   return (
     <SettingsSection>
+      <StartPageTour tourId="brand" />
       <BrandForm brand={brand} music={music} canEdit={canEdit} rows />
     </SettingsSection>
   );

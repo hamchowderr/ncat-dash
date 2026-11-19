@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // The layout and editing steps, in a real browser: the card template, intro and outro are
 // set once in Settings, and the ready-mades built on them say those come from there.

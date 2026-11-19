@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // The home page and the ready-made list, in a real browser: a new team sees what is left
 // to set up and the ready-made automations first, starts one from home, and finds every

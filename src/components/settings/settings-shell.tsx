@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 
 import { AppTile, type ConnectedApp, EditorTiles } from "@/components/brand-logos";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageTourButton } from "@/components/tours/page-tour";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
@@ -50,10 +51,12 @@ export function SettingsShell({ children }: { children: ReactNode }) {
           {/* A page about other apps leads with their own logos, as Linear's do. */}
           {APP_PAGES.has(slug) && <AppTile app={slug as ConnectedApp} />}
           {slug === "editors" && <EditorTiles />}
-          <div className="flex flex-col gap-1.5">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <h1 className="text-2xl font-semibold tracking-tight">{page.title}</h1>
             <p className="text-muted-foreground text-sm text-pretty">{page.description}</p>
           </div>
+          {/* Pages with a tour of their own can take it again from here. */}
+          {slug === "brand" && <PageTourButton tourId="brand" className="self-start" />}
         </header>
       )}
       {children}

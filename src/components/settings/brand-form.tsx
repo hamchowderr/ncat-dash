@@ -144,7 +144,7 @@ export function BrandForm({
   return (
     <form onSubmit={onSubmit}>
       <FieldGroup>
-        <Field orientation={orientation}>
+        <Field orientation={orientation} data-tour-step-id="tour-brand-look">
           <FieldContent>
             <FieldLabel htmlFor="brand-logo">Logo</FieldLabel>
             <FieldDescription>A PNG with a clear background works best.</FieldDescription>
@@ -161,7 +161,7 @@ export function BrandForm({
             />
           </div>
         </Field>
-        <Field orientation={orientation}>
+        <Field orientation={orientation} data-tour-step-id="tour-brand-look">
           <FieldContent>
             <FieldLabel htmlFor="brand-color">Brand colour</FieldLabel>
             <FieldDescription>Used for text written on videos and pictures.</FieldDescription>
@@ -225,7 +225,7 @@ export function BrandForm({
                 />
               </div>
             </Field>
-            <Field orientation={orientation}>
+            <Field orientation={orientation} data-tour-step-id="tour-brand-intro">
               <FieldContent>
                 <FieldLabel htmlFor="brand-intro">Intro</FieldLabel>
                 <FieldDescription>
@@ -243,7 +243,7 @@ export function BrandForm({
                 />
               </div>
             </Field>
-            <Field orientation={orientation}>
+            <Field orientation={orientation} data-tour-step-id="tour-brand-intro">
               <FieldContent>
                 <FieldLabel htmlFor="brand-outro">Outro</FieldLabel>
                 <FieldDescription>
@@ -261,7 +261,7 @@ export function BrandForm({
                 />
               </div>
             </Field>
-            <Field>
+            <Field data-tour-step-id="tour-brand-music">
               <FieldContent>
                 <FieldLabel>Music library</FieldLabel>
                 <FieldDescription>

@@ -1,13 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { authComponent } from "./auth";
+import { type TourId, tourIdValidator } from "./lib/tours";
 
 // Whether someone has been through one of the guided tours: the dashboard's, which starts
 // by itself once when setting up ends, or a page's, which starts on the first visit. Once
 // finished or closed, a tour only starts when asked for.
 
-const tourId = v.union(v.literal("dashboard"), v.literal("calendar"));
-type TourId = "dashboard" | "calendar";
+const tourId = tourIdValidator;
 
 async function requireUser(ctx: QueryCtx | MutationCtx) {
   const user = await authComponent.safeGetAuthUser(ctx);

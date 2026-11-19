@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // An AI agent connecting to the dashboard's MCP server, in a real browser against a real
 // backend: it signs in with OAuth (the person allows it and picks the team), builds an

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // The content library, in a real browser: an uploaded video joins it with a short ID, is
 // made searchable on the (stand-in) toolkit, and a search for something said in it lands
