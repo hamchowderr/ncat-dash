@@ -1,4 +1,5 @@
-import type { SVGProps } from "react";
+import Image from "next/image";
+import type { ReactNode, SVGProps } from "react";
 
 // Real platform marks from Simple Icons (CC0), drawn in the current text colour so they
 // sit quietly beside the line icons in menus.
@@ -24,5 +25,118 @@ export function DiscordLogo(props: SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
       <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" />
     </svg>
+  );
+}
+
+const SLACK_PARTS: { color: string; d: string }[] = [
+  {
+    color: "#E01E5A",
+    d: "M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313z",
+  },
+  {
+    color: "#36C5F0",
+    d: "M8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312z",
+  },
+  {
+    color: "#2EB67D",
+    d: "M18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312z",
+  },
+  {
+    color: "#ECB22E",
+    d: "M15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z",
+  },
+];
+
+/** Slack's mark in its own four colours. */
+export function SlackColorLogo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      {SLACK_PARTS.map((part) => (
+        <path key={part.color} fill={part.color} d={part.d} />
+      ))}
+    </svg>
+  );
+}
+
+/** DaVinci Resolve's mark, from Simple Icons (CC0). */
+export function DavinciResolveLogo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M17.621 0 5.977.004c-1.37 0-2.756.345-3.762 1.11a4.925 4.925 0 0 0-1.61 2.003C.233 3.93 0 5.02 0 5.951l.012 12.2c.002 1.604.479 3.057 1.461 4.112.984 1.056 2.462 1.683 4.331 1.691L16.856 24c1.26.005 3.095-.036 4.303-.714 1.075-.605 2.025-1.556 2.497-2.984.278-.84.345-2.084.344-3.147l-.021-11.13c-.002-.888-.15-2.023-.547-2.934-.425-.976-1.181-1.815-2.322-2.425C20.353.26 19.123 0 17.622 0zm0 .93c1.378 0 2.538.295 3.04.565.977.523 1.544 1.166 1.889 1.96.315.721.47 1.793.473 2.572l.018 11.13c.002 1.013-.097 2.257-.298 2.86-.396 1.202-1.146 1.946-2.063 2.462-.814.457-2.612.593-3.82.588l-11.05-.044c-1.657-.007-2.832-.534-3.626-1.386-.792-.851-1.212-2.06-1.212-3.485L.999 5.95c0-.829.196-1.827.474-2.437.345-.757.75-1.207 1.365-1.674C3.585 1.27 4.868.97 6.08.97zm-5.66 3.423c-1.976.089-3.204 1.658-3.214 3.29.019 1.443 1.635 3.481 2.884 4.53.12.099.154.109.33.18.062.025.198-.047.327-.135.36-.245.993-.947 1.648-1.738a7.67 7.67 0 0 0 1.031-1.683c.409-.89.261-1.599.235-1.888a3.983 3.983 0 0 0-.99-1.692 3.36 3.36 0 0 0-2.251-.864zm4.172 7.922a10.185 10.185 0 0 0-3.244.61c-.15.058-.26.1-.374.17-.057.036-.11.135-.105.292.017.433.29 1.278.624 2.27.384 1.135 1.066 2.27 1.844 2.74a3.23 3.23 0 0 0 2.53.342c.832-.243 1.595-.868 1.962-1.546.986-1.818.19-3.548-1.121-4.417-.447-.296-1.133-.445-1.89-.46-.074 0-.15-.002-.226-.001zm-8.432.038a6.201 6.201 0 0 0-.752.047c-.596.078-.932.273-1.29.51a3.177 3.177 0 0 0-1.365 1.979c-.075.552-.086 1.053.033 1.507.433 1.389 1.326 2.222 2.847 2.452.636.028 1.37-.063 1.99-.45 1.269-.782 2.08-3.17 2.412-4.742.053-.176.035-.357-.013-.42-.005-.067-.044-.113-.19-.183-.398-.192-1.32-.417-2.375-.6a7.68 7.68 0 0 0-1.297-.1z" />
+    </svg>
+  );
+}
+
+export type ConnectedApp = "slack" | "discord" | "zoom";
+
+const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactNode }> = {
+  slack: { name: "Slack", tile: "bg-muted", mark: <SlackColorLogo className="size-6" /> },
+  discord: {
+    name: "Discord",
+    tile: "bg-[#5865F2] text-white",
+    mark: <DiscordLogo className="size-6" />,
+  },
+  zoom: { name: "Zoom", tile: "bg-[#0B5CFF] text-white", mark: <ZoomLogo className="size-8" /> },
+};
+
+/** An app's logo in its own colours, on a soft rounded tile, for the top of its page. */
+export function AppTile({ app }: { app: ConnectedApp }) {
+  const { name, tile, mark } = APP_TILES[app];
+  return (
+    <span
+      role="img"
+      aria-label={`${name} logo`}
+      data-app-tile={app}
+      className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${tile}`}
+    >
+      {mark}
+    </span>
+  );
+}
+
+/**
+ * The editors' own app icons, for the top of the Video Editors page. Premiere Pro, Final
+ * Cut Pro and CapCut are their published app icons; Resolve is its mark in its own colour.
+ */
+export function EditorTiles() {
+  const icons: { name: string; src: string; className?: string }[] = [
+    { name: "Premiere Pro", src: "/logos/editors/premiere-pro.svg" },
+    { name: "Final Cut Pro", src: "/logos/editors/final-cut-pro.png" },
+    // CapCut's app icon is white on black; the file is drawn black on white.
+    { name: "CapCut", src: "/logos/editors/capcut.svg", className: "invert" },
+  ];
+  return (
+    <span className="flex shrink-0 items-center gap-2">
+      <span
+        role="img"
+        aria-label="Premiere Pro logo"
+        className="flex size-11 items-center justify-center"
+      >
+        <Image src={icons[0].src} alt="" width={44} height={44} className="size-11" />
+      </span>
+      <span
+        role="img"
+        aria-label="DaVinci Resolve logo"
+        className="flex size-11 items-center justify-center rounded-xl bg-muted text-[#233A51]"
+      >
+        <DavinciResolveLogo className="size-7" />
+      </span>
+      {icons.slice(1).map((icon) => (
+        <span
+          key={icon.name}
+          role="img"
+          aria-label={`${icon.name} logo`}
+          className="flex size-11 items-center justify-center"
+        >
+          <Image
+            src={icon.src}
+            alt=""
+            width={44}
+            height={44}
+            className={`size-11 rounded-xl ${icon.className ?? ""}`}
+          />
+        </span>
+      ))}
+    </span>
   );
 }
