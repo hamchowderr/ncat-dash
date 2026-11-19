@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { AppTile, type ConnectedApp, EditorTiles } from "@/components/brand-logos";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
@@ -30,16 +31,29 @@ export function SettingsLoading() {
  * One settings page: its title and one short line, then its settings in a single calm
  * column. The menu of settings pages is the sidebar itself while settings are open.
  */
+const APP_PAGES = new Set<string>(["slack", "discord", "zoom"]);
+
 export function SettingsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const page = settingsPage(pathname.split("/")[2] ?? "");
+  const slug = pathname.split("/")[2] ?? "";
+  const page = settingsPage(slug);
 
   return (
     <div data-settings className="mx-auto flex w-full max-w-2xl flex-col gap-10 pt-6 pb-16">
       {page && (
-        <header className="flex flex-col gap-1.5">
-          <h1 className="text-2xl font-semibold tracking-tight">{page.title}</h1>
-          <p className="text-muted-foreground text-sm text-pretty">{page.description}</p>
+        <header
+          className={cn(
+            "flex gap-4",
+            slug === "editors" ? "flex-col items-start" : "flex-row items-center",
+          )}
+        >
+          {/* A page about other apps leads with their own logos, as Linear's do. */}
+          {APP_PAGES.has(slug) && <AppTile app={slug as ConnectedApp} />}
+          {slug === "editors" && <EditorTiles />}
+          <div className="flex flex-col gap-1.5">
+            <h1 className="text-2xl font-semibold tracking-tight">{page.title}</h1>
+            <p className="text-muted-foreground text-sm text-pretty">{page.description}</p>
+          </div>
         </header>
       )}
       {children}
