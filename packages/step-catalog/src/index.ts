@@ -1,7 +1,7 @@
 import type { StepDefinition } from "./define";
 import { editingRecipes } from "./editing";
 import { moreRecipes, recipes } from "./recipes";
-import { steps } from "./steps";
+import { hiddenSteps, steps } from "./steps";
 import { type SavedTeamStep, teamStepDefinition } from "./team-steps";
 
 export * from "./define";
@@ -14,7 +14,10 @@ export * from "./team-steps";
 /** Every step a person can run: the toolkit's endpoints, then the ready-made recipes. */
 export const allSteps: StepDefinition[] = [...steps, ...recipes, ...moreRecipes, ...editingRecipes];
 
-const byId = new Map<string, StepDefinition>(allSteps.map((step) => [step.id, step]));
+// Steps only other steps send, such as the motion graphics render: known by id, not listed.
+const byId = new Map<string, StepDefinition>(
+  [...allSteps, ...hiddenSteps].map((step) => [step.id, step]),
+);
 
 export type StepId = (typeof steps)[number]["id"];
 
@@ -38,6 +41,11 @@ export function setTeamSteps(saved: SavedTeamStep[]): void {
 /** The team steps `setTeamSteps` was given last. */
 export function currentTeamSteps(): StepDefinition[] {
   return [...teamSteps.values()];
+}
+
+/** Whether a step is one only other steps send, never one a person adds. */
+export function isHiddenStep(id: string): boolean {
+  return hiddenSteps.some((step) => step.id === id);
 }
 
 export function getStep(id: string): StepDefinition | undefined {

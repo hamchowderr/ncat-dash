@@ -174,6 +174,8 @@ export const get = query({
             // For Best moments: what it picked. For Chapters: the chapters it placed.
             moments: step.moments ?? null,
             chapters: step.chapters ?? null,
+            // For Add Motion Graphics and Add Sound Effects: what it put on each video, and when.
+            placed: step.placed ?? null,
             pickNote: step.pickNote ?? null,
             // For an If: the files that left by each way. For a Wait: when it carries on.
             branches: step.branches,

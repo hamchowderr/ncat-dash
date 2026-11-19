@@ -370,7 +370,10 @@ describe("replies written in Slack", () => {
       version: 1,
     });
     await settled(t);
-    const threadTs = posted.at(-1)!.ts;
+    // The review's own "opened" post is sent too, and the two can go out in either order.
+    const threadTs = posted.find((one) =>
+      one.text.includes("Can the end card stay up longer?"),
+    )!.ts;
     return { ...setup, clipId, rootId, threadTs, token };
   }
 
