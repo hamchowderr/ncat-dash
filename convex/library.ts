@@ -37,6 +37,7 @@ import {
 import { startingFiles } from "./lib/chain";
 import { outputNamesOf } from "./lib/outputs";
 import { enqueueJob, pump } from "./lib/queue";
+import { refreshBrollLike, usableAsBroll } from "./lib/broll";
 import { startRun } from "./lib/runner";
 
 // Links the library plays and shows files from: long enough for a working session.
@@ -178,6 +179,16 @@ export const get = query({
       automationId: item.runId ? ((await ctx.db.get(item.runId))?.automationId ?? null) : null,
       transcriptError:
         item.transcript?.status === "failed" ? (item.transcript.error ?? null) : null,
+      // For a video: whether it is used as B-Roll, by hand or by how it looks.
+      broll:
+        item.kind === "video"
+          ? {
+              use: item.broll ?? ("auto" as const),
+              looked: item.look?.status ?? null,
+              looksLike: item.look?.brollLike ?? null,
+              usable: usableAsBroll(item),
+            }
+          : null,
       children: children
         .sort((a, b) => a._creationTime - b._creationTime)
         .map((child) => summaryOf(child, byId, new Map(), clients)),
@@ -659,6 +670,8 @@ export const makeSearchable = action({
         asMember: true,
       });
       if (started) sent++;
+      // A video is also looked at, so it can be found as B-Roll by what it shows.
+      await ctx.runMutation(internal.broll.startLook, { itemId: link.itemId, mediaUrl: link.url });
     }
     return sent;
   },
@@ -760,6 +773,11 @@ export const readTranscript = internalAction({
     const found = await ctx.runQuery(internal.library.transcriptJob, args);
     if (!found) return;
     const { job, connection } = found;
+    // The picture model's look at a file, for B-Roll, is kept by its own code.
+    if (job.stepId === "media-look") {
+      await ctx.runMutation(internal.broll.saveLook, { jobId: job._id });
+      return;
+    }
     const itemId = job.libraryItemId!;
     if (job.status !== "done") {
       await ctx.runMutation(internal.library.saveTranscript, {
@@ -851,6 +869,8 @@ export const saveTranscript = internalMutation({
     await ctx.db.patch(item._id, {
       transcript: { status: "ready", jobId: args.jobId, at: Date.now() },
     });
+    // How much is said in it helps tell B-Roll from a talking head.
+    await refreshBrollLike(ctx, item._id);
   },
 });
 

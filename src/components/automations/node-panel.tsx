@@ -54,6 +54,7 @@ import { AutomationPicker } from "./automation-picker";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
+import { BrollMain, BrollMore, BrollPlanMain } from "./broll-settings";
 import { MotionMain, SoundEffectsMain } from "./motion-settings";
 import { PlatformPicker } from "./platform-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
@@ -205,6 +206,8 @@ export function NodePanel({
   if (
     node.kind === "moments" ||
     node.kind === "chapters" ||
+    node.kind === "broll" ||
+    node.kind === "broll-plan" ||
     node.kind === "motion" ||
     node.kind === "sound-effects"
   ) {
@@ -371,6 +374,18 @@ export function NodePanel({
         <ChaptersMain node={node} onChange={(input) => onChange({ input })} />
       )}
 
+      {node.kind === "broll" && (
+        <BrollMain
+          node={node}
+          planned={before.some((one) => one.kind === "broll-plan")}
+          onChange={(input) => onChange({ input })}
+        />
+      )}
+
+      {node.kind === "broll-plan" && (
+        <BrollPlanMain node={node} onChange={(input) => onChange({ input })} />
+      )}
+
       {node.kind === "motion" && (
         <MotionMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
       )}
@@ -499,6 +514,9 @@ export function NodePanel({
             </Field>
             {node.kind === "moments" && (
               <MomentsMore node={node} onChange={(input) => onChange({ input })} />
+            )}
+            {node.kind === "broll" && (
+              <BrollMore node={node} onChange={(input) => onChange({ input })} />
             )}
             {node.kind === "step" && fields && (
               <StepFields

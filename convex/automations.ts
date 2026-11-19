@@ -851,9 +851,17 @@ export const testStep = mutation({
   returns: v.id("runs"),
   handler: async (ctx, args) => {
     const { automation, userId } = await loadForMember(ctx, args.automationId);
-    if (
-      !["step", "clips", "moments", "chapters", "motion", "sound-effects"].includes(args.node.kind)
-    ) {
+    const testable = [
+      "step",
+      "clips",
+      "moments",
+      "chapters",
+      "broll",
+      "broll-plan",
+      "motion",
+      "sound-effects",
+    ];
+    if (!testable.includes(args.node.kind)) {
       fail("invalid_input", "Only steps that do work on a file can be tested on their own.");
     }
     const fileUrl = args.fileUrl?.trim();

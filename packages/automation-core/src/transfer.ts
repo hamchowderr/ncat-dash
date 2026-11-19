@@ -157,6 +157,8 @@ const KINDS = [
   "automation",
   "moments",
   "chapters",
+  "broll",
+  "broll-plan",
   "motion",
   "sound-effects",
 ];

@@ -174,6 +174,8 @@ export const get = query({
             // For Best moments: what it picked. For Chapters: the chapters it placed.
             moments: step.moments ?? null,
             chapters: step.chapters ?? null,
+            // For Add B-Roll: each cutaway laid over the video, and where its footage is from.
+            cutaways: step.cutaways ?? null,
             // For Add Motion Graphics and Add Sound Effects: what it put on each video, and when.
             placed: step.placed ?? null,
             pickNote: step.pickNote ?? null,

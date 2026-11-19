@@ -66,6 +66,8 @@ function chromePath(): string {
   return found;
 }
 
+const CHROME_START_MS = 40_000;
+
 /** Start a headless Chrome with a CDP port and return its DevTools WebSocket URL. */
 async function startChrome(): Promise<{ chrome: ChildProcess; profile: string; cdpUrl: string }> {
   const profile = mkdtempSync(path.join(tmpdir(), "fc-browser-mock-"));
@@ -85,7 +87,9 @@ async function startChrome(): Promise<{ chrome: ChildProcess; profile: string; c
   );
   // Chrome writes the port it picked, and the browser target's path, to this file.
   const portFile = path.join(profile, "DevToolsActivePort");
-  const deadline = Date.now() + 15_000;
+  // A cold Chrome on a busy CI runner, with the other test files running beside it, can
+  // take well over 15 seconds to open its first tab.
+  const deadline = Date.now() + CHROME_START_MS;
   while (Date.now() < deadline) {
     if (chrome.exitCode !== null) throw new Error(`Chrome exited with code ${chrome.exitCode}`);
     if (existsSync(portFile)) {
@@ -99,7 +103,7 @@ async function startChrome(): Promise<{ chrome: ChildProcess; profile: string; c
     await new Promise((r) => setTimeout(r, 50));
   }
   stopChrome(chrome, profile);
-  throw new Error("Chrome did not open a CDP port within 15s");
+  throw new Error(`Chrome did not open a CDP port within ${CHROME_START_MS / 1000}s`);
 }
 
 /** The port and target lines, or none while Chrome still holds the file (Windows locks it). */
