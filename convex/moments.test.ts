@@ -43,7 +43,6 @@ type Sent = { url: string; body: Record<string, unknown> };
  */
 function fakeServers(answers: unknown[]) {
   const sent: Sent[] = [];
-  let cut = 0;
   let asked = 0;
   vi.stubGlobal(
     "fetch",
@@ -61,8 +60,11 @@ function fakeServers(answers: unknown[]) {
         return done({ text: null, srt: null, segments: null, segments_url: WORDS_FILE });
       }
       if (url.endsWith("/v1/ffmpeg/compose")) {
-        cut++;
-        return done([{ file_url: `https://files.example/out/moment-${cut}.mp4` }]);
+        // Named by where the cut starts, not by which request came first: the cuts run
+        // side by side, so they can reach the toolkit in either order.
+        const inputs = body.inputs as { options: { option: string; argument: number }[] }[];
+        const at = inputs[0].options.find((one) => one.option === "-ss")?.argument;
+        return done([{ file_url: `https://files.example/out/moment-at-${at}.mp4` }]);
       }
       if (url === `${AGENT_URL}/ncat/moments`) {
         const answer = answers[Math.min(asked++, answers.length - 1)];
@@ -189,10 +191,11 @@ describe("Best moments", () => {
     expect(step.pickNote).toBe(
       "1 pick was left out: 1 did not match the transcript word for word.",
     );
-    expect(step.outputs).toEqual([
-      "https://files.example/out/moment-1.mp4",
-      "https://files.example/out/moment-2.mp4",
-    ]);
+    // One clip per moment, in the moments' order, whichever cut finished first.
+    expect(step.outputs).toEqual(
+      step.moments!.map((one) => `https://files.example/out/moment-at-${one.start}.mp4`),
+    );
+    expect(step.outputs).toHaveLength(2);
 
     // The transcript was asked for with each word's timing, as a file.
     const transcribe = sent.find((one) => one.url.endsWith("/v1/media/transcribe"))!;
