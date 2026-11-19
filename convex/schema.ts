@@ -965,6 +965,12 @@ export default defineSchema({
     // Set when Microsoft stopped accepting the sign-in: the member connects again.
     needsReconnect: v.optional(v.boolean()),
     lastCheckedAt: v.optional(v.number()),
+    // The member let the dashboard read files shared with them (Files.Read.All).
+    sharedGranted: v.optional(v.boolean()),
+    // Recordings of other people's meetings, shared with the member, come in too. Only
+    // ones made after sharedSince, when it was switched on.
+    includeShared: v.optional(v.boolean()),
+    sharedSince: v.optional(v.number()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_member", ["organizationId", "userId"])
@@ -977,6 +983,8 @@ export default defineSchema({
     organizationId: v.string(),
     userId: v.string(),
     createdAt: v.number(),
+    // Started from the "shared with me" switch: asks for reading shared files too.
+    shared: v.optional(v.boolean()),
   }).index("by_nonce", ["nonce"]),
 
   // One Teams recording being brought in, or brought in: the toolkit streams the file from
@@ -986,6 +994,8 @@ export default defineSchema({
     connectionId: v.id("microsoftConnections"),
     // OneDrive's id for the recording's file.
     itemId: v.string(),
+    // The OneDrive it is in, when it was shared with the member; none for their own.
+    driveId: v.optional(v.string()),
     topic: v.string(),
     startTime: v.number(),
     status: v.union(v.literal("importing"), v.literal("done"), v.literal("failed")),

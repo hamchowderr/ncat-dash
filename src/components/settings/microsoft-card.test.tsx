@@ -17,6 +17,8 @@ const connected = {
     connectedAt: Date.UTC(2026, 10, 18, 18),
     autoImport: true,
     needsReconnect: false,
+    includeShared: false,
+    sharedGranted: false,
   },
   others: [{ msName: "Maya O", memberName: "Maya Ortiz" }],
   imports: [
@@ -102,6 +104,7 @@ describe("the Microsoft 365 card", () => {
         startTime: Date.UTC(2026, 10, 16, 17),
         minutes: 58,
         size: 2_000_000_000,
+        shared: false,
         brought: false,
       },
       {
@@ -110,6 +113,7 @@ describe("the Microsoft 365 card", () => {
         startTime: Date.UTC(2026, 10, 18, 17),
         minutes: 42,
         size: 100,
+        shared: false,
         brought: true,
       },
     ]);
@@ -160,5 +164,80 @@ describe("the Microsoft 365 card", () => {
     await user.click(screen.getByRole("button", { name: "Connect again" }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith("https://login.test/again"));
     vi.restoreAllMocks();
+  });
+
+  test("meetings shared with me: the first time asks Microsoft, after that it is a switch", async () => {
+    answerQuery(api.microsoft.forTeam, connected);
+    const start = mutationOf(api.microsoft.startLink);
+    start.mockResolvedValue("https://login.test/shared");
+    const setShared = mutationOf(api.microsoft.setIncludeShared);
+    const assign = vi.fn();
+    vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      href: "http://localhost/settings/microsoft",
+      assign,
+    } as Location);
+    const { unmount } = renderInApp(<MicrosoftCard />);
+    const user = userEvent.setup();
+    const shared = screen.getByRole("switch", { name: /Also bring in meetings shared with me/ });
+    expect(shared).not.toBeChecked();
+    expect(screen.getByText(/other people's Teams meetings you were in/)).toBeInTheDocument();
+    await user.click(shared);
+    expect(start).toHaveBeenCalledWith({ organizationId: TEAM.id, shared: true });
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("https://login.test/shared"));
+    expect(setShared).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+    unmount();
+
+    // Allowed already: switching it off and on needs no sign-in.
+    answerQuery(api.microsoft.forTeam, {
+      ...connected,
+      me: { ...connected.me, includeShared: true, sharedGranted: true },
+    });
+    renderInApp(<MicrosoftCard />);
+    const on = screen.getByRole("switch", { name: /Also bring in meetings shared with me/ });
+    expect(on).toBeChecked();
+    await user.click(on);
+    expect(setShared).toHaveBeenCalledWith({ organizationId: TEAM.id, includeShared: false });
+  });
+
+  test("a shared recording is marked as shared, and brought in from its own OneDrive", async () => {
+    answerQuery(api.microsoft.forTeam, {
+      ...connected,
+      me: { ...connected.me, includeShared: true, sharedGranted: true },
+    });
+    actionOf(api.microsoft.pastRecordings).mockResolvedValue([
+      {
+        itemId: "s1",
+        driveId: "drive-ana",
+        shared: true,
+        topic: "Board Review",
+        startTime: Date.UTC(2026, 10, 17, 16),
+        minutes: 30,
+        size: 3_000_000,
+        brought: false,
+      },
+    ]);
+    const bring = actionOf(api.microsoft.bringIn);
+    bring.mockResolvedValue("started");
+    renderInApp(<MicrosoftCard />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Show the last 30 days" }));
+    expect(await screen.findByText(/Shared with you/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Bring in" }));
+    expect(bring).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      itemId: "s1",
+      driveId: "drive-ana",
+    });
+  });
+
+  test("coming back after allowing shared files says so", async () => {
+    window.history.replaceState(null, "", "/settings/microsoft?microsoft=shared");
+    answerQuery(api.microsoft.forTeam, empty);
+    renderInApp(<MicrosoftCard />);
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Meetings shared with you now come in too"),
+    );
   });
 });

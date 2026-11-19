@@ -1,7 +1,8 @@
 // A stand-in for Microsoft, for the browser tests and local runs: its sign-in page (which
 // signs in at once and sends the person back), its token requests, and the parts of
-// Microsoft Graph the dashboard uses: who you are, the OneDrive Recordings folder, and
-// watches on the OneDrive. Nothing here is used by the product.
+// Microsoft Graph the dashboard uses: who you are, the OneDrive Recordings folder, watches
+// on the OneDrive, and the search that finds recordings other people shared with you.
+// Nothing here is used by the product.
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
@@ -25,6 +26,8 @@ function send(response, status, value) {
 // and adds a recording as Teams would (POST /stand-in/recording).
 let user = MICROSOFT_USER;
 let files = [recording("past-1", "Client Kickoff", 2 * 24 * 60)];
+// Recordings of other people's meetings, in their OneDrive, shared with the account.
+let shared = [];
 const watches = new Map();
 
 const server = createServer(async (request, response) => {
@@ -48,6 +51,7 @@ const server = createServer(async (request, response) => {
   if (path === "/stand-in/user" && request.method === "POST") {
     user = { ...MICROSOFT_USER, ...JSON.parse((await read(request)) || "{}") };
     files = [recording("past-1", "Client Kickoff", 2 * 24 * 60)];
+    shared = [];
     return send(response, 200, user);
   }
   if (path === "/stand-in/recording" && request.method === "POST") {
@@ -65,7 +69,30 @@ const server = createServer(async (request, response) => {
     }
     return send(response, 200, { watches: watches.size });
   }
+  if (path === "/stand-in/shared" && request.method === "POST") {
+    const { id, topic, size } = JSON.parse(await read(request));
+    shared.unshift({ ...recording(id, topic, 0), size });
+    return send(response, 200, { shared: shared.length });
+  }
   if (path === "/v1.0/me") return send(response, 200, user);
+  if (path.startsWith("/v1.0/me/drive/search(")) {
+    return send(response, 200, {
+      value: shared.map((file) => ({
+        id: `hit-${file.id}`,
+        name: file.name,
+        remoteItem: { id: file.id, parentReference: { driveId: "drive-colleague" } },
+      })),
+    });
+  }
+  if (path.startsWith("/v1.0/drives/drive-colleague/items/")) {
+    const id = decodeURIComponent(path.slice("/v1.0/drives/drive-colleague/items/".length));
+    const file = shared.find((one) => one.id === id);
+    if (!file) return send(response, 404, { error: { code: "itemNotFound" } });
+    return send(response, 200, {
+      ...file,
+      "@microsoft.graph.downloadUrl": "http://127.0.0.1:8766/clip.webm",
+    });
+  }
   if (path === "/v1.0/me/drive/special/recordings") {
     return send(response, 200, { id: "folder-rec", name: "Recordings", folder: {} });
   }
