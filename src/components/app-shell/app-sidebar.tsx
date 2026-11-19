@@ -36,7 +36,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { DiscordLogo, SlackLogo } from "@/components/brand-logos";
+import { DiscordLogo, SlackLogo, ZoomLogo } from "@/components/brand-logos";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -110,6 +110,7 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   email: Mail,
   slack: SlackLogo,
   discord: DiscordLogo,
+  zoom: ZoomLogo,
   mcp: KeyRound,
 };
 

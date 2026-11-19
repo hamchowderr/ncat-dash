@@ -27,6 +27,7 @@ import {
   bucketOf,
   completeParts,
   presign,
+  safeName,
   signParts,
   startPartsUpload,
   storageConnection,
@@ -82,11 +83,6 @@ export async function prepareSend(
     parts,
     partsUploadId: await startPartsUpload(bucket, key, contentType),
   };
-}
-
-function safeName(fileName: string): string {
-  const cleaned = fileName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "");
-  return cleaned.slice(-120) || "file";
 }
 
 /**
@@ -322,6 +318,7 @@ export const listUploads = query({
       size: upload.size,
       status: upload.status,
       purpose: upload.purpose ?? null,
+      source: upload.source ?? null,
       details: upload.details ?? null,
     }));
   },

@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 
 import { AGENT_SECRET } from "../playwright.config";
 import { SLACK_API } from "./slack-shared";
+import { ZOOM_WEBHOOK_SECRET } from "./zoom-shared";
 
 const HOOK = "http://127.0.0.1:3211/automations/hook";
 
@@ -38,4 +39,14 @@ export default async function globalSetup() {
   execSync(`npx convex env set MASTRA_JWT_SECRET ${AGENT_SECRET}`, { stdio: "ignore" });
   // Slack's Web API, as the Slack stand-in (e2e/slack-stand-in.mjs) plays it.
   execSync(`npx convex env set SLACK_API_URL ${SLACK_API}`, { stdio: "ignore" });
+  // Zoom, as the Zoom stand-in (e2e/zoom-stand-in.mjs) plays it.
+  for (const [name, value] of [
+    ["ZOOM_CLIENT_ID", "stand-in-zoom-client"],
+    ["ZOOM_CLIENT_SECRET", "stand-in-zoom-secret"],
+    ["ZOOM_WEBHOOK_SECRET", ZOOM_WEBHOOK_SECRET],
+    ["ZOOM_OAUTH_URL", "http://127.0.0.1:8770"],
+    ["ZOOM_API_URL", "http://127.0.0.1:8770/v2"],
+  ]) {
+    execSync(`npx convex env set ${name} ${value}`, { stdio: "ignore" });
+  }
 }

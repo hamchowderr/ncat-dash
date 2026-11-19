@@ -14,6 +14,7 @@ import {
   SlackSettings,
   TeamSettings,
 } from "./settings-view";
+import { ZoomCard } from "./zoom-card";
 
 const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   brand: BrandSettings,
@@ -25,6 +26,7 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   email: EmailSettings,
   slack: SlackSettings,
   discord: DiscordSettings,
+  zoom: ZoomCard,
   mcp: McpSettings,
   team: TeamSettings,
 };
