@@ -1,6 +1,7 @@
 import { checks } from '@mastra/evals/checks';
 import { createAnswerRelevancyScorer } from '@mastra/evals/scorers/prebuilt';
 import { env } from '../../lib/env';
+import { cheapModelFor } from './cost';
 
 /**
  * Live scoring on the chat agent: scores run in the background after each reply
@@ -9,7 +10,7 @@ import { env } from '../../lib/env';
  *
  * - noToolErrors on every reply: a Quick Check, no LLM call, free.
  * - answer relevancy on 10% of replies: an LLM judge (up to 3 judge calls per
- *   scored reply). Its model is CHAT_MODEL, so it bills to the project's one model
+ *   scored reply), on a cheap model from CHAT_MODEL's provider (lib/cost.ts), so it bills to the project's one model
  *   key. Off under NODE_ENV=test or USE_AIMOCK: a mocked model can't produce the judge's
  *   structured output (STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED), and a mock's verdict
  *   would mean nothing anyway.
@@ -22,7 +23,7 @@ export const liveScorers = {
   ...(env.NODE_ENV !== 'test' && !env.USE_AIMOCK
     ? {
         answerRelevancy: {
-          scorer: createAnswerRelevancyScorer({ model: env.CHAT_MODEL }),
+          scorer: createAnswerRelevancyScorer({ model: cheapModelFor(env.CHAT_MODEL) }),
           sampling: { type: 'ratio' as const, rate: 0.1 },
         },
       }

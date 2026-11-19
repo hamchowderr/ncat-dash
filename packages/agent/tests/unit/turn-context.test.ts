@@ -55,7 +55,7 @@ describe("today's date", () => {
   it("states the date, weekday and time in the user's zone, and the next seven days", async () => {
     const text = await todaySection({ requestContext: inZone('America/Los_Angeles'), now: NOW });
     expect(text).toContain(
-      'Current date and time: Thursday 2026-10-15, 22:30 (America/Los_Angeles, UTC-07:00).',
+      'Current date and time: Thursday 2026-10-15, between 22:00 and 23:00 (America/Los_Angeles, UTC-07:00).',
     );
     expect(text).toContain(
       'The next seven days: Friday 2026-10-16, Saturday 2026-10-17, Sunday 2026-10-18, Monday 2026-10-19, Tuesday 2026-10-20, Wednesday 2026-10-21, Thursday 2026-10-22.',
@@ -64,7 +64,7 @@ describe("today's date", () => {
 
   it('is a different day in another zone', async () => {
     const text = await todaySection({ requestContext: inZone('UTC'), now: NOW });
-    expect(text).toContain('Current date and time: Friday 2026-10-16, 05:30 (UTC, UTC+00:00).');
+    expect(text).toContain('Current date and time: Friday 2026-10-16, between 05:00 and 06:00 (UTC, UTC+00:00).');
     expect(text).toContain('The next seven days: Saturday 2026-10-17,');
     expect(text).toContain('Friday 2026-10-23.');
   });

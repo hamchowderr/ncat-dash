@@ -85,6 +85,16 @@ const envSchema = z
     // instructions, after the stable turn-context sections, and on the conversation tail.
     // Other providers ignore the markers.
     PROMPT_CACHE: boolish.default(true),
+    // What a turn costs (src/mastra/lib/cost.ts). How hard the building model thinks:
+    // medium suits multistep tool use on Claude Sonnet 5.5 and costs far less than high.
+    CHAT_EFFORT: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
+    // The model for a turn that only asks something or says thanks, when neither the team
+    // nor the composer picked one. Empty turns this off (every turn on CHAT_MODEL).
+    SIMPLE_CHAT_MODEL: z.string().default('anthropic/claude-haiku-5-5'),
+    // Observational memory: how many tokens of conversation it waits for before it writes
+    // notes. Each time it does, the conversation's start changes and the prompt cache is
+    // written again, so a low number costs a lot. 30,000 is Mastra's own default.
+    OM_MESSAGE_TOKENS: z.coerce.number().int().min(1000).default(30_000),
     // Work threads (lib/work-threads.ts): the chat agent's start_thread tool, which hands a
     // piece of work to a thread of its own that reports back to the chat.
     WORK_THREADS: boolish.default(true),
