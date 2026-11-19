@@ -21,6 +21,7 @@ import { toast } from "sonner";
 
 import { fileNameOf } from "@/components/jobs/media-preview";
 import { Badge } from "@/components/ui/badge";
+import { PageTourButton, StartPageTour } from "@/components/tours/page-tour";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -150,7 +151,12 @@ function AddVersion({ clip, organizationId }: { clip: Clip; organizationId: stri
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="text-zinc-300 hover:text-white">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-zinc-300 hover:text-white"
+          data-tour-step-id="tour-review-version"
+        >
           <Plus />
           New version
         </Button>
@@ -437,7 +443,11 @@ export function ClipList({
   onSelect: (id: Id<"reviewClips">) => void;
 }) {
   return (
-    <nav aria-label="Clips in this review" className="min-w-0 lg:w-44 lg:shrink-0 xl:w-56">
+    <nav
+      aria-label="Clips in this review"
+      data-tour-step-id="tour-review-clips"
+      className="min-w-0 lg:w-44 lg:shrink-0 xl:w-56"
+    >
       <ul className="flex gap-1 overflow-x-auto lg:max-h-full lg:flex-col lg:gap-2 lg:overflow-x-visible lg:overflow-y-auto">
         {clips.map((clip, at) => {
           const url = clip.versions[clip.versions.length - 1].url;
@@ -618,6 +628,8 @@ function OpenRoom({
         {roster && <HereNow here={here} me={roster.me} />}
 
         <div className="flex flex-wrap items-center gap-2">
+          <StartPageTour tourId="review-room" />
+          <PageTourButton tourId="review-room" />
           {review.clientVerdict && (
             <Badge
               variant="outline"
@@ -635,7 +647,7 @@ function OpenRoom({
           )}
           <ShareDialog reviewId={reviewId} />
           {review.status === "open" ? (
-            <>
+            <div className="flex items-center gap-2" data-tour-step-id="tour-review-decide">
               <Button
                 variant="outline"
                 size="sm"
@@ -663,7 +675,7 @@ function OpenRoom({
                 <Check />
                 Approve
               </Button>
-            </>
+            </div>
           ) : (
             <Badge variant={review.status === "approved" ? "default" : "destructive"}>
               {review.status === "approved" && <Check />}

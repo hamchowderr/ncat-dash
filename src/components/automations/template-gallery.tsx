@@ -80,7 +80,7 @@ export function TemplateGallery({
     <div className="grid gap-6">
       <div className="grid gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-0 flex-1 sm:max-w-sm">
+          <div className="relative min-w-0 flex-1 sm:max-w-sm" data-tour-step-id="tour-new-search">
             <Search
               className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
               aria-hidden="true"
@@ -98,6 +98,7 @@ export function TemplateGallery({
             type="button"
             variant="outline"
             className="ml-auto"
+            data-tour-step-id="tour-new-empty"
             disabled={disabled}
             onClick={() => onPick(null)}
           >
@@ -105,7 +106,12 @@ export function TemplateGallery({
             Empty canvas
           </Button>
         </div>
-        <div role="group" aria-label="Category" className="flex flex-wrap gap-1.5">
+        <div
+          role="group"
+          aria-label="Category"
+          data-tour-step-id="tour-new-categories"
+          className="flex flex-wrap gap-1.5"
+        >
           {[{ id: "all" as const, label: "All" }, ...STARTER_CATEGORIES].map((c) => {
             const count =
               c.id === "all"

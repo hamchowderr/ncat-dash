@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // The self-hosting pieces, in a real browser against a real backend: the Toolkit page
 // reading how busy the toolkit is, a Drive share link turned into a download link, and a

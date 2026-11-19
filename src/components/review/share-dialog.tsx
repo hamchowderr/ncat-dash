@@ -108,7 +108,7 @@ export function ShareDialog({ reviewId }: { reviewId: Id<"reviews"> }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" data-tour-step-id="tour-review-share">
           <Link2 />
           Share
         </Button>

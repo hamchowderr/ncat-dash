@@ -143,6 +143,7 @@ export function ClipStage({
   return (
     <section
       aria-label="Clip"
+      data-tour-step-id="tour-review-clip"
       data-stage=""
       data-shape={shape === undefined ? undefined : shape.toFixed(3)}
       style={shape === undefined ? undefined : ({ "--clip-ratio": shape } as CSSProperties)}

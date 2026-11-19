@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./test";
 
 // Nothing in the app is drawn on top of anything else: the steps you can add, a step's
 // settings and the agent each take their own column beside the canvas, and the canvas's

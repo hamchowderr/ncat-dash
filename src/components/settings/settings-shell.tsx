@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageTourButton } from "@/components/tours/page-tour";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
@@ -37,9 +38,13 @@ export function SettingsShell({ children }: { children: ReactNode }) {
   return (
     <div data-settings className="mx-auto flex w-full max-w-2xl flex-col gap-10 pt-6 pb-16">
       {page && (
-        <header className="flex flex-col gap-1.5">
-          <h1 className="text-2xl font-semibold tracking-tight">{page.title}</h1>
-          <p className="text-muted-foreground text-sm text-pretty">{page.description}</p>
+        <header className="flex items-start gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <h1 className="text-2xl font-semibold tracking-tight">{page.title}</h1>
+            <p className="text-muted-foreground text-sm text-pretty">{page.description}</p>
+          </div>
+          {/* Pages with a tour of their own can take it again from here. */}
+          {page.slug === "brand" && <PageTourButton tourId="brand" />}
         </header>
       )}
       {children}

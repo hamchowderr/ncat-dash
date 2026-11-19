@@ -54,6 +54,7 @@ import type * as lib_slackApi from "../lib/slackApi.js";
 import type * as lib_slackPosts from "../lib/slackPosts.js";
 import type * as lib_teamSteps from "../lib/teamSteps.js";
 import type * as lib_toolkitMessage from "../lib/toolkitMessage.js";
+import type * as lib_tours from "../lib/tours.js";
 import type * as lib_typing from "../lib/typing.js";
 import type * as lib_versions from "../lib/versions.js";
 import type * as lib_zoom from "../lib/zoom.js";
@@ -142,6 +143,7 @@ declare const fullApi: ApiFromModules<{
   "lib/slackPosts": typeof lib_slackPosts;
   "lib/teamSteps": typeof lib_teamSteps;
   "lib/toolkitMessage": typeof lib_toolkitMessage;
+  "lib/tours": typeof lib_tours;
   "lib/typing": typeof lib_typing;
   "lib/versions": typeof lib_versions;
   "lib/zoom": typeof lib_zoom;

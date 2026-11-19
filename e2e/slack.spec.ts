@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 
-import { type Browser, expect, type Page, test } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "./test";
 
 import { BOT_USER, teamOfToken, TOKEN_PREFIX } from "./slack-shared";
 

@@ -36,7 +36,12 @@ export function CanvasZoom({
 }) {
   const flow = useReactFlow();
   return (
-    <div role="group" aria-label="View" className="ml-auto flex items-center gap-0.5">
+    <div
+      role="group"
+      aria-label="View"
+      data-tour-step-id="tour-editor-view"
+      className="ml-auto flex items-center gap-0.5"
+    >
       <Button
         variant="ghost"
         size="icon-sm"
