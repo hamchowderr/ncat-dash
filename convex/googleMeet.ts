@@ -30,6 +30,7 @@ import {
   type MeetRecording,
   minutesOf,
   minutesOfFile,
+  sharedByOf,
   timeOf,
 } from "./lib/googleMeet";
 import { addUploadToLibrary } from "./lib/library";
@@ -134,6 +135,7 @@ export const forTeam = query({
             googleEmail: mine.googleEmail,
             connectedAt: mine.connectedAt,
             autoImport: mine.autoImport,
+            includeShared: mine.sharedFrom !== undefined,
             signInLost: mine.signInLostAt !== undefined,
           }
         : null,
@@ -209,6 +211,25 @@ export const setAutoImport = mutation({
     await ctx.db.patch(mine._id, {
       autoImport: args.autoImport,
       ...(args.autoImport && !mine.autoImport ? { watchFrom: Date.now() } : {}),
+    });
+  },
+});
+
+/** Whether recordings other people share with the caller come in by themselves too. */
+export const setIncludeShared = mutation({
+  args: { organizationId: v.string(), includeShared: v.boolean() },
+  handler: async (ctx, args) => {
+    const mine = await myConnection(ctx, args.organizationId);
+    if (!mine) {
+      throw new ConvexError({
+        code: "not_connected",
+        message: "Connect your Google account first.",
+      });
+    }
+    // From now on: switching it on does not pull in everything ever shared. Those are
+    // in "Find recordings".
+    await ctx.db.patch(mine._id, {
+      sharedFrom: args.includeShared ? (mine.sharedFrom ?? Date.now()) : undefined,
     });
   },
 });
@@ -301,6 +322,8 @@ export const saveConnection = internalMutation({
       autoImport: mine?.autoImport ?? true,
       // Recordings from meetings that end after connecting come in by themselves.
       watchFrom: mine?.watchFrom ?? now,
+      // Connecting again keeps whether shared recordings come in.
+      ...(mine?.sharedFrom !== undefined ? { sharedFrom: mine.sharedFrom } : {}),
     };
     if (mine) await ctx.db.replace(mine._id, fields);
     else await ctx.db.insert("googleMeetConnections", fields);
@@ -504,6 +527,8 @@ export interface FoundRecording {
   minutes: number | null;
   size: number;
   contentType: string;
+  /** Who shared it, when it is in someone else's Drive. */
+  sharedBy?: string | null;
 }
 
 /** The Drive file of a finished recording, or null when it is gone or unusable. */
@@ -554,6 +579,7 @@ function fromDriveFile(file: DriveFile): FoundRecording | null {
     minutes,
     size: Number(file.size ?? 0) || 0,
     contentType: file.mimeType,
+    sharedBy: sharedByOf(file),
   };
 }
 
@@ -561,9 +587,10 @@ function fromDriveFile(file: DriveFile): FoundRecording | null {
 async function recordingsInDrive(
   token: string,
   pageToken: string | undefined,
+  narrower = "",
 ): Promise<{ found: FoundRecording[]; nextPageToken: string | null }> {
   const url = new URL(`${googleUrls().drive}/files`);
-  url.searchParams.set("q", DRIVE_RECORDINGS_QUERY);
+  url.searchParams.set("q", DRIVE_RECORDINGS_QUERY + narrower);
   url.searchParams.set("orderBy", "createdTime desc");
   url.searchParams.set("pageSize", String(DRIVE_PAGE));
   url.searchParams.set("fields", `nextPageToken,files(${DRIVE_FILE_FIELDS})`);
@@ -577,6 +604,23 @@ async function recordingsInDrive(
     if (one) found.push(one);
   }
   return { found, nextPageToken: body.nextPageToken ?? null };
+}
+
+/**
+ * Meet recordings other people shared with the person that Meet saved since `since`.
+ * Their own come through Meet (see below); these are only in Drive.
+ */
+async function sharedSince(token: string, since: number): Promise<FoundRecording[]> {
+  const narrower = ` and not 'me' in owners and createdTime > '${new Date(since).toISOString()}'`;
+  const found: FoundRecording[] = [];
+  let pageToken: string | null = null;
+  for (let page = 0; page < 5; page++) {
+    const one = await recordingsInDrive(token, pageToken ?? undefined, narrower);
+    found.push(...one.found);
+    pageToken = one.nextPageToken;
+    if (!pageToken) break;
+  }
+  return found;
 }
 
 /** The finished recordings of meetings the person organized that ended since `since`. */
@@ -642,6 +686,7 @@ const recordingValidator = v.object({
   minutes: v.union(v.number(), v.null()),
   size: v.number(),
   contentType: v.string(),
+  sharedBy: v.optional(v.union(v.string(), v.null())),
 });
 
 type StartOutcome = "started" | "already" | "duplicate" | "no_toolkit" | "gone";
@@ -870,6 +915,7 @@ export interface PastRecording {
   minutes: number | null;
   size: number;
   standing: Standing;
+  sharedBy: string | null;
 }
 
 /**
@@ -916,6 +962,7 @@ export const pastRecordings = action({
         minutes: one.minutes,
         size: one.size,
         standing: standings[at],
+        sharedBy: one.sharedBy ?? null,
       })),
       complete: pageToken === null,
     };
@@ -1023,6 +1070,7 @@ export const toCheck = internalQuery({
     if (!row || !row.autoImport || row.signInLostAt !== undefined) return null;
     return {
       watchFrom: row.watchFrom,
+      sharedFrom: row.sharedFrom ?? null,
       seen: await broughtFiles(ctx, row.organizationId, { failed: true }),
     };
   },
@@ -1030,8 +1078,9 @@ export const toCheck = internalQuery({
 
 /**
  * Asks Google about one account's meetings that ended recently, and brings in each
- * recording that has finished saving and is not in yet. Recordings of meetings that ended
- * before the account was connected stay for "Show the last 30 days".
+ * recording that has finished saving and is not in yet; with shared recordings switched
+ * on, also those others shared that Meet saved since. Older ones stay for "Find
+ * recordings".
  */
 export const checkOne = internalAction({
   args: { connectionId: v.id("googleMeetConnections") },
@@ -1042,6 +1091,11 @@ export const checkOne = internalAction({
     try {
       const token = await accessTokenFor(ctx, args.connectionId);
       found = await recordingsSince(token, Math.max(state.watchFrom, Date.now() - CHECK_WINDOW_MS));
+      if (state.sharedFrom !== null) {
+        found.push(
+          ...(await sharedSince(token, Math.max(state.sharedFrom, Date.now() - CHECK_WINDOW_MS))),
+        );
+      }
     } catch {
       // A lost sign-in is marked on the account (Settings says so); anything else waits
       // for the next check.

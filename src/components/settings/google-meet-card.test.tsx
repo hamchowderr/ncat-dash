@@ -16,6 +16,7 @@ const connected = {
     googleEmail: "jordan@salthouse.test",
     connectedAt: Date.UTC(2026, 10, 18, 18),
     autoImport: true,
+    includeShared: false,
     signInLost: false,
   },
   others: [{ googleName: "Maya O", memberName: "Maya Ortiz" }],
@@ -195,6 +196,42 @@ describe("the Google Meet card", () => {
     await user.click(screen.getByRole("checkbox", { name: "Pick every recording not in Uploads" }));
     expect(screen.getByText("0 of 2 picked")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Bring over 0 recordings" })).toBeDisabled();
+  });
+
+  test("recordings shared with you: a switch to bring them in too, and who shared each", async () => {
+    answerQuery(api.googleMeet.forTeam, connected);
+    const setShared = mutationOf(api.googleMeet.setIncludeShared);
+    actionOf(api.googleMeet.pastRecordings).mockResolvedValue({
+      recordings: [
+        {
+          driveFileId: "sharedFile",
+          topic: "Tylan / Andrew",
+          startTime: Date.UTC(2025, 3, 23, 19),
+          minutes: 21,
+          size: 127_000_000,
+          standing: "new",
+          sharedBy: "Andrew Fink",
+        },
+      ],
+      complete: true,
+    });
+    renderInApp(<GoogleMeetCard />);
+    const user = userEvent.setup();
+    const shared = screen.getByRole("switch", { name: /recordings shared with you/ });
+    expect(shared).not.toBeChecked();
+    await user.click(shared);
+    expect(setShared).toHaveBeenCalledWith({ organizationId: TEAM.id, includeShared: true });
+    await user.click(screen.getByRole("button", { name: "Find recordings" }));
+    expect(await screen.findByText(/shared by Andrew Fink/)).toBeInTheDocument();
+  });
+
+  test("with bringing in switched off, the shared switch is not offered", async () => {
+    answerQuery(api.googleMeet.forTeam, {
+      ...connected,
+      me: { ...connected.me, autoImport: false },
+    });
+    renderInApp(<GoogleMeetCard />);
+    expect(screen.queryByRole("switch", { name: /recordings shared with you/ })).toBeNull();
   });
 
   test("coming back from Google says how it went, then tidies the address", async () => {

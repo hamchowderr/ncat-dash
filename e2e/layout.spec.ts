@@ -142,6 +142,11 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
   await page.getByRole("link", { name: "New automation", exact: true }).click();
   await expect(page).toHaveURL(/\/automations\/new$/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  // This page's own tour starts on a first visit; the check is of the page under it.
+  // Wait for the card without an assertion, which would let the spec's handler close it
+  // first, then let that handler close it.
+  await page.waitForFunction(() => document.querySelector("[data-tour-card]"));
+  await expect(page.locator("[data-tour-overlay]")).toHaveCount(0);
   expect(await covered(page), "new automation page").toEqual([]);
 });
 
