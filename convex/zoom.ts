@@ -11,8 +11,9 @@ import {
   type MutationCtx,
   mutation,
   query,
+  type QueryCtx,
 } from "./_generated/server";
-import { isMember, requireMember } from "./lib/authz";
+import { isMember, MANAGER_ROLES, requireMember, type TeamRole } from "./lib/authz";
 import { safeName } from "./lib/bucket";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { addUploadToLibrary } from "./lib/library";
@@ -34,6 +35,12 @@ import {
  * toolkit streams the best file of it straight from Zoom into the team's folder. It then
  * becomes an upload like any other: it joins the library and starts the automations set
  * to run on an upload. Files never pass through this app, whatever their size.
+ *
+ * Optionally the dashboard has a SECOND, admin-managed Zoom app (ZOOM_ACCOUNT_CLIENT_ID,
+ * ZOOM_ACCOUNT_CLIENT_SECRET and ZOOM_ACCOUNT_WEBHOOK_SECRET). Zoom only lets an
+ * admin-managed app see a whole account's recordings, and only an account admin can add
+ * one, so it sits beside the per-person app rather than replacing it. An admin connects
+ * the whole Zoom account once and every host's recordings in it come to the team.
  */
 
 /** A Zoom sign-in started from Settings must come back within this long. */
@@ -52,6 +59,29 @@ export const ZOOM_SCOPES = [
   "cloud_recording:read:recording",
 ];
 
+/** What the whole-account app asks Zoom for: the admin, and every host's recordings. */
+export const ZOOM_ACCOUNT_SCOPES = [
+  "user:read:user:admin",
+  "cloud_recording:read:list_account_recordings:admin",
+  "cloud_recording:read:recording:admin",
+];
+
+/** One of the dashboard's two Zoom apps: per person, or the whole account. */
+interface ZoomApp {
+  clientId: string;
+  clientSecret: string;
+  webhookSecret: string;
+}
+
+function appFor(wholeAccount: boolean | undefined): ZoomApp {
+  const prefix = wholeAccount ? "ZOOM_ACCOUNT_" : "ZOOM_";
+  return {
+    clientId: process.env[`${prefix}CLIENT_ID`] ?? "",
+    clientSecret: process.env[`${prefix}CLIENT_SECRET`] ?? "",
+    webhookSecret: process.env[`${prefix}WEBHOOK_SECRET`] ?? "",
+  };
+}
+
 function oauthBase(): string {
   return (process.env.ZOOM_OAUTH_URL ?? "https://zoom.us").replace(/\/+$/, "");
 }
@@ -69,16 +99,15 @@ export function redirectUri(): string {
   return `${site()}/zoom/callback`;
 }
 
-/** Where Zoom sends its events. */
-export function eventsUrl(): string {
-  return `${site()}/zoom/events`;
+/** Where Zoom sends its events: each app has its own address. */
+export function eventsUrl(wholeAccount = false): string {
+  return `${site()}/zoom/${wholeAccount ? "account-events" : "events"}`;
 }
 
-/** Whether this dashboard has a Zoom app set up. */
-function ready(): boolean {
-  return Boolean(
-    process.env.ZOOM_CLIENT_ID && process.env.ZOOM_CLIENT_SECRET && process.env.ZOOM_WEBHOOK_SECRET,
-  );
+/** Whether this dashboard has that Zoom app set up. */
+function ready(wholeAccount = false): boolean {
+  const app = appFor(wholeAccount);
+  return Boolean(app.clientId && app.clientSecret && app.webhookSecret);
 }
 
 /** Back to Settings, saying how the Zoom sign-in went. */
@@ -87,8 +116,36 @@ export function settingsUrl(result: string): string {
   return `${base}/settings/zoom?zoom=${encodeURIComponent(result)}`;
 }
 
-function basicAuth(): string {
-  return `Basic ${btoa(`${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`)}`;
+function basicAuth(wholeAccount?: boolean): string {
+  const app = appFor(wholeAccount);
+  return `Basic ${btoa(`${app.clientId}:${app.clientSecret}`)}`;
+}
+
+type Connection = Doc<"zoomConnections">;
+
+/** A member's own Zoom on a team (not a whole account they connected). */
+async function personalOf(
+  ctx: { db: QueryCtx["db"] },
+  organizationId: string,
+  userId: string,
+): Promise<Connection | null> {
+  const rows = await ctx.db
+    .query("zoomConnections")
+    .withIndex("by_member", (q) => q.eq("organizationId", organizationId).eq("userId", userId))
+    .take(10);
+  return rows.find((one) => !one.wholeAccount) ?? null;
+}
+
+/** The whole Zoom account connected to a team, if any. */
+async function wholeOf(
+  ctx: { db: QueryCtx["db"] },
+  organizationId: string,
+): Promise<Connection | null> {
+  const rows = await ctx.db
+    .query("zoomConnections")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .take(100);
+  return rows.find((one) => one.wholeAccount) ?? null;
 }
 
 /** What Settings shows about Zoom: the viewer's own account, the team's, and what came in. */
@@ -96,14 +153,15 @@ export const forTeam = query({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
     if (!(await isMember(ctx, args.organizationId))) return null;
-    const { userId } = await requireMember(ctx, args.organizationId);
+    const { userId, role } = await requireMember(ctx, args.organizationId);
     const connections = await ctx.db
       .query("zoomConnections")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .take(50);
-    const mine = connections.find((one) => one.userId === userId) ?? null;
+      .take(100);
+    const people = connections.filter((one) => !one.wholeAccount);
+    const mine = people.find((one) => one.userId === userId) ?? null;
     const others = [];
-    for (const one of connections) {
+    for (const one of people) {
       if (one.userId === userId) continue;
       const by = await ctx.runQuery(components.betterAuth.members.contact, { userId: one.userId });
       others.push({ zoomName: one.zoomName, memberName: by?.name ?? null });
@@ -113,8 +171,24 @@ export const forTeam = query({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .order("desc")
       .take(20);
+    const whole = connections.find((one) => one.wholeAccount) ?? null;
+    const wholeBy = whole
+      ? await ctx.runQuery(components.betterAuth.members.contact, { userId: whole.userId })
+      : null;
     return {
       ready: ready(),
+      accountReady: ready(true),
+      // Owners and admins may connect the whole account; whoever connected it may remove it.
+      canManage: MANAGER_ROLES.includes(role),
+      wholeAccount: whole
+        ? {
+            zoomName: whole.zoomName,
+            zoomEmail: whole.zoomEmail,
+            connectedAt: whole.connectedAt,
+            memberName: wholeBy?.name ?? null,
+            mine: whole.userId === userId,
+          }
+        : null,
       me: mine
         ? {
             zoomName: mine.zoomName,
@@ -137,14 +211,21 @@ export const forTeam = query({
 
 /** Starts a Zoom sign-in from Settings and returns the address to open. */
 export const startLink = mutation({
-  args: { organizationId: v.string() },
+  args: { organizationId: v.string(), wholeAccount: v.optional(v.boolean()) },
   returns: v.string(),
   handler: async (ctx, args) => {
-    const { userId } = await requireMember(ctx, args.organizationId);
-    if (!ready()) {
+    // Bringing in everyone's meetings is a team setting, so only its owners and admins.
+    const { userId } = await requireMember(
+      ctx,
+      args.organizationId,
+      args.wholeAccount ? MANAGER_ROLES : undefined,
+    );
+    if (!ready(args.wholeAccount)) {
       throw new ConvexError({
         code: "not_ready",
-        message: "Zoom is not set up on this dashboard yet.",
+        message: args.wholeAccount
+          ? "Connecting a whole Zoom account is not set up on this dashboard yet."
+          : "Zoom is not set up on this dashboard yet.",
       });
     }
     const bytes = crypto.getRandomValues(new Uint8Array(24));
@@ -153,11 +234,12 @@ export const startLink = mutation({
       nonce,
       organizationId: args.organizationId,
       userId,
+      ...(args.wholeAccount ? { wholeAccount: true } : {}),
       createdAt: Date.now(),
     });
     const url = new URL(`${oauthBase()}/oauth/authorize`);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("client_id", process.env.ZOOM_CLIENT_ID!);
+    url.searchParams.set("client_id", appFor(args.wholeAccount).clientId);
     url.searchParams.set("redirect_uri", redirectUri());
     url.searchParams.set("state", nonce);
     return url.toString();
@@ -169,12 +251,7 @@ export const setAutoImport = mutation({
   args: { organizationId: v.string(), autoImport: v.boolean() },
   handler: async (ctx, args) => {
     const { userId } = await requireMember(ctx, args.organizationId);
-    const mine = await ctx.db
-      .query("zoomConnections")
-      .withIndex("by_member", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", userId),
-      )
-      .unique();
+    const mine = await personalOf(ctx, args.organizationId, userId);
     if (!mine)
       throw new ConvexError({ code: "not_connected", message: "Connect your Zoom first." });
     await ctx.db.patch(mine._id, { autoImport: args.autoImport });
@@ -182,32 +259,43 @@ export const setAutoImport = mutation({
 });
 
 /** Forgets the caller's Zoom on this team. Recordings already brought in stay. */
+/**
+ * Forgets the caller's Zoom on this team, or with wholeAccount the whole Zoom account
+ * (the team's owners and admins, or whoever connected it). Recordings already brought in
+ * stay.
+ */
 export const disconnect = mutation({
-  args: { organizationId: v.string() },
+  args: { organizationId: v.string(), wholeAccount: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const { userId } = await requireMember(ctx, args.organizationId);
-    const mine = await ctx.db
-      .query("zoomConnections")
-      .withIndex("by_member", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", userId),
-      )
-      .unique();
-    if (!mine) return;
-    await ctx.db.delete(mine._id);
+    const { userId, role } = await requireMember(ctx, args.organizationId);
+    const row = args.wholeAccount
+      ? await wholeOf(ctx, args.organizationId)
+      : await personalOf(ctx, args.organizationId, userId);
+    if (!row) return;
+    if (args.wholeAccount && row.userId !== userId && !MANAGER_ROLES.includes(role)) {
+      throw new ConvexError({
+        code: "forbidden",
+        message: "Only a team owner or admin, or whoever connected it, can do this.",
+      });
+    }
+    await ctx.db.delete(row._id);
     // Zoom is told too, so the app no longer has the account's sign-in.
-    await ctx.scheduler.runAfter(0, internal.zoom.revoke, { tokenCipher: mine.refreshTokenCipher });
+    await ctx.scheduler.runAfter(0, internal.zoom.revoke, {
+      tokenCipher: row.refreshTokenCipher,
+      ...(row.wholeAccount ? { wholeAccount: true } : {}),
+    });
   },
 });
 
 export const revoke = internalAction({
-  args: { tokenCipher: v.string() },
+  args: { tokenCipher: v.string(), wholeAccount: v.optional(v.boolean()) },
   handler: async (_ctx, args) => {
-    if (!ready()) return;
+    if (!ready(args.wholeAccount)) return;
     try {
       const token = await decryptSecret(args.tokenCipher);
       await fetch(`${oauthBase()}/oauth/revoke?token=${encodeURIComponent(token)}`, {
         method: "POST",
-        headers: { authorization: basicAuth() },
+        headers: { authorization: basicAuth(args.wholeAccount) },
       });
     } catch {
       // Zoom forgets an unused sign-in after 90 days anyway.
@@ -228,7 +316,11 @@ export const takeStart = internalMutation({
     if (!row) return null;
     await ctx.db.delete(row._id);
     if (Date.now() - row.createdAt > START_TTL_MS) return null;
-    return { organizationId: row.organizationId, userId: row.userId };
+    return {
+      organizationId: row.organizationId,
+      userId: row.userId,
+      wholeAccount: row.wholeAccount ?? false,
+    };
   },
 });
 
@@ -244,6 +336,7 @@ export const saveConnection = internalMutation({
     accessTokenCipher: v.string(),
     refreshTokenCipher: v.string(),
     expiresAt: v.number(),
+    wholeAccount: v.optional(v.boolean()),
   },
   returns: v.string(),
   handler: async (ctx, args) => {
@@ -252,22 +345,44 @@ export const saveConnection = internalMutation({
       organizationId: args.organizationId,
     });
     if (!role) return "not_member";
+    if (args.wholeAccount) {
+      if (!MANAGER_ROLES.includes(role as TeamRole)) return "not_manager";
+      if (!args.zoomAccountId) return "refused";
+      // A whole Zoom account belongs to one team, so each recording has one home.
+      const elsewhere = await ctx.db
+        .query("zoomConnections")
+        .withIndex("by_zoom_account", (q) => q.eq("zoomAccountId", args.zoomAccountId))
+        .take(50);
+      if (elsewhere.some((one) => one.wholeAccount && one.organizationId !== args.organizationId))
+        return "account_taken";
+      const before = await wholeOf(ctx, args.organizationId);
+      // One whole account per team: connecting again (or another account) replaces it.
+      if (before) await ctx.db.delete(before._id);
+      await ctx.db.insert("zoomConnections", {
+        ...args,
+        wholeAccount: true,
+        connectedAt: Date.now(),
+        autoImport: true,
+      });
+      return "account_connected";
+    }
     // One Zoom account belongs to one team, so each recording has one home.
     const elsewhere = await ctx.db
       .query("zoomConnections")
       .withIndex("by_zoom_user", (q) => q.eq("zoomUserId", args.zoomUserId))
       .take(10);
     for (const one of elsewhere) {
+      if (one.wholeAccount) continue;
       if (one.organizationId !== args.organizationId) return "taken";
       if (one.userId !== args.userId) return "taken_here";
     }
-    const mine = await ctx.db
-      .query("zoomConnections")
-      .withIndex("by_member", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", args.userId),
-      )
-      .unique();
-    const fields = { ...args, connectedAt: Date.now(), autoImport: mine?.autoImport ?? true };
+    const mine = await personalOf(ctx, args.organizationId, args.userId);
+    const fields = {
+      ...args,
+      wholeAccount: undefined,
+      connectedAt: Date.now(),
+      autoImport: mine?.autoImport ?? true,
+    };
     if (mine) await ctx.db.replace(mine._id, fields);
     else await ctx.db.insert("zoomConnections", fields);
     return "connected";
@@ -281,12 +396,12 @@ export const finishLink = internalAction({
   handler: async (ctx, args): Promise<string> => {
     const start = await ctx.runMutation(internal.zoom.takeStart, { nonce: args.state });
     if (!start) return settingsUrl("expired");
-    if (!ready()) return settingsUrl("not_ready");
+    if (!ready(start.wholeAccount)) return settingsUrl("not_ready");
     try {
       const tokenResponse = await fetch(`${oauthBase()}/oauth/token`, {
         method: "POST",
         headers: {
-          authorization: basicAuth(),
+          authorization: basicAuth(start.wholeAccount),
           "content-type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({
@@ -323,6 +438,7 @@ export const finishLink = internalAction({
         accessTokenCipher: await encryptSecret(token.access_token),
         refreshTokenCipher: await encryptSecret(token.refresh_token),
         expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
+        ...(start.wholeAccount ? { wholeAccount: true } : {}),
       });
       return settingsUrl(result);
     } catch {
@@ -373,7 +489,10 @@ export async function accessTokenFor(
   if (row.expiresAt - Date.now() > RENEW_MS) return await decryptSecret(row.accessTokenCipher);
   const response = await fetch(`${oauthBase()}/oauth/token`, {
     method: "POST",
-    headers: { authorization: basicAuth(), "content-type": "application/x-www-form-urlencoded" },
+    headers: {
+      authorization: basicAuth(row.wholeAccount),
+      "content-type": "application/x-www-form-urlencoded",
+    },
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: await decryptSecret(row.refreshTokenCipher),
@@ -548,17 +667,17 @@ export async function onZoomJobFinished(
   await ctx.scheduler.runAfter(0, internal.storage.readDetails, { uploadId: upload._id });
 }
 
-/** The connection a member made on a team, for the actions below. */
+/**
+ * Where past recordings are listed from, for the actions below: the team's whole Zoom
+ * account when one is connected (it has everyone's), otherwise the caller's own Zoom.
+ */
 export const mine = internalQuery({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
     const { userId } = await requireMember(ctx, args.organizationId);
-    const row = await ctx.db
-      .query("zoomConnections")
-      .withIndex("by_member", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", userId),
-      )
-      .unique();
+    const row =
+      (await wholeOf(ctx, args.organizationId)) ??
+      (await personalOf(ctx, args.organizationId, userId));
     if (!row) throw new ConvexError({ code: "not_connected", message: "Connect your Zoom first." });
     const imports = await ctx.db
       .query("zoomImports")
@@ -567,6 +686,7 @@ export const mine = internalQuery({
       .take(500);
     return {
       connectionId: row._id,
+      wholeAccount: row.wholeAccount ?? false,
       brought: imports.filter((one) => one.status !== "failed").map((one) => one.recordingFileId),
     };
   },
@@ -576,6 +696,7 @@ export const mine = internalQuery({
 async function pastMeetings(
   ctx: ActionCtx,
   connectionId: Id<"zoomConnections">,
+  wholeAccount: boolean,
 ): Promise<ZoomMeeting[]> {
   let token: string;
   try {
@@ -585,7 +706,8 @@ async function pastMeetings(
   }
   const to = new Date();
   const from = new Date(to.getTime() - PAST_DAYS * 24 * 60 * 60 * 1000);
-  const url = new URL(`${apiBase()}/users/me/recordings`);
+  // A whole account lists every host's recordings; a person's Zoom only their own.
+  const url = new URL(`${apiBase()}/${wholeAccount ? "accounts/me" : "users/me"}/recordings`);
   url.searchParams.set("from", from.toISOString().slice(0, 10));
   url.searchParams.set("to", to.toISOString().slice(0, 10));
   url.searchParams.set("page_size", "100");
@@ -619,14 +741,14 @@ export interface PastRecording {
   brought: boolean;
 }
 
-type Mine = { connectionId: Id<"zoomConnections">; brought: string[] };
+type Mine = { connectionId: Id<"zoomConnections">; wholeAccount: boolean; brought: string[] };
 
 /** The caller's recent Zoom recordings, saying which have been brought in already. */
 export const pastRecordings = action({
   args: { organizationId: v.string() },
   handler: async (ctx, args): Promise<PastRecording[]> => {
     const found: Mine = await ctx.runQuery(internal.zoom.mine, args);
-    const meetings = await pastMeetings(ctx, found.connectionId);
+    const meetings = await pastMeetings(ctx, found.connectionId, found.wholeAccount);
     const shown: PastRecording[] = [];
     for (const meeting of meetings) {
       const file = pickRecordingFile(meeting.recording_files);
@@ -652,7 +774,7 @@ export const bringIn = action({
       organizationId: args.organizationId,
     });
     // Looked up again rather than taken from the browser: Zoom's list is the truth.
-    const meeting = (await pastMeetings(ctx, found.connectionId)).find(
+    const meeting = (await pastMeetings(ctx, found.connectionId, found.wholeAccount)).find(
       (one) => one.uuid === args.meetingUuid,
     );
     const file = meeting ? pickRecordingFile(meeting.recording_files) : null;
@@ -680,23 +802,42 @@ export const bringIn = action({
 
 // Zoom's events.
 
+/** The connections a finished recording goes to: its host's own, or its whole account's. */
 export const connectionsOf = internalQuery({
-  args: { zoomUserId: v.string() },
-  handler: async (ctx, args) =>
-    await ctx.db
-      .query("zoomConnections")
-      .withIndex("by_zoom_user", (q) => q.eq("zoomUserId", args.zoomUserId))
-      .take(10),
-});
-
-export const forgetZoomUser = internalMutation({
-  args: { zoomUserId: v.string() },
+  args: { zoomUserId: v.string(), zoomAccountId: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    if (args.zoomAccountId !== undefined) {
+      const rows = await ctx.db
+        .query("zoomConnections")
+        .withIndex("by_zoom_account", (q) => q.eq("zoomAccountId", args.zoomAccountId!))
+        .take(50);
+      return rows.filter((one) => one.wholeAccount);
+    }
     const rows = await ctx.db
       .query("zoomConnections")
       .withIndex("by_zoom_user", (q) => q.eq("zoomUserId", args.zoomUserId))
       .take(10);
-    for (const row of rows) await ctx.db.delete(row._id);
+    return rows.filter((one) => !one.wholeAccount);
+  },
+});
+
+/** Someone removed one of the apps from their Zoom: forget what it connected. */
+export const forgetZoomUser = internalMutation({
+  args: { zoomUserId: v.string(), zoomAccountId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    if (args.zoomAccountId !== undefined) {
+      const rows = await ctx.db
+        .query("zoomConnections")
+        .withIndex("by_zoom_account", (q) => q.eq("zoomAccountId", args.zoomAccountId!))
+        .take(50);
+      for (const row of rows) if (row.wholeAccount) await ctx.db.delete(row._id);
+      return;
+    }
+    const rows = await ctx.db
+      .query("zoomConnections")
+      .withIndex("by_zoom_user", (q) => q.eq("zoomUserId", args.zoomUserId))
+      .take(10);
+    for (const row of rows) if (!row.wholeAccount) await ctx.db.delete(row._id);
   },
 });
 
@@ -707,9 +848,16 @@ type EventAnswer = { status: number; json?: Record<string, string> };
  * the address is saved, a finished recording, or someone removing the app.
  */
 export const takeEvent = internalAction({
-  args: { body: v.string(), timestamp: v.string(), signature: v.string() },
+  args: {
+    body: v.string(),
+    timestamp: v.string(),
+    signature: v.string(),
+    // True: the event came to the whole-account app's address.
+    wholeAccount: v.optional(v.boolean()),
+  },
   handler: async (ctx, args): Promise<EventAnswer> => {
-    const secret = process.env.ZOOM_WEBHOOK_SECRET ?? "";
+    const whole = args.wholeAccount ?? false;
+    const secret = appFor(whole).webhookSecret;
     if (!secret) return { status: 503 };
     let event: {
       event?: string;
@@ -717,6 +865,7 @@ export const takeEvent = internalAction({
       payload?: {
         plainToken?: string;
         user_id?: string;
+        account_id?: string;
         object?: ZoomMeeting;
       };
     };
@@ -739,7 +888,12 @@ export const takeEvent = internalAction({
     }
 
     if (event.event === "app_deauthorized") {
-      if (event.payload?.user_id) {
+      if (whole && event.payload?.account_id) {
+        await ctx.runMutation(internal.zoom.forgetZoomUser, {
+          zoomUserId: event.payload.user_id ?? "",
+          zoomAccountId: event.payload.account_id,
+        });
+      } else if (!whole && event.payload?.user_id) {
         await ctx.runMutation(internal.zoom.forgetZoomUser, { zoomUserId: event.payload.user_id });
       }
       return { status: 204 };
@@ -749,8 +903,11 @@ export const takeEvent = internalAction({
       const meeting = event.payload?.object;
       const file = pickRecordingFile(meeting?.recording_files);
       if (!meeting?.host_id || !meeting.uuid || !file) return { status: 204 };
+      const accountId = event.payload?.account_id ?? "";
+      if (whole && !accountId) return { status: 204 };
       const connections = await ctx.runQuery(internal.zoom.connectionsOf, {
         zoomUserId: meeting.host_id,
+        ...(whole ? { zoomAccountId: accountId } : {}),
       });
       for (const connection of connections) {
         if (!connection.autoImport) continue;

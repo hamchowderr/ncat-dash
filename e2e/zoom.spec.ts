@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import { expect, test } from "./test";
 
 import { meeting, ZOOM, ZOOM_USER } from "./zoom-data.mjs";
-import { ZOOM_WEBHOOK_SECRET } from "./zoom-shared";
+import { ZOOM_ACCOUNT_WEBHOOK_SECRET, ZOOM_WEBHOOK_SECRET } from "./zoom-shared";
 
 // Zoom meetings brought in by themselves, in a real browser against a real backend: a
 // member connects Zoom from Settings (the stand-in Zoom signs in at once), brings in a
@@ -11,6 +11,7 @@ import { ZOOM_WEBHOOK_SECRET } from "./zoom-shared";
 
 const TOOLKIT = "http://127.0.0.1:8767";
 const EVENTS = "http://127.0.0.1:3211/zoom/events";
+const ACCOUNT_EVENTS = "http://127.0.0.1:3211/zoom/account-events";
 const stamp = Date.now().toString(36);
 if (process.env.RECORD_VIDEO === "1") {
   test.use({
@@ -19,14 +20,18 @@ if (process.env.RECORD_VIDEO === "1") {
   });
 }
 
-/** Sends an event the way Zoom sends it, signed with the app's secret token. */
-async function zoomSays(event: unknown) {
+/**
+ * Sends an event the way Zoom sends it, signed with the app's secret token: the
+ * per-person app's, or with wholeAccount the admin-managed app's, to its own address.
+ */
+async function zoomSays(event: unknown, wholeAccount = false) {
   const body = JSON.stringify(event);
   const timestamp = String(Math.floor(Date.now() / 1000));
-  const signature = `v0=${createHmac("sha256", ZOOM_WEBHOOK_SECRET)
+  const secret = wholeAccount ? ZOOM_ACCOUNT_WEBHOOK_SECRET : ZOOM_WEBHOOK_SECRET;
+  const signature = `v0=${createHmac("sha256", secret)
     .update(`v0:${timestamp}:${body}`)
     .digest("hex")}`;
-  return await fetch(EVENTS, {
+  return await fetch(wholeAccount ? ACCOUNT_EVENTS : EVENTS, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -99,5 +104,64 @@ test("connects Zoom, brings a past meeting in, and a finished one arrives by its
   await expect(uploads.getByText(/^Weekly Sync \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
     timeout: 30_000,
   });
+  await page.waitForTimeout(1500);
+});
+
+test("an owner connects the whole Zoom account and every host's meetings come in", async ({
+  page,
+}) => {
+  const run = `${stamp}w`;
+  await page.goto("/sign-up");
+  await page.locator("#name").fill("Harbour Admin");
+  await page.locator("#email").fill(`admin.zoom.${run}@example.test`);
+  await page.locator("#password").fill("zoom-e2e-password-1");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
+  await page.getByPlaceholder("Your company or channel").fill(`Harbour Studio ${run}`);
+  await page.getByRole("button", { name: "Create team" }).click();
+  await page.getByRole("button", { name: /Yes, I Have One/ }).click();
+  await page.locator("#baseUrl").fill(TOOLKIT);
+  await page.locator("#apiKey").fill("stand-in-key-1234");
+  await page.getByRole("button", { name: "Test and connect" }).click();
+  await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
+
+  // The Zoom account admin signs in to the admin-managed app; no Zoom of their own.
+  const admin = {
+    id: `zoom-admin-${run}`,
+    account_id: `zoom-account-${run}`,
+    email: "admin@harbour.test",
+    display_name: "Harbour Zoom Admin",
+  };
+  await fetch(`${ZOOM}/stand-in/user`, { method: "POST", body: JSON.stringify(admin) });
+  await page.goto("/settings/zoom");
+  const whole = page.getByRole("region", { name: "Whole Zoom account" });
+  await whole.getByRole("button", { name: "Connect whole Zoom account" }).click();
+  await expect(page).toHaveURL(/\/settings\/zoom$/, { timeout: 30_000 });
+  await expect(page.getByText(/The whole Zoom account is connected/)).toBeVisible();
+  await expect(whole.getByText(/connected by/)).toBeVisible();
+  await expect(whole.getByText("Harbour Admin")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Zoom" })).toBeVisible();
+
+  // Past recordings list every host's, from the whole account.
+  await page.getByRole("button", { name: "Show the last 30 days" }).click();
+  const past = page.getByRole("region", { name: "Past recordings" });
+  await expect(past.getByText("Team Standup")).toBeVisible();
+  await expect(past.getByText("Client Kickoff")).toBeVisible();
+
+  // A colleague who never connected anything finishes a meeting: it comes in by itself.
+  const finished = meeting(`colleague-${run}==`, "Design Review", `${admin.id}-colleague`);
+  const answer = await zoomSays(
+    {
+      event: "recording.completed",
+      event_ts: Date.now(),
+      download_token: "stand-in-download-token",
+      payload: { account_id: admin.account_id, object: finished },
+    },
+    true,
+  );
+  expect(answer.status).toBe(204);
+  const brought = page.getByRole("region", { name: "Brought in from Zoom" });
+  await expect(brought.getByText("Design Review")).toBeVisible();
+  await expect(brought.getByRole("link", { name: "In Uploads" })).toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(1500);
 });
