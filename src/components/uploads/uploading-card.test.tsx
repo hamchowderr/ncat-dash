@@ -119,3 +119,20 @@ describe("a Zoom recording on its way", () => {
     expect(screen.queryByText(/Left half-way yesterday/)).toBeNull();
   });
 });
+
+/** A Google Meet recording on its way is named the same way, by where it comes from. */
+describe("a Google Meet recording on its way", () => {
+  test("is named as coming in from Google Meet", () => {
+    window.localStorage.clear();
+    answerQuery(api.storage.get, STORAGE);
+    answerQuery(api.storage.listUploads, [
+      { ...row("g1", "Client Kickoff 2026-11-18.mp4", "uploading"), source: "google_meet" },
+    ]);
+    actionOf(api.storage.previewLinks).mockResolvedValue([]);
+    renderInApp(<UploadsView />);
+    expect(
+      screen.getByText(/Coming in from Google Meet: Client Kickoff 2026-11-18\.mp4\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Coming in from Zoom/)).toBeNull();
+  });
+});

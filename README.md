@@ -154,6 +154,17 @@ Cloud recordings of Zoom meetings come into Uploads by themselves. The dashboard
 
 Then, in Settings, Zoom, each person who hosts meetings presses "Connect Zoom". When Zoom finishes a cloud recording of a meeting they host, the dashboard picks its best video (the shared screen with the speaker first, the sound alone when there is no video) and has the team's toolkit stream it from Zoom into the team's folder (`/v1/s3/upload`, which copies in parts, so size does not matter and nothing passes through the dashboard). It then becomes an upload like any other: it joins the library and starts the automations set to run on an upload. The last 30 days of recordings can also be brought in by hand. Zoom's sign-in for the download is added only as the job is sent, never kept with the job. Until the Zoom app is published, its development keys work only for accounts on the Zoom account that made it. The code is in `convex/zoom.ts` and `convex/lib/zoom.ts`.
 
+### Google Meet
+
+Google Meet recordings come into Uploads by themselves. The dashboard has ONE Google Cloud app that every team uses; whoever runs the dashboard sets it up once:
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), make a project and turn on the **Google Meet REST API** and the **Google Drive API** (APIs & Services, Library).
+2. Under Google Auth Platform, Branding, fill in the app's name and support email. Under Audience pick **Internal** when everyone who records is on your own Google Workspace (no review by Google needed), or **External** otherwise. An External app stays in Testing until Google verifies it: only the test users you add can connect, and their sign-in lasts 7 days. Under Data Access add the scopes `openid`, `email`, `profile`, `https://www.googleapis.com/auth/meetings.space.readonly` and `https://www.googleapis.com/auth/drive.meet.readonly`.
+3. Under Clients, create an OAuth client of type **Web application** with the redirect URI `https://<your Convex site>/google-meet/callback`.
+4. On the Convex deployment set `GOOGLE_MEET_CLIENT_ID` and `GOOGLE_MEET_CLIENT_SECRET` from that client, and push the functions.
+
+Then, in Settings, Google Meet, each person who organizes meetings presses "Connect Google Meet". Meet saves each recording to the organizer's Drive; every 5 minutes the dashboard asks Meet for recordings of their meetings that have finished saving, and has the team's toolkit stream each one from Drive into the team's folder (`/v1/s3/upload`, so size does not matter and nothing passes through the dashboard). It then becomes an upload like any other: it joins the library and starts the automations set to run on an upload. Asking every few minutes keeps the setup to the one app above (Google's push events need a Pub/Sub topic and subscriptions renewed weekly). The last 30 days can also be brought in by hand. Google's sign-in for the download is added only as the job is sent, never kept with the job. Recording needs a Google Workspace plan (or Google One) that includes Meet recording. The code is in `convex/googleMeet.ts` and `convex/lib/googleMeet.ts`.
+
 ### The agent
 
 The Agent button in the top bar opens a chat beside whatever is on screen. Describe what should run by itself and the agent builds the automation; ask for a change to the one that is open and it makes it on the canvas. It asks before it makes, changes or switches on anything, on a card that lists the change in plain words.

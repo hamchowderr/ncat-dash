@@ -88,13 +88,18 @@ export function pickRecordingFile(files: ZoomRecordingFile[] | undefined): Picke
 }
 
 /** "Weekly Sync 2026-11-18.mp4": the meeting's topic and the day it started. */
-export function recordingFileName(topic: string, startTime: number, extension: string): string {
+export function recordingFileName(
+  topic: string,
+  startTime: number,
+  extension: string,
+  fallback = "Zoom meeting",
+): string {
   const name =
     topic
       .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
       .replace(/\s+/g, " ")
       .trim()
-      .slice(0, 120) || "Zoom meeting";
+      .slice(0, 120) || fallback;
   const day = Number.isFinite(startTime) ? new Date(startTime).toISOString().slice(0, 10) : "";
   return `${name}${day ? ` ${day}` : ""}.${extension}`;
 }
