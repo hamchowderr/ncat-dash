@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 
 import { AGENT_SECRET } from "../playwright.config";
+import { DROPBOX, DROPBOX_SECRET } from "./dropbox-data.mjs";
 import { SLACK_API } from "./slack-shared";
 import { ZOOM_ACCOUNT_WEBHOOK_SECRET, ZOOM_WEBHOOK_SECRET } from "./zoom-shared";
 
@@ -54,6 +55,12 @@ export default async function globalSetup() {
     ["MICROSOFT_CLIENT_SECRET", "stand-in-microsoft-secret"],
     ["MICROSOFT_LOGIN_URL", "http://127.0.0.1:8772/common"],
     ["MICROSOFT_GRAPH_URL", "http://127.0.0.1:8772/v1.0"],
+    // Dropbox, as the Dropbox stand-in (e2e/dropbox-stand-in.mjs) plays it.
+    ["DROPBOX_APP_KEY", "stand-in-dropbox-key"],
+    ["DROPBOX_APP_SECRET", DROPBOX_SECRET],
+    ["DROPBOX_AUTH_URL", DROPBOX],
+    ["DROPBOX_API_URL", DROPBOX],
+    ["DROPBOX_CONTENT_URL", DROPBOX],
   ]) {
     execSync(`npx convex env set ${name} ${value}`, { stdio: "ignore" });
   }

@@ -15,7 +15,6 @@ export const mediaLook = defineStep({
   method: "POST",
   output: "json",
   primaryInput: null,
-  hidden: true,
   input: z.object({
     media_url: z.string().url().optional().describe("URL of a video or picture to sample"),
     every: z.number().min(0.5).max(60).optional().describe("Seconds between sampled frames"),

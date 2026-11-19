@@ -13,7 +13,9 @@ export interface AutomationNode {
    * "automation" runs another of the team's automations on its files (chain.ts);
    * "moments" picks the best moments of each video and cuts them as clips; "chapters"
    * groups a long video into chapters (both moments.ts); "broll" lays cutaway footage over
-   * each video, and "broll-plan" has the AI say where and what to show first (broll.ts).
+   * each video, and "broll-plan" has the AI say where and what to show first (broll.ts);
+   * "motion" draws motion graphics and "sound-effects" adds sound effects onto each video
+   * (motion.ts).
    */
   kind:
     | "step"
@@ -26,7 +28,9 @@ export interface AutomationNode {
     | "moments"
     | "chapters"
     | "broll"
-    | "broll-plan";
+    | "broll-plan"
+    | "motion"
+    | "sound-effects";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */

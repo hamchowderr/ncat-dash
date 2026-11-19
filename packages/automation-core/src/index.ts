@@ -33,3 +33,4 @@ export * from "./plans";
 export * from "./content-goals";
 export * from "./calendar";
 export * from "./upload-parts";
+export * from "./motion";

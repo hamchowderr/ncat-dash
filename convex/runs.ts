@@ -176,6 +176,8 @@ export const get = query({
             chapters: step.chapters ?? null,
             // For Add B-Roll: each cutaway laid over the video, and where its footage is from.
             cutaways: step.cutaways ?? null,
+            // For Add Motion Graphics and Add Sound Effects: what it put on each video, and when.
+            placed: step.placed ?? null,
             pickNote: step.pickNote ?? null,
             // For an If: the files that left by each way. For a Wait: when it carries on.
             branches: step.branches,

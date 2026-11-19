@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
-import { steps, userInputJsonSchema } from "../src";
+import { hiddenSteps, steps, userInputJsonSchema } from "../src";
 
 /**
  * toolkit-schemas.json is the request schema of every NCA Toolkit route, read out of the
@@ -28,6 +28,12 @@ function typesOf(schema: Schema): string[] {
   return types.map((type) => (type === "integer" ? "number" : type));
 }
 
+/** The choices of a field; a choice that may also be left empty (null) lists null last. */
+function enumOf(schema: Schema): unknown[] | undefined {
+  if (schema.enum || !schema.anyOf) return schema.enum;
+  return schema.anyOf.flatMap((one) => one.enum ?? (typesOf(one).includes("null") ? [null] : []));
+}
+
 function differences(mine: Schema, theirs: Schema, path: string, top = false): string[] {
   const found: string[] = [];
   const a = typesOf(mine);
@@ -35,7 +41,7 @@ function differences(mine: Schema, theirs: Schema, path: string, top = false): s
   if (a.length && b.length && !a.every((type) => b.includes(type))) {
     found.push(`${path}: type ${a.join("|")} is not the toolkit's ${b.join("|")}`);
   }
-  if (theirs.enum && JSON.stringify(mine.enum) !== JSON.stringify(theirs.enum)) {
+  if (theirs.enum && JSON.stringify(enumOf(mine)) !== JSON.stringify(theirs.enum)) {
     found.push(`${path}: choices differ from the toolkit's`);
   }
   if (theirs.properties) {
@@ -60,7 +66,7 @@ function differences(mine: Schema, theirs: Schema, path: string, top = false): s
 }
 
 describe("the catalog matches the toolkit", () => {
-  for (const step of steps) {
+  for (const step of [...steps, ...hiddenSteps]) {
     it(step.id, () => {
       const theirs = toolkit[step.endpoint];
       expect(theirs, `the toolkit has no route ${step.endpoint}`).toBeDefined();

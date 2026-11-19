@@ -154,3 +154,18 @@ describe("a Teams recording on its way", () => {
     expect(screen.queryByText(/Coming in from Google Meet/)).toBeNull();
   });
 });
+
+/** A file from a watched Dropbox folder still on its way is named above the files too. */
+describe("a Dropbox file on its way", () => {
+  test("is named as coming in from Dropbox", () => {
+    window.localStorage.clear();
+    answerQuery(api.storage.get, STORAGE);
+    answerQuery(api.storage.listUploads, [
+      { ...row("d1", "Interview.mov", "uploading"), source: "dropbox" },
+    ]);
+    actionOf(api.storage.previewLinks).mockResolvedValue([]);
+    renderInApp(<UploadsView />);
+    expect(screen.getByText(/Coming in from Dropbox: Interview\.mov\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Coming in from Microsoft Teams/)).toBeNull();
+  });
+});

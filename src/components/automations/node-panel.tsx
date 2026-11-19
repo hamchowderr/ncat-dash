@@ -55,6 +55,7 @@ import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
 import { BrollMain, BrollMore, BrollPlanMain } from "./broll-settings";
+import { MotionMain, SoundEffectsMain } from "./motion-settings";
 import { PlatformPicker } from "./platform-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
@@ -206,7 +207,9 @@ export function NodePanel({
     node.kind === "moments" ||
     node.kind === "chapters" ||
     node.kind === "broll" ||
-    node.kind === "broll-plan"
+    node.kind === "broll-plan" ||
+    node.kind === "motion" ||
+    node.kind === "sound-effects"
   ) {
     handled.push({
       label: "Video",
@@ -381,6 +384,14 @@ export function NodePanel({
 
       {node.kind === "broll-plan" && (
         <BrollPlanMain node={node} onChange={(input) => onChange({ input })} />
+      )}
+
+      {node.kind === "motion" && (
+        <MotionMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
+      )}
+
+      {node.kind === "sound-effects" && (
+        <SoundEffectsMain node={node} onChange={(input) => onChange({ input })} />
       )}
 
       {captionStep && (

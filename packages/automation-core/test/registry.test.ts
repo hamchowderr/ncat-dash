@@ -42,14 +42,13 @@ const listedTypes = () =>
   actionTypesByGroup().flatMap((group) => group.types.map((nodeType) => nodeType.type));
 
 describe("node registry", () => {
-  it("describes every trigger, every catalog step, approval, clips, moments, chapters and export exactly once", () => {
+  it("describes every trigger, every catalog step, approval, clips, moments, chapters, motion, sound effects and export exactly once", () => {
     const names = NODE_TYPES.map((nodeType) => nodeType.type);
     expect(new Set(names).size).toBe(names.length);
     for (const kind of ["manual", "upload", "folder", "schedule", "webhook", "finished"]) {
       expect(getNodeType(`trigger:${kind}`)?.role).toBe("trigger");
     }
-    const shown = allSteps.filter((step) => !step.hidden);
-    for (const step of shown) expect(getNodeType(`step:${step.id}`)?.title).toBe(step.title);
+    for (const step of allSteps) expect(getNodeType(`step:${step.id}`)?.title).toBe(step.title);
     // The picture model is used by the dashboard itself, never added as a step.
     expect(listedTypes()).not.toContain("step:media-look");
     expect(savedKind("step:media-look")).toBeNull();
@@ -69,7 +68,14 @@ describe("node registry", () => {
       gives: "file",
     });
     expect(getNodeType("broll-plan")).toMatchObject({ title: "Plan B-Roll", group: "video" });
-    expect(names.length).toBe(6 + shown.length + 10);
+    expect(getNodeType("motion")).toMatchObject({ takes: "file", gives: "files", group: "video" });
+    expect(getNodeType("sound-effects")).toMatchObject({ takes: "file", gives: "files" });
+    // The motion graphics render is only sent by those two, never listed as a step.
+    expect(getNodeType("step:video-motion")).toBeDefined();
+    expect(names).not.toContain("step:video-motion");
+    expect(savedKind("step:video-motion")).toBeNull();
+    expect(savedKind("motion")).toEqual({ kind: "motion" });
+    expect(names.length).toBe(6 + allSteps.length + 12);
   });
 
   it("gives every type a title, a description and an object schema for its settings", () => {
@@ -86,7 +92,7 @@ describe("node registry", () => {
   it("lists only steps that can be added, with no trigger among them", () => {
     const listed = actionTypesByGroup().flatMap((group) => group.types);
     expect(listed.every((nodeType) => nodeType.role === "action")).toBe(true);
-    expect(listed.length).toBe(allSteps.filter((step) => !step.hidden).length + 10);
+    expect(listed.length).toBe(allSteps.length + 12);
   });
 
   it("knows the type of every node in every template", () => {

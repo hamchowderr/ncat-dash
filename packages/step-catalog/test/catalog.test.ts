@@ -24,9 +24,9 @@ function fakeFetch(status: number, body: unknown) {
 }
 
 describe("catalog", () => {
-  it("has 22 steps with unique ids and endpoints under /v1", () => {
-    expect(steps).toHaveLength(22);
-    expect(new Set(steps.map((s) => s.id)).size).toBe(22);
+  it("has 21 steps with unique ids and endpoints under /v1", () => {
+    expect(steps).toHaveLength(21);
+    expect(new Set(steps.map((s) => s.id)).size).toBe(21);
     for (const step of steps) expect(step.endpoint).toMatch(/^\/v1\//);
   });
 

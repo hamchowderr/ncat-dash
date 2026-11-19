@@ -70,11 +70,6 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    * what was read, by setting name.
    */
   readsFirst?: string[];
-  /**
-   * Used by the dashboard itself, never added by a person: left out of the step list and
-   * of what the agent can add.
-   */
-  hidden?: boolean;
   /** Builds the toolkit request from the filled-in blanks. Only recipes have one. */
   toRequest?: (input: z.output<TInput>, facts: FileFacts) => Record<string, unknown>;
 }
