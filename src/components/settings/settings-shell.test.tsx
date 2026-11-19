@@ -55,6 +55,7 @@ describe("a settings page", () => {
       ["slack", "Slack"],
       ["discord", "Discord"],
       ["zoom", "Zoom"],
+      ["google-meet", "Google Meet"],
       ["microsoft", "Microsoft Teams"],
     ]) {
       path.current = `/settings/${slug}`;

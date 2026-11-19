@@ -2,7 +2,7 @@
 // the account and the recordings in its OneDrive. Plain data, so a test can import it
 // without starting anything.
 
-export const MICROSOFT_PORT = 8771;
+export const MICROSOFT_PORT = 8772;
 export const MICROSOFT = `http://127.0.0.1:${MICROSOFT_PORT}`;
 export const MICROSOFT_USER = {
   id: "ms-user-stand-in",

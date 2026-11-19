@@ -148,10 +148,18 @@ export function UploadsView() {
     [uploads],
   );
   const links = usePreviewLinks(team.id, ready);
-  // Zoom recordings the toolkit is still bringing in, straight from Zoom to the bucket.
+  // Meeting recordings the toolkit is still bringing in, straight from Zoom or Google
+  // Drive to the bucket.
   const fromZoom = useMemo(
     () =>
       (uploads ?? []).filter((upload) => upload.status === "uploading" && upload.source === "zoom"),
+    [uploads],
+  );
+  const fromMeet = useMemo(
+    () =>
+      (uploads ?? []).filter(
+        (upload) => upload.status === "uploading" && upload.source === "google_meet",
+      ),
     [uploads],
   );
   // Teams recordings the toolkit is still bringing in, straight from OneDrive to the bucket.
@@ -300,6 +308,13 @@ export function UploadsView() {
         <p className="text-muted-foreground text-sm" data-zoom-coming>
           Coming in from Zoom: {fromZoom.map((upload) => upload.fileName).join(", ")}. They show
           here once they arrive.
+        </p>
+      )}
+
+      {fromMeet.length > 0 && (
+        <p className="text-muted-foreground text-sm" data-meet-coming>
+          Coming in from Google Meet: {fromMeet.map((upload) => upload.fileName).join(", ")}. They
+          show here once they arrive.
         </p>
       )}
 

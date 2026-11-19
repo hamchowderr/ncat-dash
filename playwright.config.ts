@@ -44,8 +44,13 @@ export default defineConfig({
       reuseExistingServer: true,
     },
     {
-      command: "node e2e/microsoft-stand-in.mjs",
+      command: "node e2e/google-meet-stand-in.mjs",
       url: "http://127.0.0.1:8771/health",
+      reuseExistingServer: true,
+    },
+    {
+      command: "node e2e/microsoft-stand-in.mjs",
+      url: "http://127.0.0.1:8772/health",
       reuseExistingServer: true,
     },
     {

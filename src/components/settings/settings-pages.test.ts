@@ -10,5 +10,6 @@ describe("settings page names", () => {
       }
     }
     expect(SETTINGS_PAGES.map((page) => page.title)).toContain("Video Editors");
+    expect(SETTINGS_PAGES.map((page) => page.title)).toContain("Google Meet");
   });
 });

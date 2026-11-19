@@ -37,7 +37,13 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { DiscordLogo, MicrosoftTeamsLogo, SlackLogo, ZoomLogo } from "@/components/brand-logos";
+import {
+  DiscordLogo,
+  GoogleMeetLogo,
+  MicrosoftTeamsLogo,
+  SlackLogo,
+  ZoomLogo,
+} from "@/components/brand-logos";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -116,6 +122,7 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   slack: SlackLogo,
   discord: DiscordLogo,
   zoom: ZoomLogo,
+  "google-meet": GoogleMeetLogo,
   microsoft: MicrosoftTeamsLogo,
   mcp: KeyRound,
 };

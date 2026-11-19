@@ -25,6 +25,11 @@ import { enqueueJob, pump } from "./lib/queue";
 import { onJobFinished } from "./lib/runner";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { UploadLinkError, withUploadLinks } from "./storage";
+import {
+  GoogleSignInError,
+  googleMeetDownloadHeaders,
+  onGoogleMeetJobFinished,
+} from "./googleMeet";
 import { downloadUrlFor, MicrosoftSignInError, onMicrosoftJobFinished } from "./microsoft";
 import { downloadHeadersFor, onZoomJobFinished, ZoomSignInError } from "./zoom";
 
@@ -78,8 +83,10 @@ export const list = query({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .order("desc")
       .take(100);
-    // Zoom recordings being brought in show in Settings and Uploads, not with step jobs.
-    return jobs.filter((job) => !job.zoomImportId && !job.microsoftImportId).map(toPublic);
+    // Meeting recordings being brought in show in Settings and Uploads, not with step jobs.
+    return jobs
+      .filter((job) => !job.zoomImportId && !job.googleMeetImportId && !job.microsoftImportId)
+      .map(toPublic);
   },
 });
 
@@ -121,6 +128,7 @@ export const outputs = query({
             job.outputs.length > 0 &&
             !job.libraryItemId &&
             !job.zoomImportId &&
+            !job.googleMeetImportId &&
             !job.microsoftImportId,
         )
         .map(async (job) => ({
@@ -153,8 +161,18 @@ export const loadForDispatch = internalQuery({
  * as it is sent, so the token is never stored with the job.
  */
 async function withZoomSignIn(ctx: ActionCtx, job: Doc<"jobs">, input: unknown): Promise<unknown> {
-  if (!job.zoomImportId || !input || typeof input !== "object") return input;
-  return { ...input, download_headers: await downloadHeadersFor(ctx, job.zoomImportId) };
+  if (!input || typeof input !== "object") return input;
+  if (job.zoomImportId) {
+    return { ...input, download_headers: await downloadHeadersFor(ctx, job.zoomImportId) };
+  }
+  // Likewise a Google Meet recording, fetched from the organizer's Drive.
+  if (job.googleMeetImportId) {
+    return {
+      ...input,
+      download_headers: await googleMeetDownloadHeaders(ctx, job.googleMeetImportId),
+    };
+  }
+  return input;
 }
 
 /**
@@ -224,6 +242,7 @@ export const dispatch = internalAction({
           : error instanceof UploadLinkError ||
               error instanceof StepSetupError ||
               error instanceof ZoomSignInError ||
+              error instanceof GoogleSignInError ||
               error instanceof MicrosoftSignInError
             ? error.message
             : "The toolkit could not be reached.";
@@ -235,6 +254,7 @@ export const dispatch = internalAction({
           : error instanceof UploadLinkError ||
             error instanceof StepSetupError ||
             error instanceof ZoomSignInError ||
+            error instanceof GoogleSignInError ||
             error instanceof MicrosoftSignInError;
       await ctx.runMutation(internal.jobs.finish, {
         jobId: job._id,
@@ -297,6 +317,12 @@ export const finish = internalMutation({
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
     // A Zoom recording on its way in: it becomes an upload, or the import says why not.
     await onZoomJobFinished(ctx, job, args.ok, args.ok ? null : (args.error ?? "The step failed."));
+    await onGoogleMeetJobFinished(
+      ctx,
+      job,
+      args.ok,
+      args.ok ? null : (args.error ?? "The step failed."),
+    );
     await onMicrosoftJobFinished(
       ctx,
       job,
@@ -324,6 +350,12 @@ export const giveUp = internalMutation({
     });
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
     await onZoomJobFinished(ctx, job, false, "The toolkit never reported a result for this job.");
+    await onGoogleMeetJobFinished(
+      ctx,
+      job,
+      false,
+      "The toolkit never reported a result for this job.",
+    );
     await onMicrosoftJobFinished(
       ctx,
       job,

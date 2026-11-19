@@ -49,8 +49,16 @@ export default async function globalSetup() {
     // Microsoft, as the Microsoft stand-in (e2e/microsoft-stand-in.mjs) plays it.
     ["MICROSOFT_CLIENT_ID", "stand-in-microsoft-client"],
     ["MICROSOFT_CLIENT_SECRET", "stand-in-microsoft-secret"],
-    ["MICROSOFT_LOGIN_URL", "http://127.0.0.1:8771/common"],
-    ["MICROSOFT_GRAPH_URL", "http://127.0.0.1:8771/v1.0"],
+    ["MICROSOFT_LOGIN_URL", "http://127.0.0.1:8772/common"],
+    ["MICROSOFT_GRAPH_URL", "http://127.0.0.1:8772/v1.0"],
+  ]) {
+    execSync(`npx convex env set ${name} ${value}`, { stdio: "ignore" });
+  }
+  // Google, as the Google stand-in (e2e/google-meet-stand-in.mjs) plays it.
+  for (const [name, value] of [
+    ["GOOGLE_MEET_CLIENT_ID", "stand-in-google-client"],
+    ["GOOGLE_MEET_CLIENT_SECRET", "stand-in-google-secret"],
+    ["GOOGLE_MEET_STAND_IN_URL", "http://127.0.0.1:8771"],
   ]) {
     execSync(`npx convex env set ${name} ${value}`, { stdio: "ignore" });
   }
