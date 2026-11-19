@@ -18,6 +18,7 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Duarte Media");
   await page.getByRole("button", { name: "Create team" }).click();
+  await page.getByRole("button", { name: /Yes, I Have One/ }).click();
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
   await page.getByRole("button", { name: "Test and connect" }).click();
@@ -100,6 +101,7 @@ test("a caption file shows its lines, and they are searched like what was said",
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Duarte Captions");
   await page.getByRole("button", { name: "Create team" }).click();
+  await page.getByRole("button", { name: /Yes, I Have One/ }).click();
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
   await page.getByRole("button", { name: "Test and connect" }).click();

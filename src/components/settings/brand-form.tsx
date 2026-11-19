@@ -58,6 +58,7 @@ export function BrandForm({
   onSaved,
   save,
   rows = false,
+  essentials = false,
 }: {
   brand: Brand;
   music: MusicTrack[];
@@ -68,6 +69,11 @@ export function BrandForm({
   save?: (typed: Typed) => Promise<unknown>;
   /** Settings shows each setting as a row, its control on the right. */
   rows?: boolean;
+  /**
+   * Only the logo and colour, the two most steps use. Setting up shows these; the rest
+   * (font, card, intro, outro, music) stay as they were and are set in Settings.
+   */
+  essentials?: boolean;
 }) {
   const team = useActiveTeam();
   const setBrand = useMutation(api.teamSettings.setBrand);
@@ -180,165 +186,172 @@ export function BrandForm({
             />
           </div>
         </Field>
-        <Field orientation={orientation}>
-          <FieldContent>
-            <FieldLabel htmlFor="brand-font">Font</FieldLabel>
-            <FieldDescription>
-              A font installed on your toolkit. Left empty, text uses The Bold Font.
-            </FieldDescription>
-          </FieldContent>
-          <Input
-            id="brand-font"
-            value={shown.brand.font ?? ""}
-            onChange={(event) => set("font", event.target.value)}
-            placeholder="The Bold Font"
-            autoComplete="off"
-            disabled={!canEdit}
-            className={rows ? "@md/field-group:w-72" : undefined}
-          />
-        </Field>
-        <Field orientation={orientation}>
-          <FieldContent>
-            <FieldLabel htmlFor="brand-card">Card template</FieldLabel>
-            <FieldDescription>
-              The picture quote cards and end cards are written on, such as your background with
-              your logo already on it. Make it the shape you post, for example 1080 by 1350.
-            </FieldDescription>
-          </FieldContent>
-          <div className={rows ? "@md/field-group:w-72" : undefined}>
-            <FileChoice
-              id="brand-card"
-              label="Card template"
-              value={shown.brand.card ?? ""}
-              onChange={(value) => set("card", value)}
-              disabled={!canEdit}
-              upload="image"
-              preview
-            />
-          </div>
-        </Field>
-        <Field orientation={orientation}>
-          <FieldContent>
-            <FieldLabel htmlFor="brand-intro">Intro</FieldLabel>
-            <FieldDescription>
-              A short video played before your videos by the intro and outro step.
-            </FieldDescription>
-          </FieldContent>
-          <div className={rows ? "@md/field-group:w-72" : undefined}>
-            <FileChoice
-              id="brand-intro"
-              label="Intro"
-              value={shown.brand.intro ?? ""}
-              onChange={(value) => set("intro", value)}
-              disabled={!canEdit}
-              upload="video"
-            />
-          </div>
-        </Field>
-        <Field orientation={orientation}>
-          <FieldContent>
-            <FieldLabel htmlFor="brand-outro">Outro</FieldLabel>
-            <FieldDescription>
-              A short video played after your videos by the intro and outro step.
-            </FieldDescription>
-          </FieldContent>
-          <div className={rows ? "@md/field-group:w-72" : undefined}>
-            <FileChoice
-              id="brand-outro"
-              label="Outro"
-              value={shown.brand.outro ?? ""}
-              onChange={(value) => set("outro", value)}
-              disabled={!canEdit}
-              upload="video"
-            />
-          </div>
-        </Field>
-        <Field>
-          <FieldContent>
-            <FieldLabel>Music library</FieldLabel>
-            <FieldDescription>
-              Add as many tracks as you like. A step that adds music lets you pick one by name, and
-              uses the first one until you do.
-            </FieldDescription>
-          </FieldContent>
-          {shown.music.length > 0 && (
-            <ul className="flex flex-col gap-2" aria-label="Music tracks">
-              {shown.music.map((track, index) => (
-                <li key={track.file} className="flex items-center gap-2">
-                  <Music className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
-                  <Input
-                    aria-label={`Name of track ${index + 1}`}
-                    value={track.name}
-                    maxLength={60}
-                    onChange={(event) =>
-                      setTyped({
-                        ...shown,
-                        music: shown.music.map((other, at) =>
-                          at === index ? { ...other, name: event.target.value } : other,
-                        ),
-                      })
-                    }
-                    autoComplete="off"
-                    disabled={!canEdit}
-                    className="w-44 shrink-0 sm:w-56"
+        {!essentials && (
+          <>
+            <Field orientation={orientation}>
+              <FieldContent>
+                <FieldLabel htmlFor="brand-font">Font</FieldLabel>
+                <FieldDescription>
+                  A font installed on your toolkit. Left empty, text uses The Bold Font.
+                </FieldDescription>
+              </FieldContent>
+              <Input
+                id="brand-font"
+                value={shown.brand.font ?? ""}
+                onChange={(event) => set("font", event.target.value)}
+                placeholder="The Bold Font"
+                autoComplete="off"
+                disabled={!canEdit}
+                className={rows ? "@md/field-group:w-72" : undefined}
+              />
+            </Field>
+            <Field orientation={orientation}>
+              <FieldContent>
+                <FieldLabel htmlFor="brand-card">Card template</FieldLabel>
+                <FieldDescription>
+                  The picture quote cards and end cards are written on, such as your background with
+                  your logo already on it. Make it the shape you post, for example 1080 by 1350.
+                </FieldDescription>
+              </FieldContent>
+              <div className={rows ? "@md/field-group:w-72" : undefined}>
+                <FileChoice
+                  id="brand-card"
+                  label="Card template"
+                  value={shown.brand.card ?? ""}
+                  onChange={(value) => set("card", value)}
+                  disabled={!canEdit}
+                  upload="image"
+                  preview
+                />
+              </div>
+            </Field>
+            <Field orientation={orientation}>
+              <FieldContent>
+                <FieldLabel htmlFor="brand-intro">Intro</FieldLabel>
+                <FieldDescription>
+                  A short video played before your videos by the intro and outro step.
+                </FieldDescription>
+              </FieldContent>
+              <div className={rows ? "@md/field-group:w-72" : undefined}>
+                <FileChoice
+                  id="brand-intro"
+                  label="Intro"
+                  value={shown.brand.intro ?? ""}
+                  onChange={(value) => set("intro", value)}
+                  disabled={!canEdit}
+                  upload="video"
+                />
+              </div>
+            </Field>
+            <Field orientation={orientation}>
+              <FieldContent>
+                <FieldLabel htmlFor="brand-outro">Outro</FieldLabel>
+                <FieldDescription>
+                  A short video played after your videos by the intro and outro step.
+                </FieldDescription>
+              </FieldContent>
+              <div className={rows ? "@md/field-group:w-72" : undefined}>
+                <FileChoice
+                  id="brand-outro"
+                  label="Outro"
+                  value={shown.brand.outro ?? ""}
+                  onChange={(value) => set("outro", value)}
+                  disabled={!canEdit}
+                  upload="video"
+                />
+              </div>
+            </Field>
+            <Field>
+              <FieldContent>
+                <FieldLabel>Music library</FieldLabel>
+                <FieldDescription>
+                  Add as many tracks as you like. A step that adds music lets you pick one by name,
+                  and uses the first one until you do.
+                </FieldDescription>
+              </FieldContent>
+              {shown.music.length > 0 && (
+                <ul className="flex flex-col gap-2" aria-label="Music tracks">
+                  {shown.music.map((track, index) => (
+                    <li key={track.file} className="flex items-center gap-2">
+                      <Music className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
+                      <Input
+                        aria-label={`Name of track ${index + 1}`}
+                        value={track.name}
+                        maxLength={60}
+                        onChange={(event) =>
+                          setTyped({
+                            ...shown,
+                            music: shown.music.map((other, at) =>
+                              at === index ? { ...other, name: event.target.value } : other,
+                            ),
+                          })
+                        }
+                        autoComplete="off"
+                        disabled={!canEdit}
+                        className="w-44 shrink-0 sm:w-56"
+                      />
+                      <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+                        {fileNameOf(track.file)}
+                      </span>
+                      {canEdit && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0"
+                          onClick={() =>
+                            setTyped({
+                              ...shown,
+                              music: shown.music.filter((_, at) => at !== index),
+                            })
+                          }
+                        >
+                          <X />
+                          <span className="sr-only">Remove {track.name}</span>
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {canEdit && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={picker}
+                    type="file"
+                    accept="audio/*"
+                    multiple
+                    className="sr-only"
+                    aria-label="Upload music"
+                    tabIndex={-1}
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      event.target.value = "";
+                      void onPickFiles(files);
+                    }}
                   />
-                  <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-                    {fileNameOf(track.file)}
-                  </span>
-                  {canEdit && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0"
-                      onClick={() =>
-                        setTyped({ ...shown, music: shown.music.filter((_, at) => at !== index) })
-                      }
-                    >
-                      <X />
-                      <span className="sr-only">Remove {track.name}</span>
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {canEdit && (
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                ref={picker}
-                type="file"
-                accept="audio/*"
-                multiple
-                className="sr-only"
-                aria-label="Upload music"
-                tabIndex={-1}
-                onChange={(event) => {
-                  const files = Array.from(event.target.files ?? []);
-                  event.target.value = "";
-                  void onPickFiles(files);
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={() => picker.current?.click()}
-              >
-                <Upload />
-                {busy ? "Uploading" : "Upload music"}
-              </Button>
-              <UploadPicker
-                lasting
-                label="From uploads"
-                onPick={(file) =>
-                  setTyped(addTracks(shown, [{ file, fileName: fileNameOf(file) }]))
-                }
-              />
-            </div>
-          )}
-        </Field>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => picker.current?.click()}
+                  >
+                    <Upload />
+                    {busy ? "Uploading" : "Upload music"}
+                  </Button>
+                  <UploadPicker
+                    lasting
+                    label="From uploads"
+                    onPick={(file) =>
+                      setTyped(addTracks(shown, [{ file, fileName: fileNameOf(file) }]))
+                    }
+                  />
+                </div>
+              )}
+            </Field>
+          </>
+        )}
         {canEdit ? (
           <Field orientation="horizontal">
             <Button type="submit" className="w-fit" disabled={pending || (!typed && !onSaved)}>
