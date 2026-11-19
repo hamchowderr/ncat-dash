@@ -71,7 +71,7 @@ import {
 } from "@/components/ui/table";
 import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
-import { putWithProgress } from "@/lib/upload";
+import { useSendFile } from "@/lib/send-file";
 
 import { FilePreview } from "./file-preview";
 import { MoveDialog } from "./move-dialog";
@@ -226,6 +226,7 @@ export function FilesView() {
   const removeEntries = useAction(api.files.remove);
   const linkFor = useAction(api.files.linkFor);
   const startUpload = useAction(api.files.startUpload);
+  const sendFile = useSendFile();
   const finishUpload = useMutation(api.storage.finishUpload);
   const removeUpload = useMutation(api.storage.removeUpload);
 
@@ -369,7 +370,7 @@ export function FilesView() {
         });
         const id = (uploadId = started.uploadId);
         setInFlight((current) => ({ ...current, [id]: { name: file.name, percent: 0 } }));
-        await putWithProgress(started.uploadUrl, file, (percent) =>
+        await sendFile(started, file, (percent) =>
           setInFlight((current) => ({ ...current, [id]: { name: file.name, percent } })),
         );
         await finishUpload({ uploadId: id });

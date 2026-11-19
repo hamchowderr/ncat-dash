@@ -36,7 +36,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 import { UploadingRow } from "@/components/uploads/upload-media";
 import { errorMessage } from "@/lib/catalog";
-import { putWithProgress } from "@/lib/upload";
+import { useSendFile } from "@/lib/send-file";
 import { cn } from "@/lib/utils";
 
 import { PostingAppLogo } from "./posting-app-logo";
@@ -359,6 +359,7 @@ function FirstUpload({
   onFinish: () => void;
 }) {
   const startUpload = useAction(api.storage.startUpload);
+  const sendFile = useSendFile();
   const finishUpload = useMutation(api.storage.finishUpload);
   const removeUpload = useMutation(api.storage.removeUpload);
   const input = useRef<HTMLInputElement>(null);
@@ -382,9 +383,7 @@ function FirstUpload({
       });
       uploadId = started.uploadId;
       setGoing({ name: file.name, percent: 0 });
-      await putWithProgress(started.uploadUrl, file, (percent) =>
-        setGoing({ name: file.name, percent }),
-      );
+      await sendFile(started, file, (percent) => setGoing({ name: file.name, percent }));
       await finishUpload({ uploadId: started.uploadId });
       setUploaded({ id: started.uploadId, name: file.name });
     } catch (caught) {

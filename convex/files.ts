@@ -27,6 +27,7 @@ import {
   readUploadRef,
   renamedKey,
   teamFolder,
+  type PartsPlan,
 } from "@ncat-dash/automation-core";
 import { callStep, getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
@@ -59,11 +60,10 @@ import { deliveryFolderOf } from "./lib/clients";
 import { followLibraryKey } from "./lib/library";
 import { outputNamesOf } from "./lib/outputs";
 import { fileDetailsValidator } from "./schema";
+import { checkUploadSize, prepareSend, sendPlanValidator } from "./storage";
 
-const UPLOAD_LINK_SECONDS = 60 * 60;
 const VIEW_LINK_SECONDS = 60 * 60;
 const SHARE_LINK_SECONDS = 7 * 24 * 60 * 60;
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
 // The most objects one rename, move or delete touches. A bigger folder is done in parts.
 const MAX_OBJECTS = 2000;
 const AT_ONCE = 6;
@@ -281,19 +281,22 @@ export const startUpload = action({
     contentType: v.string(),
     size: v.number(),
   },
-  returns: v.object({ uploadId: v.id("uploads"), uploadUrl: v.string(), key: v.string() }),
+  returns: v.object({ uploadId: v.id("uploads"), key: v.string(), ...sendPlanValidator }),
   handler: async (
     ctx,
     args,
-  ): Promise<{ uploadId: Id<"uploads">; uploadUrl: string; key: string }> => {
+  ): Promise<{
+    uploadId: Id<"uploads">;
+    uploadUrl: string | null;
+    parts: PartsPlan | null;
+    key: string;
+  }> => {
     const config = await bucketOf(ctx, args.organizationId);
     const { userId } = await ctx.runQuery(internal.storage.authorize, {
       organizationId: args.organizationId,
       managersOnly: false,
     });
-    if (args.size <= 0 || args.size > MAX_UPLOAD_BYTES) {
-      throw fail("too_large", "Files can be up to 5 GB.");
-    }
+    checkUploadSize(args.size);
     const problem = nameProblem(args.fileName);
     if (problem) throw fail("invalid_input", problem);
     const wanted = args.fileName.trim();
@@ -304,16 +307,18 @@ export const startUpload = action({
     );
     const name = freeName(wanted, (candidate) => taken.has(`${args.prefix}${candidate}`));
     const key = `${args.prefix}${name}`;
-    const uploadUrl = await presign(config, "PUT", key, UPLOAD_LINK_SECONDS);
+    const contentType = args.contentType || "application/octet-stream";
+    const plan = await prepareSend(config, key, args.size, contentType);
     const uploadId: Id<"uploads"> = await ctx.runMutation(internal.storage.recordUpload, {
       organizationId: args.organizationId,
       key,
       fileName: name,
-      contentType: args.contentType || "application/octet-stream",
+      contentType,
       size: args.size,
       createdBy: userId,
+      ...(plan.partsUploadId ? { partsUploadId: plan.partsUploadId } : {}),
     });
-    return { uploadId, uploadUrl, key };
+    return { uploadId, uploadUrl: plan.uploadUrl, parts: plan.parts, key };
   },
 });
 
@@ -360,10 +365,7 @@ async function relocate(
   if (notCopied.length > 0) {
     // Put things back as they were: the originals are untouched, so only copies go.
     await eachOf([...etags.keys()], (key) => deleteObject(config, key));
-    throw fail(
-      "storage",
-      "Your storage would not copy every file, so nothing was changed. Files over 5 GB cannot be moved from here.",
-    );
+    throw fail("storage", "Your storage would not copy every file, so nothing was changed.");
   }
 
   const moves = copies.map((copy) => ({ ...copy, etag: etags.get(copy.to) ?? "" }));

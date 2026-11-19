@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
-import { putWithProgress } from "@/lib/upload";
+import { useSendFile } from "@/lib/send-file";
 import { cn } from "@/lib/utils";
 
 /**
@@ -51,6 +51,7 @@ export function RunDialog({
   const storage = useQuery(api.storage.get, open ? { organizationId: team.id } : "skip");
   const uploads = useQuery(api.storage.listUploads, open ? { organizationId: team.id } : "skip");
   const startUpload = useAction(api.storage.startUpload);
+  const sendFile = useSendFile();
   const finishUpload = useMutation(api.storage.finishUpload);
   const removeUpload = useMutation(api.storage.removeUpload);
   const linkFor = useAction(api.storage.linkFor);
@@ -85,9 +86,7 @@ export function RunDialog({
       });
       uploadId = started.uploadId;
       setProgress({ name: file.name, percent: 0 });
-      await putWithProgress(started.uploadUrl, file, (percent) =>
-        setProgress({ name: file.name, percent }),
-      );
+      await sendFile(started, file, (percent) => setProgress({ name: file.name, percent }));
       await finishUpload({ uploadId });
     } catch (caught) {
       if (uploadId) await removeUpload({ uploadId });
