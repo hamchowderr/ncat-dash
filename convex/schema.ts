@@ -962,6 +962,8 @@ export default defineSchema({
     // Read from the file by the toolkit once the upload finishes. Missing while that is
     // still to happen, or when the toolkit could not read the file.
     details: v.optional(fileDetailsValidator),
+    // The bucket's id for a file being sent in parts (a big file), until they are joined.
+    partsUploadId: v.optional(v.string()),
   })
     .index("by_organization", ["organizationId"])
     // Finds the upload behind a file in the bucket, for the Files page.

@@ -244,13 +244,17 @@ export async function keyExists(bucket: Bucket, key: string): Promise<boolean> {
   return (await ask<{ exists: boolean }>(bucket, "exists", { key: inBucket(bucket, key) })).exists;
 }
 
-/** Copies a file to a new key inside the bucket and returns the copy's etag. Up to 5 GB. */
+/**
+ * Copies a file to a new key inside the bucket and returns the copy's etag. The toolkit
+ * copies big files in parts, so there is no 5 GB limit; those can take minutes.
+ */
 export async function copyObject(bucket: Bucket, from: string, to: string): Promise<string> {
   const answer = await ask<{ etag: string }>(
     bucket,
     "copy",
     { source: inBucket(bucket, from), destination: inBucket(bucket, to) },
-    120_000,
+    // Just under the toolkit's own 300-second limit on a request.
+    290_000,
   );
   return answer.etag;
 }
@@ -269,4 +273,66 @@ export async function deleteObject(bucket: Bucket, key: string): Promise<void> {
 /** An empty object whose key ends in a slash: what every S3 console shows as an empty folder. */
 export async function putFolder(bucket: Bucket, prefix: string): Promise<void> {
   await ask(bucket, "folder", { prefix: inBucket(bucket, prefix) }, 30_000);
+}
+
+/** Starts an upload in parts (a file too big for one PUT) and returns the bucket's id for it. */
+export async function startPartsUpload(
+  bucket: Bucket,
+  key: string,
+  contentType: string,
+): Promise<string> {
+  const answer = await ask<{ upload_id: string }>(bucket, "upload/start", {
+    key: inBucket(bucket, key),
+    content_type: contentType,
+  });
+  return answer.upload_id;
+}
+
+/** One PUT link for each of these parts of an upload in parts. */
+export async function signParts(
+  bucket: Bucket,
+  key: string,
+  partsUploadId: string,
+  partNumbers: number[],
+  expiresInSeconds: number,
+): Promise<{ partNumber: number; url: string }[]> {
+  const answer = await ask<{ parts: { part_number: number; url: string }[] }>(
+    bucket,
+    "upload/sign",
+    {
+      key: inBucket(bucket, key),
+      upload_id: partsUploadId,
+      part_numbers: partNumbers,
+      expires_in: expiresInSeconds,
+    },
+  );
+  return answer.parts.map((part) => ({ partNumber: part.part_number, url: part.url }));
+}
+
+/** Joins the parts into one file. Each part comes with the ETag the bucket answered it with. */
+export async function completeParts(
+  bucket: Bucket,
+  key: string,
+  partsUploadId: string,
+  parts: { partNumber: number; etag: string }[],
+): Promise<void> {
+  await ask(
+    bucket,
+    "upload/complete",
+    {
+      key: inBucket(bucket, key),
+      upload_id: partsUploadId,
+      parts: parts.map((part) => ({ part_number: part.partNumber, etag: part.etag })),
+    },
+    120_000,
+  );
+}
+
+/** Cancels an upload in parts, dropping the parts already sent. */
+export async function abortParts(
+  bucket: Bucket,
+  key: string,
+  partsUploadId: string,
+): Promise<void> {
+  await ask(bucket, "upload/abort", { key: inBucket(bucket, key), upload_id: partsUploadId });
 }

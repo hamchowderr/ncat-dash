@@ -1,4 +1,13 @@
-import { readFileDetails, readUploadRef, uploadKind } from "@ncat-dash/automation-core";
+import {
+  MAX_FILE_BYTES,
+  MAX_FILE_TEXT,
+  MAX_PARTS,
+  planParts,
+  readFileDetails,
+  readUploadRef,
+  uploadKind,
+  type PartsPlan,
+} from "@ncat-dash/automation-core";
 import { callStep, getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -13,19 +22,68 @@ import {
   query,
 } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
-import { bucketOf, presign, safeName, storageConnection } from "./lib/bucket";
+import {
+  abortParts,
+  bucketOf,
+  completeParts,
+  presign,
+  safeName,
+  signParts,
+  startPartsUpload,
+  storageConnection,
+  type Bucket,
+} from "./lib/bucket";
 import { addUploadToLibrary, deleteLibraryItem } from "./lib/library";
 import { fileDetailsValidator } from "./schema";
 
 const UPLOAD_LINK_SECONDS = 60 * 60;
 // The longest a signed link may live (SigV4 limit). Long enough for a job to fetch it.
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
+// Parts are signed in batches as the browser goes, so links never sit unused for long.
+const MAX_PARTS_PER_SIGN = 100;
 // Previews on the Uploads page: long enough for a working session, then asked for again.
 const PREVIEW_LINK_SECONDS = 6 * 60 * 60;
 const MAX_PREVIEW_LINKS = 25;
 
 const NO_STORAGE = "Connect your toolkit first, so there is somewhere for your files to go.";
+
+/** What the browser needs to send a new upload: one link, or the plan for sending it in parts. */
+export const sendPlanValidator = {
+  uploadUrl: v.union(v.null(), v.string()),
+  parts: v.union(v.null(), v.object({ partSize: v.number(), partCount: v.number() })),
+};
+
+/** Refuses a size the bucket cannot take. */
+export function checkUploadSize(size: number) {
+  if (!(size > 0) || size > MAX_FILE_BYTES) {
+    throw new ConvexError({ code: "too_large", message: `Files can be up to ${MAX_FILE_TEXT}.` });
+  }
+}
+
+/**
+ * Gets a new upload ready to send: a PUT link for a small file, or an upload in parts for a
+ * big one (its parts are signed later, a batch at a time).
+ */
+export async function prepareSend(
+  bucket: Bucket,
+  key: string,
+  size: number,
+  contentType: string,
+): Promise<{ uploadUrl: string | null; parts: PartsPlan | null; partsUploadId: string | null }> {
+  const parts = planParts(size);
+  if (!parts) {
+    return {
+      uploadUrl: await presign(bucket, "PUT", key, UPLOAD_LINK_SECONDS),
+      parts,
+      partsUploadId: null,
+    };
+  }
+  return {
+    uploadUrl: null,
+    parts,
+    partsUploadId: await startPartsUpload(bucket, key, contentType),
+  };
+}
 
 /**
  * The team's bucket, as its toolkit reports it. Null until a toolkit is connected: files
@@ -58,32 +116,149 @@ export const startUpload = action({
     // "brand" for a logo or music track: kept for steps to use, never starts an automation.
     purpose: v.optional(v.literal("brand")),
   },
-  returns: v.object({ uploadId: v.id("uploads"), uploadUrl: v.string() }),
-  handler: async (ctx, args): Promise<{ uploadId: Doc<"uploads">["_id"]; uploadUrl: string }> => {
+  returns: v.object({ uploadId: v.id("uploads"), ...sendPlanValidator }),
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    uploadId: Doc<"uploads">["_id"];
+    uploadUrl: string | null;
+    parts: PartsPlan | null;
+  }> => {
     const { userId } = await ctx.runQuery(internal.storage.authorize, {
       organizationId: args.organizationId,
       managersOnly: false,
     });
-    if (args.size <= 0 || args.size > MAX_UPLOAD_BYTES) {
-      throw new ConvexError({ code: "too_large", message: "Files can be up to 5 GB." });
-    }
+    checkUploadSize(args.size);
     const storage = await ctx.runQuery(internal.storage.load, {
       organizationId: args.organizationId,
     });
     if (!storage) throw new ConvexError({ code: "no_storage", message: NO_STORAGE });
     // Inside the team's own folder, like every key (see lib/bucket.ts).
     const key = `uploads/${crypto.randomUUID()}/${safeName(args.fileName)}`;
-    const uploadUrl = await presign(await bucketOf(storage), "PUT", key, UPLOAD_LINK_SECONDS);
+    const contentType = args.contentType || "application/octet-stream";
+    const plan = await prepareSend(await bucketOf(storage), key, args.size, contentType);
     const uploadId = await ctx.runMutation(internal.storage.recordUpload, {
       organizationId: args.organizationId,
       key,
       fileName: args.fileName.slice(0, 200),
-      contentType: args.contentType || "application/octet-stream",
+      contentType,
       size: args.size,
       createdBy: userId,
       ...(args.purpose ? { purpose: args.purpose } : {}),
+      ...(plan.partsUploadId ? { partsUploadId: plan.partsUploadId } : {}),
     });
-    return { uploadId, uploadUrl };
+    return { uploadId, uploadUrl: plan.uploadUrl, parts: plan.parts };
+  },
+});
+
+/** The upload in parts behind an upload the caller's team is still sending. */
+async function partsUploadOf(ctx: ActionCtx, uploadId: Doc<"uploads">["_id"]) {
+  const upload = await ctx.runQuery(internal.storage.loadUpload, { uploadId });
+  if (upload.status !== "uploading" || !upload.partsUploadId) {
+    throw new ConvexError({
+      code: "not_uploading",
+      message: "This file is not being sent in parts.",
+    });
+  }
+  const storage = await ctx.runQuery(internal.storage.load, {
+    organizationId: upload.organizationId,
+  });
+  if (!storage) throw new ConvexError({ code: "no_storage", message: NO_STORAGE });
+  return { upload, partsUploadId: upload.partsUploadId, bucket: await bucketOf(storage) };
+}
+
+/** PUT links for the next parts of a file being sent in parts. */
+export const signUploadParts = action({
+  args: { uploadId: v.id("uploads"), partNumbers: v.array(v.number()) },
+  returns: v.array(v.object({ partNumber: v.number(), url: v.string() })),
+  handler: async (ctx, args): Promise<{ partNumber: number; url: string }[]> => {
+    if (args.partNumbers.length === 0 || args.partNumbers.length > MAX_PARTS_PER_SIGN) {
+      throw new ConvexError({
+        code: "invalid_input",
+        message: `Ask for 1 to ${MAX_PARTS_PER_SIGN} parts at a time.`,
+      });
+    }
+    const { upload, partsUploadId, bucket } = await partsUploadOf(ctx, args.uploadId);
+    const plan = planParts(upload.size);
+    const most = Math.min(plan?.partCount ?? 0, MAX_PARTS);
+    for (const number of args.partNumbers) {
+      if (!Number.isInteger(number) || number < 1 || number > most) {
+        throw new ConvexError({
+          code: "invalid_input",
+          message: `This file has parts 1 to ${most}.`,
+        });
+      }
+    }
+    return await signParts(
+      bucket,
+      upload.key,
+      partsUploadId,
+      args.partNumbers,
+      UPLOAD_LINK_SECONDS,
+    );
+  },
+});
+
+/** Joins the parts the browser sent into the file. Then `finishUpload` marks it ready. */
+export const completeUploadParts = action({
+  args: {
+    uploadId: v.id("uploads"),
+    parts: v.array(v.object({ partNumber: v.number(), etag: v.string() })),
+  },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const { upload, partsUploadId, bucket } = await partsUploadOf(ctx, args.uploadId);
+    const plan = planParts(upload.size);
+    const numbers = new Set(args.parts.map((part) => part.partNumber));
+    if (!plan || args.parts.length !== plan.partCount || numbers.size !== plan.partCount) {
+      throw new ConvexError({
+        code: "invalid_input",
+        message: "Every part has to be sent before the file can be put together.",
+      });
+    }
+    await completeParts(bucket, upload.key, partsUploadId, args.parts);
+    await ctx.runMutation(internal.storage.partsJoined, { uploadId: args.uploadId });
+    return null;
+  },
+});
+
+/** Stops sending a file: drops the parts already sent and the upload's record. */
+export const cancelUpload = action({
+  args: { uploadId: v.id("uploads") },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const upload = await ctx.runQuery(internal.storage.loadUpload, { uploadId: args.uploadId });
+    if (upload.status !== "uploading") return null;
+    if (upload.partsUploadId) {
+      const storage = await ctx.runQuery(internal.storage.load, {
+        organizationId: upload.organizationId,
+      });
+      if (storage) {
+        try {
+          await abortParts(await bucketOf(storage), upload.key, upload.partsUploadId);
+        } catch {
+          // The bucket drops unfinished parts on its own in time; the record still goes.
+        }
+      }
+    }
+    await ctx.runMutation(internal.storage.dropUnfinished, { uploadId: args.uploadId });
+    return null;
+  },
+});
+
+export const partsJoined = internalMutation({
+  args: { uploadId: v.id("uploads") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.uploadId, { partsUploadId: undefined });
+  },
+});
+
+export const dropUnfinished = internalMutation({
+  args: { uploadId: v.id("uploads") },
+  handler: async (ctx, args) => {
+    const upload = await ctx.db.get(args.uploadId);
+    if (upload?.status === "uploading") await ctx.db.delete(args.uploadId);
   },
 });
 
@@ -95,6 +270,13 @@ export const finishUpload = mutation({
     if (!upload) return;
     await requireMember(ctx, upload.organizationId);
     if (upload.status === "ready") return;
+    if (upload.partsUploadId) {
+      // Sent in parts: the parts must be put together (completeUploadParts) first.
+      throw new ConvexError({
+        code: "not_joined",
+        message: "The file's parts are not put together yet.",
+      });
+    }
     await ctx.db.patch(args.uploadId, { status: "ready" });
     // Every file someone brings in joins the content library, with its short ID.
     await addUploadToLibrary(ctx, { ...upload, status: "ready" });
@@ -370,6 +552,7 @@ export const recordUpload = internalMutation({
     size: v.number(),
     createdBy: v.string(),
     purpose: v.optional(v.literal("brand")),
+    partsUploadId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("uploads", { ...args, status: "uploading" });
