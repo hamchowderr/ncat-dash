@@ -100,6 +100,7 @@ import {
 } from "./flow-nodes";
 import { isNoteId, notePlace, useCanvasNotes } from "./canvas-notes";
 import { ClientPicker } from "./client-picker";
+import { DropboxSend } from "./dropbox-send";
 import { DraftBar } from "./draft-bar";
 import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 import { LiveRunBadge, useLiveRun } from "./live-run";
@@ -687,6 +688,7 @@ function Editor({ automation }: { automation: Loaded }) {
           className="h-9 max-w-xs text-base font-semibold"
         />
         <ClientPicker automationId={automation._id} clientId={automation.clientId ?? null} />
+        <DropboxSend automationId={automation._id} />
         <StartPageTour tourId="automation-editor" />
         <div className="ml-auto flex items-center gap-3">
           <PageTourButton tourId="automation-editor" />
