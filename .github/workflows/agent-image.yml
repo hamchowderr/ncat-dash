@@ -1,0 +1,109 @@
+name: Agent image
+
+# Builds the agent server's Docker image (packages/agent/Dockerfile) here instead of on
+# the server that runs it. Pull requests only build and start it; main also publishes it
+# to GHCR and moves the `agent-release` branch, which is what the test copy deploys from
+# (packages/agent/Dockerfile.release).
+on:
+  pull_request:
+    paths:
+      - packages/agent/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .dockerignore
+      - .github/workflows/agent-image.yml
+  push:
+    branches: [main]
+    paths:
+      - packages/agent/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .dockerignore
+      - .github/workflows/agent-image.yml
+  workflow_dispatch:
+
+concurrency:
+  group: agent-image-${{ github.ref }}
+  # Never cancel a publish half way; a newer push waits its turn.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}-agent
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Keeps the pnpm store (a cache mount inside the Dockerfile) between runs, so
+      # neither our install nor the one `mastra build` runs downloads every package again.
+      - name: Restore the pnpm store
+        uses: actions/cache@v4
+        with:
+          path: pnpm-store
+          key: agent-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: agent-pnpm-store-
+      - uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-map: |
+            { "pnpm-store": { "target": "/pnpm/store", "id": "pnpm-store" } }
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/agent/Dockerfile
+          load: true
+          tags: ncat-dash-agent:check
+          cache-from: type=gha,scope=agent
+          cache-to: type=gha,scope=agent,mode=max
+      - name: Start it and wait for /health
+        run: |
+          docker run -d --name agent -p 4111:4111 \
+            -e APP_SECRET=ci-app-secret-at-least-32-characters-long \
+            -e ANTHROPIC_API_KEY=unused \
+            ncat-dash-agent:check
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4111/health; then
+              echo
+              docker exec agent wget -q -O- http://127.0.0.1:4111/health && echo
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs agent
+          exit 1
+      - name: Image size
+        run: docker image inspect ncat-dash-agent:check --format '{{.Size}}' | awk '{ printf "%.0f MB\n", $1 / 1000000 }'
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/agent/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=agent
+      # The test copy's server deploys from this branch (Dockerfile.release), so it
+      # only ever picks up a commit whose image is already published.
+      - name: Release to the test copy
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: git push --force origin HEAD:refs/heads/agent-release

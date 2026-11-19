@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import { ownerOf } from '../ncat/schedule-gate';
 
 /**
  * # Recurring schedules (controller parity)
@@ -78,6 +79,9 @@ export const startSchedule = createTool({
     if (!threadId || !resourceId) {
       throw new Error('A conversation thread is required to create a schedule.');
     }
+    // The team (and person) it is for, so each fire can ask the dashboard first
+    // (ncat/schedule-gate.ts): none once the trial is over or the team is blocked.
+    const owner = ownerOf(resourceId);
     const created = await schedules.create({
       agentId: AGENT_ID,
       cron,
@@ -85,6 +89,7 @@ export const startSchedule = createTool({
       threadId,
       resourceId,
       ...(name ? { name } : {}),
+      ...(owner ? { metadata: owner } : {}),
     });
     return toView(created);
   },

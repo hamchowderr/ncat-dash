@@ -491,7 +491,7 @@ export default defineSchema({
     // team's, and keep their finished files in the client's folder. Not part of versions.
     clientId: v.optional(v.id("clients")),
     // Switched on: each finished run's files are also sent to this Dropbox account, into
-    // `folder` (or "/NCA Dashboard/<automation>"). Not part of versions.
+    // `folder` (or "/Kontifi/<automation>"). Not part of versions.
     dropboxSend: v.optional(
       v.object({
         connectionId: v.id("dropboxConnections"),
@@ -1700,7 +1700,37 @@ export default defineSchema({
     endsAt: v.number(),
     // Set by the operator once the team has bought: the trial no longer ends anything.
     paidAt: v.optional(v.number()),
-  }).index("by_organization", ["organizationId"]),
+    // Who made the team, their mailbox however it was written (lib/emailKey.ts), and a
+    // keyed hash of the network they signed up from (lib/clientIp.ts). Used to find a
+    // person's earlier trial, so a new email or a new team doesn't give fresh days.
+    ownerId: v.optional(v.string()),
+    emailKey: v.optional(v.string()),
+    networkKey: v.optional(v.string()),
+    // Set when this team got no fresh days because its owner, or their network, had a
+    // trial already.
+    repeatOf: v.optional(v.union(v.literal("email"), v.literal("network"))),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_email_key", ["emailKey"])
+    .index("by_network_and_started", ["networkKey", "startedAt"]),
+
+  // Where each person signed up from, on the hosted edition: their mailbox however it was
+  // written and a keyed hash of their network, never the address itself.
+  signUps: defineTable({
+    userId: v.string(),
+    emailKey: v.string(),
+    networkKey: v.string(),
+    at: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // Teams and people the operator has blocked (blocks.ts). A blocked team keeps all it
+  // made but starts nothing new; a blocked person can't sign in at all.
+  blocks: defineTable({
+    kind: v.union(v.literal("team"), v.literal("user")),
+    targetId: v.string(),
+    reason: v.optional(v.string()),
+    blockedAt: v.number(),
+  }).index("by_kind_and_target", ["kind", "targetId"]),
 
   // Per-team library settings. A team without a row has the defaults.
   librarySettings: defineTable({

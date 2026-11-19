@@ -36,7 +36,7 @@ export const OPERATION_SCHEMA = {
 
 const SKILL_MD = `---
 name: content-automations
-description: Build, try and run the team's content automations in this dashboard (clips, captions, reframing and other FFmpeg steps that run on the team's own toolkit). Use when asked to make or change an automation, run one on a file, or check how a run went.
+description: Build, try and run the team's content automations in Kontifi (clips, captions, reframing and other FFmpeg steps that run on the team's own toolkit). Use when asked to make or change an automation, run one on a file, or check how a run went.
 ---
 
 # Content automations

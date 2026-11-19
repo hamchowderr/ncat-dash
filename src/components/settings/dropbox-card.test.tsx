@@ -43,7 +43,7 @@ const connected = {
       _id: "s1",
       name: "Space clip.mp4",
       automationName: "Weekly shorts",
-      folder: "/NCA Dashboard/Weekly shorts",
+      folder: "/Kontifi/Weekly shorts",
       dropboxPath: null,
       size: 100,
       offset: 40,
@@ -54,7 +54,7 @@ const connected = {
       _id: "s2",
       name: "Moon clip.mp4",
       automationName: "Weekly shorts",
-      folder: "/NCA Dashboard/Weekly shorts",
+      folder: "/Kontifi/Weekly shorts",
       dropboxPath: null,
       size: 100,
       offset: 0,
@@ -99,9 +99,7 @@ describe("the Dropbox card", () => {
     window.history.replaceState(null, "", "/settings/dropbox?dropbox=taken");
     answerQuery(api.dropbox.forTeam, empty);
     renderInApp(<DropboxCard />);
-    expect(toastError).toHaveBeenCalledWith(
-      "That Dropbox is already connected to another team.",
-    );
+    expect(toastError).toHaveBeenCalledWith("That Dropbox is already connected to another team.");
     expect(window.location.search).toBe("");
   });
 
@@ -211,9 +209,7 @@ describe("the Dropbox card", () => {
     expect(screen.getByText("1 of 2 picked")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Bring over 1 file" }));
     expect(bring).toHaveBeenCalledWith({ organizationId: TEAM.id, fileIds: ["id:a"] });
-    await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("1 file on the way to Uploads"),
-    );
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("1 file on the way to Uploads"));
     // Search narrows the list.
     await user.type(screen.getByRole("textbox", { name: "Search files" }), "voice");
     expect(screen.queryByText("Logo.png")).toBeNull();

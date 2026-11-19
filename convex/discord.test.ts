@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { settingsUrl } from "./discord";
 import { addPerson, addTeam, backend } from "./test.setup";
 
@@ -265,6 +265,31 @@ describe("who the agent server is told wrote", () => {
         await askPerson(t, { guildId: "300000000000000099", discordUserId: JORDAN.id })
       ).json(),
     ).toEqual({ ok: false, reason: "not_connected" });
+  });
+});
+
+describe("the agent in Discord once nothing new can start", () => {
+  test("a team whose trial is over, or that is blocked, is told why instead of answered", async () => {
+    const { t, team, owner } = await setUp();
+    const url = await owner.as.mutation(api.discord.startLink, {
+      organizationId: team,
+      kind: "server",
+    });
+    await comeBack(t, url, "c11", { user: JORDAN, guild: SERVER });
+    await t.run((ctx) =>
+      ctx.db.insert("teamTrials", { organizationId: team, startedAt: 0, endsAt: 1 }),
+    );
+    expect(
+      await (await askPerson(t, { guildId: SERVER.id, discordUserId: JORDAN.id })).json(),
+    ).toMatchObject({ ok: false, reason: "refused", message: expect.stringMatching(/trial has ended/) });
+
+    await t.run(async (ctx) => {
+      for (const trial of await ctx.db.query("teamTrials").collect()) await ctx.db.delete(trial._id);
+    });
+    await t.mutation(internal.blocks.blockTeam, { organizationId: team });
+    expect(
+      await (await askPerson(t, { guildId: SERVER.id, discordUserId: JORDAN.id })).json(),
+    ).toMatchObject({ ok: false, reason: "refused", message: expect.stringMatching(/paused/) });
   });
 });
 

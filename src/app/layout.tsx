@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { PRODUCT_NAME } from "@ncat-dash/automation-core";
 import { Providers } from "@/components/providers";
 
 const geistSans = Geist({
@@ -14,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "NCA Toolkit Dashboard", template: "%s · NCA Toolkit Dashboard" },
-  description: "Run and automate your own NCA Toolkit.",
+  title: { default: PRODUCT_NAME, template: `%s · ${PRODUCT_NAME}` },
+  description: "Content automations that run on your own NCA Toolkit.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

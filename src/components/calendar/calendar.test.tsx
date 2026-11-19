@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test } from "vitest";
 
 import { answerQuery, mutationOf, pushed } from "@/test/convex";
-import { renderInApp, TEAM } from "@/test/render";
+import { pick, renderInApp, TEAM } from "@/test/render";
 
 import { CalendarView } from "./calendar-view";
 import { landing, viewTitle, visibleDays } from "./dates";
@@ -242,7 +242,7 @@ describe("the Calendar", () => {
 
     await userEvent.click(within(side).getByRole("button", { name: "Back" }));
     await userEvent.click(within(day(23)).getByRole("button", { name: /Open slot for TikTok/ }));
-    expect(within(side).getByLabelText("Where")).toHaveValue("tiktok");
+    expect(within(side).getByLabelText("Where")).toHaveTextContent("TikTok");
     expect(within(side).getByLabelText("Pick A Time")).toBeChecked();
     await userEvent.type(within(side).getByLabelText("Title"), "Teaser");
     await userEvent.click(within(side).getByRole("button", { name: "Add Post" }));
@@ -282,8 +282,8 @@ describe("the Calendar", () => {
     expect(within(side).getByText("Mondays at 10:00")).toBeInTheDocument();
     const add = mutationOf(api.calendar.addSlot);
     add.mockResolvedValue({ slotId: "s2", placed: 0 });
-    await userEvent.selectOptions(within(side).getByLabelText("Day"), "Friday");
-    await userEvent.selectOptions(within(side).getByLabelText("Where"), "YouTube");
+    await pick(userEvent, within(side).getByLabelText("Day"), "Friday");
+    await pick(userEvent, within(side).getByLabelText("Where"), "YouTube");
     await userEvent.click(within(side).getByRole("button", { name: "Add Slot" }));
     expect(add).toHaveBeenCalledWith({
       organizationId: TEAM.id,

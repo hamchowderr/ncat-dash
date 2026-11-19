@@ -8,12 +8,16 @@ import {
   verificationEmail,
   type Composed,
 } from "@ncat-dash/email";
+import { APIError } from "better-auth/api";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { organization } from "better-auth/plugins";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
+import { networkKey } from "./lib/clientIp";
+import { getEdition } from "./lib/edition";
+import { isThrowawayEmail } from "./lib/emailKey";
 import authSchema from "./betterAuth/schema";
 
 // Better Auth runs inside this Convex deployment, so a self-hosted owner needs no
@@ -115,6 +119,28 @@ export function trustedOrigins(env: Record<string, string | undefined> = process
   return [...new Set([site, ...extra].filter(Boolean))];
 }
 
+/**
+ * Whether people must confirm their email address before they can sign in. Set with
+ * REQUIRE_EMAIL_VERIFICATION. On the hosted edition it is on by itself once the deployment
+ * can send email (TOSEND_API_KEY and EMAIL_FROM), since a free trial for any address
+ * typed in is easy to repeat; REQUIRE_EMAIL_VERIFICATION=false turns it off there too.
+ */
+export function requireEmailVerification(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const asked = env.REQUIRE_EMAIL_VERIFICATION?.trim();
+  if (asked === "true") return true;
+  if (asked === "false") return false;
+  return getEdition() === "hosted" && Boolean(env.TOSEND_API_KEY?.trim() && env.EMAIL_FROM?.trim());
+}
+
+type Runner = Pick<Extract<GenericCtx<DataModel>, { runMutation: unknown }>, "runMutation" | "runQuery">;
+
+/** The Convex functions a sign-in hook can call, or null where it has none (a query). */
+function runner(ctx: GenericCtx<DataModel>): Runner | null {
+  return isMutationCtx(ctx) || isActionCtx(ctx) ? ctx : null;
+}
+
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
   const branding = { appName: process.env.EMAIL_FROM_NAME?.trim() || DEFAULT_APP_NAME };
@@ -126,7 +152,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
       enabled: true,
       // Off unless the owner asks for it: with no email set up, nobody could confirm
       // their address and nobody could sign in.
-      requireEmailVerification: process.env.REQUIRE_EMAIL_VERIFICATION === "true",
+      requireEmailVerification: requireEmailVerification(),
       sendResetPassword: async ({ user, url }) => {
         await queueEmail(ctx, user.email, passwordResetEmail({ name: user.name, url }, branding));
       },
@@ -138,15 +164,74 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         await queueEmail(ctx, user.email, verificationEmail({ name: user.name, url }, branding));
       },
     },
+    databaseHooks: {
+      user: {
+        create: {
+          // On the hosted edition, where every new account can start a free trial:
+          // throwaway email services are refused, and so is a burst of sign-ups from one
+          // network or from everywhere at once.
+          before: async (user, endpoint) => {
+            const run = runner(ctx);
+            if (!run || getEdition() !== "hosted") return;
+            if (isThrowawayEmail(user.email)) {
+              throw new APIError("BAD_REQUEST", {
+                message: "Use your own email address. Throwaway email services can't be used here.",
+              });
+            }
+            const network = await networkKey(endpoint?.headers ?? endpoint?.request?.headers);
+            const refused = await run.runMutation(internal.access.takeSignUp, {
+              networkKey: network,
+            });
+            if (refused) throw new APIError("TOO_MANY_REQUESTS", { message: refused });
+          },
+          after: async (user, endpoint) => {
+            const run = runner(ctx);
+            if (!run || getEdition() !== "hosted") return;
+            await run.runMutation(internal.access.recordSignUp, {
+              userId: user.id,
+              email: user.email,
+              networkKey: await networkKey(endpoint?.headers ?? endpoint?.request?.headers),
+            });
+          },
+        },
+      },
+      session: {
+        create: {
+          // Someone the operator blocked can't sign in (blocks.ts).
+          before: async (session) => {
+            const run = runner(ctx);
+            if (!run) return;
+            if (await run.runQuery(internal.access.userBlocked, { userId: session.userId })) {
+              throw new APIError("FORBIDDEN", {
+                message: "This account has been paused. Contact the people who run this dashboard.",
+              });
+            }
+          },
+        },
+      },
+    },
     plugins: [
       // Teams: organizations, members, invitations and roles (owner, admin, member).
       organization({
         organizationHooks: {
+          // Each team on the hosted edition gets a free trial, so one person can make only
+          // a few teams a day.
+          beforeCreateOrganization: async ({ user }) => {
+            const run = runner(ctx);
+            if (!run) return;
+            const refused = await run.runMutation(internal.access.takeNewTeam, {
+              userId: user.id,
+            });
+            if (refused) throw new APIError("TOO_MANY_REQUESTS", { message: refused });
+          },
           // On the hosted edition a new team starts its free trial (no card asked for).
-          afterCreateOrganization: async ({ organization }) => {
+          // It is its owner's trial: a person who had one already doesn't get fresh days.
+          afterCreateOrganization: async ({ organization, user }) => {
             if (!isMutationCtx(ctx) && !isActionCtx(ctx)) return;
             await ctx.scheduler.runAfter(0, internal.trial.begin, {
               organizationId: organization.id,
+              ownerId: user.id,
+              ownerEmail: user.email,
             });
           },
         },

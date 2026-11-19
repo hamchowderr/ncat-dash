@@ -88,7 +88,10 @@ export function ApprovalSettings({
             {members.map((member) => {
               const id = `reviewer-${member.userId}`;
               return (
-                <li key={member.userId} className="flex items-center gap-2">
+                <li
+                  key={member.userId}
+                  className="hover:bg-muted has-data-checked:row-selected flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors"
+                >
                   <Checkbox
                     id={id}
                     checked={settings.reviewers.includes(member.userId)}

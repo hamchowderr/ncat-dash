@@ -32,7 +32,7 @@ test("the tour walks someone new around the dashboard once, and again when they 
   await page.goto("/?tour=start");
   // The card itself: on a phone the menu sheet closing is a dialog too for a moment.
   const card = page.locator("[data-tour-card]");
-  await expect(card).toContainText("Welcome to Your Dashboard");
+  await expect(card).toContainText("Welcome to Kontifi");
   await expect(card).toContainText("Step 1 of 11");
   await expect(page).toHaveURL(/\/$/);
 
@@ -79,7 +79,7 @@ test("the tour walks someone new around the dashboard once, and again when they 
   // It can always be taken again from the user menu, and Escape closes it.
   await page.getByRole("button", { name: "Open user menu" }).click();
   await page.getByRole("menuitem", { name: "Take the tour" }).click();
-  await expect(card).toContainText("Welcome to Your Dashboard");
+  await expect(card).toContainText("Welcome to Kontifi");
   await page.keyboard.press("Escape");
   await expect(card).toHaveCount(0);
 
@@ -103,7 +103,7 @@ test("the tour walks someone new around the dashboard once, and again when they 
   await page.getByRole("button", { name: "Toggle Sidebar" }).click();
   await page.getByRole("button", { name: "Open user menu" }).click();
   await page.getByRole("menuitem", { name: "Take the tour" }).click();
-  await expect(card).toContainText("Welcome to Your Dashboard");
+  await expect(card).toContainText("Welcome to Kontifi");
   await card.getByRole("button", { name: "Show me" }).click();
   await expect(card).toContainText("Step 2 of 11");
   const box = (await card.boundingBox())!;

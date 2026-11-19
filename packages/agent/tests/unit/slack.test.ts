@@ -183,4 +183,9 @@ describe('who the agent works for', () => {
       /not connected/,
     );
   });
+
+  it("passes on the dashboard's own words when it says no (trial over, blocked, too many)", () => {
+    const message = 'Your free trial has ended, so nothing new starts.';
+    expect(refusalText({ ok: false, reason: 'refused', email: null, message })).toBe(message);
+  });
 });

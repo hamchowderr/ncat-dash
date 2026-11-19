@@ -259,7 +259,10 @@ export type SlackPerson =
       organizationId: string;
       convexToken: string;
     }
-  | { ok: false; reason: "not_connected" | "no_email" | "not_member"; email: string | null };
+  | { ok: false; reason: "not_connected" | "no_email" | "not_member"; email: string | null }
+  // The team's trial is over, the team or person is blocked, or they have sent a great
+  // many messages in a short time. `message` says which, for the person.
+  | { ok: false; reason: "refused"; email: null; message: string };
 
 /**
  * Who a Slack user is on the team, matched by email address, with a Convex token that
@@ -284,7 +287,17 @@ export const person = internalAction({
       known && known.organizationId === connection.organizationId
         ? team.members.find((member) => member.userId === known.userId)
         : undefined;
+    // Checked before every reply: each one spends AI tokens.
+    const turn = async (userId: string): Promise<SlackPerson | null> => {
+      const answer = await ctx.runMutation(internal.access.channelTurn, {
+        organizationId: connection.organizationId,
+        userId,
+      });
+      return answer.ok ? null : { ok: false, reason: "refused", email: null, message: answer.message };
+    };
     if (known && knownMember && known.sessionExpiresAt - Date.now() > RENEW_MS) {
+      const refused = await turn(knownMember.userId);
+      if (refused) return refused;
       const convexToken = await tokenFor(ctx, known.sessionToken);
       if (convexToken) {
         return {
@@ -301,6 +314,8 @@ export const person = internalAction({
     if (!email) return { ok: false, reason: "no_email", email: null };
     const member = team.members.find((candidate) => candidate.email.toLowerCase() === email);
     if (!member) return { ok: false, reason: "not_member", email };
+    const refused = await turn(member.userId);
+    if (refused) return refused;
 
     const auth = createAuth(ctx);
     const context = await auth.$context;

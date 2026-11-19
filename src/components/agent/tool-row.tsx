@@ -16,7 +16,6 @@ export function ToolRow({
   result: { result?: unknown; isError?: boolean } | undefined;
 }) {
   const words = toolWords(call.name, call.args);
-  if (!words) return undefined;
   const failed = result?.isError === true;
   const facts = result && !failed ? resultWords(call.name, result.result) : [];
   return (

@@ -206,8 +206,7 @@ export function MotionCard({
                             disabled={!canEdit}
                             onClick={() => pick(preset)}
                             className={cn(
-                              "bg-surface hover:bg-muted focus-visible:ring-ring/50 flex flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left outline-none transition-colors focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
-                              on && "bg-primary/10 hover:bg-primary/15",
+                              "choice-tile focus-visible:ring-ring/50 flex flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
                             )}
                           >
                             <span className="text-sm font-medium">{preset.name}</span>

@@ -68,3 +68,6 @@ next-env.d.ts
 
 # Impeccable: per-machine consent
 .impeccable/config.local.json
+
+# The agent image workflow's pnpm store
+pnpm-store/

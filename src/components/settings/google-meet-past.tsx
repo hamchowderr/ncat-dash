@@ -215,7 +215,10 @@ export function MeetPastRecordings({ organizationId }: { organizationId: string 
     setBusy("bring");
     try {
       const result = await bringIn({ organizationId, driveFileIds: ids });
-      const said = [`${plural(result.started, "recording")} on the way to Uploads`];
+      // Ones the team was already bringing in (the watcher can take them first) are on their way too.
+      const said = [
+        `${plural(result.started + result.already, "recording")} on the way to Uploads`,
+      ];
       if (result.duplicate) said.push(`${result.duplicate.toLocaleString()} already there`);
       if (result.missing) said.push(`${result.missing.toLocaleString()} no longer in Drive`);
       toast.success(said.join(", "));
