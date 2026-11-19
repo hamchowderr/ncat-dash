@@ -11,6 +11,7 @@ import {
   type MutationCtx,
   mutation,
   query,
+  type QueryCtx,
 } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
 import { safeName } from "./lib/bucket";
@@ -18,9 +19,11 @@ import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { addUploadToLibrary } from "./lib/library";
 import {
   type DriveItem,
+  looksLikeTeamsRecording,
   pickRecording,
   RENEW_WATCH_MS,
   sameSecret,
+  sharedFileOf,
   WATCH_MS,
 } from "./lib/microsoft";
 import { enqueueJob, pump } from "./lib/queue";
@@ -48,6 +51,28 @@ const GRACE_MS = 10 * 60 * 1000;
 
 /** What the dashboard asks Microsoft for: who you are, and reading your files. */
 export const MICROSOFT_SCOPES = ["offline_access", "User.Read", "Files.Read"];
+/** Asked for too once a member switches on recordings shared with them. */
+export const SHARED_SCOPE = "Files.Read.All";
+/** What a search for shared recordings looks for: Teams names each "… Meeting Recording". */
+const SHARED_SEARCH = "Recording";
+/** At most this many shared files are looked at closely on each check. */
+const SHARED_LOOKUPS = 25;
+
+function scopesFor(shared: boolean | undefined): string {
+  return [...MICROSOFT_SCOPES, ...(shared ? [SHARED_SCOPE] : [])].join(" ");
+}
+
+/** Where a file is in Microsoft Graph: in the member's own OneDrive, or a shared one. */
+function itemPath(itemId: string, driveId?: string): string {
+  return driveId
+    ? `/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}`
+    : `/me/drive/items/${encodeURIComponent(itemId)}`;
+}
+
+/** How a recording is told apart from others: its file, and the OneDrive it is in. */
+function itemKey(itemId: string, driveId?: string): string {
+  return `${driveId ?? ""}:${itemId}`;
+}
 
 function loginBase(): string {
   return (process.env.MICROSOFT_LOGIN_URL ?? "https://login.microsoftonline.com/common").replace(
@@ -131,6 +156,8 @@ export const forTeam = query({
             connectedAt: mine.connectedAt,
             autoImport: mine.autoImport,
             needsReconnect: mine.needsReconnect ?? false,
+            includeShared: mine.includeShared ?? false,
+            sharedGranted: mine.sharedGranted ?? false,
           }
         : null,
       others,
@@ -145,9 +172,12 @@ export const forTeam = query({
   },
 });
 
-/** Starts a Microsoft sign-in from Settings and returns the address to open. */
+/**
+ * Starts a Microsoft sign-in from Settings and returns the address to open. With shared,
+ * it also asks to read files shared with the member, and switches those on once done.
+ */
 export const startLink = mutation({
-  args: { organizationId: v.string() },
+  args: { organizationId: v.string(), shared: v.optional(v.boolean()) },
   returns: v.string(),
   handler: async (ctx, args) => {
     const { userId } = await requireMember(ctx, args.organizationId);
@@ -163,13 +193,16 @@ export const startLink = mutation({
       organizationId: args.organizationId,
       userId,
       createdAt: Date.now(),
+      ...(args.shared ? { shared: true } : {}),
     });
+    // Someone who already allowed shared files keeps that when they sign in again.
+    const mine = await findMine(ctx, args.organizationId, userId);
     const url = new URL(`${loginBase()}/oauth2/v2.0/authorize`);
     url.searchParams.set("client_id", process.env.MICROSOFT_CLIENT_ID!);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("redirect_uri", redirectUri());
     url.searchParams.set("response_mode", "query");
-    url.searchParams.set("scope", MICROSOFT_SCOPES.join(" "));
+    url.searchParams.set("scope", scopesFor(args.shared || mine?.sharedGranted));
     url.searchParams.set("state", nonce);
     url.searchParams.set("prompt", "select_account");
     return url.toString();
@@ -193,6 +226,38 @@ export const setAutoImport = mutation({
       autoImport: args.autoImport,
       ...(args.autoImport && !mine.autoImport ? { connectedAt: Date.now() } : {}),
     });
+  },
+});
+
+/**
+ * Whether recordings of other people's meetings, shared with the caller, come in too.
+ * Switching it on the first time needs Microsoft's say-so (startLink with shared).
+ */
+export const setIncludeShared = mutation({
+  args: { organizationId: v.string(), includeShared: v.boolean() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireMember(ctx, args.organizationId);
+    const mine = await findMine(ctx, args.organizationId, userId);
+    if (!mine) {
+      throw new ConvexError({
+        code: "not_connected",
+        message: "Connect your Microsoft account first.",
+      });
+    }
+    if (args.includeShared && !mine.sharedGranted) {
+      throw new ConvexError({
+        code: "needs_permission",
+        message: "Microsoft needs to allow reading files shared with you first.",
+      });
+    }
+    // Switched on: only recordings shared from now on come in by themselves.
+    await ctx.db.patch(mine._id, {
+      includeShared: args.includeShared,
+      ...(args.includeShared && !mine.includeShared ? { sharedSince: Date.now() } : {}),
+    });
+    if (args.includeShared) {
+      await ctx.scheduler.runAfter(0, internal.microsoft.check, { connectionId: mine._id });
+    }
   },
 });
 
@@ -221,14 +286,17 @@ interface MicrosoftTokens {
 }
 
 /** Trades a code or a refresh token for new tokens. Null when Microsoft refuses. */
-async function tokens(form: Record<string, string>): Promise<MicrosoftTokens | null> {
+async function tokens(
+  form: Record<string, string>,
+  shared?: boolean,
+): Promise<MicrosoftTokens | null> {
   const response = await fetch(`${loginBase()}/oauth2/v2.0/token`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       client_id: process.env.MICROSOFT_CLIENT_ID ?? "",
       client_secret: process.env.MICROSOFT_CLIENT_SECRET ?? "",
-      scope: MICROSOFT_SCOPES.join(" "),
+      scope: scopesFor(shared),
       ...form,
     }).toString(),
   });
@@ -270,7 +338,7 @@ export const takeStart = internalMutation({
     if (!row) return null;
     await ctx.db.delete(row._id);
     if (Date.now() - row.createdAt > START_TTL_MS) return null;
-    return { organizationId: row.organizationId, userId: row.userId };
+    return { organizationId: row.organizationId, userId: row.userId, shared: row.shared ?? false };
   },
 });
 
@@ -285,6 +353,8 @@ export const saveConnection = internalMutation({
     accessTokenCipher: v.string(),
     refreshTokenCipher: v.string(),
     expiresAt: v.number(),
+    // Microsoft allowed reading files shared with the member on this sign-in.
+    shared: v.optional(v.boolean()),
   },
   returns: v.string(),
   handler: async (ctx, args) => {
@@ -305,8 +375,11 @@ export const saveConnection = internalMutation({
     const mine = await findMine(ctx, args.organizationId, args.userId);
     // The same account signing in again keeps its watch and folder; another starts over.
     const same = mine?.msUserId === args.msUserId ? mine : null;
+    const { shared, ...account } = args;
+    const sharedGranted = Boolean(shared || same?.sharedGranted);
+    const includeShared = Boolean(shared || same?.includeShared);
     const fields = {
-      ...args,
+      ...account,
       connectedAt: same?.connectedAt ?? Date.now(),
       autoImport: mine?.autoImport ?? true,
       recordingsFolderId: same?.recordingsFolderId,
@@ -314,6 +387,13 @@ export const saveConnection = internalMutation({
       subscriptionExpiresAt: same?.subscriptionExpiresAt,
       clientState: same?.clientState,
       needsReconnect: undefined,
+      sharedGranted: sharedGranted || undefined,
+      includeShared: includeShared || undefined,
+      sharedSince: includeShared
+        ? same?.includeShared
+          ? (same.sharedSince ?? Date.now())
+          : Date.now()
+        : undefined,
     };
     let connectionId: Id<"microsoftConnections">;
     if (mine) {
@@ -343,11 +423,10 @@ export const finishLink = internalAction({
     if (!start) return settingsUrl("expired");
     if (!ready()) return settingsUrl("not_ready");
     try {
-      const token = await tokens({
-        grant_type: "authorization_code",
-        code: args.code,
-        redirect_uri: redirectUri(),
-      });
+      const token = await tokens(
+        { grant_type: "authorization_code", code: args.code, redirect_uri: redirectUri() },
+        start.shared,
+      );
       if (!token) return settingsUrl("refused");
       const meResponse = await fetch(`${graphBase()}/me`, {
         headers: { authorization: `Bearer ${token.access_token}` },
@@ -370,8 +449,9 @@ export const finishLink = internalAction({
         accessTokenCipher: await encryptSecret(token.access_token),
         refreshTokenCipher: await encryptSecret(token.refresh_token),
         expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
+        ...(start.shared ? { shared: true } : {}),
       });
-      return settingsUrl(result);
+      return settingsUrl(result === "connected" && start.shared ? "shared" : result);
     } catch {
       return settingsUrl("unreachable");
     }
@@ -421,10 +501,10 @@ export async function accessTokenFor(
   );
   if (!row) throw new MicrosoftSignInError("This Microsoft account is no longer connected.");
   if (row.expiresAt - Date.now() > RENEW_MS) return await decryptSecret(row.accessTokenCipher);
-  const token = await tokens({
-    grant_type: "refresh_token",
-    refresh_token: await decryptSecret(row.refreshTokenCipher),
-  });
+  const token = await tokens(
+    { grant_type: "refresh_token", refresh_token: await decryptSecret(row.refreshTokenCipher) },
+    row.sharedGranted,
+  );
   if (!token) {
     await ctx.runMutation(internal.microsoft.patchConnection, {
       connectionId,
@@ -510,12 +590,66 @@ async function recordingsIn(
       "@odata.nextLink"?: string;
     };
     items.push(...(body.value ?? []));
-    const link = body["@odata.nextLink"];
-    next = link ? link.slice(link.indexOf(graphBase()) === 0 ? graphBase().length : 0) : null;
-    if (next && !next.startsWith("/")) next = null;
+    next = nextPage(body["@odata.nextLink"]);
   }
   return items.sort(
     (a, b) => Date.parse(b.createdDateTime ?? "") - Date.parse(a.createdDateTime ?? ""),
+  );
+}
+
+/** The path of the next page Microsoft names, kept to Graph itself. */
+function nextPage(link: string | undefined): string | null {
+  if (!link) return null;
+  const next = link.slice(link.indexOf(graphBase()) === 0 ? graphBase().length : 0);
+  return next.startsWith("/") ? next : null;
+}
+
+type SharedRecording = { item: DriveItem; driveId: string };
+
+/**
+ * Teams recordings in other people's OneDrives that were shared with the member: Teams
+ * shares the recording of a meeting with the people in it. Microsoft's search of the
+ * member's OneDrive also finds files shared with them; only ones named the way Teams
+ * names a recording are looked at, and each is read from its own OneDrive.
+ */
+async function sharedRecordingsIn(token: string): Promise<SharedRecording[]> {
+  const found = new Map<string, { driveId: string; itemId: string }>();
+  let next: string | null = `/me/drive/search(q='${encodeURIComponent(SHARED_SEARCH)}')?$top=100`;
+  for (let page = 0; next && page < 3; page++) {
+    const response = await graph(token, next);
+    if (!response.ok) {
+      throw new ConvexError({
+        code: "microsoft_refused",
+        message: `Microsoft did not list recordings shared with you (HTTP ${response.status}).`,
+      });
+    }
+    const body = (await response.json()) as {
+      value?: DriveItem[];
+      "@odata.nextLink"?: string;
+    };
+    for (const hit of body.value ?? []) {
+      const shared = sharedFileOf(hit);
+      if (!shared) continue;
+      const name = hit.name ?? hit.remoteItem?.name ?? "";
+      if (name && !looksLikeTeamsRecording(name)) continue;
+      found.set(itemKey(shared.itemId, shared.driveId), shared);
+    }
+    next = nextPage(body["@odata.nextLink"]);
+  }
+  const recordings: SharedRecording[] = [];
+  for (const shared of [...found.values()].slice(0, SHARED_LOOKUPS)) {
+    const response = await graph(
+      token,
+      `${itemPath(shared.itemId, shared.driveId)}` +
+        "?$select=id,name,size,createdDateTime,lastModifiedDateTime,file,folder,video",
+    );
+    if (!response.ok) continue;
+    const item = (await response.json()) as DriveItem;
+    if (!item.name || !looksLikeTeamsRecording(item.name)) continue;
+    recordings.push({ item, driveId: shared.driveId });
+  }
+  return recordings.sort(
+    (a, b) => Date.parse(b.item.createdDateTime ?? "") - Date.parse(a.item.createdDateTime ?? ""),
   );
 }
 
@@ -592,27 +726,42 @@ export const watch = internalAction({
   },
 });
 
-/** Looks in the member's Recordings folder and brings in what is new since they connected. */
+/**
+ * Looks in the member's Recordings folder and brings in what is new since they connected,
+ * and, when they switched it on, recordings of other people's meetings shared with them.
+ */
 export const check = internalAction({
   args: { connectionId: v.id("microsoftConnections") },
   handler: async (ctx, args) => {
     if (!ready()) return;
     const row = await ctx.runQuery(internal.microsoft.connection, args);
-    if (!row || !row.autoImport || row.needsReconnect) return;
+    if (!row || row.needsReconnect) return;
+    const withShared = Boolean(row.includeShared && row.sharedGranted);
+    if (!row.autoImport && !withShared) return;
     let token: string;
     try {
       token = await accessTokenFor(ctx, row._id);
     } catch {
       return;
     }
-    const items = await recordingsIn(ctx, row, token).catch(() => null);
+    const items = row.autoImport ? await recordingsIn(ctx, row, token).catch(() => null) : null;
+    const shared = withShared ? await sharedRecordingsIn(token).catch(() => null) : null;
     await ctx.runMutation(internal.microsoft.patchConnection, {
       connectionId: row._id,
       fields: { lastCheckedAt: Date.now() },
     });
-    if (!items) return;
+    const sharedSince = (row.sharedSince ?? Date.now()) - GRACE_MS;
+    for (const { item, driveId } of shared ?? []) {
+      if (Date.parse(item.createdDateTime ?? "") < sharedSince) continue;
+      const picked = pickRecording(item, Date.now(), driveId);
+      if (!picked) continue;
+      await ctx.runMutation(internal.microsoft.startImport, {
+        connectionId: row._id,
+        recording: picked,
+      });
+    }
     const since = row.connectedAt - GRACE_MS;
-    for (const item of items) {
+    for (const item of items ?? []) {
       if (Date.parse(item.createdDateTime ?? "") < since) continue;
       const picked = pickRecording(item, Date.now());
       if (!picked) continue;
@@ -644,7 +793,7 @@ export const sweep = internalAction({
         row.subscriptionId && (row.subscriptionExpiresAt ?? 0) - Date.now() > RENEW_WATCH_MS;
       if (!running)
         await ctx.scheduler.runAfter(0, internal.microsoft.watch, { connectionId: row._id });
-      else if (row.autoImport) {
+      else if (row.autoImport || row.includeShared) {
         await ctx.scheduler.runAfter(0, internal.microsoft.check, { connectionId: row._id });
       }
     }
@@ -699,6 +848,7 @@ export const takeEvent = internalAction({
 
 const recordingValidator = v.object({
   itemId: v.string(),
+  driveId: v.optional(v.string()),
   topic: v.string(),
   startTime: v.number(),
   extension: v.literal("mp4"),
@@ -707,17 +857,38 @@ const recordingValidator = v.object({
   minutes: v.union(v.number(), v.null()),
 });
 
-type StartOutcome = "started" | "already" | "no_toolkit" | "gone";
+type StartOutcome = "started" | "already" | "duplicate" | "no_toolkit" | "gone";
 
 /** The address the job keeps for a recording. Swapped for a fresh link as it is sent. */
-export function contentUrl(itemId: string): string {
-  return `${graphBase()}/me/drive/items/${encodeURIComponent(itemId)}/content`;
+export function contentUrl(itemId: string, driveId?: string): string {
+  return `${graphBase()}${itemPath(itemId, driveId)}/content`;
+}
+
+/**
+ * An upload the team already has with the very same file: the same size in bytes. A
+ * recording shared with a member may already be in, brought in by the teammate who
+ * organized the meeting. Recordings are hundreds of megabytes, so sizes do not repeat.
+ */
+async function sameFileIn(
+  ctx: Pick<QueryCtx, "db">,
+  organizationId: string,
+  size: number,
+): Promise<Doc<"uploads"> | null> {
+  if (size <= 0) return null;
+  const same = await ctx.db
+    .query("uploads")
+    .withIndex("by_organization_and_size", (q) =>
+      q.eq("organizationId", organizationId).eq("size", size),
+    )
+    .take(10);
+  return same.find((one) => one.purpose !== "brand") ?? null;
 }
 
 /**
  * Starts bringing one recording in: records an upload that is on its way, and has the
  * toolkit stream the file from OneDrive into the team's folder. A recording already
- * brought in, or on its way, is left alone; one that failed is tried again.
+ * brought in, or on its way, is left alone; one that failed is tried again. A shared
+ * recording whose file is already in Uploads is marked as in, and not brought in twice.
  */
 export const startImport = internalMutation({
   args: { connectionId: v.id("microsoftConnections"), recording: recordingValidator },
@@ -726,13 +897,34 @@ export const startImport = internalMutation({
     if (!connection) return "gone";
     const { organizationId } = connection;
     const { recording } = args;
-    const before = await ctx.db
-      .query("microsoftImports")
-      .withIndex("by_item", (q) =>
-        q.eq("organizationId", organizationId).eq("itemId", recording.itemId),
-      )
-      .first();
+    const before = (
+      await ctx.db
+        .query("microsoftImports")
+        .withIndex("by_item", (q) =>
+          q.eq("organizationId", organizationId).eq("itemId", recording.itemId),
+        )
+        .take(10)
+    ).find((one) => (one.driveId ?? "") === (recording.driveId ?? ""));
     if (before && before.status !== "failed") return "already";
+    if (recording.driveId) {
+      const same = await sameFileIn(ctx, organizationId, recording.size);
+      if (same) {
+        const fields = {
+          organizationId,
+          connectionId: connection._id,
+          itemId: recording.itemId,
+          driveId: recording.driveId,
+          topic: recording.topic,
+          startTime: recording.startTime,
+          status: "done" as const,
+          uploadId: same._id,
+          error: undefined,
+        };
+        if (before) await ctx.db.patch(before._id, fields);
+        else await ctx.db.insert("microsoftImports", fields);
+        return "duplicate";
+      }
+    }
 
     const fileName = recordingFileName(recording.topic, recording.startTime, recording.extension);
     const key = `uploads/${crypto.randomUUID()}/${safeName(fileName)}`;
@@ -742,6 +934,7 @@ export const startImport = internalMutation({
         organizationId,
         connectionId: connection._id,
         itemId: recording.itemId,
+        ...(recording.driveId ? { driveId: recording.driveId } : {}),
         topic: recording.topic,
         startTime: recording.startTime,
         status: "importing",
@@ -750,7 +943,7 @@ export const startImport = internalMutation({
       organizationId,
       stepId: "storage-upload-s3",
       input: {
-        file_url: contentUrl(recording.itemId),
+        file_url: contentUrl(recording.itemId, recording.driveId),
         // The toolkit names files by their key in the bucket: the team's own folder.
         filename: `${teamFolder(organizationId)}${key}`,
       },
@@ -809,9 +1002,13 @@ export async function downloadUrlFor(
   );
   if (!found) throw new MicrosoftSignInError("This recording is no longer being brought in.");
   const token = await accessTokenFor(ctx, found.connectionId);
-  const response = await graph(token, `/me/drive/items/${encodeURIComponent(found.itemId)}`);
-  if (response.status === 404) {
-    throw new MicrosoftSignInError("The recording is no longer in OneDrive.");
+  const response = await graph(token, itemPath(found.itemId, found.driveId));
+  if (response.status === 404 || (found.driveId && response.status === 403)) {
+    throw new MicrosoftSignInError(
+      found.driveId
+        ? "The recording is no longer shared with you."
+        : "The recording is no longer in OneDrive.",
+    );
   }
   const item = (response.ok ? await response.json() : {}) as DriveItem;
   const link = item["@microsoft.graph.downloadUrl"];
@@ -878,7 +1075,9 @@ export const mine = internalQuery({
       .take(500);
     return {
       row,
-      brought: imports.filter((one) => one.status !== "failed").map((one) => one.itemId),
+      brought: imports
+        .filter((one) => one.status !== "failed")
+        .map((one) => itemKey(one.itemId, one.driveId)),
     };
   },
 });
@@ -903,15 +1102,35 @@ async function pastRecordingsOf(ctx: ActionCtx, found: Mine) {
       message: "Microsoft could not be reached. Try again.",
     });
   }
+  let shared: SharedRecording[] = [];
+  if (found.row.includeShared && found.row.sharedGranted) {
+    try {
+      shared = await sharedRecordingsIn(token);
+    } catch (error) {
+      if (error instanceof ConvexError) throw error;
+      throw new ConvexError({
+        code: "unreachable",
+        message: "Microsoft could not be reached. Try again.",
+      });
+    }
+  }
   const since = Date.now() - PAST_DAYS * 24 * 60 * 60 * 1000;
-  return (items ?? [])
-    .filter((item) => Date.parse(item.createdDateTime ?? "") >= since)
-    .map((item) => pickRecording(item, Date.now()))
-    .filter((one) => one !== null);
+  const all: { item: DriveItem; driveId?: string }[] = [
+    ...(items ?? []).map((item) => ({ item })),
+    ...shared,
+  ];
+  return all
+    .filter(({ item }) => Date.parse(item.createdDateTime ?? "") >= since)
+    .map(({ item, driveId }) => pickRecording(item, Date.now(), driveId))
+    .filter((one) => one !== null)
+    .sort((a, b) => b.startTime - a.startTime);
 }
 
 export interface PastRecording {
   itemId: string;
+  // Set for a recording of someone else's meeting, shared with the caller.
+  driveId?: string;
+  shared: boolean;
   topic: string;
   startTime: number;
   minutes: number | null;
@@ -926,25 +1145,27 @@ export const pastRecordings = action({
     const found: Mine = await ctx.runQuery(internal.microsoft.mine, args);
     return (await pastRecordingsOf(ctx, found)).map((one) => ({
       itemId: one.itemId,
+      ...(one.driveId ? { driveId: one.driveId } : {}),
+      shared: Boolean(one.driveId),
       topic: one.topic,
       startTime: one.startTime,
       minutes: one.minutes,
       size: one.size,
-      brought: found.brought.includes(one.itemId),
+      brought: found.brought.includes(itemKey(one.itemId, one.driveId)),
     }));
   },
 });
 
 /** Brings in one of the caller's recent recordings, by the file OneDrive listed. */
 export const bringIn = action({
-  args: { organizationId: v.string(), itemId: v.string() },
+  args: { organizationId: v.string(), itemId: v.string(), driveId: v.optional(v.string()) },
   handler: async (ctx, args): Promise<StartOutcome> => {
     const found: Mine = await ctx.runQuery(internal.microsoft.mine, {
       organizationId: args.organizationId,
     });
     // Looked up again rather than taken from the browser: OneDrive's list is the truth.
     const recording = (await pastRecordingsOf(ctx, found)).find(
-      (one) => one.itemId === args.itemId,
+      (one) => one.itemId === args.itemId && (one.driveId ?? "") === (args.driveId ?? ""),
     );
     if (!recording) {
       throw new ConvexError({

@@ -21,6 +21,10 @@ let toolkitCalls: { url: string; body: Record<string, unknown> }[] = [];
 let subscriptions: { method: string; url: string; body: Record<string, unknown> }[] = [];
 let files: Record<string, unknown>[] = [];
 let hasFolder = true;
+// Files in other people's OneDrives shared with the signed-in account, and the scopes
+// each token request asked for.
+let sharedFiles: { driveId: string; item: Record<string, unknown> }[] = [];
+let tokenScopes: string[] = [];
 
 beforeEach(() => {
   process.env.MICROSOFT_CLIENT_ID = "ms-client-id";
@@ -36,6 +40,8 @@ beforeEach(() => {
   subscriptions = [];
   files = [];
   hasFolder = true;
+  sharedFiles = [];
+  tokenScopes = [];
   vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -43,6 +49,7 @@ beforeEach(() => {
     const bearer = String(headers.get("authorization")).replace("Bearer ", "");
     if (url === `${LOGIN}/oauth2/v2.0/token`) {
       const form = new URLSearchParams(String(init?.body ?? ""));
+      tokenScopes.push(form.get("scope") ?? "");
       if (
         form.get("client_id") !== "ms-client-id" ||
         form.get("client_secret") !== "ms-client-secret"
@@ -86,6 +93,33 @@ beforeEach(() => {
     }
     if (url === `${GRAPH}/me/drive/root:/Recordings`) {
       return Response.json({ error: { code: "itemNotFound" } }, { status: 404 });
+    }
+    if (url.startsWith(`${GRAPH}/me/drive/search(q='Recording')`)) {
+      // Microsoft's search finds the member's own files and files shared with them.
+      return Response.json({
+        value: [
+          { id: "own-hit", name: "Mine-20261118_170302-Meeting Recording.mp4" },
+          ...sharedFiles.map(({ driveId, item }) => ({
+            id: `hit-${item.id}`,
+            name: item.name,
+            remoteItem: { id: item.id, parentReference: { driveId } },
+          })),
+        ],
+      });
+    }
+    if (url.startsWith(`${GRAPH}/drives/`)) {
+      const [driveId, , itemId] = url
+        .slice(`${GRAPH}/drives/`.length)
+        .split("?")[0]
+        .split("/")
+        .map(decodeURIComponent);
+      const found = sharedFiles.find((one) => one.driveId === driveId && one.item.id === itemId);
+      return found
+        ? Response.json({
+            ...found.item,
+            "@microsoft.graph.downloadUrl": `https://onedrive.test/dl/${itemId}?t=shared`,
+          })
+        : Response.json({ error: { code: "itemNotFound" } }, { status: 404 });
     }
     if (url.startsWith(`${GRAPH}/me/drive/items/folder-rec/children`)) {
       return Response.json({ value: files });
@@ -551,6 +585,7 @@ describe("past recordings", () => {
         startTime: expect.any(Number),
         minutes: 42,
         size: 2_000_000,
+        shared: false,
         brought: false,
       },
     ]);
@@ -571,5 +606,157 @@ describe("past recordings", () => {
     await expect(
       setup.member.as.action(api.microsoft.pastRecordings, { organizationId: setup.team }),
     ).rejects.toThrow(/Connect your Microsoft account/);
+  });
+});
+
+describe("meetings shared with you", () => {
+  /** Someone else's meeting recording, shared with the member, in its owner's OneDrive. */
+  function sharedRecording(
+    id = "shared-1",
+    name = "Board Review-20261118_160000-Meeting Recording.mp4",
+    minutesAgo = 1,
+    size = 3_000_000,
+  ) {
+    return { driveId: "drive-ana", item: { ...recording(id, name, minutesAgo), size } };
+  }
+
+  /** Connects, then switches on shared meetings the way Settings does. */
+  async function connectWithShared(setup: Awaited<ReturnType<typeof setUp>>) {
+    await connect(setup);
+    await runScheduled(setup.t);
+    const url = await setup.owner.as.mutation(api.microsoft.startLink, {
+      organizationId: setup.team,
+      shared: true,
+    });
+    const result = await comeBack(setup.t, url, "c2", JORDAN);
+    await runScheduled(setup.t);
+    const [row] = await setup.t.run((ctx) => ctx.db.query("microsoftConnections").collect());
+    return { url, result, row };
+  }
+
+  test("switching it on asks Microsoft for reading shared files, once", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    await runScheduled(setup.t);
+    await expect(
+      setup.owner.as.mutation(api.microsoft.setIncludeShared, {
+        organizationId: setup.team,
+        includeShared: true,
+      }),
+    ).rejects.toThrow(/allow reading files shared with you/);
+
+    const { url, result } = await connectWithShared(setup);
+    expect(new URL(url).searchParams.get("scope")).toBe(
+      "offline_access User.Read Files.Read Files.Read.All",
+    );
+    expect(result).toBe("shared");
+    expect(tokenScopes.at(-1)).toContain("Files.Read.All");
+    const view = await setup.owner.as.query(api.microsoft.forTeam, { organizationId: setup.team });
+    expect(view?.me).toMatchObject({ includeShared: true, sharedGranted: true });
+
+    // Off and on again needs no new sign-in; a later sign-in keeps asking for it.
+    const args = { organizationId: setup.team };
+    await setup.owner.as.mutation(api.microsoft.setIncludeShared, {
+      ...args,
+      includeShared: false,
+    });
+    await setup.owner.as.mutation(api.microsoft.setIncludeShared, { ...args, includeShared: true });
+    const again = await setup.owner.as.mutation(api.microsoft.startLink, args);
+    expect(new URL(again).searchParams.get("scope")).toContain("Files.Read.All");
+  });
+
+  test("off by default: nothing shared comes in", async () => {
+    const setup = await setUp();
+    sharedFiles = [sharedRecording()];
+    await connect(setup);
+    await runScheduled(setup.t);
+    const [row] = await setup.t.run((ctx) => ctx.db.query("microsoftConnections").collect());
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    expect(await uploads(setup.t)).toEqual([]);
+    expect(row.includeShared).toBeUndefined();
+  });
+
+  test("a recording shared with you comes in from its owner's OneDrive", async () => {
+    const setup = await setUp();
+    const { row } = await connectWithShared(setup);
+    sharedFiles = [
+      sharedRecording(),
+      // Other videos shared with the member, and a recording from before, stay out.
+      { driveId: "drive-ana", item: { ...recording("holiday", "Holiday.mp4"), size: 9 } },
+      sharedRecording("old", "Old-20260101_100000-Meeting Recording.mp4", 60 * 24, 4_000_000),
+    ];
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    const [upload, ...more] = await uploads(setup.t);
+    expect(more).toEqual([]);
+    expect(upload).toMatchObject({
+      fileName: expect.stringMatching(/^Board Review \d{4}-\d{2}-\d{2}\.mp4$/),
+      size: 3_000_000,
+      source: "microsoft",
+    });
+    const [job] = await jobs(setup.t);
+    expect(job.input).toMatchObject({
+      file_url: `${GRAPH}/drives/drive-ana/items/shared-1/content`,
+    });
+    await setup.t.action(internal.jobs.dispatch, { jobId: job._id });
+    expect(toolkitCalls[0].body.file_url).toBe("https://onedrive.test/dl/shared-1?t=shared");
+
+    // Switched off, a new shared recording waits.
+    await setup.owner.as.mutation(api.microsoft.setIncludeShared, {
+      organizationId: setup.team,
+      includeShared: false,
+    });
+    sharedFiles.push(sharedRecording("shared-2", "Next-20261118_170000-Meeting Recording.mp4"));
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    expect(await uploads(setup.t)).toHaveLength(1);
+  });
+
+  test("a recording the organizer on the team already brought in is not brought in twice", async () => {
+    const setup = await setUp();
+    const { row } = await connectWithShared(setup);
+    files = [recording("item-1", "Board Review-20261118_160000-Meeting Recording.mp4")];
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    expect(await uploads(setup.t)).toHaveLength(1);
+
+    sharedFiles = [sharedRecording("shared-1", undefined, 1, 2_000_000)];
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    expect(await uploads(setup.t)).toHaveLength(1);
+    const imports = await setup.t.run((ctx) => ctx.db.query("microsoftImports").collect());
+    expect(imports.find((one) => one.driveId === "drive-ana")).toMatchObject({ status: "done" });
+  });
+
+  test("shared recordings are listed with your own, and can be brought in by hand", async () => {
+    const setup = await setUp();
+    files = [recording("mine-1", "Mine-20261116_170000-Meeting Recording.mp4", 60 * 24 * 3)];
+    sharedFiles = [sharedRecording("shared-1", undefined, 60 * 24)];
+    await connectWithShared(setup);
+    const past = await setup.owner.as.action(api.microsoft.pastRecordings, {
+      organizationId: setup.team,
+    });
+    expect(past.map((one) => [one.itemId, one.shared, one.driveId])).toEqual([
+      ["shared-1", true, "drive-ana"],
+      ["mine-1", false, undefined],
+    ]);
+    const args = { organizationId: setup.team, itemId: "shared-1", driveId: "drive-ana" };
+    expect(await setup.owner.as.action(api.microsoft.bringIn, args)).toBe("started");
+    expect(await setup.owner.as.action(api.microsoft.bringIn, args)).toBe("already");
+    // The same file id in the member's own OneDrive is a different file.
+    await expect(
+      setup.owner.as.action(api.microsoft.bringIn, { ...args, driveId: undefined }),
+    ).rejects.toThrow(/no longer has/);
+  });
+
+  test("a recording no longer shared with you fails for good, saying so", async () => {
+    const setup = await setUp();
+    const { row } = await connectWithShared(setup);
+    sharedFiles = [sharedRecording()];
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    const [job] = await jobs(setup.t);
+    sharedFiles = [];
+    await setup.t.action(internal.jobs.dispatch, { jobId: job._id });
+    const [one] = await setup.t.run((ctx) => ctx.db.query("microsoftImports").collect());
+    expect(one).toMatchObject({
+      status: "failed",
+      error: "The recording is no longer shared with you.",
+    });
   });
 });
