@@ -26,6 +26,27 @@ export interface DriveFile {
   size?: string;
   mimeType?: string;
   trashed?: boolean;
+  /** When the file appeared in Drive: Meet saves it as the recording finishes. */
+  createdTime?: string;
+  /** Drive's reading of the video, once it has processed it. */
+  videoMediaMetadata?: { durationMillis?: string };
+}
+
+/** The Drive fields the dashboard reads about a recording's file. */
+export const DRIVE_FILE_FIELDS =
+  "id,name,size,mimeType,trashed,createdTime,videoMediaMetadata(durationMillis)";
+
+/**
+ * Which Drive files to list as Meet recordings. With the drive.meet.readonly access, Drive
+ * only shows files Meet made, so this leaves out transcripts and notes (documents).
+ */
+export const DRIVE_RECORDINGS_QUERY = "mimeType contains 'video/' and trashed = false";
+
+/** How long a Drive video runs, in whole minutes. Null when Drive has not read it yet. */
+export function minutesOfFile(file: DriveFile): number | null {
+  const ms = Number(file.videoMediaMetadata?.durationMillis ?? "");
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return Math.max(1, Math.round(ms / 60_000));
 }
 
 /** What the dashboard asks Google for: who you are, your meetings, and their recordings. */

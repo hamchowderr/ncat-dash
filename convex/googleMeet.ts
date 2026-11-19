@@ -18,15 +18,18 @@ import { safeName } from "./lib/bucket";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import {
   type ConferenceRecord,
+  DRIVE_FILE_FIELDS,
+  DRIVE_RECORDINGS_QUERY,
   type DriveFile,
   finishedFile,
   GOOGLE_MEET_SCOPES,
   googleUrls,
   grantedAll,
-  isRecordingName,
+  isDriveFileId,
   meetingTitle,
   type MeetRecording,
   minutesOf,
+  minutesOfFile,
   timeOf,
 } from "./lib/googleMeet";
 import { addUploadToLibrary } from "./lib/library";
@@ -45,6 +48,13 @@ import { recordingFileName } from "./lib/zoom";
  *
  * Asking every few minutes, rather than having Google push events, keeps the setup to one
  * sign-in app: Google's push needs a Pub/Sub topic and subscriptions renewed each week.
+ *
+ * Past recordings are listed from Drive rather than from Meet: Meet forgets a meeting after
+ * 30 days, while the recording stays in Drive (the "Meet Recordings" folder) for good.
+ *
+ * Nothing comes in twice: a recording already brought in (by anyone on the team) is left
+ * alone, and so is one whose file is already in Uploads some other way, such as uploaded by
+ * hand (the same size in bytes).
  */
 
 /** A Google sign-in started from Settings must come back within this long. */
@@ -56,8 +66,8 @@ const RENEW_MS = 5 * 60 * 1000;
  * handed must have most of Google's hour left.
  */
 const DOWNLOAD_FRESH_MS = 50 * 60 * 1000;
-/** How far back "Show the last 30 days" looks. */
-const PAST_DAYS = 30;
+/** How many recordings "Past recordings" shows at a time, newest first. */
+const PAST_PAGE = 25;
 /** How far back each automatic check looks; Meet can take a while to save a recording. */
 const CHECK_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 
@@ -482,7 +492,8 @@ async function getJson<T>(url: string | URL, token: string): Promise<T> {
 
 /** One finished recording, ready to bring in: the meeting it came from and its file. */
 export interface FoundRecording {
-  recordingName: string;
+  /** Meet's name for it, when it was found through Meet rather than in Drive. */
+  recordingName?: string;
   driveFileId: string;
   topic: string;
   startTime: number;
@@ -522,6 +533,46 @@ async function withFile(
     size: Number(file.size ?? 0) || 0,
     contentType: file.mimeType?.startsWith("video/") ? file.mimeType : "video/mp4",
   };
+}
+
+/** A Meet recording found in Drive, ready to bring in. */
+function fromDriveFile(file: DriveFile): FoundRecording | null {
+  if (!file.id || !isDriveFileId(file.id) || file.trashed) return null;
+  if (!file.mimeType?.startsWith("video/")) return null;
+  const minutes = minutesOfFile(file);
+  // Drive has the file from when the recording finished saving: the meeting began about
+  // its length before that.
+  const saved = timeOf(file.createdTime, Date.now());
+  return {
+    driveFileId: file.id,
+    topic: meetingTitle(file.name) || FALLBACK_TOPIC,
+    startTime: minutes ? saved - minutes * 60_000 : saved,
+    minutes,
+    size: Number(file.size ?? 0) || 0,
+    contentType: file.mimeType,
+  };
+}
+
+/** One page of the person's Meet recordings in Drive, newest first. */
+async function recordingsInDrive(
+  token: string,
+  pageToken: string | undefined,
+): Promise<{ found: FoundRecording[]; nextPageToken: string | null }> {
+  const url = new URL(`${googleUrls().drive}/files`);
+  url.searchParams.set("q", DRIVE_RECORDINGS_QUERY);
+  url.searchParams.set("orderBy", "createdTime desc");
+  url.searchParams.set("pageSize", String(PAST_PAGE));
+  url.searchParams.set("fields", `nextPageToken,files(${DRIVE_FILE_FIELDS})`);
+  url.searchParams.set("supportsAllDrives", "true");
+  url.searchParams.set("includeItemsFromAllDrives", "true");
+  if (pageToken) url.searchParams.set("pageToken", pageToken);
+  const body = await getJson<{ files?: DriveFile[]; nextPageToken?: string }>(url, token);
+  const found: FoundRecording[] = [];
+  for (const file of body.files ?? []) {
+    const one = fromDriveFile(file);
+    if (one) found.push(one);
+  }
+  return { found, nextPageToken: body.nextPageToken ?? null };
 }
 
 /** The finished recordings of meetings the person organized that ended since `since`. */
@@ -580,7 +631,7 @@ function asConvexError(error: unknown): ConvexError<{ code: string; message: str
 // Bringing a recording in.
 
 const recordingValidator = v.object({
-  recordingName: v.string(),
+  recordingName: v.optional(v.string()),
   driveFileId: v.string(),
   topic: v.string(),
   startTime: v.number(),
@@ -589,12 +640,32 @@ const recordingValidator = v.object({
   contentType: v.string(),
 });
 
-type StartOutcome = "started" | "already" | "no_toolkit" | "gone";
+type StartOutcome = "started" | "already" | "duplicate" | "no_toolkit" | "gone";
+
+/**
+ * An upload the team already has with the very same file: the same size in bytes. A
+ * recording's file is hundreds of megabytes, so two different ones do not share a size.
+ */
+async function sameFileIn(
+  ctx: Pick<QueryCtx, "db">,
+  organizationId: string,
+  size: number,
+): Promise<Doc<"uploads"> | null> {
+  if (size <= 0) return null;
+  const same = await ctx.db
+    .query("uploads")
+    .withIndex("by_organization_and_size", (q) =>
+      q.eq("organizationId", organizationId).eq("size", size),
+    )
+    .take(10);
+  return same.find((one) => one.purpose !== "brand") ?? null;
+}
 
 /**
  * Starts bringing one recording in: records an upload that is on its way, and has the
  * toolkit stream the file from Drive into the team's folder. A recording already brought
- * in, or on its way, is left alone; one that failed is tried again.
+ * in, or on its way, is left alone; one that failed is tried again. One whose file is
+ * already in Uploads is marked as such and not brought in again.
  */
 export const startImport = internalMutation({
   args: { connectionId: v.id("googleMeetConnections"), recording: recordingValidator },
@@ -609,7 +680,28 @@ export const startImport = internalMutation({
         q.eq("organizationId", organizationId).eq("driveFileId", recording.driveFileId),
       )
       .first();
-    if (before && before.status !== "failed") return "already";
+    if (before && (before.status === "importing" || before.status === "done")) return "already";
+    const twin = await sameFileIn(ctx, organizationId, recording.size);
+    if (twin) {
+      const fields = {
+        status: "duplicate" as const,
+        uploadId: twin._id,
+        connectionId: connection._id,
+        error: undefined,
+      };
+      if (before) await ctx.db.patch(before._id, fields);
+      else {
+        await ctx.db.insert("googleMeetImports", {
+          organizationId,
+          recordingName: recording.recordingName,
+          driveFileId: recording.driveFileId,
+          topic: recording.topic,
+          startTime: recording.startTime,
+          ...fields,
+        });
+      }
+      return "duplicate";
+    }
 
     const fileName = recordingFileName(recording.topic, recording.startTime, "mp4", FALLBACK_TOPIC);
     const key = `uploads/${crypto.randomUUID()}/${safeName(fileName)}`;
@@ -731,66 +823,112 @@ export const mine = internalQuery({
         message: "Connect your Google account first.",
       });
     }
-    return { connectionId: row._id, brought: await broughtFiles(ctx, args.organizationId) };
+    return row._id;
   },
 });
 
+/**
+ * Where each recording stands for the team: "new" to bring in, "brought" in already (or on
+ * its way), or "duplicate" when its file is already in Uploads some other way.
+ */
+export const standing = internalQuery({
+  args: {
+    organizationId: v.string(),
+    files: v.array(v.object({ driveFileId: v.string(), size: v.number() })),
+  },
+  handler: async (ctx, args): Promise<Standing[]> => {
+    const out: Standing[] = [];
+    for (const file of args.files) {
+      const before = await ctx.db
+        .query("googleMeetImports")
+        .withIndex("by_file", (q) =>
+          q.eq("organizationId", args.organizationId).eq("driveFileId", file.driveFileId),
+        )
+        .first();
+      if (before && (before.status === "importing" || before.status === "done")) {
+        out.push("brought");
+      } else if (await sameFileIn(ctx, args.organizationId, file.size)) {
+        out.push("duplicate");
+      } else {
+        out.push("new");
+      }
+    }
+    return out;
+  },
+});
+
+type Standing = "new" | "brought" | "duplicate";
+
 export interface PastRecording {
-  recordingName: string;
+  driveFileId: string;
   topic: string;
   startTime: number;
   minutes: number | null;
   size: number;
-  brought: boolean;
+  standing: Standing;
 }
 
-type Mine = { connectionId: Id<"googleMeetConnections">; brought: string[] };
-
-/** The caller's Meet recordings from the last 30 days, saying which have been brought in. */
+/**
+ * The caller's Meet recordings in Drive, newest first, a page at a time, saying which are
+ * in Uploads already. Goes back as far as Drive does, not just Meet's 30 days.
+ */
 export const pastRecordings = action({
-  args: { organizationId: v.string() },
-  handler: async (ctx, args): Promise<PastRecording[]> => {
-    const found: Mine = await ctx.runQuery(internal.googleMeet.mine, args);
-    let recordings: FoundRecording[];
+  args: { organizationId: v.string(), pageToken: v.optional(v.string()) },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ recordings: PastRecording[]; nextPageToken: string | null }> => {
+    const connectionId: Id<"googleMeetConnections"> = await ctx.runQuery(internal.googleMeet.mine, {
+      organizationId: args.organizationId,
+    });
+    let page: { found: FoundRecording[]; nextPageToken: string | null };
     try {
-      const token = await accessTokenFor(ctx, found.connectionId);
-      recordings = await recordingsSince(token, Date.now() - PAST_DAYS * 24 * 60 * 60 * 1000);
+      const token = await accessTokenFor(ctx, connectionId);
+      page = await recordingsInDrive(token, args.pageToken);
     } catch (error) {
       throw asConvexError(error);
     }
-    return recordings.map((one) => ({
-      recordingName: one.recordingName,
-      topic: one.topic,
-      startTime: one.startTime,
-      minutes: one.minutes,
-      size: one.size,
-      brought: found.brought.includes(one.driveFileId),
-    }));
+    const standings: Standing[] = await ctx.runQuery(internal.googleMeet.standing, {
+      organizationId: args.organizationId,
+      files: page.found.map((one) => ({ driveFileId: one.driveFileId, size: one.size })),
+    });
+    return {
+      recordings: page.found.map((one, at) => ({
+        driveFileId: one.driveFileId,
+        topic: one.topic,
+        startTime: one.startTime,
+        minutes: one.minutes,
+        size: one.size,
+        standing: standings[at],
+      })),
+      nextPageToken: page.nextPageToken,
+    };
   },
 });
 
-/** Brings in one of the caller's recent recordings, by the name Meet gave it. */
+/** Brings in one of the caller's Meet recordings, by its file in Drive. */
 export const bringIn = action({
-  args: { organizationId: v.string(), recordingName: v.string() },
+  args: { organizationId: v.string(), driveFileId: v.string() },
   handler: async (ctx, args): Promise<StartOutcome> => {
-    const found: Mine = await ctx.runQuery(internal.googleMeet.mine, {
+    const connectionId: Id<"googleMeetConnections"> = await ctx.runQuery(internal.googleMeet.mine, {
       organizationId: args.organizationId,
     });
-    if (!isRecordingName(args.recordingName)) {
+    if (!isDriveFileId(args.driveFileId)) {
       throw new ConvexError({ code: "not_found", message: "Google has no such recording." });
     }
     // Looked up again rather than taken from the browser: Google's answer is the truth.
     let recording: FoundRecording | null;
     try {
-      const token = await accessTokenFor(ctx, found.connectionId);
-      const meta = await getJson<MeetRecording>(
-        `${googleUrls().meet}/${args.recordingName}`,
+      const token = await accessTokenFor(ctx, connectionId);
+      const file = await getJson<DriveFile>(
+        `${googleUrls().drive}/files/${args.driveFileId}?fields=${DRIVE_FILE_FIELDS}&supportsAllDrives=true`,
         token,
       );
-      recording = await withFile(token, meta, Date.now());
+      recording = fromDriveFile(file);
     } catch (error) {
-      if (error instanceof GoogleRefused && error.status === 404) recording = null;
-      else throw asConvexError(error);
+      if (error instanceof GoogleRefused && (error.status === 404 || error.status === 403)) {
+        recording = null;
+      } else throw asConvexError(error);
     }
     if (!recording) {
       throw new ConvexError({
@@ -799,7 +937,7 @@ export const bringIn = action({
       });
     }
     const outcome = await ctx.runMutation(internal.googleMeet.startImport, {
-      connectionId: found.connectionId,
+      connectionId,
       recording,
     });
     if (outcome === "no_toolkit") {

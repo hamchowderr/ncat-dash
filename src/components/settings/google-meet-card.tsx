@@ -37,16 +37,18 @@ export const MEET_RESULTS: Record<string, { ok: boolean; text: string }> = {
 };
 
 type Past = {
-  recordingName: string;
+  driveFileId: string;
   topic: string;
   startTime: number;
   minutes: number | null;
   size: number;
-  brought: boolean;
+  standing: "new" | "brought" | "duplicate";
 };
 
 function when(at: number) {
+  const thisYear = new Date(at).getFullYear() === new Date().getFullYear();
   return new Date(at).toLocaleString(undefined, {
+    ...(thisYear ? {} : { year: "numeric" as const }),
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -58,7 +60,10 @@ const STATUS_TEXT = {
   importing: "Coming in",
   done: "In Uploads",
   failed: "Did not come in",
+  duplicate: "Already in Uploads",
 } as const;
+
+const STANDING_TEXT = { brought: "Brought in", duplicate: "Already in Uploads" } as const;
 
 /**
  * Google Meet recordings, brought in by themselves. Each person who organizes meetings
@@ -75,6 +80,8 @@ export function GoogleMeetCard() {
   const bringIn = useAction(api.googleMeet.bringIn);
   const [busy, setBusy] = useState<string | null>(null);
   const [past, setPast] = useState<Past[] | null>(null);
+  // Drive's place in the list, while it has more recordings to show.
+  const [more, setMore] = useState<string | null>(null);
 
   // Coming back from Google: say how it went once, then tidy the address.
   useEffect(() => {
@@ -217,24 +224,29 @@ export function GoogleMeetCard() {
               variant="outline"
               disabled={busy !== null}
               onClick={() =>
-                run("past", async () => setPast(await listPast({ organizationId: team.id })))
+                run("past", async () => {
+                  const page = await listPast({ organizationId: team.id });
+                  setPast(page.recordings);
+                  setMore(page.nextPageToken);
+                })
               }
             >
-              {busy === "past" ? "Asking Google" : past ? "Look again" : "Show the last 30 days"}
+              {busy === "past" ? "Asking Google" : past ? "Look again" : "Show recordings"}
             </Button>
           </div>
+          {past === null && (
+            <p className="text-muted-foreground text-sm">
+              Every recording in your Drive, however old. Ones already in Uploads are marked, so
+              nothing comes in twice.
+            </p>
+          )}
           {past !== null &&
             (past.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                No Meet recordings in the last 30 days.
-              </p>
+              <p className="text-muted-foreground text-sm">No Meet recordings in your Drive.</p>
             ) : (
               <ul className="flex flex-col gap-2 text-sm">
                 {past.map((meeting) => (
-                  <li
-                    key={meeting.recordingName}
-                    className="flex items-center justify-between gap-3"
-                  >
+                  <li key={meeting.driveFileId} className="flex items-center justify-between gap-3">
                     <span className="min-w-0">
                       <span className="font-medium">{meeting.topic}</span>
                       <span className="text-muted-foreground">
@@ -244,8 +256,10 @@ export function GoogleMeetCard() {
                         {meeting.size ? ` · ${formatBytes(meeting.size)}` : ""}
                       </span>
                     </span>
-                    {meeting.brought ? (
-                      <span className="text-muted-foreground shrink-0">Brought in</span>
+                    {meeting.standing !== "new" ? (
+                      <span className="text-muted-foreground shrink-0">
+                        {STANDING_TEXT[meeting.standing]}
+                      </span>
                     ) : (
                       <Button
                         size="sm"
@@ -253,32 +267,52 @@ export function GoogleMeetCard() {
                         className="shrink-0"
                         disabled={busy !== null}
                         onClick={() =>
-                          run(
-                            `bring-${meeting.recordingName}`,
-                            async () => {
-                              await bringIn({
-                                organizationId: team.id,
-                                recordingName: meeting.recordingName,
-                              });
-                              setPast((list) =>
-                                (list ?? []).map((one) =>
-                                  one.recordingName === meeting.recordingName
-                                    ? { ...one, brought: true }
-                                    : one,
-                                ),
-                              );
-                            },
-                            `${meeting.topic} is on its way to Uploads`,
-                          )
+                          run(`bring-${meeting.driveFileId}`, async () => {
+                            const outcome = await bringIn({
+                              organizationId: team.id,
+                              driveFileId: meeting.driveFileId,
+                            });
+                            const standing = outcome === "duplicate" ? "duplicate" : "brought";
+                            setPast((list) =>
+                              (list ?? []).map((one) =>
+                                one.driveFileId === meeting.driveFileId
+                                  ? { ...one, standing }
+                                  : one,
+                              ),
+                            );
+                            if (outcome === "duplicate") {
+                              toast.success(`${meeting.topic} is already in Uploads`);
+                            } else {
+                              toast.success(`${meeting.topic} is on its way to Uploads`);
+                            }
+                          })
                         }
                       >
-                        {busy === `bring-${meeting.recordingName}` ? "Starting" : "Bring in"}
+                        {busy === `bring-${meeting.driveFileId}` ? "Starting" : "Bring in"}
                       </Button>
                     )}
                   </li>
                 ))}
               </ul>
             ))}
+          {past !== null && more && (
+            <div>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy !== null}
+                onClick={() =>
+                  run("more", async () => {
+                    const page = await listPast({ organizationId: team.id, pageToken: more });
+                    setPast((list) => [...(list ?? []), ...page.recordings]);
+                    setMore(page.nextPageToken);
+                  })
+                }
+              >
+                {busy === "more" ? "Asking Google" : "Show older recordings"}
+              </Button>
+            </div>
+          )}
         </section>
       )}
 
@@ -325,6 +359,6 @@ type MeetImportRow = {
   _id: Id<"googleMeetImports">;
   topic: string;
   startTime: number;
-  status: "importing" | "done" | "failed";
+  status: "importing" | "done" | "failed" | "duplicate";
   error: string | null;
 };
