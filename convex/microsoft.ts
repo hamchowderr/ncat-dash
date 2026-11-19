@@ -657,7 +657,7 @@ export const bySubscription = internalQuery({
     await ctx.db
       .query("microsoftConnections")
       .withIndex("by_subscription", (q) => q.eq("subscriptionId", args.subscriptionId))
-      .first(),
+      .take(5),
 });
 
 type EventAnswer = { status: number };
@@ -680,10 +680,14 @@ export const takeEvent = internalAction({
     for (const notice of event.value ?? []) {
       if (!notice.subscriptionId || seen.has(notice.subscriptionId)) continue;
       seen.add(notice.subscriptionId);
-      const row = await ctx.runQuery(internal.microsoft.bySubscription, {
+      const rows = await ctx.runQuery(internal.microsoft.bySubscription, {
         subscriptionId: notice.subscriptionId,
       });
-      if (!row?.clientState || !sameSecret(row.clientState, notice.clientState ?? "")) continue;
+      // The watch's own secret decides which connection it is, should two share an id.
+      const row = rows.find(
+        (one) => one.clientState && sameSecret(one.clientState, notice.clientState ?? ""),
+      );
+      if (!row) continue;
       await ctx.scheduler.runAfter(0, internal.microsoft.check, { connectionId: row._id });
     }
     // Answered quickly whatever happened, so Microsoft does not send it again.

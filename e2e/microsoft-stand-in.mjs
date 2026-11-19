@@ -2,6 +2,7 @@
 // signs in at once and sends the person back), its token requests, and the parts of
 // Microsoft Graph the dashboard uses: who you are, the OneDrive Recordings folder, and
 // watches on the OneDrive. Nothing here is used by the product.
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
 import { MICROSOFT, MICROSOFT_PORT, MICROSOFT_USER, recording } from "./microsoft-data.mjs";
@@ -89,7 +90,7 @@ const server = createServer(async (request, response) => {
     if (!check || (await check.text()) !== "stand-in-check") {
       return send(response, 400, { error: { code: "ValidationError" } });
     }
-    const id = `watch-${watches.size + 1}`;
+    const id = randomUUID();
     watches.set(id, body);
     return send(response, 201, { id, expirationDateTime: body.expirationDateTime });
   }
