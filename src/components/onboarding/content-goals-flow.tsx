@@ -26,6 +26,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
@@ -103,12 +104,15 @@ export function ContentGoalsFlow({
   organizationId,
   stepsBefore = 0,
   stepsTotal = STAGES.length,
+  hasToolkit = true,
   onFinish,
 }: {
   organizationId: string;
   /** Setting-up steps already done before these, for the "Step 4 of 7" line. */
   stepsBefore?: number;
   stepsTotal?: number;
+  /** Without a toolkit there is nowhere to upload to, so the last screen says what is next. */
+  hasToolkit?: boolean;
   onFinish: () => void;
 }) {
   const saved = useQuery(api.contentGoals.get, { organizationId });
@@ -326,9 +330,12 @@ export function ContentGoalsFlow({
         </>
       )}
 
-      {stage === "upload" && (
-        <FirstUpload organizationId={organizationId} made={made} onFinish={onFinish} />
-      )}
+      {stage === "upload" &&
+        (hasToolkit ? (
+          <FirstUpload organizationId={organizationId} made={made} onFinish={onFinish} />
+        ) : (
+          <ToolkitNext made={made} onFinish={onFinish} />
+        ))}
     </div>
   );
 }
@@ -363,7 +370,6 @@ function FirstUpload({
     uploaded ? { organizationId, uploadId: uploaded.id } : "skip",
   );
   const on = made.filter((each) => each.on);
-  const off = made.filter((each) => !each.on);
 
   async function send(file: File) {
     let uploadId: Id<"uploads"> | null = null;
@@ -408,30 +414,7 @@ function FirstUpload({
         {on.length > 0 && " The automations you switched on start on it by themselves."}
       </Heading>
 
-      {made.length > 0 && (
-        <ul className="grid gap-1.5 text-sm" aria-label="Your automations">
-          {on.map((each) => (
-            <li key={each.starterId} className="flex items-center gap-2">
-              <span className="bg-emerald-600 size-2 rounded-full" aria-hidden="true" />
-              <span>
-                <span className="font-medium">{each.name}</span> is on
-              </span>
-            </li>
-          ))}
-          {off.map((each) => (
-            <li key={each.starterId} className="flex items-start gap-2">
-              <span
-                className="bg-muted-foreground/50 mt-1.5 size-2 shrink-0 rounded-full"
-                aria-hidden="true"
-              />
-              <span>
-                <span className="font-medium">{each.name}</span> is made but off.{" "}
-                <span className="text-muted-foreground">{each.problem}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <MadeList made={made} />
 
       {uploaded ? (
         <section
@@ -481,6 +464,10 @@ function FirstUpload({
         >
           <UploadCloud className="text-muted-foreground size-8" aria-hidden="true" />
           <p className="text-sm">Drop a recording here, or choose it from your computer.</p>
+          <p className="text-muted-foreground max-w-sm text-sm text-pretty">
+            Start with one about 5 minutes long, so you have something to work with in a few
+            minutes. Longer recordings work too; they just take a bit longer.
+          </p>
           <input
             ref={input}
             type="file"
@@ -510,6 +497,66 @@ function FirstUpload({
             Skip for now
           </Button>
         )}
+      </div>
+    </>
+  );
+}
+
+/** What the turn-on screen made: each one on, or made but off with the reason. */
+function MadeList({ made }: { made: Made[] }) {
+  if (made.length === 0) return null;
+  const on = made.filter((each) => each.on);
+  const off = made.filter((each) => !each.on);
+  return (
+    <ul className="grid gap-1.5 text-sm" aria-label="Your automations">
+      {on.map((each) => (
+        <li key={each.starterId} className="flex items-center gap-2">
+          <span className="bg-emerald-600 size-2 rounded-full" aria-hidden="true" />
+          <span>
+            <span className="font-medium">{each.name}</span> is on
+          </span>
+        </li>
+      ))}
+      {off.map((each) => (
+        <li key={each.starterId} className="flex items-start gap-2">
+          <span
+            className="bg-muted-foreground/50 mt-1.5 size-2 shrink-0 rounded-full"
+            aria-hidden="true"
+          />
+          <span>
+            <span className="font-medium">{each.name}</span> is made but off.{" "}
+            <span className="text-muted-foreground">{each.problem}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The last screen for a team that set up without a toolkit: what is switched on, and that
+ * it all starts once a toolkit is connected, since uploads are kept in the toolkit's storage.
+ */
+function ToolkitNext({ made, onFinish }: { made: Made[]; onFinish: () => void }) {
+  const router = useRouter();
+  return (
+    <>
+      <Heading title="Connect A Toolkit When You're Ready">
+        Uploads and finished files are kept in your toolkit&apos;s storage, so recordings go in once
+        one is connected.
+        {made.some((each) => each.on) &&
+          " The automations you switched on then start on them by themselves."}{" "}
+        Connect it any time from Home.
+      </Heading>
+      <MadeList made={made} />
+      <div className="flex flex-wrap justify-end gap-3">
+        <Button variant="ghost" onClick={() => router.replace("/onboarding?toolkit=connect")}>
+          Connect A Toolkit
+        </Button>
+        <Button onClick={onFinish}>
+          Go to the dashboard
+          <ArrowRight />
+        </Button>
       </div>
     </>
   );

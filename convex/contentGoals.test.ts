@@ -181,14 +181,14 @@ describe("turning on the ready-made automations that fit", () => {
     expect(made.problem).toMatch(/logo/i);
   });
 
-  test("leaves them off until the toolkit is connected", async () => {
+  test("leaves them off until the toolkit is connected, pointing to Home where it is", async () => {
     const { team, owner } = await setUp({ toolkit: false });
     const [made] = await owner.as.mutation(api.contentGoals.turnOn, {
       organizationId: team,
       starterIds: ["podcast-master"],
     });
     expect(made.on).toBe(false);
-    expect(made.problem).toMatch(/toolkit/i);
+    expect(made.problem).toBe("Connect your toolkit from Home first.");
   });
 
   test("does not make one the team already has", async () => {

@@ -16,6 +16,7 @@ test("the watched folder is picked from the bucket", async ({ page }) => {
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Folder Shop");
   await page.getByRole("button", { name: "Create team" }).click();
+  await page.getByRole("button", { name: /Yes, I Have One/ }).click();
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
   await page.getByRole("button", { name: "Test and connect" }).click();

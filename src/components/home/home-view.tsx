@@ -369,7 +369,7 @@ function GettingStarted({ setup }: { setup: Summary["setup"] }) {
       done: setup.toolkit,
       label: "Connect your toolkit",
       detail: "Its address and API key.",
-      href: "/onboarding",
+      href: "/onboarding?toolkit=connect",
     },
     {
       done: setup.bucket,
@@ -447,7 +447,7 @@ function ToolkitStatus({ connections }: { connections: Connection[] | undefined 
   if (!connection) {
     return (
       <Button asChild size="sm">
-        <Link href="/onboarding">Connect your toolkit</Link>
+        <Link href="/onboarding?toolkit=connect">Connect your toolkit</Link>
       </Button>
     );
   }

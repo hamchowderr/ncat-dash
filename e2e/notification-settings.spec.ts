@@ -52,6 +52,7 @@ test.beforeAll(async ({ browser }) => {
   jordan = await signUp(browser, "Jordan Lee", emailOf("jordan"));
   await jordan.getByPlaceholder("Your company or channel").fill("Salt House");
   await jordan.getByRole("button", { name: "Create team" }).click();
+  await jordan.getByRole("button", { name: /Yes, I Have One/ }).click();
   await jordan.locator("#baseUrl").fill(TOOLKIT);
   await jordan.locator("#apiKey").fill("stand-in-key-1234");
   await jordan.getByRole("button", { name: "Test and connect" }).click();

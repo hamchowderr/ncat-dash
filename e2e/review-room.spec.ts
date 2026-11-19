@@ -62,6 +62,7 @@ test.beforeAll(async ({ browser }) => {
   jordan = await signUp(browser, "Jordan Lee", jordanEmail);
   await jordan.getByPlaceholder("Your company or channel").fill("Salt House");
   await jordan.getByRole("button", { name: "Create team" }).click();
+  await jordan.getByRole("button", { name: /Yes, I Have One/ }).click();
   await jordan.locator("#baseUrl").fill(TOOLKIT);
   await jordan.locator("#apiKey").fill("stand-in-key-1234");
   await jordan.getByRole("button", { name: "Test and connect" }).click();
@@ -449,6 +450,7 @@ test("someone on another team cannot open the room", async ({ browser }) => {
   const outsider = await signUp(browser, "Someone Else", `outsider.${stamp}@example.test`);
   await outsider.getByPlaceholder("Your company or channel").fill("Other Team");
   await outsider.getByRole("button", { name: "Create team" }).click();
+  await outsider.getByRole("button", { name: /Yes, I Have One/ }).click();
   await outsider.locator("#baseUrl").fill(TOOLKIT);
   await outsider.locator("#apiKey").fill("stand-in-key-1234");
   await outsider.getByRole("button", { name: "Test and connect" }).click();
