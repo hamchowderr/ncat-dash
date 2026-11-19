@@ -59,12 +59,20 @@ export const ZOOM_SCOPES = [
   "cloud_recording:read:recording",
 ];
 
-/** What the whole-account app asks Zoom for: the admin, and every host's recordings. */
+/**
+ * What the whole-account app asks Zoom for: the admin, the account's users, and each host's
+ * recordings. Zoom has no one-call list of a whole account's recordings outside master
+ * (reseller) accounts, so past recordings are listed host by host.
+ */
 export const ZOOM_ACCOUNT_SCOPES = [
   "user:read:user:admin",
-  "cloud_recording:read:list_account_recordings:admin",
+  "user:read:list_users:admin",
+  "cloud_recording:read:list_user_recordings:admin",
   "cloud_recording:read:recording:admin",
 ];
+
+/** How many of an account's hosts are asked for their recordings at once. */
+const HOSTS_AT_ONCE = 5;
 
 /** One of the dashboard's two Zoom apps: per person, or the whole account. */
 interface ZoomApp {
@@ -706,11 +714,50 @@ async function pastMeetings(
   }
   const to = new Date();
   const from = new Date(to.getTime() - PAST_DAYS * 24 * 60 * 60 * 1000);
-  // A whole account lists every host's recordings; a person's Zoom only their own.
-  const url = new URL(`${apiBase()}/${wholeAccount ? "accounts/me" : "users/me"}/recordings`);
-  url.searchParams.set("from", from.toISOString().slice(0, 10));
-  url.searchParams.set("to", to.toISOString().slice(0, 10));
-  url.searchParams.set("page_size", "100");
+  const range = { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+  // A person's Zoom lists only their own. A whole account is listed host by host: Zoom's
+  // one-call account list is only for master accounts and refuses everyone else.
+  const hosts = wholeAccount ? await accountHosts(token) : ["me"];
+  const meetings: ZoomMeeting[] = [];
+  for (let start = 0; start < hosts.length; start += HOSTS_AT_ONCE) {
+    const batch = hosts.slice(start, start + HOSTS_AT_ONCE);
+    const lists = await Promise.all(
+      batch.map((host) =>
+        zoomList<{ meetings?: ZoomMeeting[] }>(
+          token,
+          `users/${encodeURIComponent(host)}/recordings`,
+          {
+            ...range,
+            page_size: "300",
+          },
+        ),
+      ),
+    );
+    for (const list of lists) meetings.push(...(list.meetings ?? []));
+  }
+  return meetings.sort((a, b) => Date.parse(b.start_time ?? "") - Date.parse(a.start_time ?? ""));
+}
+
+/** Everyone active in the connected Zoom account, by their Zoom user id. */
+async function accountHosts(token: string): Promise<string[]> {
+  const ids: string[] = [];
+  let next = "";
+  do {
+    const page = await zoomList<{ users?: { id: string }[]; next_page_token?: string }>(
+      token,
+      "users",
+      { status: "active", page_size: "300", ...(next ? { next_page_token: next } : {}) },
+    );
+    ids.push(...(page.users ?? []).map((one) => one.id));
+    next = page.next_page_token ?? "";
+  } while (next);
+  return ids;
+}
+
+/** One GET to Zoom's API; a refusal carries Zoom's own reason, so it can be acted on. */
+async function zoomList<T>(token: string, path: string, query: Record<string, string>): Promise<T> {
+  const url = new URL(`${apiBase()}/${path}`);
+  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
   let response: Response;
   try {
     response = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
@@ -721,15 +768,16 @@ async function pastMeetings(
     });
   }
   if (!response.ok) {
+    const reason = await response
+      .json()
+      .then((body: { message?: unknown }) => (typeof body.message === "string" ? body.message : ""))
+      .catch(() => "");
     throw new ConvexError({
       code: "zoom_refused",
-      message: `Zoom did not list your recordings (HTTP ${response.status}).`,
+      message: `Zoom did not list your recordings (HTTP ${response.status})${reason ? `: ${reason}` : "."}`,
     });
   }
-  const body = (await response.json()) as { meetings?: ZoomMeeting[] };
-  return (body.meetings ?? []).sort(
-    (a, b) => Date.parse(b.start_time ?? "") - Date.parse(a.start_time ?? ""),
-  );
+  return (await response.json()) as T;
 }
 
 export interface PastRecording {
