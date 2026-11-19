@@ -18,6 +18,9 @@ afterEach(() => vi.restoreAllMocks());
 
 type Block = { text: string; cache_control?: unknown };
 type Request = {
+  model?: string;
+  thinking?: unknown;
+  output_config?: { effort?: string };
   system?: Block[];
   tools?: { name: string; cache_control?: unknown }[];
   messages?: { content: unknown }[];
@@ -47,7 +50,11 @@ const breakpoints = (r: Request) => JSON.stringify(r).split('"cache_control"').l
 
 const EPHEMERAL = { type: 'ephemeral' };
 
-async function postStream(resourceId: string, text: string) {
+async function postStream(
+  resourceId: string,
+  text: string,
+  body: Record<string, unknown> = {},
+) {
   const controller = createChatAgentController({
     storage: new InMemoryStore(),
     resourceId,
@@ -59,6 +66,7 @@ async function postStream(resourceId: string, text: string) {
     const route = find(
       createControllerRoutes(
         deps({
+          modelAllowlist: new Set(['anthropic/claude-sonnet-4-6']),
           getSession: () => Promise.resolve(session),
           getAgentController: () =>
             Promise.resolve(
@@ -69,7 +77,7 @@ async function postStream(resourceId: string, text: string) {
       '/agent-controller/stream',
       'POST',
     );
-    const { c } = ctx({ body: { text, timeZone: 'UTC' } });
+    const { c } = ctx({ body: { text, timeZone: 'UTC', ...body } });
     const res = await route.handler(c);
     if (res instanceof Response) await res.text();
   } finally {
@@ -121,6 +129,32 @@ describe('prompt caching on (AIMock)', () => {
     } finally {
       turnContextSections.splice(turnContextSections.indexOf(profile), 1);
     }
+  });
+});
+
+describe('what a turn costs (lib/cost.ts, AIMock)', () => {
+  it('thinks adaptively at medium effort when building, never with a fixed budget', async () => {
+    const sent = captureProviderRequests();
+    await postStream('u-cost-build', 'Make me an automation that clips every upload for TikTok.');
+    const request = chatRequest(sent);
+    expect(request?.model).toBe('claude-sonnet-4-6');
+    expect(request?.thinking).toEqual({ type: 'adaptive' });
+    expect(request?.output_config?.effort).toBe('medium');
+    expect(JSON.stringify(request)).not.toContain('budget_tokens');
+  });
+
+  it('answers a simple question on Claude Haiku 5.5 at low effort', async () => {
+    const sent = captureProviderRequests();
+    await postStream('u-cost-simple', 'When is Friday?');
+    const request = chatRequest(sent);
+    expect(request?.model).toBe('claude-haiku-5-5');
+    expect(request?.output_config?.effort).toBe('low');
+  });
+
+  it("keeps a model the composer picked, even for a simple question", async () => {
+    const sent = captureProviderRequests();
+    await postStream('u-cost-picked', 'When is Friday?', { model: 'anthropic/claude-sonnet-4-6' });
+    expect(chatRequest(sent)?.model).toBe('claude-sonnet-4-6');
   });
 });
 

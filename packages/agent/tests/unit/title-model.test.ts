@@ -12,7 +12,7 @@ describe('deriveTitleModelId — provider-appropriate auto-title model', () => {
   });
 
   it('uses a cheap Anthropic model for an Anthropic chat model', () => {
-    expect(deriveTitleModelId('anthropic/claude-sonnet-4-6')).toBe('anthropic/claude-haiku-4-5');
+    expect(deriveTitleModelId('anthropic/claude-sonnet-4-6')).toBe('anthropic/claude-haiku-5-5');
   });
 
   it('falls back to the chat model itself for an unrecognized provider', () => {

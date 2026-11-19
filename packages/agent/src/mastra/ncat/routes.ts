@@ -3,6 +3,13 @@ import { z } from "zod";
 import { resourceIdOf } from "../routes/resource";
 import { reviewAgent } from "../agents/review";
 import { momentsAgent, momentsPrompt, momentsRequest } from "./moments";
+import {
+  batchAnswers,
+  batchCheck,
+  batchModel,
+  batchSubmission,
+  submitBatch,
+} from "./moments-batch";
 import { reviewPrompt, reviewQuestion } from "./review";
 import { rememberSession } from "./session-store";
 
@@ -109,6 +116,51 @@ export const createNcatRoutes = () => [
         return c.json({ answer });
       } catch {
         return c.json({ error: "The model did not answer." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/moments/batch: the same questions for a run nobody is watching, sent to
+  // Anthropic as one batch at half the price (./moments-batch.ts). Answers { batchId }, or
+  // 409 when this server cannot batch, and then Convex asks POST /ncat/moments instead.
+  registerApiRoute("/ncat/moments/batch", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const model = batchModel();
+      if (!model) return c.json({ error: "This agent server cannot send batches." }, 409);
+      const parsed = batchSubmission.safeParse(await c.req.json().catch(() => undefined));
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        return c.json({ batchId: await submitBatch(model, parsed.data.requests) });
+      } catch {
+        return c.json({ error: "The batch could not be sent." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/moments/batch/answers: { batchId } → { pending: true } while it works, then
+  // { answers: [{ id, answer } | { id, error }] }.
+  registerApiRoute("/ncat/moments/batch/answers", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      if (!batchModel()) return c.json({ error: "This agent server cannot send batches." }, 409);
+      const parsed = batchCheck.safeParse(await c.req.json().catch(() => undefined));
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        const answers = await batchAnswers(parsed.data.batchId);
+        return c.json(answers ? { answers } : { pending: true });
+      } catch {
+        return c.json({ error: "The batch could not be read." }, 502);
       }
     },
   }),

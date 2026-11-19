@@ -20,6 +20,7 @@ import { sessionEventStream } from './session-sse';
 import { streamBodyLimit, streamBodySchema, timeZone } from './stream-body';
 import { sessionForThread } from './thread-session';
 import type { ChatServerDeps } from './types';
+import { MODEL_PICKED_KEY } from '../lib/cost';
 
 /**
  * A turn's request context: the composer's Search toggle, the browser's time zone, and the
@@ -168,10 +169,14 @@ export const createControllerRoutes = (deps: ChatServerDeps) => [
           // stream — lets the resulting `model_changed` event flow to the client too.
           if (model && deps.modelAllowlist.has(model)) {
             await session.model.switch(model);
+            requestContext.set(MODEL_PICKED_KEY, true);
           } else if (deps.modelFor) {
             // Without a pick from the composer, the host may choose (a team's own setting),
             // and with no choice the turn runs on the server's default.
-            const chosen = (await deps.modelFor(resourceIdOf(c))) ?? session.model.getDefault();
+            const teams = await deps.modelFor(resourceIdOf(c));
+            // A model someone chose is kept; only the default is open to lib/cost.ts.
+            if (teams) requestContext.set(MODEL_PICKED_KEY, true);
+            const chosen = teams ?? session.model.getDefault();
             if (chosen && chosen !== session.model.get()) await session.model.switch(chosen);
           }
           // Same for the mode: switching inside the stream sends `mode_changed` too. Switched
