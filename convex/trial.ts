@@ -2,7 +2,16 @@ import { v } from "convex/values";
 
 import { internalMutation, query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
-import { buyUrl, daysLeft, trialDays, trialEnd, trialOf } from "./lib/trial";
+import { UNKNOWN_NETWORK } from "./lib/clientIp";
+import { emailKey } from "./lib/emailKey";
+import {
+  buyUrl,
+  daysLeft,
+  trialDays,
+  trialEnd,
+  trialOf,
+  trialsPerNetwork,
+} from "./lib/trial";
 
 /**
  * A team's free trial, for the bar along the top and the agent: whether it has one, how
@@ -18,22 +27,42 @@ export const status = query({
       endsAt: v.number(),
       daysLeft: v.number(),
       buyUrl: v.union(v.null(), v.string()),
+      // True when the team got no fresh days because its owner already had a trial.
+      repeat: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId);
     const state = await trialOf(ctx, args.organizationId);
     if (state.kind === "none" || state.kind === "paid") return { kind: state.kind };
-    return { ...state, daysLeft: daysLeft(state.endsAt), buyUrl: buyUrl() };
+    return {
+      kind: state.kind,
+      endsAt: state.endsAt,
+      daysLeft: daysLeft(state.endsAt),
+      buyUrl: buyUrl(),
+      repeat: state.repeat,
+    };
   },
 });
+
+const NETWORK_WINDOW = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * Starts a new team's trial. Called when the team is made (see `organizationHooks` in
  * auth.ts). Does nothing while trials are off, or when the team already has one.
+ *
+ * A trial is one person's, not one team's: when the owner's mailbox (however it is
+ * written) already had a trial, the new team shares what is left of it rather than
+ * starting fresh; and once TRIALS_PER_NETWORK teams from one network have had trials in
+ * 30 days, the next starts already over. A team whose earlier trial was bought is a
+ * customer's, so it starts fresh.
  */
 export const begin = internalMutation({
-  args: { organizationId: v.string() },
+  args: {
+    organizationId: v.string(),
+    ownerId: v.optional(v.string()),
+    ownerEmail: v.optional(v.string()),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const days = trialDays();
@@ -44,10 +73,49 @@ export const begin = internalMutation({
       .unique();
     if (existing) return null;
     const startedAt = Date.now();
+    const signUp = args.ownerId
+      ? await ctx.db
+          .query("signUps")
+          .withIndex("by_user", (q) => q.eq("userId", args.ownerId!))
+          .first()
+      : null;
+    const mailbox = signUp?.emailKey ?? (args.ownerEmail ? emailKey(args.ownerEmail) : null);
+    const network =
+      signUp && signUp.networkKey !== UNKNOWN_NETWORK ? signUp.networkKey : undefined;
+
+    let endsAt = trialEnd(startedAt, days);
+    let repeatOf: "email" | "network" | undefined;
+    if (mailbox) {
+      const earlier = await ctx.db
+        .query("teamTrials")
+        .withIndex("by_email_key", (q) => q.eq("emailKey", mailbox))
+        .take(20);
+      const unpaid = earlier.filter((trial) => trial.paidAt === undefined);
+      if (unpaid.length > 0 && unpaid.length === earlier.length) {
+        endsAt = Math.min(...unpaid.map((trial) => trial.endsAt));
+        repeatOf = "email";
+      }
+    }
+    if (!repeatOf && network) {
+      const recent = await ctx.db
+        .query("teamTrials")
+        .withIndex("by_network_and_started", (q) =>
+          q.eq("networkKey", network).gte("startedAt", startedAt - NETWORK_WINDOW),
+        )
+        .take(trialsPerNetwork());
+      if (recent.length >= trialsPerNetwork()) {
+        endsAt = startedAt;
+        repeatOf = "network";
+      }
+    }
     await ctx.db.insert("teamTrials", {
       organizationId: args.organizationId,
       startedAt,
-      endsAt: trialEnd(startedAt, days),
+      endsAt,
+      ...(args.ownerId ? { ownerId: args.ownerId } : {}),
+      ...(mailbox ? { emailKey: mailbox } : {}),
+      ...(network ? { networkKey: network } : {}),
+      ...(repeatOf ? { repeatOf } : {}),
     });
     return null;
   },

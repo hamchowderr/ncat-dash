@@ -33,6 +33,7 @@ import { createMcpServer } from './lib/mcp';
 import { getSharedStore, getSharedVector, MESSAGE_VECTOR_INDEX } from './lib/memory';
 import { readWorkspaceFile, readWorkspaceTree } from './lib/workspace-files';
 import { createNcatRoutes } from './ncat/routes';
+import { scheduleHooks } from './ncat/schedule-gate';
 import { teamModelFor, teamSection } from './ncat/team-brief';
 import { turnContextSections } from './lib/turn-context';
 // The AgentController route contract, split by surface — see routes/. The modules
@@ -154,6 +155,9 @@ export const mastra = new Mastra({
   // unregistered, its init() moves chatAgent onto an internal Mastra with no
   // tracing, and no run creates spans (mastra-chat-kit-9m3).
   agentControllers: { chat: getChatAgentControllerInstance() },
+  // Each of the agent's own schedules asks the dashboard before it fires: none once a
+  // team's trial is over or it is blocked (ncat/schedule-gate.ts).
+  schedules: scheduleHooks,
   mcpServers: { baseMcp: mcpServer },
   storage,
   logger: new PinoLogger({

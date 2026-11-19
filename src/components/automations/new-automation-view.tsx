@@ -58,7 +58,8 @@ export function NewAutomationView() {
         </div>
         <PageTourButton tourId="new-automation" className="self-start" />
       </div>
-      <StartPageTour tourId="new-automation" />
+      {/* Once a template is picked the page is on its way out: no tour starts over it. */}
+      <StartPageTour tourId="new-automation" ready={!pending} />
       <TemplateGallery disabled={pending} onPick={onPick} />
     </>
   );

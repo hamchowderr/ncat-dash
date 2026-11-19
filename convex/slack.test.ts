@@ -242,3 +242,35 @@ describe("what the agent server is told", () => {
     ).toBe(true);
   });
 });
+
+describe("the agent in Slack once nothing new can start", () => {
+  test("a blocked team, or one whose trial is over, is told why, even someone found before", async () => {
+    const { t, team, owner } = await setUp();
+    await owner.as.action(api.slack.connect, {
+      organizationId: team,
+      botToken: TOKEN,
+      signingSecret: SIGNING,
+    });
+    slackUsers = { U0JORDAN: { email: "jordan.lee@example.test" } };
+    const person = () =>
+      t.action(internal.slack.person, { slackTeamId: "T0SALT", slackUserId: "U0JORDAN" });
+
+    expect(await person()).toMatchObject({ ok: true, organizationId: team });
+    await t.mutation(internal.blocks.blockTeam, { organizationId: team });
+    expect(await person()).toMatchObject({
+      ok: false,
+      reason: "refused",
+      email: null,
+      message: expect.stringMatching(/paused/),
+    });
+    await t.mutation(internal.blocks.unblockTeam, { organizationId: team });
+    await t.run((ctx) =>
+      ctx.db.insert("teamTrials", { organizationId: team, startedAt: 0, endsAt: 1 }),
+    );
+    expect(await person()).toMatchObject({
+      ok: false,
+      reason: "refused",
+      message: expect.stringMatching(/trial has ended/),
+    });
+  });
+});

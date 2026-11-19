@@ -89,6 +89,16 @@ describe('who the agent works for in Discord', () => {
     expect(t.post).toHaveBeenCalledWith(expect.stringContaining('Link my Discord'));
   });
 
+  it("says the dashboard's reason, and does not answer, once the trial is over", async () => {
+    const message_ = 'Your free trial has ended, so nothing new starts.';
+    useDashboardForTests(async () => ({ ok: false, reason: 'refused', message: message_ }));
+    const t = thread();
+    const next = vi.fn();
+    await asTheDiscordWriter(t as never, message(), next, context() as never);
+    expect(next).not.toHaveBeenCalled();
+    expect(t.post).toHaveBeenCalledWith(message_);
+  });
+
   it('ignores bots, and says so plainly when the dashboard cannot be reached', async () => {
     useDashboardForTests(async () => null);
     const t = thread();
@@ -104,6 +114,11 @@ describe('who the agent works for in Discord', () => {
     expect(refusalText({ ok: false, reason: 'pick_server' })).toMatch(/more than one team/);
     expect(refusalText({ ok: false, reason: 'not_connected' })).toMatch(/not linked to a team/);
     expect(refusalText(ADA)).toBe('');
+  });
+
+  it("passes on the dashboard's own words when it says no (trial over, blocked, too many)", () => {
+    const message = 'This team has been paused, so nothing new starts.';
+    expect(refusalText({ ok: false, reason: 'refused', message })).toBe(message);
   });
 });
 
