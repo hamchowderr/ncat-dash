@@ -50,6 +50,44 @@ describe("a settings page", () => {
     expect(screen.getByText("Agent settings")).toBeInTheDocument();
   });
 
+  test("a page about other apps leads with their logos; other pages have none", () => {
+    for (const [slug, name] of [
+      ["slack", "Slack"],
+      ["discord", "Discord"],
+      ["zoom", "Zoom"],
+    ]) {
+      path.current = `/settings/${slug}`;
+      const { unmount } = renderInApp(
+        <SettingsShell>
+          <p>Page</p>
+        </SettingsShell>,
+      );
+      const header = screen.getByRole("heading", { level: 1 }).closest("header")!;
+      expect(within(header).getByRole("img", { name: `${name} logo` })).toBeInTheDocument();
+      unmount();
+    }
+    path.current = "/settings/agent";
+    const { unmount } = renderInApp(
+      <SettingsShell>
+        <p>Page</p>
+      </SettingsShell>,
+    );
+    expect(screen.queryByRole("img", { name: /logo$/ })).toBeNull();
+    unmount();
+
+    // Video Editors shows every editor the team can export to.
+    path.current = "/settings/editors";
+    renderInApp(
+      <SettingsShell>
+        <p>Page</p>
+      </SettingsShell>,
+    );
+    const header = screen.getByRole("heading", { level: 1 }).closest("header")!;
+    for (const name of ["Premiere Pro", "DaVinci Resolve", "Final Cut Pro", "CapCut"]) {
+      expect(within(header).getByRole("img", { name: `${name} logo` })).toBeInTheDocument();
+    }
+  });
+
   test("shows a setting as a row: its name and a short line, then its control", () => {
     renderInApp(
       <SettingRow label="Jobs at once" htmlFor="jobs" description="How many at the same time.">

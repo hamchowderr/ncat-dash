@@ -60,6 +60,7 @@ test("connects Zoom, brings a past meeting in, and a finished one arrives by its
   await fetch(`${ZOOM}/stand-in/user`, { method: "POST", body: JSON.stringify(zoomUser) });
   await page.goto("/settings/zoom");
   await expect(page.getByRole("heading", { level: 1, name: "Zoom" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Zoom logo" })).toBeVisible();
   await page.getByRole("button", { name: "Connect Zoom" }).click();
   await expect(page).toHaveURL(/\/settings\/zoom$/, { timeout: 30_000 });
   await expect(page.getByText("Your Zoom is connected")).toBeVisible();
