@@ -2,11 +2,12 @@
 
 import { KINDS, STATUSES } from "@convex/lib/packages";
 import { Check, Copy } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import {
   Select,
   SelectContent,
@@ -17,9 +18,22 @@ import {
 import { hookUrl, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib/automations";
 
 import { AutomationPicker } from "./automation-picker";
+import { TRIGGER_ICONS, TRIGGER_TINT } from "./flow-nodes";
+import { TimeZonePicker, zoneCity } from "./time-zone-picker";
 import { WatchedFolder } from "./watched-folder";
 
 const UNITS = { minutes: 1, hours: 60, days: 1440 } as const;
+
+/** One line under each choice in the What starts it list. */
+const TRIGGER_HINTS: Record<TriggerKind, string> = {
+  manual: "Only when someone presses Run now",
+  webhook: "When another app sends it a message",
+  schedule: "Every so often, or each day at a set time",
+  upload: "When a file is added on the Uploads page",
+  folder: "When a file lands in one of your folders",
+  finished: "Right after another automation runs",
+  slot: "When a project slot moves to a new status",
+};
 type Unit = keyof typeof UNITS;
 
 function unitOf(minutes: number): Unit {
@@ -54,6 +68,16 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+function TriggerName({ kind }: { kind: TriggerKind }) {
+  const Icon = TRIGGER_ICONS[kind];
+  return (
+    <>
+      <Icon className={TRIGGER_TINT} aria-hidden="true" />
+      {TRIGGER_LABELS[kind]}
+    </>
+  );
+}
+
 /** Settings for what starts the automation. */
 export function TriggerPanel({
   trigger,
@@ -66,13 +90,6 @@ export function TriggerPanel({
   automationId: string;
   hookToken: string;
 }) {
-  const zones = useMemo(() => {
-    try {
-      return Intl.supportedValuesOf("timeZone");
-    } catch {
-      return ["UTC"];
-    }
-  }, []);
   const address = hookUrl(automationId, hookToken);
 
   return (
@@ -84,14 +101,24 @@ export function TriggerPanel({
           onValueChange={(kind) => onChange(defaultFor(kind as TriggerKind))}
         >
           <SelectTrigger id="trigger-kind" className="w-full">
-            <SelectValue />
+            <SelectValue>
+              <TriggerName kind={trigger.kind} />
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {(Object.keys(TRIGGER_LABELS) as TriggerKind[]).map((kind) => (
-              <SelectItem key={kind} value={kind}>
-                {TRIGGER_LABELS[kind]}
-              </SelectItem>
-            ))}
+            {(Object.keys(TRIGGER_LABELS) as TriggerKind[]).map((kind) => {
+              const Icon = TRIGGER_ICONS[kind];
+              return (
+                <SelectItem
+                  key={kind}
+                  value={kind}
+                  description={TRIGGER_HINTS[kind]}
+                  icon={<Icon className={TRIGGER_TINT} aria-hidden="true" />}
+                >
+                  {TRIGGER_LABELS[kind]}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
         {trigger.kind === "manual" && (
@@ -280,125 +307,136 @@ export function TriggerPanel({
       )}
 
       {trigger.kind === "schedule" && (
-        <>
-          <Field>
-            <FieldLabel htmlFor="trigger-mode">How often</FieldLabel>
-            <Select
-              value={trigger.schedule.mode}
-              onValueChange={(mode) =>
-                onChange({
-                  kind: "schedule",
-                  schedule:
-                    mode === "daily"
-                      ? {
-                          mode: "daily",
-                          time: "09:00",
-                          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-                        }
-                      : { mode: "interval", minutes: 60 },
-                })
-              }
-            >
-              <SelectTrigger id="trigger-mode" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="interval">Every so often</SelectItem>
-                <SelectItem value="daily">Every day at a set time</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          {trigger.schedule.mode === "interval" ? (
-            <Field>
-              <FieldLabel htmlFor="trigger-every">Every</FieldLabel>
-              <div className="flex gap-2">
-                <Input
-                  id="trigger-every"
-                  type="number"
-                  min={1}
-                  step={1}
-                  className="w-24"
-                  value={trigger.schedule.minutes / UNITS[unitOf(trigger.schedule.minutes)]}
-                  onChange={(event) => {
-                    const unit = unitOf(
-                      trigger.schedule.mode === "interval" ? trigger.schedule.minutes : 60,
-                    );
-                    const count = Math.max(1, Math.round(Number(event.target.value) || 1));
-                    onChange({
-                      kind: "schedule",
-                      schedule: { mode: "interval", minutes: count * UNITS[unit] },
-                    });
-                  }}
-                />
-                <Select
-                  value={unitOf(trigger.schedule.minutes)}
-                  onValueChange={(unit) => {
-                    if (trigger.schedule.mode !== "interval") return;
-                    const count =
-                      trigger.schedule.minutes / UNITS[unitOf(trigger.schedule.minutes)];
-                    onChange({
-                      kind: "schedule",
-                      schedule: { mode: "interval", minutes: count * UNITS[unit as Unit] },
-                    });
-                  }}
-                >
-                  <SelectTrigger aria-label="Unit" className="flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="minutes">minutes</SelectItem>
-                    <SelectItem value="hours">hours</SelectItem>
-                    <SelectItem value="days">days</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <FieldDescription>
-                The shortest gap is 5 minutes. If a run is still going when the next is due, that
-                turn is skipped.
-              </FieldDescription>
-            </Field>
-          ) : (
-            <>
-              <Field>
-                <FieldLabel htmlFor="trigger-time">Time</FieldLabel>
-                <Input
-                  id="trigger-time"
-                  type="time"
-                  value={trigger.schedule.time}
-                  onChange={(event) => {
-                    if (trigger.schedule.mode !== "daily" || !event.target.value) return;
-                    onChange({
-                      kind: "schedule",
-                      schedule: { ...trigger.schedule, time: event.target.value.slice(0, 5) },
-                    });
-                  }}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="trigger-zone">Time zone</FieldLabel>
-                <Input
-                  id="trigger-zone"
-                  list="trigger-zones"
-                  value={trigger.schedule.timeZone}
-                  onChange={(event) => {
-                    if (trigger.schedule.mode !== "daily") return;
-                    onChange({
-                      kind: "schedule",
-                      schedule: { ...trigger.schedule, timeZone: event.target.value },
-                    });
-                  }}
-                  autoComplete="off"
-                />
-                <datalist id="trigger-zones">
-                  {zones.map((zone) => (
-                    <option key={zone} value={zone} />
-                  ))}
-                </datalist>
-              </Field>
-            </>
-          )}
-        </>
+        <ScheduleFields
+          schedule={trigger.schedule}
+          onChange={(schedule) => onChange({ kind: "schedule", schedule })}
+        />
       )}
     </FieldGroup>
+  );
+}
+
+type Schedule = Extract<Trigger, { kind: "schedule" }>["schedule"];
+
+function localZone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+/** "09:00" → "9:00 AM", in the reader's own way of writing times. */
+function clockTime(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  return new Date(2000, 0, 1, hours, minutes).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** The schedule in one plain sentence, shown under the choices. */
+export function scheduleSentence(schedule: Schedule) {
+  if (schedule.mode === "daily") {
+    return `Runs every day at ${clockTime(schedule.time)}, ${zoneCity(schedule.timeZone)} time.`;
+  }
+  const unit = unitOf(schedule.minutes);
+  const count = schedule.minutes / UNITS[unit];
+  const word = count === 1 ? unit.slice(0, -1) : `${count} ${unit}`;
+  return `Runs every ${word}.`;
+}
+
+/**
+ * How often a Schedule trigger runs. The two ways are side by side as a segmented
+ * control, so both are visible at once and nothing opens over the fields below;
+ * each way's settings sit together in one row.
+ */
+function ScheduleFields({
+  schedule,
+  onChange,
+}: {
+  schedule: Schedule;
+  onChange: (schedule: Schedule) => void;
+}) {
+  const unit = schedule.mode === "interval" ? unitOf(schedule.minutes) : "hours";
+  const count = schedule.mode === "interval" ? schedule.minutes / UNITS[unit] : 1;
+  return (
+    <>
+      <Field>
+        <FieldLabel id="trigger-mode-label">How often</FieldLabel>
+        <Segmented
+          aria-labelledby="trigger-mode-label"
+          value={schedule.mode}
+          onValueChange={(mode) =>
+            onChange(
+              mode === "daily"
+                ? { mode: "daily", time: "09:00", timeZone: localZone() }
+                : { mode: "interval", minutes: 60 },
+            )
+          }
+          options={[
+            { value: "interval", label: "On repeat" },
+            { value: "daily", label: "Every day" },
+          ]}
+        />
+      </Field>
+      {schedule.mode === "interval" ? (
+        <Field>
+          <FieldLabel htmlFor="trigger-every">Every</FieldLabel>
+          <div className="flex items-center gap-2">
+            <Input
+              id="trigger-every"
+              type="number"
+              min={1}
+              step={1}
+              className="h-9 w-20 shrink-0 tabular-nums"
+              value={count}
+              onChange={(event) => {
+                const typed = Math.max(1, Math.round(Number(event.target.value) || 1));
+                onChange({ mode: "interval", minutes: typed * UNITS[unit] });
+              }}
+            />
+            <Segmented
+              aria-label="Unit"
+              value={unit}
+              onValueChange={(next) =>
+                onChange({ mode: "interval", minutes: count * UNITS[next as Unit] })
+              }
+              options={[
+                { value: "minutes", label: "Minutes" },
+                { value: "hours", label: "Hours" },
+                { value: "days", label: "Days" },
+              ]}
+            />
+          </div>
+          <FieldDescription>
+            The shortest gap is 5 minutes. If a run is still going when the next is due, that turn
+            is skipped.
+          </FieldDescription>
+        </Field>
+      ) : (
+        <Field>
+          <div className="grid grid-cols-[7.5rem_1fr] gap-x-2 gap-y-2">
+            <FieldLabel htmlFor="trigger-time">At</FieldLabel>
+            <FieldLabel htmlFor="trigger-zone">Time zone</FieldLabel>
+            <Input
+              id="trigger-time"
+              aria-label="Time"
+              type="time"
+              className="h-9 tabular-nums"
+              value={schedule.time}
+              onChange={(event) => {
+                if (!event.target.value) return;
+                onChange({ ...schedule, time: event.target.value.slice(0, 5) });
+              }}
+            />
+            <TimeZonePicker
+              id="trigger-zone"
+              value={schedule.timeZone}
+              onChange={(timeZone) => onChange({ ...schedule, timeZone })}
+            />
+          </div>
+        </Field>
+      )}
+      <p className="bg-background text-foreground/80 rounded-lg px-3 py-2.5 text-sm">
+        {scheduleSentence(schedule)}
+      </p>
+    </>
   );
 }

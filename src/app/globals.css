@@ -40,6 +40,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --color-surface: var(--surface);
+  --color-selected: var(--selected);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -53,6 +54,8 @@
   --card: oklch(1 0 0);
   /* Quiet tone that groups things in place of a box line. */
   --surface: oklch(0.973 0 0);
+  /* The tone of a picked row: clearly a step past surface and hover. */
+  --selected: oklch(0.935 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
@@ -91,6 +94,7 @@
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --surface: oklch(0.19 0 0);
+  --selected: oklch(0.3 0 0);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
@@ -119,6 +123,21 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+/*
+ * The one look for "this is the picked one" on things you click to select: a canvas
+ * step, a note, a calendar entry, a slot. A thin ring held a few pixels off the item's
+ * edge, as in Figma and Framer, so it reads as a selection and not as a heavier border.
+ */
+@utility picked-ring {
+  outline: 2px solid color-mix(in oklab, var(--foreground) 55%, transparent);
+  outline-offset: 3px;
+}
+
+/* The picked row in a list: a quiet filled tone and full-weight text, no outline. */
+@utility row-selected {
+  @apply bg-selected font-medium text-foreground;
 }
 
 @layer base {

@@ -66,7 +66,11 @@ export function triggerSummary(trigger: Trigger): string {
       } moves to ${SLOT_STATUS_WORDS[trigger.status]}`;
     case "schedule": {
       const { schedule } = trigger;
-      if (schedule.mode === "daily") return `Every day at ${schedule.time} (${schedule.timeZone})`;
+      if (schedule.mode === "daily") {
+        // "America/New_York" reads as "New York time".
+        const city = schedule.timeZone.split("/").at(-1)!.replaceAll("_", " ");
+        return `Every day at ${schedule.time}, ${city} time`;
+      }
       const { minutes } = schedule;
       if (minutes % 1440 === 0)
         return minutes === 1440 ? "Every day" : `Every ${minutes / 1440} days`;

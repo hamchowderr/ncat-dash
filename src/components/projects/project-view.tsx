@@ -101,7 +101,7 @@ function SlotList({
                     onClick={() => onSelect(slot._id)}
                     className={cn(
                       "focus-visible:ring-ring/50 flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm outline-none transition-colors focus-visible:ring-3",
-                      slot._id === selected ? "bg-muted" : "bg-surface hover:bg-muted",
+                      slot._id === selected ? "row-selected" : "bg-surface hover:bg-muted",
                     )}
                   >
                     <Thumb slot={slot} className="aspect-video h-9" />
@@ -188,7 +188,7 @@ function SlotBoard({
                     onClick={() => onSelect(slot._id)}
                     className={cn(
                       "focus-visible:ring-ring/50 bg-background flex w-full flex-col gap-2 rounded-lg p-2 text-left text-sm shadow-xs outline-none transition-shadow focus-visible:ring-3",
-                      slot._id === selected ? "ring-foreground/20 ring-2" : "hover:shadow-sm",
+                      slot._id === selected ? "picked-ring" : "hover:shadow-sm",
                     )}
                   >
                     {slot.url && <Thumb slot={slot} className="aspect-video w-full" />}

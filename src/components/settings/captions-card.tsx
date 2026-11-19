@@ -226,8 +226,8 @@ export function CaptionsCard({
                 aria-label={`${style.name}${own ? "" : ", built in"}`}
                 onClick={() => setOpen(active ? null : style.name)}
                 className={cn(
-                  "hover:bg-muted focus-visible:ring-ring/50 flex w-24 flex-col gap-1.5 rounded-lg p-1.5 text-left outline-none transition-colors focus-visible:ring-3",
-                  active && "bg-muted",
+                  "hover:bg-muted focus-visible:ring-ring/50 flex w-24 flex-col gap-1.5 rounded-xl p-1.5 text-left outline-none transition-colors focus-visible:ring-3",
+                  active && "row-selected",
                 )}
               >
                 <CaptionPreview look={style.look} font={font} zoom={0.75} />
