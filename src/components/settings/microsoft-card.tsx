@@ -19,6 +19,7 @@ import { SettingsSection } from "./settings-shell";
 /** What Settings says when Microsoft sends someone back, by the result in the address. */
 export const MICROSOFT_RESULTS: Record<string, { ok: boolean; text: string }> = {
   connected: { ok: true, text: "Your Microsoft account is connected" },
+  shared: { ok: true, text: "Meetings shared with you now come in too" },
   cancelled: { ok: false, text: "Nothing changed: Microsoft was closed before it finished." },
   expired: { ok: false, text: "That took too long. Press the button again." },
   taken: { ok: false, text: "That Microsoft account is already connected to another team." },
@@ -34,6 +35,8 @@ export const MICROSOFT_RESULTS: Record<string, { ok: boolean; text: string }> = 
 
 type Past = {
   itemId: string;
+  driveId?: string;
+  shared: boolean;
   topic: string;
   startTime: number;
   minutes: number | null;
@@ -67,6 +70,7 @@ export function MicrosoftCard() {
   const startLink = useMutation(api.microsoft.startLink);
   const disconnect = useMutation(api.microsoft.disconnect);
   const setAutoImport = useMutation(api.microsoft.setAutoImport);
+  const setIncludeShared = useMutation(api.microsoft.setIncludeShared);
   const listPast = useAction(api.microsoft.pastRecordings);
   const bringIn = useAction(api.microsoft.bringIn);
   const [busy, setBusy] = useState<string | null>(null);
@@ -87,10 +91,12 @@ export function MicrosoftCard() {
   if (ms === undefined) return <Skeleton className="h-40 rounded-xl" />;
   if (ms === null) return null;
 
-  async function connect() {
-    setBusy("connect");
+  async function connect(shared = false) {
+    setBusy(shared ? "shared" : "connect");
     try {
-      window.location.assign(await startLink({ organizationId: team.id }));
+      window.location.assign(
+        await startLink({ organizationId: team.id, ...(shared ? { shared: true } : {}) }),
+      );
     } catch (caught) {
       toast.error(errorMessage(caught, "Microsoft could not be opened. Try again."));
       setBusy(null);
@@ -150,7 +156,7 @@ export function MicrosoftCard() {
                 <span className="text-destructive">
                   Microsoft stopped accepting your sign-in, so nothing new comes in.
                 </span>
-                <Button size="sm" disabled={busy !== null} onClick={connect}>
+                <Button size="sm" disabled={busy !== null} onClick={() => connect()}>
                   Connect again
                 </Button>
               </div>
@@ -172,6 +178,28 @@ export function MicrosoftCard() {
                 </p>
               </div>
             </div>
+            <div className="flex items-start gap-3">
+              <Switch
+                id="microsoft-shared"
+                checked={ms.me.includeShared}
+                disabled={busy !== null}
+                onCheckedChange={(checked) =>
+                  checked && !ms.me?.sharedGranted
+                    ? connect(true)
+                    : run("shared", () =>
+                        setIncludeShared({ organizationId: team.id, includeShared: checked }),
+                      )
+                }
+              />
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="microsoft-shared">Also bring in meetings shared with me</Label>
+                <p className="text-muted-foreground text-sm">
+                  {busy === "shared" && !ms.me.sharedGranted
+                    ? "Opening Microsoft to ask for reading files shared with you."
+                    : "Recordings of other people's Teams meetings you were in. They arrive within 15 minutes of the meeting ending. The first time, Microsoft asks you to allow reading files shared with you."}
+                </p>
+              </div>
+            </div>
           </>
         ) : (
           <>
@@ -180,7 +208,7 @@ export function MicrosoftCard() {
               to your OneDrive then come into Uploads by themselves, ready to clip and caption.
             </p>
             <div>
-              <Button size="sm" disabled={busy !== null} onClick={connect}>
+              <Button size="sm" disabled={busy !== null} onClick={() => connect()}>
                 {busy === "connect" ? "Opening Microsoft" : "Connect Microsoft 365"}
               </Button>
             </div>
@@ -215,17 +243,21 @@ export function MicrosoftCard() {
           {past !== null &&
             (past.length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                No Teams recordings in your OneDrive from the last 30 days.
+                {ms.me.includeShared
+                  ? "No Teams recordings in your OneDrive or shared with you from the last 30 days."
+                  : "No Teams recordings in your OneDrive from the last 30 days."}
               </p>
             ) : (
               <ul className="flex flex-col gap-2 text-sm">
                 {past.map((meeting) => (
-                  <li key={meeting.itemId} className="flex items-center justify-between gap-3">
+                  <li
+                    key={`${meeting.driveId ?? ""}:${meeting.itemId}`}
+                    className="flex items-center justify-between gap-3"
+                  >
                     <span className="min-w-0">
                       <span className="font-medium">{meeting.topic}</span>
                       <span className="text-muted-foreground">
-                        {" "}
-                        · {when(meeting.startTime)}
+                        {meeting.shared ? " · Shared with you" : ""} · {when(meeting.startTime)}
                         {meeting.minutes ? ` · ${meeting.minutes} min` : ""}
                         {meeting.size ? ` · ${formatBytes(meeting.size)}` : ""}
                       </span>
@@ -245,10 +277,13 @@ export function MicrosoftCard() {
                               await bringIn({
                                 organizationId: team.id,
                                 itemId: meeting.itemId,
+                                ...(meeting.driveId ? { driveId: meeting.driveId } : {}),
                               });
                               setPast((list) =>
                                 (list ?? []).map((one) =>
-                                  one.itemId === meeting.itemId ? { ...one, brought: true } : one,
+                                  one.itemId === meeting.itemId && one.driveId === meeting.driveId
+                                    ? { ...one, brought: true }
+                                    : one,
                                 ),
                               );
                             },

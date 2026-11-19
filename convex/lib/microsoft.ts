@@ -13,11 +13,15 @@ export interface DriveItem {
   folder?: unknown;
   video?: { duration?: number };
   deleted?: unknown;
+  // Set on a search result for a file in someone else's OneDrive, shared with you.
+  remoteItem?: { id?: string; name?: string; parentReference?: { driveId?: string } };
   "@microsoft.graph.downloadUrl"?: string;
 }
 
 export interface PickedRecording {
   itemId: string;
+  // The OneDrive the file is in, for a recording shared with you; none for your own.
+  driveId?: string;
   topic: string;
   startTime: number;
   extension: "mp4";
@@ -32,6 +36,22 @@ export interface PickedRecording {
  */
 const STAMP = /-(\d{8})_(\d{6})(?:-[^-]*)?$/;
 
+/** Whether a file is named the way Teams names a meeting recording. */
+export function looksLikeTeamsRecording(fileName: string): boolean {
+  return /\.mp4$/i.test(fileName) && STAMP.test(fileName.replace(/\.[^.]+$/, ""));
+}
+
+/**
+ * Where a search result really is, when it is a file in someone else's OneDrive that was
+ * shared with you: that OneDrive and the file's id in it. Null for your own files.
+ */
+export function sharedFileOf(item: DriveItem): { driveId: string; itemId: string } | null {
+  const driveId = item.remoteItem?.parentReference?.driveId;
+  const itemId = item.remoteItem?.id;
+  if (!driveId || !itemId) return null;
+  return { driveId, itemId };
+}
+
 /** The meeting a recording's file name is for: "Weekly Sync" from Teams' file name. */
 export function topicOf(fileName: string): string {
   const bare = fileName.replace(/\.[^.]+$/, "");
@@ -43,7 +63,11 @@ export function topicOf(fileName: string): string {
  * A Teams meeting recording worth bringing in: a finished video file with something in
  * it. Null for anything else in the folder (notes, pictures, transcripts, other files).
  */
-export function pickRecording(item: DriveItem, now: number): PickedRecording | null {
+export function pickRecording(
+  item: DriveItem,
+  now: number,
+  driveId?: string,
+): PickedRecording | null {
   if (!item.id || !item.name || item.folder || item.deleted) return null;
   const mime = (item.file?.mimeType ?? "").toLowerCase();
   const isVideo = mime === "video/mp4" || (!mime && /\.mp4$/i.test(item.name));
@@ -53,6 +77,7 @@ export function pickRecording(item: DriveItem, now: number): PickedRecording | n
   const end = Number.isFinite(created) ? created : now;
   return {
     itemId: item.id,
+    ...(driveId ? { driveId } : {}),
     topic: topicOf(item.name),
     // The file is made as the meeting ends, so the meeting started its length before.
     startTime: durationMs > 0 ? end - durationMs : end,
