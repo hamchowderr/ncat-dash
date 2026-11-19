@@ -66,8 +66,12 @@ const RENEW_MS = 5 * 60 * 1000;
  * handed must have most of Google's hour left.
  */
 const DOWNLOAD_FRESH_MS = 50 * 60 * 1000;
-/** How many recordings "Past recordings" shows at a time, newest first. */
-const PAST_PAGE = 25;
+/** How many files each request to Drive asks for (Drive's most). */
+const DRIVE_PAGE = 100;
+/** A scan of Drive stops after this many pages, so one request stays quick. */
+const SCAN_PAGES = 20;
+/** Most recordings brought over in one press. */
+const BRING_MAX = 500;
 /** How far back each automatic check looks; Meet can take a while to save a recording. */
 const CHECK_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 
@@ -561,7 +565,7 @@ async function recordingsInDrive(
   const url = new URL(`${googleUrls().drive}/files`);
   url.searchParams.set("q", DRIVE_RECORDINGS_QUERY);
   url.searchParams.set("orderBy", "createdTime desc");
-  url.searchParams.set("pageSize", String(PAST_PAGE));
+  url.searchParams.set("pageSize", String(DRIVE_PAGE));
   url.searchParams.set("fields", `nextPageToken,files(${DRIVE_FILE_FIELDS})`);
   url.searchParams.set("supportsAllDrives", "true");
   url.searchParams.set("includeItemsFromAllDrives", "true");
@@ -869,31 +873,43 @@ export interface PastRecording {
 }
 
 /**
- * The caller's Meet recordings in Drive, newest first, a page at a time, saying which are
- * in Uploads already. Goes back as far as Drive does, not just Meet's 30 days.
+ * Every Meet recording in the caller's Drive, newest first, saying which are in Uploads
+ * already. Goes back as far as Drive does, not just Meet's 30 days. `complete` is false
+ * when Drive had more than one scan reads (the oldest are then left out).
  */
 export const pastRecordings = action({
-  args: { organizationId: v.string(), pageToken: v.optional(v.string()) },
-  handler: async (
-    ctx,
-    args,
-  ): Promise<{ recordings: PastRecording[]; nextPageToken: string | null }> => {
+  args: { organizationId: v.string() },
+  handler: async (ctx, args): Promise<{ recordings: PastRecording[]; complete: boolean }> => {
     const connectionId: Id<"googleMeetConnections"> = await ctx.runQuery(internal.googleMeet.mine, {
       organizationId: args.organizationId,
     });
-    let page: { found: FoundRecording[]; nextPageToken: string | null };
+    const found: FoundRecording[] = [];
+    let pageToken: string | null = null;
     try {
       const token = await accessTokenFor(ctx, connectionId);
-      page = await recordingsInDrive(token, args.pageToken);
+      for (let page = 0; page < SCAN_PAGES; page++) {
+        const one = await recordingsInDrive(token, pageToken ?? undefined);
+        found.push(...one.found);
+        pageToken = one.nextPageToken;
+        if (!pageToken) break;
+      }
     } catch (error) {
       throw asConvexError(error);
     }
-    const standings: Standing[] = await ctx.runQuery(internal.googleMeet.standing, {
-      organizationId: args.organizationId,
-      files: page.found.map((one) => ({ driveFileId: one.driveFileId, size: one.size })),
-    });
+    const standings: Standing[] = [];
+    // Asked in parts, so one query never reads too much.
+    for (let at = 0; at < found.length; at += 200) {
+      standings.push(
+        ...(await ctx.runQuery(internal.googleMeet.standing, {
+          organizationId: args.organizationId,
+          files: found
+            .slice(at, at + 200)
+            .map((one) => ({ driveFileId: one.driveFileId, size: one.size })),
+        })),
+      );
+    }
     return {
-      recordings: page.found.map((one, at) => ({
+      recordings: found.map((one, at) => ({
         driveFileId: one.driveFileId,
         topic: one.topic,
         startTime: one.startTime,
@@ -901,52 +917,85 @@ export const pastRecordings = action({
         size: one.size,
         standing: standings[at],
       })),
-      nextPageToken: page.nextPageToken,
+      complete: pageToken === null,
     };
   },
 });
 
-/** Brings in one of the caller's Meet recordings, by its file in Drive. */
+/** What happened to each recording asked for in one press. */
+export interface BroughtOver {
+  started: number;
+  already: number;
+  duplicate: number;
+  missing: number;
+}
+
+/**
+ * Brings over the caller's Meet recordings picked in Settings, by their files in Drive.
+ * Each is looked up again rather than taken from the browser: Google's answer is the
+ * truth. They queue on the team's toolkit like any other job.
+ */
 export const bringIn = action({
-  args: { organizationId: v.string(), driveFileId: v.string() },
-  handler: async (ctx, args): Promise<StartOutcome> => {
+  args: { organizationId: v.string(), driveFileIds: v.array(v.string()) },
+  handler: async (ctx, args): Promise<BroughtOver> => {
     const connectionId: Id<"googleMeetConnections"> = await ctx.runQuery(internal.googleMeet.mine, {
       organizationId: args.organizationId,
     });
-    if (!isDriveFileId(args.driveFileId)) {
-      throw new ConvexError({ code: "not_found", message: "Google has no such recording." });
+    if (args.driveFileIds.length > BRING_MAX) {
+      throw new ConvexError({
+        code: "too_many",
+        message: `Bring over at most ${BRING_MAX} recordings at a time.`,
+      });
     }
-    // Looked up again rather than taken from the browser: Google's answer is the truth.
-    let recording: FoundRecording | null;
+    const ids = [...new Set(args.driveFileIds)];
+    const counts: BroughtOver = { started: 0, already: 0, duplicate: 0, missing: 0 };
+    let token: string;
     try {
-      const token = await accessTokenFor(ctx, connectionId);
-      const file = await getJson<DriveFile>(
-        `${googleUrls().drive}/files/${args.driveFileId}?fields=${DRIVE_FILE_FIELDS}&supportsAllDrives=true`,
-        token,
-      );
-      recording = fromDriveFile(file);
+      token = await accessTokenFor(ctx, connectionId);
     } catch (error) {
-      if (error instanceof GoogleRefused && (error.status === 404 || error.status === 403)) {
-        recording = null;
-      } else throw asConvexError(error);
+      throw asConvexError(error);
     }
-    if (!recording) {
-      throw new ConvexError({
-        code: "not_found",
-        message: "Google no longer has that recording in your Drive.",
-      });
+    // A few at a time: Drive answers quickly, and the toolkit's queue takes it from there.
+    for (let at = 0; at < ids.length; at += 8) {
+      const files = await Promise.all(
+        ids.slice(at, at + 8).map(async (id): Promise<FoundRecording | null> => {
+          if (!isDriveFileId(id)) return null;
+          try {
+            const file = await getJson<DriveFile>(
+              `${googleUrls().drive}/files/${id}?fields=${DRIVE_FILE_FIELDS}&supportsAllDrives=true`,
+              token,
+            );
+            return fromDriveFile(file);
+          } catch (error) {
+            if (error instanceof GoogleRefused && (error.status === 404 || error.status === 403)) {
+              return null;
+            }
+            throw asConvexError(error);
+          }
+        }),
+      );
+      for (const recording of files) {
+        if (!recording) {
+          counts.missing++;
+          continue;
+        }
+        const outcome = await ctx.runMutation(internal.googleMeet.startImport, {
+          connectionId,
+          recording,
+        });
+        if (outcome === "no_toolkit") {
+          throw new ConvexError({
+            code: "no_toolkit",
+            message: "Connect your toolkit first, so there is somewhere for recordings to go.",
+          });
+        }
+        if (outcome === "started") counts.started++;
+        else if (outcome === "duplicate") counts.duplicate++;
+        else if (outcome === "already") counts.already++;
+        else counts.missing++;
+      }
     }
-    const outcome = await ctx.runMutation(internal.googleMeet.startImport, {
-      connectionId,
-      recording,
-    });
-    if (outcome === "no_toolkit") {
-      throw new ConvexError({
-        code: "no_toolkit",
-        message: "Connect your toolkit first, so there is somewhere for recordings to go.",
-      });
-    }
-    return outcome;
+    return counts;
   },
 });
 

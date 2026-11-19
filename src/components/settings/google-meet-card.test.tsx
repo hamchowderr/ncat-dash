@@ -92,79 +92,109 @@ describe("the Google Meet card", () => {
     );
   });
 
-  test("lists Drive recordings of any age, marks ones already in, and brings one in", async () => {
+  test("finds every recording, says how many are new, and brings the picked ones over at once", async () => {
     answerQuery(api.googleMeet.forTeam, connected);
-    const list = actionOf(api.googleMeet.pastRecordings);
-    const recording = (driveFileId: string, topic: string, standing: string, year = 2026) => ({
+    const scan = actionOf(api.googleMeet.pastRecordings);
+    const recording = (driveFileId: string, topic: string, standing: string, year: number) => ({
       driveFileId,
       topic,
-      startTime: Date.UTC(year, 10, 16, 17),
+      startTime: new Date(year, 5, 16, 10).getTime(),
       minutes: 58,
       size: 2_000_000_000,
       standing,
     });
-    list.mockResolvedValueOnce({
+    const thisYear = new Date().getFullYear();
+    scan.mockResolvedValueOnce({
       recordings: [
-        recording("fileOne", "Podcast Taping", "new"),
-        recording("fileTwo", "Weekly Sync", "brought"),
-        recording("fileThree", "Client Call", "duplicate"),
+        recording("fileOne", "Podcast Taping", "new", thisYear),
+        recording("fileTwo", "Weekly Sync", "brought", thisYear),
+        recording("fileThree", "Client Call", "duplicate", thisYear),
+        recording("fileOld", "Kickoff", "new", thisYear - 1),
+        recording("fileOlder", "Strategy Day", "new", thisYear - 1),
       ],
-      nextPageToken: "page-2",
+      complete: true,
     });
-    list.mockResolvedValueOnce({
-      recordings: [recording("fileOld", "Kickoff", "new", 2024)],
-      nextPageToken: null,
+    scan.mockResolvedValueOnce({
+      recordings: [
+        recording("fileOne", "Podcast Taping", "brought", thisYear),
+        recording("fileTwo", "Weekly Sync", "brought", thisYear),
+        recording("fileThree", "Client Call", "duplicate", thisYear),
+        recording("fileOld", "Kickoff", "brought", thisYear - 1),
+        recording("fileOlder", "Strategy Day", "new", thisYear - 1),
+      ],
+      complete: true,
     });
     const bring = actionOf(api.googleMeet.bringIn);
-    bring.mockResolvedValue("started");
+    bring.mockResolvedValue({ started: 2, already: 0, duplicate: 0, missing: 0 });
     renderInApp(<GoogleMeetCard />);
     const user = userEvent.setup();
-    expect(screen.getByText(/nothing comes in twice/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Show recordings" }));
-    expect(await screen.findByText("Podcast Taping")).toBeInTheDocument();
-    expect(screen.getAllByText(/58 min · 1\.9 GB/)).toHaveLength(3);
+    expect(screen.getByText(/however old/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Find recordings" }));
+    expect(
+      await screen.findByText("5 recordings in your Drive. 3 not in Uploads yet."),
+    ).toBeInTheDocument();
+    // Grouped by year; the ones already in are said so and cannot be picked.
+    expect(screen.getByRole("group", { name: String(thisYear - 1) })).toBeInTheDocument();
     expect(screen.getByText("Brought in")).toBeInTheDocument();
     expect(screen.getByText("Already in Uploads")).toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox", { name: /^Pick .*,/ })).toHaveLength(3);
+    // Everything new is picked to start with.
+    expect(screen.getByText("All 3 picked")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bring over 3 recordings" })).toBeEnabled();
 
-    await user.click(screen.getByRole("button", { name: "Show older recordings" }));
-    expect(list).toHaveBeenLastCalledWith({ organizationId: TEAM.id, pageToken: "page-2" });
-    expect(await screen.findByText("Kickoff")).toBeInTheDocument();
-    // Older than this year: the year is shown.
-    expect(screen.getByText(/2024/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Show older recordings" })).toBeNull();
-
-    await user.click(screen.getAllByRole("button", { name: "Bring in" })[0]);
-    expect(bring).toHaveBeenCalledWith({ organizationId: TEAM.id, driveFileId: "fileOne" });
+    await user.click(screen.getByRole("checkbox", { name: /^Pick Strategy Day/ }));
+    expect(screen.getByText("2 of 3 picked")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Bring over 2 recordings" }));
+    expect(bring).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      driveFileIds: ["fileOne", "fileOld"],
+    });
     await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("Podcast Taping is on its way to Uploads"),
+      expect(toastSuccess).toHaveBeenCalledWith("2 recordings on the way to Uploads"),
     );
-    expect(screen.getAllByText("Brought in")).toHaveLength(2);
+    // Looked through again: only the one left out is still to bring over.
+    expect(
+      await screen.findByText("5 recordings in your Drive. 1 not in Uploads yet."),
+    ).toBeInTheDocument();
   });
 
-  test("bringing in a recording already in Uploads says so instead", async () => {
+  test("picking by year, and unpicking everything, leaves nothing to bring over", async () => {
     answerQuery(api.googleMeet.forTeam, connected);
+    const thisYear = new Date().getFullYear();
     actionOf(api.googleMeet.pastRecordings).mockResolvedValue({
       recordings: [
         {
           driveFileId: "fileOne",
           topic: "Podcast Taping",
-          startTime: Date.UTC(2026, 10, 16, 17),
+          startTime: new Date(thisYear, 1, 3).getTime(),
           minutes: 58,
           size: 100,
           standing: "new",
         },
+        {
+          driveFileId: "fileOld",
+          topic: "Kickoff",
+          startTime: new Date(thisYear - 1, 1, 3).getTime(),
+          minutes: 20,
+          size: 200,
+          standing: "new",
+        },
       ],
-      nextPageToken: null,
+      complete: false,
     });
-    actionOf(api.googleMeet.bringIn).mockResolvedValue("duplicate");
     renderInApp(<GoogleMeetCard />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Show recordings" }));
-    await user.click(await screen.findByRole("button", { name: "Bring in" }));
-    await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("Podcast Taping is already in Uploads"),
+    await user.click(screen.getByRole("button", { name: "Find recordings" }));
+    expect(await screen.findByText(/Showing the newest 2,000/)).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("checkbox", { name: `Pick every ${thisYear - 1} recording not in Uploads` }),
     );
-    expect(screen.getByText("Already in Uploads")).toBeInTheDocument();
+    expect(screen.getByText("1 of 2 picked")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Pick every recording not in Uploads" }));
+    expect(screen.getByText("All 2 picked")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Pick every recording not in Uploads" }));
+    expect(screen.getByText("0 of 2 picked")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bring over 0 recordings" })).toBeDisabled();
   });
 
   test("coming back from Google says how it went, then tidies the address", async () => {
