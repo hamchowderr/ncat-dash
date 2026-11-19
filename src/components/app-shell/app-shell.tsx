@@ -20,6 +20,7 @@ import { useTeam } from "@/lib/use-team";
 import { cn } from "@/lib/utils";
 
 import { AppSidebar, isSettingsPath, navItemFor } from "./app-sidebar";
+import { DashboardTour } from "./dashboard-tour";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const state = useTeam();
@@ -66,56 +67,63 @@ function Shell({
 
   return (
     <SidebarProvider className="md:h-svh md:overflow-hidden">
-      <RoomForAgent agentOpen={agentOpen} />
-      <AlertNotices />
-      <AppSidebar teamName={state.team.name} edition={edition} user={state.user} />
-      {/* The page scrolls inside its own frame, so the bar along the top always stays put
+      <DashboardTour>
+        <RoomForAgent agentOpen={agentOpen} />
+        <AlertNotices />
+        <AppSidebar teamName={state.team.name} edition={edition} user={state.user} />
+        {/* The page scrolls inside its own frame, so the bar along the top always stays put
           and a page can fill exactly the height that is left. */}
-      <SidebarInset className={cn("min-w-0 md:overflow-hidden", agentOpen && "max-lg:hidden")}>
-        <header className="flex h-16 shrink-0 items-center gap-2 px-4">
-          <MenuButton />
-          {/* Settings name their page in the menu and the page itself, so the bar says nothing. */}
-          {!isSettingsPath(pathname) && (
-            <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
-          )}
-          <div className="ml-auto flex items-center gap-2">
-            {!agentOpen && (
-              <Button variant="outline" size="sm" onClick={() => showAgent(true)}>
-                <MessagesSquare />
-                Agent
-              </Button>
+        <SidebarInset className={cn("min-w-0 md:overflow-hidden", agentOpen && "max-lg:hidden")}>
+          <header className="flex h-16 shrink-0 items-center gap-2 px-4">
+            <MenuButton />
+            {/* Settings name their page in the menu and the page itself, so the bar says nothing. */}
+            {!isSettingsPath(pathname) && (
+              <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
             )}
+            <div className="ml-auto flex items-center gap-2">
+              {!agentOpen && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-tour-step-id="tour-agent"
+                  onClick={() => showAgent(true)}
+                >
+                  <MessagesSquare />
+                  Agent
+                </Button>
+              )}
+            </div>
+          </header>
+          <div
+            data-page-frame
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
+          >
+            <PageTransition key={pathname}>
+              <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">{children}</div>
+            </PageTransition>
           </div>
-        </header>
-        <div
-          data-page-frame
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
-        >
-          <PageTransition key={pathname}>
-            <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">{children}</div>
-          </PageTransition>
-        </div>
-      </SidebarInset>
-      {/* Always in place on a wide screen and opened by growing, so the page makes room
+        </SidebarInset>
+        {/* Always in place on a wide screen and opened by growing, so the page makes room
           for the chat instead of jumping. On a narrow screen there is no room beside the
           page, so the agent takes the page's place until it is closed: nothing lies over
           anything. */}
-      <aside
-        aria-label="Agent"
-        aria-hidden={!agentOpen}
-        inert={!agentOpen}
-        className={cn(
-          "bg-background h-svh flex-col overflow-hidden lg:flex lg:shrink-0",
-          "motion-safe:lg:transition-[width] motion-safe:lg:duration-300 motion-safe:lg:ease-[cubic-bezier(0.16,1,0.3,1)]",
-          agentOpen ? "flex min-w-0 flex-1 lg:w-[26rem] lg:flex-none" : "hidden lg:w-0",
-        )}
-      >
-        {agentOpen && (
-          <div className="flex h-full min-h-0 flex-col lg:w-[26rem] lg:min-w-[26rem]">
-            <AgentPanel onAutomation={onAutomation} onClose={() => showAgent(false)} />
-          </div>
-        )}
-      </aside>
+        <aside
+          aria-label="Agent"
+          aria-hidden={!agentOpen}
+          inert={!agentOpen}
+          className={cn(
+            "bg-background h-svh flex-col overflow-hidden lg:flex lg:shrink-0",
+            "motion-safe:lg:transition-[width] motion-safe:lg:duration-300 motion-safe:lg:ease-[cubic-bezier(0.16,1,0.3,1)]",
+            agentOpen ? "flex min-w-0 flex-1 lg:w-[26rem] lg:flex-none" : "hidden lg:w-0",
+          )}
+        >
+          {agentOpen && (
+            <div className="flex h-full min-h-0 flex-col lg:w-[26rem] lg:min-w-[26rem]">
+              <AgentPanel onAutomation={onAutomation} onClose={() => showAgent(false)} />
+            </div>
+          )}
+        </aside>
+      </DashboardTour>
     </SidebarProvider>
   );
 }
