@@ -56,6 +56,24 @@ beforeEach(() => {
 });
 
 describe("the Uploads page shows each file", () => {
+  test("a meeting recording someone shared says who, on its tile and when opened", async () => {
+    answerQuery(api.storage.listUploads, [
+      {
+        ...upload("u9", "Tylan Andrew 2025-04-23.mp4", "video/mp4", VIDEO_DETAILS),
+        source: "google_meet",
+        sharedBy: "Andrew Fink",
+      },
+    ]);
+    renderInApp(<UploadsView />);
+    expect(
+      screen.getByText("Video · 6:52 · 1920×1080 · 48 MB · Shared by Andrew Fink"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open Tylan Andrew 2025-04-23.mp4" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Shared by")).toBeTruthy();
+    expect(within(dialog).getByText("Andrew Fink")).toBeTruthy();
+  });
+
   test("videos show their opening frame as a tile", async () => {
     renderInApp(<UploadsView />);
     const tile = screen.getByRole("button", { name: "Open Big Talk.mp4" });

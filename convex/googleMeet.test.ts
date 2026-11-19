@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { grantedAll, GOOGLE_MEET_SCOPES, meetingTitle, minutesOf } from "./lib/googleMeet";
+import {
+  CALENDAR_SCOPE,
+  grantedAll,
+  grantedCalendar,
+  GOOGLE_MEET_SCOPES,
+  meetingTitle,
+  minutesOf,
+  titleFromEvent,
+} from "./lib/googleMeet";
 import { addPerson, addTeam, backend } from "./test.setup";
 import { connectToolkit } from "./test.toolkit";
 
@@ -24,6 +32,10 @@ let conferences: { name: string; startTime: string; endTime?: string }[] = [];
 let recordings: Record<string, unknown[]> = {};
 let driveFiles: Record<string, Record<string, unknown>> = {};
 let driveLists: URLSearchParams[] = [];
+let calendarEvents: { at: number; event: Record<string, unknown> }[] = [];
+let calendarAsks: URLSearchParams[] = [];
+let calendarWorks = true;
+const PICTURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
 
 beforeEach(() => {
   process.env.GOOGLE_MEET_CLIENT_ID = "google-client-id";
@@ -42,6 +54,9 @@ beforeEach(() => {
   recordings = {};
   driveFiles = {};
   driveLists = [];
+  calendarEvents = [];
+  calendarAsks = [];
+  calendarWorks = true;
   vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     const headers = new Headers(init?.headers);
@@ -125,6 +140,22 @@ beforeEach(() => {
       return driveFiles[file[1]]
         ? Response.json(driveFiles[file[1]])
         : new Response("no", { status: 404 });
+    }
+    if (url.pathname === "/calendar/v3/calendars/primary/events") {
+      // Google's answer when the Calendar API is not switched on for the app.
+      if (!calendarWorks) return new Response("off", { status: 403 });
+      calendarAsks.push(url.searchParams);
+      const from = Date.parse(url.searchParams.get("timeMin") ?? "");
+      const to = Date.parse(url.searchParams.get("timeMax") ?? "");
+      return Response.json({
+        items: calendarEvents
+          .filter((one) => one.at >= from && one.at < to)
+          .map((one) => one.event),
+      });
+    }
+    const picture = /^\/thumb\/([^/]+)$/.exec(url.pathname);
+    if (picture) {
+      return new Response(PICTURE, { headers: { "content-type": "image/png" } });
     }
     if (url.href.startsWith("https://toolkit.example/")) {
       toolkitCalls.push({ url: url.href, body: JSON.parse(String(init?.body ?? "{}")) });
@@ -801,5 +832,172 @@ describe("recordings shared with you", () => {
         includeShared: true,
       }),
     ).rejects.toThrow(/Connect your Google account/);
+  });
+});
+
+/** A recording of a call with no title: Meet names its file after the meeting code. */
+function codeNamedInDrive(id: string, code: string, daysAgo: number) {
+  const saved = Date.now() - daysAgo * 24 * HOUR;
+  driveFiles[id] = {
+    id,
+    name: `${code} (2026-10-28 12:40 GMT-7) - Recording`,
+    size: String(5_000_000 + daysAgo),
+    mimeType: "video/mp4",
+    createdTime: new Date(saved).toISOString(),
+    videoMediaMetadata: { durationMillis: String(40 * 60 * 1000) },
+  };
+  return saved - 40 * 60 * 1000;
+}
+
+describe("naming recordings from the calendar", () => {
+  test("an event gives its title, or else who was invited", () => {
+    expect(titleFromEvent({ summary: " Weekly Sync " })).toBe("Weekly Sync");
+    expect(
+      titleFromEvent({
+        attendees: [
+          { displayName: "Jordan Lee", self: true },
+          { displayName: "Andrew Fink" },
+          { email: "pat@example.test" },
+          { displayName: "Room 4", resource: true },
+        ],
+      }),
+    ).toBe("Call with Andrew Fink and pat");
+    expect(
+      titleFromEvent({
+        attendees: [{ displayName: "A" }, { displayName: "B" }, { displayName: "C" }],
+      }),
+    ).toBe("Call with A, B and 1 more");
+    expect(titleFromEvent({})).toBeNull();
+    expect(grantedCalendar(GOOGLE_MEET_SCOPES.join(" "))).toBe(true);
+    expect(grantedAll(GOOGLE_MEET_SCOPES.filter((one) => one !== CALENDAR_SCOPE).join(" "))).toBe(
+      true,
+    );
+  });
+
+  test("meetings saved under their code take the name of their calendar event", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    const startA = codeNamedInDrive("codeNamedFileA1", "yhf-hxfg-gcu", 20);
+    const startB = codeNamedInDrive("codeNamedFileB1", "wqi-eiwh-ktu", 25);
+    codeNamedInDrive("codeNamedFileC1", "xst-rhwx-jkx", 400);
+    oldRecordingInDrive("oldRecordingFile30", 30);
+    calendarEvents.push(
+      {
+        at: startA,
+        event: {
+          summary: "Pricing review",
+          conferenceData: { conferenceId: "yhf-hxfg-gcu" },
+        },
+      },
+      {
+        at: startB,
+        event: {
+          hangoutLink: "https://meet.google.com/wqi-eiwh-ktu",
+          attendees: [{ displayName: "Jordan Lee", self: true }, { displayName: "Andrew Fink" }],
+        },
+      },
+      // Another call that day, not the one recorded.
+      { at: startA, event: { summary: "Lunch", conferenceData: { conferenceId: "aaa-bbbb-ccc" } } },
+    );
+
+    const found = await setup.owner.as.action(api.googleMeet.pastRecordings, {
+      organizationId: setup.team,
+    });
+    expect(found.names).toBe(true);
+    expect(found.recordings.map((one) => one.topic)).toEqual([
+      "Pricing review",
+      "Call with Andrew Fink",
+      "Client Call 30",
+      // No event on the calendar for it: it keeps its code.
+      "xst-rhwx-jkx",
+    ]);
+    // One read of the calendar per month that has an unnamed recording, at most.
+    expect(calendarAsks.length).toBeLessThanOrEqual(3);
+    expect(calendarAsks[0].get("singleEvents")).toBe("true");
+
+    // Brought over, the upload is named after the meeting too.
+    await setup.owner.as.action(api.googleMeet.bringIn, {
+      organizationId: setup.team,
+      driveFileIds: ["codeNamedFileA1"],
+    });
+    const uploads = await setup.t.run((ctx) => ctx.db.query("uploads").collect());
+    expect(uploads.map((one) => one.fileName)).toEqual([
+      expect.stringMatching(/^Pricing review \d{4}-\d{2}-\d{2}\.mp4$/),
+    ]);
+  });
+
+  test("without calendar access, or with the calendar unreachable, the codes stay and nothing fails", async () => {
+    const setup = await setUp();
+    granted = GOOGLE_MEET_SCOPES.filter((one) => one !== CALENDAR_SCOPE).join(" ");
+    expect(await connect(setup)).toBe("connected");
+    const view = await setup.owner.as.query(api.googleMeet.forTeam, {
+      organizationId: setup.team,
+    });
+    expect(view?.me?.calendar).toBe(false);
+    const start = codeNamedInDrive("codeNamedFileA2", "yhf-hxfg-gcu", 20);
+    calendarEvents.push({
+      at: start,
+      event: { summary: "Pricing review", conferenceData: { conferenceId: "yhf-hxfg-gcu" } },
+    });
+    const found = await setup.owner.as.action(api.googleMeet.pastRecordings, {
+      organizationId: setup.team,
+    });
+    expect(found.names).toBe(false);
+    expect(found.recordings[0].topic).toBe("yhf-hxfg-gcu");
+    expect(calendarAsks).toEqual([]);
+
+    // Connecting again with the calendar allowed turns names on.
+    granted = GOOGLE_MEET_SCOPES.join(" ");
+    await connect(setup);
+    expect((await connectionOf(setup)).calendar).toBe(true);
+    calendarWorks = false;
+    const still = await setup.owner.as.action(api.googleMeet.pastRecordings, {
+      organizationId: setup.team,
+    });
+    expect(still.recordings[0].topic).toBe("yhf-hxfg-gcu");
+  });
+});
+
+describe("pictures of recordings", () => {
+  test("Drive's picture of each recording comes back to show, or nothing when it has none", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    oldRecordingInDrive("oldRecordingFile50", 50);
+    oldRecordingInDrive("oldRecordingFile51", 51);
+    driveFiles.oldRecordingFile50.thumbnailLink = `${G}/thumb/oldRecordingFile50`;
+    const pictures = await setup.owner.as.action(api.googleMeet.thumbnails, {
+      organizationId: setup.team,
+      driveFileIds: ["oldRecordingFile50", "oldRecordingFile51", "../nope"],
+    });
+    expect(pictures).toEqual([
+      {
+        driveFileId: "oldRecordingFile50",
+        picture: `data:image/png;base64,${btoa(String.fromCharCode(...PICTURE))}`,
+      },
+      { driveFileId: "oldRecordingFile51", picture: null },
+      { driveFileId: "../nope", picture: null },
+    ]);
+    await expect(
+      setup.member.as.action(api.googleMeet.thumbnails, {
+        organizationId: setup.team,
+        driveFileIds: ["oldRecordingFile50"],
+      }),
+    ).rejects.toThrow(/Connect your Google account/);
+  });
+});
+
+describe("shared recordings in Uploads", () => {
+  test("a shared recording brought over says who shared it", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    sharedWithMe("sharedRecordingFile9", 30 * 24 * HOUR, "Pat Rivera");
+    await setup.owner.as.action(api.googleMeet.bringIn, {
+      organizationId: setup.team,
+      driveFileIds: ["sharedRecordingFile9"],
+    });
+    const listed = await setup.owner.as.query(api.storage.listUploads, {
+      organizationId: setup.team,
+    });
+    expect(listed.map((one) => one.sharedBy)).toEqual(["Pat Rivera"]);
   });
 });

@@ -30,6 +30,10 @@ export interface DriveFile {
   createdTime?: string;
   /** Drive's reading of the video, once it has processed it. */
   videoMediaMetadata?: { durationMillis?: string };
+  /** Whether Drive made a picture of the video. */
+  hasThumbnail?: boolean;
+  /** A short-lived address of that picture, read with the person's sign-in. */
+  thumbnailLink?: string;
   /** Who the file belongs to. Missing for a file on a shared drive. */
   owners?: { displayName?: string; emailAddress?: string; me?: boolean }[];
 }
@@ -43,7 +47,7 @@ export function sharedByOf(file: DriveFile): string | null {
 
 /** The Drive fields the dashboard reads about a recording's file. */
 export const DRIVE_FILE_FIELDS =
-  "id,name,size,mimeType,trashed,createdTime,videoMediaMetadata(durationMillis),owners(displayName,emailAddress,me)";
+  "id,name,size,mimeType,trashed,createdTime,hasThumbnail,videoMediaMetadata(durationMillis),owners(displayName,emailAddress,me)";
 
 /**
  * Which Drive files to list as Meet recordings. With the drive.meet.readonly access, Drive
@@ -58,22 +62,37 @@ export function minutesOfFile(file: DriveFile): number | null {
   return Math.max(1, Math.round(ms / 60_000));
 }
 
-/** What the dashboard asks Google for: who you are, your meetings, and their recordings. */
-export const GOOGLE_MEET_SCOPES = [
-  "openid",
-  "email",
-  "profile",
+/**
+ * Reading calendar events, only to name recordings Meet saved under a meeting code: the
+ * dashboard works without it, so someone can untick it.
+ */
+export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly";
+
+/** The two the dashboard cannot work without; Google lets people untick them. */
+export const NEEDED_SCOPES = [
   "https://www.googleapis.com/auth/meetings.space.readonly",
   "https://www.googleapis.com/auth/drive.meet.readonly",
 ];
 
-/** The two the dashboard cannot work without; Google lets people untick them. */
-export const NEEDED_SCOPES = GOOGLE_MEET_SCOPES.slice(3);
+/**
+ * What the dashboard asks Google for: who you are, your meetings, their recordings, and
+ * your calendar's meeting names.
+ */
+export const GOOGLE_MEET_SCOPES = ["openid", "email", "profile", ...NEEDED_SCOPES, CALENDAR_SCOPE];
+
+function grantedSet(scope: string | undefined): Set<string> {
+  return new Set((scope ?? "").split(/\s+/).filter(Boolean));
+}
 
 /** Whether Google granted everything needed, by the space-separated scopes it reports. */
 export function grantedAll(scope: string | undefined): boolean {
-  const granted = new Set((scope ?? "").split(/\s+/).filter(Boolean));
+  const granted = grantedSet(scope);
   return NEEDED_SCOPES.every((one) => granted.has(one));
+}
+
+/** Whether Google let the dashboard read calendar events, by the scopes it reports. */
+export function grantedCalendar(scope: string | undefined): boolean {
+  return grantedSet(scope).has(CALENDAR_SCOPE);
 }
 
 /**
@@ -90,6 +109,7 @@ export function googleUrls() {
       userinfo: `${standIn}/v1/userinfo`,
       meet: `${standIn}/v2`,
       drive: `${standIn}/drive/v3`,
+      calendar: `${standIn}/calendar/v3`,
     };
   }
   return {
@@ -99,6 +119,7 @@ export function googleUrls() {
     userinfo: "https://openidconnect.googleapis.com/v1/userinfo",
     meet: "https://meet.googleapis.com/v2",
     drive: "https://www.googleapis.com/drive/v3",
+    calendar: "https://www.googleapis.com/calendar/v3",
   };
 }
 
@@ -145,4 +166,55 @@ export function finishedFile(recording: MeetRecording): string | null {
   const file = recording.driveDestination?.file;
   if (recording.state !== "FILE_GENERATED" || !file || !isDriveFileId(file)) return null;
   return file;
+}
+
+/**
+ * The meeting code Meet names a recording with when the meeting had no calendar invite
+ * ("abc-defg-hij"), or null for a title someone gave.
+ */
+export function meetCodeOf(title: string): string | null {
+  return /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(title) ? title : null;
+}
+
+/** One event on the person's calendar, as far as naming a recording goes. */
+export interface CalendarEvent {
+  summary?: string;
+  hangoutLink?: string;
+  conferenceData?: { conferenceId?: string };
+  attendees?: { displayName?: string; email?: string; self?: boolean; resource?: boolean }[];
+}
+
+/** The Calendar fields read about an event. */
+export const CALENDAR_EVENT_FIELDS =
+  "nextPageToken,items(summary,hangoutLink,conferenceData(conferenceId),attendees(displayName,email,self,resource))";
+
+/** The Meet code of the call an event links to, or null when it has none. */
+export function eventMeetCode(event: CalendarEvent): string | null {
+  const id = event.conferenceData?.conferenceId;
+  if (id && meetCodeOf(id)) return id;
+  const link = /meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})\b/.exec(event.hangoutLink ?? "");
+  return link ? link[1] : null;
+}
+
+/**
+ * What to call a recording from its calendar event: the event's title, or else who was
+ * invited besides the person ("Call with Andrew Fink and Pat Rivera"). Null when the event
+ * says neither.
+ */
+export function titleFromEvent(event: CalendarEvent): string | null {
+  const summary = event.summary?.trim();
+  if (summary) return summary;
+  const names = (event.attendees ?? [])
+    .filter((one) => !one.self && !one.resource)
+    .map((one) => one.displayName?.trim() || one.email?.split("@")[0] || "")
+    .filter(Boolean);
+  if (names.length === 0) return null;
+  if (names.length <= 2) return `Call with ${names.join(" and ")}`;
+  return `Call with ${names[0]}, ${names[1]} and ${names.length - 2} more`;
+}
+
+/** The months (as UTC "YYYY-MM") a set of times fall in, newest first. */
+export function monthsOf(times: number[]): string[] {
+  const months = new Set(times.map((at) => new Date(at).toISOString().slice(0, 7)));
+  return [...months].sort().reverse();
 }
