@@ -967,9 +967,12 @@ function Editor({ automation }: { automation: Loaded }) {
               <aside
                 key={selected.id}
                 aria-label="Settings for this step"
-                className="min-h-0 overflow-y-auto lg:col-start-3 lg:row-start-1 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+                className="min-h-0 overflow-hidden lg:col-start-3 lg:row-start-1 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
               >
-                <div className="p-4 lg:w-[22rem]">
+                {/* The scrolling happens inside the fixed width, so a scroll bar takes its room
+                    from the settings instead of pushing them past the column's edge. Nothing
+                    here ever scrolls sideways. */}
+                <div className="h-full overflow-x-hidden overflow-y-auto overscroll-contain p-4 lg:w-[22rem]">
                   {selected.type === "step" ? (
                     <>
                       <NodePanel
