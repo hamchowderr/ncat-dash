@@ -1,4 +1,4 @@
-import { type Browser, expect, type Page, test } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "./test";
 
 // Picking who reviews an Approval step, in a real browser against a real backend: the
 // owner names one teammate and a time limit, the run stops there, only that teammate is

@@ -74,7 +74,7 @@ test("the calendar tour shows someone around on their first visit, and again whe
   await card.getByRole("button", { name: "Finish" }).click();
   await expect(card).toHaveCount(0);
   await expect(
-    page.getByText("You can take this tour again from the top of the calendar."),
+    page.getByText("You can take this tour again from the top of the page."),
   ).toBeVisible();
 
   // Finished, so coming back does not start it.

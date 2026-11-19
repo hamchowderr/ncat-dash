@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { drawingValidator } from "./lib/drawing";
+import { tourIdValidator } from "./lib/tours";
 
 export const nodeValidator = v.object({
   id: v.string(),
@@ -1067,7 +1068,7 @@ export default defineSchema({
   // on every team. No row means they have not.
   tourEnds: defineTable({
     userId: v.string(),
-    tourId: v.union(v.literal("dashboard"), v.literal("calendar")),
+    tourId: tourIdValidator,
     how: v.union(v.literal("finished"), v.literal("closed")),
     endedAt: v.number(),
   }).index("by_user_and_tour", ["userId", "tourId"]),

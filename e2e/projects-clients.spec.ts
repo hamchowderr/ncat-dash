@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // Clients and projects in a real browser against a real backend: a client with its own
 // brand and folder, a project made from a package for it, a file put in a slot sending it
@@ -106,6 +106,8 @@ test("a client's project is laid out from a package and worked through", async (
 
   // The client's portal: one link, only their projects, in the team's name.
   await page.getByRole("link", { name: "Clients", exact: true }).click();
+  // The project's row names the client too, so wait for the Clients page itself.
+  await expect(page).toHaveURL(/\/clients$/);
   await page.getByRole("link", { name: /Acme Studio/ }).click();
   await page.getByRole("button", { name: "Make the portal link" }).click();
   const link = await page.getByLabel("Portal link", { exact: true }).inputValue();

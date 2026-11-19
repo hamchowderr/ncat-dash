@@ -70,6 +70,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { PageTourButton, StartPageTour } from "@/components/tours/page-tour";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { nodeTitle, type Trigger } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
@@ -686,7 +687,9 @@ function Editor({ automation }: { automation: Loaded }) {
           className="h-9 max-w-xs text-base font-semibold"
         />
         <ClientPicker automationId={automation._id} clientId={automation.clientId ?? null} />
+        <StartPageTour tourId="automation-editor" />
         <div className="ml-auto flex items-center gap-3">
+          <PageTourButton tourId="automation-editor" />
           <div className="flex items-center">
             <Button
               variant="ghost"
@@ -709,7 +712,7 @@ function Editor({ automation }: { automation: Loaded }) {
               <span className="sr-only">Redo</span>
             </Button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-tour-step-id="tour-editor-switch">
             <Switch
               id="automation-on"
               checked={automation.enabled}
@@ -726,7 +729,12 @@ function Editor({ automation }: { automation: Loaded }) {
             <Save />
             {dirty ? (drafting ? "Save draft" : "Save") : hasDraft ? "Draft saved" : "Saved"}
           </Button>
-          <Button size="sm" disabled={busy} onClick={() => setRunOpen(true)}>
+          <Button
+            size="sm"
+            disabled={busy}
+            data-tour-step-id="tour-editor-run"
+            onClick={() => setRunOpen(true)}
+          >
             <Play />
             Run now
           </Button>
@@ -746,7 +754,7 @@ function Editor({ automation }: { automation: Loaded }) {
       )}
 
       <Tabs value={tab} onValueChange={setTab} className="reveal min-h-0 flex-1">
-        <TabsList>
+        <TabsList data-tour-step-id="tour-editor-tabs">
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
           <TabsTrigger value="versions">Versions</TabsTrigger>
@@ -849,6 +857,7 @@ function Editor({ automation }: { automation: Loaded }) {
                   variant="outline"
                   size="sm"
                   aria-expanded={paletteOpen}
+                  data-tour-step-id="tour-editor-add"
                   onClick={() => (paletteOpen ? setPaletteOpen(false) : openPalette())}
                 >
                   <Plus />
@@ -857,6 +866,7 @@ function Editor({ automation }: { automation: Loaded }) {
                 <Button
                   variant="outline"
                   size="sm"
+                  data-tour-step-id="tour-editor-note"
                   onClick={(event) => {
                     const canvas = event.currentTarget
                       .closest("[data-canvas-cell]")
@@ -892,6 +902,7 @@ function Editor({ automation }: { automation: Loaded }) {
                 ref={canvasRef}
                 className="bg-background relative mx-2 mb-2 h-96 min-h-0 overflow-hidden rounded-lg lg:h-auto lg:flex-1"
                 data-testid="canvas"
+                data-tour-step-id="tour-editor-canvas"
               >
                 <BrandContext value={brand}>
                   <AddAfterContext value={addAfter}>
@@ -967,9 +978,12 @@ function Editor({ automation }: { automation: Loaded }) {
               <aside
                 key={selected.id}
                 aria-label="Settings for this step"
-                className="min-h-0 overflow-y-auto lg:col-start-3 lg:row-start-1 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+                className="min-h-0 overflow-hidden lg:col-start-3 lg:row-start-1 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
               >
-                <div className="p-4 lg:w-[22rem]">
+                {/* The scrolling happens inside the fixed width, so a scroll bar takes its room
+                    from the settings instead of pushing them past the column's edge. Nothing
+                    here ever scrolls sideways. */}
+                <div className="h-full overflow-x-hidden overflow-y-auto overscroll-contain p-4 lg:w-[22rem]">
                   {selected.type === "step" ? (
                     <>
                       <NodePanel

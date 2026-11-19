@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // The Uploads page shows each video, in a real browser: a file sent from the computer
 // appears as a tile with its own frame, plays without sound under the pointer, opens into

@@ -36,7 +36,10 @@ export function ClientPicker({
   }
 
   return (
-    <label className="text-muted-foreground flex items-center gap-2 text-sm">
+    <label
+      className="text-muted-foreground flex items-center gap-2 text-sm"
+      data-tour-step-id="tour-editor-client"
+    >
       For
       <select
         aria-label="Client"

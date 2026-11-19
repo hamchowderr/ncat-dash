@@ -7,6 +7,8 @@ import { mutationOf, replaced, toastError } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
 import { NewAutomationView } from "./new-automation-view";
+import { missingTourTargets } from "@/test/tours";
+import { NEW_AUTOMATION_TOUR } from "./new-automation-tour";
 
 // Starting an automation happens on a page of its own, not in a window over the list.
 describe("the new automation page", () => {
@@ -42,5 +44,12 @@ describe("the new automation page", () => {
     await userEvent.setup().click(screen.getAllByRole("button", { name: /Empty canvas/ })[0]);
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     expect(replaced).not.toHaveBeenCalled();
+  });
+});
+
+describe("the tour of a new automation", () => {
+  test("has a place on the page for every part it points at", () => {
+    renderInApp(<NewAutomationView />);
+    expect(missingTourTargets(NEW_AUTOMATION_TOUR)).toEqual([]);
   });
 });

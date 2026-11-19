@@ -10,6 +10,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { PageTourButton, StartPageTour } from "@/components/tours/page-tour";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
@@ -49,13 +50,15 @@ export function NewAutomationView() {
             <span className="sr-only">Back to automations</span>
           </Link>
         </Button>
-        <div className="grid">
+        <div className="grid flex-1">
           <h1 className="text-2xl font-semibold tracking-tight">New automation</h1>
           <p className="text-muted-foreground text-sm">
             Pick a template to open it on the canvas. Everything can be changed there.
           </p>
         </div>
+        <PageTourButton tourId="new-automation" className="self-start" />
       </div>
+      <StartPageTour tourId="new-automation" />
       <TemplateGallery disabled={pending} onPick={onPick} />
     </>
   );

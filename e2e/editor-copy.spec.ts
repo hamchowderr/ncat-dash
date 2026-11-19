@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./test";
 
 // Copy, paste and duplicate on the automation canvas, in a real browser: keys and the
 // panel's button, a copy that keeps its settings, and pasting into another automation.

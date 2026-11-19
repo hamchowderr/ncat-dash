@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 import { UploadFrame } from "@/components/uploads/upload-media";
 import { Button } from "@/components/ui/button";
+import { PageTourButton, StartPageTour } from "@/components/tours/page-tour";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -531,16 +532,23 @@ export function LibraryView() {
 
   return (
     <>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
-        <p className="text-muted-foreground text-sm">
-          Everything your team has, uploads and what your automations made. Each file has a short
-          ID, like C12, that you can use with the agent: &ldquo;caption C12&rdquo;.
-        </p>
+      <StartPageTour tourId="library" ready={library !== undefined} />
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
+          <p className="text-muted-foreground text-sm">
+            Everything your team has, uploads and what your automations made. Each file has a short
+            ID, like C12, that you can use with the agent: &ldquo;caption C12&rdquo;.
+          </p>
+        </div>
+        <PageTourButton tourId="library" />
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <InputGroup className="bg-surface h-10 rounded-xl border-transparent lg:max-w-xl">
+        <InputGroup
+          data-tour-step-id="tour-library-search"
+          className="bg-surface h-10 rounded-xl border-transparent lg:max-w-xl"
+        >
           <InputGroupAddon>
             <Search />
           </InputGroupAddon>
@@ -566,7 +574,10 @@ export function LibraryView() {
                   : `Make ${Math.min(waiting.length, 25)} files searchable`}
               </Button>
             )}
-            <label className="flex items-center gap-2 text-sm">
+            <label
+              className="flex items-center gap-2 text-sm"
+              data-tour-step-id="tour-library-searchable"
+            >
               <Switch
                 checked={library.searchNewFiles}
                 disabled={!library.canChangeSettings}
@@ -605,7 +616,12 @@ export function LibraryView() {
       ) : (
         <section className="flex flex-col gap-4" aria-label="Your library">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Show">
+            <div
+              className="flex flex-wrap items-center gap-1"
+              role="group"
+              aria-label="Show"
+              data-tour-step-id="tour-library-filters"
+            >
               {SHOWN.map(([value, label]) => (
                 <Button
                   key={value}
@@ -735,10 +751,14 @@ export function LibraryView() {
               No files of this kind{tag ? ` tagged ${tag}` : ""}
               {client === TEAM_OWN ? " for your team" : chosenClient ? ` for ${chosenClient}` : ""}.
             </p>
-          ) : layout === "tiles" ? (
-            <ItemTiles items={items} links={links} />
           ) : (
-            <ItemList items={items} links={links} columns={columnsOn} />
+            <div data-tour-step-id="tour-library-items">
+              {layout === "tiles" ? (
+                <ItemTiles items={items} links={links} />
+              ) : (
+                <ItemList items={items} links={links} columns={columnsOn} />
+              )}
+            </div>
           )}
         </section>
       )}
