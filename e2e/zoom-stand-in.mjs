@@ -45,14 +45,21 @@ const server = createServer(async (request, response) => {
     return send(response, 200, user);
   }
   if (url.pathname === "/v2/users/me") return send(response, 200, user);
-  // The whole account's recordings: another host's meeting as well as the signed-in one's.
-  if (url.pathname === "/v2/accounts/me/recordings") {
+  // Like real Zoom: the one-call account list is only for master accounts.
+  if (url.pathname.startsWith("/v2/accounts/")) {
+    return send(response, 400, { code: 200, message: "Only available for master account." });
+  }
+  // The whole account, host by host: a colleague as well as the signed-in admin.
+  if (url.pathname === "/v2/users") {
+    return send(response, 200, { users: [{ id: user.id }, { id: `${user.id}-colleague` }] });
+  }
+  if (url.pathname === `/v2/users/${user.id}-colleague/recordings`) {
     return send(response, 200, {
-      meetings: [
-        meeting(`team-meeting-${user.id}==`, "Team Standup", `${user.id}-colleague`),
-        meeting(undefined, undefined, user.id),
-      ],
+      meetings: [meeting(`team-meeting-${user.id}==`, "Team Standup", `${user.id}-colleague`)],
     });
+  }
+  if (url.pathname === `/v2/users/${user.id}/recordings`) {
+    return send(response, 200, { meetings: [meeting(undefined, undefined, user.id)] });
   }
   if (url.pathname === "/v2/users/me/recordings") {
     return send(response, 200, {
