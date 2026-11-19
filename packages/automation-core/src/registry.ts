@@ -4,7 +4,13 @@
  * builds its step list from this and the agent reads the same list, so a node added here
  * shows up for both.
  */
-import { allSteps, currentTeamSteps, getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
+import {
+  allSteps,
+  currentTeamSteps,
+  getStep,
+  isHiddenStep,
+  userInputJsonSchema,
+} from "@ncat-dash/step-catalog";
 import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
@@ -22,6 +28,7 @@ import {
   WAIT_UNITS,
 } from "./logic";
 import { MAX_CHAPTERS, MAX_MOMENTS, MAX_PADDING, MOMENT_DEFAULTS, MOMENT_EDGES } from "./moments";
+import { MOTION_PRESETS, SOUND_LEVELS, STYLE_SOUNDS, TEAM_STYLE } from "./motion";
 import { MIN_INTERVAL_MINUTES } from "./schedule";
 import type { StarterTrigger } from "./starters";
 
@@ -39,7 +46,8 @@ export interface JsonSchema {
 
 export interface NodeType {
   /**
-   * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "export",
+   * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "motion",
+   * "sound-effects", "export",
    * "if", "wait", "automation", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
@@ -465,6 +473,63 @@ const CHAPTERS: NodeType = {
   automatic: null,
 };
 
+const MOTION: NodeType = {
+  type: "motion",
+  role: "action",
+  group: "video",
+  title: "Add Motion Graphics",
+  description:
+    "Draws designed motion graphics onto each video in the team's style from Settings > Motion: an opening title, the speaker's name, the numbers that are said, a card at each chapter, a follow card at the end, each with its own sound. Placed by plain rules from the transcript, with no AI, unless a Plan Motion Graphics step comes before it. Put it after Chapters to get chapter cards.",
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      style: {
+        type: "string",
+        enum: [TEAM_STYLE, ...MOTION_PRESETS.map((preset) => preset.id)],
+        default: TEAM_STYLE,
+        description: `The style. ${TEAM_STYLE}: the team's style from Settings > Motion. Or one of the presets: ${MOTION_PRESETS.map((preset) => `${preset.id} (${preset.name})`).join(", ")}.`,
+      },
+      title: {
+        type: "string",
+        default: "",
+        description: "The opening title. Empty uses the name of the file that started the run.",
+      },
+      sounds: {
+        type: "string",
+        enum: [STYLE_SOUNDS, ...SOUND_LEVELS],
+        default: STYLE_SOUNDS,
+        description: `How loud each piece's sound is. ${STYLE_SOUNDS}: as the style says. off, light or heavy.`,
+      },
+    },
+  },
+  automatic: null,
+};
+
+const SOUND_EFFECTS: NodeType = {
+  type: "sound-effects",
+  role: "action",
+  group: "video",
+  title: "Add Sound Effects",
+  description:
+    "Adds sound effects to each video by plain rules, with no AI: a hit as it opens, a whoosh at each chapter, a pop on the numbers that are said and a chime as it ends. The picture is not changed. Put it after Chapters for the whooshes.",
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      level: {
+        type: "string",
+        enum: [TEAM_STYLE, "light", "heavy"],
+        default: TEAM_STYLE,
+        description: `${TEAM_STYLE}: the level in Settings > Motion. light: a few. heavy: one on every number.`,
+      },
+    },
+  },
+  automatic: null,
+};
+
 const IF: NodeType = {
   type: "if",
   role: "action",
@@ -596,6 +661,8 @@ export const NODE_TYPES: NodeType[] = [
   CLIPS,
   MOMENTS,
   CHAPTERS,
+  MOTION,
+  SOUND_EFFECTS,
   EXPORT,
   IF,
   WAIT,
@@ -658,6 +725,8 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
     type === "clips" ||
     type === "moments" ||
     type === "chapters" ||
+    type === "motion" ||
+    type === "sound-effects" ||
     type === "export" ||
     type === "if" ||
     type === "wait" ||
@@ -667,7 +736,7 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
   }
   if (type.startsWith("step:")) {
     const stepId = type.slice("step:".length);
-    return getStep(stepId) ? { kind: "step", stepId } : null;
+    return getStep(stepId) && !isHiddenStep(stepId) ? { kind: "step", stepId } : null;
   }
   return null;
 }
@@ -754,20 +823,22 @@ export function withStart(
  * The full settings of one type come from `getNodeType(type).settings`.
  */
 export function nodeTypeIndex(): string {
-  return allNodeTypes().map(
-    (nodeType) =>
-      `${nodeType.type} (${GROUP_LABELS[nodeType.group]}; takes ${nodeType.takes}, gives ${nodeType.gives}${
-        nodeType.makes ? `, makes ${nodeType.makes.join(" and ")}` : ""
-      }${
-        nodeType.brand
-          ? `, takes the team's ${Object.values(nodeType.brand).join(" and ")} from Settings`
-          : ""
-      }${nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""}${
-        nodeType.fromStart
-          ? ", fills an empty title from the name of the file that started the run"
-          : ""
-      }${nodeType.branches ? `, ways out: ${nodeType.branches.join(" and ")}` : ""}${
-        nodeType.ask ? `, ask the person for its ${nodeType.ask.join(" and ")}` : ""
-      }): ${nodeType.title}. ${nodeType.description}`,
-  ).join("\n");
+  return allNodeTypes()
+    .map(
+      (nodeType) =>
+        `${nodeType.type} (${GROUP_LABELS[nodeType.group]}; takes ${nodeType.takes}, gives ${nodeType.gives}${
+          nodeType.makes ? `, makes ${nodeType.makes.join(" and ")}` : ""
+        }${
+          nodeType.brand
+            ? `, takes the team's ${Object.values(nodeType.brand).join(" and ")} from Settings`
+            : ""
+        }${nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""}${
+          nodeType.fromStart
+            ? ", fills an empty title from the name of the file that started the run"
+            : ""
+        }${nodeType.branches ? `, ways out: ${nodeType.branches.join(" and ")}` : ""}${
+          nodeType.ask ? `, ask the person for its ${nodeType.ask.join(" and ")}` : ""
+        }): ${nodeType.title}. ${nodeType.description}`,
+    )
+    .join("\n");
 }

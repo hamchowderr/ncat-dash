@@ -9,6 +9,7 @@ import {
   DiscordSettings,
   EditorsSettings,
   EmailSettings,
+  MotionSettings,
   NotificationsSettings,
   RunsSettings,
   SlackSettings,
@@ -22,6 +23,7 @@ import { ZoomCard } from "./zoom-card";
 const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   brand: BrandSettings,
   captions: CaptionsSettings,
+  motion: MotionSettings,
   editors: EditorsSettings,
   agent: AgentSettings,
   runs: RunsSettings,

@@ -15,6 +15,7 @@ import { storageUploadS3 } from "./storage/upload-s3";
 import { videoCaption } from "./video/caption";
 import { videoConcatenate } from "./video/concatenate";
 import { videoCut } from "./video/cut";
+import { videoMotion } from "./video/motion";
 import { videoReframe } from "./video/reframe";
 import { videoSplit } from "./video/split";
 import { videoThumbnail } from "./video/thumbnail";
@@ -44,6 +45,9 @@ export const steps = [
   videoTrim,
 ] as const;
 
+/** Steps the runner sends for other steps; never shown in a step list. */
+export const hiddenSteps = [videoMotion] as const;
+
 export {
   audioConcatenate,
   codeExecutePython,
@@ -62,6 +66,7 @@ export {
   videoCaption,
   videoConcatenate,
   videoCut,
+  videoMotion,
   videoReframe,
   videoSplit,
   videoThumbnail,

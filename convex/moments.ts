@@ -131,7 +131,7 @@ export const finishPick = internalMutation({
 });
 
 /** The words in a toolkit transcript file of segments with word timestamps. */
-async function readWordsFile(url: string): Promise<Word[] | null> {
+export async function readWordsFile(url: string): Promise<Word[] | null> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(WORDS_FILE_TIMEOUT_MS) });
     if (!response.ok) return null;
