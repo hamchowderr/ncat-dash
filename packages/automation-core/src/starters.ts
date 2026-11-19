@@ -346,6 +346,45 @@ const WORKFLOWS: Starter[] = [
     ],
   },
   {
+    id: "talking-head-broll",
+    category: "clips",
+    name: "Talking head with B-Roll",
+    description:
+      "Each video you upload gets short cutaways where what you say can be shown, from your Content Library first and then free stock, while your voice carries on. Then captions go on. No AI: footage is matched to your words by how it looks.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [
+      { id: "broll_1", kind: "broll", input: {}, position: { x: 0, y: 0 } },
+      step("caption_1", "video-caption", 1),
+    ],
+    edges: chain("broll_1", "caption_1"),
+  },
+  {
+    id: "clips-with-broll",
+    category: "clips",
+    name: "Clips with B-Roll",
+    description:
+      "Every long video that arrives is cut at pauses in speech into clips that fit the platform you pick. Each clip gets cutaways over what is said, from your library and free stock, then captions.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [
+      {
+        id: "clips",
+        kind: "clips",
+        input: { platform: "Instagram Reels" },
+        position: { x: 0, y: 0 },
+      },
+      {
+        id: "broll_1",
+        kind: "broll",
+        input: { often: "busy", seconds: 2 },
+        position: { x: NODE_GAP, y: 0 },
+      },
+      step("caption_1", "video-caption", 2),
+    ],
+    edges: chain("clips", "broll_1", "caption_1"),
+  },
+  {
     id: "podcast-package",
     category: "audio",
     name: "Podcast package",

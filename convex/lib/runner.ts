@@ -59,6 +59,7 @@ import { cutListOf } from "./exports";
 import { captionSetupOf } from "./captions";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { finishListening, startListening } from "./moments";
+import { finishLaying, finishLooking } from "./broll";
 import { finishMotionListening, isMotionKind } from "./motion";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
@@ -259,9 +260,15 @@ async function startNode(
     return;
   }
 
-  if (node.kind === "moments" || node.kind === "chapters") {
-    // Chapters reads speech, so an audio file will do; moments are cut from a video.
-    const kind = node.kind === "moments" ? "video" : "media";
+  if (
+    node.kind === "moments" ||
+    node.kind === "chapters" ||
+    node.kind === "broll" ||
+    node.kind === "broll-plan"
+  ) {
+    // Chapters reads speech, so an audio file will do; moments are cut from a video, and
+    // B-Roll is laid over one.
+    const kind = node.kind === "chapters" ? "media" : "video";
     await startListening(ctx, run, node, step, byNode, filesFor(kind, node, run, byNode));
     return;
   }
@@ -935,6 +942,18 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
         jobs,
       );
     } else await finishListening(ctx, run, step, jobs);
+    await advance(ctx, run._id);
+    return;
+  }
+
+  if (step.stage === "look") {
+    await finishLooking(ctx, run, step, jobs);
+    await advance(ctx, run._id);
+    return;
+  }
+
+  if (step.stage === "lay") {
+    await finishLaying(ctx, run, step, jobs);
     await advance(ctx, run._id);
     return;
   }

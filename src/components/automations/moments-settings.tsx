@@ -31,7 +31,7 @@ type Settings = Record<string, unknown>;
  * A number box that keeps what is typed while it is being typed, and saves it once it is
  * a number. Emptying it puts the step back on its usual value.
  */
-function NumberBox({
+export function NumberBox({
   id,
   value,
   onSave,
@@ -72,7 +72,7 @@ function NumberBox({
   );
 }
 
-function setOrClear(input: Settings, name: string, value: unknown): Settings {
+export function setOrClear(input: Settings, name: string, value: unknown): Settings {
   const next = { ...input };
   if (value === undefined || value === "") delete next[name];
   else next[name] = value;
