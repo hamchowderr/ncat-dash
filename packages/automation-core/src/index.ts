@@ -29,3 +29,4 @@ export * from "./library";
 export * from "./moments";
 export * from "./content-goals";
 export * from "./calendar";
+export * from "./upload-parts";

@@ -10,11 +10,11 @@ import { TEAM } from "@/test/render";
 
 import { AppSidebar } from "./app-sidebar";
 
-function sidebar() {
+function sidebar({ open = true } = {}) {
   render(
     <TeamContext.Provider value={TEAM}>
       <TooltipProvider>
-        <SidebarProvider>
+        <SidebarProvider defaultOpen={open}>
           <AppSidebar
             teamName={TEAM.name}
             edition="Self-hosted"
@@ -48,5 +48,24 @@ describe("the Toolkit page in the menu", () => {
     sidebar();
     expect(screen.queryByRole("link", { name: "Toolkit" })).toBeNull();
     expect(screen.getByRole("link", { name: "Jobs" })).toBeTruthy();
+  });
+});
+
+describe("the menu", () => {
+  test("shows Automations with its own icon", () => {
+    answerQuery(api.toolkitHealth.shown, true);
+    sidebar();
+    const link = screen.getByRole("link", { name: "Automations" });
+    expect(link.querySelector("svg.lucide-waypoints")).not.toBeNull();
+  });
+
+  test("folds down to its icons instead of hiding", () => {
+    answerQuery(api.toolkitHealth.shown, true);
+    sidebar({ open: false });
+    expect(document.querySelector("[data-collapsible='icon']")).not.toBeNull();
+    expect(document.querySelector("[data-collapsible='offcanvas']")).toBeNull();
+    // Every page is still one click away while folded.
+    expect(screen.getByRole("link", { name: "Automations" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Home" })).toBeTruthy();
   });
 });

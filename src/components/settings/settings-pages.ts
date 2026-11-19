@@ -74,6 +74,11 @@ export const SETTINGS_GROUPS = [
         description: "Talk to the agent in your Discord server.",
       },
       {
+        slug: "zoom",
+        title: "Zoom",
+        description: "Meeting recordings come into Uploads by themselves, ready to clip.",
+      },
+      {
         slug: "mcp",
         title: "MCP",
         description:

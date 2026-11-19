@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/table";
 import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
-import { putWithProgress } from "@/lib/upload";
+import { useSendFile } from "@/lib/send-file";
 
 import { NeedsToolkit } from "./needs-toolkit";
 import {
@@ -128,6 +128,7 @@ export function UploadsView() {
   const storage = useQuery(api.storage.get, { organizationId: team.id });
   const uploads = useQuery(api.storage.listUploads, { organizationId: team.id });
   const startUpload = useAction(api.storage.startUpload);
+  const sendFile = useSendFile();
   const finishUpload = useMutation(api.storage.finishUpload);
   const removeUpload = useMutation(api.storage.removeUpload);
   const linkFor = useAction(api.storage.linkFor);
@@ -147,6 +148,12 @@ export function UploadsView() {
     [uploads],
   );
   const links = usePreviewLinks(team.id, ready);
+  // Zoom recordings the toolkit is still bringing in, straight from Zoom to the bucket.
+  const fromZoom = useMemo(
+    () =>
+      (uploads ?? []).filter((upload) => upload.status === "uploading" && upload.source === "zoom"),
+    [uploads],
+  );
   // A file still going up sits where it will land, as a skeleton with its percentage.
   const shown = useMemo(
     () =>
@@ -178,7 +185,7 @@ export function UploadsView() {
         uploadId = started.uploadId;
         const id = started.uploadId;
         setInFlight((current) => ({ ...current, [id]: { name: file.name, percent: 0 } }));
-        await putWithProgress(started.uploadUrl, file, (percent) =>
+        await sendFile(started, file, (percent) =>
           setInFlight((current) => ({ ...current, [id]: { name: file.name, percent } })),
         );
         await finishUpload({ uploadId: id });
@@ -280,6 +287,13 @@ export function UploadsView() {
           Going to your toolkit&apos;s storage, bucket {storage.bucket}.
         </p>
       </div>
+
+      {fromZoom.length > 0 && (
+        <p className="text-muted-foreground text-sm" data-zoom-coming>
+          Coming in from Zoom: {fromZoom.map((upload) => upload.fileName).join(", ")}. They show
+          here once they arrive.
+        </p>
+      )}
 
       {shown === undefined ? (
         <Skeleton className="h-32 rounded-xl" />

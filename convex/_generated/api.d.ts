@@ -56,6 +56,7 @@ import type * as lib_teamSteps from "../lib/teamSteps.js";
 import type * as lib_toolkitMessage from "../lib/toolkitMessage.js";
 import type * as lib_typing from "../lib/typing.js";
 import type * as lib_versions from "../lib/versions.js";
+import type * as lib_zoom from "../lib/zoom.js";
 import type * as library from "../library.js";
 import type * as mcp from "../mcp.js";
 import type * as mcpKeys from "../mcpKeys.js";
@@ -82,9 +83,11 @@ import type * as teamSteps from "../teamSteps.js";
 import type * as teams from "../teams.js";
 import type * as toolkitConnections from "../toolkitConnections.js";
 import type * as toolkitHealth from "../toolkitHealth.js";
+import type * as tours from "../tours.js";
 import type * as versions from "../versions.js";
 import type * as voiceNotes from "../voiceNotes.js";
 import type * as watch from "../watch.js";
+import type * as zoom from "../zoom.js";
 
 import type {
   ApiFromModules,
@@ -141,6 +144,7 @@ declare const fullApi: ApiFromModules<{
   "lib/toolkitMessage": typeof lib_toolkitMessage;
   "lib/typing": typeof lib_typing;
   "lib/versions": typeof lib_versions;
+  "lib/zoom": typeof lib_zoom;
   library: typeof library;
   mcp: typeof mcp;
   mcpKeys: typeof mcpKeys;
@@ -167,9 +171,11 @@ declare const fullApi: ApiFromModules<{
   teams: typeof teams;
   toolkitConnections: typeof toolkitConnections;
   toolkitHealth: typeof toolkitHealth;
+  tours: typeof tours;
   versions: typeof versions;
   voiceNotes: typeof voiceNotes;
   watch: typeof watch;
+  zoom: typeof zoom;
 }>;
 
 /**
