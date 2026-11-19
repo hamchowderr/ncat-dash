@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useAction, useMutation } from "convex/react";
-import { ChevronRight, Search, Video } from "lucide-react";
+import { ChevronRight, ExternalLink, Search, Video } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -38,6 +38,11 @@ const STANDING_TEXT = { brought: "Brought in", duplicate: "Already in Uploads" }
 
 /** Recordings shorter than this start unticked: they are nearly always false starts. */
 export const SHORT_MINUTES = 5;
+
+/** A recording's file in Google Drive; add "/view" to open it, "/preview" to play it here. */
+function driveFile(id: string): string {
+  return `https://drive.google.com/file/d/${encodeURIComponent(id)}`;
+}
 
 /** How many pictures are asked for at once. */
 const PICTURES_AT_ONCE = 24;
@@ -422,6 +427,16 @@ export function MeetPastRecordings({ organizationId }: { organizationId: string 
                           {STANDING_TEXT[meeting.standing]}
                         </span>
                       )}
+                      <a
+                        href={`${driveFile(meeting.driveFileId)}/view`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 shrink-0 rounded-md p-1 outline-none focus-visible:ring-3"
+                        aria-label={`Open ${meeting.topic}, ${when(meeting.startTime)}, in Google Drive`}
+                        title="Open in Google Drive"
+                      >
+                        <ExternalLink className="size-4" />
+                      </a>
                     </li>
                   );
                 })}
@@ -438,12 +453,22 @@ export function MeetPastRecordings({ organizationId }: { organizationId: string 
             <DialogDescription>
               {watching ? when(watching.startTime) : ""}
               {watching?.sharedBy ? ` · shared by ${watching.sharedBy}` : ""}. Plays from your
-              Google Drive.
+              Google Drive.{" "}
+              {watching && (
+                <a
+                  href={`${driveFile(watching.driveFileId)}/view`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-foreground underline underline-offset-4"
+                >
+                  Open in Google Drive
+                </a>
+              )}
             </DialogDescription>
           </DialogHeader>
           {watching && (
             <iframe
-              src={`https://drive.google.com/file/d/${encodeURIComponent(watching.driveFileId)}/preview`}
+              src={`${driveFile(watching.driveFileId)}/preview`}
               title={`${watching.topic} recording`}
               allow="autoplay; fullscreen"
               className="bg-muted aspect-video w-full rounded-lg"

@@ -109,6 +109,10 @@ describe("past Google Meet recordings", () => {
         driveFileIds: ["fileOwn1", "fileOwn2"],
       }),
     );
+    // Each recording also links to its file in Google Drive.
+    expect(
+      screen.getByRole("link", { name: /^Open Client Kickoff, .*in Google Drive$/ }),
+    ).toHaveAttribute("href", "https://drive.google.com/file/d/fileOwn2/view");
     const watch = screen.getByRole("button", { name: /^Watch Podcast Taping/ });
     await waitFor(() =>
       expect(within(watch).getByRole("presentation", { hidden: true })).toHaveAttribute(
@@ -121,6 +125,10 @@ describe("past Google Meet recordings", () => {
     expect(within(dialog).getByTitle("Podcast Taping recording")).toHaveAttribute(
       "src",
       "https://drive.google.com/file/d/fileOwn1/preview",
+    );
+    expect(within(dialog).getByRole("link", { name: "Open in Google Drive" })).toHaveAttribute(
+      "href",
+      "https://drive.google.com/file/d/fileOwn1/view",
     );
   });
 });
