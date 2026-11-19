@@ -331,11 +331,12 @@ async function postToAgent(
 async function sendBatch(
   questions: { key: string; body: Record<string, unknown> }[],
   askedBy: string,
+  organizationId: string,
 ): Promise<string | null> {
   if (questions.length === 0 || questions.length > MAX_BATCH) return null;
   const response = await postToAgent(
     "/ncat/moments/batch",
-    { requests: questions.map(({ key, body }) => ({ id: key, request: body })) },
+    { organizationId, requests: questions.map(({ key, body }) => ({ id: key, request: body })) },
     askedBy,
   );
   if (!response?.ok) return null;
@@ -344,7 +345,11 @@ async function sendBatch(
 }
 
 /** Asks the agent server's model to pick from one transcript. Returns its answer as text. */
-async function askModel(body: Record<string, unknown>, askedBy: string): Promise<string> {
+async function askModel(
+  body: Record<string, unknown>,
+  askedBy: string,
+  organizationId: string,
+): Promise<string> {
   const url = process.env.AGENT_URL;
   const secret = process.env.MASTRA_JWT_SECRET;
   if (!url || !secret) {
@@ -360,7 +365,8 @@ async function askModel(body: Record<string, unknown>, askedBy: string): Promise
         "content-type": "application/json",
         authorization: `Bearer ${await signAgentToken(secret, askedBy)}`,
       },
-      body: JSON.stringify(body),
+      // The team, so the agent server uses the team's own Anthropic key when it has one.
+      body: JSON.stringify({ ...body, organizationId }),
       signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
     });
   } catch {
@@ -445,7 +451,7 @@ export const pick = internalAction({
       );
       const unanswered = questions.filter(({ key }) => !saved.has(key));
       if (unanswered.length > 0 && loaded.unattended && !args.live) {
-        const batchId = await sendBatch(unanswered, loaded.askedBy);
+        const batchId = await sendBatch(unanswered, loaded.askedBy, loaded.organizationId);
         if (batchId) {
           await ctx.runMutation(internal.moments.waitForBatch, {
             runStepId: args.runStepId,
@@ -460,7 +466,7 @@ export const pick = internalAction({
       for (const question of questions) {
         let answer = saved.get(question.key);
         if (answer === undefined) {
-          answer = await askModel(question.body, loaded.askedBy);
+          answer = await askModel(question.body, loaded.askedBy, loaded.organizationId);
           await ctx.runMutation(internal.moments.saveAnswers, {
             organizationId: loaded.organizationId,
             answers: [{ question: question.key, answer }],
@@ -490,7 +496,7 @@ export const checkBatch = internalAction({
     }
     const response = await postToAgent(
       "/ncat/moments/batch/answers",
-      { batchId: batch.batchId },
+      { batchId: batch.batchId, organizationId: batch.organizationId },
       "automation",
     );
     const result = response?.ok

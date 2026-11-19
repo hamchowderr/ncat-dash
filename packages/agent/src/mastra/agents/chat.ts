@@ -8,6 +8,7 @@ import { type ChatFeatures, features as defaultFeatures } from '../lib/features'
 import { putImage } from '../lib/image-store';
 import { liveScorers } from '../lib/live-scorers';
 import { CostRouteProcessor } from '../lib/cost';
+import { onTeamKey, teamKeyForTurn } from '../ncat/team-key';
 import { createDefaultMemory } from '../lib/memory';
 import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
 import { toolScopeProcessor } from '../lib/tool-scope';
@@ -338,11 +339,13 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
         : baseInstructions,
     // The model the session has chosen (the composer's pick, or the team's own from
     // Settings → Agent, switched in routes/controller.ts), else the server's.
-    model: ({ requestContext }) => {
+    // On the team's own Anthropic key when it has one (ncat/team-key.ts).
+    model: async ({ requestContext }) => {
       const controller = requestContext.get('controller') as
         | { session?: { modelId?: string } }
         | undefined;
-      return controller?.session?.modelId || env.CHAT_MODEL;
+      const modelId = controller?.session?.modelId || env.CHAT_MODEL;
+      return onTeamKey(modelId, await teamKeyForTurn(requestContext));
     },
     // Native goal mechanism (flagship controller demo). Configuring `goal` auto-registers
     // the goal signal provider + the in-loop goal step: an objective set via

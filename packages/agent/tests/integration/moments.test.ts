@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createNcatRoutes } from "../../src/mastra/ncat/routes";
 import { clockTime, momentsPrompt, momentsRequest } from "../../src/mastra/ncat/moments";
+import { useTeamKeysForTests } from "../../src/mastra/ncat/team-key";
 import { ctx, find } from "../helpers/route-harness";
 
 /**
@@ -52,6 +53,34 @@ describe("the agent picking moments for the dashboard", () => {
     await route.handler(c);
     expect(captured.status).toBe(200);
     expect((captured.body as { answer: string }).answer).toContain('"opening"');
+  });
+
+  it("asks on the team's own Anthropic key when the team has one", async () => {
+    useTeamKeysForTests(async (team) => (team === "team_1" ? "sk-ant-team-one" : null));
+    const keys: (string | null)[] = [];
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      keys.push(new Headers(init?.headers).get("x-api-key"));
+      return real(input, init);
+    });
+    try {
+      const team = ctx({
+        resourceId: "automation",
+        body: { ...MOMENTS, organizationId: "team_1" },
+      });
+      await route.handler(team.c);
+      expect(team.captured.status).toBe(200);
+      const other = ctx({
+        resourceId: "automation",
+        body: { ...MOMENTS, organizationId: "team_2" },
+      });
+      await route.handler(other.c);
+      expect(other.captured.status).toBe(200);
+    } finally {
+      vi.unstubAllGlobals();
+      useTeamKeysForTests();
+    }
+    expect(keys.filter(Boolean)).toEqual(["sk-ant-team-one", "mock"]);
   });
 
   it("only answers a signed request", async () => {

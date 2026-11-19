@@ -9,6 +9,7 @@
  */
 
 import type * as alerts from "../alerts.js";
+import type * as anthropicKey from "../anthropicKey.js";
 import type * as auth from "../auth.js";
 import type * as automations from "../automations.js";
 import type * as calendar from "../calendar.js";
@@ -108,6 +109,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   alerts: typeof alerts;
+  anthropicKey: typeof anthropicKey;
   auth: typeof auth;
   automations: typeof automations;
   calendar: typeof calendar;
