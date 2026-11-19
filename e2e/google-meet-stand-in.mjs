@@ -3,7 +3,7 @@
 // account's Meet recordings with their Drive files. Nothing here is used by the product.
 import { createServer } from "node:http";
 
-import { GOOGLE, GOOGLE_PORT, GOOGLE_USER, meeting } from "./google-meet-data.mjs";
+import { GOOGLE, GOOGLE_PORT, GOOGLE_USER, meeting, oldRecording } from "./google-meet-data.mjs";
 
 const SCOPES =
   "openid email profile https://www.googleapis.com/auth/meetings.space.readonly https://www.googleapis.com/auth/drive.meet.readonly";
@@ -79,10 +79,18 @@ const server = createServer(async (request, response) => {
     const found = meetings.find((one) => one.recording.name === oneRecording[1]);
     return found ? send(response, 200, found.recording) : send(response, 404, {});
   }
+  // Drive's files Meet made: every meeting's recording, and one from long ago.
+  const files = () => [...meetings.map((one) => one.file), oldRecording()];
+  if (url.pathname === "/drive/v3/files") {
+    // One page, newest first, is all the browser tests need.
+    return send(response, 200, {
+      files: files().sort((a, b) => b.createdTime.localeCompare(a.createdTime)),
+    });
+  }
   const file = /^\/drive\/v3\/files\/([^/]+)$/.exec(url.pathname);
   if (file) {
-    const found = meetings.find((one) => one.file.id === file[1]);
-    return found ? send(response, 200, found.file) : send(response, 404, {});
+    const found = files().find((one) => one.id === file[1]);
+    return found ? send(response, 200, found) : send(response, 404, {});
   }
   if (url.pathname === "/health") return send(response, 200, { ok: true });
   send(response, 404, { message: "unknown" });

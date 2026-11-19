@@ -23,6 +23,7 @@ let conferenceFilters: string[] = [];
 let conferences: { name: string; startTime: string; endTime?: string }[] = [];
 let recordings: Record<string, unknown[]> = {};
 let driveFiles: Record<string, Record<string, unknown>> = {};
+let driveLists: URLSearchParams[] = [];
 
 beforeEach(() => {
   process.env.GOOGLE_MEET_CLIENT_ID = "google-client-id";
@@ -40,6 +41,7 @@ beforeEach(() => {
   conferences = [];
   recordings = {};
   driveFiles = {};
+  driveLists = [];
   vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     const headers = new Headers(init?.headers);
@@ -95,6 +97,20 @@ beforeEach(() => {
         .flat()
         .find((one) => (one as { name: string }).name === oneRecording[1]);
       return found ? Response.json(found) : new Response("no", { status: 404 });
+    }
+    if (url.pathname === "/drive/v3/files") {
+      // Drive lists the videos Meet made, newest first, a page at a time.
+      driveLists.push(url.searchParams);
+      const size = Number(url.searchParams.get("pageSize"));
+      const from = Number(url.searchParams.get("pageToken") ?? 0);
+      const all = Object.values(driveFiles)
+        .filter((one) => String(one.mimeType).startsWith("video/") && !one.trashed)
+        .sort((a, b) => String(b.createdTime).localeCompare(String(a.createdTime)));
+      const page = all.slice(from, from + size);
+      return Response.json({
+        files: page,
+        ...(from + size < all.length ? { nextPageToken: String(from + size) } : {}),
+      });
     }
     const file = /^\/drive\/v3\/files\/([^/]+)$/.exec(url.pathname);
     if (file) {
@@ -192,6 +208,8 @@ function meetingEnded({
     name: `${title} (2026-11-18 10:02 GMT-8) - Recording`,
     size: "2000000",
     mimeType: "video/mp4",
+    createdTime: new Date(end).toISOString(),
+    videoMediaMetadata: { durationMillis: String(42 * 60 * 1000) },
   };
   return { start, recordingName: `conferenceRecords/${id}/recordings/rec-${id}`, file };
 }
@@ -489,17 +507,13 @@ describe("the toolkit bringing a recording in", () => {
     expect(view?.imports).toMatchObject([{ status: "failed", error: "403 Forbidden" }]);
 
     const past = await owner.as.action(api.googleMeet.pastRecordings, { organizationId: team });
-    expect(past).toMatchObject([
-      {
-        recordingName: "conferenceRecords/conf-1/recordings/rec-conf-1",
-        brought: false,
-        minutes: 42,
-      },
+    expect(past.recordings).toMatchObject([
+      { driveFileId: "1kuceFZohVoCh6FulBHxwy6I15Ogpc4hP", standing: "new", minutes: 42 },
     ]);
     expect(
       await owner.as.action(api.googleMeet.bringIn, {
         organizationId: team,
-        recordingName: "conferenceRecords/conf-1/recordings/rec-conf-1",
+        driveFileId: "1kuceFZohVoCh6FulBHxwy6I15Ogpc4hP",
       }),
     ).toBe("started");
     const imports = await t.run((ctx) => ctx.db.query("googleMeetImports").collect());
@@ -509,41 +523,88 @@ describe("the toolkit bringing a recording in", () => {
   });
 });
 
+/** A Meet recording that sits in Drive only: Meet itself forgot the meeting long ago. */
+function oldRecordingInDrive(id: string, daysAgo: number, size = 3_000_000 + daysAgo) {
+  const saved = Date.now() - daysAgo * 24 * HOUR;
+  driveFiles[id] = {
+    id,
+    name: `Client Call ${daysAgo} - 2025/03/04 09:15 PST - Recording.mp4`,
+    size: String(size),
+    mimeType: "video/mp4",
+    createdTime: new Date(saved).toISOString(),
+    videoMediaMetadata: { durationMillis: String(30 * 60 * 1000) },
+  };
+  return { saved, size };
+}
+
 describe("past recordings", () => {
-  test("lists the last 30 days, and brings one in by hand once", async () => {
+  test("lists every Meet recording in Drive, long past 30 days, newest first and a page at a time", async () => {
     const setup = await setUp();
     await connect(setup);
-    const { start, recordingName } = meetingEnded({ endedAgo: 3 * 24 * HOUR });
-    const past = await setup.owner.as.action(api.googleMeet.pastRecordings, {
+    const { start } = meetingEnded({ endedAgo: 3 * 24 * HOUR });
+    for (let day = 40; day < 40 + 30; day++) oldRecordingInDrive(`oldRecordingFile${day}`, day);
+    // Transcripts and notes Meet saves are documents, not recordings.
+    driveFiles.transcriptDocFile1 = {
+      id: "transcriptDocFile1",
+      name: "Weekly Sync - Transcript",
+      mimeType: "application/vnd.google-apps.document",
+      createdTime: new Date().toISOString(),
+    };
+
+    const first = await setup.owner.as.action(api.googleMeet.pastRecordings, {
       organizationId: setup.team,
     });
-    expect(past).toEqual([
-      {
-        recordingName,
-        topic: "Weekly Sync: Launch / Plan",
-        startTime: start,
-        minutes: 42,
-        size: 2_000_000,
-        brought: false,
-      },
-    ]);
-    expect(conferenceFilters[0]).toMatch(/^end_time>="/);
-    const args = { organizationId: setup.team, recordingName };
+    expect(first.recordings).toHaveLength(25);
+    expect(first.recordings[0]).toEqual({
+      driveFileId: "1kuceFZohVoCh6FulBHxwy6I15Ogpc4hP",
+      topic: "Weekly Sync: Launch / Plan",
+      startTime: start,
+      minutes: 42,
+      size: 2_000_000,
+      standing: "new",
+    });
+    expect(first.recordings[1]).toMatchObject({ topic: "Client Call 40", minutes: 30 });
+    expect(first.nextPageToken).toBe("25");
+    // Drive is asked for Meet's videos, newest first.
+    expect(driveLists[0].get("q")).toBe("mimeType contains 'video/' and trashed = false");
+    expect(driveLists[0].get("orderBy")).toBe("createdTime desc");
+
+    const rest = await setup.owner.as.action(api.googleMeet.pastRecordings, {
+      organizationId: setup.team,
+      pageToken: first.nextPageToken ?? undefined,
+    });
+    expect(rest.recordings).toHaveLength(6);
+    expect(rest.recordings.at(-1)).toMatchObject({ topic: "Client Call 69" });
+    expect(rest.nextPageToken).toBeNull();
+  });
+
+  test("brings one in by hand once, even one Meet no longer remembers", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    const { saved } = oldRecordingInDrive("oldRecordingFile90", 90);
+    const args = { organizationId: setup.team, driveFileId: "oldRecordingFile90" };
     expect(await setup.owner.as.action(api.googleMeet.bringIn, args)).toBe("started");
     expect(await setup.owner.as.action(api.googleMeet.bringIn, args)).toBe("already");
+    const [upload] = await setup.t.run((ctx) => ctx.db.query("uploads").collect());
+    expect(upload).toMatchObject({ source: "google_meet", size: 3_000_090 });
+    expect(upload.fileName).toBe(
+      `Client Call 90 ${new Date(saved - 30 * 60_000).toISOString().slice(0, 10)}.mp4`,
+    );
+    const [job] = await setup.t.run((ctx) => ctx.db.query("jobs").collect());
+    expect(job.input).toMatchObject({
+      file_url: `${G}/drive/v3/files/oldRecordingFile90?alt=media`,
+    });
     const again = await setup.owner.as.action(api.googleMeet.pastRecordings, {
       organizationId: setup.team,
     });
-    expect(again[0].brought).toBe(true);
+    expect(again.recordings[0].standing).toBe("brought");
+
     await expect(
-      setup.owner.as.action(api.googleMeet.bringIn, {
-        ...args,
-        recordingName: "conferenceRecords/conf-1/recordings/made-up",
-      }),
+      setup.owner.as.action(api.googleMeet.bringIn, { ...args, driveFileId: "madeUpFileId123" }),
     ).rejects.toThrow(/no longer has/);
-    // Only Meet's own names are asked about.
+    // Only Drive's own ids are asked about.
     await expect(
-      setup.owner.as.action(api.googleMeet.bringIn, { ...args, recordingName: "../../drive" }),
+      setup.owner.as.action(api.googleMeet.bringIn, { ...args, driveFileId: "../../about" }),
     ).rejects.toThrow(/no such recording/);
   });
 
@@ -552,5 +613,80 @@ describe("past recordings", () => {
     await expect(
       setup.member.as.action(api.googleMeet.pastRecordings, { organizationId: setup.team }),
     ).rejects.toThrow(/Connect your Google account/);
+  });
+});
+
+describe("nothing comes in twice", () => {
+  /** A file someone on the team uploaded by hand, the same one Meet saved. */
+  async function uploadedByHand(
+    setup: Awaited<ReturnType<typeof setUp>>,
+    size: number,
+    purpose?: "brand",
+  ) {
+    return await setup.t.run((ctx) =>
+      ctx.db.insert("uploads", {
+        organizationId: setup.team,
+        key: "uploads/by-hand/client-call.mp4",
+        fileName: "Client Call.mp4",
+        contentType: "video/mp4",
+        size,
+        status: "ready",
+        createdBy: setup.member.id,
+        ...(purpose ? { purpose } : {}),
+      }),
+    );
+  }
+
+  test("a recording already uploaded by hand shows as in Uploads, and bringing it in does nothing", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    const { size } = oldRecordingInDrive("oldRecordingFile50", 50);
+    oldRecordingInDrive("oldRecordingFile51", 51);
+    const byHand = await uploadedByHand(setup, size);
+
+    const past = await setup.owner.as.action(api.googleMeet.pastRecordings, {
+      organizationId: setup.team,
+    });
+    expect(past.recordings.map((one) => one.standing)).toEqual(["duplicate", "new"]);
+    expect(
+      await setup.owner.as.action(api.googleMeet.bringIn, {
+        organizationId: setup.team,
+        driveFileId: "oldRecordingFile50",
+      }),
+    ).toBe("duplicate");
+    expect(await setup.t.run((ctx) => ctx.db.query("jobs").collect())).toEqual([]);
+    const uploads = await setup.t.run((ctx) => ctx.db.query("uploads").collect());
+    expect(uploads.map((one) => one._id)).toEqual([byHand]);
+    const view = await setup.owner.as.query(api.googleMeet.forTeam, {
+      organizationId: setup.team,
+    });
+    expect(view?.imports).toMatchObject([{ topic: "Client Call 50", status: "duplicate" }]);
+  });
+
+  test("the automatic check skips a recording whose file is in Uploads already, and asks once", async () => {
+    const setup = await setUp();
+    const row = await connectedEarlier(setup);
+    meetingEnded();
+    await uploadedByHand(setup, 2_000_000);
+    expect(await setup.t.action(internal.googleMeet.checkOne, { connectionId: row._id })).toBe(0);
+    expect(await setup.t.action(internal.googleMeet.checkOne, { connectionId: row._id })).toBe(0);
+    const imports = await setup.t.run((ctx) => ctx.db.query("googleMeetImports").collect());
+    expect(imports).toMatchObject([{ status: "duplicate" }]);
+    expect(await setup.t.run((ctx) => ctx.db.query("jobs").collect())).toEqual([]);
+  });
+
+  test("a brand file of the same size does not count, and once the copy is gone it can come in", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    const { size } = oldRecordingInDrive("oldRecordingFile60", 60);
+    await uploadedByHand(setup, size, "brand");
+    const byHand = await uploadedByHand(setup, size);
+    const args = { organizationId: setup.team, driveFileId: "oldRecordingFile60" };
+    expect(await setup.owner.as.action(api.googleMeet.bringIn, args)).toBe("duplicate");
+    await setup.t.run((ctx) => ctx.db.delete(byHand));
+    // Only the brand file is left: the recording is not in Uploads any more.
+    expect(await setup.owner.as.action(api.googleMeet.bringIn, args)).toBe("started");
+    const imports = await setup.t.run((ctx) => ctx.db.query("googleMeetImports").collect());
+    expect(imports).toMatchObject([{ status: "importing" }]);
   });
 });

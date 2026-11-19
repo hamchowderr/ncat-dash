@@ -92,44 +92,79 @@ describe("the Google Meet card", () => {
     );
   });
 
-  test("lists past recordings and brings one in", async () => {
+  test("lists Drive recordings of any age, marks ones already in, and brings one in", async () => {
     answerQuery(api.googleMeet.forTeam, connected);
     const list = actionOf(api.googleMeet.pastRecordings);
-    list.mockResolvedValue([
-      {
-        recordingName: "conferenceRecords/a/recordings/m1",
-        topic: "Podcast Taping",
-        startTime: Date.UTC(2026, 10, 16, 17),
-        minutes: 58,
-        size: 2_000_000_000,
-        brought: false,
-      },
-      {
-        recordingName: "conferenceRecords/b/recordings/m2",
-        topic: "Weekly Sync",
-        startTime: Date.UTC(2026, 10, 18, 17),
-        minutes: 42,
-        size: 100,
-        brought: true,
-      },
-    ]);
+    const recording = (driveFileId: string, topic: string, standing: string, year = 2026) => ({
+      driveFileId,
+      topic,
+      startTime: Date.UTC(year, 10, 16, 17),
+      minutes: 58,
+      size: 2_000_000_000,
+      standing,
+    });
+    list.mockResolvedValueOnce({
+      recordings: [
+        recording("fileOne", "Podcast Taping", "new"),
+        recording("fileTwo", "Weekly Sync", "brought"),
+        recording("fileThree", "Client Call", "duplicate"),
+      ],
+      nextPageToken: "page-2",
+    });
+    list.mockResolvedValueOnce({
+      recordings: [recording("fileOld", "Kickoff", "new", 2024)],
+      nextPageToken: null,
+    });
     const bring = actionOf(api.googleMeet.bringIn);
     bring.mockResolvedValue("started");
     renderInApp(<GoogleMeetCard />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Show the last 30 days" }));
+    expect(screen.getByText(/nothing comes in twice/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show recordings" }));
     expect(await screen.findByText("Podcast Taping")).toBeInTheDocument();
-    expect(screen.getByText(/58 min · 1\.9 GB/)).toBeInTheDocument();
+    expect(screen.getAllByText(/58 min · 1\.9 GB/)).toHaveLength(3);
     expect(screen.getByText("Brought in")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Bring in" }));
-    expect(bring).toHaveBeenCalledWith({
-      organizationId: TEAM.id,
-      recordingName: "conferenceRecords/a/recordings/m1",
-    });
+    expect(screen.getByText("Already in Uploads")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show older recordings" }));
+    expect(list).toHaveBeenLastCalledWith({ organizationId: TEAM.id, pageToken: "page-2" });
+    expect(await screen.findByText("Kickoff")).toBeInTheDocument();
+    // Older than this year: the year is shown.
+    expect(screen.getByText(/2024/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show older recordings" })).toBeNull();
+
+    await user.click(screen.getAllByRole("button", { name: "Bring in" })[0]);
+    expect(bring).toHaveBeenCalledWith({ organizationId: TEAM.id, driveFileId: "fileOne" });
     await waitFor(() =>
       expect(toastSuccess).toHaveBeenCalledWith("Podcast Taping is on its way to Uploads"),
     );
     expect(screen.getAllByText("Brought in")).toHaveLength(2);
+  });
+
+  test("bringing in a recording already in Uploads says so instead", async () => {
+    answerQuery(api.googleMeet.forTeam, connected);
+    actionOf(api.googleMeet.pastRecordings).mockResolvedValue({
+      recordings: [
+        {
+          driveFileId: "fileOne",
+          topic: "Podcast Taping",
+          startTime: Date.UTC(2026, 10, 16, 17),
+          minutes: 58,
+          size: 100,
+          standing: "new",
+        },
+      ],
+      nextPageToken: null,
+    });
+    actionOf(api.googleMeet.bringIn).mockResolvedValue("duplicate");
+    renderInApp(<GoogleMeetCard />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Show recordings" }));
+    await user.click(await screen.findByRole("button", { name: "Bring in" }));
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Podcast Taping is already in Uploads"),
+    );
+    expect(screen.getByText("Already in Uploads")).toBeInTheDocument();
   });
 
   test("coming back from Google says how it went, then tidies the address", async () => {
