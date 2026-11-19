@@ -7,9 +7,14 @@ import { answerQuery, mutationOf, routeParams } from "@/test/convex";
 import { ConnectAgent } from "./connect-agent";
 
 const session = vi.hoisted(() => ({
-  value: { isPending: false, data: { user: { id: "u1" } } } as unknown,
+  value: {
+    isPending: false,
+    data: { user: { id: "u1", email: "maya@salthouse.test" } },
+  } as unknown,
 }));
-vi.mock("@/lib/auth-client", () => ({ authClient: { useSession: () => session.value } }));
+vi.mock("@/lib/auth-client", () => ({
+  authClient: { useSession: () => session.value, signOut: vi.fn(async () => undefined) },
+}));
 
 const OPEN = {
   status: "open",
@@ -25,7 +30,10 @@ const OPEN = {
 describe("letting an AI agent in", () => {
   beforeEach(() => {
     routeParams.requestId = "r1";
-    session.value = { isPending: false, data: { user: { id: "u1" } } };
+    session.value = {
+      isPending: false,
+      data: { user: { id: "u1", email: "maya@salthouse.test" } },
+    };
   });
 
   test("someone signed out is sent to sign in and back here", () => {
@@ -37,11 +45,18 @@ describe("letting an AI agent in", () => {
     );
   });
 
-  test("names the agent and where it goes back to, and waits for a team to be picked", () => {
+  test("shows who is asking, who is signed in, what it may do, and waits for a team", () => {
     answerQuery(api.oauth.request, OPEN);
     render(<ConnectAgent />);
-    expect(screen.getByRole("heading", { name: "Connect Claude" })).toBeTruthy();
-    expect(screen.getByText(/You will be sent back to/).textContent).toContain("claude.ai");
+    expect(
+      screen.getByRole("heading", { name: "Claude wants to connect to your automations" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Claude" })).toBeTruthy();
+    expect(screen.getByText("maya@salthouse.test")).toBeTruthy();
+    const can = screen.getByRole("list", { name: "What it can do" }).textContent ?? "";
+    expect(can).toContain("Build and change automations as drafts");
+    expect(can).toContain("cannot publish drafts");
+    expect(screen.getByText(/Allowing sends you back to/).textContent).toContain("claude.ai");
     expect((screen.getByRole("button", { name: "Allow" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
@@ -54,7 +69,9 @@ describe("letting an AI agent in", () => {
     const assign = vi.fn();
     Object.defineProperty(window, "location", { value: { assign }, configurable: true });
     render(<ConnectAgent />);
-    expect(screen.getByText("Salt House")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Claude wants to connect to Salt House" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Allow" }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith("https://claude.ai/cb?code=abc"));
     expect(decide).toHaveBeenCalledWith({ requestId: "r1", allow: true, organizationId: "t1" });

@@ -287,7 +287,7 @@ export const decide = mutation({
     if (!found || found.codeHash || found.expiresAt < Date.now()) {
       throw new ConvexError({
         code: "not_found",
-        message: "This sign-in has expired. Start again from the agent.",
+        message: "This sign-in has expired. Start again from the app.",
       });
     }
     const base = { state: found.state, iss: issuer() };

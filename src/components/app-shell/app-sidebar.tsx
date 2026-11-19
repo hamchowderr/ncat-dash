@@ -110,7 +110,7 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   email: Mail,
   slack: SlackLogo,
   discord: DiscordLogo,
-  "ai-agents": KeyRound,
+  mcp: KeyRound,
 };
 
 const LAST_APP_PAGE = "ncat:last-app-page";

@@ -1,6 +1,6 @@
 "use client";
 
-import { AgentAccessCard } from "./agent-access-card";
+import { McpSettings } from "./mcp-settings";
 import type { SettingsSlug } from "./settings-pages";
 import {
   AgentSettings,
@@ -25,7 +25,7 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   email: EmailSettings,
   slack: SlackSettings,
   discord: DiscordSettings,
-  "ai-agents": AgentAccessCard,
+  mcp: McpSettings,
   team: TeamSettings,
 };
 

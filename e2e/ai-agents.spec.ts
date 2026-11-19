@@ -68,10 +68,14 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
   await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
 
   // Settings > AI agents: the address to paste into Claude, and nothing connected yet.
-  await page.goto("/settings/ai-agents");
-  await expect(page.getByText("often called a custom connector", { exact: false })).toBeVisible();
-  await expect(page.getByText("No agent has signed in yet.")).toBeVisible();
+  await page.goto("/settings/mcp");
+  await expect(page.getByRole("tab", { name: /Claude Code/ })).toBeVisible();
+  await expect(page.getByText("Nothing is connected yet.")).toBeVisible();
   await page.waitForTimeout(1500);
+  for (const app of ["ChatGPT", "Cursor", "Claude Code", "n8n", "Claude"]) {
+    await page.getByRole("tab", { name: app, exact: true }).click();
+    await page.waitForTimeout(1200);
+  }
 
   // The agent finds how to sign in from the MCP address, registers, and opens the
   // sign-in page, which lands on the dashboard's Allow page.
@@ -104,8 +108,9 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
     });
   });
   await page.goto(`${SITE}/oauth/authorize?${params}`);
-  await expect(page.getByRole("heading", { name: "Connect Claude" })).toBeVisible();
-  await expect(page.getByText("Harbour Films")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Claude wants to connect to Harbour Films" }),
+  ).toBeVisible();
   await page.waitForTimeout(1000);
   await page.getByRole("button", { name: "Allow" }).click();
   await expect(page.getByText("Connected. You can go back to Claude.")).toBeVisible();
@@ -180,12 +185,12 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
 
   // Settings lists it as connected; disconnecting turns it away.
   await page.unrouteAll();
-  await page.goto("/settings/ai-agents");
-  const connected = page.getByRole("list", { name: "Connected agents" });
+  await page.goto("/settings/mcp");
+  const connected = page.getByRole("list", { name: "Connected apps" });
   await expect(connected).toContainText("Claude");
   await page.waitForTimeout(1000);
   await connected.getByRole("button", { name: "Disconnect" }).click();
-  await expect(page.getByText("No agent has signed in yet.")).toBeVisible();
+  await expect(page.getByText("Nothing is connected yet.")).toBeVisible();
   const refused = await fetch(`${SITE}/mcp`, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
