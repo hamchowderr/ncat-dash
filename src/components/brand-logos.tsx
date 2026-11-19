@@ -75,7 +75,7 @@ export function DavinciResolveLogo(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export type ConnectedApp = "slack" | "discord" | "zoom";
+export type ConnectedApp = "slack" | "discord" | "zoom" | "microsoft";
 
 const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactNode }> = {
   slack: { name: "Slack", tile: "bg-muted", mark: <SlackColorLogo className="size-6" /> },
@@ -85,6 +85,11 @@ const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactN
     mark: <DiscordLogo className="size-6" />,
   },
   zoom: { name: "Zoom", tile: "bg-[#0B5CFF] text-white", mark: <ZoomLogo className="size-8" /> },
+  microsoft: {
+    name: "Microsoft Teams",
+    tile: "bg-[#5B5FC7] text-white",
+    mark: <MicrosoftTeamsLogo className="size-6" />,
+  },
 };
 
 /** An app's logo in its own colours, on a soft rounded tile, for the top of its page. */
