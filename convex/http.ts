@@ -263,23 +263,30 @@ http.route({
 });
 
 // Zoom's events: finished cloud recordings, the app being removed, and Zoom checking the
-// address. Each is signed with the Zoom app's secret token (zoom.ts checks it).
-http.route({
-  path: "/zoom/events",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const body = await request.text();
-    if (body.length > 1_000_000) return new Response("Body too large", { status: 413 });
-    const answer = await ctx.runAction(internal.zoom.takeEvent, {
-      body,
-      timestamp: request.headers.get("x-zm-request-timestamp") ?? "",
-      signature: request.headers.get("x-zm-signature") ?? "",
-    });
-    return answer.json
-      ? Response.json(answer.json, { status: answer.status })
-      : new Response(null, { status: answer.status });
-  }),
-});
+// address. Each is signed with the Zoom app's secret token (zoom.ts checks it). The
+// per-person app sends to /zoom/events, the whole-account app to /zoom/account-events.
+for (const [path, wholeAccount] of [
+  ["/zoom/events", false],
+  ["/zoom/account-events", true],
+] as const) {
+  http.route({
+    path,
+    method: "POST",
+    handler: httpAction(async (ctx, request) => {
+      const body = await request.text();
+      if (body.length > 1_000_000) return new Response("Body too large", { status: 413 });
+      const answer = await ctx.runAction(internal.zoom.takeEvent, {
+        body,
+        timestamp: request.headers.get("x-zm-request-timestamp") ?? "",
+        signature: request.headers.get("x-zm-signature") ?? "",
+        ...(wholeAccount ? { wholeAccount: true } : {}),
+      });
+      return answer.json
+        ? Response.json(answer.json, { status: answer.status })
+        : new Response(null, { status: answer.status });
+    }),
+  });
+}
 
 // Google sends people back here after they connect their Google account for Meet.
 http.route({

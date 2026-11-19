@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 
 import { AGENT_SECRET } from "../playwright.config";
 import { SLACK_API } from "./slack-shared";
-import { ZOOM_WEBHOOK_SECRET } from "./zoom-shared";
+import { ZOOM_ACCOUNT_WEBHOOK_SECRET, ZOOM_WEBHOOK_SECRET } from "./zoom-shared";
 
 const HOOK = "http://127.0.0.1:3211/automations/hook";
 
@@ -44,6 +44,9 @@ export default async function globalSetup() {
     ["ZOOM_CLIENT_ID", "stand-in-zoom-client"],
     ["ZOOM_CLIENT_SECRET", "stand-in-zoom-secret"],
     ["ZOOM_WEBHOOK_SECRET", ZOOM_WEBHOOK_SECRET],
+    ["ZOOM_ACCOUNT_CLIENT_ID", "stand-in-zoom-account-client"],
+    ["ZOOM_ACCOUNT_CLIENT_SECRET", "stand-in-zoom-account-secret"],
+    ["ZOOM_ACCOUNT_WEBHOOK_SECRET", ZOOM_ACCOUNT_WEBHOOK_SECRET],
     ["ZOOM_OAUTH_URL", "http://127.0.0.1:8770"],
     ["ZOOM_API_URL", "http://127.0.0.1:8770/v2"],
     // Microsoft, as the Microsoft stand-in (e2e/microsoft-stand-in.mjs) plays it.

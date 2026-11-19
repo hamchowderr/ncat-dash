@@ -842,16 +842,23 @@ export default defineSchema({
     connectedAt: v.number(),
     // False: new recordings wait to be brought in by hand from Settings.
     autoImport: v.boolean(),
+    // True: a Zoom account admin connected the WHOLE Zoom account through the dashboard's
+    // second, admin-managed Zoom app (ZOOM_ACCOUNT_* env), so every host's recordings in
+    // that account come in. zoomUserId is then the admin who connected it.
+    wholeAccount: v.optional(v.boolean()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_member", ["organizationId", "userId"])
-    .index("by_zoom_user", ["zoomUserId"]),
+    .index("by_zoom_user", ["zoomUserId"])
+    .index("by_zoom_account", ["zoomAccountId"]),
 
   // A Zoom sign-in someone started from Settings, matched when Zoom sends them back.
   zoomLinkStarts: defineTable({
     nonce: v.string(),
     organizationId: v.string(),
     userId: v.string(),
+    // True: connecting the whole Zoom account, through the admin-managed app.
+    wholeAccount: v.optional(v.boolean()),
     createdAt: v.number(),
   }).index("by_nonce", ["nonce"]),
 

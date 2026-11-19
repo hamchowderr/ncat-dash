@@ -8,9 +8,20 @@ import { renderInApp, TEAM } from "@/test/render";
 
 import { ZoomCard } from "./zoom-card";
 
-const empty = { ready: true, me: null, others: [], imports: [] };
+const empty = {
+  ready: true,
+  accountReady: false,
+  wholeAccount: null,
+  canManage: true,
+  me: null,
+  others: [],
+  imports: [],
+};
 const connected = {
   ready: true,
+  accountReady: false,
+  wholeAccount: null,
+  canManage: true,
   me: {
     zoomName: "Jordan Lee",
     zoomEmail: "jordan@salthouse.test",
@@ -134,5 +145,90 @@ describe("the Zoom card", () => {
       ),
     );
     expect(window.location.search).toBe("");
+  });
+
+  describe("the whole Zoom account", () => {
+    const whole = {
+      zoomName: "Salt House Admin",
+      zoomEmail: "admin@salthouse.test",
+      connectedAt: Date.UTC(2026, 10, 19, 9),
+      memberName: "Jordan Lee",
+      mine: true,
+    };
+
+    test("is not shown when the dashboard has no admin Zoom app", () => {
+      answerQuery(api.zoom.forTeam, empty);
+      renderInApp(<ZoomCard />);
+      expect(screen.queryByRole("region", { name: "Whole Zoom account" })).not.toBeInTheDocument();
+    });
+
+    test("an owner connects it through the admin app", async () => {
+      answerQuery(api.zoom.forTeam, { ...empty, accountReady: true });
+      const start = mutationOf(api.zoom.startLink);
+      start.mockResolvedValue("https://zoom.test/oauth/authorize?state=whole");
+      const assign = vi.fn();
+      vi.spyOn(window, "location", "get").mockReturnValue({
+        ...window.location,
+        href: "http://localhost/settings/zoom",
+        assign,
+      } as Location);
+      renderInApp(<ZoomCard />);
+      const region = screen.getByRole("region", { name: "Whole Zoom account" });
+      expect(region).toHaveTextContent(/every host in it come into Uploads/);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Connect whole Zoom account" }));
+      expect(start).toHaveBeenCalledWith({ organizationId: TEAM.id, wholeAccount: true });
+      await waitFor(() =>
+        expect(assign).toHaveBeenCalledWith("https://zoom.test/oauth/authorize?state=whole"),
+      );
+      vi.restoreAllMocks();
+    });
+
+    test("a plain member is told to ask an owner or admin", () => {
+      answerQuery(api.zoom.forTeam, { ...empty, accountReady: true, canManage: false });
+      renderInApp(<ZoomCard />);
+      expect(
+        screen.queryByRole("button", { name: "Connect whole Zoom account" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(/Ask a team owner or admin/)).toBeInTheDocument();
+    });
+
+    test("once connected it says who connected it, and can be disconnected", async () => {
+      answerQuery(api.zoom.forTeam, { ...empty, accountReady: true, wholeAccount: whole });
+      const disconnect = mutationOf(api.zoom.disconnect);
+      renderInApp(<ZoomCard />);
+      const region = screen.getByRole("region", { name: "Whole Zoom account" });
+      expect(region).toHaveTextContent(/Every host's recordings come in, connected by Jordan Lee/);
+      // Past recordings can be listed from the whole account without a Zoom of one's own.
+      expect(screen.getByRole("button", { name: "Show the last 30 days" })).toBeInTheDocument();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Disconnect" }));
+      expect(disconnect).toHaveBeenCalledWith({ organizationId: TEAM.id, wholeAccount: true });
+      await waitFor(() =>
+        expect(toastSuccess).toHaveBeenCalledWith("The whole Zoom account is disconnected"),
+      );
+    });
+
+    test("a member who did not connect it has no Disconnect", () => {
+      answerQuery(api.zoom.forTeam, {
+        ...empty,
+        accountReady: true,
+        canManage: false,
+        wholeAccount: { ...whole, mine: false },
+      });
+      renderInApp(<ZoomCard />);
+      expect(screen.queryByRole("button", { name: "Disconnect" })).not.toBeInTheDocument();
+    });
+
+    test("coming back says the whole account is connected", async () => {
+      window.history.replaceState(null, "", "/settings/zoom?zoom=account_connected");
+      answerQuery(api.zoom.forTeam, empty);
+      renderInApp(<ZoomCard />);
+      await waitFor(() =>
+        expect(toastSuccess).toHaveBeenCalledWith(
+          "The whole Zoom account is connected. Every host's recordings now come in",
+        ),
+      );
+    });
   });
 });
