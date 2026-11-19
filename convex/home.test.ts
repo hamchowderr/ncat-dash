@@ -80,6 +80,7 @@ describe("the home summary", () => {
       brand: false,
       automationOn: true,
       firstRun: true,
+      goals: false,
     });
     await t.run(async (ctx) => {
       await ctx.db.insert("toolkitConnections", {

@@ -322,6 +322,30 @@ const WORKFLOWS: Starter[] = [
     ],
   },
   {
+    id: "coaching-session-pack",
+    category: "clips",
+    name: "Coaching session pack",
+    description:
+      "Upload a full coaching session, call or webinar. It is split into chapters with show notes, you get a transcript, and the best moments are cut as captioned clips for the platform you pick. The AI reads the transcript once to pick; the cutting is plain editing.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [
+      { id: "chapters_1", kind: "chapters", input: {}, position: { x: 0, y: 0 } },
+      {
+        id: "moments_1",
+        kind: "moments",
+        input: { platform: "Instagram Reels" },
+        position: { x: NODE_GAP, y: 0 },
+      },
+      step("caption_1", "video-caption", 2),
+      step("transcribe_1", "media-transcribe", 1, 1),
+    ],
+    edges: [
+      ...chain("chapters_1", "moments_1", "caption_1"),
+      ...chain("chapters_1", "transcribe_1"),
+    ],
+  },
+  {
     id: "podcast-package",
     category: "audio",
     name: "Podcast package",

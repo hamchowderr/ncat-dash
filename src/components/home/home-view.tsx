@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { type Starter, STARTERS } from "@ncat-dash/automation-core";
+import { type Starter, STARTERS, suggestedStarters } from "@ncat-dash/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ArrowRight, CircleAlert, Circle, Hourglass, RefreshCw, TriangleAlert } from "lucide-react";
@@ -34,7 +34,10 @@ function since(at: number, now = Date.now()) {
   return when.format(at);
 }
 
-/** One ready-made automation from each kind of job, to start from on the home page. */
+/**
+ * One ready-made automation from each kind of job, to start from on the home page. A team
+ * that said what it makes sees the ones for that first, and the rest of these after.
+ */
 const FEATURED = [
   "social-clips",
   "every-shape",
@@ -45,6 +48,14 @@ const FEATURED = [
 ]
   .map((id) => STARTERS.find((starter) => starter.id === id))
   .filter((starter): starter is Starter => starter !== undefined);
+
+function featuredFor(kinds: string[]): Starter[] {
+  const first = suggestedStarters(kinds);
+  return [...first, ...FEATURED.filter((starter) => !first.includes(starter))].slice(
+    0,
+    FEATURED.length,
+  );
+}
 
 const plural = (count: number, one: string, many = `${one}s`) =>
   `${count} ${count === 1 ? one : many}`;
@@ -120,7 +131,7 @@ export function HomeView() {
         on each video.
       </p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {FEATURED.map((starter) => (
+        {featuredFor(summary?.contentKinds ?? []).map((starter) => (
           <TemplateCard
             key={starter.id}
             starter={starter}
@@ -348,6 +359,12 @@ function Stat({
 
 function GettingStarted({ setup }: { setup: Summary["setup"] }) {
   const steps = [
+    {
+      done: setup.goals,
+      label: "Tell us what you make",
+      detail: "We switch on the ready-made automations that fit it.",
+      href: "/get-started",
+    },
     {
       done: setup.toolkit,
       label: "Connect your toolkit",

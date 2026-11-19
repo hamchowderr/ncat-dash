@@ -8,7 +8,14 @@ import { renderInApp, TEAM } from "@/test/render";
 import { HomeView } from "./home-view";
 
 const NOW = Date.now();
-const SETUP_DONE = { toolkit: true, bucket: true, brand: true, automationOn: true, firstRun: true };
+const SETUP_DONE = {
+  toolkit: true,
+  bucket: true,
+  brand: true,
+  automationOn: true,
+  firstRun: true,
+  goals: true,
+};
 const run = (n: number, status: string, extra: Record<string, unknown> = {}) => ({
   runId: `run${n}`,
   automationId: "auto1",
@@ -28,6 +35,7 @@ function summary(overrides: Record<string, unknown> = {}) {
     failures: [run(2, "failed", { error: "The toolkit did not answer." })],
     automations: { total: 4, on: 3 },
     setup: SETUP_DONE,
+    contentKinds: [],
     ...overrides,
   };
 }
@@ -127,7 +135,7 @@ describe("the home page", () => {
     const ready = screen.getByRole("region", { name: "Ready-made automations" });
     expect(
       within(ready)
-        .getByRole("link", { name: /See all 61/ })
+        .getByRole("link", { name: /See all 62/ })
         .getAttribute("href"),
     ).toBe("/automations/new");
     fireEvent.click(within(ready).getByText("Podcast master and transcript"));
@@ -146,7 +154,7 @@ describe("the home page", () => {
       summary({ setup: { ...SETUP_DONE, brand: false, firstRun: false } }),
     );
     const { unmount } = renderInApp(<HomeView />);
-    const setup = screen.getByRole("region", { name: "Getting started, 3 of 5 done" });
+    const setup = screen.getByRole("region", { name: "Getting started, 4 of 6 done" });
     expect(
       within(setup)
         .getByRole("link", { name: /Add your logo/ })
@@ -157,6 +165,33 @@ describe("the home page", () => {
     answerQuery(api.home.summary, summary());
     renderInApp(<HomeView />);
     expect(screen.queryByRole("region", { name: /Getting started/ })).toBeNull();
+  });
+
+  test("asks what the team makes until it is answered", () => {
+    answerQuery(api.home.summary, summary({ setup: { ...SETUP_DONE, goals: false } }));
+    renderInApp(<HomeView />);
+    const setup = screen.getByRole("region", { name: "Getting started, 5 of 6 done" });
+    expect(
+      within(setup)
+        .getByRole("link", { name: /Tell us what you make/ })
+        .getAttribute("href"),
+    ).toBe("/get-started");
+  });
+
+  test("puts the ready-made automations for what the team makes first", () => {
+    answerQuery(
+      api.home.summary,
+      summary({ automations: { total: 0, on: 0 }, contentKinds: ["coaching"] }),
+    );
+    renderInApp(<HomeView />);
+    const ready = screen.getByRole("region", { name: "Ready-made automations" });
+    const names = within(ready)
+      .getAllByRole("button")
+      .map((button) => button.textContent ?? "");
+    expect(names[0]).toContain("Coaching session pack");
+    expect(names[1]).toContain("Sermon, webinar or lecture pack");
+    // Still six to start from, the rest from the usual mix.
+    expect(names).toHaveLength(6);
   });
 
   test("keeps the toolkit to one line, and opens its details when it is not answering", () => {
