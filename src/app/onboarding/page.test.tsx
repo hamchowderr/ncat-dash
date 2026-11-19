@@ -2,7 +2,7 @@ import { api } from "@convex/_generated/api";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { actionOf, answerQuery, place, replaced } from "@/test/convex";
+import { actionOf, answerQuery, place, replaced, toastError } from "@/test/convex";
 import { TEAM } from "@/test/render";
 
 import OnboardingPage from "./page";
@@ -29,6 +29,7 @@ vi.mock("@/components/onboarding/content-goals-flow", () => ({
 beforeEach(() => {
   answerQuery(api.toolkitConnections.list, []);
   answerQuery(api.teamSettings.get, { brand: null, music: null, canEdit: true });
+  answerQuery(api.toolkitConnections.offersOurs, false);
 });
 
 describe("asking whether there is a toolkit", () => {
@@ -76,6 +77,49 @@ describe("asking whether there is a toolkit", () => {
     expect(screen.getByRole("heading", { name: "Add your brand" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
     expect(screen.getByText("Goals with a toolkit")).toBeTruthy();
+  });
+});
+
+describe("just using ours", () => {
+  test("No says to use ours for now and connects the team to it", async () => {
+    answerQuery(api.toolkitConnections.offersOurs, true);
+    actionOf(api.toolkitConnections.connectOurs).mockResolvedValue({
+      ok: true,
+      buildNumber: "219",
+    });
+    render(<OnboardingPage />);
+    const no = screen.getByRole("button", { name: /No, Not Yet/ });
+    expect(no.textContent).toContain("Just use ours for now.");
+    fireEvent.click(no);
+    expect(await screen.findByRole("heading", { name: "Add your brand" })).toBeTruthy();
+    expect(actionOf(api.toolkitConnections.connectOurs)).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+    });
+    expect(actionOf(api.toolkitConnections.connect)).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+    expect(screen.getByText("Goals with a toolkit")).toBeTruthy();
+  });
+
+  test("carries on without a toolkit, saying so, when ours does not answer", async () => {
+    answerQuery(api.toolkitConnections.offersOurs, true);
+    actionOf(api.toolkitConnections.connectOurs).mockResolvedValue({
+      ok: false,
+      reason: "unreachable",
+      detail: "",
+    });
+    render(<OnboardingPage />);
+    fireEvent.click(screen.getByRole("button", { name: /No, Not Yet/ }));
+    expect(await screen.findByRole("heading", { name: "Add your brand" })).toBeTruthy();
+    expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/did not answer/));
+    fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+    expect(screen.getByText("Goals without a toolkit")).toBeTruthy();
+  });
+
+  test("is not offered on a copy that lends no toolkit", () => {
+    render(<OnboardingPage />);
+    expect(screen.getByRole("button", { name: /No, Not Yet/ }).textContent).not.toContain(
+      "use ours",
+    );
   });
 });
 

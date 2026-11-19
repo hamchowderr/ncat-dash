@@ -191,7 +191,7 @@ On first start the agent server downloads a small text-embedding model (fastembe
 
 One codebase serves both editions. Self-hosted is the default. `npx convex env set NCAT_EDITION hosted` switches a deployment to the hosted edition.
 
-The Toolkit page (server load, queue, build) is for teams that run their own toolkit. On the hosted edition no team sees it. On a self-hosted copy that also lends a toolkit to teams, `npx convex env set HOSTED_TOOLKIT_URL https://your-toolkit` hides it from the teams connected to that address.
+The Toolkit page (server load, queue, build) is for teams that run their own toolkit. On the hosted edition no team sees it. On a self-hosted copy that also lends a toolkit to teams, `npx convex env set HOSTED_TOOLKIT_URL https://your-toolkit` hides it from the teams connected to that address. Set `HOSTED_TOOLKIT_API_KEY` with it and setting up answers "Do You Have A Toolkit?" No with "Just use ours for now", connecting the team to that toolkit. Without both, No skips the toolkit and the team connects one later from Home.
 
 ### Checks
 

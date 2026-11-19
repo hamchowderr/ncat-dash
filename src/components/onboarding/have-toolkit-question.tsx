@@ -10,14 +10,21 @@ function Choice({
   title,
   detail,
   onClick,
+  disabled = false,
 }: {
   icon: LucideIcon;
   title: string;
   detail: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
-    <button type="button" className={choice} onClick={onClick}>
+    <button
+      type="button"
+      className={`${choice} disabled:pointer-events-none disabled:opacity-60`}
+      onClick={onClick}
+      disabled={disabled}
+    >
       <span className="bg-background grid size-10 shrink-0 place-items-center rounded-lg">
         <Icon className="size-5" aria-hidden="true" />
       </span>
@@ -32,17 +39,31 @@ function Choice({
 
 /**
  * Whether the person already runs an NCA Toolkit. Yes goes to the address and key form;
- * No skips every toolkit field and carries on setting up. One question, two answers, as
+ * No skips every toolkit field: it connects the team to the toolkit the operator lends
+ * when there is one ("Just use ours for now"), and otherwise carries on without one. One question, two answers, as
  * in Linear's and Vercel's setup screens.
  */
-export function HaveToolkitQuestion({ onYes, onNo }: { onYes: () => void; onNo: () => void }) {
+export function HaveToolkitQuestion({
+  onYes,
+  onNo,
+  offersOurs,
+  pending = false,
+}: {
+  onYes: () => void;
+  onNo: () => void;
+  /** The operator lends a toolkit, so No connects the team to it. */
+  offersOurs: boolean;
+  pending?: boolean;
+}) {
   return (
     <>
       <div className="space-y-2">
         <h1 className="text-3xl font-bold">Do You Have A Toolkit?</h1>
         <p className="text-muted-foreground">
-          The NCA Toolkit does the media work and keeps your files. If you have not set one up yet,
-          carry on without it and connect it later from Home.
+          The NCA Toolkit does the media work and keeps your files.{" "}
+          {offersOurs
+            ? "If you have not set one up yet, use ours for now and switch to your own any time."
+            : "If you have not set one up yet, carry on without it and connect it later from Home."}
         </p>
       </div>
       <div className="grid gap-2">
@@ -51,12 +72,20 @@ export function HaveToolkitQuestion({ onYes, onNo }: { onYes: () => void; onNo: 
           title="Yes, I Have One"
           detail="It runs on my server or an always-on machine. I have its address and API key."
           onClick={onYes}
+          disabled={pending}
         />
         <Choice
           icon={SkipForward}
           title="No, Not Yet"
-          detail="Skip the toolkit for now and finish setting up."
+          detail={
+            pending
+              ? "Connecting you to ours…"
+              : offersOurs
+                ? "Just use ours for now."
+                : "Skip the toolkit for now and finish setting up."
+          }
           onClick={onNo}
+          disabled={pending}
         />
       </div>
     </>

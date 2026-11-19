@@ -1,9 +1,10 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { FullPageLoader } from "@/components/full-page-loader";
 import { ConnectToolkitForm } from "@/components/onboarding/connect-toolkit-form";
@@ -25,7 +26,8 @@ type Stage = "ask" | "connect" | "connected" | "brand" | "goals";
  * Setting up, in order: name the team, say whether there is a toolkit and connect it if so,
  * the brand every automation uses, then what the team makes: where it posts, the ready-made
  * automations that fit, and a first upload. Someone without a toolkit skips every toolkit
- * field, and the last screen tells them their automations run once one is connected.
+ * field: they are put on ours when the operator lends one, and otherwise the last screen
+ * tells them their automations run once one is connected.
  * `/onboarding?toolkit=connect` (the "Connect your toolkit" links) opens the form directly
  * and goes back home once connected. The brand and the first upload can be skipped.
  */
@@ -41,6 +43,12 @@ function Onboarding() {
   const settings = useQuery(api.teamSettings.get, teamId ? { organizationId: teamId } : "skip");
   const [stage, setStage] = useState<Stage | null>(null);
   const [hasToolkit, setHasToolkit] = useState(true);
+  const offersOurs = useQuery(
+    api.toolkitConnections.offersOurs,
+    teamId ? { organizationId: teamId } : "skip",
+  );
+  const connectOurs = useAction(api.toolkitConnections.connectOurs);
+  const [joining, setJoining] = useState(false);
 
   const signedOut = state.status === "signed-out";
   // Someone already connected on an earlier visit goes straight to the dashboard.
@@ -51,7 +59,10 @@ function Onboarding() {
   }, [alreadySetUp, router]);
 
   if (state.status === "loading" || signedOut || alreadySetUp) return <FullPageLoader />;
-  if (state.status === "ready" && (connections === undefined || settings === undefined)) {
+  if (
+    state.status === "ready" &&
+    (connections === undefined || settings === undefined || offersOurs === undefined)
+  ) {
     return <FullPageLoader />;
   }
 
@@ -60,7 +71,26 @@ function Onboarding() {
   const step = current === "team" ? 1 : current === "brand" ? 3 : current === "goals" ? 4 : 2;
   const finish = () => router.replace("/");
   const toGoals = () => setStage("goals");
-  const withoutToolkit = () => {
+  // No: on ours when the operator lends one, otherwise on without a toolkit for now.
+  const withoutToolkit = async () => {
+    if (offersOurs && teamId) {
+      setJoining(true);
+      try {
+        const joined = await connectOurs({ organizationId: teamId });
+        if (joined.ok) {
+          setHasToolkit(true);
+          setStage("brand");
+          return;
+        }
+      } catch {
+        // Told below, then setting up carries on without one.
+      } finally {
+        setJoining(false);
+      }
+      toast.error(
+        "Our toolkit did not answer just now. Carry on, and connect one from Home later.",
+      );
+    }
     setHasToolkit(false);
     setStage("brand");
   };
@@ -85,7 +115,12 @@ function Onboarding() {
           </>
         )}
         {current === "ask" && (
-          <HaveToolkitQuestion onYes={() => setStage("connect")} onNo={withoutToolkit} />
+          <HaveToolkitQuestion
+            onYes={() => setStage("connect")}
+            onNo={() => void withoutToolkit()}
+            offersOurs={offersOurs === true}
+            pending={joining}
+          />
         )}
         {(current === "connect" || current === "connected") && state.status === "ready" && (
           <>
