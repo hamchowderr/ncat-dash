@@ -248,8 +248,10 @@ export function NodePanel({
   return (
     <div className="flex flex-col gap-4">
       {/* The step's name and its buttons share one line; what it does reads across the
-          whole panel underneath instead of being squeezed beside the buttons. */}
-      <div className="grid gap-2">
+          whole panel underneath instead of being squeezed beside the buttons. The one column
+          is never wider than the panel: a long name is cut short with "…" instead of
+          stretching it and pushing the buttons and text past the edge. */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-2">
         <div className="flex items-center gap-3">
           <span className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg">
             <look.icon className={`size-5 ${look.tint}`} aria-hidden="true" />
