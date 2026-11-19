@@ -112,12 +112,12 @@ Two things in toSend's own rules matter here: it is for email people expect (ale
 
 Everything the dashboard tells people about goes through one helper, `notify` in `convex/lib/alerts.ts`, which writes an `alerts` row and books its email. There are four kinds (`NOTIFICATION_KINDS` in `convex/lib/notifications.ts`):
 
-| Kind | Who | Raised by |
-| --- | --- | --- |
-| A run fails | everyone on the team | `alertTeam` in the runner, once a step has used all its tries |
-| An approval is waiting for me | the reviewers named on the step, or the whole team | `startApproval` in the runner |
-| An approval ran out of time | the same people as the approval | `decideApproval` when its time limit decides; this replaces the failed-run alert a timed-out reject used to raise |
-| Someone mentions me in a review | the people named after "@", not the author | `reviews.comment`; links to `/review/<id>?clip=<clip>&comment=<thread>` |
+| Kind                            | Who                                                | Raised by                                                                                                         |
+| ------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| A run fails                     | everyone on the team                               | `alertTeam` in the runner, once a step has used all its tries                                                     |
+| An approval is waiting for me   | the reviewers named on the step, or the whole team | `startApproval` in the runner                                                                                     |
+| An approval ran out of time     | the same people as the approval                    | `decideApproval` when its time limit decides; this replaces the failed-run alert a timed-out reject used to raise |
+| Someone mentions me in a review | the people named after "@", not the author         | `reviews.comment`; links to `/review/<id>?clip=<clip>&comment=<thread>`                                           |
 
 Settings, Notifications lets each member choose, for themselves and per team, whether each kind shows under the bell and whether it is emailed (`convex/notifications.ts`, table `notificationPreferences`). Everything starts on. A kind switched off for the bell is left out of that person's bell, count and pop-up notices (`alerts.list`); the row stays, so switching it back on shows it again. Emails can come as they happen, or as one summary a day at an hour the member picks in their own time zone (taken from the browser): an hourly cron (`notifications.bookDigests`) books `email.sendDigest` for each member whose hour it is. Approvals waiting are always emailed at once, because they have a deadline.
 
@@ -164,6 +164,16 @@ Google Meet recordings come into Uploads by themselves. The dashboard has ONE Go
 4. On the Convex deployment set `GOOGLE_MEET_CLIENT_ID` and `GOOGLE_MEET_CLIENT_SECRET` from that client, and push the functions.
 
 Then, in Settings, Google Meet, each person who organizes meetings presses "Connect Google Meet". Meet saves each recording to the organizer's Drive; every 5 minutes the dashboard asks Meet for recordings of their meetings that have finished saving, and has the team's toolkit stream each one from Drive into the team's folder (`/v1/s3/upload`, so size does not matter and nothing passes through the dashboard). It then becomes an upload like any other: it joins the library and starts the automations set to run on an upload. Asking every few minutes keeps the setup to the one app above (Google's push events need a Pub/Sub topic and subscriptions renewed weekly). Every recording Meet saved to Drive, however old, can also be brought in by hand (listed from Drive, since Meet itself forgets meetings after 30 days). Nothing comes in twice: a recording already brought in is skipped, and so is one whose file is already in Uploads some other way (an upload of the same size in bytes). Google's sign-in for the download is added only as the job is sent, never kept with the job. Recording needs a Google Workspace plan (or Google One) that includes Meet recording. The code is in `convex/googleMeet.ts` and `convex/lib/googleMeet.ts`.
+
+### Microsoft 365
+
+Teams meeting recordings come into Uploads by themselves. Teams saves the recording of a meeting to the organizer's OneDrive, in its Recordings folder, and the dashboard watches that folder. The dashboard has ONE Microsoft app that every team uses; whoever runs the dashboard sets it up once:
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com/), open App registrations, New registration. Name it, pick "Accounts in any organizational directory and personal Microsoft accounts", and add a Web redirect URI `https://<your Convex site>/microsoft/callback`.
+2. Under API permissions, add Microsoft Graph delegated permissions `User.Read`, `Files.Read` and `offline_access`. Each person consents for themselves when they connect; an organization that blocks that can grant consent for everyone on the same page.
+3. Under Certificates & secrets, make a client secret. On the Convex deployment set `MICROSOFT_CLIENT_ID` (the Application (client) ID) and `MICROSOFT_CLIENT_SECRET` (the secret's Value), and push the functions.
+
+Then, in Settings, Microsoft 365, each person who organizes meetings presses "Connect Microsoft 365". The dashboard asks Microsoft Graph to tell it when their OneDrive changes (`POST https://<your Convex site>/microsoft/events`, checked with a secret each watch is given; watches last just under 30 days and are renewed by themselves). When a new video is in the Recordings folder, the team's toolkit streams it from OneDrive into the team's folder (`/v1/s3/upload`, with a short-lived OneDrive download link asked for only as the job is sent), and it becomes an upload like any other. A check every 15 minutes catches anything a notice missed, and the last 30 days of recordings can be brought in by hand. Recordings of channel meetings live in the team's SharePoint, not anyone's OneDrive, so they do not come in. The code is in `convex/microsoft.ts` and `convex/lib/microsoft.ts`.
 
 ### The agent
 

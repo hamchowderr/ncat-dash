@@ -136,3 +136,21 @@ describe("a Google Meet recording on its way", () => {
     expect(screen.queryByText(/Coming in from Zoom/)).toBeNull();
   });
 });
+
+/** A Teams recording the toolkit is still bringing in is named above the files too. */
+describe("a Teams recording on its way", () => {
+  test("is named as coming in from Microsoft Teams", () => {
+    window.localStorage.clear();
+    answerQuery(api.storage.get, STORAGE);
+    answerQuery(api.storage.listUploads, [
+      { ...row("m1", "Client Kickoff 2026-11-18.mp4", "uploading"), source: "microsoft" },
+    ]);
+    actionOf(api.storage.previewLinks).mockResolvedValue([]);
+    renderInApp(<UploadsView />);
+    expect(
+      screen.getByText(/Coming in from Microsoft Teams: Client Kickoff 2026-11-18\.mp4\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Coming in from Zoom/)).toBeNull();
+    expect(screen.queryByText(/Coming in from Google Meet/)).toBeNull();
+  });
+});

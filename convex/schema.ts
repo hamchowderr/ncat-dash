@@ -282,6 +282,7 @@ export default defineSchema({
     zoomImportId: v.optional(v.id("zoomImports")),
     // Set when the job brings a Google Meet recording into the team's folder.
     googleMeetImportId: v.optional(v.id("googleMeetImports")),
+    microsoftImportId: v.optional(v.id("microsoftImports")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
@@ -936,6 +937,64 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_file", ["organizationId", "driveFileId"]),
 
+  // A team member's own Microsoft 365 account, connected from Settings so the Teams
+  // meeting recordings Teams saves to their OneDrive come into the team's uploads. The
+  // dashboard has ONE Microsoft app (MICROSOFT_* env). One Microsoft account belongs to
+  // one team. Tokens are stored encrypted and never leave the server.
+  microsoftConnections: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    msUserId: v.string(),
+    msEmail: v.string(),
+    msName: v.string(),
+    accessTokenCipher: v.string(),
+    refreshTokenCipher: v.string(),
+    // When the access token stops working.
+    expiresAt: v.number(),
+    connectedAt: v.number(),
+    // False: new recordings wait to be brought in by hand from Settings.
+    autoImport: v.boolean(),
+    // The OneDrive folder Teams saves recordings to, once it has been found.
+    recordingsFolderId: v.optional(v.string()),
+    // Microsoft's watch on the OneDrive, which tells the dashboard when files change.
+    subscriptionId: v.optional(v.string()),
+    subscriptionExpiresAt: v.optional(v.number()),
+    // Sent back with every change notice, so a notice from anyone else is ignored.
+    clientState: v.optional(v.string()),
+    // Set when Microsoft stopped accepting the sign-in: the member connects again.
+    needsReconnect: v.optional(v.boolean()),
+    lastCheckedAt: v.optional(v.number()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_member", ["organizationId", "userId"])
+    .index("by_ms_user", ["msUserId"])
+    .index("by_subscription", ["subscriptionId"]),
+
+  // A Microsoft sign-in someone started from Settings, matched when Microsoft sends them back.
+  microsoftLinkStarts: defineTable({
+    nonce: v.string(),
+    organizationId: v.string(),
+    userId: v.string(),
+    createdAt: v.number(),
+  }).index("by_nonce", ["nonce"]),
+
+  // One Teams recording being brought in, or brought in: the toolkit streams the file from
+  // OneDrive straight into the team's folder, then it becomes an upload like any other.
+  microsoftImports: defineTable({
+    organizationId: v.string(),
+    connectionId: v.id("microsoftConnections"),
+    // OneDrive's id for the recording's file.
+    itemId: v.string(),
+    topic: v.string(),
+    startTime: v.number(),
+    status: v.union(v.literal("importing"), v.literal("done"), v.literal("failed")),
+    uploadId: v.optional(v.id("uploads")),
+    jobId: v.optional(v.id("jobs")),
+    error: v.optional(v.string()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_item", ["organizationId", "itemId"]),
+
   // The toSend account this dashboard sends email through: failed-run alerts, sign-in
   // emails and team invitations. One for the whole deployment, set once in Settings by
   // the team named here. TOSEND_API_KEY and EMAIL_FROM on the deployment win over it.
@@ -1031,7 +1090,9 @@ export default defineSchema({
     purpose: v.optional(v.literal("brand")),
     // Where the file came from, when it was not the browser: a meeting recording brought
     // in from a connected Zoom or Google account.
-    source: v.optional(v.union(v.literal("zoom"), v.literal("google_meet"))),
+    source: v.optional(
+      v.union(v.literal("zoom"), v.literal("google_meet"), v.literal("microsoft")),
+    ),
     // Read from the file by the toolkit once the upload finishes. Missing while that is
     // still to happen, or when the toolkit could not read the file.
     details: v.optional(fileDetailsValidator),

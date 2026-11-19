@@ -23,4 +23,8 @@ crons.hourly(
   {},
 );
 
+// Renews Microsoft's watches on connected OneDrives, and looks for Teams recordings a
+// change notice missed.
+crons.interval("check Microsoft 365 recordings", { minutes: 15 }, internal.microsoft.sweep, {});
+
 export default crons;

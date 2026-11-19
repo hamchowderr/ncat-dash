@@ -56,6 +56,7 @@ describe("a settings page", () => {
       ["discord", "Discord"],
       ["zoom", "Zoom"],
       ["google-meet", "Google Meet"],
+      ["microsoft", "Microsoft Teams"],
     ]) {
       path.current = `/settings/${slug}`;
       const { unmount } = renderInApp(

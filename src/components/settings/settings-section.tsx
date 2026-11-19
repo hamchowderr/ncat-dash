@@ -15,6 +15,7 @@ import {
   TeamSettings,
 } from "./settings-view";
 import { GoogleMeetCard } from "./google-meet-card";
+import { MicrosoftCard } from "./microsoft-card";
 import { ZoomCard } from "./zoom-card";
 
 const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
@@ -29,6 +30,7 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   discord: DiscordSettings,
   zoom: ZoomCard,
   "google-meet": GoogleMeetCard,
+  microsoft: MicrosoftCard,
   mcp: McpSettings,
   team: TeamSettings,
 };
