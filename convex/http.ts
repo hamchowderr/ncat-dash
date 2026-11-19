@@ -5,6 +5,7 @@ import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
+import { decryptSecret } from "./lib/crypto";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { noStream, serve } from "./mcp";
 import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
@@ -217,6 +218,24 @@ http.route({
         typeof data?.message === "string" ? data.message : "The voice note could not be read.";
       return Response.json({ error: message }, { status: 422 });
     }
+  }),
+});
+
+// The agent server asks for a team's own Anthropic key here, to run that team's chats and
+// AI steps on it (anthropicKey.ts). 404 when the team has none. Only a caller holding
+// MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/agent/team-key",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.organizationId) return new Response("Missing organizationId", { status: 400 });
+    const cipher = await ctx.runQuery(internal.anthropicKey.forAgent, {
+      organizationId: asked.organizationId,
+    });
+    if (!cipher) return new Response("No key", { status: 404 });
+    return Response.json({ key: await decryptSecret(cipher) });
   }),
 });
 

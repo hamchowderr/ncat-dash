@@ -1,6 +1,7 @@
 import { Agent } from "@mastra/core/agent";
 import { z } from "zod";
 import { env } from "../../lib/env";
+import { onTeamKey, TEAM_KEY } from "./team-key";
 
 /**
  * Picking the best moments of a recording, and grouping one into chapters, for the
@@ -70,7 +71,11 @@ export const momentsAgent = new Agent({
   name: "Best moments",
   description: "Picks the best moments of a transcript, or groups it into chapters.",
   instructions: MOMENTS_INSTRUCTIONS,
-  model: env.CHAT_MODEL,
+  // On the team's own Anthropic key when the dashboard sent the team and it has one.
+  model: ({ requestContext }) => {
+    const key = requestContext.get(TEAM_KEY);
+    return onTeamKey(env.CHAT_MODEL, typeof key === "string" ? key : null);
+  },
   defaultOptions: {
     providerOptions: {
       anthropic: { thinking: { type: "adaptive" }, effort: MOMENTS_EFFORT },

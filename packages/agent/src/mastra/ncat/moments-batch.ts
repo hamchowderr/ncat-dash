@@ -33,21 +33,28 @@ export function batchModel(): string | null {
 }
 
 let client: Anthropic | undefined;
-/** For tests: the client batches go through. Pass nothing to undo. */
-export function useAnthropicForTests(stand?: Anthropic): void {
-  client = stand;
+let standIn: ((apiKey: string | null) => Anthropic) | undefined;
+/** For tests: the client batches go through, by the key asked for. Pass nothing to undo. */
+export function useAnthropicForTests(
+  stand?: Anthropic | ((apiKey: string | null) => Anthropic),
+): void {
+  standIn = stand === undefined ? undefined : typeof stand === "function" ? stand : () => stand;
 }
-function anthropic(): Anthropic {
+/** The client for a team's own key, or the server's when it has none. */
+function anthropic(apiKey: string | null = null): Anthropic {
+  if (standIn) return standIn(apiKey);
+  if (apiKey) return new Anthropic({ apiKey });
   client ??= new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   return client;
 }
 
-/** Sends the questions as one batch. Returns the batch's id. */
+/** Sends the questions as one batch, on the team's own key when given. Returns its id. */
 export async function submitBatch(
   model: string,
   requests: z.infer<typeof batchSubmission>["requests"],
+  apiKey: string | null = null,
 ): Promise<string> {
-  const batch = await anthropic().messages.batches.create({
+  const batch = await anthropic(apiKey).messages.batches.create({
     requests: requests.map(({ id, request }) => ({
       custom_id: id,
       params: {
@@ -66,11 +73,15 @@ export async function submitBatch(
 export type BatchAnswer = { id: string; answer: string } | { id: string; error: string };
 
 /** The batch's answers once it has ended, or null while it is still working. */
-export async function batchAnswers(batchId: string): Promise<BatchAnswer[] | null> {
-  const batch = await anthropic().messages.batches.retrieve(batchId);
+export async function batchAnswers(
+  batchId: string,
+  apiKey: string | null = null,
+): Promise<BatchAnswer[] | null> {
+  const batches = anthropic(apiKey).messages.batches;
+  const batch = await batches.retrieve(batchId);
   if (batch.processing_status !== "ended") return null;
   const answers: BatchAnswer[] = [];
-  for await (const result of await anthropic().messages.batches.results(batchId)) {
+  for await (const result of await batches.results(batchId)) {
     if (result.result.type !== "succeeded") {
       answers.push({ id: result.custom_id, error: result.result.type });
       continue;

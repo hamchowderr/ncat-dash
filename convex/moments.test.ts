@@ -231,6 +231,8 @@ describe("Best moments", () => {
       avoid: [],
     });
     expect(String(question.body.transcript)).toContain("[0:01] Welcome back to the show.");
+    // The team goes with it, so its own Anthropic key is used when it has one.
+    expect(typeof question.body.organizationId).toBe("string");
 
     // Each cut starts in the gap before the sentence's first word and ends in the gap after
     // its last, never inside a word.
@@ -400,7 +402,7 @@ describe("what a pick costs", () => {
         submitted = body.requests as { id: string }[];
         return new Response(JSON.stringify({ batchId: "msgbatch_1" }), { status: 200 });
       }
-      expect(body).toEqual({ batchId: "msgbatch_1" });
+      expect(body).toEqual({ batchId: "msgbatch_1", organizationId: expect.any(String) });
       checks++;
       return new Response(
         JSON.stringify(

@@ -334,6 +334,12 @@ export default defineSchema({
     captions: v.optional(captionSetupValidator),
     // How motion graphics and sound effects look and sound (Settings > Motion).
     motion: v.optional(motionSetupValidator),
+    // The team's own Anthropic API key, when it brings one: the agent and the AI steps then
+    // run on the team's Anthropic account (anthropicKey.ts). Kept encrypted; only the agent
+    // server reads it back, never a member's browser.
+    anthropicKey: v.optional(
+      v.object({ cipher: v.string(), hint: v.string(), setBy: v.string(), setAt: v.number() }),
+    ),
     // What the team makes and where it posts, from setting up (content-goals.ts). The
     // posting apps also become the agent's default platforms.
     contentGoals: v.optional(
