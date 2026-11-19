@@ -1,4 +1,4 @@
-import { type BrowserContext, test as base, type Page } from "@playwright/test";
+import { type BrowserContext, type Locator, test as base, type Page } from "@playwright/test";
 
 export { type Browser, expect, type Locator, type Page } from "@playwright/test";
 
@@ -56,3 +56,9 @@ export const test = base.extend<{ closeTours: void }, { watchContexts: void }>({
     { auto: true },
   ],
 });
+
+/** Picks a choice from one of the app's pick lists: opens it, then clicks the option. */
+export async function pick(list: Locator, option: string) {
+  await list.click();
+  await list.page().getByRole("option", { name: option, exact: true }).click();
+}

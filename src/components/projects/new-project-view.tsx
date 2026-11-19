@@ -15,9 +15,9 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
-import { cn } from "@/lib/utils";
 
-import { KindIcon, selectClass } from "./slot-status";
+import { KindIcon } from "./slot-status";
+import { PickList } from "@/components/ui/pick-list";
 
 /**
  * Starting a project: a name, the package that lays out its slots, and who it is for. Its
@@ -101,10 +101,7 @@ export function NewProjectView({ clientId }: { clientId?: string }) {
             {PACKAGES.map((entry) => (
               <label
                 key={entry.id}
-                className={cn(
-                  "has-focus-visible:ring-ring/50 flex cursor-pointer items-start gap-3 rounded-xl p-3 transition-colors has-focus-visible:ring-3",
-                  entry.id === packageId ? "bg-muted" : "bg-surface hover:bg-muted",
-                )}
+                className="choice-tile has-focus-visible:ring-ring/50 flex cursor-pointer items-start gap-3 rounded-xl p-3 has-focus-visible:ring-3"
               >
                 <input
                   type="radio"
@@ -140,19 +137,16 @@ export function NewProjectView({ clientId }: { clientId?: string }) {
 
           <Field>
             <FieldLabel htmlFor="project-client">For</FieldLabel>
-            <select
+            <PickList
               id="project-client"
+              className="w-64"
               value={client}
-              onChange={(event) => setClient(event.target.value)}
-              className={cn(selectClass, "w-64")}
-            >
-              <option value="">Your team</option>
-              {clients?.map((entry) => (
-                <option key={entry._id} value={entry._id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
+              onChange={setClient}
+              options={[
+                { value: "", label: "Your team" },
+                ...(clients ?? []).map((entry) => ({ value: entry._id, label: entry.name })),
+              ]}
+            />
             <FieldDescription>
               A client&apos;s project uses its brand and shows in its space.{" "}
               <Link href="/clients" className="underline underline-offset-2">

@@ -1,5 +1,5 @@
 import { api } from "@convex/_generated/api";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
 import { actionOf, answerQuery } from "@/test/convex";
@@ -127,5 +127,95 @@ describe("the project slot trigger panel", () => {
     expect(screen.getByText("Any slot")).toBeTruthy();
     expect(screen.getByText("Approved")).toBeTruthy();
     expect(screen.getByText(/fill the project's empty slots/)).toBeTruthy();
+  });
+});
+
+describe("the Schedule trigger panel", () => {
+  const every = (minutes: number) => ({
+    kind: "schedule" as const,
+    schedule: { mode: "interval" as const, minutes },
+  });
+
+  test("shows both ways side by side, with the picked one checked", () => {
+    renderInApp(
+      <TriggerPanel trigger={every(60)} onChange={vi.fn()} automationId="a" hookToken="t" />,
+    );
+    const often = screen.getByRole("radiogroup", { name: "How often" });
+    expect(
+      within(often).getByRole("radio", { name: "On repeat" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      within(often).getByRole("radio", { name: "Every day" }).getAttribute("aria-checked"),
+    ).toBe("false");
+    expect(screen.getByText("Runs every hour.")).toBeTruthy();
+  });
+
+  test("changes the unit without changing the count", () => {
+    const onChange = vi.fn();
+    renderInApp(
+      <TriggerPanel trigger={every(120)} onChange={onChange} automationId="a" hookToken="t" />,
+    );
+    expect(screen.getByText("Runs every 2 hours.")).toBeTruthy();
+    const unit = screen.getByRole("radiogroup", { name: "Unit" });
+    fireEvent.click(within(unit).getByRole("radio", { name: "Minutes" }));
+    expect(onChange).toHaveBeenCalledWith(every(2));
+  });
+
+  test("switches to every day at 9:00 in the person's own time zone", () => {
+    const onChange = vi.fn();
+    renderInApp(
+      <TriggerPanel trigger={every(60)} onChange={onChange} automationId="a" hookToken="t" />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Every day" }));
+    expect(onChange).toHaveBeenCalledWith({
+      kind: "schedule",
+      schedule: {
+        mode: "daily",
+        time: "09:00",
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      },
+    });
+  });
+
+  test("picks the time zone by city from a search", async () => {
+    const onChange = vi.fn();
+    renderInApp(
+      <TriggerPanel
+        trigger={{
+          kind: "schedule",
+          schedule: { mode: "daily", time: "09:00", timeZone: "UTC" },
+        }}
+        onChange={onChange}
+        automationId="a"
+        hookToken="t"
+      />,
+    );
+    expect(screen.getByText("Runs every day at 9:00 AM, UTC time.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("combobox", { name: "Time zone" }));
+    fireEvent.change(await screen.findByLabelText("Search time zones"), {
+      target: { value: "new york" },
+    });
+    fireEvent.click(await screen.findByRole("option", { name: /New York/ }));
+    expect(onChange).toHaveBeenCalledWith({
+      kind: "schedule",
+      schedule: { mode: "daily", time: "09:00", timeZone: "America/New_York" },
+    });
+  });
+});
+
+describe("the What starts it list", () => {
+  test("gives every choice its icon and one plain line", async () => {
+    renderInApp(
+      <TriggerPanel
+        trigger={{ kind: "manual" }}
+        onChange={vi.fn()}
+        automationId="a"
+        hookToken="t"
+      />,
+    );
+    fireEvent.click(screen.getByRole("combobox", { name: "What starts it" }));
+    const schedule = await screen.findByRole("option", { name: /Schedule/ });
+    expect(schedule.textContent).toContain("Every so often, or each day at a set time");
+    expect(schedule.querySelector("svg")).toBeTruthy();
   });
 });

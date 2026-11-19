@@ -72,10 +72,9 @@ export function PlatformPicker({
               disabled={disabled}
               onClick={() => onChange(platform.name)}
               className={cn(
-                "bg-surface hover:bg-muted focus-visible:ring-ring/50 grid grid-cols-[auto_minmax(0,1fr)] items-center rounded-lg text-left outline-none transition-[border-color,background-color,transform] duration-150 hover:-translate-y-px focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+                "choice-tile focus-visible:ring-ring/50 grid grid-cols-[auto_minmax(0,1fr)] items-center rounded-lg text-left focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
                 // In a narrow panel the tiles are tighter, so whole names fit without scrolling.
                 compact ? "gap-x-2 px-2 py-2" : "gap-x-2.5 p-2.5",
-                on && "bg-primary/10 hover:bg-primary/15",
               )}
             >
               <span

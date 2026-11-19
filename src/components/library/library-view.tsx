@@ -43,6 +43,7 @@ import {
   useLibraryLinks,
   type LibraryKind,
 } from "./library-media";
+import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
 
 type Item = {
   _id: Id<"libraryItems">;
@@ -623,15 +624,15 @@ export function LibraryView() {
               data-tour-step-id="tour-library-filters"
             >
               {SHOWN.map(([value, label]) => (
-                <Button
+                <button
                   key={value}
-                  size="sm"
-                  variant={shown === value ? "secondary" : "ghost"}
+                  type="button"
                   aria-pressed={shown === value}
                   onClick={() => setShown(value)}
+                  className="choice-chip focus-visible:ring-ring/50 h-8 rounded-lg px-3 text-sm outline-none focus-visible:ring-3"
                 >
                   {label}
-                </Button>
+                </button>
               ))}
               {clients.length > 0 && (
                 <DropdownMenu>
@@ -725,25 +726,23 @@ export function LibraryView() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-              <div className="bg-surface flex rounded-lg p-0.5" role="group" aria-label="Show as">
+              <SegmentedGroup aria-label="Show as">
                 {(
                   [
                     ["tiles", LayoutGrid, "Tiles"],
                     ["list", List, "List"],
                   ] as const
                 ).map(([value, Icon, label]) => (
-                  <Button
+                  <SegmentedButton
                     key={value}
-                    variant={layout === value ? "secondary" : "ghost"}
-                    size="sm"
-                    aria-pressed={layout === value}
+                    pressed={layout === value}
                     onClick={() => layoutChoice.choose(value)}
                   >
                     <Icon />
                     {label}
-                  </Button>
+                  </SegmentedButton>
                 ))}
-              </div>
+              </SegmentedGroup>
             </div>
           </div>
           {items.length === 0 ? (

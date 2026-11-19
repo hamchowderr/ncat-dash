@@ -1,9 +1,10 @@
 import { api } from "@convex/_generated/api";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test } from "vitest";
 
 import { actionOf, answerQuery, mutationOf, toastSuccess } from "@/test/convex";
-import { renderInApp } from "@/test/render";
+import { pick, renderInApp } from "@/test/render";
 
 import { LibraryItemView } from "./library-item-view";
 import { LibraryView } from "./library-view";
@@ -241,9 +242,9 @@ describe("a library file", () => {
     answerQuery(api.clients.list, [ACME]);
     answerQuery(api.library.get, { ...DETAIL, client: ACME });
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
-    const picker = screen.getByLabelText("Client") as HTMLSelectElement;
-    expect(picker.value).toBe("c1");
-    fireEvent.change(picker, { target: { value: "" } });
+    const picker = screen.getByLabelText("Client");
+    expect(picker).toHaveTextContent("Acme Coffee");
+    await pick(userEvent.setup(), picker, "Your team");
     await waitFor(() =>
       expect(mutationOf(api.library.setClient)).toHaveBeenCalledWith({
         itemId: "i1",

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 
 import { answerQuery, mutationOf, replaced, toastError } from "@/test/convex";
-import { renderInApp, TEAM } from "@/test/render";
+import { pick, renderInApp, TEAM } from "@/test/render";
 
 import { NewProjectView } from "./new-project-view";
 import { ProjectView } from "./project-view";
@@ -131,7 +131,7 @@ describe("making a project", () => {
     expect(within(slots).getByText(/None yet/)).toBeInTheDocument();
     await user.click(screen.getByLabelText(/YouTube video/));
 
-    expect(screen.getByLabelText("For")).toHaveValue("k1");
+    expect(screen.getByLabelText("For")).toHaveTextContent("Acme");
     await user.type(screen.getByLabelText("Name"), "Launch video");
     await user.click(screen.getByRole("button", { name: "Make project" }));
     expect(create).toHaveBeenCalledWith({
@@ -234,9 +234,12 @@ describe("a project's page", () => {
     });
 
     // Without a file, it cannot be moved past In progress.
-    const status = within(panel).getByLabelText("Status");
-    expect(within(status).getByRole("option", { name: "In review" })).toBeDisabled();
-    await user.selectOptions(status, "in_progress");
+    await user.click(within(panel).getByLabelText("Status"));
+    expect(await screen.findByRole("option", { name: "In review" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await user.click(screen.getByRole("option", { name: "In progress" }));
     expect(setStatus).toHaveBeenCalledWith({ deliverableId: "s1", status: "in_progress" });
 
     await user.click(within(panel).getByRole("button", { name: "Close slot" }));
@@ -289,11 +292,11 @@ describe("a project's page", () => {
     const remove = mutationOf(api.projects.remove);
     renderInApp(<ProjectView projectId={"p1" as never} />);
 
-    await user.selectOptions(screen.getByLabelText("Kind of slot to add"), "thumbnail");
+    await pick(user, screen.getByLabelText("Kind of slot to add"), "Thumbnail");
     await user.click(screen.getByRole("button", { name: "Add slot" }));
     expect(addSlot).toHaveBeenCalledWith({ projectId: "p1", kind: "thumbnail" });
 
-    await user.selectOptions(screen.getByLabelText("Client"), "k1");
+    await pick(user, screen.getByLabelText("Client"), "Acme");
     expect(setClient).toHaveBeenCalledWith({ projectId: "p1", clientId: "k1" });
 
     await user.click(screen.getByRole("button", { name: "Delete" }));
@@ -331,7 +334,7 @@ describe("running an automation on a slot", () => {
     await user.click(screen.getByRole("button", { name: /Episode thumbnail/ }));
     const run = screen.getByRole("region", { name: "Run an automation" });
     expect(within(run).getByRole("button", { name: "Run" })).toBeDisabled();
-    await user.selectOptions(within(run).getByLabelText("Automation"), "a1");
+    await pick(user, within(run).getByLabelText("Automation"), "Make the shorts");
     await user.click(within(run).getByRole("button", { name: "Run" }));
     expect(runOnSlot).toHaveBeenCalledWith({ deliverableId: "s2", automationId: "a1" });
   });
