@@ -989,6 +989,11 @@ export const keepFinished = internalAction({
       }
     }
     await ctx.runMutation(internal.library.addFinished, { runId: args.runId, kept: placed });
+    // An automation switched to send its files to Dropbox: the kept copies go there too.
+    await ctx.runMutation(internal.dropbox.queueSends, {
+      runId: args.runId,
+      keys: placed.map((one) => one.key),
+    });
     return kept;
   },
 });
