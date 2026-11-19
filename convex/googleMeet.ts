@@ -17,21 +17,28 @@ import { isMember, requireMember } from "./lib/authz";
 import { safeName } from "./lib/bucket";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import {
+  CALENDAR_EVENT_FIELDS,
+  type CalendarEvent,
   type ConferenceRecord,
   DRIVE_FILE_FIELDS,
   DRIVE_RECORDINGS_QUERY,
   type DriveFile,
+  eventMeetCode,
   finishedFile,
   GOOGLE_MEET_SCOPES,
   googleUrls,
   grantedAll,
+  grantedCalendar,
   isDriveFileId,
+  meetCodeOf,
   meetingTitle,
   type MeetRecording,
   minutesOf,
   minutesOfFile,
+  monthsOf,
   sharedByOf,
   timeOf,
+  titleFromEvent,
 } from "./lib/googleMeet";
 import { addUploadToLibrary } from "./lib/library";
 import { enqueueJob, pump } from "./lib/queue";
@@ -136,6 +143,7 @@ export const forTeam = query({
             connectedAt: mine.connectedAt,
             autoImport: mine.autoImport,
             includeShared: mine.sharedFrom !== undefined,
+            calendar: mine.calendar === true,
             signInLost: mine.signInLostAt !== undefined,
           }
         : null,
@@ -292,6 +300,7 @@ export const saveConnection = internalMutation({
     accessTokenCipher: v.string(),
     refreshTokenCipher: v.string(),
     expiresAt: v.number(),
+    calendar: v.boolean(),
   },
   returns: v.string(),
   handler: async (ctx, args) => {
@@ -383,6 +392,7 @@ export const finishLink = internalAction({
         accessTokenCipher: await encryptSecret(token.access_token),
         refreshTokenCipher: await encryptSecret(token.refresh_token),
         expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
+        calendar: grantedCalendar(token.scope),
       });
       return settingsUrl(result);
     } catch {
@@ -623,6 +633,63 @@ async function sharedSince(token: string, since: number): Promise<FoundRecording
   return found;
 }
 
+/** How many months of calendar one naming reads at most (the newest ones). */
+const NAMING_MONTHS = 36;
+
+/** The person's calendar events in one month (UTC "YYYY-MM"), a day either side. */
+async function eventsInMonth(token: string, month: string): Promise<CalendarEvent[]> {
+  const [year, number] = month.split("-").map(Number);
+  const from = Date.UTC(year, number - 1, 1) - 24 * 60 * 60 * 1000;
+  const to = Date.UTC(year, number, 1) + 24 * 60 * 60 * 1000;
+  const events: CalendarEvent[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < 4; page++) {
+    const url = new URL(`${googleUrls().calendar}/calendars/primary/events`);
+    url.searchParams.set("timeMin", new Date(from).toISOString());
+    url.searchParams.set("timeMax", new Date(to).toISOString());
+    url.searchParams.set("singleEvents", "true");
+    url.searchParams.set("maxResults", "2500");
+    url.searchParams.set("fields", CALENDAR_EVENT_FIELDS);
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const body = await getJson<{ items?: CalendarEvent[]; nextPageToken?: string }>(url, token);
+    events.push(...(body.items ?? []));
+    pageToken = body.nextPageToken;
+    if (!pageToken) break;
+  }
+  return events;
+}
+
+/**
+ * Names the recordings Meet saved under a meeting code ("abc-defg-hij") after the event
+ * with that call on the person's calendar. Reads one month of the calendar at a time, only
+ * for months with such a recording. Any trouble with the calendar leaves the codes as they
+ * are: names are a nicety, never a reason to fail.
+ */
+async function namesFromCalendar(token: string, recordings: FoundRecording[]): Promise<void> {
+  const unnamed = recordings.filter((one) => meetCodeOf(one.topic));
+  if (unnamed.length === 0) return;
+  const titles = new Map<string, string>();
+  try {
+    const months = monthsOf(unnamed.map((one) => one.startTime)).slice(0, NAMING_MONTHS);
+    for (let at = 0; at < months.length; at += 4) {
+      const batches = await Promise.all(
+        months.slice(at, at + 4).map((month) => eventsInMonth(token, month)),
+      );
+      for (const event of batches.flat()) {
+        const code = eventMeetCode(event);
+        const title = code ? titleFromEvent(event) : null;
+        if (code && title && !titles.has(code)) titles.set(code, title);
+      }
+    }
+  } catch {
+    // Keep whatever was found before the trouble.
+  }
+  for (const one of unnamed) {
+    const title = titles.get(one.topic);
+    if (title) one.topic = title;
+  }
+}
+
 /** The finished recordings of meetings the person organized that ended since `since`. */
 async function recordingsSince(token: string, since: number): Promise<FoundRecording[]> {
   const { meet } = googleUrls();
@@ -795,6 +862,7 @@ export const startImport = internalMutation({
       status: "uploading",
       createdBy: connection.userId,
       source: "google_meet",
+      ...(recording.sharedBy ? { sharedBy: recording.sharedBy } : {}),
     });
     await ctx.db.patch(queued.jobId, { googleMeetImportId: importId });
     await ctx.db.patch(importId, {
@@ -872,7 +940,7 @@ export const mine = internalQuery({
         message: "Connect your Google account first.",
       });
     }
-    return row._id;
+    return { connectionId: row._id, calendar: row.calendar === true };
   },
 });
 
@@ -925,8 +993,11 @@ export interface PastRecording {
  */
 export const pastRecordings = action({
   args: { organizationId: v.string() },
-  handler: async (ctx, args): Promise<{ recordings: PastRecording[]; complete: boolean }> => {
-    const connectionId: Id<"googleMeetConnections"> = await ctx.runQuery(internal.googleMeet.mine, {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ recordings: PastRecording[]; complete: boolean; names: boolean }> => {
+    const { connectionId, calendar } = await ctx.runQuery(internal.googleMeet.mine, {
       organizationId: args.organizationId,
     });
     const found: FoundRecording[] = [];
@@ -939,6 +1010,7 @@ export const pastRecordings = action({
         pageToken = one.nextPageToken;
         if (!pageToken) break;
       }
+      if (calendar) await namesFromCalendar(token, found);
     } catch (error) {
       throw asConvexError(error);
     }
@@ -965,7 +1037,67 @@ export const pastRecordings = action({
         sharedBy: one.sharedBy ?? null,
       })),
       complete: pageToken === null,
+      names: calendar,
     };
+  },
+});
+
+/** How many pictures one call fetches at most, and how big one may be. */
+const THUMBNAILS_MAX = 24;
+const THUMBNAIL_BYTES_MAX = 300_000;
+
+/** Drive's picture of one recording as a data address, or null when there is none. */
+async function thumbnailOf(token: string, driveFileId: string): Promise<string | null> {
+  if (!isDriveFileId(driveFileId)) return null;
+  try {
+    const file = await getJson<DriveFile>(
+      `${googleUrls().drive}/files/${driveFileId}?fields=hasThumbnail,thumbnailLink&supportsAllDrives=true`,
+      token,
+    );
+    if (!file.thumbnailLink) return null;
+    // The address is short-lived and needs the person's sign-in, so it is read here and
+    // passed on as the picture itself.
+    const response = await fetch(file.thumbnailLink, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const type = response.headers.get("content-type") ?? "";
+    if (!response.ok || !type.startsWith("image/")) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > THUMBNAIL_BYTES_MAX) return null;
+    let text = "";
+    for (let at = 0; at < bytes.length; at += 0x8000) {
+      text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+    }
+    return `data:${type.split(";")[0]};base64,${btoa(text)}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Drive's pictures of some of the caller's recordings, to show in the list. A recording
+ * without one (or that Drive will not show) has a null picture.
+ */
+export const thumbnails = action({
+  args: { organizationId: v.string(), driveFileIds: v.array(v.string()) },
+  handler: async (ctx, args): Promise<{ driveFileId: string; picture: string | null }[]> => {
+    const { connectionId } = await ctx.runQuery(internal.googleMeet.mine, {
+      organizationId: args.organizationId,
+    });
+    const ids = [...new Set(args.driveFileIds)].slice(0, THUMBNAILS_MAX);
+    let token: string;
+    try {
+      token = await accessTokenFor(ctx, connectionId);
+    } catch (error) {
+      throw asConvexError(error);
+    }
+    const out: { driveFileId: string; picture: string | null }[] = [];
+    for (let at = 0; at < ids.length; at += 6) {
+      const part = ids.slice(at, at + 6);
+      const pictures = await Promise.all(part.map((id) => thumbnailOf(token, id)));
+      part.forEach((driveFileId, index) => out.push({ driveFileId, picture: pictures[index] }));
+    }
+    return out;
   },
 });
 
@@ -985,7 +1117,7 @@ export interface BroughtOver {
 export const bringIn = action({
   args: { organizationId: v.string(), driveFileIds: v.array(v.string()) },
   handler: async (ctx, args): Promise<BroughtOver> => {
-    const connectionId: Id<"googleMeetConnections"> = await ctx.runQuery(internal.googleMeet.mine, {
+    const { connectionId, calendar } = await ctx.runQuery(internal.googleMeet.mine, {
       organizationId: args.organizationId,
     });
     if (args.driveFileIds.length > BRING_MAX) {
@@ -1003,6 +1135,7 @@ export const bringIn = action({
       throw asConvexError(error);
     }
     // A few at a time: Drive answers quickly, and the toolkit's queue takes it from there.
+    const looked: (FoundRecording | null)[] = [];
     for (let at = 0; at < ids.length; at += 8) {
       const files = await Promise.all(
         ids.slice(at, at + 8).map(async (id): Promise<FoundRecording | null> => {
@@ -1021,26 +1154,27 @@ export const bringIn = action({
           }
         }),
       );
-      for (const recording of files) {
-        if (!recording) {
-          counts.missing++;
-          continue;
-        }
-        const outcome = await ctx.runMutation(internal.googleMeet.startImport, {
-          connectionId,
-          recording,
+      looked.push(...files);
+    }
+    // Named as in the list, so the upload gets the meeting's name rather than its code.
+    const named = looked.filter((one): one is FoundRecording => one !== null);
+    if (calendar) await namesFromCalendar(token, named);
+    counts.missing += looked.length - named.length;
+    for (const recording of named) {
+      const outcome = await ctx.runMutation(internal.googleMeet.startImport, {
+        connectionId,
+        recording,
+      });
+      if (outcome === "no_toolkit") {
+        throw new ConvexError({
+          code: "no_toolkit",
+          message: "Connect your toolkit first, so there is somewhere for recordings to go.",
         });
-        if (outcome === "no_toolkit") {
-          throw new ConvexError({
-            code: "no_toolkit",
-            message: "Connect your toolkit first, so there is somewhere for recordings to go.",
-          });
-        }
-        if (outcome === "started") counts.started++;
-        else if (outcome === "duplicate") counts.duplicate++;
-        else if (outcome === "already") counts.already++;
-        else counts.missing++;
       }
+      if (outcome === "started") counts.started++;
+      else if (outcome === "duplicate") counts.duplicate++;
+      else if (outcome === "already") counts.already++;
+      else counts.missing++;
     }
     return counts;
   },
@@ -1071,6 +1205,7 @@ export const toCheck = internalQuery({
     return {
       watchFrom: row.watchFrom,
       sharedFrom: row.sharedFrom ?? null,
+      calendar: row.calendar === true,
       seen: await broughtFiles(ctx, row.organizationId, { failed: true }),
     };
   },
@@ -1094,6 +1229,12 @@ export const checkOne = internalAction({
       if (state.sharedFrom !== null) {
         found.push(
           ...(await sharedSince(token, Math.max(state.sharedFrom, Date.now() - CHECK_WINDOW_MS))),
+        );
+      }
+      if (state.calendar) {
+        await namesFromCalendar(
+          token,
+          found.filter((one) => !state.seen.includes(one.driveFileId)),
         );
       }
     } catch {

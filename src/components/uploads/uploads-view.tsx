@@ -82,12 +82,19 @@ function summaryOf(upload: {
   kind: UploadKind;
   size: number;
   details: FileDetails | null;
+  sharedBy?: string | null;
 }): string {
   const columns = upload.details ? fileDetailColumns(upload.details) : null;
   const kindLabel = { video: "Video", audio: "Sound", image: "Picture", other: "File" }[
     upload.kind
   ];
-  return [kindLabel, columns?.length, columns?.picture, formatBytes(upload.size)]
+  return [
+    kindLabel,
+    columns?.length,
+    columns?.picture,
+    formatBytes(upload.size),
+    upload.sharedBy ? `Shared by ${upload.sharedBy}` : null,
+  ]
     .filter(Boolean)
     .join(" · ");
 }
@@ -531,6 +538,7 @@ export function UploadsView() {
                       ? fileDetailRows(openedUpload.details, openedUpload.fileName)
                       : []),
                     ["File size", formatBytes(openedUpload.size)],
+                    ...(openedUpload.sharedBy ? [["Shared by", openedUpload.sharedBy]] : []),
                   ].map(([label, value]) => (
                     <div key={label} className="col-span-2 grid grid-cols-subgrid">
                       <dt className="text-muted-foreground">{label}</dt>

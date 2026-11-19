@@ -907,6 +907,9 @@ export default defineSchema({
     // Set while recordings other people share with this account come in by themselves
     // too: those Meet saves after this time.
     sharedFrom: v.optional(v.number()),
+    // True when Google let the dashboard read calendar events, to name recordings Meet
+    // saved under a meeting code. Missing on accounts connected before it asked.
+    calendar: v.optional(v.boolean()),
     // Set when Google stopped accepting the sign-in (taken back, or run out).
     signInLostAt: v.optional(v.number()),
   })
@@ -1114,6 +1117,8 @@ export default defineSchema({
     source: v.optional(
       v.union(v.literal("zoom"), v.literal("google_meet"), v.literal("microsoft")),
     ),
+    // Who shared a meeting recording brought in from someone else's Drive.
+    sharedBy: v.optional(v.string()),
     // Read from the file by the toolkit once the upload finishes. Missing while that is
     // still to happen, or when the toolkit could not read the file.
     details: v.optional(fileDetailsValidator),

@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 import { GOOGLE, GOOGLE_USER } from "./google-meet-data.mjs";
 
@@ -62,22 +62,39 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
   // only Drive still has. Both are picked; one press brings them over.
   await page.getByRole("button", { name: "Find recordings" }).click();
   const past = page.getByRole("region", { name: "Past recordings" });
-  await expect(past.getByText("3 recordings in your Drive. 3 not in Uploads yet.")).toBeVisible();
+  await expect(
+    past.getByText("4 recordings in your Drive, 1 shared with you. 4 not in Uploads yet."),
+  ).toBeVisible();
   await expect(past.getByText("Client Kickoff")).toBeVisible();
   await expect(past.getByText(/37 min/)).toBeVisible();
+  // One Meet named only by its code carries the name of its calendar event.
+  await expect(past.getByText("Design Review")).toBeVisible();
+  await expect(past.getByText("kqp-wmzt-rsv")).toHaveCount(0);
+  // One someone else organized and shared is labelled, and says who shared it.
+  await expect(past.getByText("Partner Sync")).toBeVisible();
+  await expect(
+    past.getByRole("group", { name: /^\d{4}$/ }).getByText("Shared with you", { exact: true }),
+  ).toBeVisible();
+  await expect(past.getByText(/from Pat Rivera/)).toBeVisible();
+  // Last year's recordings are folded away; open them.
+  const lastYear = past.getByRole("button", { name: /· 1 recording · 1 picked/ });
+  await expect(lastYear).toHaveAttribute("aria-expanded", "false");
+  await lastYear.click();
   await expect(past.getByText("Annual Review")).toBeVisible();
   await expect(past.getByText(/52 min/)).toBeVisible();
-  // One someone else organized and shared says who shared it.
+  // The shared ones can be shown on their own.
+  await past.getByRole("tab", { name: "Shared with you" }).click();
   await expect(past.getByText("Partner Sync")).toBeVisible();
-  await expect(past.getByText(/shared by Pat Rivera/)).toBeVisible();
-  await expect(past.getByText("All 3 picked")).toBeVisible();
-  await past.getByRole("button", { name: "Bring over 3 recordings" }).click();
-  await expect(page.getByText("3 recordings on the way to Uploads")).toBeVisible();
+  await expect(past.getByText("Client Kickoff")).toHaveCount(0);
+  await past.getByRole("tab", { name: "All" }).click();
+  await expect(past.getByText("All 4 picked")).toBeVisible();
+  await past.getByRole("button", { name: "Bring over 4 recordings" }).click();
+  await expect(page.getByText("4 recordings on the way to Uploads")).toBeVisible();
   await expect(
-    past.getByText("3 recordings in your Drive. All of them are in Uploads."),
+    past.getByText("4 recordings in your Drive, 1 shared with you. All of them are in Uploads."),
   ).toBeVisible();
   const brought = page.getByRole("region", { name: "Brought in from Google Meet" });
-  await expect(brought.getByRole("link", { name: "In Uploads" })).toHaveCount(3, {
+  await expect(brought.getByRole("link", { name: "In Uploads" })).toHaveCount(4, {
     timeout: 60_000,
   });
 
@@ -95,6 +112,10 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
   await expect(uploads.getByText(/^Partner Sync \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
     timeout: 30_000,
   });
+  await expect(uploads.getByText(/^Design Review \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(uploads.getByText(/Shared by Pat Rivera/)).toBeVisible();
   await expect(uploads.getByText(/^Annual Review \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
     timeout: 30_000,
   });
