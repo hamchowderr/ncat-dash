@@ -43,6 +43,7 @@ test("connects Google Meet, brings a past meeting in, and a finished one arrives
   });
   await page.goto("/settings/google-meet");
   await expect(page.getByRole("heading", { level: 1, name: "Google Meet" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Google Meet logo" })).toBeVisible();
   await page.getByRole("button", { name: "Connect Google Meet" }).click();
   await expect(page).toHaveURL(/\/settings\/google-meet$/, { timeout: 30_000 });
   await expect(page.getByText("Your Google Meet is connected")).toBeVisible();
