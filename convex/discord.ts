@@ -346,7 +346,10 @@ export const rememberSession = internalMutation({
 
 export type DiscordPerson =
   | { ok: true; userId: string; name: string; organizationId: string; convexToken: string }
-  | { ok: false; reason: "not_connected" | "not_linked" | "pick_server" };
+  | { ok: false; reason: "not_connected" | "not_linked" | "pick_server" }
+  // The team's trial is over, the team or person is blocked, or they have sent a great
+  // many messages in a short time. `message` says which, for the person.
+  | { ok: false; reason: "refused"; message: string };
 
 /**
  * Who a Discord user is on the team that owns the server they wrote in, with a Convex
@@ -378,6 +381,12 @@ export const person = internalAction({
     });
     const member = team.members.find((one) => one.userId === link.userId);
     if (!member) return { ok: false, reason: "not_linked" };
+    // Checked before every reply: each one spends AI tokens.
+    const answer = await ctx.runMutation(internal.access.channelTurn, {
+      organizationId: link.organizationId,
+      userId: member.userId,
+    });
+    if (!answer.ok) return { ok: false, reason: "refused", message: answer.message };
 
     if (link.sessionToken && (link.sessionExpiresAt ?? 0) - Date.now() > RENEW_MS) {
       const convexToken = await tokenFor(ctx, link.sessionToken);

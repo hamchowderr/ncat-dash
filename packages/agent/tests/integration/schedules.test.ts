@@ -3,6 +3,7 @@ import { InMemoryStore } from '@mastra/core/storage';
 import { afterEach, describe, expect, it } from 'vitest';
 import { listSchedules, startSchedule, stopSchedule } from '../../src/mastra/tools/schedule';
 import { callTool } from '../helpers/call-tool';
+import { forgetSessions, rememberSession } from '../../src/mastra/ncat/session-store';
 
 type Schedule = { id: string; status: string; cron: string; prompt: string };
 type ScheduleList = { schedules: { id: string }[] };
@@ -71,5 +72,21 @@ describe('recurring schedules — start/stop/list tools (native mastra.schedules
       // No agent thread/resource → the tool refuses (a schedule fires into a thread).
       callTool<Schedule>(startSchedule, { cron: FUTURE_CRON, prompt: 'x' }, { mastra, agent: {} }),
     ).rejects.toThrow(/thread/i);
+  });
+
+  it('notes the team and person it is for, so each fire can ask the dashboard first', async () => {
+    mastra = new Mastra({ storage: new InMemoryStore() });
+    rememberSession('r-sched', { convexToken: 't', organizationId: 'team_1', automationId: null });
+    try {
+      const created = await callTool<Schedule>(
+        startSchedule,
+        { cron: FUTURE_CRON, prompt: 'Check the uploads.' },
+        { mastra, agent },
+      );
+      const fetched = await mastra.schedules.get(created.id);
+      expect(fetched?.metadata).toEqual({ organizationId: 'team_1', userId: 'r-sched' });
+    } finally {
+      forgetSessions();
+    }
   });
 });

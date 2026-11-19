@@ -563,6 +563,18 @@ export const serve = httpAction(async (ctx, request) => {
       { status: 400, headers: CORS },
     );
   }
+  // Nothing new for a team whose trial is over or that is blocked, and no floods.
+  const allowed = await ctx.runMutation(internal.access.mcpCall, caller);
+  if (!allowed.ok) {
+    const id =
+      message && typeof message === "object" && "id" in message
+        ? (message as { id: unknown }).id
+        : null;
+    return Response.json(
+      { jsonrpc: "2.0", id: id ?? null, error: { code: -32000, message: allowed.message } },
+      { status: allowed.reason === "rate_limited" ? 429 : 403, headers: CORS },
+    );
+  }
   const reply = await handleMcp(message, request.headers, {
     info: SERVER_INFO,
     instructions: INSTRUCTIONS,
