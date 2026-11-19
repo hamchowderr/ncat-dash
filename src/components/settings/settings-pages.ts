@@ -89,6 +89,11 @@ export const SETTINGS_GROUPS = [
         description: "Teams meeting recordings come into Uploads by themselves, ready to clip.",
       },
       {
+        slug: "dropbox",
+        title: "Dropbox",
+        description: "Footage in the folders you pick comes into Uploads; finished clips can go back.",
+      },
+      {
         slug: "mcp",
         title: "MCP",
         description:
