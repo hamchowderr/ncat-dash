@@ -1067,11 +1067,56 @@ export default defineSchema({
     ),
     // Its clip in the project's review room, once it has a version.
     clipId: v.optional(v.id("reviewClips")),
+    // When it is due, set on the content calendar. Left out: no due date yet.
+    dueAt: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])
+    .index("by_organization_and_dueAt", ["organizationId", "dueAt"])
     .index("by_clip", ["clipId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
+
+  // A post planned on the content calendar: what goes out, where, and when. With no time
+  // it waits in the calendar's side list; queued ones fill the team's repeating slots.
+  // Nothing is posted for the team yet, so "posted" is set by hand.
+  calendarPosts: defineTable({
+    organizationId: v.string(),
+    title: v.string(),
+    // A posting app id from automation-core's CALENDAR_PLATFORMS, such as "instagram".
+    platform: v.string(),
+    // When it goes out. Null: not scheduled.
+    at: v.union(v.null(), v.number()),
+    // Waiting for the next free slot for its platform. Queue order is queuedAt.
+    queued: v.boolean(),
+    queuedAt: v.number(),
+    // The repeating slot that placed it, while it keeps that slot's time.
+    slotId: v.optional(v.id("calendarSlots")),
+    status: v.union(v.literal("planned"), v.literal("posted")),
+    // The file it posts, from the library.
+    libraryItemId: v.optional(v.id("libraryItems")),
+    clientId: v.optional(v.id("clients")),
+    createdBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization_and_at", ["organizationId", "at"])
+    .index("by_slot", ["slotId"])
+    .index("by_libraryItem", ["libraryItemId"])
+    .index("by_client", ["clientId"]),
+
+  // A repeating time on the calendar, such as "Mondays at 10:00 for Instagram". Queued
+  // posts for its platform fill its next free times.
+  calendarSlots: defineTable({
+    organizationId: v.string(),
+    weekday: v.number(),
+    time: v.string(),
+    timeZone: v.string(),
+    platform: v.string(),
+    // Kept for one client's posts. Left out: anyone's.
+    clientId: v.optional(v.id("clients")),
+    createdBy: v.string(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_client", ["clientId"]),
 
   // The content library: one row per file the team has, whether someone uploaded it or an
   // automation made it. Gives each file a short ID ("V12", "C99") people and the agent can
