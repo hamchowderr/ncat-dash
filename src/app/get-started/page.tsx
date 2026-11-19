@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 
+import { START_TOUR_SEARCH } from "@/components/app-shell/dashboard-tour";
 import { FullPageLoader } from "@/components/full-page-loader";
 import { ContentGoalsFlow } from "@/components/onboarding/content-goals-flow";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
@@ -23,7 +24,9 @@ export default function GetStartedPage() {
       <div className="w-full max-w-2xl">
         <ContentGoalsFlow
           organizationId={state.team.id}
-          onFinish={() => router.replace("/", { transitionTypes: ["nav-back"] })}
+          onFinish={() =>
+            router.replace(`/${START_TOUR_SEARCH}`, { transitionTypes: ["nav-back"] })
+          }
         />
       </div>
     </section>

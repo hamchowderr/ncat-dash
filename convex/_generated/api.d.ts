@@ -81,6 +81,7 @@ import type * as teamSteps from "../teamSteps.js";
 import type * as teams from "../teams.js";
 import type * as toolkitConnections from "../toolkitConnections.js";
 import type * as toolkitHealth from "../toolkitHealth.js";
+import type * as tours from "../tours.js";
 import type * as versions from "../versions.js";
 import type * as voiceNotes from "../voiceNotes.js";
 import type * as watch from "../watch.js";
@@ -165,6 +166,7 @@ declare const fullApi: ApiFromModules<{
   teams: typeof teams;
   toolkitConnections: typeof toolkitConnections;
   toolkitHealth: typeof toolkitHealth;
+  tours: typeof tours;
   versions: typeof versions;
   voiceNotes: typeof voiceNotes;
   watch: typeof watch;

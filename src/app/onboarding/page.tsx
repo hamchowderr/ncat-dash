@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { FullPageLoader } from "@/components/full-page-loader";
+import { START_TOUR_SEARCH } from "@/components/app-shell/dashboard-tour";
 import { ConnectToolkitForm } from "@/components/onboarding/connect-toolkit-form";
 import { ContentGoalsFlow } from "@/components/onboarding/content-goals-flow";
 import { CreateTeamForm } from "@/components/onboarding/create-team-form";
@@ -50,7 +51,8 @@ export default function OnboardingPage() {
   }
 
   const step = state.status === "no-team" ? 1 : (stage ?? 2);
-  const finish = () => router.replace("/");
+  // Home starts the tour of the dashboard for someone who has not had it.
+  const finish = () => router.replace(`/${START_TOUR_SEARCH}`);
   const toGoals = () => setStage(4);
 
   return (

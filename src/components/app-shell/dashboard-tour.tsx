@@ -1,0 +1,156 @@
+"use client";
+
+import { api } from "@convex/_generated/api";
+import { useMutation, useQuery } from "convex/react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+
+import { useSidebar } from "@/components/ui/sidebar";
+import { type Tour, TourProvider, useTour } from "@/components/ui/tour";
+
+export const DASHBOARD_TOUR_ID = "dashboard";
+
+/** The search that asks Home to start the tour: where setting up sends a new team. */
+export const START_TOUR_SEARCH = "?tour=start";
+
+/**
+ * A walk around the dashboard for someone new: one card per part, pointing at its place
+ * in the menu. Each `id` is the `data-tour-step-id` of what it points at; a step whose
+ * target is not on the screen shows in the middle.
+ */
+export const DASHBOARD_TOUR: Tour = {
+  id: DASHBOARD_TOUR_ID,
+  steps: [
+    {
+      id: "tour-welcome",
+      title: "Welcome to Your Dashboard",
+      content:
+        "A quick look around: where your automations live, where your files go, and where finished clips wait for you. It takes about a minute.",
+      nextLabel: "Show me",
+    },
+    {
+      id: "tour-home",
+      title: "Home",
+      content:
+        "What ran this week, what is left to set up, and the ready-made automations that fit what you make.",
+      side: "right",
+    },
+    {
+      id: "tour-automations",
+      title: "Automations",
+      content:
+        "Each one runs by itself when new content comes in: an upload, a watched folder or a schedule. Open one to see its steps laid out on the canvas.",
+      side: "right",
+    },
+    {
+      id: "tour-uploads",
+      title: "Uploads",
+      content: "Drop a recording here and every automation that watches your uploads starts on it.",
+      side: "right",
+    },
+    {
+      id: "tour-runs",
+      title: "Runs",
+      content:
+        "Every time an automation runs, step by step, as it happens. When something fails, this is where you see why.",
+      side: "right",
+    },
+    {
+      id: "tour-review",
+      title: "Review",
+      content:
+        "Finished clips wait here for your team or your client to approve, with comments pinned to the exact moment.",
+      side: "right",
+    },
+    {
+      id: "tour-library",
+      title: "Library",
+      content:
+        "Every video, transcript and caption file you have made, searchable and tagged with the client it is for.",
+      side: "right",
+    },
+    {
+      id: "tour-inbox",
+      title: "Inbox",
+      content: "Failed runs, approvals waiting on you and mentions from your team, in one place.",
+      side: "right",
+    },
+    {
+      id: "tour-builder",
+      title: "Builder",
+      content:
+        "For building and testing: try one step on a file by hand, and see every job sent to your toolkit.",
+      side: "right",
+    },
+    {
+      id: "tour-agent",
+      title: "Agent",
+      content:
+        "Tell the agent what you want in plain words. It builds the automation and tests it for you, and you can change anything after.",
+      side: "bottom",
+      align: "end",
+    },
+    {
+      id: "tour-team",
+      title: "Your Team Menu",
+      content:
+        "Settings live here: your brand, set once for every automation, plus your team, notifications, Slack and Discord. You can take this tour again from your own menu at the bottom.",
+      side: "right",
+      align: "start",
+    },
+  ],
+};
+
+/**
+ * Holds the dashboard tour for the signed-in pages: opens the menu so the tour can point
+ * into it, remembers once it is finished or closed, and starts it by itself the first time
+ * someone lands with `?tour=start`, which is where setting up sends them.
+ */
+export function DashboardTour({ children }: { children: ReactNode }) {
+  const { isMobile, setOpen, setOpenMobile } = useSidebar();
+  const end = useMutation(api.tours.end);
+
+  const onStart = useCallback(() => {
+    // The menu folded away hides what the tour points at, so it opens. A phone's menu is a
+    // sheet over the page that would hold the tour's buttons behind it, so it closes and
+    // the cards show in the middle instead.
+    if (isMobile) setOpenMobile(false);
+    else setOpen(true);
+  }, [isMobile, setOpen, setOpenMobile]);
+
+  const onEnd = useCallback(
+    (tourId: string, how: "finished" | "closed") => {
+      if (tourId === DASHBOARD_TOUR_ID) void end({ tourId, how });
+    },
+    [end],
+  );
+
+  return (
+    <TourProvider tours={[DASHBOARD_TOUR]} onStart={onStart} onEnd={onEnd}>
+      <StartWhenAsked />
+      {children}
+    </TourProvider>
+  );
+}
+
+function StartWhenAsked() {
+  const tour = useTour();
+  // Read once, on arrival: the address is tidied straight after.
+  const [asked] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("tour") === "start",
+  );
+  const ended = useQuery(api.tours.ended, asked ? { tourId: DASHBOARD_TOUR_ID } : "skip");
+  const handled = useRef(false);
+
+  useEffect(() => {
+    if (!asked || handled.current || ended === undefined) return;
+    handled.current = true;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("tour");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    if (!ended) tour?.start(DASHBOARD_TOUR_ID);
+  }, [asked, ended, tour]);
+
+  return null;
+}

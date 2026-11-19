@@ -96,6 +96,9 @@ export function navItemFor(pathname: string) {
   return navMain.find((item) => item.url !== "/" && pathname.startsWith(item.url)) ?? navMain[0];
 }
 
+/** What the dashboard tour calls a menu entry it points at ("/runs" is "tour-runs"). */
+const tourStepFor = (url: string) => `tour-${url === "/" ? "home" : url.slice(1)}`;
+
 export const isSettingsPath = (pathname: string) =>
   pathname === "/settings" || pathname.startsWith("/settings/");
 
@@ -211,7 +214,10 @@ export function AppSidebar({
             { label: null, items: navEveryday },
             { label: "Builder", items: builder },
           ].map((group) => (
-            <SidebarGroup key={group.label ?? "everyday"}>
+            <SidebarGroup
+              key={group.label ?? "everyday"}
+              {...(group.label === "Builder" ? { "data-tour-step-id": "tour-builder" } : {})}
+            >
               {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -224,6 +230,7 @@ export function AppSidebar({
                       >
                         <Link
                           href={item.url}
+                          data-tour-step-id={tourStepFor(item.url)}
                           {...(item.url === "/inbox" ? { "data-alerts-bell": true } : {})}
                         >
                           <item.icon />
@@ -260,6 +267,7 @@ function TeamMenu({ teamName, edition }: { teamName: string; edition: string }) 
             <SidebarMenuButton
               size="lg"
               aria-label={`${teamName} menu`}
+              data-tour-step-id="tour-team"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <TeamMark />

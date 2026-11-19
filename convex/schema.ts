@@ -875,6 +875,16 @@ export default defineSchema({
     .index("by_organization_and_user", ["organizationId", "userId"])
     .index("by_emailTiming", ["emailTiming"]),
 
+  // A person who has been through a guided tour of the dashboard, finished or closed, so
+  // it does not start by itself again. Per person, not per team: the dashboard is the same
+  // on every team. No row means they have not.
+  tourEnds: defineTable({
+    userId: v.string(),
+    tourId: v.literal("dashboard"),
+    how: v.union(v.literal("finished"), v.literal("closed")),
+    endedAt: v.number(),
+  }).index("by_user_and_tour", ["userId", "tourId"]),
+
   // What the toolkit read from a file that reached the bucket without going through this
   // app (dropped in by another tool, or made by a step). Uploads keep theirs on the upload.
   bucketFiles: defineTable({
