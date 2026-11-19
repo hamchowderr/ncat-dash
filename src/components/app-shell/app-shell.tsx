@@ -10,6 +10,12 @@ import { type ReactNode, useEffect, useRef, ViewTransition } from "react";
 import { useAgentContext } from "@/components/agent/agent-context";
 import { FullPageLoader } from "@/components/full-page-loader";
 import { AlertNotices, useUnseenAlerts } from "@/components/inbox/alert-notices";
+import {
+  AgentResting,
+  TrialDays,
+  TrialEnded,
+  useTrialEnded,
+} from "@/components/trial/trial-notice";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { showAgent, useAgentOpen } from "@/lib/agent-open";
@@ -64,6 +70,7 @@ function Shell({
   const pathname = usePathname();
   const { onAutomation } = useAgentContext();
   const agentOpen = useAgentOpen();
+  const trialEnded = useTrialEnded(state.team.id);
 
   return (
     <SidebarProvider className="md:h-svh md:overflow-hidden">
@@ -80,7 +87,8 @@ function Shell({
             {!isSettingsPath(pathname) && (
               <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
             )}
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-3">
+              <TrialDays organizationId={state.team.id} />
               {!agentOpen && (
                 <Button
                   variant="outline"
@@ -99,7 +107,10 @@ function Shell({
             className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
           >
             <PageTransition key={pathname}>
-              <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">{children}</div>
+              <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">
+                <TrialEnded organizationId={state.team.id} />
+                {children}
+              </div>
             </PageTransition>
           </div>
         </SidebarInset>
@@ -119,7 +130,11 @@ function Shell({
         >
           {agentOpen && (
             <div className="flex h-full min-h-0 flex-col lg:w-[26rem] lg:min-w-[26rem]">
-              <AgentPanel onAutomation={onAutomation} onClose={() => showAgent(false)} />
+              {trialEnded ? (
+                <AgentResting onClose={() => showAgent(false)} />
+              ) : (
+                <AgentPanel onAutomation={onAutomation} onClose={() => showAgent(false)} />
+              )}
             </div>
           )}
         </aside>

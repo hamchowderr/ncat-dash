@@ -1409,6 +1409,16 @@ export default defineSchema({
     next: v.number(),
   }).index("by_organization_and_letter", ["organizationId", "letter"]),
 
+  // A team's free trial on the hosted edition: made when the team is made, while trials
+  // are on (TRIAL_DAYS, 3 unless set). A team without a row has no trial and no limit.
+  teamTrials: defineTable({
+    organizationId: v.string(),
+    startedAt: v.number(),
+    endsAt: v.number(),
+    // Set by the operator once the team has bought: the trial no longer ends anything.
+    paidAt: v.optional(v.number()),
+  }).index("by_organization", ["organizationId"]),
+
   // Per-team library settings. A team without a row has the defaults.
   librarySettings: defineTable({
     organizationId: v.string(),

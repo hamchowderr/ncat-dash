@@ -141,6 +141,15 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
     plugins: [
       // Teams: organizations, members, invitations and roles (owner, admin, member).
       organization({
+        organizationHooks: {
+          // On the hosted edition a new team starts its free trial (no card asked for).
+          afterCreateOrganization: async ({ organization }) => {
+            if (!isMutationCtx(ctx) && !isActionCtx(ctx)) return;
+            await ctx.scheduler.runAfter(0, internal.trial.begin, {
+              organizationId: organization.id,
+            });
+          },
+        },
         sendInvitationEmail: async (data) => {
           await queueEmail(
             ctx,

@@ -62,6 +62,7 @@ import { finishListening, startListening } from "./moments";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
+import { TRIAL_ENDED_MESSAGE, trialOf } from "./trial";
 
 // One step may fan out over this many incoming files at most.
 const MAX_JOBS_PER_STEP = 100;
@@ -92,6 +93,10 @@ export async function startRun(
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
   if (problem) return { ok: false, message: problem };
+  // A team whose free trial is over keeps everything, but nothing new runs.
+  if ((await trialOf(ctx, automation.organizationId)).kind === "ended") {
+    return { ok: false, message: TRIAL_ENDED_MESSAGE };
+  }
   const { parent, project } = options;
   // A project's client wins over the automation's own, so the run is for the right client.
   const clientId = project ? project.clientId : automation.clientId;
