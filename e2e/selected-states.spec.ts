@@ -67,7 +67,7 @@ test("the Schedule trigger's options are laid out as clear choices", async ({ pa
   await shot(page, "05-daily");
 
   // The time zone is picked by city from a searchable list.
-  await page.getByRole("combobox", { name: "Time zone" }).click();
+  await page.getByRole("combobox", { name: "Time zone", exact: true }).click();
   await pause(page);
   await shot(page, "06-time-zone-open");
   const search = page.getByRole("combobox", { name: "Search time zones" });
@@ -75,7 +75,9 @@ test("the Schedule trigger's options are laid out as clear choices", async ({ pa
   await page.keyboard.type("new york");
   await pause(page, 800);
   await page.getByRole("option", { name: /New York/ }).click();
-  await expect(page.getByRole("combobox", { name: "Time zone" })).toContainText("New York");
+  await expect(page.getByRole("combobox", { name: "Time zone", exact: true })).toContainText(
+    "New York",
+  );
   await expect(page.getByText(/Runs every day at 9:00\sAM, New York time\./)).toBeVisible();
   await pause(page);
   await shot(page, "07-daily-new-york");
