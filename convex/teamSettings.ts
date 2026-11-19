@@ -54,6 +54,10 @@ export const get = query({
       ...(await brandAndMusicOf(ctx, args.organizationId)),
       editors: await editorsOf(ctx, args.organizationId),
       agent: settings?.agent ?? NO_AGENT_SETTINGS,
+      // The team's own Anthropic key, by its last characters only (anthropicKey.ts).
+      anthropicKey: settings?.anthropicKey
+        ? { hint: settings.anthropicKey.hint, setAt: settings.anthropicKey.setAt }
+        : null,
       captions: await captionSetupOf(ctx, args.organizationId),
       builtInCaptionStyles: BUILT_IN_STYLES,
       builtInByShape: BUILT_IN_BY_SHAPE,

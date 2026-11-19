@@ -20,6 +20,7 @@
 import type { ProcessInputStepArgs, Processor } from '@mastra/core/processors';
 import type { RequestContext } from '@mastra/core/request-context';
 import { env } from '../../lib/env';
+import { onTeamKey, teamKeyForTurn } from '../ncat/team-key';
 
 /** Request-context key: the turn comes from a chat app, so its cache should last an hour. */
 export const LONG_CACHE_KEY = 'longCache';
@@ -142,7 +143,10 @@ export class CostRouteProcessor implements Processor<'cost-route'> {
       ...(this.promptCache ? cacheBreakpoint(requestContext).anthropic : {}),
     };
     return {
-      ...(simple ? { model: env.SIMPLE_CHAT_MODEL as `${string}/${string}` } : {}),
+      // On the team's own Anthropic key when it has one, like the chat model.
+      ...(simple
+        ? { model: onTeamKey(env.SIMPLE_CHAT_MODEL, await teamKeyForTurn(requestContext)) }
+        : {}),
       providerOptions: { ...providerOptions, anthropic } as ProcessInputStepArgs['providerOptions'],
     };
   }
