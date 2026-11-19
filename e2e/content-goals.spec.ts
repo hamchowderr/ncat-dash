@@ -18,6 +18,7 @@ test("a coach is asked what they make and their first upload starts the fitting 
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Reyes Coaching");
   await page.getByRole("button", { name: "Create team" }).click();
+  await page.getByRole("button", { name: /Yes, I Have One/ }).click();
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
   await page.getByRole("button", { name: "Test and connect" }).click();
@@ -75,4 +76,63 @@ test("a coach is asked what they make and their first upload starts the fitting 
   await page.goto("/automations");
   await expect(page.getByRole("link", { name: "Coaching session pack" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Sermon, webinar or lecture pack" })).toBeVisible();
+});
+
+test("someone without a toolkit skips every toolkit field, sets up, and connects one later", async ({
+  page,
+}) => {
+  await page.goto("/sign-up");
+  await page.locator("#name").fill("Sam Okafor");
+  await page.locator("#email").fill(`sam.${stamp}@example.test`);
+  await page.locator("#password").fill("goals-e2e-123456");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
+  await page.getByPlaceholder("Your company or channel").fill("Okafor Talks");
+  await page.getByRole("button", { name: "Create team" }).click();
+
+  // The question comes before any toolkit field, and No skips them all.
+  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+  await expect(page.getByText("Step 2 of 7")).toBeVisible();
+  await expect(page.locator("#baseUrl")).toHaveCount(0);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const sideways = await page.evaluate(
+      () => document.scrollingElement!.scrollWidth > innerWidth + 1,
+    );
+    expect(sideways, `the page scrolls sideways at ${width}`).toBe(false);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: /No, Not Yet/ }).click();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+
+  await page.getByRole("button", { name: /Coaching or Courses/ }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Instagram" }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("button", { name: "Switch on 2 automations" }).click();
+
+  // Nowhere to upload to yet, so the last screen says what comes next.
+  await expect(
+    page.getByRole("heading", { name: "Connect A Toolkit When You're Ready" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Choose a recording to upload")).toHaveCount(0);
+  await expect(page.getByText(/Coaching session pack/).first()).toBeVisible();
+  await page.getByRole("button", { name: /Go to the dashboard/ }).click();
+  await expect(page).toHaveURL(/\/$/);
+
+  // Home still offers the toolkit, and that link goes straight to the form.
+  await page
+    .getByRole("link", { name: /Connect your toolkit/ })
+    .first()
+    .click();
+  await expect(page.getByRole("heading", { name: "Connect your toolkit" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toHaveCount(0);
+  await page.locator("#baseUrl").fill(TOOLKIT);
+  await page.locator("#apiKey").fill("stand-in-key-1234");
+  await page.getByRole("button", { name: "Test and connect" }).click();
+  await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText("Toolkit connected")).toBeVisible();
 });

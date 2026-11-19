@@ -2,7 +2,7 @@ import { api } from "@convex/_generated/api";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { actionOf, answerQuery, mutationOf, toastError } from "@/test/convex";
+import { actionOf, answerQuery, mutationOf, replaced, toastError } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
 import { ContentGoalsFlow } from "./content-goals-flow";
@@ -211,6 +211,46 @@ describe("the first upload", () => {
     renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={onFinish} />);
     await toUpload();
     fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+    expect(onFinish).toHaveBeenCalled();
+  });
+});
+
+describe("setting up without a toolkit", () => {
+  test("ends by saying what is on and that recordings go in once a toolkit is connected", async () => {
+    mutationOf(api.contentGoals.turnOn).mockResolvedValue([
+      {
+        starterId: "coaching-session-pack",
+        name: "Coaching session pack",
+        automationId: "auto1",
+        on: true,
+        problem: null,
+      },
+    ]);
+    const onFinish = vi.fn();
+    renderInApp(
+      <ContentGoalsFlow
+        organizationId={TEAM.id}
+        stepsBefore={3}
+        stepsTotal={7}
+        hasToolkit={false}
+        onFinish={onFinish}
+      />,
+    );
+    pick(/Coaching or Courses/);
+    pick(/Continue/);
+    pick(/Continue without one/);
+    await screen.findByRole("heading", { name: "Switch these on" });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch on 1 automation" }));
+    expect(
+      await screen.findByRole("heading", { name: "Connect A Toolkit When You're Ready" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Step 7 of 7")).toBeTruthy();
+    expect(screen.queryByLabelText("Choose a recording to upload")).toBeNull();
+    expect(screen.getByText(/Coaching session pack/).closest("li")?.textContent).toContain("is on");
+    fireEvent.click(screen.getByRole("button", { name: "Connect A Toolkit" }));
+    expect(replaced).toHaveBeenCalledWith("/onboarding?toolkit=connect");
+    fireEvent.click(screen.getByRole("button", { name: /Go to the dashboard/ }));
     expect(onFinish).toHaveBeenCalled();
   });
 });

@@ -2,13 +2,14 @@
 
 import { api } from "@convex/_generated/api";
 import { useQuery } from "convex/react";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
 import { FullPageLoader } from "@/components/full-page-loader";
 import { ConnectToolkitForm } from "@/components/onboarding/connect-toolkit-form";
 import { ContentGoalsFlow } from "@/components/onboarding/content-goals-flow";
 import { CreateTeamForm } from "@/components/onboarding/create-team-form";
+import { HaveToolkitQuestion } from "@/components/onboarding/have-toolkit-question";
 import { BrandForm } from "@/components/settings/brand-form";
 import { Button } from "@/components/ui/button";
 import { TeamContext } from "@/lib/team-context";
@@ -18,14 +19,19 @@ import { useTeam } from "@/lib/use-team";
 // Name, toolkit and brand, then the four content goals screens (content-goals-flow.tsx).
 const STEPS = 7;
 
+type Stage = "ask" | "connect" | "connected" | "brand" | "goals";
+
 /**
- * Setting up, in order: name the team, connect the toolkit, the brand every automation
- * uses, then what the team makes: where it posts, the ready-made automations that fit,
- * and a first upload. Files go to the toolkit's own storage, so there is no storage step.
- * The brand and the first upload can be skipped.
+ * Setting up, in order: name the team, say whether there is a toolkit and connect it if so,
+ * the brand every automation uses, then what the team makes: where it posts, the ready-made
+ * automations that fit, and a first upload. Someone without a toolkit skips every toolkit
+ * field, and the last screen tells them their automations run once one is connected.
+ * `/onboarding?toolkit=connect` (the "Connect your toolkit" links) opens the form directly
+ * and goes back home once connected. The brand and the first upload can be skipped.
  */
-export default function OnboardingPage() {
+function Onboarding() {
   const router = useRouter();
+  const connectOnly = useSearchParams().get("toolkit") === "connect";
   const state = useTeam();
   const teamId = state.status === "ready" ? state.team.id : null;
   const connections = useQuery(
@@ -33,11 +39,11 @@ export default function OnboardingPage() {
     teamId ? { organizationId: teamId } : "skip",
   );
   const settings = useQuery(api.teamSettings.get, teamId ? { organizationId: teamId } : "skip");
-  // How far this visit has got past connecting the toolkit: 2 is the toolkit step itself.
-  const [stage, setStage] = useState<2 | 3 | 4 | null>(null);
+  const [stage, setStage] = useState<Stage | null>(null);
+  const [hasToolkit, setHasToolkit] = useState(true);
 
   const signedOut = state.status === "signed-out";
-  // Someone who set up on an earlier visit goes straight to the dashboard.
+  // Someone already connected on an earlier visit goes straight to the dashboard.
   const alreadySetUp = stage === null && connections !== undefined && connections.length > 0;
   useGuardRedirect(signedOut ? "/sign-in" : null);
   useEffect(() => {
@@ -49,19 +55,25 @@ export default function OnboardingPage() {
     return <FullPageLoader />;
   }
 
-  const step = state.status === "no-team" ? 1 : (stage ?? 2);
+  const current: Stage | "team" =
+    state.status === "no-team" ? "team" : (stage ?? (connectOnly ? "connect" : "ask"));
+  const step = current === "team" ? 1 : current === "brand" ? 3 : current === "goals" ? 4 : 2;
   const finish = () => router.replace("/");
-  const toGoals = () => setStage(4);
+  const toGoals = () => setStage("goals");
+  const withoutToolkit = () => {
+    setHasToolkit(false);
+    setStage("brand");
+  };
 
   return (
     <section className="flex min-h-screen w-full items-center justify-center px-4 py-10">
       <div className={step === 4 ? "w-full max-w-2xl" : "w-full max-w-md space-y-6"}>
-        {step < 4 && (
+        {step < 4 && !connectOnly && (
           <p className="text-muted-foreground text-sm">
             Step {step} of {STEPS}
           </p>
         )}
-        {step === 1 && (
+        {current === "team" && (
           <>
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Name your team</h1>
@@ -72,7 +84,10 @@ export default function OnboardingPage() {
             <CreateTeamForm />
           </>
         )}
-        {step === 2 && state.status === "ready" && (
+        {current === "ask" && (
+          <HaveToolkitQuestion onYes={() => setStage("connect")} onNo={withoutToolkit} />
+        )}
+        {(current === "connect" || current === "connected") && state.status === "ready" && (
           <>
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Connect your toolkit</h1>
@@ -81,15 +96,33 @@ export default function OnboardingPage() {
                 storage, so this is the only connection to make. We test it before saving anything.
               </p>
             </div>
-            <ConnectToolkitForm organizationId={state.team.id} onConnected={() => setStage(2)} />
-            {stage === 2 && (
-              <Button className="w-full" onClick={() => setStage(3)}>
+            <ConnectToolkitForm
+              organizationId={state.team.id}
+              onConnected={() => setStage("connected")}
+            />
+            {current === "connected" ? (
+              <Button
+                className="w-full"
+                onClick={() => {
+                  setHasToolkit(true);
+                  if (connectOnly) finish();
+                  else setStage("brand");
+                }}
+              >
                 Continue
+              </Button>
+            ) : connectOnly ? (
+              <Button variant="ghost" className="w-full" onClick={finish}>
+                Not now
+              </Button>
+            ) : (
+              <Button variant="ghost" className="w-full" onClick={() => setStage("ask")}>
+                Back
               </Button>
             )}
           </>
         )}
-        {step === 3 && state.status === "ready" && settings && (
+        {current === "brand" && state.status === "ready" && settings && (
           <TeamContext.Provider value={state.team}>
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Add your brand</h1>
@@ -110,15 +143,32 @@ export default function OnboardingPage() {
             </Button>
           </TeamContext.Provider>
         )}
-        {step === 4 && state.status === "ready" && (
+        {current === "goals" && state.status === "ready" && (
           <ContentGoalsFlow
             organizationId={state.team.id}
             stepsBefore={3}
             stepsTotal={STEPS}
+            hasToolkit={hasToolkit}
             onFinish={finish}
           />
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Pages are kept alive between visits, so each address gets its own copy of the screens:
+ * opening the toolkit form from Home starts there, not where an earlier visit left off.
+ */
+function ByAddress() {
+  return <Onboarding key={useSearchParams().toString()} />;
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<FullPageLoader />}>
+      <ByAddress />
+    </Suspense>
   );
 }

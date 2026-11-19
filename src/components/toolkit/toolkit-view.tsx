@@ -193,7 +193,7 @@ function ServerLoad({ reading, failed }: { reading: Reading | null; failed: bool
         <div className="bg-surface flex flex-col items-start gap-3 rounded-xl p-6">
           <p className="text-muted-foreground text-sm">No toolkit is connected yet.</p>
           <Button asChild size="sm">
-            <Link href="/onboarding">Connect your toolkit</Link>
+            <Link href="/onboarding?toolkit=connect">Connect your toolkit</Link>
           </Button>
         </div>
       );

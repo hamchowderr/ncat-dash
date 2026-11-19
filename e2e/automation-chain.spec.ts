@@ -58,7 +58,7 @@ test("one automation runs another, links the runs, refuses a loop, and starts a 
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Chain Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.locator("#baseUrl")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
 
   await newAutomation(page, "Make captions");
   await addQuickStep(page);
@@ -78,7 +78,9 @@ test("one automation runs another, links the runs, refuses a loop, and starts a 
   await expect(page).toHaveURL(/\/runs\/[a-z0-9]+$/, { timeout: 30_000 });
   const toCaptions = page.getByRole("link", { name: /Run of Make captions/ });
   await expect(toCaptions).toContainText("Done");
-  await expect(page.getByText("Its run finished, and its files carried on from here.")).toBeVisible();
+  await expect(
+    page.getByText("Its run finished, and its files carried on from here."),
+  ).toBeVisible();
   await page.waitForTimeout(1500);
 
   // The run it started links back.
