@@ -24,7 +24,9 @@ import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import { type Slot, SlotPanel } from "./slot-panel";
-import { Filled, KindIcon, selectClass, StatusIcon, statusLabel, STATUSES } from "./slot-status";
+import { Filled, KindIcon, StatusIcon, statusLabel, STATUSES } from "./slot-status";
+import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
+import { PickList } from "@/components/ui/pick-list";
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.projects.get>>>;
 type Layout = "list" | "board";
@@ -225,18 +227,13 @@ function AddSlot({ projectId }: { projectId: Id<"projects"> }) {
 
   return (
     <div className="flex items-center gap-2" data-tour-step-id="tour-project-add">
-      <select
+      <PickList
         aria-label="Kind of slot to add"
+        size="sm"
         value={kind}
-        onChange={(event) => setKind(event.target.value as DeliverableKind)}
-        className={cn(selectClass, "h-8")}
-      >
-        {KINDS.map((entry) => (
-          <option key={entry.kind} value={entry.kind}>
-            {entry.label}
-          </option>
-        ))}
-      </select>
+        onChange={(next) => setKind(next as DeliverableKind)}
+        options={KINDS.map((entry) => ({ value: entry.kind, label: entry.label }))}
+      />
       <Button size="sm" variant="outline" disabled={pending} onClick={() => void onAdd()}>
         <Plus />
         Add slot
@@ -311,19 +308,17 @@ function Header({ project }: { project: Loaded }) {
           <span>{project.package}</span>
           <label className="flex items-center gap-2" data-tour-step-id="tour-project-client">
             <span>For</span>
-            <select
+            <PickList
               aria-label="Client"
+              size="sm"
+              className="text-foreground"
               value={project.client?._id ?? ""}
-              onChange={(event) => void onClient(event.target.value)}
-              className={cn(selectClass, "text-foreground h-8")}
-            >
-              <option value="">Your team</option>
-              {clients?.map((entry) => (
-                <option key={entry._id} value={entry._id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => void onClient(next)}
+              options={[
+                { value: "", label: "Your team" },
+                ...(clients ?? []).map((entry) => ({ value: entry._id, label: entry.name })),
+              ]}
+            />
           </label>
           <Filled filled={project.filled} total={project.total} />
         </div>
@@ -399,35 +394,23 @@ function Project({ project }: { project: Loaded }) {
       <Header key={project.name} project={project} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          role="group"
-          aria-label="Layout"
-          data-tour-step-id="tour-project-layout"
-          className="bg-surface flex rounded-lg p-0.5"
-        >
+        <SegmentedGroup aria-label="Layout" data-tour-step-id="tour-project-layout">
           {(
             [
               ["list", "List", List],
               ["board", "Board", Columns3],
             ] as const
           ).map(([value, label, Icon]) => (
-            <button
+            <SegmentedButton
               key={value}
-              type="button"
-              aria-pressed={layout === value}
+              pressed={layout === value}
               onClick={() => pickLayout(value)}
-              className={cn(
-                "focus-visible:ring-ring/50 flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm outline-none transition-colors focus-visible:ring-3",
-                layout === value
-                  ? "bg-background shadow-xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
             >
-              <Icon aria-hidden="true" className="size-4" />
+              <Icon aria-hidden="true" />
               {label}
-            </button>
+            </SegmentedButton>
           ))}
-        </div>
+        </SegmentedGroup>
         <AddSlot projectId={project._id} />
       </div>
 

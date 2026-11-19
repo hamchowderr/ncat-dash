@@ -97,3 +97,51 @@ test("the Schedule trigger's options are laid out as clear choices", async ({ pa
   await page.keyboard.press("Escape");
   await pause(page, 1500);
 });
+
+test("picked things look the same across the app", async ({ page }) => {
+  test.setTimeout(RECORD ? 300_000 : 120_000);
+  await page.goto("/sign-up");
+  await page.locator("#name").fill("Ivy Moss");
+  await page.locator("#email").fill(`ivy.picked.${stamp}@example.test`);
+  await page.locator("#password").fill("selected-states-e2e-2");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
+  await page.getByPlaceholder("Your company or channel").fill("Moss Media");
+  await page.getByRole("button", { name: "Create team" }).click();
+  await page.getByRole("button", { name: /Yes, I Have One/ }).click();
+  await page.locator("#baseUrl").fill("http://127.0.0.1:8767");
+  await page.locator("#apiKey").fill("stand-in-key-1234");
+  await page.getByRole("button", { name: "Test and connect" }).click();
+  await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
+
+  // A picked tile lifts to white and wears the selection ring.
+  await page.goto("/settings/motion");
+  const preset = page.locator("#motion").getByRole("radio", { name: /Bold Hook/ });
+  await preset.click();
+  await expect(preset).toHaveAttribute("aria-checked", "true");
+  await expect(preset).toHaveCSS("outline-style", "solid");
+  await expect(preset).not.toHaveCSS("outline-color", "rgba(0, 0, 0, 0)");
+  await pause(page);
+  await shot(page, "10-motion-preset");
+
+  // View switches are the same segmented control everywhere.
+  await page.goto("/calendar");
+  const views = page.getByRole("group", { name: "Calendar view" });
+  await views.getByRole("button", { name: "Week", exact: true }).click();
+  await expect(views.getByRole("button", { name: "Week", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(views).toHaveAttribute("data-slot", "segmented");
+  await pause(page);
+  await shot(page, "11-calendar-views");
+
+  await page.goto("/projects/new");
+  await pause(page);
+  await shot(page, "12-project-packages");
+
+  await page.goto("/automations/new");
+  await pause(page);
+  await shot(page, "13-template-chips");
+  await pause(page, 1500);
+});

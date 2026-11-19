@@ -8,12 +8,10 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { selectClass } from "@/components/projects/slot-status";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
-import { cn } from "@/lib/utils";
 
 import {
   dayKey,
@@ -29,6 +27,8 @@ import { CalendarTourButton, StartCalendarTour } from "./calendar-tour";
 import { type Dragged, type Entry, entriesByDay } from "./entries";
 import { MonthGrid, WeekGrid } from "./grids";
 import { type Panel, SidePanel } from "./side-panel";
+import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
+import { PickList } from "@/components/ui/pick-list";
 
 const VIEW_KEY = "ncat-dash:calendar-view";
 
@@ -206,49 +206,34 @@ export function CalendarView({ now: givenNow }: { now?: number } = {}) {
               {viewTitle(view, anchor)}
             </h2>
             {clients.length > 0 && (
-              <select
+              <PickList
                 aria-label="Client"
                 data-tour-step-id="tour-calendar-client"
+                size="sm"
                 value={clientId}
-                onChange={(event) => setClientId(event.target.value)}
-                className={cn(selectClass, "h-8")}
-              >
-                <option value="">Everyone</option>
-                {clients.map((entry) => (
-                  <option key={entry._id} value={entry._id}>
-                    {entry.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setClientId}
+                options={[
+                  { value: "", label: "Everyone" },
+                  ...clients.map((entry) => ({ value: entry._id, label: entry.name })),
+                ]}
+              />
             )}
-            <div
-              role="group"
-              aria-label="Calendar view"
-              data-tour-step-id="tour-calendar-views"
-              className="bg-muted flex rounded-lg p-[3px]"
-            >
+            <SegmentedGroup aria-label="Calendar view" data-tour-step-id="tour-calendar-views">
               {(
                 [
                   ["month", "Month"],
                   ["week", "Week"],
                 ] as const
               ).map(([value, label]) => (
-                <button
+                <SegmentedButton
                   key={value}
-                  type="button"
-                  aria-pressed={view === value}
+                  pressed={view === value}
                   onClick={() => changeView(value)}
-                  className={cn(
-                    "focus-visible:ring-ring/50 rounded-md px-3 py-0.5 text-sm outline-none transition-[background-color,color,box-shadow] focus-visible:ring-3",
-                    view === value
-                      ? "bg-background text-foreground shadow-xs"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
                 >
                   {label}
-                </button>
+                </SegmentedButton>
               ))}
-            </div>
+            </SegmentedGroup>
           </div>
           <div data-tour-step-id="tour-calendar-grid" className="overflow-x-auto pb-1">
             {byDay === null ? (

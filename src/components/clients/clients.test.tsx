@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 
 import { ClientPicker } from "@/components/automations/client-picker";
 import { answerQuery, mutationOf, pushed, replaced } from "@/test/convex";
-import { renderInApp, TEAM } from "@/test/render";
+import { pick, renderInApp, TEAM } from "@/test/render";
 
 import { ClientView } from "./client-view";
 import { ClientsView } from "./clients-view";
@@ -148,8 +148,8 @@ describe("picking a client for an automation", () => {
     answerQuery(api.clients.list, [{ _id: "k1", name: "Acme" }]);
     const setFor = mutationOf(api.clients.setForAutomation);
     renderInApp(<ClientPicker automationId={"a1" as never} clientId={"k1" as never} />);
-    expect(screen.getByLabelText("Client")).toHaveValue("k1");
-    await user.selectOptions(screen.getByLabelText("Client"), "");
+    expect(screen.getByLabelText("Client")).toHaveTextContent("Acme");
+    await pick(user, screen.getByLabelText("Client"), "Your team");
     expect(setFor).toHaveBeenCalledWith({ automationId: "a1", clientId: null });
   });
 });

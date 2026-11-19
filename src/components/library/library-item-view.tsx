@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { selectClass } from "@/components/projects/slot-status";
 import { UploadFrame } from "@/components/uploads/upload-media";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +26,7 @@ import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "./library-media";
+import { PickList } from "@/components/ui/pick-list";
 
 /** Wraps each place the search words appear in a highlight. */
 function marked(text: string, words: string[]): ReactNode {
@@ -221,19 +221,17 @@ function ClientFact({
 
   return (
     <Fact label="Client">
-      <select
+      <PickList
         aria-label="Client"
+        size="sm"
+        className="max-w-44"
         value={client?._id ?? ""}
-        onChange={(event) => void onChange(event.target.value)}
-        className={cn(selectClass, "h-8 max-w-44")}
-      >
-        <option value="">Your team</option>
-        {clients.map((one) => (
-          <option key={one._id} value={one._id}>
-            {one.name}
-          </option>
-        ))}
-      </select>
+        onChange={(next) => void onChange(next)}
+        options={[
+          { value: "", label: "Your team" },
+          ...clients.map((one) => ({ value: one._id, label: one.name })),
+        ]}
+      />
     </Fact>
   );
 }

@@ -53,7 +53,7 @@ const KIND_ICONS: Record<string, LucideIcon> = {
 };
 
 const tile =
-  "bg-surface hover:bg-muted focus-visible:ring-ring/50 flex items-center gap-3 rounded-xl p-3.5 text-left outline-none transition-[background-color,transform] duration-150 hover:-translate-y-px focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60 motion-reduce:transition-none motion-reduce:hover:translate-y-0 aria-pressed:bg-primary/10 aria-pressed:hover:bg-primary/15";
+  "choice-tile focus-visible:ring-ring/50 flex items-center gap-3 rounded-xl p-3.5 text-left focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60";
 
 type Stage = "kinds" | "apps" | "turn-on" | "upload";
 const STAGES: Stage[] = ["kinds", "apps", "turn-on", "upload"];

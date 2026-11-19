@@ -135,6 +135,52 @@
   outline-offset: 3px;
 }
 
+/*
+ * A choice drawn as a tile (a platform, a package, a preset, a kind of content). At rest
+ * it sits on a quiet tone; picked, it lifts to white with the selection ring, so the
+ * picked one reads at a glance without a heavier box. Works with aria-pressed,
+ * aria-checked, or a checked input inside a label.
+ */
+@utility choice-tile {
+  background-color: var(--surface);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition:
+    background-color 150ms ease-out,
+    outline-color 150ms ease-out,
+    box-shadow 150ms ease-out;
+  &:hover {
+    background-color: var(--muted);
+  }
+  &[aria-pressed="true"],
+  &[aria-checked="true"],
+  &:has(> input:checked) {
+    background-color: var(--background);
+    outline-color: color-mix(in oklab, var(--foreground) 55%, transparent);
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.05),
+      0 4px 12px -4px rgb(0 0 0 / 0.08);
+  }
+}
+
+/* A filter chip (All, Videos, a category). Picked: the selected tone, full-weight text. */
+@utility choice-chip {
+  color: var(--muted-foreground);
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
+  &:hover {
+    color: var(--foreground);
+    background-color: var(--muted);
+  }
+  &[aria-pressed="true"],
+  &[aria-checked="true"] {
+    color: var(--foreground);
+    background-color: var(--selected);
+    font-weight: 500;
+  }
+}
+
 /* The picked row in a list: a quiet filled tone and full-weight text, no outline. */
 @utility row-selected {
   @apply bg-selected font-medium text-foreground;

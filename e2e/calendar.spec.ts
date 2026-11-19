@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page, test } from "./test";
+import { expect, type Locator, type Page, pick, test } from "./test";
 
 // The content calendar in a real browser against a real local backend: a repeating slot
 // for Instagram, a queued post taking its next time, a post dragged from the side list
@@ -64,9 +64,9 @@ test("posts are planned on the calendar, fill repeating slots, and move by dragg
 
   // A repeating slot every Monday at 10:00 for Instagram.
   await side.getByRole("button", { name: "Repeating Slots" }).click();
-  await side.getByLabel("Day", { exact: true }).selectOption("Monday");
+  await pick(side.getByLabel("Day", { exact: true }), "Monday");
   await side.getByLabel("Time", { exact: true }).fill("10:00");
-  await side.getByLabel("Where").selectOption("Instagram");
+  await pick(side.getByLabel("Where"), "Instagram");
   await side.getByRole("button", { name: "Add Slot" }).click();
   await expect(side.getByText("Mondays at 10:00")).toBeVisible();
   await expect(page.getByRole("button", { name: /Open slot for Instagram/ }).first()).toBeVisible();
@@ -75,7 +75,7 @@ test("posts are planned on the calendar, fill repeating slots, and move by dragg
   await side.getByRole("button", { name: "Not Scheduled" }).click();
   await side.getByRole("button", { name: "Add Post" }).click();
   await side.getByLabel("Title").fill("Episode 7 teaser");
-  await side.getByLabel("Where").selectOption("Instagram");
+  await pick(side.getByLabel("Where"), "Instagram");
   await side.getByRole("button", { name: "Add Post" }).click();
   const teaser = page.getByRole("button", { name: /Episode 7 teaser, Instagram at/ });
   await expect(teaser).toBeVisible();
@@ -89,7 +89,7 @@ test("posts are planned on the calendar, fill repeating slots, and move by dragg
   await side.getByRole("button", { name: "Back" }).click();
   await side.getByRole("button", { name: "Add Post" }).click();
   await side.getByLabel("Title").fill("Behind the scenes");
-  await side.getByLabel("Where").selectOption("TikTok");
+  await pick(side.getByLabel("Where"), "TikTok");
   await side.getByLabel("Not Scheduled Yet").check();
   await side.getByRole("button", { name: "Add Post" }).click();
   await expect(side.getByRole("heading", { name: "Post", exact: true })).toBeVisible();

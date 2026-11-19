@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
+import { PickList } from "./pick-list";
 import { Segmented } from "./segmented";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select";
 
@@ -61,5 +62,31 @@ describe("a pick list", () => {
     const one = await screen.findByRole("option", { name: /One/ });
     expect(one.textContent).toContain("Just the one");
     expect(one.getAttribute("data-state")).toBe("checked");
+  });
+});
+
+describe("the app's own pick list", () => {
+  const options = [
+    { value: "", label: "Your team" },
+    { value: "k1", label: "Acme" },
+  ];
+
+  test("shows the empty choice by name and hands back an empty value for it", async () => {
+    const changed = vi.fn();
+    render(<PickList aria-label="Client" value="" onChange={changed} options={options} />);
+    const field = screen.getByRole("combobox", { name: "Client" });
+    expect(field.textContent).toBe("Your team");
+    fireEvent.click(field);
+    fireEvent.click(await screen.findByRole("option", { name: "Acme" }));
+    expect(changed).toHaveBeenCalledWith("k1");
+  });
+
+  test("opens as the app's list, not the browser's", async () => {
+    const changed = vi.fn();
+    render(<PickList aria-label="Client" value="k1" onChange={changed} options={options} />);
+    expect(document.querySelector("select")).toBeNull();
+    fireEvent.click(screen.getByRole("combobox", { name: "Client" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Your team" }));
+    expect(changed).toHaveBeenCalledWith("");
   });
 });
