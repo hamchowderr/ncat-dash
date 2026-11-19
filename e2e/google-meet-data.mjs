@@ -60,3 +60,17 @@ export function oldRecording() {
     videoMediaMetadata: { durationMillis: String(52 * 60 * 1000) },
   };
 }
+
+/** A recording of someone else's meeting, in their Drive, shared with the signed-in person. */
+export function sharedRecording() {
+  const saved = Date.now() - 30 * 864e5;
+  return {
+    id: "driveFileSharedCall0001",
+    name: "Partner Sync (2026-10-20 09:00 GMT-7) - Recording",
+    size: "23000000",
+    mimeType: "video/mp4",
+    createdTime: new Date(saved).toISOString(),
+    videoMediaMetadata: { durationMillis: String(21 * 60 * 1000) },
+    owners: [{ displayName: "Pat Rivera", emailAddress: "pat@partner.test", me: false }],
+  };
+}

@@ -103,8 +103,16 @@ beforeEach(() => {
       driveLists.push(url.searchParams);
       const size = Number(url.searchParams.get("pageSize"));
       const from = Number(url.searchParams.get("pageToken") ?? 0);
+      const q = url.searchParams.get("q") ?? "";
+      const after = /createdTime > '([^']+)'/.exec(q)?.[1];
       const all = Object.values(driveFiles)
         .filter((one) => String(one.mimeType).startsWith("video/") && !one.trashed)
+        .filter(
+          (one) =>
+            !q.includes("not 'me' in owners") ||
+            !(one.owners as { me?: boolean }[] | undefined)?.some((owner) => owner.me),
+        )
+        .filter((one) => !after || String(one.createdTime) > after)
         .sort((a, b) => String(b.createdTime).localeCompare(String(a.createdTime)));
       const page = all.slice(from, from + size);
       return Response.json({
@@ -563,6 +571,7 @@ describe("past recordings", () => {
       minutes: 42,
       size: 2_000_000,
       standing: "new",
+      sharedBy: null,
     });
     expect(found.recordings[1]).toMatchObject({ topic: "Client Call 40", minutes: 30 });
     expect(found.recordings.at(-1)).toMatchObject({ topic: "Client Call 189" });
@@ -706,5 +715,91 @@ describe("nothing comes in twice", () => {
     });
     const imports = await setup.t.run((ctx) => ctx.db.query("googleMeetImports").collect());
     expect(imports).toMatchObject([{ status: "importing" }]);
+  });
+});
+
+/** A Meet recording someone else organized, in their Drive, shared with the person. */
+function sharedWithMe(id: string, savedAgo: number, by = "Andrew Fink") {
+  driveFiles[id] = {
+    id,
+    name: "Tylan / Andrew - 2025/04/23 14:59 CDT - Recording",
+    size: String(4_000_000 + savedAgo / 1000),
+    mimeType: "video/mp4",
+    createdTime: new Date(Date.now() - savedAgo).toISOString(),
+    videoMediaMetadata: { durationMillis: String(21 * 60 * 1000) },
+    owners: [{ displayName: by, emailAddress: "andrew@example.test", me: false }],
+  };
+}
+
+describe("recordings shared with you", () => {
+  test("are listed with who shared them; your own are not marked", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    oldRecordingInDrive("oldRecordingFile70", 70);
+    driveFiles.oldRecordingFile70.owners = [{ displayName: "Jordan Lee", me: true }];
+    sharedWithMe("sharedRecordingFile1", 400 * 24 * HOUR);
+    const found = await setup.owner.as.action(api.googleMeet.pastRecordings, {
+      organizationId: setup.team,
+    });
+    expect(found.recordings.map((one) => [one.topic, one.sharedBy])).toEqual([
+      ["Client Call 70", null],
+      ["Tylan / Andrew", "Andrew Fink"],
+    ]);
+    // Drive is asked who owns each file.
+    expect(driveLists[0].get("fields")).toContain("owners(displayName,emailAddress,me)");
+  });
+
+  test("switched on, the check also brings in ones shared since then, and only those", async () => {
+    const setup = await setUp();
+    const row = await connectedEarlier(setup);
+    await setup.owner.as.mutation(api.googleMeet.setIncludeShared, {
+      organizationId: setup.team,
+      includeShared: true,
+    });
+    const view = await setup.owner.as.query(api.googleMeet.forTeam, {
+      organizationId: setup.team,
+    });
+    expect(view?.me?.includeShared).toBe(true);
+    await setup.t.run((ctx) => ctx.db.patch(row._id, { sharedFrom: Date.now() - HOUR }));
+    sharedWithMe("sharedRecordingNew1", 10 * 60 * 1000);
+    sharedWithMe("sharedRecordingOld1", 3 * HOUR);
+    // The person's own recordings in Drive come through Meet, not this way.
+    oldRecordingInDrive("ownRecordingFile1", 0);
+    driveFiles.ownRecordingFile1.owners = [{ displayName: "Jordan Lee", me: true }];
+
+    expect(await setup.t.action(internal.googleMeet.checkOne, { connectionId: row._id })).toBe(1);
+    expect(await setup.t.action(internal.googleMeet.checkOne, { connectionId: row._id })).toBe(0);
+    const uploads = await setup.t.run((ctx) => ctx.db.query("uploads").collect());
+    expect(uploads.map((one) => one.fileName)).toEqual([
+      expect.stringMatching(/^Tylan Andrew \d{4}-\d{2}-\d{2}\.mp4$/),
+    ]);
+    expect(driveLists.at(-1)?.get("q")).toMatch(/and not 'me' in owners and createdTime > '/);
+
+    // Connecting again keeps it on.
+    await connect(setup);
+    expect((await connectionOf(setup)).sharedFrom).toBeDefined();
+  });
+
+  test("switched off (the default), the check does not look for shared ones at all", async () => {
+    const setup = await setUp();
+    const row = await connectedEarlier(setup);
+    sharedWithMe("sharedRecordingNew2", 60 * 1000);
+    expect(await setup.t.action(internal.googleMeet.checkOne, { connectionId: row._id })).toBe(0);
+    expect(driveLists).toEqual([]);
+    await setup.owner.as.mutation(api.googleMeet.setIncludeShared, {
+      organizationId: setup.team,
+      includeShared: true,
+    });
+    await setup.owner.as.mutation(api.googleMeet.setIncludeShared, {
+      organizationId: setup.team,
+      includeShared: false,
+    });
+    expect((await connectionOf(setup)).sharedFrom).toBeUndefined();
+    await expect(
+      setup.member.as.mutation(api.googleMeet.setIncludeShared, {
+        organizationId: setup.team,
+        includeShared: true,
+      }),
+    ).rejects.toThrow(/Connect your Google account/);
   });
 });

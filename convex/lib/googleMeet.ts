@@ -30,11 +30,20 @@ export interface DriveFile {
   createdTime?: string;
   /** Drive's reading of the video, once it has processed it. */
   videoMediaMetadata?: { durationMillis?: string };
+  /** Who the file belongs to. Missing for a file on a shared drive. */
+  owners?: { displayName?: string; emailAddress?: string; me?: boolean }[];
+}
+
+/** Who shared a recording with the person: its owner, when that is someone else. */
+export function sharedByOf(file: DriveFile): string | null {
+  const owner = file.owners?.[0];
+  if (!owner || owner.me) return null;
+  return owner.displayName || owner.emailAddress || null;
 }
 
 /** The Drive fields the dashboard reads about a recording's file. */
 export const DRIVE_FILE_FIELDS =
-  "id,name,size,mimeType,trashed,createdTime,videoMediaMetadata(durationMillis)";
+  "id,name,size,mimeType,trashed,createdTime,videoMediaMetadata(durationMillis),owners(displayName,emailAddress,me)";
 
 /**
  * Which Drive files to list as Meet recordings. With the drive.meet.readonly access, Drive
