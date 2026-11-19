@@ -45,6 +45,15 @@ const server = createServer(async (request, response) => {
     return send(response, 200, user);
   }
   if (url.pathname === "/v2/users/me") return send(response, 200, user);
+  // The whole account's recordings: another host's meeting as well as the signed-in one's.
+  if (url.pathname === "/v2/accounts/me/recordings") {
+    return send(response, 200, {
+      meetings: [
+        meeting(`team-meeting-${user.id}==`, "Team Standup", `${user.id}-colleague`),
+        meeting(undefined, undefined, user.id),
+      ],
+    });
+  }
   if (url.pathname === "/v2/users/me/recordings") {
     return send(response, 200, {
       meetings: [meeting(undefined, undefined, user.id)],

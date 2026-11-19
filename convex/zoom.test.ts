@@ -17,6 +17,12 @@ let codes: Record<string, ZoomUser> = {};
 let refreshes = 0;
 let toolkitCalls: { url: string; body: Record<string, unknown> }[] = [];
 let recordings: unknown[] = [];
+let accountRecordings: unknown[] = [];
+// Which app's keys each sign-in code was traded with.
+let tradedWith: Record<string, string> = {};
+const ACCOUNT_SECRET = "zoom-account-webhook-secret-token";
+const PERSON_AUTH = `Basic ${btoa("zoom-client-id:zoom-client-secret")}`;
+const ACCOUNT_AUTH = `Basic ${btoa("zoom-account-client-id:zoom-account-client-secret")}`;
 
 beforeEach(() => {
   process.env.ZOOM_CLIENT_ID = "zoom-client-id";
@@ -30,13 +36,17 @@ beforeEach(() => {
   refreshes = 0;
   toolkitCalls = [];
   recordings = [];
+  accountRecordings = [];
+  tradedWith = {};
   vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
     const headers = new Headers(init?.headers);
     if (url === "https://zoom.test/oauth/token") {
-      const expected = `Basic ${btoa("zoom-client-id:zoom-client-secret")}`;
-      if (headers.get("authorization") !== expected) return new Response("no", { status: 401 });
+      const auth = headers.get("authorization");
+      if (auth !== PERSON_AUTH && auth !== ACCOUNT_AUTH) return new Response("no", { status: 401 });
       const form = new URLSearchParams(String(init?.body ?? ""));
+      tradedWith[form.get("code") ?? form.get("refresh_token") ?? ""] =
+        auth === ACCOUNT_AUTH ? "account" : "person";
       if (form.get("grant_type") === "refresh_token") {
         if (form.get("refresh_token") !== "refresh-1") return new Response("no", { status: 400 });
         refreshes++;
@@ -62,6 +72,9 @@ beforeEach(() => {
       const code = String(headers.get("authorization")).replace("Bearer access-", "");
       return codes[code] ? Response.json(codes[code]) : new Response("no", { status: 401 });
     }
+    if (url.startsWith("https://api.zoom.test/v2/accounts/me/recordings")) {
+      return Response.json({ meetings: accountRecordings });
+    }
     if (url.startsWith("https://api.zoom.test/v2/users/me/recordings")) {
       return Response.json({ meetings: recordings });
     }
@@ -81,6 +94,9 @@ afterEach(() => {
     "ZOOM_CLIENT_ID",
     "ZOOM_CLIENT_SECRET",
     "ZOOM_WEBHOOK_SECRET",
+    "ZOOM_ACCOUNT_CLIENT_ID",
+    "ZOOM_ACCOUNT_CLIENT_SECRET",
+    "ZOOM_ACCOUNT_WEBHOOK_SECRET",
     "ZOOM_OAUTH_URL",
     "ZOOM_API_URL",
     "CONVEX_SITE_URL",
@@ -128,11 +144,15 @@ async function connect(setup: Awaited<ReturnType<typeof setUp>>, user = JORDAN) 
 async function sendEvent(
   t: ReturnType<typeof backend>,
   event: unknown,
-  { secret = SECRET, timestamp = String(Math.floor(Date.now() / 1000)) } = {},
+  {
+    secret = SECRET,
+    timestamp = String(Math.floor(Date.now() / 1000)),
+    path = "/zoom/events",
+  } = {},
 ) {
   const body = JSON.stringify(event);
   const signature = `v0=${createHmac("sha256", secret).update(`v0:${timestamp}:${body}`).digest("hex")}`;
-  return await t.fetch("/zoom/events", {
+  return await t.fetch(path, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -497,5 +517,206 @@ describe("past recordings", () => {
     await expect(
       setup.member.as.action(api.zoom.pastRecordings, { organizationId: setup.team }),
     ).rejects.toThrow(/Connect your Zoom/);
+  });
+});
+
+describe("a whole Zoom account", () => {
+  const ADMIN: ZoomUser = {
+    id: "zoom-user-admin",
+    account_id: "zoom-account-1",
+    email: "admin@salthouse.test",
+    display_name: "Salt House Admin",
+  };
+
+  function withAccountApp() {
+    process.env.ZOOM_ACCOUNT_CLIENT_ID = "zoom-account-client-id";
+    process.env.ZOOM_ACCOUNT_CLIENT_SECRET = "zoom-account-client-secret";
+    process.env.ZOOM_ACCOUNT_WEBHOOK_SECRET = ACCOUNT_SECRET;
+  }
+
+  async function connectWhole(setup: Awaited<ReturnType<typeof setUp>>, user = ADMIN) {
+    const url = await setup.owner.as.mutation(api.zoom.startLink, {
+      organizationId: setup.team,
+      wholeAccount: true,
+    });
+    expect(new URL(url).searchParams.get("client_id")).toBe("zoom-account-client-id");
+    return await comeBack(setup.t, url, "w1", user);
+  }
+
+  test("is offered only when the dashboard has the admin-managed app", async () => {
+    const setup = await setUp();
+    const before = await setup.owner.as.query(api.zoom.forTeam, { organizationId: setup.team });
+    expect(before).toMatchObject({ accountReady: false, wholeAccount: null, canManage: true });
+    await expect(
+      setup.owner.as.mutation(api.zoom.startLink, {
+        organizationId: setup.team,
+        wholeAccount: true,
+      }),
+    ).rejects.toThrow(/not set up/);
+    withAccountApp();
+    const after = await setup.owner.as.query(api.zoom.forTeam, { organizationId: setup.team });
+    expect(after?.accountReady).toBe(true);
+  });
+
+  test("a team owner connects it with the admin app; it sits beside their own Zoom", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    expect(await connect(setup)).toBe("connected");
+    expect(await connectWhole(setup)).toBe("account_connected");
+    expect(tradedWith.w1).toBe("account");
+    expect(tradedWith.c1).toBe("person");
+
+    const view = await setup.member.as.query(api.zoom.forTeam, { organizationId: setup.team });
+    expect(view?.wholeAccount).toMatchObject({
+      zoomName: "Salt House Admin",
+      zoomEmail: "admin@salthouse.test",
+      memberName: "Jordan Lee",
+      mine: false,
+    });
+    expect(view?.canManage).toBe(false);
+    // The owner's own Zoom is still theirs, and is not listed as somebody else's.
+    const mine = await setup.owner.as.query(api.zoom.forTeam, { organizationId: setup.team });
+    expect(mine?.me?.zoomName).toBe("Jordan Lee");
+    expect(mine?.others).toEqual([]);
+  });
+
+  test("a plain member cannot connect or remove it", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    await expect(
+      setup.member.as.mutation(api.zoom.startLink, {
+        organizationId: setup.team,
+        wholeAccount: true,
+      }),
+    ).rejects.toThrow(/owner or admin/);
+    await connectWhole(setup);
+    await expect(
+      setup.member.as.mutation(api.zoom.disconnect, {
+        organizationId: setup.team,
+        wholeAccount: true,
+      }),
+    ).rejects.toThrow(/owner or admin/);
+  });
+
+  test("one Zoom account belongs to one team", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    await connectWhole(setup);
+    const other = await addTeam(setup.t, "Other Studio");
+    const boss = await addPerson(setup.t, "Ana Cruz", [other], "owner");
+    const url = await boss.as.mutation(api.zoom.startLink, {
+      organizationId: other,
+      wholeAccount: true,
+    });
+    expect(await comeBack(setup.t, url, "w2", ADMIN)).toBe("account_taken");
+    // Connecting again on the same team replaces it rather than adding a second.
+    expect(await connectWhole(setup)).toBe("account_connected");
+    const rows = await setup.t.run((ctx) => ctx.db.query("zoomConnections").collect());
+    expect(rows.filter((one) => one.wholeAccount)).toHaveLength(1);
+  });
+
+  test("every host's finished recording comes in, sent to the account address", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    await connectWhole(setup);
+    // Someone in the account who never connected anything hosted it.
+    const event = completed("zoom-user-somebody-else");
+    // The per-person app's address does not know this host.
+    await sendEvent(setup.t, event);
+    expect(await setup.t.run((ctx) => ctx.db.query("uploads").collect())).toHaveLength(0);
+    // Signed with the person app's secret, the account address refuses it.
+    expect((await sendEvent(setup.t, event, { path: "/zoom/account-events" })).status).toBe(401);
+    const answer = await sendEvent(setup.t, event, {
+      path: "/zoom/account-events",
+      secret: ACCOUNT_SECRET,
+    });
+    expect(answer.status).toBe(204);
+    const uploads = await setup.t.run((ctx) => ctx.db.query("uploads").collect());
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]).toMatchObject({ source: "zoom", createdBy: setup.owner.id });
+    // Another account's recording is not this team's.
+    await sendEvent(
+      setup.t,
+      { ...event, payload: { ...event.payload, account_id: "zoom-account-2" } },
+      { path: "/zoom/account-events", secret: ACCOUNT_SECRET },
+    );
+    expect(await setup.t.run((ctx) => ctx.db.query("uploads").collect())).toHaveLength(1);
+  });
+
+  test("a host connected both ways gets one upload, not two", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    await connect(setup);
+    await connectWhole(setup);
+    await sendEvent(setup.t, completed());
+    await sendEvent(setup.t, completed(), { path: "/zoom/account-events", secret: ACCOUNT_SECRET });
+    expect(await setup.t.run((ctx) => ctx.db.query("uploads").collect())).toHaveLength(1);
+  });
+
+  test("Zoom checks the account address with the account app's secret", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    const answer = await sendEvent(
+      setup.t,
+      { event: "endpoint.url_validation", payload: { plainToken: "plain-1" } },
+      { path: "/zoom/account-events", secret: ACCOUNT_SECRET },
+    );
+    expect(await answer.json()).toEqual({
+      plainToken: "plain-1",
+      encryptedToken: createHmac("sha256", ACCOUNT_SECRET).update("plain-1").digest("hex"),
+    });
+  });
+
+  test("past recordings list everyone's, and any member can bring one in", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    await connectWhole(setup);
+    accountRecordings = [completed("zoom-user-somebody-else").payload.object];
+    const past = await setup.member.as.action(api.zoom.pastRecordings, {
+      organizationId: setup.team,
+    });
+    expect(past.map((one) => one.meetingUuid)).toEqual(["meeting-uuid-1=="]);
+    expect(
+      await setup.member.as.action(api.zoom.bringIn, {
+        organizationId: setup.team,
+        meetingUuid: "meeting-uuid-1==",
+      }),
+    ).toBe("started");
+  });
+
+  test("its sign-in is renewed with the account app's keys", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    await connectWhole(setup);
+    await setup.t.run(async (ctx) => {
+      const row = (await ctx.db.query("zoomConnections").collect())[0];
+      await ctx.db.patch(row._id, { expiresAt: Date.now() });
+    });
+    accountRecordings = [];
+    await setup.owner.as.action(api.zoom.pastRecordings, { organizationId: setup.team });
+    expect(refreshes).toBe(1);
+    expect(tradedWith["refresh-1"]).toBe("account");
+  });
+
+  test("disconnecting, or removing the admin app in Zoom, forgets only the whole account", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    await connect(setup);
+    await connectWhole(setup);
+    const removed = {
+      event: "app_deauthorized",
+      payload: { account_id: "zoom-account-1", user_id: ADMIN.id },
+    };
+    await sendEvent(setup.t, removed, { path: "/zoom/account-events", secret: ACCOUNT_SECRET });
+    let rows = await setup.t.run((ctx) => ctx.db.query("zoomConnections").collect());
+    expect(rows.map((one) => Boolean(one.wholeAccount))).toEqual([false]);
+
+    await connectWhole(setup);
+    await setup.owner.as.mutation(api.zoom.disconnect, {
+      organizationId: setup.team,
+      wholeAccount: true,
+    });
+    rows = await setup.t.run((ctx) => ctx.db.query("zoomConnections").collect());
+    expect(rows.map((one) => Boolean(one.wholeAccount))).toEqual([false]);
   });
 });

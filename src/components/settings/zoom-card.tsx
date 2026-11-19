@@ -19,6 +19,18 @@ import { SettingsSection } from "./settings-shell";
 /** What Settings says when Zoom sends someone back, by the result in the address. */
 export const ZOOM_RESULTS: Record<string, { ok: boolean; text: string }> = {
   connected: { ok: true, text: "Your Zoom is connected" },
+  account_connected: {
+    ok: true,
+    text: "The whole Zoom account is connected. Every host's recordings now come in",
+  },
+  account_taken: {
+    ok: false,
+    text: "That Zoom account is already connected as a whole to another team.",
+  },
+  not_manager: {
+    ok: false,
+    text: "Only a team owner or admin can connect a whole Zoom account.",
+  },
   cancelled: { ok: false, text: "Nothing changed: Zoom was closed before it finished." },
   expired: { ok: false, text: "That took too long. Press the button again." },
   taken: { ok: false, text: "That Zoom account is already connected to another team." },
@@ -86,10 +98,15 @@ export function ZoomCard() {
   if (zoom === undefined) return <Skeleton className="h-40 rounded-xl" />;
   if (zoom === null) return null;
 
-  async function connect() {
-    setBusy("connect");
+  async function connect(wholeAccount = false) {
+    setBusy(wholeAccount ? "connect-account" : "connect");
     try {
-      window.location.assign(await startLink({ organizationId: team.id }));
+      window.location.assign(
+        await startLink({
+          organizationId: team.id,
+          ...(wholeAccount ? { wholeAccount: true } : {}),
+        }),
+      );
     } catch (caught) {
       toast.error(errorMessage(caught, "Zoom could not be opened. Try again."));
       setBusy(null);
@@ -171,7 +188,7 @@ export function ZoomCard() {
               Uploads by themselves, ready to clip and caption.
             </p>
             <div>
-              <Button size="sm" disabled={busy !== null} onClick={connect}>
+              <Button size="sm" disabled={busy !== null} onClick={() => connect()}>
                 {busy === "connect" ? "Opening Zoom" : "Connect Zoom"}
               </Button>
             </div>
@@ -188,7 +205,65 @@ export function ZoomCard() {
         )}
       </section>
 
-      {zoom.me && (
+      {zoom.accountReady && (
+        <section className="flex flex-col gap-3" aria-label="Whole Zoom account">
+          <p className="text-sm font-medium">Whole Zoom account</p>
+          {zoom.wholeAccount ? (
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span>
+                Every host&apos;s recordings come in, connected by{" "}
+                <span className="font-medium">
+                  {zoom.wholeAccount.memberName ?? zoom.wholeAccount.zoomName}
+                </span>
+                {zoom.wholeAccount.zoomEmail && (
+                  <span className="text-muted-foreground"> · {zoom.wholeAccount.zoomEmail}</span>
+                )}
+              </span>
+              {(zoom.canManage || zoom.wholeAccount.mine) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy !== null}
+                  onClick={() =>
+                    run(
+                      "disconnect-account",
+                      () => disconnect({ organizationId: team.id, wholeAccount: true }),
+                      "The whole Zoom account is disconnected",
+                    )
+                  }
+                >
+                  Disconnect
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              <p className="text-muted-foreground text-sm">
+                A Zoom account admin can connect the whole Zoom account once. Then the cloud
+                recordings of every host in it come into Uploads, without each person connecting.
+              </p>
+              {zoom.canManage ? (
+                <div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy !== null}
+                    onClick={() => connect(true)}
+                  >
+                    {busy === "connect-account" ? "Opening Zoom" : "Connect whole Zoom account"}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-sm">
+                  Ask a team owner or admin to connect it.
+                </p>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
+      {(zoom.me || zoom.wholeAccount) && (
         <section className="flex flex-col gap-3" aria-label="Past recordings">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-medium">Past recordings</p>
