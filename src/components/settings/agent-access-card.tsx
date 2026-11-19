@@ -66,7 +66,7 @@ function Line({ text, label }: { text: string; label: string }) {
 }
 
 /**
- * Keys that let Claude and other AI agents start the team's automations through the
+ * Keys that let AI agents start the team's automations through the
  * dashboard's MCP server. Laid out like Linear's API settings: the address and how to
  * connect, then the keys, each named for where it is used.
  */
@@ -108,31 +108,21 @@ export function AgentAccessCard() {
     }
   }
 
-  const command = `claude mcp add --transport http content-automations ${url}`;
   const keyHeader = `Authorization: Bearer ${made?.key ?? "<your key>"}`;
 
   return (
     <div className="flex flex-col gap-10">
       <SettingsSection
         title="Connect an AI agent"
-        description="Claude, Claude Code, Cursor and other agents that speak MCP can see your automations, uploads and runs, build and change automations as drafts for you to publish, and start runs. They sign in as you, on the team you pick."
+        description="Any AI app that supports MCP servers (ChatGPT, Claude, Cursor, VS Code and many more) can see your automations, uploads and runs, build and change automations as drafts for you to publish, and start runs. It signs in as you, on the team you pick."
       >
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">MCP server address</span>
-            <Line text={url} label="Copy the MCP server address" />
-            <p className="text-muted-foreground text-sm">
-              In Claude, open Settings, then Connectors, choose Add custom connector and paste this
-              address. Claude opens a page here to sign in and pick the team.
-            </p>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Add it to Claude Code</span>
-            <Line text={command} label="Copy the Claude Code command" />
-            <p className="text-muted-foreground text-sm">
-              Then run <code className="font-mono text-xs">/mcp</code> in Claude Code to sign in.
-            </p>
-          </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">MCP server address</span>
+          <Line text={url} label="Copy the MCP server address" />
+          <p className="text-muted-foreground text-sm">
+            Add this address in your AI app as a remote MCP server, often called a custom connector.
+            The app opens a page here to sign in and pick the team.
+          </p>
         </div>
       </SettingsSection>
 
@@ -172,7 +162,7 @@ export function AgentAccessCard() {
                     <div className="flex gap-2">
                       <Input
                         id="mcp-key-name"
-                        placeholder="Claude Code on Maya's laptop"
+                        placeholder="Cursor on Maya's laptop"
                         className="max-w-sm"
                         value={name}
                         maxLength={60}

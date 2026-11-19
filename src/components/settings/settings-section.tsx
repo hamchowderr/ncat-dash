@@ -5,6 +5,7 @@ import type { SettingsSlug } from "./settings-pages";
 import {
   AgentSettings,
   BrandSettings,
+  CaptionsSettings,
   DiscordSettings,
   EditorsSettings,
   EmailSettings,
@@ -16,6 +17,7 @@ import {
 
 const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   brand: BrandSettings,
+  captions: CaptionsSettings,
   editors: EditorsSettings,
   agent: AgentSettings,
   runs: RunsSettings,

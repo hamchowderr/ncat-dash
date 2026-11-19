@@ -23,6 +23,7 @@ function item(id: string, shortId: string, title: string, extra: Record<string, 
     duration: 412,
     automationName: null,
     parent: null,
+    client: null,
     made: 0,
     searchable: "no",
     ...extra,
@@ -45,6 +46,7 @@ const LIBRARY = {
   filled: true,
   canChangeSettings: true,
   tags: ["pricing"],
+  clients: [],
 };
 
 beforeEach(() => {
@@ -57,6 +59,8 @@ beforeEach(() => {
     })),
   );
 });
+
+const ACME = { _id: "c1", name: "Acme Coffee" };
 
 describe("the Library page", () => {
   test("shows each file with its short ID and where it came from", async () => {
@@ -82,6 +86,46 @@ describe("the Library page", () => {
     expect(screen.getByText("1 file")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sound" }));
     expect(screen.getByText("Theme")).toBeTruthy();
+  });
+
+  test("shows who each file is for, and filters to one client or the team's own", () => {
+    answerQuery(api.library.list, {
+      ...LIBRARY,
+      items: [{ ...CLIP, client: ACME }, THEME, { ...EPISODE, client: ACME }],
+      clients: [ACME],
+    });
+    renderInApp(<LibraryView />);
+    expect(
+      within(screen.getAllByTestId("library-tile")[0]!).getByText(
+        "Acme Coffee · Made by Podcast clips · from V1 · 0:45",
+      ),
+    ).toBeTruthy();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Client" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Acme Coffee" }));
+    expect(screen.getAllByTestId("library-tile")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Client: Acme Coffee" })).toBeTruthy();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Client: Acme Coffee" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Your team" }));
+    const tiles = screen.getAllByTestId("library-tile");
+    expect(tiles).toHaveLength(1);
+    expect(within(tiles[0]!).getByText("Theme")).toBeTruthy();
+    // The list has a Client column.
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    expect(screen.getByRole("columnheader", { name: "Client" })).toBeTruthy();
+  });
+
+  test("a team with no clients sees no client filter or column", () => {
+    answerQuery(api.library.list, { ...LIBRARY, clients: [] });
+    renderInApp(<LibraryView />);
+    expect(screen.queryByRole("button", { name: "Client" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    expect(screen.queryByRole("columnheader", { name: "Client" })).toBeNull();
   });
 
   test("the list renames a file in place and gives stars", async () => {
@@ -156,6 +200,8 @@ const DETAIL = {
   runId: null,
   automationId: null,
   transcriptError: null,
+  captionFormat: null,
+  captionsFor: null,
   children: [CLIP],
   pieces: [
     { start: 0, end: 20, text: "Welcome back to the show." },
@@ -187,6 +233,27 @@ describe("a library file", () => {
     fireEvent.click(within(screen.getByTestId("transcript")).getByText("12:31"));
     expect(player.currentTime).toBe(751);
     expect(player.paused).toBe(false);
+  });
+
+  test("says which client a file is for, and changes it", async () => {
+    answerQuery(api.clients.list, [ACME]);
+    answerQuery(api.library.get, { ...DETAIL, client: ACME });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    const picker = screen.getByLabelText("Client") as HTMLSelectElement;
+    expect(picker.value).toBe("c1");
+    fireEvent.change(picker, { target: { value: "" } });
+    await waitFor(() =>
+      expect(mutationOf(api.library.setClient)).toHaveBeenCalledWith({
+        itemId: "i1",
+        clientId: null,
+      }),
+    );
+  });
+
+  test("no client picker until the team has a client", () => {
+    answerQuery(api.clients.list, []);
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.queryByLabelText("Client")).toBeNull();
   });
 
   test("tags are added and taken off", async () => {
@@ -223,5 +290,58 @@ describe("a library file", () => {
       "/library/i1",
     );
     expect(screen.getByText("Made by Podcast clips")).toBeTruthy();
+  });
+
+  test("a caption file shows its lines, each opening the video it captions at that moment", () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      ...item("i4", "F1", "Episode 4 clip 1", {
+        kind: "other",
+        source: "automation",
+        searchable: "ready",
+      }),
+      details: null,
+      children: [],
+      captionFormat: "srt",
+      captionsFor: { _id: "i2", shortId: "C1", title: "Episode 4 clip 1" },
+      pieces: [
+        { start: 1, end: 3, text: "Welcome back." },
+        { start: 4.5, end: 7, text: "Let's talk about pricing." },
+      ],
+    });
+    renderInApp(<LibraryItemView itemId={"i4" as never} />);
+    const section = screen.getByRole("region", { name: "What the captions say" });
+    expect(
+      within(section).getByRole("link", { name: "C1 Episode 4 clip 1" }).getAttribute("href"),
+    ).toBe("/library/i2");
+    const lines = within(screen.getByTestId("transcript")).getAllByRole("link");
+    expect(lines.map((line) => line.getAttribute("href"))).toEqual([
+      "/library/i2?t=1",
+      "/library/i2?t=4",
+    ]);
+    expect(lines[1]!.textContent).toBe("0:04Let's talk about pricing.");
+    expect(screen.queryByRole("button", { name: "Make searchable" })).toBeNull();
+  });
+
+  test("a caption file that could not be read offers to read it again", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      ...item("i4", "F1", "Captions", { kind: "other", searchable: "failed" }),
+      details: null,
+      children: [],
+      captionFormat: "ass",
+      transcriptError: "The caption file could not be read.",
+      pieces: [],
+    });
+    actionOf(api.library.makeSearchable).mockResolvedValue(1);
+    renderInApp(<LibraryItemView itemId={"i4" as never} />);
+    expect(screen.getByText(/could not be read/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() =>
+      expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
+        organizationId: "team_1",
+        itemIds: ["i4"],
+      }),
+    );
   });
 });

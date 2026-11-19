@@ -69,7 +69,7 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
 
   // Settings > AI agents: the address to paste into Claude, and nothing connected yet.
   await page.goto("/settings/ai-agents");
-  await expect(page.getByText("Add custom connector", { exact: false })).toBeVisible();
+  await expect(page.getByText("often called a custom connector", { exact: false })).toBeVisible();
   await expect(page.getByText("No agent has signed in yet.")).toBeVisible();
   await page.waitForTimeout(1500);
 

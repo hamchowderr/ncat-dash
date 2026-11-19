@@ -39,6 +39,7 @@ import {
   Code,
   Film,
   FolderInput,
+  FolderKanban,
   Hand,
   Layers,
   WandSparkles,
@@ -50,6 +51,8 @@ import {
   Scissors,
   Shapes,
   Signpost,
+  Star,
+  ListOrdered,
   Terminal,
   TriangleAlert,
   Upload,
@@ -109,6 +112,7 @@ export const TRIGGER_ICONS: Record<TriggerKind, LucideIcon> = {
   upload: Upload,
   folder: FolderInput,
   finished: CircleCheckBig,
+  slot: FolderKanban,
 };
 
 export const RUN_TRIGGER_ICONS: Record<RunTriggerKind, LucideIcon> = {
@@ -149,6 +153,23 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
       icon: Scissors,
       tint: "text-orange-600 dark:text-orange-400",
       kind: String(node.input.platform ?? "No platform picked"),
+    };
+  }
+  if (node.kind === "moments") {
+    const count = Number(node.input.count) || 5;
+    return {
+      icon: Star,
+      tint: "text-orange-600 dark:text-orange-400",
+      kind: node.input.platform
+        ? `${count} for ${String(node.input.platform)}`
+        : "No platform picked",
+    };
+  }
+  if (node.kind === "chapters") {
+    return {
+      icon: ListOrdered,
+      tint: "text-orange-600 dark:text-orange-400",
+      kind: "From the transcript",
     };
   }
   if (node.kind === "if") {

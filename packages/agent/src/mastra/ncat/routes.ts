@@ -2,6 +2,7 @@ import { registerApiRoute } from "@mastra/core/server";
 import { z } from "zod";
 import { resourceIdOf } from "../routes/resource";
 import { reviewAgent } from "../agents/review";
+import { momentsAgent, momentsPrompt, momentsRequest } from "./moments";
 import { reviewPrompt, reviewQuestion } from "./review";
 import { rememberSession } from "./session-store";
 
@@ -76,6 +77,32 @@ export const createNcatRoutes = () => [
                 ]
               : prompt,
           },
+        ]);
+        const answer = result.text.trim();
+        if (!answer) return c.json({ error: "empty answer" }, 502);
+        return c.json({ answer });
+      } catch {
+        return c.json({ error: "The model did not answer." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/moments: Convex asks for the best moments of a transcript, or its chapters,
+  // for the Best moments and Chapters steps. Signed like the rest; the model's answer goes
+  // back as text, which the dashboard reads and checks against the transcript itself.
+  registerApiRoute("/ncat/moments", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const parsed = momentsRequest.safeParse(await c.req.json().catch(() => undefined));
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        const result = await momentsAgent.generate([
+          { role: "user", content: momentsPrompt(parsed.data) },
         ]);
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);

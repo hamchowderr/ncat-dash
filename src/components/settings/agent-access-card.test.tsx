@@ -16,15 +16,14 @@ const KEY = {
 };
 
 describe("the AI agents settings", () => {
-  test("shows the address for Claude's connectors and the Claude Code command, which sign in", () => {
+  test("shows one MCP address for any AI app, which signs in, not one client's setup", () => {
     answerQuery(api.mcpKeys.list, { canEdit: true, keys: [] });
     answerQuery(api.oauth.connections, []);
     renderInApp(<AgentAccessCard />);
     expect(screen.getByRole("button", { name: "Copy the MCP server address" })).toBeTruthy();
-    expect(screen.getByText(/Add custom connector/)).toBeTruthy();
-    const command = screen.getByText(/^claude mcp add --transport http/).textContent ?? "";
-    expect(command).toMatch(/content-automations \S*\/mcp$/);
-    expect(command).not.toContain("Bearer");
+    expect(screen.getByText(/remote MCP server, often called a custom connector/)).toBeTruthy();
+    expect(screen.getByText(/ChatGPT, Claude, Cursor, VS Code and many more/)).toBeTruthy();
+    expect(screen.queryByText(/claude mcp add/)).toBeNull();
     expect(screen.getByText("No agent has signed in yet.")).toBeTruthy();
   });
 

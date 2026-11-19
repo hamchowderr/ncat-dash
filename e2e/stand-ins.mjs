@@ -16,6 +16,10 @@ export const TOOLKIT_PORT = 8767;
 export const FILES = `http://127.0.0.1:${FILES_PORT}`;
 export const CLIPS = ["opening-hello", "why-the-station-matters"];
 /** What the stand-in transcribe says was said in any file. */
+/** What every caption file in the stand-in bucket says, as SRT. */
+export const CAPTIONS =
+  "1\n00:00:01,000 --> 00:00:02,500\nWelcome back to the station.\n\n2\n00:00:03,000 --> 00:00:05,000\nToday we talk about pricing your edits.\n";
+
 export const SEGMENTS = [
   { id: 0, start: 0, end: 2.5, text: " Welcome back to the station.", tokens: [1] },
   { id: 1, start: 2.5, end: 6, text: " Today we talk about pricing your edits.", tokens: [2] },
@@ -104,6 +108,12 @@ createServer((request, response) => {
     } catch {
       response.writeHead(404).end();
     }
+    return;
+  }
+  // Every caption file the bucket is asked for: the same two lines.
+  if (/\.(srt|vtt|ass)(\?|$)/.test(request.url)) {
+    response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end(CAPTIONS);
     return;
   }
   if (request.url.endsWith(".jpg")) {

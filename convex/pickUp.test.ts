@@ -26,7 +26,8 @@ const CAPTION: Node = {
   id: "caption",
   kind: "step",
   stepId: "video-caption",
-  input: {},
+  // Its own look, so it does not read the video's shape first.
+  input: { settings: { style: "classic" } },
   position: { x: 440, y: 0 },
 };
 

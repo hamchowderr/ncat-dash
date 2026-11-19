@@ -98,6 +98,7 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { isNoteId, notePlace, useCanvasNotes } from "./canvas-notes";
+import { ClientPicker } from "./client-picker";
 import { DraftBar } from "./draft-bar";
 import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 import { LiveRunBadge, useLiveRun } from "./live-run";
@@ -187,6 +188,17 @@ function Editor({ automation }: { automation: Loaded }) {
   const settings = useQuery(api.teamSettings.get, { organizationId: team.id });
   const brand = settings?.brand ?? EMPTY_BRAND;
   const music = settings?.music ?? EMPTY_MUSIC;
+  const captions = useMemo(
+    () =>
+      settings
+        ? {
+            setup: settings.captions,
+            builtIn: settings.builtInCaptionStyles,
+            builtInByShape: settings.builtInByShape,
+          }
+        : undefined,
+    [settings],
+  );
   const save = useMutation(api.automations.save);
   const setEnabled = useMutation(api.automations.setEnabled);
   const runNow = useMutation(api.automations.runNow);
@@ -673,6 +685,7 @@ function Editor({ automation }: { automation: Loaded }) {
           onChange={(event) => setName(event.target.value)}
           className="h-9 max-w-xs text-base font-semibold"
         />
+        <ClientPicker automationId={automation._id} clientId={automation.clientId ?? null} />
         <div className="ml-auto flex items-center gap-3">
           <div className="flex items-center">
             <Button
@@ -963,6 +976,7 @@ function Editor({ automation }: { automation: Loaded }) {
                         automationId={automation._id}
                         brand={brand}
                         music={music}
+                        captions={captions}
                         key={`${selected.id}:${revision}`}
                         node={selected.data.node}
                         before={stepsBefore(selected.id, draft.edges)
@@ -1024,7 +1038,9 @@ function Editor({ automation }: { automation: Loaded }) {
                           : {})}
                       />
                       {(selected.data.node.kind === "step" ||
-                        selected.data.node.kind === "clips") && (
+                        selected.data.node.kind === "clips" ||
+                        selected.data.node.kind === "moments" ||
+                        selected.data.node.kind === "chapters") && (
                         <StepTest
                           key={selected.id}
                           automationId={automation._id}

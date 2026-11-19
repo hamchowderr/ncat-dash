@@ -22,6 +22,12 @@ export const SETTINGS_GROUPS = [
         description: "Set once. Any step that adds a logo, text or music uses these by itself.",
       },
       {
+        slug: "captions",
+        title: "Captions",
+        description:
+          "How captions read and look. Every caption step uses these unless it is told otherwise.",
+      },
+      {
         slug: "team",
         title: "Members",
         description: "Who is on the team and what they can do.",
@@ -70,8 +76,7 @@ export const SETTINGS_GROUPS = [
       {
         slug: "ai-agents",
         title: "AI agents",
-        description:
-          "Let Claude and other AI agents build your automations, run them and follow their runs.",
+        description: "Let AI agents build your automations, run them and follow their runs.",
       },
     ],
   },

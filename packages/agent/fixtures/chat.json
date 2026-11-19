@@ -19,6 +19,23 @@
     },
     {
       "match": {
+        "userMessage": "[0:04] The one rule I keep for every client call."
+      },
+      "response": {
+        "content": "{\"moments\": [{\"quote\": \"The one rule I keep for every client call.\", \"title\": \"My one client-call rule\", \"why\": \"Opens on a promise and pays it off.\"}]}"
+      },
+      "_comment": "NCAT BEST MOMENTS (src/mastra/ncat/moments.ts). The dashboard asks for moments from a transcript."
+    },
+    {
+      "match": {
+        "userMessage": "[0:02] Welcome to the chapters test episode."
+      },
+      "response": {
+        "content": "```json\n{\"chapters\": [{\"title\": \"Welcome\", \"opening\": \"Welcome to the chapters test episode.\", \"bullets\": [\"Who is on the show\"]}]}\n```"
+      }
+    },
+    {
+      "match": {
         "userMessage": "List my automations and say which are switched on.",
         "hasToolResult": false
       },
@@ -1296,9 +1313,7 @@
             "arguments": {
               "query": "latest Mastra release",
               "limit": 3,
-              "sources": [
-                "web"
-              ]
+              "sources": ["web"]
             }
           }
         ]
@@ -1327,9 +1342,7 @@
             "arguments": {
               "query": "Firecrawl pricing",
               "limit": 3,
-              "sources": [
-                "web"
-              ]
+              "sources": ["web"]
             }
           }
         ]
@@ -1377,9 +1390,7 @@
             "arguments": {
               "query": "latest Mastra release",
               "limit": 3,
-              "sources": [
-                "web"
-              ]
+              "sources": ["web"]
             }
           }
         ]

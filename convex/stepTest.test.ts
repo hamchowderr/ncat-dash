@@ -11,7 +11,8 @@ const CAPTION = {
   kind: "step" as const,
   stepId: "video-caption",
   // Pointed at an earlier step's file in the editor.
-  input: { video_url: "{{steps.trim.url}}" },
+  // Its own look, so it does not stop to read the video's shape first.
+  input: { video_url: "{{steps.trim.url}}", settings: { style: "classic" } },
   position: { x: 400, y: 0 },
 };
 

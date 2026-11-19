@@ -202,6 +202,8 @@ export const get = query({
       // The version being worked on: the draft when there is one, else the live version.
       ...workingCopy(automation),
       enabled: automation.enabled,
+      // The client it works for; null when it is for the team itself.
+      clientId: automation.clientId ?? null,
       // The version triggers run, when the canvas is showing a draft of something else.
       // Null when what is above is the live version.
       live: draft ? versionOf(automation) : null,
@@ -374,7 +376,7 @@ async function problemOf(
       version.trigger,
       version.nodes,
       version.edges,
-      await brandOf(ctx, organizationId),
+      await brandOf(ctx, organizationId, automation.clientId),
     ) ??
     (await storageProblem(ctx, organizationId, version.trigger)) ??
     (await linkProblem(ctx, automation, version))
@@ -552,7 +554,11 @@ export const describe = query({
 
 async function describeAutomation(ctx: QueryCtx, automation: Doc<"automations">) {
   const draft = workingCopy(automation) as AutomationDraft;
-  const { brand, music } = await brandAndMusicOf(ctx, automation.organizationId);
+  const { brand, music } = await brandAndMusicOf(
+    ctx,
+    automation.organizationId,
+    automation.clientId,
+  );
   return {
     outline: outline(draft, brand),
     problems: draftProblems(draft, brand),
@@ -667,7 +673,7 @@ async function changeAutomation(
     throw caught;
   }
   const { enabled, draft } = await storeChanges(ctx, automation, next, userId, asDraft);
-  const brand = await brandOf(ctx, automation.organizationId);
+  const brand = await brandOf(ctx, automation.organizationId, automation.clientId);
   const links = await linkProblem(ctx, automation, next);
   return {
     outline: outline(next, brand),
@@ -687,7 +693,7 @@ export const setEnabled = mutation({
           automation.trigger,
           automation.nodes,
           automation.edges,
-          await brandOf(ctx, automation.organizationId),
+          await brandOf(ctx, automation.organizationId, automation.clientId),
         ) ??
         (await storageProblem(ctx, automation.organizationId, automation.trigger)) ??
         (await linkProblem(ctx, automation, automation));
@@ -845,7 +851,7 @@ export const testStep = mutation({
   returns: v.id("runs"),
   handler: async (ctx, args) => {
     const { automation, userId } = await loadForMember(ctx, args.automationId);
-    if (args.node.kind !== "step" && args.node.kind !== "clips") {
+    if (!["step", "clips", "moments", "chapters"].includes(args.node.kind)) {
       fail("invalid_input", "Only steps that do work on a file can be tested on their own.");
     }
     const fileUrl = args.fileUrl?.trim();

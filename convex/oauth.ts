@@ -36,7 +36,7 @@ import {
 } from "./lib/oauth";
 
 /**
- * Sign-in for AI agents. An agent (a claude.ai connector, Claude Code, Cursor) finds this
+ * Sign-in for AI agents. An agent (an MCP client such as ChatGPT, Claude or Cursor) finds this
  * server from the MCP address, sends the person to /connect/<request> in the dashboard
  * to choose a team and allow it, and gets tokens that act as that person on that team.
  * The person can disconnect it in Settings > AI agents.

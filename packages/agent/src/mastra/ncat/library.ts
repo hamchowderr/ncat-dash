@@ -19,6 +19,7 @@ type Hit = {
   source: string;
   automationName: string | null;
   parent: { shortId: string; title: string } | null;
+  client: { name: string } | null;
   tags: string[];
   duration: number | null;
   searchable: string;
@@ -38,6 +39,7 @@ const fileOut = z.object({
   title: z.string(),
   kind: z.string(),
   from: z.string().describe("Uploaded, or which automation made it, and from which file."),
+  client: z.string().nullable().describe("The client it is for; null for the team's own."),
   tags: z.array(z.string()),
   length: z.string().nullable(),
   searchable: z.boolean().describe("Whether what was said in it can be searched."),
@@ -72,6 +74,7 @@ export const findInLibrary = createTool({
             hit.source === "upload"
               ? "Uploaded"
               : `Made by ${hit.automationName ?? "an automation"}${hit.parent ? ` from ${hit.parent.shortId}` : ""}`,
+          client: hit.client?.name ?? null,
           tags: hit.tags,
           length: hit.duration === null ? null : moment(hit.duration),
           searchable: hit.searchable === "ready",

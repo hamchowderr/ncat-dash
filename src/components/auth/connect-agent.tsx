@@ -22,7 +22,7 @@ import { errorMessage } from "@/lib/catalog";
 import { AuthCard } from "./auth-card";
 
 /**
- * Where an AI agent (a claude.ai connector, Claude Code, Cursor) sends someone to let it
+ * Where an AI agent (an MCP client such as ChatGPT, Claude or Cursor) sends someone to let it
  * in. They pick the team it works on and allow it; it then acts as them on that team.
  * Someone signed out signs in first and comes straight back here.
  */

@@ -13,6 +13,7 @@ let toolkit: ReturnType<typeof fakeToolkitStorage> | null = null;
 afterEach(() => {
   toolkit?.restore();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 const LINK = "https://r2.example/test-bucket";
@@ -187,6 +188,72 @@ describe("files join the library", () => {
     const list = await maya.as.query(api.library.list, { organizationId: team });
     expect(list.filled).toBe(true);
     expect(list.items.map((item) => item.shortId)).toEqual(["C1", "V1"]);
+  });
+});
+
+describe("files for a client", () => {
+  test("what a client's run makes is for that client; the episode can be moved, clips follow", async () => {
+    const { t, team, maya, olu, other, upload, itemOf, finishedRun, toolkit } = await studio();
+    const acme = await maya.as.mutation(api.clients.create, {
+      organizationId: team,
+      name: "Acme Coffee",
+    });
+    const episode = await upload("episode.mp4");
+    const { runId } = await finishedRun(episode, [`${LINK}/${JOB}_output_0.mp4`]);
+    await t.run((ctx) => ctx.db.patch(runId, { clientId: acme }));
+    toolkit.put(`${JOB}_output_0.mp4`);
+    await t.action(internal.files.keepFinished, { runId });
+
+    let list = await maya.as.query(api.library.list, { organizationId: team });
+    expect(list.clients).toEqual([{ _id: acme, name: "Acme Coffee" }]);
+    expect(list.items.map((item) => [item.shortId, item.client?.name ?? null])).toEqual([
+      ["C1", "Acme Coffee"],
+      ["V1", null],
+    ]);
+
+    // The episode is for Acme too; its clip already is, and stays.
+    const parent = await itemOf(episode);
+    await maya.as.mutation(api.library.setClient, { itemId: parent._id, clientId: acme });
+    // Back to the team: the clip that went with Acme follows.
+    await maya.as.mutation(api.library.setClient, { itemId: parent._id, clientId: null });
+    list = await maya.as.query(api.library.list, { organizationId: team });
+    expect(list.items.map((item) => item.client)).toEqual([null, null]);
+    await maya.as.mutation(api.library.setClient, { itemId: parent._id, clientId: acme });
+    list = await maya.as.query(api.library.list, { organizationId: team });
+    expect(list.items.map((item) => item.client?.name)).toEqual(["Acme Coffee", "Acme Coffee"]);
+
+    // Another team's client, or someone from another team, is turned away.
+    const theirs = await olu.as.mutation(api.clients.create, {
+      organizationId: other,
+      name: "Birch",
+    });
+    await expect(
+      maya.as.mutation(api.library.setClient, { itemId: parent._id, clientId: theirs }),
+    ).rejects.toThrow(/client is gone/);
+    await expect(
+      olu.as.mutation(api.library.setClient, { itemId: parent._id, clientId: theirs }),
+    ).rejects.toThrow();
+
+    // Search results say who a file is for.
+    const hits = await maya.as.query(api.library.search, { organizationId: team, text: "C1" });
+    expect(hits[0]?.client?.name).toBe("Acme Coffee");
+  });
+
+  test("deleting a client keeps its files, as the team's own", async () => {
+    const { team, maya, upload, itemOf, items } = await studio();
+    const acme = await maya.as.mutation(api.clients.create, {
+      organizationId: team,
+      name: "Acme Coffee",
+    });
+    const episode = await upload("episode.mp4");
+    await maya.as.mutation(api.library.setClient, {
+      itemId: (await itemOf(episode))._id,
+      clientId: acme,
+    });
+    await maya.as.mutation(api.clients.remove, { clientId: acme });
+    const left = await items();
+    expect(left.map((item) => [item.shortId, item.client])).toEqual([["V1", null]]);
+    expect((await itemOf(episode)).clientId).toBeUndefined();
   });
 });
 
@@ -419,5 +486,110 @@ describe("running an automation on a library file", () => {
     await expect(
       maya.as.action(api.library.runAutomation, { itemId: episode._id, automationId: theirs }),
     ).rejects.toThrow(/not on your team/);
+  });
+});
+
+describe("caption files", () => {
+  const SRT =
+    "1\n00:00:01,000 --> 00:00:03,000\nWelcome back.\n\n2\n00:00:04,500 --> 00:00:07,000\nToday we talk about pricing.\n";
+
+  /** Answers the bucket's links to caption files with `body` (or a 404 when it is null). */
+  function captionFiles(body: string | null) {
+    const before = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://r2.example/") && /\.(srt|vtt|ass)\?/.test(url)) {
+        return body === null ? new Response("gone", { status: 404 }) : new Response(body);
+      }
+      return before(input, init);
+    });
+  }
+
+  /**
+   * Lets what was just scheduled (reading the caption file) run to its end, on the real clock:
+   * moving a fake clock far ahead would run the sign-in clean-up too.
+   */
+  async function settle(t: ReturnType<typeof backend>) {
+    for (let round = 0; round < 3; round++) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await t.finishInProgressScheduledFunctions();
+    }
+  }
+
+  test("an uploaded SRT shows its lines with their times, and they can be searched", async () => {
+    const { t, team, maya, upload, itemOf } = await studio();
+    captionFiles(SRT);
+    const uploadId = await upload("episode 4.srt", "application/x-subrip");
+    await settle(t);
+
+    const file = await itemOf(uploadId);
+    const view = await maya.as.query(api.library.get, { itemId: file._id });
+    expect(view).toMatchObject({ shortId: "F1", captionFormat: "srt", searchable: "ready" });
+    expect(view?.pieces).toEqual([
+      { start: 1, end: 3, text: "Welcome back." },
+      { start: 4.5, end: 7, text: "Today we talk about pricing." },
+    ]);
+    const hits = await maya.as.query(api.library.search, { organizationId: team, text: "pricing" });
+    expect(hits.map((hit) => [hit.shortId, hit.moments])).toEqual([
+      ["F1", [{ start: 4.5, text: "Today we talk about pricing." }]],
+    ]);
+  });
+
+  test("captions a run made go with the clip made alongside them", async () => {
+    const { t, maya, upload, finishedRun, toolkit } = await studio();
+    captionFiles("WEBVTT\n\n00:01.000 --> 00:02.000\nHi\n");
+    const episode = await upload("episode.mp4");
+    const { runId } = await finishedRun(episode, [
+      `${LINK}/${JOB}_output_0.mp4`,
+      `${LINK}/${JOB}_output_0.vtt`,
+    ]);
+    toolkit.put(`${JOB}_output_0.mp4`);
+    toolkit.put(`${JOB}_output_0.vtt`);
+    await t.action(internal.files.keepFinished, { runId });
+    await settle(t);
+
+    const made = await t.run((ctx) =>
+      ctx.db
+        .query("libraryItems")
+        .withIndex("by_run", (q) => q.eq("runId", runId))
+        .collect(),
+    );
+    const captions = made.find((item) => item.kind === "other")!;
+    const clip = made.find((item) => item.kind === "video")!;
+    const view = await maya.as.query(api.library.get, { itemId: captions._id });
+    expect(view?.captionFormat).toBe("vtt");
+    expect(view?.captionsFor).toEqual({ _id: clip._id, shortId: clip.shortId, title: clip.title });
+    expect(view?.pieces).toEqual([{ start: 1, end: 2, text: "Hi" }]);
+  });
+
+  test("a caption file that cannot be read says so, and can be read again", async () => {
+    const { t, team, maya, upload, itemOf } = await studio();
+    captionFiles(null);
+    const uploadId = await upload("broken.ass", "text/x-ssa");
+    await settle(t);
+    const file = await itemOf(uploadId);
+    expect(await maya.as.query(api.library.get, { itemId: file._id })).toMatchObject({
+      searchable: "failed",
+      transcriptError: "The caption file could not be read.",
+    });
+
+    vi.unstubAllGlobals();
+    toolkit!.restore();
+    toolkit = fakeToolkitStorage();
+    captionFiles(
+      "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\an2}Fixed\n",
+    );
+    const sent = await maya.as.action(api.library.makeSearchable, {
+      organizationId: team,
+      itemIds: [file._id],
+    });
+    expect(sent).toBe(1);
+    await settle(t);
+    const view = await maya.as.query(api.library.get, { itemId: file._id });
+    expect(view?.searchable).toBe("ready");
+    expect(view?.pieces).toEqual([{ start: 1, end: 2, text: "Fixed" }]);
+    // No transcription job: the lines were already in the file.
+    const jobs = await t.run((ctx) => ctx.db.query("jobs").collect());
+    expect(jobs.filter((job) => job.stepId === "media-transcribe")).toEqual([]);
   });
 });

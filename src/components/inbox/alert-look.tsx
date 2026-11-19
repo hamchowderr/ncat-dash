@@ -1,5 +1,13 @@
 import { explainFailure } from "@ncat-dash/automation-core";
-import { AtSign, Bell, CircleAlert, Clock, MessageSquareQuote, UserCheck } from "lucide-react";
+import {
+  AtSign,
+  Bell,
+  CircleAlert,
+  Clock,
+  MessageSquareQuote,
+  PackageCheck,
+  UserCheck,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -8,8 +16,19 @@ function tries(retries: number): string {
 }
 
 export type Kind =
-  "run_failed" | "approval_waiting" | "approval_timed_out" | "mention" | "client_feedback";
-type Shown = { kind: Kind; automationName: string; retries: number; from?: string | null };
+  | "run_failed"
+  | "approval_waiting"
+  | "approval_timed_out"
+  | "mention"
+  | "client_feedback"
+  | "ready_for_review";
+type Shown = {
+  kind: Kind;
+  automationName: string;
+  retries: number;
+  from?: string | null;
+  stepName?: string | null;
+};
 
 /** The first line of an alert: what happened, in a few words. */
 export function alertTitle(alert: Shown): string {
@@ -22,6 +41,8 @@ export function alertTitle(alert: Shown): string {
       return `${alert.from ?? "Someone"} mentioned you in ${alert.automationName}`;
     case "client_feedback":
       return `${alert.from ?? "A client"} left feedback on ${alert.automationName}`;
+    case "ready_for_review":
+      return `${alert.stepName ?? "A deliverable"} in ${alert.automationName} is ready for review`;
     default:
       return `${alert.automationName} failed${tries(alert.retries)}`;
   }
@@ -61,6 +82,12 @@ export const LOOK: Record<Kind, { icon: typeof Bell; tint: string; wash: string;
     mention: { icon: AtSign, tint: "text-primary", wash: "bg-primary/5", action: "Open review" },
     client_feedback: {
       icon: MessageSquareQuote,
+      tint: "text-primary",
+      wash: "bg-primary/5",
+      action: "Open review",
+    },
+    ready_for_review: {
+      icon: PackageCheck,
       tint: "text-primary",
       wash: "bg-primary/5",
       action: "Open review",

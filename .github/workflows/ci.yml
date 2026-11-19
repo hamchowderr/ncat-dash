@@ -15,7 +15,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       # Placeholders so the build can prerender. Real values live in each deployment.
       NEXT_PUBLIC_CONVEX_URL: https://example.convex.cloud
@@ -29,8 +29,31 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # The recipe tests run every recipe through a real FFmpeg.
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core libxml2-utils
+      # The recipe tests run every recipe through a real FFmpeg. Its packages are kept
+      # between runs: the runner's Ubuntu mirror is sometimes slow enough that fetching
+      # them alone used up the job's 15 minutes.
+      - name: Restore the FFmpeg packages
+        id: apt-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/apt-archives
+          key: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-v1
+          restore-keys: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-
+      - name: Install FFmpeg
+        run: |
+          mkdir -p ~/apt-archives/partial
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            -o Dir::Cache::Archives="$HOME/apt-archives" \
+            -o Acquire::Retries=3 \
+            ffmpeg fonts-dejavu-core libxml2-utils
+          sudo chown -R "$USER" ~/apt-archives
+      - name: Keep the FFmpeg packages
+        if: steps.apt-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/apt-archives
+          key: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-v1
       # The timeline export tests read every file back with OpenTimelineIO, an independent reader.
       - run: pip install opentimelineio==0.18.1 OpenTimelineIO-Plugins otio-fcpx-xml-adapter
       # The agent's tests build a Memory, which wants a small embedding model (~130MB).

@@ -8,6 +8,7 @@ import { allSteps, currentTeamSteps, getStep, userInputJsonSchema } from "@ncat-
 import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
+import { CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
 import { FINISH_CHOICES } from "./chain";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
@@ -20,6 +21,7 @@ import {
   PICTURE_SIZES,
   WAIT_UNITS,
 } from "./logic";
+import { MAX_CHAPTERS, MAX_MOMENTS, MAX_PADDING, MOMENT_DEFAULTS, MOMENT_EDGES } from "./moments";
 import { MIN_INTERVAL_MINUTES } from "./schedule";
 import type { StarterTrigger } from "./starters";
 
@@ -37,8 +39,8 @@ export interface JsonSchema {
 
 export interface NodeType {
   /**
-   * Stable name: "trigger:upload", "approval", "clips", "export", "if", "wait",
-   * "automation", or "step:<catalog id>".
+   * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "export",
+   * "if", "wait", "automation", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
   type: string;
@@ -355,6 +357,114 @@ const CLIPS: NodeType = {
   automatic: null,
 };
 
+const MOMENTS: NodeType = {
+  type: "moments",
+  role: "action",
+  group: "ready-made",
+  title: "Best moments",
+  description:
+    "Finds the strongest moments in each video from its transcript and cuts each one as a clip for a platform. Every clip starts and ends on whole words, from the words' own timestamps. The AI only picks, once per video; the cutting is plain editing. Moments already picked from a video are skipped next time, so running it again finds new ones.",
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      platform: {
+        type: "string",
+        enum: PLATFORMS.map((platform) => platform.name),
+        default: "Instagram Reels",
+        description:
+          "Where the clips will be posted. Sets the frame and the longest a clip can be.",
+      },
+      count: {
+        type: "number",
+        minimum: 1,
+        maximum: MAX_MOMENTS,
+        default: MOMENT_DEFAULTS.count,
+        description: "How many moments to cut from each video, at most.",
+      },
+      minSeconds: {
+        type: "number",
+        minimum: 1,
+        default: MOMENT_DEFAULTS.minSeconds,
+        description: "The shortest a clip can be, in seconds.",
+      },
+      maxSeconds: {
+        type: "number",
+        minimum: 1,
+        default: MOMENT_DEFAULTS.maxSeconds,
+        description: "The longest a clip can be, in seconds. Never more than the platform takes.",
+      },
+      topics: {
+        type: "string",
+        default: "",
+        description: "Subjects to favour, in plain words. Empty picks from the whole video.",
+      },
+      lookFor: {
+        type: "string",
+        default: "",
+        description:
+          "What makes a good moment for this team, in plain words, such as a strong opinion, a story or a tip that stands on its own.",
+      },
+      padding: {
+        type: "number",
+        minimum: 0,
+        maximum: MAX_PADDING,
+        default: MOMENT_DEFAULTS.padding,
+        description:
+          "Seconds of room kept before the first word and after the last. Never reaches into the next word.",
+      },
+      edges: {
+        type: "string",
+        enum: [...MOMENT_EDGES],
+        default: MOMENT_DEFAULTS.edges,
+        description:
+          "sentence: each clip starts and ends on a whole sentence. word: on the exact words picked.",
+      },
+      skipPicked: {
+        type: "boolean",
+        default: MOMENT_DEFAULTS.skipPicked,
+        description:
+          "Leave out moments already picked from the same video, so a new run finds new ones.",
+      },
+    },
+    required: ["platform"],
+  },
+  ask: ["platform"],
+  automatic: null,
+};
+
+const CHAPTERS: NodeType = {
+  type: "chapters",
+  role: "action",
+  group: "ready-made",
+  title: "Chapters and show notes",
+  description:
+    "Groups a long video into chapters by topic, each with a title and a few bullets. Every chapter starts at the start of a sentence, from the transcript's timestamps, the first at 0:00. The run page shows them to copy as YouTube chapters or download as show notes. The video carries on to the next step unchanged.",
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      count: {
+        type: "number",
+        minimum: 0,
+        maximum: MAX_CHAPTERS,
+        default: 0,
+        description: "How many chapters at most. 0 lets it decide from the video.",
+      },
+      bullets: {
+        type: "number",
+        minimum: 0,
+        maximum: 6,
+        default: 3,
+        description: "How many bullets of show notes under each chapter.",
+      },
+    },
+  },
+  automatic: null,
+};
+
 const IF: NodeType = {
   type: "if",
   role: "action",
@@ -426,7 +536,7 @@ const EXPORT: NodeType = {
   group: "ready-made",
   title: "Export for editors",
   description:
-    "Makes timeline files that open this run's cuts in Premiere Pro, DaVinci Resolve and Final Cut Pro, with every cut still adjustable. Put it after Clips for a platform. It has nothing to set up: the editors are picked once in Settings. CapCut cannot open a timeline, so it uses the finished clips.",
+    "Makes timeline files that open this run's cuts in Premiere Pro, DaVinci Resolve and Final Cut Pro, with every cut still adjustable. Put it after Clips for a platform or Best moments. It has nothing to set up: the editors are picked once in Settings. CapCut cannot open a timeline, so it uses the finished clips.",
   takes: "files",
   gives: "files",
   settings: { type: "object", properties: {} },
@@ -437,16 +547,35 @@ function gives(step: StepDefinition): Carries {
   return step.output === "json" ? "data" : step.output;
 }
 
+/** A caption step also takes the name of one of the team's caption styles. */
+function stepSettings(step: StepDefinition): JsonSchema {
+  const settings = userInputJsonSchema(step) as JsonSchema;
+  if (!isCaptionStep(step.id)) return settings;
+  return {
+    ...settings,
+    properties: {
+      ...settings.properties,
+      [CAPTION_STYLE_SETTING]: {
+        type: "string",
+        description:
+          "The name of a caption style from Settings. Leave it and settings blank to use the team's style for the video's shape.",
+      },
+    },
+  };
+}
+
 function stepType(step: StepDefinition): NodeType {
   return {
     type: `step:${step.id}`,
     role: "action",
     group: step.category,
     title: step.title,
-    description: step.description,
+    description: isCaptionStep(step.id)
+      ? `${step.description} Styles itself from the team's caption styles in Settings (one per video shape) and fixes the team's misheard words.`
+      : step.description,
     takes: step.listInput ? "files" : step.primaryInput ? "file" : "nothing",
     gives: gives(step),
-    settings: userInputJsonSchema(step) as JsonSchema,
+    settings: stepSettings(step),
     automatic: step.primaryInput ?? step.listInput?.field ?? null,
     ...(step.values ? { makes: Object.keys(step.values) } : {}),
     ...(step.brandInputs ? { brand: step.brandInputs } : {}),
@@ -465,6 +594,8 @@ function stepType(step: StepDefinition): NodeType {
 export const NODE_TYPES: NodeType[] = [
   ...TRIGGERS,
   CLIPS,
+  MOMENTS,
+  CHAPTERS,
   EXPORT,
   IF,
   WAIT,
@@ -525,6 +656,8 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
   if (
     type === "approval" ||
     type === "clips" ||
+    type === "moments" ||
+    type === "chapters" ||
     type === "export" ||
     type === "if" ||
     type === "wait" ||

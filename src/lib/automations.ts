@@ -12,6 +12,7 @@ export const TRIGGER_LABELS: Record<TriggerKind, string> = {
   upload: "New upload",
   folder: "Watched folder",
   finished: "Another automation finishes",
+  slot: "A project slot changes status",
 };
 
 /** What can start a run: a trigger, or a Run an automation step in another run. */
@@ -21,6 +22,22 @@ export const RUN_TRIGGER_LABELS: Record<RunTriggerKind, string> = {
   ...TRIGGER_LABELS,
   automation: "Started by another automation",
 };
+
+const SLOT_KIND_WORDS = {
+  video: "full video",
+  short: "short",
+  thumbnail: "thumbnail",
+  audio: "audio",
+  other: "project",
+} as const;
+
+const SLOT_STATUS_WORDS = {
+  todo: "To do",
+  in_progress: "In progress",
+  review: "In review",
+  approved: "Approved",
+  published: "Published",
+} as const;
 
 /** One line saying when the automation starts, for lists and the canvas. */
 export function triggerSummary(trigger: Trigger): string {
@@ -41,6 +58,12 @@ export function triggerSummary(trigger: Trigger): string {
         : trigger.when === "either"
           ? "Starts when another automation ends"
           : "Starts when another automation finishes";
+    case "slot":
+      return `Starts when ${
+        trigger.slotKind === "any"
+          ? "a project slot"
+          : `a ${SLOT_KIND_WORDS[trigger.slotKind]} slot`
+      } moves to ${SLOT_STATUS_WORDS[trigger.status]}`;
     case "schedule": {
       const { schedule } = trigger;
       if (schedule.mode === "daily") return `Every day at ${schedule.time} (${schedule.timeZone})`;
@@ -57,6 +80,8 @@ export function nodeTitle(node: Pick<AutomationNode, "kind" | "stepId" | "label"
   if (node.label) return node.label;
   if (node.kind === "approval") return "Approval";
   if (node.kind === "clips") return "Clips for a platform";
+  if (node.kind === "moments") return "Best moments";
+  if (node.kind === "chapters") return "Chapters and show notes";
   if (node.kind === "if") return "If";
   if (node.kind === "wait") return "Wait";
   if (node.kind === "export") return "Export for editors";

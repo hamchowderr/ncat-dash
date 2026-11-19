@@ -33,7 +33,8 @@ async function setUp() {
           id: "caption",
           kind: "step",
           stepId: "video-caption",
-          input: {},
+          // Its own look, so it does not read the video's shape first.
+          input: { settings: { style: "classic" } },
           position: { x: 0, y: 0 },
         },
       ],
@@ -78,7 +79,8 @@ describe("share links that just work", () => {
         id: "caption",
         kind: "step",
         stepId: "video-caption",
-        input: {},
+        // Its own look, so it does not read the video's shape first.
+        input: { settings: { style: "classic" } },
         position: { x: 0, y: 0 },
       },
       fileUrl: "https://www.dropbox.com/scl/fi/abc123/episode.mp4?rlkey=k9x&dl=0",
@@ -104,7 +106,8 @@ describe("share links that just work", () => {
         id: "caption",
         kind: "step",
         stepId: "video-caption",
-        input: {},
+        // Its own look, so it does not read the video's shape first.
+        input: { settings: { style: "classic" } },
         position: { x: 0, y: 0 },
       },
       fileUrl: "https://drive.google.com/drive/folders/1xyzabcdefghij",

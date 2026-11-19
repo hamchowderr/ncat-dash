@@ -55,6 +55,7 @@ type Item = {
   duration: number | null;
   automationName: string | null;
   parent: { _id: Id<"libraryItems">; shortId: string; title: string } | null;
+  client: { _id: Id<"clients">; name: string } | null;
   made: number;
   searchable: "no" | "working" | "ready" | "failed";
 };
@@ -87,9 +88,12 @@ function shows(item: Item, shown: Shown): boolean {
   }
 }
 
+const TEAM_OWN = "team";
+
 // Columns of the list, in order, and whether each shows until someone changes it.
 const COLUMNS = [
   ["id", "ID", true],
+  ["client", "Client", true],
   ["kind", "Kind", false],
   ["source", "Source", true],
   ["from", "Made from", true],
@@ -221,6 +225,7 @@ function ItemList({
 }: {
   items: Item[];
   links: Map<Id<"libraryItems">, string>;
+  // Only the columns that apply to this team: Client is left out until it has clients.
   columns: Column[];
 }) {
   const router = useRouter();
@@ -236,6 +241,7 @@ function ItemList({
             </TableHead>
             {on("id") && <TableHead className="w-16">ID</TableHead>}
             <TableHead>Name</TableHead>
+            {on("client") && <TableHead>Client</TableHead>}
             {on("kind") && <TableHead>Kind</TableHead>}
             {on("source") && <TableHead>Source</TableHead>}
             {on("from") && <TableHead>Made from</TableHead>}
@@ -271,6 +277,7 @@ function ItemList({
               <TableCell className="max-w-72">
                 <InlineTitle item={item} />
               </TableCell>
+              {on("client") && <TableCell className="text-sm">{item.client?.name ?? ""}</TableCell>}
               {on("kind") && <TableCell className="text-sm">{KIND_LABELS[item.kind]}</TableCell>}
               {on("source") && (
                 <TableCell className="text-muted-foreground text-sm">{sourceLabel(item)}</TableCell>
@@ -356,6 +363,7 @@ function ItemTiles({ items, links }: { items: Item[]; links: Map<Id<"libraryItem
           <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-xs">
             <span className="truncate">
               {[
+                item.client?.name ?? null,
                 sourceLabel(item),
                 item.parent ? `from ${item.parent.shortId}` : null,
                 item.made > 0 ? `${item.made} made from it` : null,
@@ -462,6 +470,8 @@ export function LibraryView() {
   const [text, setText] = useState("");
   const [shown, setShown] = useState<Shown>("all");
   const [tag, setTag] = useState<string | null>(null);
+  // A client's ID, TEAM_OWN for the team's own files, or null for every file.
+  const [client, setClient] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   // Searches once typing pauses, not on every key.
@@ -480,10 +490,19 @@ export function LibraryView() {
   const items = useMemo(
     () =>
       (library?.items ?? []).filter(
-        (item) => shows(item, shown) && (tag === null || item.tags.includes(tag)),
+        (item) =>
+          shows(item, shown) &&
+          (tag === null || item.tags.includes(tag)) &&
+          (client === null || (item.client?._id ?? TEAM_OWN) === client),
       ),
-    [library, shown, tag],
+    [library, shown, tag, client],
   );
+  const clients = library?.clients ?? [];
+  const chosenClient =
+    client === TEAM_OWN ? "Your team" : clients.find((one) => one._id === client)?.name;
+  // Each team sees a Client column and filter only once it has clients.
+  const columnsHere = COLUMNS.filter(([id]) => id !== "client" || clients.length > 0);
+  const columnsOn = columns.filter((id) => columnsHere.some(([one]) => one === id));
   const onScreen = text ? hits : items;
   const links = useLibraryLinks(team.id, onScreen);
 
@@ -598,6 +617,38 @@ export function LibraryView() {
                   {label}
                 </Button>
               ))}
+              {clients.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant={client ? "secondary" : "ghost"}>
+                      {chosenClient ? `Client: ${chosenClient}` : "Client"}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
+                    <DropdownMenuCheckboxItem
+                      checked={client === null}
+                      onCheckedChange={() => setClient(null)}
+                    >
+                      Any client
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem
+                      checked={client === TEAM_OWN}
+                      onCheckedChange={() => setClient(client === TEAM_OWN ? null : TEAM_OWN)}
+                    >
+                      Your team
+                    </DropdownMenuCheckboxItem>
+                    {clients.map((one) => (
+                      <DropdownMenuCheckboxItem
+                        key={one._id}
+                        checked={client === one._id}
+                        onCheckedChange={() => setClient(client === one._id ? null : one._id)}
+                      >
+                        {one.name}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               {library.tags.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -639,7 +690,7 @@ export function LibraryView() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>Show columns</DropdownMenuLabel>
-                    {COLUMNS.map(([id, label]) => (
+                    {columnsHere.map(([id, label]) => (
                       <DropdownMenuCheckboxItem
                         key={id}
                         checked={columns.includes(id)}
@@ -681,12 +732,13 @@ export function LibraryView() {
           </div>
           {items.length === 0 ? (
             <p className="text-muted-foreground py-10 text-center text-sm">
-              No files of this kind{tag ? ` tagged ${tag}` : ""}.
+              No files of this kind{tag ? ` tagged ${tag}` : ""}
+              {client === TEAM_OWN ? " for your team" : chosenClient ? ` for ${chosenClient}` : ""}.
             </p>
           ) : layout === "tiles" ? (
             <ItemTiles items={items} links={links} />
           ) : (
-            <ItemList items={items} links={links} columns={columns} />
+            <ItemList items={items} links={links} columns={columnsOn} />
           )}
         </section>
       )}

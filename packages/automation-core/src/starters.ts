@@ -2,7 +2,6 @@ import { editingRecipes, moreRecipes, recipes } from "@ncat-dash/step-catalog";
 
 import { type AutomationEdge, type AutomationNode, NODE_GAP } from "./graph";
 import type { Schedule } from "./schedule";
-import { CLIP_CAPTION_SETTINGS } from "./clips";
 import { FOLLOW_SPEAKER_STEP } from "./follow";
 import { clipsGraph } from "./setup";
 
@@ -28,6 +27,13 @@ export type StarterTrigger =
       automationId: string;
       /** "done": after it works. "failed": after it fails. "either": both. */
       when: "done" | "failed" | "either";
+    }
+  | {
+      /** Starts when a project slot moves to a status, on the slot's newest file. */
+      kind: "slot";
+      status: "todo" | "in_progress" | "review" | "approved" | "published";
+      /** Which slots: one kind, or "any". */
+      slotKind: "any" | "video" | "short" | "thumbnail" | "audio" | "other";
     };
 
 /** What a ready-made automation is for, so the whole list can be sorted and filtered. */
@@ -104,7 +110,7 @@ const WORKFLOWS: Starter[] = [
         position: { x: 0, y: 0 },
       },
       step("follow_1", FOLLOW_SPEAKER_STEP, 1),
-      step("caption_1", "video-caption", 2, 0, { settings: { ...CLIP_CAPTION_SETTINGS } }),
+      step("caption_1", "video-caption", 2),
     ],
     edges: chain("clips", "follow_1", "caption_1"),
   },

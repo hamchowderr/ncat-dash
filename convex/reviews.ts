@@ -14,6 +14,7 @@ import { notify } from "./lib/alerts";
 import { isMember, requireMember } from "./lib/authz";
 import { drawingValidator } from "./lib/drawing";
 import { CLIP_LIMIT, openReview, shareOf, VERSION_LIMIT } from "./lib/reviews";
+import { decideProjectSlots, forgetProjectRoom, mirrorClipVersion } from "./lib/projects";
 import { decideApproval } from "./lib/runner";
 import { toSlack } from "./lib/slackPosts";
 
@@ -209,9 +210,9 @@ export const addVersion = mutation({
     if (clip.versions.length >= VERSION_LIMIT) {
       throw new ConvexError({ code: "limit", message: "This clip has too many versions." });
     }
-    await ctx.db.patch(clip._id, {
-      versions: [...clip.versions, { url: args.url, addedBy: userId, addedAt: Date.now() }],
-    });
+    const version = { url: args.url, addedBy: userId, addedAt: Date.now() };
+    await ctx.db.patch(clip._id, { versions: [...clip.versions, version] });
+    await mirrorClipVersion(ctx, clip._id, version);
   },
 });
 
@@ -239,6 +240,7 @@ export const decide = mutation({
       decidedBy: userId,
       decidedAt: Date.now(),
     });
+    await decideProjectSlots(ctx, review._id, args.approved);
   },
 });
 
@@ -281,6 +283,7 @@ export const remove = mutation({
     for (const clip of clips) await ctx.db.delete(clip._id);
     const share = await shareOf(ctx, review._id);
     if (share) await ctx.db.delete(share._id);
+    await forgetProjectRoom(ctx, review._id);
     await ctx.db.delete(review._id);
   },
 });

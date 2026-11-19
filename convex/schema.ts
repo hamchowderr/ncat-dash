@@ -13,6 +13,9 @@ export const nodeValidator = v.object({
     v.literal("wait"),
     // Runs another of the team's automations on its files.
     v.literal("automation"),
+    // Picks the best moments of each video and cuts them; groups a video into chapters.
+    v.literal("moments"),
+    v.literal("chapters"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -44,6 +47,26 @@ const fileTypeValidator = v.union(
   v.literal("image"),
 );
 
+/** What a slot in a project holds, which decides the files it takes. */
+export const deliverableKindValidator = v.union(
+  // The full-length video, such as a podcast episode.
+  v.literal("video"),
+  v.literal("short"),
+  v.literal("thumbnail"),
+  v.literal("audio"),
+  // Anything else the team agreed to deliver.
+  v.literal("other"),
+);
+
+/** Where a deliverable is, as a column on the project's board. */
+export const deliverableStatusValidator = v.union(
+  v.literal("todo"),
+  v.literal("in_progress"),
+  v.literal("review"),
+  v.literal("approved"),
+  v.literal("published"),
+);
+
 export const triggerValidator = v.union(
   v.object({ kind: v.literal("manual") }),
   v.object({ kind: v.literal("webhook") }),
@@ -68,6 +91,11 @@ export const triggerValidator = v.union(
     kind: v.literal("finished"),
     automationId: v.string(),
     when: v.union(v.literal("done"), v.literal("failed"), v.literal("either")),
+  }),
+  v.object({
+    kind: v.literal("slot"),
+    status: deliverableStatusValidator,
+    slotKind: v.union(v.literal("any"), deliverableKindValidator),
   }),
 );
 
@@ -146,6 +174,42 @@ export const brandValidator = v.object({
   card: v.optional(v.string()),
   intro: v.optional(v.string()),
   outro: v.optional(v.string()),
+});
+
+const captionLookValidator = v.object({
+  style: v.optional(
+    v.union(
+      v.literal("highlight"),
+      v.literal("karaoke"),
+      v.literal("word_by_word"),
+      v.literal("underline"),
+      v.literal("classic"),
+    ),
+  ),
+  font_family: v.optional(v.string()),
+  font_size: v.optional(v.number()),
+  bold: v.optional(v.boolean()),
+  all_caps: v.optional(v.boolean()),
+  max_words_per_line: v.optional(v.number()),
+  line_color: v.optional(v.string()),
+  word_color: v.optional(v.string()),
+  outline_color: v.optional(v.string()),
+  outline_width: v.optional(v.number()),
+  shadow_offset: v.optional(v.number()),
+  position: v.optional(
+    v.union(v.literal("top_center"), v.literal("middle_center"), v.literal("bottom_center")),
+  ),
+});
+
+/** A team's captions: misheard words and how to write them, saved looks, a look per shape. */
+export const captionSetupValidator = v.object({
+  fixes: v.array(v.object({ find: v.string(), replace: v.string() })),
+  styles: v.array(v.object({ name: v.string(), look: captionLookValidator })),
+  byShape: v.object({
+    vertical: v.optional(v.string()),
+    wide: v.optional(v.string()),
+    square: v.optional(v.string()),
+  }),
 });
 
 // Users, sessions, organizations (teams), members and invitations live in the
@@ -236,6 +300,8 @@ export default defineSchema({
     editors: v.optional(v.array(editorValidator)),
     // How the agent works for this team: its model, house rules and default platforms.
     agent: v.optional(agentSettingsValidator),
+    // How captions read and look: word fixes, saved styles and a style per video shape.
+    captions: v.optional(captionSetupValidator),
   }).index("by_organization", ["organizationId"]),
 
   // A saved automation: what starts it, and the steps it runs.
@@ -373,8 +439,12 @@ export default defineSchema({
     ),
     createdBy: v.string(),
     updatedAt: v.number(),
+    // The client this automation works for. Its runs use that client's brand over the
+    // team's, and keep their finished files in the client's folder. Not part of versions.
+    clientId: v.optional(v.id("clients")),
   })
     .index("by_organization", ["organizationId"])
+    .index("by_client", ["clientId"])
     .index("by_enabled_and_nextRunAt", ["enabled", "nextRunAt"])
     .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"]),
 
@@ -431,6 +501,8 @@ export default defineSchema({
       v.literal("finished"),
       // A "Run an automation" step in another run started it.
       v.literal("automation"),
+      // A project slot moved to the status its trigger waits for.
+      v.literal("slot"),
     ),
     // What the trigger handed over: file_url, the webhook body, the upload's details.
     trigger: v.any(),
@@ -455,6 +527,12 @@ export default defineSchema({
     // The automations whose runs led to this one, the first one first, this one last. A
     // run never starts one of them again, nor goes deeper than MAX_CHAIN_DEPTH.
     chain: v.optional(v.array(v.id("automations"))),
+    // The client the automation was for when the run started.
+    clientId: v.optional(v.id("clients")),
+    // The project the run works for, and the slot it started from. Its finished files
+    // fill the project's empty slots.
+    projectId: v.optional(v.id("projects")),
+    deliverableId: v.optional(v.id("deliverables")),
   })
     .index("by_automation", ["automationId"])
     .index("by_parentRun", ["parentRunId"])
@@ -483,8 +561,20 @@ export default defineSchema({
     // and pauses ("probe"), then it cuts the clips ("cut"). jobIds holds the current
     // stage's jobs.
     // An "if" step reading its files' details is at "check"; a "wait" step is at "wait".
+    // A "moments" or "chapters" step first transcribes each video with word timestamps
+    // ("listen"), then waits for the model to pick ("pick"); a "moments" step then cuts
+    // its moments ("cut").
+    // A caption step reading its videos' sizes, to pick the style for each shape, is at "size".
     stage: v.optional(
-      v.union(v.literal("probe"), v.literal("cut"), v.literal("check"), v.literal("wait")),
+      v.union(
+        v.literal("probe"),
+        v.literal("cut"),
+        v.literal("check"),
+        v.literal("wait"),
+        v.literal("listen"),
+        v.literal("pick"),
+        v.literal("size"),
+      ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
     // of them; a later step is handed only those of the way that leads to it.
@@ -521,6 +611,33 @@ export default defineSchema({
         }),
       ),
     ),
+    // For a "moments" step: the moments it picked, best first, in the order of the cut
+    // jobs and `plan`. Each one's edges are snapped to the transcript's words.
+    moments: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          start: v.number(),
+          end: v.number(),
+          title: v.string(),
+          why: v.string(),
+          text: v.string(),
+        }),
+      ),
+    ),
+    // For a "chapters" step: the chapters of each video, in order.
+    chapters: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          start: v.number(),
+          title: v.string(),
+          bullets: v.array(v.string()),
+        }),
+      ),
+    ),
+    // What a "moments" or "chapters" step left out, said plainly ("2 picks were left out…").
+    pickNote: v.optional(v.string()),
     // Who approved or rejected, for an approval step.
     decidedBy: v.optional(v.string()),
     // For an approval step: the reviewers it named when the run reached it (empty for the
@@ -540,6 +657,27 @@ export default defineSchema({
     .index("by_run", ["runId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
 
+  // A video's words with when each is said, from a transcript made with word timestamps,
+  // kept so the same video is not transcribed again (Find more moments, Chapters after
+  // Best moments). `source` is the file's address without its query, so a fresh signed
+  // link to the same file still finds it. t: the word, s: start, e: end, in seconds.
+  spokenWords: defineTable({
+    organizationId: v.string(),
+    source: v.string(),
+    words: v.array(v.object({ t: v.string(), s: v.number(), e: v.number() })),
+    duration: v.number(),
+  }).index("by_source", ["organizationId", "source"]),
+
+  // A moment a Best moments step cut from a video, so a later run on the same video can
+  // find new ones instead of the same again.
+  pickedMoments: defineTable({
+    organizationId: v.string(),
+    source: v.string(),
+    start: v.number(),
+    end: v.number(),
+    runId: v.id("runs"),
+  }).index("by_source", ["organizationId", "source"]),
+
   // Something people should know about: a run that failed after all its tries, an
   // approval waiting or run out of time, a mention in a review. Shown under the bell to
   // the members it is for until each has seen it, unless they switched that kind off in
@@ -557,6 +695,8 @@ export default defineSchema({
       v.literal("approval_timed_out"),
       v.literal("mention"),
       v.literal("client_feedback"),
+      // "ready_for_review": a new version went into a project's slot and waits for review.
+      v.literal("ready_for_review"),
     ),
     // The members it is for. Left out: everyone on the team.
     recipients: v.optional(v.array(v.string())),
@@ -713,6 +853,9 @@ export default defineSchema({
         client_feedback: v.optional(
           v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
         ),
+        ready_for_review: v.optional(
+          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
+        ),
       }),
     ),
     // "now": each email as it happens. "daily": one summary a day at `digestHour` in
@@ -800,6 +943,22 @@ export default defineSchema({
     .index("by_token", ["token"])
     .index("by_review", ["reviewId"]),
 
+  // A client's portal: one link where the client sees only their own projects, in the
+  // team's logo and colours, and opens each project's review room. At most one per client;
+  // switching it off deletes it, so the old link stops working for good.
+  clientPortals: defineTable({
+    clientId: v.id("clients"),
+    organizationId: v.string(),
+    // The secret in the link (/portal/<token>).
+    token: v.string(),
+    createdBy: v.string(),
+    // Passed on to each review room the client opens from the portal.
+    allowVerdict: v.boolean(),
+    showTeamComments: v.boolean(),
+  })
+    .index("by_token", ["token"])
+    .index("by_client", ["clientId"]),
+
   // One clip in a review. A changed clip is added as a new version, so comments on the
   // earlier ones stay where they were made.
   reviewClips: defineTable({
@@ -852,6 +1011,63 @@ export default defineSchema({
     .index("by_clip", ["clipId"])
     .index("by_review", ["reviewId"]),
 
+  // A client an agency works for, inside one team. Its brand fills in before the team's
+  // for the automations that are for it, and its finished files are kept in its own folder.
+  clients: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    // Only what the client sets; anything left out comes from the team's brand.
+    brand: v.optional(brandValidator),
+    // The client's own music. Left out, its automations use the team's.
+    music: v.optional(musicValidator),
+    // Where its finished files go, inside the team's folder. Left out: Clients/<name>/.
+    deliveryFolder: v.optional(v.string()),
+    createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
+  // A project: one piece of work, such as an episode, with a slot for each thing to
+  // deliver. A package picked when it was made decides the slots it starts with.
+  projects: defineTable({
+    organizationId: v.string(),
+    clientId: v.optional(v.id("clients")),
+    name: v.string(),
+    // The package it started from, such as "video_podcast".
+    package: v.string(),
+    // The review room its slots go to when a version is added. Opened the first time.
+    reviewId: v.optional(v.id("reviews")),
+    createdBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_client", ["clientId"])
+    .index("by_review", ["reviewId"]),
+
+  // One thing a project delivers, such as "Short 3" or "Episode thumbnail". It starts
+  // empty; each file put in it is a new version, which goes to the project's review room.
+  deliverables: defineTable({
+    projectId: v.id("projects"),
+    organizationId: v.string(),
+    kind: deliverableKindValidator,
+    label: v.string(),
+    // Its place in the project's list.
+    order: v.number(),
+    status: deliverableStatusValidator,
+    versions: v.array(
+      v.object({
+        url: v.string(),
+        // The person who added it; null when a run did.
+        addedBy: v.union(v.null(), v.string()),
+        addedAt: v.number(),
+      }),
+    ),
+    // Its clip in the project's review room, once it has a version.
+    clipId: v.optional(v.id("reviewClips")),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_clip", ["clipId"])
+    .index("by_organization_and_status", ["organizationId", "status"]),
+
   // The content library: one row per file the team has, whether someone uploaded it or an
   // automation made it. Gives each file a short ID ("V12", "C99") people and the agent can
   // name it by, remembers where it came from, and holds its tags and stars.
@@ -874,6 +1090,9 @@ export default defineSchema({
     automationName: v.optional(v.string()),
     // The file it was made from, such as the episode a clip was cut from.
     parentId: v.optional(v.id("libraryItems")),
+    // The client it is for: copied from the run that made it (or the file it was made
+    // from), or set by hand. Left out for the team's own files.
+    clientId: v.optional(v.id("clients")),
     details: v.optional(fileDetailsValidator),
     tags: v.array(v.string()),
     // One to five stars, given once a file has been out in the world, so winners are easy
@@ -901,6 +1120,7 @@ export default defineSchema({
     .index("by_upload", ["uploadId"])
     .index("by_parent", ["parentId"])
     .index("by_run", ["runId"])
+    .index("by_client", ["clientId"])
     .searchIndex("search_text", { searchField: "searchText", filterFields: ["organizationId"] }),
 
   // What was said in a library file, in pieces of about thirty seconds, so a search lands
