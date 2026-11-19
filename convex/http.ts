@@ -189,6 +189,24 @@ http.route({
   }),
 });
 
+// The agent server asks before one of the agent's own schedules fires: may this team
+// (and person, when known) still start something? Only a caller holding
+// MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/agent/scheduled-turn",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.organizationId) return new Response("Missing organizationId", { status: 400 });
+    const answer = await ctx.runMutation(internal.access.scheduledTurn, {
+      organizationId: asked.organizationId,
+      ...(asked.userId ? { userId: asked.userId } : {}),
+    });
+    return Response.json(answer);
+  }),
+});
+
 // The agent server sends a voice note someone sent it in Slack or Discord, and gets its
 // words back. It has already found who sent it, and on which team (?organizationId=).
 // Only a caller holding MASTRA_JWT_SECRET is answered.

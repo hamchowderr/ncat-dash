@@ -256,7 +256,7 @@ A trial is one person's, not one team's or one address's:
 - Throwaway email services are refused at sign-up (a list of about 10,000, refreshed with `node scripts/update-disposable-domains.mjs`), plus any in `BLOCKED_EMAIL_DOMAINS` (comma-separated).
 - Email confirmation turns on by itself once the deployment can send email (`TOSEND_API_KEY` and `EMAIL_FROM`). `REQUIRE_EMAIL_VERIFICATION=false` turns it off.
 
-Limits a real person never meets (`convex/lib/limits.ts`): sign-ups (5 an hour from one network, 10 an hour shared by unknown networks, a ceiling for everyone), 3 new teams a day per person, agent replies per person and per team, and MCP calls per key. Sign-up and new-team limits apply on the hosted edition only.
+The agent's own schedules ask the dashboard before each fire (`packages/agent/src/mastra/ncat/schedule-gate.ts`), so they stop too. Limits a real person never meets (`convex/lib/limits.ts`): sign-ups (5 an hour from one network, 10 an hour shared by unknown networks, a ceiling for everyone), 3 new teams a day per person, agent replies per person and per team, and MCP calls per key. Sign-up and new-team limits apply on the hosted edition only.
 
 Operator commands:
 

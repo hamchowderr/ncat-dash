@@ -142,3 +142,25 @@ export const mcpCall = internalMutation({
     };
   },
 });
+
+/**
+ * Asked by the agent server before one of the agent's own schedules fires ("every
+ * morning, check..."): refused like any reply once the team's trial is over or the team
+ * or person is blocked, and taken from the team's allowance, since each fire spends AI
+ * tokens with nobody watching.
+ */
+export const scheduledTurn = internalMutation({
+  args: { organizationId: v.string(), userId: v.optional(v.string()) },
+  returns: answer,
+  handler: async (ctx, args) => {
+    const refused = await refusalFor(ctx, args.organizationId, args.userId);
+    if (refused) return { ok: false as const, ...refused };
+    const team = await limiter.limit(ctx, "agentTurnTeam", { key: args.organizationId });
+    if (team.ok) return { ok: true as const };
+    return {
+      ok: false as const,
+      reason: "rate_limited" as const,
+      message: rateLimitedMessage(team.retryAfter),
+    };
+  },
+});

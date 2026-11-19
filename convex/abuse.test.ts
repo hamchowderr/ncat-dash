@@ -421,3 +421,54 @@ describe("signing up on the hosted edition", () => {
     expect(requireEmailVerification({ REQUIRE_EMAIL_VERIFICATION: "true" })).toBe(true);
   });
 });
+
+describe("the agent's own schedules", () => {
+  async function agentToken(secret: string) {
+    const { createHmac } = await import("node:crypto");
+    const b64 = (value: string) => Buffer.from(value).toString("base64url");
+    const iat = Math.floor(Date.now() / 1000);
+    const body = `${b64(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${b64(
+      JSON.stringify({ sub: "agent-server", iat, exp: iat + 300 }),
+    )}`;
+    return `${body}.${createHmac("sha256", secret).update(body).digest("base64url")}`;
+  }
+
+  test("a fire is refused once the trial is over or the team is blocked, and only the agent server may ask", async () => {
+    const { t, team, maya } = await setUp();
+    process.env.MASTRA_JWT_SECRET = "the-agent-shared-secret-of-at-least-32-chars";
+    try {
+      const ask = async (token: string | null) =>
+        await t.fetch("/agent/scheduled-turn", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ organizationId: team, userId: maya.id }),
+        });
+      expect((await ask(null)).status).toBe(401);
+      const token = await agentToken(process.env.MASTRA_JWT_SECRET);
+      expect(await (await ask(token)).json()).toEqual({ ok: true });
+
+      await t.mutation(internal.blocks.blockTeam, { organizationId: team });
+      expect(await (await ask(token)).json()).toMatchObject({ ok: false, reason: "team_blocked" });
+      await t.mutation(internal.blocks.unblockTeam, { organizationId: team });
+
+      await t.run((ctx) =>
+        ctx.db.insert("teamTrials", { organizationId: team, startedAt: 0, endsAt: 1 }),
+      );
+      expect(await (await ask(token)).json()).toMatchObject({ ok: false, reason: "trial_ended" });
+    } finally {
+      delete process.env.MASTRA_JWT_SECRET;
+    }
+  });
+
+  test("fires come out of the team's allowance", async () => {
+    const { t, team } = await setUp();
+    let last: { ok: boolean } = { ok: true };
+    for (let i = 0; i < 41; i++) {
+      last = await t.mutation(internal.access.scheduledTurn, { organizationId: team });
+    }
+    expect(last).toMatchObject({ ok: false, reason: "rate_limited" });
+  });
+});
