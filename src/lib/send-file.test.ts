@@ -43,8 +43,13 @@ function backend() {
         url: `https://r2.example/b?part=${n}&round=${signRound}`,
       }));
     }),
-    completeParts: vi.fn(async () => null),
-    cancel: vi.fn(async () => null),
+    completeParts: vi.fn(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      async (_args: { uploadId: Id<"uploads">; parts: { partNumber: number; etag: string }[] }) =>
+        null,
+    ),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    cancel: vi.fn(async (_args: { uploadId: Id<"uploads"> }) => null),
     wait: async () => {},
   };
 }
@@ -86,9 +91,7 @@ describe("sending a started upload", () => {
     expect(mostInFlight).toBeGreaterThan(1);
     // Every link was signed in one request.
     expect(calls.signParts).toHaveBeenCalledTimes(1);
-    const joined = calls.completeParts.mock.calls[0][0] as unknown as {
-      parts: { partNumber: number; etag: string }[];
-    };
+    const joined = calls.completeParts.mock.calls[0][0];
     expect(joined.parts.map((part) => part.partNumber)).toEqual(
       Array.from({ length: 11 }, (_, i) => i + 1),
     );
