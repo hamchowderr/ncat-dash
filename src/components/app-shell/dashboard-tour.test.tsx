@@ -6,7 +6,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useTour } from "@/components/ui/tour";
 import { TeamContext } from "@/lib/team-context";
-import { answerQuery, mutationOf } from "@/test/convex";
+import { answerQuery, mutationOf, toastSuccess } from "@/test/convex";
 import { TEAM } from "@/test/render";
 
 import { AppSidebar } from "./app-sidebar";
@@ -83,9 +83,11 @@ describe("the tour of the dashboard", () => {
       tourId: "dashboard",
       how: "finished",
     });
+    await act(async () => {});
+    expect(toastSuccess).toHaveBeenCalledWith("You can take the tour again from your menu.");
   });
 
-  test("closes part way with the cross or Escape, and notes that it was closed", () => {
+  test("closes part way with the cross or Escape, and notes that it was closed", async () => {
     renderTour();
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
     fireEvent.click(screen.getByRole("button", { name: "Close the tour" }));
@@ -97,6 +99,9 @@ describe("the tour of the dashboard", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(card()).toBeNull();
     expect(mutationOf(api.tours.end)).toHaveBeenCalledTimes(2);
+    await act(async () => {});
+    // Only finishing says where to find it again.
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 
   test("starts by itself when setting up sends someone new to Home, and tidies the address", async () => {

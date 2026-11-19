@@ -2,6 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
+import { toast } from "sonner";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { useSidebar } from "@/components/ui/sidebar";
@@ -119,7 +120,10 @@ export function DashboardTour({ children }: { children: ReactNode }) {
 
   const onEnd = useCallback(
     (tourId: string, how: "finished" | "closed") => {
-      if (tourId === DASHBOARD_TOUR_ID) void end({ tourId, how });
+      if (tourId !== DASHBOARD_TOUR_ID) return;
+      void end({ tourId, how }).then(() => {
+        if (how === "finished") toast.success("You can take the tour again from your menu.");
+      });
     },
     [end],
   );

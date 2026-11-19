@@ -66,6 +66,7 @@ test("the tour walks someone new around the dashboard once, and again when they 
   await expect(card).toContainText("Your Team Menu");
   await card.getByRole("button", { name: "Finish" }).click();
   await expect(card).toHaveCount(0);
+  await expect(page.getByText("You can take the tour again from your menu.")).toBeVisible();
 
   // Finished, so arriving the same way again does not start it.
   await page.goto("/?tour=start");

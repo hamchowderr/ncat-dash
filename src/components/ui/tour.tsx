@@ -142,6 +142,8 @@ type Target = { rect: DOMRect; radius: number };
 function findTargets(stepId: string) {
   const found: { target: Target; element: Element }[] = [];
   document.querySelectorAll(`[data-tour-step-id~='${stepId}']`).forEach((element) => {
+    // Inside something on its way out, as a phone's menu sliding away is.
+    if (element.closest("[role='dialog'][data-state='closed']")) return;
     const rect = element.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return;
     // Off the screen, as a closed menu slid aside is: nothing to point at.
@@ -205,11 +207,11 @@ function TourOverlay({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const card = (
+  const named = { "aria-labelledby": `${maskId}-title`, "aria-modal": true } as const;
+  // Beside its target the popover is already a dialog; in the middle the card is one.
+  const card = (centred: boolean) => (
     <Card
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={`${maskId}-title`}
+      {...(centred ? { role: "dialog", ...named } : {})}
       data-tour-card
       className="w-80 max-w-[calc(100vw-2rem)] gap-4 py-5 shadow-lg"
     >
@@ -304,12 +306,13 @@ function TourOverlay({
             collisionPadding={16}
             onOpenAutoFocus={(event) => event.preventDefault()}
             onCloseAutoFocus={(event) => event.preventDefault()}
+            {...named}
           >
-            {card}
+            {card(false)}
           </PopoverContent>
         </Popover>
       ) : (
-        <div className="absolute inset-0 flex items-center justify-center p-4">{card}</div>
+        <div className="absolute inset-0 flex items-center justify-center p-4">{card(true)}</div>
       )}
     </div>,
     document.body,
