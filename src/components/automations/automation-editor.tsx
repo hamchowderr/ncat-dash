@@ -1057,6 +1057,8 @@ function Editor({ automation }: { automation: Loaded }) {
                         selected.data.node.kind === "clips" ||
                         selected.data.node.kind === "moments" ||
                         selected.data.node.kind === "chapters" ||
+                        selected.data.node.kind === "broll" ||
+                        selected.data.node.kind === "broll-plan" ||
                         selected.data.node.kind === "motion" ||
                         selected.data.node.kind === "sound-effects") && (
                         <StepTest

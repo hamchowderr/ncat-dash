@@ -1,6 +1,9 @@
 import {
   type AutomationEdge,
   type AutomationNode,
+  type BrollMoment,
+  brollMomentsFromPicks,
+  brollPicksFrom,
   chapterPicksFrom,
   chapterSettings,
   clipRequest,
@@ -142,6 +145,13 @@ export async function finishListening(
     );
     return;
   }
+  const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
+  if (node?.kind === "broll") {
+    // Add B-Roll needs no AI: it goes on to find footage for what was said.
+    await ctx.db.patch(step._id, { stage: "match" });
+    await ctx.scheduler.runAfter(0, internal.broll.match, { runStepId: step._id });
+    return;
+  }
   await ctx.db.patch(step._id, { stage: "pick" });
   await ctx.scheduler.runAfter(0, internal.moments.pick, { runStepId: step._id });
 }
@@ -208,6 +218,32 @@ export async function finishPicking(
     (job): job is Doc<"jobs"> => job !== null,
   );
   const heard = new Map(heardFrom(jobs).map((one) => [one.url, one]));
+
+  if (node.kind === "broll-plan") {
+    const plan: { source: string; cutaways: BrollMoment[] }[] = [];
+    let dropped = 0;
+    for (const { url, answer } of answers) {
+      const spoken = await wordsFor(ctx, run.organizationId, url);
+      if (!spoken) continue;
+      const placed = brollMomentsFromPicks(spoken.words, brollPicksFrom(readModelJson(answer)));
+      dropped += placed.dropped;
+      plan.push({ source: url, cutaways: placed.moments });
+    }
+    await ctx.db.patch(step._id, {
+      status: "done",
+      stage: undefined,
+      aiPlan: plan,
+      ...(dropped > 0
+        ? {
+            pickNote: `${dropped} ${dropped === 1 ? "cutaway was" : "cutaways were"} left out: ${dropped === 1 ? "its words were" : "their words were"} not in the transcript word for word.`,
+          }
+        : {}),
+      outputs: incomingFiles(node, run, byNode),
+      finishedAt: Date.now(),
+    });
+    await advance(ctx, run._id);
+    return;
+  }
 
   if (node.kind === "chapters") {
     const settings = chapterSettings(node.input);

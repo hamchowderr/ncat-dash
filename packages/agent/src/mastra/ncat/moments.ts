@@ -1,6 +1,7 @@
 import { Agent } from "@mastra/core/agent";
 import { z } from "zod";
 import { env } from "../../lib/env";
+import { onTeamKey, TEAM_KEY } from "./team-key";
 
 /**
  * Picking the best moments of a recording, and grouping one into chapters, for the
@@ -26,6 +27,16 @@ const chapterSettings = z.object({
   bullets: z.number().int().min(0).max(6),
 });
 
+const brollSettings = z.object({
+  /** At most this many cutaways. */
+  count: z.number().int().min(1).max(40),
+  /** Seconds kept on the speaker between two cutaways. */
+  gap: z.number().min(0).max(120),
+  /** Seconds at the start with no cutaway. */
+  skipOpening: z.number().min(0).max(600),
+  lookFor: z.string().max(1000).default(""),
+});
+
 const span = z.object({ start: z.number().finite(), end: z.number().finite() });
 
 export const momentsRequest = z.discriminatedUnion("kind", [
@@ -44,6 +55,14 @@ export const momentsRequest = z.discriminatedUnion("kind", [
     duration: z.number().finite().nonnegative(),
     transcript: z.string().min(1).max(MAX_TRANSCRIPT),
     settings: chapterSettings,
+    houseRules: z.string().max(2000).default(""),
+  }),
+  z.object({
+    kind: z.literal("broll"),
+    title: z.string().max(300).default(""),
+    duration: z.number().finite().nonnegative(),
+    transcript: z.string().min(1).max(MAX_TRANSCRIPT),
+    settings: brollSettings,
     houseRules: z.string().max(2000).default(""),
   }),
 ]);
@@ -68,9 +87,14 @@ export const MOMENTS_EFFORT = "medium" as const;
 export const momentsAgent = new Agent({
   id: "moments",
   name: "Best moments",
-  description: "Picks the best moments of a transcript, or groups it into chapters.",
+  description:
+    "Picks the best moments of a transcript, groups it into chapters, or plans its B-Roll.",
   instructions: MOMENTS_INSTRUCTIONS,
-  model: env.CHAT_MODEL,
+  // On the team's own Anthropic key when the dashboard sent the team and it has one.
+  model: ({ requestContext }) => {
+    const key = requestContext.get(TEAM_KEY);
+    return onTeamKey(env.CHAT_MODEL, typeof key === "string" ? key : null);
+  },
   defaultOptions: {
     providerOptions: {
       anthropic: { thinking: { type: "adaptive" }, effort: MOMENTS_EFFORT },
@@ -117,6 +141,20 @@ export function momentsPrompt(request: MomentsRequest): string {
     lines.push(
       "",
       'Answer as {"moments":[{"quote":"…","title":"…","why":"…"}]}: quote is the moment\'s words from its first word to its last; title is a short title for the clip, at most 8 words; why is one sentence on why it works.',
+    );
+  } else if (request.kind === "broll") {
+    const s = request.settings;
+    lines.push(
+      "",
+      `Plan B-Roll for this talking-head video: up to ${s.count} short cutaways, each a few seconds of footage shown while the speaker keeps talking.`,
+      "Pick the moments where showing something helps: a place, an object, an action or an idea that can be filmed or found as stock footage. Skip moments that are about feelings or opinions with nothing to show, and keep the strongest lines of the speaker on their face.",
+      `No cutaway in the first ${s.skipOpening} seconds. Keep at least ${s.gap} seconds between cutaways.`,
+      'For each one, quote the words said just as the cutaway should start (3 to 10 words) and say in a few plain words what the footage should show, as you would search a stock site: "a cluttered home garage", not "his early days".',
+    );
+    if (s.lookFor.trim()) lines.push(`What the cutaways should favour: ${s.lookFor.trim()}`);
+    lines.push(
+      "",
+      'Answer as {"cutaways":[{"quote":"…","show":"…"}]}, in the order they are said.',
     );
   } else {
     const s = request.settings;

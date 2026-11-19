@@ -2,13 +2,13 @@ import { allSteps } from "@ncat-dash/step-catalog";
 import { describe, expect, it } from "vitest";
 
 import {
-  savedKind,
   actionTypesByGroup,
   applyOperation,
   applyOperations,
   type AutomationDraft,
   draftProblems,
   getNodeType,
+  savedKind,
   graphProblem,
   brandProblem,
   describeFileDetails,
@@ -38,6 +38,9 @@ const empty: AutomationDraft = {
   edges: [],
 };
 
+const listedTypes = () =>
+  actionTypesByGroup().flatMap((group) => group.types.map((nodeType) => nodeType.type));
+
 describe("node registry", () => {
   it("describes every trigger, every catalog step, approval, clips, moments, chapters, motion, sound effects and export exactly once", () => {
     const names = NODE_TYPES.map((nodeType) => nodeType.type);
@@ -46,12 +49,25 @@ describe("node registry", () => {
       expect(getNodeType(`trigger:${kind}`)?.role).toBe("trigger");
     }
     for (const step of allSteps) expect(getNodeType(`step:${step.id}`)?.title).toBe(step.title);
+    // The picture model is used by the dashboard itself, never added as a step.
+    expect(listedTypes()).not.toContain("step:media-look");
+    expect(savedKind("step:media-look")).toBeNull();
     expect(getNodeType("approval")?.takes).toBe("files");
     expect(getNodeType("clips")?.gives).toBe("files");
     expect(getNodeType("export")).toMatchObject({ takes: "files", gives: "files" });
     expect(getNodeType("automation")).toMatchObject({ takes: "files", gives: "files" });
-    expect(getNodeType("moments")).toMatchObject({ takes: "file", gives: "files", ask: ["platform"] });
+    expect(getNodeType("moments")).toMatchObject({
+      takes: "file",
+      gives: "files",
+      ask: ["platform"],
+    });
     expect(getNodeType("chapters")).toMatchObject({ takes: "file", gives: "files" });
+    expect(getNodeType("broll")).toMatchObject({
+      title: "Add B-Roll",
+      takes: "file",
+      gives: "file",
+    });
+    expect(getNodeType("broll-plan")).toMatchObject({ title: "Plan B-Roll", group: "video" });
     expect(getNodeType("motion")).toMatchObject({ takes: "file", gives: "files", group: "video" });
     expect(getNodeType("sound-effects")).toMatchObject({ takes: "file", gives: "files" });
     // The motion graphics render is only sent by those two, never listed as a step.
@@ -59,7 +75,7 @@ describe("node registry", () => {
     expect(names).not.toContain("step:video-motion");
     expect(savedKind("step:video-motion")).toBeNull();
     expect(savedKind("motion")).toEqual({ kind: "motion" });
-    expect(names.length).toBe(6 + allSteps.length + 10);
+    expect(names.length).toBe(6 + allSteps.length + 12);
   });
 
   it("gives every type a title, a description and an object schema for its settings", () => {
@@ -76,7 +92,7 @@ describe("node registry", () => {
   it("lists only steps that can be added, with no trigger among them", () => {
     const listed = actionTypesByGroup().flatMap((group) => group.types);
     expect(listed.every((nodeType) => nodeType.role === "action")).toBe(true);
-    expect(listed.length).toBe(allSteps.length + 10);
+    expect(listed.length).toBe(allSteps.length + 12);
   });
 
   it("knows the type of every node in every template", () => {

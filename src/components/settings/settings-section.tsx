@@ -1,5 +1,6 @@
 "use client";
 
+import { BrollCard } from "./broll-card";
 import { McpSettings } from "./mcp-settings";
 import type { SettingsSlug } from "./settings-pages";
 import {
@@ -23,6 +24,7 @@ import { ZoomCard } from "./zoom-card";
 const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   brand: BrandSettings,
   captions: CaptionsSettings,
+  broll: BrollCard,
   motion: MotionSettings,
   editors: EditorsSettings,
   agent: AgentSettings,

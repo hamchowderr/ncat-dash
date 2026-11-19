@@ -1,6 +1,11 @@
 import {
+  type AutomationEdge,
   type AutomationNode,
+  BROLL_GAPS,
+  brollSettings,
   chapterSettings,
+  MAX_CUTAWAYS,
+  nearestUpstreamOfKind,
   momentSettings,
   sourceKey,
   transcriptText,
@@ -10,7 +15,12 @@ import {
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import {
+  type ActionCtx,
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
 import { advance, failStep } from "./lib/runner";
 import { finishPicking, heardFrom, MAX_WORDS, wordsFor } from "./lib/moments";
 import { signAgentToken } from "./reviewAgent";
@@ -51,7 +61,12 @@ export const loadPick = internalQuery({
     const run = await ctx.db.get(step.runId);
     if (!run || (run.status !== "running" && run.status !== "waiting")) return null;
     const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
-    if (!node || (node.kind !== "moments" && node.kind !== "chapters")) return null;
+    if (
+      !node ||
+      (node.kind !== "moments" && node.kind !== "chapters" && node.kind !== "broll-plan")
+    ) {
+      return null;
+    }
     const jobs = (await Promise.all(step.jobIds.map((id) => ctx.db.get(id)))).filter(
       (job) => job !== null,
     );
@@ -85,6 +100,20 @@ export const loadPick = internalQuery({
       organizationId: run.organizationId,
       kind: node.kind,
       input: node.input,
+      // For Plan B-Roll: the settings of the Add B-Roll step that will carry the plan out.
+      carriedOutBy:
+        node.kind === "broll-plan"
+          ? ((run.nodes as AutomationNode[]).find(
+              (other) =>
+                other.kind === "broll" &&
+                nearestUpstreamOfKind(
+                  other.id,
+                  "broll-plan",
+                  run.nodes as AutomationNode[],
+                  run.edges as AutomationEdge[],
+                )?.id === node.id,
+            )?.input ?? {})
+          : {},
       title: typeof fileName === "string" ? fileName : run.automationName,
       askedBy: run.startedBy ?? "automation",
       unattended: run.startedBy === null && run.test === undefined,
@@ -291,7 +320,57 @@ export async function readWordsFile(url: string): Promise<Word[] | null> {
   }
 }
 
-class PickError extends Error {}
+export class PickError extends Error {}
+
+/** What Plan B-Roll asks for, from its own settings and those of the Add B-Roll after it. */
+function brollPlanSettings(
+  input: Record<string, unknown>,
+  carriedOutBy: Record<string, unknown>,
+  duration: number,
+) {
+  const add = brollSettings(carriedOutBy);
+  const gap = BROLL_GAPS[add.often];
+  return {
+    count: Math.max(1, Math.min(MAX_CUTAWAYS, Math.ceil(duration / (gap + add.seconds)))),
+    gap,
+    skipOpening: add.skipOpening,
+    lookFor: typeof input.lookFor === "string" ? input.lookFor.trim().slice(0, 1000) : "",
+  };
+}
+
+/**
+ * A video's words: kept from before, or read from what "listen" heard and kept for next
+ * time. Throws a PickError with a plain reason when there are none.
+ */
+export async function wordsOfVideo(
+  ctx: ActionCtx,
+  organizationId: string,
+  video: {
+    url: string;
+    duration: number;
+    words: Word[] | null;
+    segments: unknown;
+    wordsFile: string | null;
+  },
+): Promise<Word[]> {
+  let words: Word[] | null = video.words;
+  if (!words) {
+    words =
+      (Array.isArray(video.segments) ? wordsFromSegments(video.segments) : null) ??
+      (video.wordsFile ? await readWordsFile(video.wordsFile) : null);
+    if (!words) throw new PickError("Could not read the transcript the toolkit made.");
+    if (words.length === 0) throw new PickError("No speech was heard in the video.");
+    words = words.slice(0, MAX_WORDS);
+    await ctx.runMutation(internal.moments.saveWords, {
+      organizationId,
+      source: video.url,
+      duration: video.duration || words[words.length - 1].end,
+      words: words.map((word) => ({ t: word.text, s: word.start, e: word.end })),
+    });
+  }
+  if (words.length === 0) throw new PickError("No speech was heard in the video.");
+  return words;
+}
 
 /** The question's SHA-256, which its saved answer is kept under. */
 async function questionKey(body: Record<string, unknown>): Promise<string> {
@@ -331,11 +410,12 @@ async function postToAgent(
 async function sendBatch(
   questions: { key: string; body: Record<string, unknown> }[],
   askedBy: string,
+  organizationId: string,
 ): Promise<string | null> {
   if (questions.length === 0 || questions.length > MAX_BATCH) return null;
   const response = await postToAgent(
     "/ncat/moments/batch",
-    { requests: questions.map(({ key, body }) => ({ id: key, request: body })) },
+    { organizationId, requests: questions.map(({ key, body }) => ({ id: key, request: body })) },
     askedBy,
   );
   if (!response?.ok) return null;
@@ -344,7 +424,11 @@ async function sendBatch(
 }
 
 /** Asks the agent server's model to pick from one transcript. Returns its answer as text. */
-async function askModel(body: Record<string, unknown>, askedBy: string): Promise<string> {
+async function askModel(
+  body: Record<string, unknown>,
+  askedBy: string,
+  organizationId: string,
+): Promise<string> {
   const url = process.env.AGENT_URL;
   const secret = process.env.MASTRA_JWT_SECRET;
   if (!url || !secret) {
@@ -360,7 +444,8 @@ async function askModel(body: Record<string, unknown>, askedBy: string): Promise
         "content-type": "application/json",
         authorization: `Bearer ${await signAgentToken(secret, askedBy)}`,
       },
-      body: JSON.stringify(body),
+      // The team, so the agent server uses the team's own Anthropic key when it has one.
+      body: JSON.stringify({ ...body, organizationId }),
       signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
     });
   } catch {
@@ -392,39 +477,27 @@ export const pick = internalAction({
     try {
       const questions: { url: string; key: string; body: Record<string, unknown> }[] = [];
       for (const video of loaded.videos) {
-        let words: Word[] | null = video.words;
-        if (!words) {
-          words =
-            (Array.isArray(video.segments) ? wordsFromSegments(video.segments) : null) ??
-            (video.wordsFile ? await readWordsFile(video.wordsFile) : null);
-          if (!words) throw new PickError("Could not read the transcript the toolkit made.");
-          if (words.length === 0) throw new PickError("No speech was heard in the video.");
-          words = words.slice(0, MAX_WORDS);
-          await ctx.runMutation(internal.moments.saveWords, {
-            organizationId: loaded.organizationId,
-            source: video.url,
-            duration: video.duration || words[words.length - 1].end,
-            words: words.map((word) => ({ t: word.text, s: word.start, e: word.end })),
-          });
-        }
+        const words = await wordsOfVideo(ctx, loaded.organizationId, video);
         if (words.length === 0) throw new PickError("No speech was heard in the video.");
         const duration = video.duration || words[words.length - 1].end;
         const settings =
-          loaded.kind === "moments"
-            ? (() => {
-                const s = momentSettings(loaded.input);
-                return {
-                  count: s.count,
-                  minSeconds: s.minSeconds,
-                  maxSeconds: s.maxSeconds,
-                  platform: s.platform,
-                  topics: s.topics,
-                  lookFor: s.lookFor,
-                };
-              })()
-            : chapterSettings(loaded.input);
+          loaded.kind === "broll-plan"
+            ? brollPlanSettings(loaded.input, loaded.carriedOutBy, duration)
+            : loaded.kind === "moments"
+              ? (() => {
+                  const s = momentSettings(loaded.input);
+                  return {
+                    count: s.count,
+                    minSeconds: s.minSeconds,
+                    maxSeconds: s.maxSeconds,
+                    platform: s.platform,
+                    topics: s.topics,
+                    lookFor: s.lookFor,
+                  };
+                })()
+              : chapterSettings(loaded.input);
         const body = {
-          kind: loaded.kind,
+          kind: loaded.kind === "broll-plan" ? ("broll" as const) : loaded.kind,
           title: loaded.title.slice(0, 300),
           duration,
           transcript: transcriptText(words),
@@ -445,7 +518,7 @@ export const pick = internalAction({
       );
       const unanswered = questions.filter(({ key }) => !saved.has(key));
       if (unanswered.length > 0 && loaded.unattended && !args.live) {
-        const batchId = await sendBatch(unanswered, loaded.askedBy);
+        const batchId = await sendBatch(unanswered, loaded.askedBy, loaded.organizationId);
         if (batchId) {
           await ctx.runMutation(internal.moments.waitForBatch, {
             runStepId: args.runStepId,
@@ -460,7 +533,7 @@ export const pick = internalAction({
       for (const question of questions) {
         let answer = saved.get(question.key);
         if (answer === undefined) {
-          answer = await askModel(question.body, loaded.askedBy);
+          answer = await askModel(question.body, loaded.askedBy, loaded.organizationId);
           await ctx.runMutation(internal.moments.saveAnswers, {
             organizationId: loaded.organizationId,
             answers: [{ question: question.key, answer }],
@@ -490,7 +563,7 @@ export const checkBatch = internalAction({
     }
     const response = await postToAgent(
       "/ncat/moments/batch/answers",
-      { batchId: batch.batchId },
+      { batchId: batch.batchId, organizationId: batch.organizationId },
       "automation",
     );
     const result = response?.ok

@@ -27,6 +27,16 @@ import {
   PICTURE_SIZES,
   WAIT_UNITS,
 } from "./logic";
+import {
+  BROLL_DEFAULTS,
+  BROLL_LOOKS,
+  BROLL_MATCH,
+  BROLL_OFTEN,
+  BROLL_SOURCES,
+  MAX_BROLL_SECONDS,
+  MAX_SKIP_OPENING,
+  MIN_BROLL_SECONDS,
+} from "./broll";
 import { MAX_CHAPTERS, MAX_MOMENTS, MAX_PADDING, MOMENT_DEFAULTS, MOMENT_EDGES } from "./moments";
 import { MOTION_PRESETS, SOUND_LEVELS, STYLE_SOUNDS, TEAM_STYLE } from "./motion";
 import { MIN_INTERVAL_MINUTES } from "./schedule";
@@ -46,8 +56,8 @@ export interface JsonSchema {
 
 export interface NodeType {
   /**
-   * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "motion",
-   * "sound-effects", "export",
+   * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "broll",
+   * "broll-plan", "motion", "sound-effects", "export",
    * "if", "wait", "automation", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
@@ -473,6 +483,88 @@ const CHAPTERS: NodeType = {
   automatic: null,
 };
 
+const BROLL: NodeType = {
+  type: "broll",
+  role: "action",
+  group: "video",
+  title: "Add B-Roll",
+  description:
+    "Lays short cutaway footage over each video while the voice carries on, where what is said can be shown: a garage when someone says garage. No AI: footage is matched to the words by a picture model on the team's own toolkit, from the team's Content Library first and then free stock (Pixabay, Pexels). Footage that does not look enough like the words is not used. When a Plan B-Roll step comes before it, it follows that plan instead.",
+  takes: "file",
+  gives: "file",
+  settings: {
+    type: "object",
+    properties: {
+      often: {
+        type: "string",
+        enum: [...BROLL_OFTEN],
+        default: BROLL_DEFAULTS.often,
+        description:
+          "How many cutaways: light keeps about 15 seconds on the speaker between them, medium about 7, busy about 3.",
+      },
+      seconds: {
+        type: "number",
+        minimum: MIN_BROLL_SECONDS,
+        maximum: MAX_BROLL_SECONDS,
+        default: BROLL_DEFAULTS.seconds,
+        description: "How long each cutaway lasts, in seconds.",
+      },
+      skipOpening: {
+        type: "number",
+        minimum: 0,
+        maximum: MAX_SKIP_OPENING,
+        default: BROLL_DEFAULTS.skipOpening,
+        description: "Seconds at the start kept on the speaker, so the hook stays on the face.",
+      },
+      look: {
+        type: "string",
+        enum: [...BROLL_LOOKS],
+        default: BROLL_DEFAULTS.look,
+        description:
+          "full: the cutaway fills the frame. window: it sits in a box over the speaker.",
+      },
+      sources: {
+        type: "string",
+        enum: [...BROLL_SOURCES],
+        default: BROLL_DEFAULTS.sources,
+        description:
+          "Where footage comes from: the team's library and then free stock, the library only, or stock only.",
+      },
+      match: {
+        type: "string",
+        enum: [...BROLL_MATCH],
+        default: BROLL_DEFAULTS.match,
+        description:
+          "How closely footage must look like the words to be used. close uses fewer, surer cutaways; loose uses more.",
+      },
+    },
+  },
+  automatic: null,
+};
+
+const BROLL_PLAN: NodeType = {
+  type: "broll-plan",
+  role: "action",
+  group: "video",
+  title: "Plan B-Roll",
+  description:
+    "AI reads each video's transcript and says which moments deserve a cutaway and what it should show. Put it before Add B-Roll, which follows the plan; without it, Add B-Roll picks by plain rules. The AI only quotes the words; every quote is found in the transcript word for word. The video carries on unchanged.",
+  takes: "file",
+  gives: "file",
+  settings: {
+    type: "object",
+    properties: {
+      lookFor: {
+        type: "string",
+        default: "",
+        description:
+          "What the cutaways should favour, in plain words, such as the product, the places named, or anything with numbers.",
+      },
+    },
+  },
+  automatic: null,
+};
+
 const MOTION: NodeType = {
   type: "motion",
   role: "action",
@@ -661,6 +753,8 @@ export const NODE_TYPES: NodeType[] = [
   CLIPS,
   MOMENTS,
   CHAPTERS,
+  BROLL,
+  BROLL_PLAN,
   MOTION,
   SOUND_EFFECTS,
   EXPORT,
@@ -725,6 +819,8 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
     type === "clips" ||
     type === "moments" ||
     type === "chapters" ||
+    type === "broll" ||
+    type === "broll-plan" ||
     type === "motion" ||
     type === "sound-effects" ||
     type === "export" ||
