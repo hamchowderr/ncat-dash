@@ -85,6 +85,21 @@ describe("a page's tour", () => {
     view.unmount();
   });
 
+  test("leaves someone alone who has already opened a dialog", async () => {
+    const opened = document.createElement("div");
+    opened.setAttribute("role", "dialog");
+    opened.setAttribute("data-state", "open");
+    document.body.append(opened);
+    try {
+      renderPage();
+      await act(async () => {});
+      expect(screen.queryByText("Step 1 of", { exact: false })).toBeNull();
+      expect(mutationOf(api.tours.end)).not.toHaveBeenCalled();
+    } finally {
+      opened.remove();
+    }
+  });
+
   test("waits until the page has loaded", async () => {
     renderPage({ ready: false });
     await act(async () => {});
