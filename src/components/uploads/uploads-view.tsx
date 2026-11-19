@@ -177,6 +177,14 @@ export function UploadsView() {
       ),
     [uploads],
   );
+  // Files from watched Dropbox folders the toolkit is still bringing in.
+  const fromDropbox = useMemo(
+    () =>
+      (uploads ?? []).filter(
+        (upload) => upload.status === "uploading" && upload.source === "dropbox",
+      ),
+    [uploads],
+  );
   // A file still going up sits where it will land, as a skeleton with its percentage.
   const shown = useMemo(
     () =>
@@ -329,6 +337,13 @@ export function UploadsView() {
         <p className="text-muted-foreground text-sm" data-teams-coming>
           Coming in from Microsoft Teams: {fromTeams.map((upload) => upload.fileName).join(", ")}.
           They show here once they arrive.
+        </p>
+      )}
+
+      {fromDropbox.length > 0 && (
+        <p className="text-muted-foreground text-sm" data-dropbox-coming>
+          Coming in from Dropbox: {fromDropbox.map((upload) => upload.fileName).join(", ")}. They
+          show here once they arrive.
         </p>
       )}
 

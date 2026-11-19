@@ -100,7 +100,22 @@ export function MicrosoftTeamsLogo(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export type ConnectedApp = "slack" | "discord" | "zoom" | "google-meet" | "microsoft";
+/** Dropbox's mark, from simple-icons. */
+export function DropboxLogo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M6 1.807L0 5.629l6 3.822 6.001-3.822L6 1.807zM18 1.807l-6 3.822 6 3.822 6-3.822-6-3.822zM0 13.274l6 3.822 6.001-3.822L6 9.452l-6 3.822zM18 9.452l-6 3.822 6 3.822 6-3.822-6-3.822zM6 18.371l6.001 3.822 6-3.822-6-3.822L6 18.371z" />
+    </svg>
+  );
+}
+
+export type ConnectedApp =
+  | "slack"
+  | "discord"
+  | "zoom"
+  | "google-meet"
+  | "microsoft"
+  | "dropbox";
 
 const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactNode }> = {
   slack: { name: "Slack", tile: "bg-muted", mark: <SlackColorLogo className="size-6" /> },
@@ -119,6 +134,11 @@ const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactN
     name: "Microsoft Teams",
     tile: "bg-[#5B5FC7] text-white",
     mark: <MicrosoftTeamsLogo className="size-6" />,
+  },
+  dropbox: {
+    name: "Dropbox",
+    tile: "bg-[#0061FF] text-white",
+    mark: <DropboxLogo className="size-6" />,
   },
 };
 

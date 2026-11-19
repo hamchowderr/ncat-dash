@@ -39,6 +39,7 @@ import { usePathname } from "next/navigation";
 
 import {
   DiscordLogo,
+  DropboxLogo,
   GoogleMeetLogo,
   MicrosoftTeamsLogo,
   SlackLogo,
@@ -124,6 +125,7 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   zoom: ZoomLogo,
   "google-meet": GoogleMeetLogo,
   microsoft: MicrosoftTeamsLogo,
+  dropbox: DropboxLogo,
   mcp: KeyRound,
 };
 
