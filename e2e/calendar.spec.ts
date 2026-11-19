@@ -47,7 +47,9 @@ test("posts are planned on the calendar, fill repeating slots, and move by dragg
   await page.goto("/projects/new");
   await page.getByLabel("Name", { exact: true }).fill("Episode 7");
   await page.getByRole("button", { name: "Make project" }).click();
-  await expect(page).toHaveURL(/\/projects\/[a-z0-9]+$/);
+  // Wait for the project's own page: /projects/new matches the same pattern.
+  await expect(page).toHaveURL(/\/projects\/(?!new$)[a-z0-9]+$/);
+  await expect(page.getByText(/0 of \d+/)).toBeVisible();
 
   await expect(page.getByRole("link", { name: "Calendar" }).first()).toHaveAttribute(
     "href",
