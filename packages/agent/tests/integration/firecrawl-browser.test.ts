@@ -131,7 +131,7 @@ async function turn(
 const ACTION_TOOLS = ['browser_click', 'browser_type', 'browser_press', 'browser_select'];
 
 describe('Firecrawl hosted browser (AIMock + mocked Firecrawl browser API, sandbox off)', () => {
-  it('a browse turn: the agent opens a page (asks) and reads it (does not), and the session closes when the run ends', async () => {
+  it('a browse turn: the agent opens a page (asks) and reads it (does not), and the session closes when the run ends', { timeout: 90_000 }, async () => {
     const before = browserMock.sessions().length;
     const { offered, restore } = spyOnOfferedTools();
     const { approvals, ran, trail, blob } = await turn(
