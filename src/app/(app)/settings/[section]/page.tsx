@@ -25,7 +25,7 @@ export async function generateMetadata({
 }
 
 /** Addresses settings used to have. `/settings/chat` held Slack and Discord together. */
-const OLD = new Set(["chat", "members", "jobs", "failures"]);
+const OLD = new Set(["chat", "members", "jobs", "failures", "ai-agents"]);
 
 export default async function Page({
   params,

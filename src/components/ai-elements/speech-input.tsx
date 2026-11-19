@@ -69,25 +69,11 @@ export type SpeechInputProps = ComponentProps<typeof Button> & {
    */
   onAudioRecorded?: (audioBlob: Blob) => Promise<string>;
   lang?: string;
-  /**
-   * ncat-dash: record with MediaRecorder even where the browser has the Web Speech API,
-   * so every browser sends the recording to `onAudioRecorded` (a voice note).
-   */
-  preferRecorder?: boolean;
 };
 
-const canRecord = () =>
-  typeof window !== "undefined" &&
-  "MediaRecorder" in window &&
-  "mediaDevices" in navigator;
-
-const detectSpeechInputMode = (preferRecorder = false): SpeechInputMode => {
+const detectSpeechInputMode = (): SpeechInputMode => {
   if (typeof window === "undefined") {
     return "none";
-  }
-
-  if (preferRecorder) {
-    return canRecord() ? "media-recorder" : "none";
   }
 
   if ("SpeechRecognition" in window || "webkitSpeechRecognition" in window) {
@@ -106,14 +92,11 @@ export const SpeechInput = ({
   onTranscriptionChange,
   onAudioRecorded,
   lang = "en-US",
-  preferRecorder = false,
   ...props
 }: SpeechInputProps) => {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [mode] = useState<SpeechInputMode>(() =>
-    detectSpeechInputMode(preferRecorder)
-  );
+  const [mode] = useState<SpeechInputMode>(detectSpeechInputMode);
   const [isRecognitionReady, setIsRecognitionReady] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);

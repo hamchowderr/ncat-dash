@@ -61,6 +61,7 @@ export function resetConvex() {
   toastSuccess.mockReset();
   toastDismiss.mockReset();
   present.length = 0;
+  for (const key of Object.keys(routeParams)) delete routeParams[key];
 }
 
 export const convexReact = {
@@ -90,8 +91,11 @@ export const convexReact = {
 };
 
 export const presenceReact = { default: () => present };
+/** The route parameters the screen under test is given, such as { requestId }. */
+export const routeParams: Record<string, string> = {};
 export const nextNavigation = {
   useRouter: () => ({ push: pushed, replace: replaced }),
+  useParams: () => routeParams,
   usePathname: () => place.pathname,
   useSearchParams: () => new URLSearchParams(place.search),
 };

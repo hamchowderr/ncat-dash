@@ -17,6 +17,7 @@ import {
   History,
   Home,
   Inbox,
+  KeyRound,
   Library,
   ListChecks,
   Mail,
@@ -109,6 +110,7 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   email: Mail,
   slack: SlackLogo,
   discord: DiscordLogo,
+  mcp: KeyRound,
 };
 
 const LAST_APP_PAGE = "ncat:last-app-page";
