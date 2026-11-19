@@ -19,7 +19,7 @@ export interface ContentKind {
 export const CONTENT_KINDS: ContentKind[] = [
   {
     id: "coaching",
-    label: "Coaching or courses",
+    label: "Coaching or Courses",
     detail: "Sessions, group calls, webinars and lessons",
     starters: ["coaching-session-pack", "recording-pack"],
   },
@@ -31,7 +31,7 @@ export const CONTENT_KINDS: ContentKind[] = [
   },
   {
     id: "talks",
-    label: "Sermons or talks",
+    label: "Sermons or Talks",
     detail: "Services, keynotes, panels and lectures",
     starters: ["recording-pack", "social-clips"],
   },
@@ -43,19 +43,25 @@ export const CONTENT_KINDS: ContentKind[] = [
   },
   {
     id: "streams",
-    label: "Streams and gaming",
+    label: "Streams and Gaming",
     detail: "Stream recordings, reactions and gameplay",
     starters: ["reaction-vertical", "vertical-blur-captions"],
   },
   {
     id: "clients",
-    label: "Client work",
+    label: "Client Work",
     detail: "An agency or editor delivering for others",
     starters: ["every-shape", "delivery-pass"],
   },
   {
+    id: "entrepreneurs",
+    label: "Entrepreneurs",
+    detail: "Founders, personal brands and solo businesses",
+    starters: ["clips-follow-speaker", "caption-uploads"],
+  },
+  {
     id: "business",
-    label: "Business videos",
+    label: "Business Videos",
     detail: "Product videos, ads and announcements",
     starters: ["branded-clip", "clip-with-end-card"],
   },

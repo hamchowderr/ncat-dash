@@ -26,9 +26,9 @@ test("a coach is asked what they make and their first upload starts the fitting 
   await page.getByRole("button", { name: "Skip for now" }).click();
 
   // What they make.
-  await expect(page.getByRole("heading", { name: "What do you make?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What Do You Make?" })).toBeVisible();
   await expect(page.getByText("Step 4 of 7")).toBeVisible();
-  await page.getByRole("button", { name: /Coaching or courses/ }).click();
+  await page.getByRole("button", { name: /Coaching or Courses/ }).click();
   await page.getByRole("button", { name: "Continue" }).click();
 
   // Where they post, with each app's own logo.

@@ -28,15 +28,16 @@ beforeEach(() => {
 describe("asking what the team makes", () => {
   test("waits for at least one answer, then asks where they post", () => {
     renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);
-    expect(screen.getByRole("heading", { name: "What do you make?" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "What Do You Make?" })).toBeTruthy();
     expect(screen.getByText("Step 1 of 4")).toBeTruthy();
     const kinds = within(screen.getByRole("group", { name: "What you make" }));
-    expect(kinds.getAllByRole("button")).toHaveLength(7);
+    expect(kinds.getAllByRole("button")).toHaveLength(8);
+    expect(kinds.getByRole("button", { name: /Entrepreneurs/ })).toBeTruthy();
     const next = screen.getByRole("button", { name: /Continue/ });
     expect(next).toHaveProperty("disabled", true);
-    pick(/Coaching or courses/);
+    pick(/Coaching or Courses/);
     expect(
-      screen.getByRole("button", { name: /Coaching or courses/ }).getAttribute("aria-pressed"),
+      screen.getByRole("button", { name: /Coaching or Courses/ }).getAttribute("aria-pressed"),
     ).toBe("true");
     fireEvent.click(next);
     expect(screen.getByRole("heading", { name: "Where do you post?" })).toBeTruthy();
@@ -60,7 +61,7 @@ describe("asking what the team makes", () => {
 
   test("saves the answers and offers the coaching pack ticked, saying where AI is used", async () => {
     renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);
-    pick(/Coaching or courses/);
+    pick(/Coaching or Courses/);
     pick(/Continue/);
     pick(/^TikTok$/);
     pick(/^Instagram$/);
@@ -75,7 +76,7 @@ describe("asking what the team makes", () => {
     const pack = list.getByRole("checkbox", { name: /Coaching session pack/ });
     expect(pack.getAttribute("aria-checked")).toBe("true");
     expect(list.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ })).toBeTruthy();
-    expect(list.getAllByText(/The AI reads the transcript once to pick/)).toHaveLength(1);
+    expect(list.getAllByText("AI picks the moments")).toHaveLength(1);
     expect(
       screen.getByRole("link", { name: /See all 62 ready-made automations/ }).getAttribute("href"),
     ).toBe("/automations/new");
@@ -93,7 +94,7 @@ describe("asking what the team makes", () => {
       },
     ]);
     renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);
-    pick(/Business videos/);
+    pick(/Business Videos/);
     pick(/Continue/);
     pick(/Continue without one/);
     await screen.findByRole("heading", { name: "Switch these on" });
@@ -159,7 +160,7 @@ describe("the first upload", () => {
         problem: null,
       },
     ]);
-    pick(/Coaching or courses/);
+    pick(/Coaching or Courses/);
     pick(/Continue/);
     pick(/Continue without one/);
     await screen.findByRole("heading", { name: "Switch these on" });

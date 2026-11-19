@@ -6,6 +6,7 @@ import {
   CONTENT_KINDS,
   POSTING_APPS,
   type PostingAppId,
+  type Starter,
   STARTERS,
   suggestedStarters,
 } from "@ncat-dash/automation-core";
@@ -21,6 +22,7 @@ import {
   Mic,
   Music,
   Presentation,
+  Rocket,
   UploadCloud,
 } from "lucide-react";
 import Link from "next/link";
@@ -45,6 +47,7 @@ const KIND_ICONS: Record<string, LucideIcon> = {
   music: Music,
   streams: Gamepad2,
   clients: Briefcase,
+  entrepreneurs: Rocket,
   business: Megaphone,
 };
 
@@ -63,6 +66,10 @@ type Made = {
 };
 
 /** The tick at the end of a picked tile, so a choice reads at a glance. */
+// Steps that pick something with AI once per video; every other step is plain editing.
+const usesAi = (starter: Starter) =>
+  starter.nodes.some((node) => node.kind === "moments" || node.kind === "chapters");
+
 function Picked({ on }: { on: boolean }) {
   return (
     <span
@@ -165,7 +172,7 @@ export function ContentGoalsFlow({
 
       {stage === "kinds" && (
         <>
-          <Heading title="What do you make?">
+          <Heading title="What Do You Make?">
             Pick everything that fits. We&apos;ll switch on ready-made automations made for it, so
             your first upload is handled the way you would handle it.
           </Heading>
@@ -257,8 +264,9 @@ export function ContentGoalsFlow({
                 <li key={starter.id}>
                   <label
                     htmlFor={id}
+                    title={starter.description}
                     className={cn(
-                      "bg-surface hover:bg-muted grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-3 rounded-xl p-4 transition-colors",
+                      "bg-surface hover:bg-muted flex cursor-pointer items-center gap-3 rounded-xl px-4 py-3 transition-colors",
                       on && "bg-primary/10 hover:bg-primary/15",
                     )}
                   >
@@ -266,11 +274,17 @@ export function ContentGoalsFlow({
                       id={id}
                       checked={on}
                       onCheckedChange={() => setSkipped(toggle(skipped, starter.id))}
-                      className="mt-0.5"
                     />
-                    <span className="grid gap-1">
-                      <span className="text-sm font-medium">{starter.name}</span>
-                      <span className="text-muted-foreground text-sm text-pretty">
+                    <span className="grid min-w-0 flex-1 gap-0.5">
+                      <span className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium">
+                        {starter.name}
+                        {usesAi(starter) && (
+                          <span className="text-muted-foreground text-xs font-normal">
+                            AI picks the moments
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-muted-foreground truncate text-sm">
                         {starter.description}
                       </span>
                     </span>
@@ -279,7 +293,7 @@ export function ContentGoalsFlow({
                       nodes={starter.nodes}
                       edges={starter.edges}
                       size="sm"
-                      className="bg-background/70 col-start-2 justify-start overflow-hidden rounded-lg px-3 py-2"
+                      className="hidden shrink-0 sm:flex"
                     />
                   </label>
                 </li>

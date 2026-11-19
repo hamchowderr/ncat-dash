@@ -34,6 +34,21 @@ describe("content goals", () => {
     ]);
   });
 
+  it("gives an entrepreneur speaker clips and captions", () => {
+    expect(suggestedStarters(["entrepreneurs"]).map((starter) => starter.id)).toEqual([
+      "clips-follow-speaker",
+      "caption-uploads",
+    ]);
+  });
+
+  it("names every kind in Title Case", () => {
+    for (const kind of CONTENT_KINDS) {
+      for (const word of kind.label.split(" ")) {
+        if (!["or", "and"].includes(word)) expect(word[0], kind.label).toBe(word[0].toUpperCase());
+      }
+    }
+  });
+
   it("offers each suggestion once, in the order the kinds are listed", () => {
     const ids = suggestedStarters(["talks", "coaching"]).map((starter) => starter.id);
     expect(ids).toEqual(["coaching-session-pack", "recording-pack", "social-clips"]);
