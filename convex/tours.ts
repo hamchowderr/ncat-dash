@@ -2,10 +2,12 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { authComponent } from "./auth";
 
-// Whether someone has been through a guided tour of the dashboard. It starts by itself
-// once, when setting up ends; after it is finished or closed it only starts from the menu.
+// Whether someone has been through one of the guided tours: the dashboard's, which starts
+// by itself once when setting up ends, or a page's, which starts on the first visit. Once
+// finished or closed, a tour only starts when asked for.
 
-const tourId = v.literal("dashboard");
+const tourId = v.union(v.literal("dashboard"), v.literal("calendar"));
+type TourId = "dashboard" | "calendar";
 
 async function requireUser(ctx: QueryCtx | MutationCtx) {
   const user = await authComponent.safeGetAuthUser(ctx);
@@ -13,7 +15,7 @@ async function requireUser(ctx: QueryCtx | MutationCtx) {
   return user._id as string;
 }
 
-function endOf(ctx: QueryCtx | MutationCtx, userId: string, tour: "dashboard") {
+function endOf(ctx: QueryCtx | MutationCtx, userId: string, tour: TourId) {
   return ctx.db
     .query("tourEnds")
     .withIndex("by_user_and_tour", (q) => q.eq("userId", userId).eq("tourId", tour))

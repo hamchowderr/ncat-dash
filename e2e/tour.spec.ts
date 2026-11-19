@@ -30,6 +30,7 @@ test("the tour walks someone new around the dashboard once, and again when they 
 
   // Where setting up sends a new team: Home, with the tour started.
   await page.goto("/?tour=start");
+  // The card itself: on a phone the menu sheet closing is a dialog too for a moment.
   const card = page.locator("[data-tour-card]");
   await expect(card).toContainText("Welcome to Your Dashboard");
   await expect(card).toContainText("Step 1 of 11");

@@ -266,7 +266,12 @@ function WaitingList({
   const shared = { onDragStart, onDragEnd };
   return (
     <div className="flex flex-col gap-5">
-      <Button size="sm" className="self-start" onClick={() => setPanel({ mode: "add" })}>
+      <Button
+        size="sm"
+        className="self-start"
+        data-tour-step-id="tour-calendar-add"
+        onClick={() => setPanel({ mode: "add" })}
+      >
         <Plus />
         Add Post
       </Button>
@@ -867,6 +872,7 @@ export function SidePanel({
   return (
     <aside
       aria-label="Side list"
+      data-tour-step-id="tour-calendar-waiting"
       {...drop}
       className={cn(
         "flex w-full shrink-0 flex-col gap-4 self-start rounded-xl p-3 transition-colors lg:sticky lg:top-4 lg:max-h-[calc(100svh-2rem)] lg:w-72 lg:overflow-y-auto",
@@ -891,6 +897,7 @@ export function SidePanel({
               key={mode}
               type="button"
               aria-pressed={panel.mode === mode}
+              data-tour-step-id={mode === "slots" ? "tour-calendar-slots" : undefined}
               onClick={() => setPanel({ mode })}
               className={cn(
                 "focus-visible:ring-ring/50 flex-1 rounded-md px-2 py-1 text-sm outline-none transition-[background-color,color,box-shadow] focus-visible:ring-3",

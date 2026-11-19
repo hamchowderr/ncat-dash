@@ -5,10 +5,11 @@ import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
+import { CALENDAR_TOUR, CALENDAR_TOUR_ID } from "@/components/calendar/calendar-tour";
 import { useSidebar } from "@/components/ui/sidebar";
-import { type Tour, TourProvider, useTour } from "@/components/ui/tour";
+import { type Tour, type TourEnd, TourProvider, useTour } from "@/components/ui/tour";
 
-export const DASHBOARD_TOUR_ID = "dashboard";
+export const DASHBOARD_TOUR_ID = "dashboard" as const;
 
 /** The search that asks Home to start the tour: where setting up sends a new team. */
 export const START_TOUR_SEARCH = "?tour=start";
@@ -101,35 +102,49 @@ export const DASHBOARD_TOUR: Tour = {
   ],
 };
 
+/** What each tour says once finished, about where to take it again. */
+const AGAIN: Record<string, string> = {
+  [DASHBOARD_TOUR_ID]: "You can take the tour again from your menu.",
+  [CALENDAR_TOUR_ID]: "You can take this tour again from the top of the calendar.",
+};
+
+const TOURS = [DASHBOARD_TOUR, CALENDAR_TOUR];
+
 /**
- * Holds the dashboard tour for the signed-in pages: opens the menu so the tour can point
- * into it, remembers once it is finished or closed, and starts it by itself the first time
- * someone lands with `?tour=start`, which is where setting up sends them.
+ * Holds the guided tours for the signed-in pages (the dashboard's and the calendar's):
+ * opens the menu so the dashboard tour can point into it, remembers each once it is
+ * finished or closed, and starts the dashboard tour by itself the first time someone
+ * lands with `?tour=start`, which is where setting up sends them.
  */
 export function DashboardTour({ children }: { children: ReactNode }) {
   const { isMobile, setOpen, setOpenMobile } = useSidebar();
   const end = useMutation(api.tours.end);
 
-  const onStart = useCallback(() => {
-    // The menu folded away hides what the tour points at, so it opens. A phone's menu is a
-    // sheet over the page that would hold the tour's buttons behind it, so it closes and
-    // the cards show in the middle instead.
-    if (isMobile) setOpenMobile(false);
-    else setOpen(true);
-  }, [isMobile, setOpen, setOpenMobile]);
+  const onStart = useCallback(
+    (tourId: string) => {
+      // The menu folded away hides what the dashboard tour points at, so it opens. A
+      // phone's menu is a sheet over the page that would hold the tour's buttons behind
+      // it, so it closes and the cards show in the middle instead.
+      if (isMobile) setOpenMobile(false);
+      else if (tourId === DASHBOARD_TOUR_ID) setOpen(true);
+    },
+    [isMobile, setOpen, setOpenMobile],
+  );
 
   const onEnd = useCallback(
-    (tourId: string, how: "finished" | "closed") => {
-      if (tourId !== DASHBOARD_TOUR_ID) return;
-      void end({ tourId, how }).then(() => {
-        if (how === "finished") toast.success("You can take the tour again from your menu.");
-      });
+    (tourId: string, how: TourEnd) => {
+      if (tourId !== DASHBOARD_TOUR_ID && tourId !== CALENDAR_TOUR_ID) return;
+      void end({ tourId: tourId as typeof DASHBOARD_TOUR_ID | typeof CALENDAR_TOUR_ID, how }).then(
+        () => {
+          if (how === "finished") toast.success(AGAIN[tourId]!);
+        },
+      );
     },
     [end],
   );
 
   return (
-    <TourProvider tours={[DASHBOARD_TOUR]} onStart={onStart} onEnd={onEnd}>
+    <TourProvider tours={TOURS} onStart={onStart} onEnd={onEnd}>
       <StartWhenAsked />
       {children}
     </TourProvider>

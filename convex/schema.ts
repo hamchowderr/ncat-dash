@@ -935,7 +935,7 @@ export default defineSchema({
   // on every team. No row means they have not.
   tourEnds: defineTable({
     userId: v.string(),
-    tourId: v.literal("dashboard"),
+    tourId: v.union(v.literal("dashboard"), v.literal("calendar")),
     how: v.union(v.literal("finished"), v.literal("closed")),
     endedAt: v.number(),
   }).index("by_user_and_tour", ["userId", "tourId"]),

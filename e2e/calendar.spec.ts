@@ -57,6 +57,8 @@ test("posts are planned on the calendar, fill repeating slots, and move by dragg
   );
   await page.goto("/calendar");
   await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
+  // The calendar's own tour starts on a first visit; e2e/calendar-tour.spec.ts walks it.
+  await page.getByRole("dialog").getByRole("button", { name: "Close the tour" }).click();
   const side = page.getByRole("complementary", { name: "Side list" });
   await expect(
     side.getByRole("region", { name: "Project Slots" }).getByText("Full episode"),

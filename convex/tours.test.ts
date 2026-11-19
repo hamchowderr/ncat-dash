@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import { addPerson, addTeam, backend } from "./test.setup";
 
-describe("the guided tour of the dashboard", () => {
+describe("the guided tours", () => {
   test("has not ended for someone new, and has once they finish it", async () => {
     const t = backend();
     const team = await addTeam(t, "Salt House");
@@ -31,6 +31,17 @@ describe("the guided tour of the dashboard", () => {
     const sam = await addPerson(t, "Sam Lee", [team]);
     await maya.as.mutation(api.tours.end, { tourId: "dashboard", how: "finished" });
     expect(await sam.as.query(api.tours.ended, { tourId: "dashboard" })).toBe(false);
+  });
+
+  test("keeps each tour apart: finishing the dashboard's leaves the calendar's to start", async () => {
+    const t = backend();
+    const maya = await addPerson(t, "Maya Ortiz");
+    await maya.as.mutation(api.tours.end, { tourId: "dashboard", how: "finished" });
+    expect(await maya.as.query(api.tours.ended, { tourId: "calendar" })).toBe(false);
+    await maya.as.mutation(api.tours.end, { tourId: "calendar", how: "closed" });
+    expect(await maya.as.query(api.tours.ended, { tourId: "calendar" })).toBe(true);
+    const notes = await t.run((ctx) => ctx.db.query("tourEnds").collect());
+    expect(notes.map((note) => note.tourId).sort()).toEqual(["calendar", "dashboard"]);
   });
 
   test("needs someone signed in", async () => {
