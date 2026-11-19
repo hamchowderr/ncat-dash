@@ -100,11 +100,27 @@ function database(ctx: GenericCtx<DataModel>): ReturnType<typeof authComponent.a
   return (options) => patch(create(options));
 }
 
+/**
+ * The addresses allowed to sign in: the dashboard's own address, plus any in
+ * TRUSTED_ORIGINS (comma-separated, `*` allowed), such as a Vercel preview's
+ * `https://ncat-dash-preview-*-otaku-solutions.vercel.app`. Without it, sign-in from any
+ * other address fails with "Invalid origin".
+ */
+export function trustedOrigins(env: Record<string, string | undefined> = process.env) {
+  const site = (env.SITE_URL ?? "").replace(/\/+$/, "");
+  const extra = (env.TRUSTED_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  return [...new Set([site, ...extra].filter(Boolean))];
+}
+
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
   const branding = { appName: process.env.EMAIL_FROM_NAME?.trim() || DEFAULT_APP_NAME };
   return {
     baseURL: process.env.SITE_URL,
+    trustedOrigins: trustedOrigins(),
     database: database(ctx),
     emailAndPassword: {
       enabled: true,

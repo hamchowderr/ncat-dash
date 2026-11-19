@@ -16,6 +16,10 @@ export const TOOLKIT_PORT = 8767;
 export const FILES = `http://127.0.0.1:${FILES_PORT}`;
 export const CLIPS = ["opening-hello", "why-the-station-matters"];
 /** What the stand-in transcribe says was said in any file. */
+/** What every caption file in the stand-in bucket says, as SRT. */
+export const CAPTIONS =
+  "1\n00:00:01,000 --> 00:00:02,500\nWelcome back to the station.\n\n2\n00:00:03,000 --> 00:00:05,000\nToday we talk about pricing your edits.\n";
+
 export const SEGMENTS = [
   { id: 0, start: 0, end: 2.5, text: " Welcome back to the station.", tokens: [1] },
   { id: 1, start: 2.5, end: 6, text: " Today we talk about pricing your edits.", tokens: [2] },
@@ -106,6 +110,12 @@ createServer((request, response) => {
     }
     return;
   }
+  // Every caption file the bucket is asked for: the same two lines.
+  if (/\.(srt|vtt|ass)(\?|$)/.test(request.url)) {
+    response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end(CAPTIONS);
+    return;
+  }
   if (request.url.endsWith(".jpg")) {
     response.writeHead(200, {
       "Content-Type": "image/jpeg",
@@ -136,6 +146,8 @@ createServer((request, response) => {
   }
 }).listen(FILES_PORT, "127.0.0.1");
 
+let failing = null;
+
 createServer((request, response) => {
   const chunks = [];
   request.on("data", (chunk) => chunks.push(chunk));
@@ -156,7 +168,42 @@ createServer((request, response) => {
       }
       return;
     }
+    // A test can make one endpoint refuse its jobs until it says otherwise:
+    // POST /__stand-in/fail {"path": "/v1/video/thumbnail"}, and {"path": null} to stop.
+    if (request.url === "/__stand-in/fail") {
+      failing = JSON.parse(Buffer.concat(chunks).toString() || "{}").path ?? null;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ failing }));
+      return;
+    }
+    if (failing && request.url.startsWith(failing)) {
+      response.writeHead(400, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({ code: 400, message: "The picture time is past the end of the video." }),
+      );
+      return;
+    }
     response.writeHead(200, { "Content-Type": "application/json" });
+    if (request.url.startsWith("/v1/toolkit/health")) {
+      // What the fork's health route says about a 4-CPU box with a little work on.
+      response.end(
+        JSON.stringify({
+          code: 200,
+          response: {
+            build_number: "214",
+            cpus: 4,
+            cpu_percent: 38.5,
+            memory: { used: 2_900_000_000, limit: 8_000_000_000 },
+            disk: { free: 59_000_000_000, total: 100_000_000_000 },
+            uptime_seconds: 273_600,
+            queue: { shared: true, waiting: 1, workers: 4, busy: 2 },
+            jobs: { queued: 1, running: 2, done: 318 },
+          },
+          message: "success",
+        }),
+      );
+      return;
+    }
     if (request.url.startsWith("/v1/toolkit/authenticate")) {
       response.end(JSON.stringify({ code: 200, response: "Authorized", build_number: "204" }));
       return;

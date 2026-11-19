@@ -79,7 +79,10 @@ describe("the home page", () => {
       "/automations/auto2/runs/run9",
     );
     expect(within(needs).getByText("Asks you")).toBeTruthy();
-    expect(within(needs).getByText(/failed/).textContent).toContain("on episode 2.mp4");
+    expect(within(needs).getByText(/failed on/).textContent).toContain("on episode 2.mp4");
+    expect(
+      within(needs).getByRole("link", { name: "Pick up failed runs" }).getAttribute("href"),
+    ).toBe("/runs?show=failed");
     expect(within(needs).getByText("The toolkit did not answer.")).toBeTruthy();
     expect(
       within(needs).getByRole("link", { name: "See what happened" }).getAttribute("href"),
@@ -124,7 +127,7 @@ describe("the home page", () => {
     const ready = screen.getByRole("region", { name: "Ready-made automations" });
     expect(
       within(ready)
-        .getByRole("link", { name: /See all 45/ })
+        .getByRole("link", { name: /See all 61/ })
         .getAttribute("href"),
     ).toBe("/automations/new");
     fireEvent.click(within(ready).getByText("Podcast master and transcript"));
@@ -164,5 +167,19 @@ describe("the home page", () => {
     renderInApp(<HomeView />);
     expect(screen.getByTestId("connection-status").textContent).toBe("Toolkit not responding");
     expect(screen.getByText("https://toolkit.example")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "See how busy it is" }).getAttribute("href")).toBe(
+      "/toolkit",
+    );
+  });
+
+  test("leaves out the toolkit's load for a team whose toolkit is run for it", () => {
+    answerQuery(api.home.summary, summary());
+    answerQuery(api.toolkitHealth.shown, false);
+    answerQuery(api.toolkitConnections.list, [
+      { ...CONNECTION, status: "failing", lastError: "Connection refused." },
+    ]);
+    renderInApp(<HomeView />);
+    expect(screen.getByText("https://toolkit.example")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "See how busy it is" })).toBeNull();
   });
 });

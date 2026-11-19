@@ -7,6 +7,7 @@ import { approvalView, membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { factsOf } from "./lib/facts";
 import { finishWait } from "./lib/logic";
+import { pickUp as pickUpRun, pickUpCheck, stepsOf } from "./lib/pickUp";
 import { pump } from "./lib/queue";
 import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
@@ -39,6 +40,8 @@ function summary(run: Doc<"runs">) {
     finishedAt: run.finishedAt,
     // How many times steps in the run tried again after failing.
     retries: run.retries ?? 0,
+    // How many times someone picked it up where it stopped after it failed.
+    pickedUp: run.pickedUp ?? 0,
     // For a test of one step: that step's name, as it was when tested.
     testOf: run.test ? testName(run) : null,
   };
@@ -141,6 +144,8 @@ export const get = query({
       outputNames: outputNamesOf(run, steps),
       // How many times a failed step tries again for this team.
       retryLimit: await retriesFor(ctx, run.organizationId),
+      // Whether it can be picked up where it stopped, and from which step, or why not.
+      pickUp: run.status === "failed" ? pickUpCheck(run, steps) : null,
       // The run that started this one, when another run did.
       startedByRun: parent ? linkTo(parent) : null,
       // Runs this one started: by a Run an automation step, or by being followed.
@@ -373,5 +378,118 @@ export const runAgain = mutation({
       : await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
     if (!started.ok) throw new ConvexError({ code: "invalid_input", message: started.message });
     return started.runId;
+  },
+});
+
+// How many runs the team-wide list reads, newest first.
+const TEAM_RUNS = 100;
+// How many failed runs one press picks up at most.
+const PICK_UP_AT_ONCE = 25;
+
+/**
+ * The team's runs across every automation, newest first, for the Runs page: all of
+ * them, or only those that failed. Tests of one step are left out. A failed run says
+ * which step failed and whether it can be picked up where it stopped.
+ */
+export const listForTeam = query({
+  args: {
+    organizationId: v.string(),
+    status: v.union(v.literal("all"), v.literal("failed")),
+  },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const runs =
+      args.status === "failed"
+        ? await ctx.db
+            .query("runs")
+            .withIndex("by_organization_and_status", (q) =>
+              q.eq("organizationId", args.organizationId).eq("status", "failed"),
+            )
+            .order("desc")
+            .take(TEAM_RUNS)
+        : await ctx.db
+            .query("runs")
+            .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+            .order("desc")
+            .take(TEAM_RUNS);
+    const failedCount = (
+      await ctx.db
+        .query("runs")
+        .withIndex("by_organization_and_status", (q) =>
+          q.eq("organizationId", args.organizationId).eq("status", "failed"),
+        )
+        .take(TEAM_RUNS)
+    ).filter((run) => run.test === undefined).length;
+    const rows = await Promise.all(
+      runs
+        .filter((run) => run.test === undefined)
+        .map(async (run) => {
+          const check =
+            run.status === "failed" ? pickUpCheck(run, await stepsOf(ctx, run._id)) : null;
+          return {
+            ...summary(run),
+            startedWith: startingFileName(run.trigger),
+            failedStep: check?.ok ? check.stepName : null,
+            canPickUp: check?.ok ?? false,
+            whyNot: check && !check.ok ? check.reason : null,
+          };
+        }),
+    );
+    return { runs: rows, failedCount };
+  },
+});
+
+/**
+ * Picks a failed run up where it stopped: what already worked keeps its files and the
+ * run carries on from the step that failed, with the automation's settings as they are
+ * now when its steps are still the same.
+ */
+export const pickUp = mutation({
+  args: { runId: v.id("runs") },
+  returns: v.object({ withCurrentSettings: v.boolean() }),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run) throw new ConvexError({ code: "not_found", message: "This run no longer exists." });
+    await requireMember(ctx, run.organizationId);
+    const result = await pickUpRun(ctx, run);
+    if (!result.ok) throw new ConvexError({ code: "conflict", message: result.reason });
+    return { withCurrentSettings: result.withCurrentSettings };
+  },
+});
+
+/**
+ * Picks up several failed runs at once, or every one that can be when no list is
+ * given. Runs that cannot be picked up are passed over and counted.
+ */
+export const pickUpMany = mutation({
+  args: { organizationId: v.string(), runIds: v.optional(v.array(v.id("runs"))) },
+  returns: v.object({ pickedUp: v.number(), passedOver: v.number(), more: v.boolean() }),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const candidates = args.runIds
+      ? (await Promise.all(args.runIds.map((runId) => ctx.db.get(runId)))).filter(
+          (run): run is Doc<"runs"> => run !== null && run.organizationId === args.organizationId,
+        )
+      : await ctx.db
+          .query("runs")
+          .withIndex("by_organization_and_status", (q) =>
+            q.eq("organizationId", args.organizationId).eq("status", "failed"),
+          )
+          .order("desc")
+          .take(TEAM_RUNS)
+          .then((runs) => runs.filter((run) => run.test === undefined));
+    let pickedUp = 0;
+    let passedOver = 0;
+    let more = false;
+    for (const run of candidates) {
+      if (pickedUp >= PICK_UP_AT_ONCE) {
+        more = true;
+        break;
+      }
+      const result = await pickUpRun(ctx, run);
+      if (result.ok) pickedUp++;
+      else passedOver++;
+    }
+    return { pickedUp, passedOver, more };
   },
 });

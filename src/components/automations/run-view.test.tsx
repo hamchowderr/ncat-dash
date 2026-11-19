@@ -1,9 +1,9 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { fireEvent, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
-import { answerQuery, mutationOf } from "@/test/convex";
+import { answerQuery, mutationOf, toastSuccess } from "@/test/convex";
 import { renderInApp } from "@/test/render";
 
 import type { ApprovalView } from "./approval-status";
@@ -113,5 +113,38 @@ describe("the run's canvas", () => {
     expect(view.closest("[data-canvas-bar]")).not.toBeNull();
     expect(view.closest(".react-flow")).toBeNull();
     expect(document.querySelector(".react-flow__controls")).toBeNull();
+  });
+});
+
+describe("a failed run on the run page", () => {
+  function showFailed(pickUp: Record<string, unknown>) {
+    answerQuery(api.runs.get, {
+      ...runWith({ status: "failed", error: "FFmpeg gave up." }),
+      status: "failed",
+      error: "FFmpeg gave up.",
+      finishedAt: 1_700_000_060_000,
+      pickUp,
+    });
+    answerQuery(api.reviews.forStep, null);
+    renderInApp(
+      <RunView automationId={"auto1" as Id<"automations">} runId={"run1" as Id<"runs">} />,
+    );
+  }
+
+  test("picks up from the step that failed, beside Run again", async () => {
+    showFailed({ ok: true, stepId: "step1", stepName: "Video thumbnail" });
+    mutationOf(api.runs.pickUp).mockResolvedValue({ withCurrentSettings: true });
+    fireEvent.click(screen.getByRole("button", { name: "Pick up from Video thumbnail" }));
+    expect(screen.getByRole("button", { name: "Run again" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mutationOf(api.runs.pickUp)).toHaveBeenCalledWith({ runId: "run1" }),
+    );
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Picked up where it stopped."));
+  });
+
+  test("offers only Run again when it cannot be picked up", () => {
+    showFailed({ ok: false, reason: "It was rejected at an approval step." });
+    expect(screen.queryByRole("button", { name: /Pick up/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run again" })).toBeInTheDocument();
   });
 });

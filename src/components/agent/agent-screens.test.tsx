@@ -62,8 +62,10 @@ describe("the card that asks first", () => {
       "make_folder",
       "move_files",
       "rename_file",
+      "save_team_step",
       "switch_automation",
       "try_automation",
+      "try_team_step",
     ]);
   });
 

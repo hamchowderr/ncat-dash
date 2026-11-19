@@ -2,12 +2,14 @@ import {
   AGENT_MODELS,
   agentSettingsProblem,
   agentSettingsText,
-  BRAND_KEYS,
+  BUILT_IN_BY_SHAPE,
+  BUILT_IN_STYLES,
+  type CaptionSetup,
+  captionSetupText,
+  tidyCaptionSetup,
   MAX_HOUSE_RULES_CHARS,
   NO_AGENT_SETTINGS,
-  brandProblem,
   MAX_STEP_RETRIES,
-  readUploadRef,
   retryLimit,
 } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
@@ -20,10 +22,16 @@ import {
   parallelLimit,
   pump,
 } from "./lib/queue";
+import { captionSetupOf } from "./lib/captions";
+import { checkedBrand, checkedMusic } from "./lib/brand";
 import { editorsOf } from "./lib/exports";
-import { agentSettingsValidator, brandValidator, editorValidator, musicValidator } from "./schema";
-
-const MAX_TRACKS = 100;
+import {
+  agentSettingsValidator,
+  brandValidator,
+  captionSetupValidator,
+  editorValidator,
+  musicValidator,
+} from "./schema";
 
 export const get = query({
   args: { organizationId: v.string() },
@@ -40,6 +48,9 @@ export const get = query({
       ...(await brandAndMusicOf(ctx, args.organizationId)),
       editors: await editorsOf(ctx, args.organizationId),
       agent: settings?.agent ?? NO_AGENT_SETTINGS,
+      captions: await captionSetupOf(ctx, args.organizationId),
+      builtInCaptionStyles: BUILT_IN_STYLES,
+      builtInByShape: BUILT_IN_BY_SHAPE,
       agentModels: AGENT_MODELS.map(({ id, name, note }) => ({ id, name, note })),
       mostHouseRules: MAX_HOUSE_RULES_CHARS,
       mostAllowed: MAX_PARALLEL_JOBS,
@@ -138,49 +149,14 @@ export const setBrand = mutation({
   args: { organizationId: v.string(), brand: brandValidator, music: v.optional(musicValidator) },
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId, MANAGER_ROLES);
-    const invalid = (message: string) => new ConvexError({ code: "invalid_input", message });
-    const checkFile = async (key: "logo" | "music", value: string) => {
-      const problem = brandProblem(key, value);
-      if (problem) throw invalid(problem);
-      const uploadId = readUploadRef(value);
-      if (!uploadId) return;
-      const id = ctx.db.normalizeId("uploads", uploadId);
-      const upload = id ? await ctx.db.get(id) : null;
-      if (!upload || upload.organizationId !== args.organizationId || upload.status !== "ready") {
-        throw new ConvexError({ code: "not_found", message: "That upload is no longer there." });
-      }
-    };
-    const brand: Record<string, string> = {};
-    for (const key of BRAND_KEYS) {
-      // Music is the library below, not one value.
-      if (key === "music") continue;
-      const value = args.brand[key]?.trim();
-      if (!value) continue;
-      if (key === "logo") await checkFile(key, value);
-      else {
-        const problem = brandProblem(key, value);
-        if (problem) throw invalid(problem);
-      }
-      brand[key] = value;
-    }
+    const brand = await checkedBrand(ctx, args.organizationId, args.brand);
     const existing = await ctx.db
       .query("teamSettings")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .first();
-    let music = existing?.music;
-    if (args.music) {
-      if (args.music.length > MAX_TRACKS) throw invalid(`Keep up to ${MAX_TRACKS} tracks.`);
-      music = [];
-      for (const track of args.music) {
-        const name = track.name.trim();
-        if (!name || name.length > 60) throw invalid("Give each track a name of up to 60 letters.");
-        if (music.some((other) => other.name.toLowerCase() === name.toLowerCase())) {
-          throw invalid(`Two tracks are called "${name}". Give each its own name.`);
-        }
-        await checkFile("music", track.file.trim());
-        music.push({ name, file: track.file.trim() });
-      }
-    }
+    const music = args.music
+      ? await checkedMusic(ctx, args.organizationId, args.music)
+      : existing?.music;
     if (existing) await ctx.db.patch(existing._id, { brand, ...(music ? { music } : {}) });
     else {
       await ctx.db.insert("teamSettings", {
@@ -188,6 +164,32 @@ export const setBrand = mutation({
         maxParallelJobs: DEFAULT_PARALLEL_JOBS,
         brand,
         ...(music ? { music } : {}),
+      });
+    }
+  },
+});
+
+/**
+ * Sets the team's captions: words the transcript gets wrong and how to write them, saved
+ * caption styles, and the style each video shape gets. Owners and admins only.
+ */
+export const setCaptions = mutation({
+  args: { organizationId: v.string(), captions: captionSetupValidator },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId, MANAGER_ROLES);
+    const tidied = tidyCaptionSetup(args.captions as CaptionSetup);
+    if (!tidied.ok) throw new ConvexError({ code: "invalid_input", message: tidied.message });
+    const captions = tidied.setup;
+    const existing = await ctx.db
+      .query("teamSettings")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, { captions });
+    else {
+      await ctx.db.insert("teamSettings", {
+        organizationId: args.organizationId,
+        maxParallelJobs: DEFAULT_PARALLEL_JOBS,
+        captions,
       });
     }
   },
@@ -238,6 +240,11 @@ export const agentBrief = query({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .first();
     const agent = settings?.agent ?? NO_AGENT_SETTINGS;
-    return { model: agent.model, text: agentSettingsText(agent) ?? null };
+    // What caption steps do by themselves, so the agent leaves their look blank.
+    const setup = await captionSetupOf(ctx, args.organizationId);
+    const custom = setup.fixes.length + setup.styles.length + Object.keys(setup.byShape).length;
+    const captions = custom > 0 ? captionSetupText(setup) : null;
+    const text = [agentSettingsText(agent), captions].filter(Boolean).join("\n\n");
+    return { model: agent.model, text: text || null };
   },
 });

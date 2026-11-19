@@ -22,7 +22,11 @@ export const VIEWS = [
   { id: "all", label: "All", kinds: null },
   { id: "needs-you", label: "Needs you", kinds: ["approval_waiting"] },
   { id: "failed", label: "Failed runs", kinds: ["run_failed", "approval_timed_out"] },
-  { id: "mentions", label: "Mentions and feedback", kinds: ["mention", "client_feedback"] },
+  {
+    id: "mentions",
+    label: "Mentions and feedback",
+    kinds: ["mention", "client_feedback", "ready_for_review"],
+  },
 ] as const satisfies readonly { id: string; label: string; kinds: readonly Kind[] | null }[];
 
 type ViewId = (typeof VIEWS)[number]["id"];

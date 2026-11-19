@@ -5,7 +5,7 @@ import path from "node:path";
 import { getStep } from "@ncat-dash/step-catalog";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  CLIP_CAPTION_SETTINGS,
+  BUILT_IN_STYLES,
   clipRequest,
   durationOf,
   type Frame,
@@ -164,13 +164,15 @@ describe("clipRequest", () => {
     expect(() => compose.input.strict().parse(request)).not.toThrow();
   });
 
-  it("uses caption settings the toolkit accepts", () => {
-    expect(() =>
-      caption.input.strict().parse({
-        video_url: "https://files.example.com/clip.mp4",
-        settings: CLIP_CAPTION_SETTINGS,
-      }),
-    ).not.toThrow();
+  it("has built-in caption looks the toolkit accepts", () => {
+    for (const style of BUILT_IN_STYLES) {
+      expect(() =>
+        caption.input.strict().parse({
+          video_url: "https://files.example.com/clip.mp4",
+          settings: style.look,
+        }),
+      ).not.toThrow();
+    }
   });
 });
 

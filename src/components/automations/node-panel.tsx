@@ -1,8 +1,17 @@
 "use client";
 
-import type { AutomationNode, Brand } from "@ncat-dash/automation-core";
+import type {
+  AutomationNode,
+  Brand,
+  CaptionSetup,
+  CaptionShape,
+  CaptionStyle,
+} from "@ncat-dash/automation-core";
 import {
   BRAND_WORDS,
+  CAPTION_SHAPES,
+  CAPTION_STYLE_SETTING,
+  isCaptionStep,
   getPlatform,
   KIND_WORDS,
   nodeTypeOf,
@@ -28,6 +37,15 @@ import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { nodeTitle } from "@/lib/automations";
 import { fieldLabel } from "@/lib/catalog";
 
@@ -37,6 +55,7 @@ import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
 import { PlatformPicker } from "./platform-picker";
+import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
 type NodeContent = Omit<AutomationNode, "position">;
 
@@ -72,6 +91,7 @@ export function NodePanel({
   waitsFor,
   automationId,
   feedsFollow,
+  captions,
 }: {
   node: NodeContent;
   /** The steps that run before this one, nearest first. Their files can be used here. */
@@ -98,10 +118,15 @@ export function NodePanel({
   automationId?: string;
   /** A Clips step whose clips go straight to Follow the speaker, so they keep their shape. */
   feedsFollow?: boolean;
+  /** The team's captions from Settings, for a caption step. */
+  captions?: TeamCaptions;
 }) {
+  useTeamStepsVersion();
   const step = node.kind === "step" ? getStep(node.stepId ?? "") : undefined;
   const nodeType = nodeTypeOf(node);
-  const fields = useStepFields(node.stepId ?? "");
+  const allFields = useStepFields(node.stepId ?? "");
+  // Settings taken from the file that started the run are never filled in by hand.
+  const fields = allFields?.filter(({ name }) => !nodeType?.fromStart?.[name]);
   const [values, setValues] = useState(() => fromInput(node.input));
   const [problem, setProblem] = useState<string | null>(null);
   const look = nodeLook(node);
@@ -145,7 +170,23 @@ export function NodePanel({
   const rest = (fields ?? []).filter((field) => !needed.includes(field));
 
   // What the step takes care of by itself, one line each.
-  const handled: { label: string; text: string; settings?: boolean; picture?: string }[] = [];
+  const handled: {
+    label: string;
+    text: string;
+    settings?: boolean;
+    href?: string;
+    picture?: string;
+  }[] = [];
+  const captionStep = node.kind === "step" && isCaptionStep(node.stepId) && captions;
+  if (captionStep && captions.setup.fixes.length > 0) {
+    const count = captions.setup.fixes.length;
+    handled.push({
+      label: "Word fixes",
+      text: `${count} ${count === 1 ? "word" : "words"} your team fixes in every caption`,
+      settings: true,
+      href: "/settings/captions",
+    });
+  }
   if (automaticField && isBlank(node.input[automaticField])) {
     handled.push({
       label: fieldLabel(automaticField).replace(/ URLs?$/, ""),
@@ -165,6 +206,11 @@ export function NodePanel({
       label: "Video",
       text: "the nearest video before this step, transcribed with each word's timing",
     });
+  }
+  for (const name of Object.keys(nodeType?.fromStart ?? {})) {
+    if (isBlank(node.input[name])) {
+      handled.push({ label: fieldLabel(name), text: "the name of the file that started the run" });
+    }
   }
   const unset: string[] = [];
   for (const [name, { word, set }] of Object.entries(brandFields)) {
@@ -189,7 +235,13 @@ export function NodePanel({
     setValues(next);
     const parsed = toInput(fields, next);
     setProblem(parsed.ok ? null : parsed.message);
-    if (parsed.ok) onChange({ input: parsed.input });
+    // The caption style is not one of the toolkit's fields, so it is carried over by hand.
+    const picked = node.input[CAPTION_STYLE_SETTING];
+    if (parsed.ok) {
+      onChange({
+        input: { ...parsed.input, ...(picked ? { [CAPTION_STYLE_SETTING]: picked } : {}) },
+      });
+    }
   };
   const automatic = { field: automaticField, sources, filled, brand: brandFields };
 
@@ -311,6 +363,17 @@ export function NodePanel({
         <ChaptersMain node={node} onChange={(input) => onChange({ input })} />
       )}
 
+      {captionStep && (
+        <CaptionStylePicker
+          node={node}
+          captions={captions}
+          onChange={(input) => {
+            setValues(fromInput(input));
+            onChange({ input });
+          }}
+        />
+      )}
+
       {node.kind === "approval" && <TeamApprovalSettings node={node} onChange={onChange} />}
 
       {(node.kind === "if" || node.kind === "wait") && (
@@ -377,7 +440,10 @@ export function NodePanel({
                     <>
                       {" "}
                       (
-                      <Link href="/settings/brand" className="underline underline-offset-2">
+                      <Link
+                        href={item.href ?? "/settings/brand"}
+                        className="underline underline-offset-2"
+                      >
                         Settings
                       </Link>
                       )
@@ -454,5 +520,113 @@ export function NodePanel({
         </section>
       )}
     </div>
+  );
+}
+
+export type TeamCaptions = {
+  setup: CaptionSetup;
+  builtIn: CaptionStyle[];
+  builtInByShape: Record<CaptionShape, string>;
+};
+
+const MATCH_SHAPE = "__shape__";
+
+function without(input: Record<string, unknown>, key: string): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([name]) => name !== key));
+}
+
+/** Which of the team's caption styles a caption step uses. */
+function CaptionStylePicker({
+  node,
+  captions,
+  onChange,
+}: {
+  node: NodeContent;
+  captions: TeamCaptions;
+  onChange: (input: Record<string, unknown>) => void;
+}) {
+  const { setup, builtIn, builtInByShape } = captions;
+  const all = [...setup.styles, ...builtIn];
+  const pickedName = node.input[CAPTION_STYLE_SETTING];
+  const picked =
+    typeof pickedName === "string"
+      ? all.find((style) => style.name.toLowerCase() === pickedName.toLowerCase())
+      : undefined;
+  const own = node.input.settings;
+  const hasOwnLook =
+    typeof own === "object" && own !== null && Object.values(own).some((value) => !isBlank(value));
+  const forShape = (shape: CaptionShape) => {
+    const name = setup.byShape[shape];
+    return name && all.some((style) => style.name === name) ? name : builtInByShape[shape];
+  };
+  const id = `node-${node.id}-caption-style`;
+
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>Caption style</FieldLabel>
+      <Select
+        value={picked?.name ?? MATCH_SHAPE}
+        onValueChange={(value) => {
+          const rest = without(node.input, CAPTION_STYLE_SETTING);
+          onChange(value === MATCH_SHAPE ? rest : { ...rest, [CAPTION_STYLE_SETTING]: value });
+        }}
+      >
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={MATCH_SHAPE}>Match the video&apos;s shape</SelectItem>
+          {setup.styles.length > 0 && (
+            <SelectGroup>
+              <SelectLabel>Yours</SelectLabel>
+              {setup.styles.map((style) => (
+                <SelectItem key={style.name} value={style.name}>
+                  {style.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          )}
+          <SelectGroup>
+            <SelectLabel>Built in</SelectLabel>
+            {builtIn.map((style) => (
+              <SelectItem key={style.name} value={style.name}>
+                {style.name}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      {hasOwnLook && !picked ? (
+        <div className="text-muted-foreground flex flex-col items-start gap-1.5 text-xs text-pretty">
+          <p>
+            This step has its own look under More options, so your team&apos;s caption styles are
+            not used.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              onChange(without(node.input, "settings"));
+            }}
+          >
+            Use the team&apos;s styles
+          </Button>
+        </div>
+      ) : (
+        <p className="text-muted-foreground text-xs text-pretty">
+          {picked
+            ? "Used on every video, whatever its shape."
+            : CAPTION_SHAPES.map(
+                ({ shape, label }) => `${label.replace(" videos", "")}: ${forShape(shape)}`,
+              ).join(" · ")}{" "}
+          (
+          <Link href="/settings/captions" className="underline underline-offset-2">
+            Settings
+          </Link>
+          )
+        </p>
+      )}
+    </Field>
   );
 }

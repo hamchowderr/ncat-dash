@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
-import { SETTINGS_PAGES } from "@/components/settings/settings-pages";
+import {
+  SETTINGS_PAGES,
+  settingsPage,
+  settingsPageFor,
+} from "@/components/settings/settings-pages";
 import { SettingsSection } from "@/components/settings/settings-section";
 
 export const instant = false;
@@ -16,13 +20,30 @@ export async function generateMetadata({
   params: Promise<{ section: string }>;
 }): Promise<Metadata> {
   const { section } = await params;
-  const page = SETTINGS_PAGES.find((p) => p.slug === section);
+  const page = settingsPage(section);
   return { title: page ? `${page.title} · Settings` : "Settings" };
 }
 
-export default async function Page({ params }: { params: Promise<{ section: string }> }) {
+/** Addresses settings used to have. `/settings/chat` held Slack and Discord together. */
+const OLD = new Set(["chat", "members", "jobs", "failures"]);
+
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ section: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { section } = await params;
-  const page = SETTINGS_PAGES.find((p) => p.slug === section);
-  if (!page) notFound();
-  return <SettingsSection slug={page.slug} />;
+  const page = settingsPage(section);
+  if (page) return <SettingsSection slug={page.slug} />;
+  if (!OLD.has(section)) notFound();
+  const query = await searchParams;
+  const kept = new URLSearchParams(
+    Object.entries(query).flatMap(([key, value]) =>
+      typeof value === "string" ? [[key, value]] : [],
+    ),
+  ).toString();
+  const to = section === "chat" && query.discord ? "discord" : settingsPageFor(section);
+  redirect(`/settings/${to}${kept ? `?${kept}` : ""}`);
 }

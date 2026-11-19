@@ -51,6 +51,7 @@ import { membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { brandAndMusicOf, brandOf } from "./lib/queue";
 import { startRun } from "./lib/runner";
+import { withTeamSteps } from "./lib/teamSteps";
 import { deleteVersions, recordVersion } from "./lib/versions";
 import { deleteNotes, notesOf } from "./notes";
 import { bucketOf, presign, storageConnection } from "./lib/bucket";
@@ -201,6 +202,8 @@ export const get = query({
       // The version being worked on: the draft when there is one, else the live version.
       ...workingCopy(automation),
       enabled: automation.enabled,
+      // The client it works for; null when it is for the team itself.
+      clientId: automation.clientId ?? null,
       // The version triggers run, when the canvas is showing a draft of something else.
       // Null when what is above is the live version.
       live: draft ? versionOf(automation) : null,
@@ -356,12 +359,13 @@ async function problemOf(
   version: Version,
 ): Promise<string | null> {
   const { organizationId } = automation;
+  await withTeamSteps(ctx, organizationId);
   return (
     automationProblem(
       version.trigger,
       version.nodes,
       version.edges,
-      await brandOf(ctx, organizationId),
+      await brandOf(ctx, organizationId, automation.clientId),
     ) ??
     (await storageProblem(ctx, organizationId, version.trigger)) ??
     (await linkProblem(ctx, automation, version))
@@ -532,7 +536,11 @@ export const describe = query({
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
     const draft = workingCopy(automation) as AutomationDraft;
-    const { brand, music } = await brandAndMusicOf(ctx, automation.organizationId);
+    const { brand, music } = await brandAndMusicOf(
+      ctx,
+      automation.organizationId,
+      automation.clientId,
+    );
     return {
       outline: outline(draft, brand),
       problems: draftProblems(draft, brand),
@@ -575,7 +583,7 @@ export const change = mutation({
       throw caught;
     }
     const { enabled, draft } = await storeChanges(ctx, automation, next, userId);
-    const brand = await brandOf(ctx, automation.organizationId);
+    const brand = await brandOf(ctx, automation.organizationId, automation.clientId);
     const links = await linkProblem(ctx, automation, next);
     return {
       outline: outline(next, brand),
@@ -599,7 +607,7 @@ export const setEnabled = mutation({
           automation.trigger,
           automation.nodes,
           automation.edges,
-          await brandOf(ctx, automation.organizationId),
+          await brandOf(ctx, automation.organizationId, automation.clientId),
         ) ??
         (await storageProblem(ctx, automation.organizationId, automation.trigger)) ??
         (await linkProblem(ctx, automation, automation));
@@ -938,11 +946,13 @@ function withoutReservedKeys<T>(value: T): T {
 }
 
 export const nodeTypes = query({
-  args: { type: v.optional(v.string()) },
+  // With a team, its own steps (teamSteps.ts) are listed too.
+  args: { type: v.optional(v.string()), organizationId: v.optional(v.string()) },
   returns: v.object({ index: v.optional(v.string()), type: v.optional(v.any()) }),
   handler: async (ctx, args) => {
     const user = await authComponent.safeGetAuthUser(ctx);
     if (!user) fail("unauthenticated", "Sign in first.");
+    if (args.organizationId) await requireMember(ctx, args.organizationId);
     if (!args.type) return { index: nodeTypeIndex() };
     const found = getNodeType(args.type);
     if (!found) fail("not_found", `There is no step type called ${args.type}.`);

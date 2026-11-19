@@ -1,8 +1,9 @@
-import type { Brand } from "@ncat-dash/automation-core";
-import { getStep, userInputSchema } from "@ncat-dash/step-catalog";
+import { type Brand, unusableShareLink, withDownloadLinks } from "@ncat-dash/automation-core";
+import { getStep, isTeamStepId, userInputSchema } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { withTeamSteps } from "./teamSteps";
 
 export const DEFAULT_PARALLEL_JOBS = 3;
 export const MAX_PARALLEL_JOBS = 20;
@@ -26,24 +27,41 @@ export type MusicTrack = { name: string; file: string };
 /**
  * The team's logo, colour and font from its settings, and its music library. The first
  * track is the one a step uses when it does not pick another, so it is also `brand.music`.
+ * For an automation that is for a client, what the client set comes first: its logo,
+ * colour and font each fill in before the team's, and its music, when it has any,
+ * replaces the team's library.
  */
 export async function brandAndMusicOf(
   ctx: QueryCtx,
   organizationId: string,
+  clientId?: Id<"clients"> | null,
 ): Promise<{ brand: Brand; music: MusicTrack[] }> {
   const settings = await ctx.db
     .query("teamSettings")
     .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
     .first();
-  const { music: single, ...rest } = settings?.brand ?? {};
+  const { music: single, ...team } = settings?.brand ?? {};
   // Before the library there was one track, kept on the brand itself.
-  const music = settings?.music ?? (single ? [{ name: "Background music", file: single }] : []);
+  let music = settings?.music ?? (single ? [{ name: "Background music", file: single }] : []);
+  let rest: Brand = team;
+  const client = clientId ? await ctx.db.get(clientId) : null;
+  if (client && client.organizationId === organizationId) {
+    const own = Object.entries(client.brand ?? {}).filter(
+      ([key, value]) => key !== "music" && value,
+    );
+    rest = { ...team, ...Object.fromEntries(own) };
+    if (client.music && client.music.length > 0) music = client.music;
+  }
   return { brand: music[0] ? { ...rest, music: music[0].file } : rest, music };
 }
 
-/** The team's logo, colour, font and first music track. Empty when none are set. */
-export async function brandOf(ctx: QueryCtx, organizationId: string): Promise<Brand> {
-  return (await brandAndMusicOf(ctx, organizationId)).brand;
+/** The logo, colour, font and first music track steps use. Empty when none are set. */
+export async function brandOf(
+  ctx: QueryCtx,
+  organizationId: string,
+  clientId?: Id<"clients"> | null,
+): Promise<Brand> {
+  return (await brandAndMusicOf(ctx, organizationId, clientId)).brand;
 }
 
 type Enqueued =
@@ -64,10 +82,34 @@ export async function enqueueJob(
     runStepId?: Id<"runSteps">;
   },
 ): Promise<Enqueued> {
-  const step = getStep(args.stepId);
-  if (!step) return { ok: false, code: "not_found", message: "Unknown step." };
+  await withTeamSteps(ctx, args.organizationId);
+  const found = getStep(args.stepId);
+  if (!found) return { ok: false, code: "not_found", message: "Unknown step." };
+  // A team step is sent as the FFmpeg compose request it fills in, so the job needs
+  // nothing of the team step once queued, even if the step is changed or removed later.
+  // A Drive or Dropbox share link opens a preview page, so the toolkit is handed the
+  // address that downloads the file instead; a folder link cannot work at all.
+  const unusable = unusableShareLink(args.input);
+  if (unusable) return { ok: false, code: "invalid_input", message: unusable.problem };
+  const step = isTeamStepId(found.id) ? null : found;
+  if (!step) {
+    const parsedBlanks = userInputSchema(found).safeParse(withDownloadLinks(args.input));
+    if (!parsedBlanks.success) {
+      const issue = parsedBlanks.error.issues[0];
+      return {
+        ok: false,
+        code: "invalid_input",
+        message: `${issue.path.join(".") || "Input"}: ${issue.message}`,
+      };
+    }
+    return await enqueueJob(ctx, {
+      ...args,
+      stepId: "ffmpeg-compose",
+      input: found.toRequest!(parsedBlanks.data, {}),
+    });
+  }
 
-  const parsed = userInputSchema(step).safeParse(args.input);
+  const parsed = userInputSchema(step).safeParse(withDownloadLinks(args.input));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return {

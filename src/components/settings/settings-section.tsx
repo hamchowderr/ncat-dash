@@ -4,22 +4,26 @@ import type { SettingsSlug } from "./settings-pages";
 import {
   AgentSettings,
   BrandSettings,
-  ChatSettings,
+  CaptionsSettings,
+  DiscordSettings,
   EditorsSettings,
   EmailSettings,
   NotificationsSettings,
   RunsSettings,
+  SlackSettings,
   TeamSettings,
 } from "./settings-view";
 
 const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   brand: BrandSettings,
+  captions: CaptionsSettings,
   editors: EditorsSettings,
   agent: AgentSettings,
   runs: RunsSettings,
   notifications: NotificationsSettings,
   email: EmailSettings,
-  chat: ChatSettings,
+  slack: SlackSettings,
+  discord: DiscordSettings,
   team: TeamSettings,
 };
 

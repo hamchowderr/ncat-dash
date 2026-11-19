@@ -1,7 +1,15 @@
 import { z } from "zod";
 
 export type StepCategory =
-  "video" | "audio" | "media" | "image" | "recipe" | "ffmpeg" | "code" | "storage";
+    | "video"
+  | "audio"
+  | "media"
+  | "image"
+  | "recipe"
+  | "team"
+  | "ffmpeg"
+  | "code"
+  | "storage";
 
 /**
  * What a finished step hands to the next one.
@@ -58,9 +66,46 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    * Settings filled from the team's brand (its logo, colour, font or music in Settings)
    * when they are left empty on the step.
    */
-  brandInputs?: Record<string, "logo" | "color" | "font" | "music">;
+  brandInputs?: Record<string, "logo" | "color" | "font" | "music" | "card" | "intro" | "outro">;
+  /**
+   * Settings filled from the file that started the run when they are left empty, such as
+   * its name for a title. The name, then what is taken: only "file_name" today.
+   */
+  startInputs?: Record<string, "file_name">;
+  /**
+   * File settings whose length, picture size and sound are read from the toolkit just
+   * before the request is built, so the request can fit them exactly. `toRequest` gets
+   * what was read, by setting name.
+   */
+  readsFirst?: string[];
   /** Builds the toolkit request from the filled-in blanks. Only recipes have one. */
-  toRequest?: (input: z.output<TInput>) => Record<string, unknown>;
+  toRequest?: (input: z.output<TInput>, facts: FileFacts) => Record<string, unknown>;
+}
+
+/** What was read about a file before the request was built. Missing when it could not be read. */
+export interface MediaFacts {
+  /** Length in seconds. */
+  duration?: number;
+  width?: number;
+  height?: number;
+  /** Frames per second. */
+  fps?: number;
+  hasVideo?: boolean;
+  hasAudio?: boolean;
+}
+
+/** The facts read for each setting named in `readsFirst`. */
+export type FileFacts = Record<string, MediaFacts | undefined>;
+
+/**
+ * A request that cannot be built from what was set or read, such as an outro when the team
+ * has none. The message is shown to the person as it is, and trying again will not help.
+ */
+export class StepSetupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StepSetupError";
+  }
 }
 
 export function defineStep<TInput extends z.ZodObject>(

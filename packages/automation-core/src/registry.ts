@@ -4,10 +4,11 @@
  * builds its step list from this and the agent reads the same list, so a node added here
  * shows up for both.
  */
-import { allSteps, getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
+import { allSteps, currentTeamSteps, getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
 import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
+import { CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
 import { FINISH_CHOICES } from "./chain";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
@@ -63,6 +64,11 @@ export interface NodeType {
   /** Settings filled from the team's brand in Settings when left empty. */
   brand?: Record<string, BrandKey>;
   /**
+   * Settings filled from the file that started the run when left empty, such as its name.
+   * Nobody fills these in; they are not shown as settings.
+   */
+  fromStart?: Record<string, "file_name">;
+  /**
    * Settings only the person can decide, such as which platform clips are for. The agent
    * asks for these before building rather than picking them itself.
    */
@@ -83,6 +89,7 @@ export const GROUP_LABELS: Record<NodeGroup, string> = {
   media: "Media",
   image: "Image",
   recipe: "Recipes",
+  team: "Your team's steps",
   ffmpeg: "FFmpeg",
   code: "Code",
   storage: "Storage",
@@ -99,6 +106,7 @@ export const GROUP_ORDER: NodeGroup[] = [
   "media",
   "image",
   "recipe",
+  "team",
   "ffmpeg",
   "code",
   "storage",
@@ -539,19 +547,39 @@ function gives(step: StepDefinition): Carries {
   return step.output === "json" ? "data" : step.output;
 }
 
+/** A caption step also takes the name of one of the team's caption styles. */
+function stepSettings(step: StepDefinition): JsonSchema {
+  const settings = userInputJsonSchema(step) as JsonSchema;
+  if (!isCaptionStep(step.id)) return settings;
+  return {
+    ...settings,
+    properties: {
+      ...settings.properties,
+      [CAPTION_STYLE_SETTING]: {
+        type: "string",
+        description:
+          "The name of a caption style from Settings. Leave it and settings blank to use the team's style for the video's shape.",
+      },
+    },
+  };
+}
+
 function stepType(step: StepDefinition): NodeType {
   return {
     type: `step:${step.id}`,
     role: "action",
     group: step.category,
     title: step.title,
-    description: step.description,
+    description: isCaptionStep(step.id)
+      ? `${step.description} Styles itself from the team's caption styles in Settings (one per video shape) and fixes the team's misheard words.`
+      : step.description,
     takes: step.listInput ? "files" : step.primaryInput ? "file" : "nothing",
     gives: gives(step),
-    settings: userInputJsonSchema(step) as JsonSchema,
+    settings: stepSettings(step),
     automatic: step.primaryInput ?? step.listInput?.field ?? null,
     ...(step.values ? { makes: Object.keys(step.values) } : {}),
     ...(step.brandInputs ? { brand: step.brandInputs } : {}),
+    ...(step.startInputs ? { fromStart: step.startInputs } : {}),
     ...(step.valueInputs
       ? {
           fills: Object.fromEntries(
@@ -578,8 +606,25 @@ export const NODE_TYPES: NodeType[] = [
 
 const byType = new Map(NODE_TYPES.map((nodeType) => [nodeType.type, nodeType]));
 
+/** The team's own steps (step-catalog's `setTeamSteps`), as node types. */
+function teamNodeTypes(): NodeType[] {
+  return currentTeamSteps().map(stepType);
+}
+
+/** Every node type, with the team's own steps after the recipes. */
+export function allNodeTypes(): NodeType[] {
+  const team = teamNodeTypes();
+  if (team.length === 0) return NODE_TYPES;
+  return [...NODE_TYPES, ...team].sort(
+    (a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group),
+  );
+}
+
 export function getNodeType(type: string): NodeType | undefined {
-  return byType.get(type);
+  const found = byType.get(type);
+  if (found || !type.startsWith("step:")) return found;
+  const step = getStep(type.slice("step:".length));
+  return step ? stepType(step) : undefined;
 }
 
 /** The types that can be added as steps, grouped for the step list. */
@@ -587,7 +632,9 @@ export function actionTypesByGroup(): { group: NodeGroup; label: string; types: 
   return GROUP_ORDER.map((group) => ({
     group,
     label: GROUP_LABELS[group],
-    types: NODE_TYPES.filter((nodeType) => nodeType.role === "action" && nodeType.group === group),
+    types: allNodeTypes().filter(
+      (nodeType) => nodeType.role === "action" && nodeType.group === group,
+    ),
   })).filter((entry) => entry.types.length > 0);
 }
 
@@ -597,7 +644,7 @@ export function typeNameOf(node: Pick<AutomationNode, "kind" | "stepId">): strin
 }
 
 export function nodeTypeOf(node: Pick<AutomationNode, "kind" | "stepId">): NodeType | undefined {
-  return byType.get(typeNameOf(node));
+  return getNodeType(typeNameOf(node));
 }
 
 export function triggerTypeOf(trigger: StarterTrigger): NodeType {
@@ -681,11 +728,33 @@ export function withBrand(
 }
 
 /**
+ * A node's settings with every blank setting that comes from the file that started the run
+ * filled in from it, such as that file's name for a title.
+ */
+export function withStart(
+  nodeType: NodeType,
+  input: Record<string, unknown>,
+  trigger: Record<string, unknown>,
+): Record<string, unknown> {
+  const filled = { ...input };
+  for (const [name, key] of Object.entries(nodeType.fromStart ?? {})) {
+    const value = filled[name];
+    if (
+      (value === undefined || value === null || value === "") &&
+      typeof trigger[key] === "string"
+    ) {
+      filled[name] = trigger[key];
+    }
+  }
+  return filled;
+}
+
+/**
  * The registry as short text for a model: one line per type with what it takes and gives.
  * The full settings of one type come from `getNodeType(type).settings`.
  */
 export function nodeTypeIndex(): string {
-  return NODE_TYPES.map(
+  return allNodeTypes().map(
     (nodeType) =>
       `${nodeType.type} (${GROUP_LABELS[nodeType.group]}; takes ${nodeType.takes}, gives ${nodeType.gives}${
         nodeType.makes ? `, makes ${nodeType.makes.join(" and ")}` : ""
@@ -693,8 +762,10 @@ export function nodeTypeIndex(): string {
         nodeType.brand
           ? `, takes the team's ${Object.values(nodeType.brand).join(" and ")} from Settings`
           : ""
-      }${
-        nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""
+      }${nodeType.fills ? `, uses an earlier ${Object.values(nodeType.fills).join(" and ")}` : ""}${
+        nodeType.fromStart
+          ? ", fills an empty title from the name of the file that started the run"
+          : ""
       }${nodeType.branches ? `, ways out: ${nodeType.branches.join(" and ")}` : ""}${
         nodeType.ask ? `, ask the person for its ${nodeType.ask.join(" and ")}` : ""
       }): ${nodeType.title}. ${nodeType.description}`,

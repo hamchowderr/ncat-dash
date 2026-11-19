@@ -74,11 +74,11 @@ test.afterAll(async () => {
 
 test("each member sees every kind of news with a bell and an email switch", async () => {
   await maya.goto("/settings/notifications");
-  await expect(card(maya).getByRole("heading", { name: "Notifications" })).toBeVisible();
+  await expect(maya.getByRole("heading", { level: 1, name: "Notifications" })).toBeVisible();
   const rows = card(maya).locator("[data-notification]");
-  await expect(rows).toHaveCount(5);
-  await expect(card(maya).getByRole("switch", { name: /in the Inbox/ })).toHaveCount(5);
-  await expect(card(maya).getByRole("switch", { name: /by email/ })).toHaveCount(5);
+  await expect(rows).toHaveCount(6);
+  await expect(card(maya).getByRole("switch", { name: /in the Inbox/ })).toHaveCount(6);
+  await expect(card(maya).getByRole("switch", { name: /by email/ })).toHaveCount(6);
   for (const name of [/: in the Inbox$/, /: by email$/]) {
     for (const toggle of await card(maya).getByRole("switch", { name }).all()) {
       await expect(toggle).toBeChecked();
@@ -143,12 +143,15 @@ test("with mentions and approvals off in the Inbox, neither shows up there", asy
   await commentBox(jordan).press("Enter");
   await expect(jordan.getByText("can you check the logo here?")).toBeVisible();
 
-  // Give the mention time to arrive, then check Maya's bell stayed empty.
+  // Give the mention time to arrive, then check Maya's bell stayed empty. Settings have
+  // their own menu, so she goes back to the app, where Inbox is in the menu.
   await maya.waitForTimeout(2_000);
+  await maya.getByRole("link", { name: "Back to app" }).click();
+  await expect(bell(maya)).toBeVisible();
   await expect(bell(maya).locator("[data-alerts-count]")).toHaveCount(0);
   await bell(maya).click();
   await expect(maya.getByText(/Nothing to report/)).toBeVisible();
-  await maya.goBack();
+  await maya.goto("/settings/notifications");
 });
 
 test("switched back on, the next mention shows up and opens the review at its thread", async () => {
@@ -156,6 +159,7 @@ test("switched back on, the next mention shows up and opens the review at its th
     .getByRole("switch", { name: "Someone mentions me in a review: in the Inbox" })
     .click();
   // The earlier mention is shown again now that she wants mentions in the Inbox.
+  await maya.getByRole("link", { name: "Back to app" }).click();
   await expect(bell(maya).locator("[data-alerts-count]")).toHaveText("1");
 
   await commentBox(jordan).pressSequentially("@Ma");

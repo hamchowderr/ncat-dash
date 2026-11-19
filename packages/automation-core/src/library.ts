@@ -166,3 +166,112 @@ export function formatMoment(seconds: number): string {
   const ss = String(s).padStart(2, "0");
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
+
+// Caption files in the library (SRT, WebVTT, ASS) are read into timed lines, the same as a
+// transcript, so they show and search the way "What was said" does.
+
+export type CaptionFormat = "srt" | "vtt" | "ass";
+
+const MAX_CAPTION_LINES = 3000;
+
+/** The caption format of a file, from its name or link, or null when it is not one. */
+export function captionFileFormat(nameOrLink: string): CaptionFormat | null {
+  const path = nameOrLink.split(/[?#]/)[0] ?? "";
+  const match = /\.(srt|vtt|ass|ssa)$/i.exec(path);
+  if (!match) return null;
+  const ext = match[1]!.toLowerCase();
+  return ext === "ssa" ? "ass" : (ext as CaptionFormat);
+}
+
+/** "00:01:02,500", "01:02.5", "0:01:02.50" → seconds; null when it is not a time. */
+function readClock(text: string): number | null {
+  const match = /^(?:(\d+):)?(\d{1,2}):(\d{1,2})(?:[.,](\d+))?$/.exec(text.trim());
+  if (!match) return null;
+  const [, h, m, s, fraction] = match;
+  const whole = Number(h ?? 0) * 3600 + Number(m) * 60 + Number(s);
+  return fraction ? whole + Number(`0.${fraction}`) : whole;
+}
+
+function cueLines(text: string, format: CaptionFormat): TranscriptSegment[] {
+  const lines = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n").split("\n");
+  const cues: TranscriptSegment[] = [];
+  if (format === "ass") {
+    // [Events] Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+    let fields = [
+      "layer",
+      "start",
+      "end",
+      "style",
+      "name",
+      "marginl",
+      "marginr",
+      "marginv",
+      "effect",
+      "text",
+    ];
+    for (const line of lines) {
+      const format = /^Format:\s*(.*)$/i.exec(line);
+      if (format && /text/i.test(format[1]!)) {
+        fields = format[1]!.split(",").map((field) => field.trim().toLowerCase());
+        continue;
+      }
+      const dialogue = /^Dialogue:\s*(.*)$/i.exec(line);
+      if (!dialogue) continue;
+      const parts = dialogue[1]!.split(",");
+      const at = (name: string) => fields.indexOf(name);
+      const textAt = at("text");
+      if (textAt < 0 || parts.length < fields.length) continue;
+      const start = readClock(parts[at("start")] ?? "");
+      const end = readClock(parts[at("end")] ?? "");
+      const words = parts
+        .slice(textAt)
+        .join(",")
+        .replace(/\{[^}]*\}/g, "")
+        .replace(/\\[Nn]/g, " ")
+        .replace(/\\h/g, " ");
+      if (start === null) continue;
+      cues.push({ start, end: end ?? start, text: words });
+    }
+    return cues;
+  }
+  // SRT and WebVTT: blocks with a "start --> end" line, then the words.
+  let current: TranscriptSegment | null = null;
+  for (const line of lines) {
+    const timing = /^\s*([\d:.,]+)\s*-->\s*([\d:.,]+)/.exec(line);
+    if (timing) {
+      if (current) cues.push(current);
+      const start = readClock(timing[1]!);
+      const end = readClock(timing[2]!);
+      current = start === null ? null : { start, end: end ?? start, text: "" };
+      continue;
+    }
+    if (!line.trim()) {
+      if (current) cues.push(current);
+      current = null;
+      continue;
+    }
+    if (current) current.text = `${current.text} ${line.replace(/<[^>]*>/g, "")}`;
+  }
+  if (current) cues.push(current);
+  return cues;
+}
+
+/**
+ * The timed lines of a caption file, one per cue as it shows on screen, in order. Styling
+ * (ASS tags, WebVTT markup) is left out; empty cues are skipped.
+ */
+export function captionLines(text: string, format: CaptionFormat): TranscriptPiece[] {
+  return cueLines(text, format)
+    .map((cue) => ({
+      ...cue,
+      text: cue.text.replace(/\s+/g, " ").trim().slice(0, MAX_PIECE_CHARS),
+    }))
+    .filter((cue) => cue.text && Number.isFinite(cue.start))
+    .sort((a, b) => a.start - b.start)
+    .slice(0, MAX_CAPTION_LINES)
+    .map((cue) => ({
+      start: Math.round(cue.start * 100) / 100,
+      end: Math.round(Math.max(cue.end, cue.start) * 100) / 100,
+      text: cue.text,
+    }));
+}
