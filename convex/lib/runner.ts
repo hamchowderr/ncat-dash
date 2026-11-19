@@ -58,6 +58,7 @@ import { runEnded, startAutomationStep, startingFiles } from "./chain";
 import { cutListOf } from "./exports";
 import { captionSetupOf } from "./captions";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
+import { finishListening, startListening } from "./moments";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
@@ -163,7 +164,7 @@ function outputsToward(
 }
 
 /** The files handed on by the steps straight before a node, or the trigger's file. */
-function incomingFiles(
+export function incomingFiles(
   node: AutomationNode,
   run: Doc<"runs">,
   byNode: Map<string, Doc<"runSteps">>,
@@ -252,6 +253,13 @@ async function startNode(
     return;
   }
 
+  if (node.kind === "moments" || node.kind === "chapters") {
+    // Chapters reads speech, so an audio file will do; moments are cut from a video.
+    const kind = node.kind === "moments" ? "video" : "media";
+    await startListening(ctx, run, node, step, byNode, filesFor(kind, node, run, byNode));
+    return;
+  }
+
   if (node.kind === "if") {
     await startIf(ctx, run, node, step, byNode);
     return;
@@ -276,7 +284,7 @@ async function startNode(
         run,
         step,
         byNode,
-        "No cuts reached this step. Put it after a step that cuts the recording, such as Clips for a platform.",
+        "No cuts reached this step. Put it after a step that cuts the recording, such as Clips for a platform or Best moments.",
       );
       return;
     }
@@ -897,6 +905,12 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
 
   if (step.stage === "probe") {
     await cutClips(ctx, run, step, jobs);
+    await advance(ctx, run._id);
+    return;
+  }
+
+  if (step.stage === "listen") {
+    await finishListening(ctx, run, step, jobs);
     await advance(ctx, run._id);
     return;
   }

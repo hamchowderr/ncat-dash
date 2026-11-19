@@ -37,6 +37,7 @@ import {
 } from "./flow-nodes";
 import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 import { ClipsRun } from "./clips-run";
+import { PicksPanel } from "./picks-panel";
 import { logicNote, passedAlong, RunSteps, StartedRunLink } from "./run-steps";
 import { EditorExport } from "./editor-export";
 import { RunStatusBadge, shownStatus } from "./run-status";
@@ -161,6 +162,12 @@ export function RunView({
     }
   }
 
+  const startAgain = () =>
+    act(async () => {
+      const next = await runAgain({ runId });
+      router.push(`/automations/${automationId}/runs/${next}`);
+    }, "The run could not be started again.");
+
   // Automations that follow this one and started when it ended. Runs a step started are
   // shown on that step's line instead.
   const followed = run.startedRuns.filter((next) => next.how === "followed");
@@ -221,17 +228,7 @@ export function RunView({
             </Button>
           )}
           {!active && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() =>
-                act(async () => {
-                  const next = await runAgain({ runId });
-                  router.push(`/automations/${automationId}/runs/${next}`);
-                }, "The run could not be started again.")
-              }
-            >
+            <Button variant="outline" size="sm" disabled={busy} onClick={startAgain}>
               <RotateCw />
               Run again
             </Button>
@@ -247,6 +244,8 @@ export function RunView({
           ))}
         </nav>
       )}
+
+      <PicksPanel run={run} busy={busy} onFindMore={startAgain} />
 
       {clipsSetup && showClips && (
         <ClipsRun
