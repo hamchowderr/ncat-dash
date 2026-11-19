@@ -34,8 +34,29 @@ export function meeting(id = "past-meeting-1", title = "Client Kickoff", endedAg
     file: {
       id: file,
       name: `${title} (${new Date(start).toISOString().slice(0, 10)} 10:02 GMT-8) - Recording`,
-      size: "48000000",
+      // Each recording its own size: the dashboard takes the same size for the same file.
+      size: String(
+        48_000_000 + ([...id].reduce((sum, c) => sum * 31 + c.charCodeAt(0), 7) % 999_983),
+      ),
       mimeType: "video/mp4",
+      createdTime: new Date(end).toISOString(),
+      videoMediaMetadata: { durationMillis: String(37 * 60 * 1000) },
     },
+  };
+}
+
+/**
+ * A recording from long ago that only Drive still has: Meet forgets meetings after 30 days,
+ * so it is not among the meetings, only among the files.
+ */
+export function oldRecording() {
+  const saved = Date.now() - 400 * 864e5;
+  return {
+    id: "driveFileAnnualReview0001",
+    name: "Annual Review - 2025/10/14 15:00 PDT - Recording",
+    size: "61000000",
+    mimeType: "video/mp4",
+    createdTime: new Date(saved).toISOString(),
+    videoMediaMetadata: { durationMillis: String(52 * 60 * 1000) },
   };
 }

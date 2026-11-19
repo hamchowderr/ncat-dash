@@ -915,12 +915,20 @@ export default defineSchema({
   googleMeetImports: defineTable({
     organizationId: v.string(),
     connectionId: v.id("googleMeetConnections"),
-    // Meet's name for the recording: conferenceRecords/<id>/recordings/<id>.
-    recordingName: v.string(),
+    // Meet's name for the recording (conferenceRecords/<id>/recordings/<id>), when it was
+    // found through Meet. Missing for one brought in from the list of Drive recordings.
+    recordingName: v.optional(v.string()),
     driveFileId: v.string(),
     topic: v.string(),
     startTime: v.number(),
-    status: v.union(v.literal("importing"), v.literal("done"), v.literal("failed")),
+    // "duplicate": the file was already in Uploads some other way (uploadId points at it),
+    // so it was not brought in again.
+    status: v.union(
+      v.literal("importing"),
+      v.literal("done"),
+      v.literal("failed"),
+      v.literal("duplicate"),
+    ),
     uploadId: v.optional(v.id("uploads")),
     jobId: v.optional(v.id("jobs")),
     error: v.optional(v.string()),
@@ -1032,7 +1040,9 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"])
     // Finds the upload behind a file in the bucket, for the Files page.
-    .index("by_organization_and_key", ["organizationId", "key"]),
+    .index("by_organization_and_key", ["organizationId", "key"])
+    // Finds an upload of the very same file, so a meeting recording is not brought in twice.
+    .index("by_organization_and_size", ["organizationId", "size"]),
 
   // A review room: a set of clips a team looks at together, comments on, and approves.
   // Opened by hand from Outputs, or by an approval step when a run reaches it.

@@ -53,11 +53,18 @@ test("connects Google Meet, brings a past meeting in, and a finished one arrives
   await expect(page.getByRole("switch", { name: /Bring in new recordings/ })).toBeChecked();
 
   // A past recording, brought in by hand.
-  await page.getByRole("button", { name: "Show the last 30 days" }).click();
+  await page.getByRole("button", { name: "Show recordings" }).click();
   const past = page.getByRole("region", { name: "Past recordings" });
   await expect(past.getByText("Client Kickoff")).toBeVisible();
   await expect(past.getByText(/37 min/)).toBeVisible();
-  await past.getByRole("button", { name: "Bring in" }).click();
+  // Drive keeps recordings long after Meet forgets the meeting: those show too.
+  await expect(past.getByText("Annual Review")).toBeVisible();
+  await expect(past.getByText(/52 min/)).toBeVisible();
+  await past
+    .getByRole("listitem")
+    .filter({ hasText: "Client Kickoff" })
+    .getByRole("button", { name: "Bring in" })
+    .click();
   await expect(page.getByText("Client Kickoff is on its way to Uploads")).toBeVisible();
   const brought = page.getByRole("region", { name: "Brought in from Google Meet" });
   await expect(brought.getByRole("link", { name: "In Uploads" })).toBeVisible({ timeout: 30_000 });
