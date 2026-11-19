@@ -58,7 +58,7 @@ function changeLine(change: Record<string, unknown>): string | null {
   }
 }
 
-export function toolWords(name: string | undefined, args: unknown): ToolWords | null {
+export function toolWords(name: string | undefined, args: unknown): ToolWords {
   const given = (args && typeof args === "object" ? args : undefined) as Args;
   switch (name) {
     case "dash_overview":
@@ -149,7 +149,10 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords | 
       return {
         title: "Making a folder",
         question: "Make this folder?",
-        lines: [folderText(given?.path) || "A new folder", "Folders above it are made too if missing."],
+        lines: [
+          folderText(given?.path) || "A new folder",
+          "Folders above it are made too if missing.",
+        ],
       };
     case "move_files": {
       const keys = Array.isArray(given?.keys) ? given.keys.filter(isText) : [];
@@ -157,7 +160,11 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords | 
       return {
         title: "Moving files",
         question: keys.length === 1 ? "Move this file?" : "Move these files?",
-        lines: [...keys.slice(0, 5).map(fileName), ...(keys.length > 5 ? [`and ${keys.length - 5} more`] : []), `Into ${into}`],
+        lines: [
+          ...keys.slice(0, 5).map(fileName),
+          ...(keys.length > 5 ? [`and ${keys.length - 5} more`] : []),
+          `Into ${into}`,
+        ],
       };
     }
     case "rename_file":
@@ -179,8 +186,54 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords | 
         ],
       };
     default:
-      return null;
+      return { title: plainTitle(name), question: "", lines: [] };
   }
+}
+
+/**
+ * Tools the agent has beyond the dashboard's own: its plan, its notes, schedules, the
+ * library, the web and its workspace. Each gets a plain line, never its tool id.
+ */
+const PLAIN_TITLES: Record<string, string> = {
+  task_write: "Planned the steps",
+  task_update: "Updated the plan",
+  task_complete: "Ticked off a step",
+  task_check: "Checked the plan",
+  updateWorkingMemory: "Saved a note",
+  find_in_library: "Looking in your library",
+  moments: "Finding the best moments",
+  run_on_library_file: "Running an automation on a library file",
+  list_schedules: "Looking at your schedules",
+  start_schedule: "Setting up a schedule",
+  stop_schedule: "Stopping a schedule",
+  doltHistory: "Looking at past changes",
+  doltQuery: "Looking up saved data",
+  doltWrite: "Saving data",
+  firecrawl_search: "Searching the web",
+  firecrawl_scrape: "Reading a web page",
+  firecrawl_map: "Looking through a website",
+  firecrawl_crawl: "Reading a website",
+  firecrawl_extract: "Picking facts out of a web page",
+  getWeather: "Checking the weather",
+  searchKnowledge: "Looking it up",
+};
+
+/** Families of tools named by what they share, for names not listed above. */
+const PLAIN_PREFIXES: [prefix: string, title: string][] = [
+  ["browser_", "Using the browser"],
+  ["firecrawl_", "Looking on the web"],
+  ["mastra_workspace_", "Working on files"],
+  ["task_", "Updated the plan"],
+  ["subagent", "Asking a helper"],
+  ["dolt", "Looking up saved data"],
+];
+
+/** A plain line for any tool, so a tool id never reaches the person. */
+export function plainTitle(name: string | undefined): string {
+  if (!name) return "Working on it";
+  if (Object.hasOwn(PLAIN_TITLES, name)) return PLAIN_TITLES[name];
+  const family = PLAIN_PREFIXES.find(([prefix]) => name.startsWith(prefix));
+  return family ? family[1] : "Working on it";
 }
 
 /** What came back, for the person: short facts only, never the raw result. */
@@ -213,7 +266,14 @@ export function resultWords(name: string | undefined, result: unknown): string[]
     const folders = Array.isArray(value.folders) ? value.folders.length : 0;
     const files = Array.isArray(value.files) ? value.files.length : 0;
     if (folders + files === 0) return ["Nothing here yet."];
-    return [[folders ? count(folders, "folder", "folders") : "", files ? count(files, "file", "files") : ""].filter(Boolean).join(", ")];
+    return [
+      [
+        folders ? count(folders, "folder", "folders") : "",
+        files ? count(files, "file", "files") : "",
+      ]
+        .filter(Boolean)
+        .join(", "),
+    ];
   }
   if (name === "make_folder") {
     const made = Array.isArray(value.made) ? value.made.filter(isText) : [];
@@ -297,7 +357,13 @@ function listWords(items: string[]): string {
 
 /** A folder as people write it: "Podcasts/Raw", never with slashes at the ends. */
 function folderText(path: unknown): string {
-  return isText(path) ? path.split("/").map((part) => part.trim()).filter(Boolean).join("/") : "";
+  return isText(path)
+    ? path
+        .split("/")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join("/")
+    : "";
 }
 
 /** The last part of a storage key: "Podcasts/Raw/ep12.mp4" is "ep12.mp4". */

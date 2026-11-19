@@ -5,6 +5,8 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { TeamContext } from "@/lib/team-context";
 
 import { useAgentContext } from "./agent-context";
+import { approvalView } from "@/components/chat/approval-view";
+
 import { APPROVAL_VIEWS } from "./approval-views";
 import { ToolRow } from "./tool-row";
 
@@ -46,15 +48,33 @@ describe("a line for something the agent did", () => {
     expect(screen.getByText("You are not on this team.")).toBeTruthy();
   });
 
-  test("leaves other tools to the chat's own view", () => {
-    const { container } = render(
-      <ToolRow call={{ name: "getWeather", args: {} }} result={undefined} />,
-    );
-    expect(container.textContent).toBe("");
+  test("the agent's own tools show plain words, never their tool id", () => {
+    for (const [name, words] of [
+      ["task_update", "Updated the plan"],
+      ["updateWorkingMemory", "Saved a note"],
+      ["browser_goto", "Using the browser"],
+      ["a_tool_added_later", "Working on it"],
+    ] as const) {
+      const { container, unmount } = render(
+        <ToolRow call={{ name, args: { a: 1 } }} result={{ result: { ok: true } }} />,
+      );
+      expect(container.textContent).toBe(words);
+      expect(container.textContent).not.toContain(name);
+      unmount();
+    }
   });
 });
 
 describe("the card that asks first", () => {
+  test("a tool without its own card is named in plain words, not by its id", () => {
+    const view = approvalView(
+      { toolCallId: "call_2", toolName: "start_schedule", args: {} } as never,
+      APPROVAL_VIEWS,
+    );
+    expect(view.title).toBe("Allow this? Setting up a schedule");
+    expect(String(view.title)).not.toMatch(/start_schedule|Start schedule/);
+  });
+
   test("covers every tool that changes something", () => {
     expect(Object.keys(APPROVAL_VIEWS).sort()).toEqual([
       "change_automation",
