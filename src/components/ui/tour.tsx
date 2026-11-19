@@ -4,7 +4,10 @@
 // Copyright (c) 2025 Hin Tong. Changes for this app: a step whose target is not on the
 // screen (a phone's closed menu, the agent already open) shows in the middle instead of
 // not at all; Escape closes; the tour says how it ended, so it can be remembered; targets
-// match a whole word of `data-tour-step-id`, not part of one.
+// match a whole word of `data-tour-step-id`, not part of one; a step marked `optional` is
+// left out when what it points at is not on the page as the tour starts; on a phone the
+// card keeps to the top or bottom edge, away from what it points at, since there is no
+// room beside it.
 
 import { XIcon } from "lucide-react";
 import Link from "next/link";
@@ -41,6 +44,9 @@ interface Step {
   align?: Align;
   alignOffset?: number;
   className?: string;
+  /** Left out when nothing on the page has this id as the tour starts (a filter that
+   * only shows once there are clients). */
+  optional?: boolean;
 }
 
 interface Tour {
@@ -79,9 +85,8 @@ function TourProvider({
 }) {
   const [activeTourId, setActiveTourId] = React.useState<string | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = React.useState(0);
-
-  const activeTour = tours.find((tour) => tour.id === activeTourId);
-  const steps = activeTour?.steps ?? [];
+  // The steps of the tour showing, fixed as it starts.
+  const [steps, setSteps] = React.useState<Step[]>([]);
 
   const end = React.useCallback(
     (how: TourEnd) => {
@@ -105,7 +110,12 @@ function TourProvider({
     (tourId: string) => {
       const tour = tours.find((candidate) => candidate.id === tourId);
       if (!tour || tour.steps.length === 0) return;
+      const shown = tour.steps.filter(
+        (step) =>
+          !step.optional || document.querySelector(`[data-tour-step-id~='${step.id}']`) !== null,
+      );
       onStart?.(tourId);
+      setSteps(shown);
       setActiveTourId(tourId);
       setCurrentStepIndex(0);
     },
@@ -122,7 +132,7 @@ function TourProvider({
   return (
     <TourContext.Provider value={controls}>
       {children}
-      {activeTour && steps[currentStepIndex] && (
+      {activeTourId && steps[currentStepIndex] && (
         <TourOverlay
           step={steps[currentStepIndex]}
           currentStepIndex={currentStepIndex}
@@ -138,6 +148,9 @@ function TourProvider({
 
 type Target = { rect: DOMRect; radius: number };
 
+/** Below this width there is no room beside a target, so the card keeps to an edge. */
+const NARROW = 640;
+
 /** The elements a step points at that are on the screen now. */
 function findTargets(stepId: string) {
   const found: { target: Target; element: Element }[] = [];
@@ -146,9 +159,9 @@ function findTargets(stepId: string) {
     if (element.closest("[role='dialog'][data-state='closed']")) return;
     const rect = element.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return;
-    // Off the screen, as a closed menu slid aside is: nothing to point at.
-    if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= innerWidth || rect.top >= innerHeight)
-      return;
+    // Off to the side, as a closed menu slid aside is: nothing to point at. Above or below
+    // the screen is fine: the page scrolls to it.
+    if (rect.right <= 0 || rect.left >= innerWidth) return;
     const radius = Number.parseFloat(getComputedStyle(element).borderRadius) || 6;
     found.push({ target: { rect, radius }, element });
   });
@@ -171,6 +184,7 @@ function TourOverlay({
   onClose: () => void;
 }) {
   const [targets, setTargets] = React.useState<Target[]>([]);
+  const [narrow, setNarrow] = React.useState(false);
   // Ids from useId hold colons, which a url(#...) in SVG does not take.
   const maskId = `tour-${React.useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
@@ -179,6 +193,7 @@ function TourOverlay({
     function updatePosition() {
       const found = findTargets(step.id);
       setTargets(found.map(({ target }) => target));
+      setNarrow(innerWidth < NARROW);
       if (found[0] && needsScroll) {
         found[0].element.scrollIntoView({ behavior: "smooth", block: "center" });
         needsScroll = false;
@@ -292,7 +307,19 @@ function TourOverlay({
           />
         ))}
       </svg>
-      {targets[0] ? (
+      {targets[0] && narrow ? (
+        <div
+          className={cn(
+            "absolute inset-x-0 flex justify-center p-4",
+            // Whichever edge is further from what it points at.
+            targets[0].rect.top + targets[0].rect.height / 2 > innerHeight / 2
+              ? "top-0"
+              : "bottom-0",
+          )}
+        >
+          {card(true)}
+        </div>
+      ) : targets[0] ? (
         <Popover key={step.id} open>
           <PopoverAnchor
             virtualRef={{ current: { getBoundingClientRect: () => targets[0]!.rect } }}

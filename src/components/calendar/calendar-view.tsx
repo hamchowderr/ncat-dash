@@ -25,6 +25,7 @@ import {
   viewTitle,
   visibleDays,
 } from "./dates";
+import { CalendarTourButton, StartCalendarTour } from "./calendar-tour";
 import { type Dragged, type Entry, entriesByDay } from "./entries";
 import { MonthGrid, WeekGrid } from "./grids";
 import { type Panel, SidePanel } from "./side-panel";
@@ -164,34 +165,40 @@ export function CalendarView({ now: givenNow }: { now?: number } = {}) {
 
   return (
     <>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
-        <p className="text-muted-foreground max-w-prose text-sm">
-          What goes out when, what is due, and when your automations run. Drag to plan.
-        </p>
+      <StartCalendarTour ready={byDay !== null && waiting !== undefined} />
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
+          <p className="text-muted-foreground max-w-prose text-sm">
+            What goes out when, what is due, and when your automations run. Drag to plan.
+          </p>
+        </div>
+        <CalendarTourButton />
       </div>
       <div className="flex flex-col gap-4 lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setAnchor(new Date(now))}>
-              Today
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={view === "month" ? "Previous Month" : "Previous Week"}
-              onClick={() => setAnchor((current) => step(view, current, -1))}
-            >
-              <ChevronLeft />
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={view === "month" ? "Next Month" : "Next Week"}
-              onClick={() => setAnchor((current) => step(view, current, 1))}
-            >
-              <ChevronRight />
-            </Button>
+            <div data-tour-step-id="tour-calendar-move" className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setAnchor(new Date(now))}>
+                Today
+              </Button>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={view === "month" ? "Previous Month" : "Previous Week"}
+                onClick={() => setAnchor((current) => step(view, current, -1))}
+              >
+                <ChevronLeft />
+              </Button>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={view === "month" ? "Next Month" : "Next Week"}
+                onClick={() => setAnchor((current) => step(view, current, 1))}
+              >
+                <ChevronRight />
+              </Button>
+            </div>
             <h2
               className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight"
               aria-live="polite"
@@ -201,6 +208,7 @@ export function CalendarView({ now: givenNow }: { now?: number } = {}) {
             {clients.length > 0 && (
               <select
                 aria-label="Client"
+                data-tour-step-id="tour-calendar-client"
                 value={clientId}
                 onChange={(event) => setClientId(event.target.value)}
                 className={cn(selectClass, "h-8")}
@@ -216,6 +224,7 @@ export function CalendarView({ now: givenNow }: { now?: number } = {}) {
             <div
               role="group"
               aria-label="Calendar view"
+              data-tour-step-id="tour-calendar-views"
               className="bg-muted flex rounded-lg p-[3px]"
             >
               {(
@@ -241,7 +250,7 @@ export function CalendarView({ now: givenNow }: { now?: number } = {}) {
               ))}
             </div>
           </div>
-          <div className="overflow-x-auto pb-1">
+          <div data-tour-step-id="tour-calendar-grid" className="overflow-x-auto pb-1">
             {byDay === null ? (
               <Skeleton className="h-[36rem] min-w-[44rem] rounded-xl" />
             ) : view === "month" ? (
