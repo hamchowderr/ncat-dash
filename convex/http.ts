@@ -5,10 +5,12 @@ import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
+import { decryptSecret } from "./lib/crypto";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { noStream, serve } from "./mcp";
 import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
 import { settingsUrl as microsoftSettingsUrl } from "./microsoft";
+import { settingsUrl as dropboxSettingsUrl } from "./dropbox";
 import { settingsUrl as zoomSettingsUrl } from "./zoom";
 import {
   authorizationServer,
@@ -237,6 +239,24 @@ http.route({
   }),
 });
 
+// The agent server asks for a team's own Anthropic key here, to run that team's chats and
+// AI steps on it (anthropicKey.ts). 404 when the team has none. Only a caller holding
+// MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/agent/team-key",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.organizationId) return new Response("Missing organizationId", { status: 400 });
+    const cipher = await ctx.runQuery(internal.anthropicKey.forAgent, {
+      organizationId: asked.organizationId,
+    });
+    if (!cipher) return new Response("No key", { status: 404 });
+    return Response.json({ key: await decryptSecret(cipher) });
+  }),
+});
+
 // Discord sends people back here after they add the bot to a server or link their own
 // account from Settings. The state is the one-time id Settings started the sign-in with.
 http.route({
@@ -358,6 +378,52 @@ http.route({
     const body = await request.text();
     if (body.length > 1_000_000) return new Response("Body too large", { status: 413 });
     const answer = await ctx.runAction(internal.microsoft.takeEvent, { body });
+    return new Response(null, { status: answer.status });
+  }),
+});
+
+// Dropbox sends people back here after they connect their Dropbox.
+http.route({
+  path: "/dropbox/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const location =
+      code && state
+        ? await ctx.runAction(internal.dropbox.finishLink, { code, state })
+        : dropboxSettingsUrl(
+            url.searchParams.get("error") === "access_denied" ? "cancelled" : "refused",
+          );
+    return new Response(null, { status: 302, headers: { location } });
+  }),
+});
+
+// Dropbox checks the notices address by asking it to say a challenge back.
+http.route({
+  path: "/dropbox/events",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const challenge = new URL(request.url).searchParams.get("challenge") ?? "";
+    return new Response(challenge.slice(0, 1000), {
+      status: 200,
+      headers: { "content-type": "text/plain", "x-content-type-options": "nosniff" },
+    });
+  }),
+});
+
+// Dropbox's notices that files changed in connected accounts, signed with the app's secret.
+http.route({
+  path: "/dropbox/events",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.text();
+    if (body.length > 1_000_000) return new Response("Body too large", { status: 413 });
+    const answer = await ctx.runAction(internal.dropbox.takeEvent, {
+      body,
+      signature: request.headers.get("x-dropbox-signature") ?? "",
+    });
     return new Response(null, { status: answer.status });
   }),
 });

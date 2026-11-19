@@ -26,5 +26,14 @@ crons.hourly(
 // Renews Microsoft's watches on connected OneDrives, and looks for Teams recordings a
 // change notice missed.
 crons.interval("check Microsoft 365 recordings", { minutes: 15 }, internal.microsoft.sweep, {});
+crons.interval("check watched Dropbox folders", { minutes: 15 }, internal.dropbox.sweep, {});
+
+// Forgets saved Best moments and Chapters answers more than 30 days old.
+crons.daily(
+  "forget old pick answers",
+  { hourUTC: 9, minuteUTC: 30 },
+  internal.moments.forgetOldAnswers,
+  {},
+);
 
 export default crons;

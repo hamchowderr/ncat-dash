@@ -32,7 +32,14 @@ export function SettingsLoading() {
  * One settings page: its title and one short line, then its settings in a single calm
  * column. The menu of settings pages is the sidebar itself while settings are open.
  */
-const APP_PAGES = new Set<string>(["slack", "discord", "zoom", "google-meet", "microsoft"]);
+const APP_PAGES = new Set<string>([
+  "slack",
+  "discord",
+  "zoom",
+  "google-meet",
+  "microsoft",
+  "dropbox",
+]);
 
 export function SettingsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();

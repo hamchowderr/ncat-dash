@@ -32,6 +32,7 @@ import { fastembed } from '@mastra/fastembed';
 import { LibSQLStore, LibSQLVector } from '@mastra/libsql';
 import { Memory } from '@mastra/memory';
 import { env } from '../../lib/env';
+import { cheapModelFor } from './cost';
 
 // ONE shared libSQL store instance for the whole server — the Mastra instance,
 // every agent's Memory, AND the AgentController all use THIS so
@@ -101,7 +102,7 @@ export function deriveTitleModelId(chatModelId: string): string {
     return 'openai/gpt-4.1-nano';
   }
   if (chatModelId.startsWith('anthropic/')) {
-    return 'anthropic/claude-haiku-4-5';
+    return 'anthropic/claude-haiku-5-5';
   }
   // Unknown/other provider (or AIMock): reuse the chat model — it definitely resolves.
   return chatModelId;
@@ -158,15 +159,16 @@ export function createDefaultMemory(template: string = DEFAULT_WORKING_MEMORY_TE
       ...(env.NODE_ENV !== 'test' && !env.USE_AIMOCK
         ? {
             observationalMemory: {
-              model: env.CHAT_MODEL,
+              // A cheap model from the same provider (lib/cost.ts): writing notes is a
+              // summary, and on Sonnet it was a third of what a session cost.
+              model: cheapModelFor(env.CHAT_MODEL),
               scope: 'resource' as const,
               observation: {
-                // Default is 30,000 tokens of unobserved messages before the Observer
-                // runs — far more than a demo conversation reaches, so observations would
-                // never visibly fire. Lowered so the OM loop triggers within a few
-                // exchanges (the whole point of the showcase). Raise toward the default in
-                // production to control Observer-model cost.
-                messageTokens: 3000,
+                // Tokens of unobserved messages before the notes replace them in the
+                // prompt (OM_MESSAGE_TOKENS, default 30,000). Each time they do, the
+                // conversation's start changes and every later turn's cache is lost; at
+                // 3,000 that happened on almost every turn of a build.
+                messageTokens: env.OM_MESSAGE_TOKENS,
               },
             },
           }

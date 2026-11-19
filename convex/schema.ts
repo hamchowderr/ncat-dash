@@ -17,6 +17,9 @@ export const nodeValidator = v.object({
     // Picks the best moments of each video and cuts them; groups a video into chapters.
     v.literal("moments"),
     v.literal("chapters"),
+    // Draws motion graphics, or adds sound effects, onto each video.
+    v.literal("motion"),
+    v.literal("sound-effects"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -213,6 +216,25 @@ export const captionSetupValidator = v.object({
   }),
 });
 
+/** A team's Motion settings: the preset picked, its style as changed, and the names shown. */
+export const motionSetupValidator = v.object({
+  preset: v.string(),
+  style: v.object({
+    look: v.string(),
+    busy: v.string(),
+    pieces: v.array(v.string()),
+    opening: v.string(),
+    ending: v.string(),
+    sound: v.string(),
+    showsUnsaid: v.boolean(),
+  }),
+  hostName: v.string(),
+  hostRole: v.string(),
+  handle: v.string(),
+  callToAction: v.string(),
+  notes: v.string(),
+});
+
 // Users, sessions, organizations (teams), members and invitations live in the
 // Better Auth component (convex/betterAuth). App tables point at a team by its
 // organization id, and every read or write checks membership first (lib/authz.ts).
@@ -284,6 +306,8 @@ export default defineSchema({
     // Set when the job brings a Google Meet recording into the team's folder.
     googleMeetImportId: v.optional(v.id("googleMeetImports")),
     microsoftImportId: v.optional(v.id("microsoftImports")),
+    // Set when the job brings a file from a watched Dropbox folder into the team's folder.
+    dropboxImportId: v.optional(v.id("dropboxImports")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
@@ -308,6 +332,14 @@ export default defineSchema({
     agent: v.optional(agentSettingsValidator),
     // How captions read and look: word fixes, saved styles and a style per video shape.
     captions: v.optional(captionSetupValidator),
+    // How motion graphics and sound effects look and sound (Settings > Motion).
+    motion: v.optional(motionSetupValidator),
+    // The team's own Anthropic API key, when it brings one: the agent and the AI steps then
+    // run on the team's Anthropic account (anthropicKey.ts). Kept encrypted; only the agent
+    // server reads it back, never a member's browser.
+    anthropicKey: v.optional(
+      v.object({ cipher: v.string(), hint: v.string(), setBy: v.string(), setAt: v.number() }),
+    ),
     // What the team makes and where it posts, from setting up (content-goals.ts). The
     // posting apps also become the agent's default platforms.
     contentGoals: v.optional(
@@ -453,6 +485,15 @@ export default defineSchema({
     // The client this automation works for. Its runs use that client's brand over the
     // team's, and keep their finished files in the client's folder. Not part of versions.
     clientId: v.optional(v.id("clients")),
+    // Switched on: each finished run's files are also sent to this Dropbox account, into
+    // `folder` (or "/NCA Dashboard/<automation>"). Not part of versions.
+    dropboxSend: v.optional(
+      v.object({
+        connectionId: v.id("dropboxConnections"),
+        folder: v.optional(v.string()),
+        by: v.string(),
+      }),
+    ),
   })
     .index("by_organization", ["organizationId"])
     .index("by_client", ["clientId"])
@@ -576,6 +617,8 @@ export default defineSchema({
     // ("listen"), then waits for the model to pick ("pick"); a "moments" step then cuts
     // its moments ("cut").
     // A caption step reading its videos' sizes, to pick the style for each shape, is at "size".
+    // A "motion" or "sound-effects" step transcribes each video ("listen"), reads its words
+    // and places what goes on it ("place"), then draws on it ("render").
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -585,6 +628,8 @@ export default defineSchema({
         v.literal("listen"),
         v.literal("pick"),
         v.literal("size"),
+        v.literal("place"),
+        v.literal("render"),
       ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
@@ -647,6 +692,16 @@ export default defineSchema({
         }),
       ),
     ),
+    // For a "motion" or "sound-effects" step: what it put on each video and when, so a
+    // later step (such as B-roll) can keep clear of it.
+    placed: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          items: v.array(v.object({ start: v.number(), end: v.number(), kind: v.string() })),
+        }),
+      ),
+    ),
     // What a "moments" or "chapters" step left out, said plainly ("2 picks were left out…").
     pickNote: v.optional(v.string()),
     // Who approved or rejected, for an approval step.
@@ -678,6 +733,28 @@ export default defineSchema({
     words: v.array(v.object({ t: v.string(), s: v.number(), e: v.number() })),
     duration: v.number(),
   }).index("by_source", ["organizationId", "source"]),
+
+  // The model's answer to a Best moments or Chapters question, kept so the same question
+  // (the same transcript, settings and house rules) is not paid for twice. `question` is
+  // the question's SHA-256. Forgotten after 30 days (crons.ts).
+  pickAnswers: defineTable({
+    organizationId: v.string(),
+    question: v.string(),
+    answer: v.string(),
+    savedAt: v.number(),
+  })
+    .index("by_question", ["organizationId", "question"])
+    .index("by_saved", ["savedAt"]),
+
+  // Questions of an unattended run's pick, sent to Anthropic as one batch at half the
+  // price; checked until the answers are in (moments.checkBatch).
+  pickBatches: defineTable({
+    organizationId: v.string(),
+    runStepId: v.id("runSteps"),
+    batchId: v.string(),
+    sentAt: v.number(),
+    checks: v.number(),
+  }).index("by_step", ["runStepId"]),
 
   // A moment a Best moments step cut from a video, so a later run on the same video can
   // find new ones instead of the same again.
@@ -1019,6 +1096,110 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_item", ["organizationId", "itemId"]),
 
+  // A team member's own Dropbox, connected from Settings. Files added to the folders they
+  // pick to watch (their own, or team folders they can open) come into the team's
+  // uploads, and automations can send finished files back. The dashboard has ONE Dropbox
+  // app (DROPBOX_APP_KEY, DROPBOX_APP_SECRET). One Dropbox account belongs to one team.
+  // Tokens are stored encrypted and never leave the server.
+  dropboxConnections: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    accountId: v.string(),
+    email: v.string(),
+    name: v.string(),
+    accessTokenCipher: v.string(),
+    refreshTokenCipher: v.string(),
+    // When the access token stops working.
+    expiresAt: v.number(),
+    connectedAt: v.number(),
+    // False: new files in watched folders wait to be brought in by hand from Settings.
+    autoImport: v.boolean(),
+    // For a Dropbox team account: the team space's top folder, so team folders show up
+    // beside the member's own. Missing for a personal Dropbox.
+    rootNamespaceId: v.optional(v.string()),
+    // Set when Dropbox stopped accepting the sign-in: the member connects again.
+    needsReconnect: v.optional(v.boolean()),
+    lastCheckedAt: v.optional(v.number()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_member", ["organizationId", "userId"])
+    .index("by_account", ["accountId"]),
+
+  // A Dropbox sign-in someone started from Settings, matched when Dropbox sends them back.
+  dropboxLinkStarts: defineTable({
+    nonce: v.string(),
+    organizationId: v.string(),
+    userId: v.string(),
+    createdAt: v.number(),
+  }).index("by_nonce", ["nonce"]),
+
+  // A Dropbox folder a member watches. Its subfolders are watched too. `cursor` is where
+  // Dropbox's list of changes in it was read up to.
+  dropboxFolders: defineTable({
+    organizationId: v.string(),
+    connectionId: v.id("dropboxConnections"),
+    path: v.string(),
+    pathLower: v.string(),
+    cursor: v.optional(v.string()),
+    addedAt: v.number(),
+  })
+    .index("by_connection", ["connectionId"])
+    .index("by_organization", ["organizationId"]),
+
+  // One Dropbox file being brought in, or brought in: the toolkit streams it from Dropbox
+  // straight into the team's folder, then it becomes an upload like any other.
+  dropboxImports: defineTable({
+    organizationId: v.string(),
+    connectionId: v.id("dropboxConnections"),
+    // Dropbox's id for the file ("id:..."), which stays the same when it is moved.
+    fileId: v.string(),
+    path: v.string(),
+    name: v.string(),
+    // Dropbox's hash of the file's contents: the same file in two watched folders, or
+    // watched by two members, comes in once.
+    contentHash: v.string(),
+    size: v.number(),
+    modifiedAt: v.number(),
+    status: v.union(
+      v.literal("importing"),
+      v.literal("done"),
+      v.literal("failed"),
+      v.literal("duplicate"),
+    ),
+    uploadId: v.optional(v.id("uploads")),
+    jobId: v.optional(v.id("jobs")),
+    error: v.optional(v.string()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_file", ["organizationId", "fileId"])
+    .index("by_hash", ["organizationId", "contentHash"]),
+
+  // One finished file being sent to Dropbox, or sent, for an automation switched to send
+  // its files there. Big files go in pieces, `offset` bytes so far.
+  dropboxSends: defineTable({
+    organizationId: v.string(),
+    connectionId: v.id("dropboxConnections"),
+    runId: v.id("runs"),
+    automationName: v.string(),
+    // The file in the team's folder.
+    key: v.string(),
+    name: v.string(),
+    size: v.number(),
+    // The Dropbox folder it goes to, and where it landed once sent.
+    folder: v.string(),
+    // True when nobody picked a folder: it goes in the member's own folder, not the top
+    // of a team space, where members often cannot add folders.
+    home: v.optional(v.boolean()),
+    dropboxPath: v.optional(v.string()),
+    status: v.union(v.literal("sending"), v.literal("done"), v.literal("failed")),
+    sessionId: v.optional(v.string()),
+    offset: v.number(),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_run", ["runId"]),
+
   // The toSend account this dashboard sends email through: failed-run alerts, sign-in
   // emails and team invitations. One for the whole deployment, set once in Settings by
   // the team named here. TOSEND_API_KEY and EMAIL_FROM on the deployment win over it.
@@ -1115,7 +1296,12 @@ export default defineSchema({
     // Where the file came from, when it was not the browser: a meeting recording brought
     // in from a connected Zoom or Google account.
     source: v.optional(
-      v.union(v.literal("zoom"), v.literal("google_meet"), v.literal("microsoft")),
+      v.union(
+        v.literal("zoom"),
+        v.literal("google_meet"),
+        v.literal("microsoft"),
+        v.literal("dropbox"),
+      ),
     ),
     // Who shared a meeting recording brought in from someone else's Drive.
     sharedBy: v.optional(v.string()),

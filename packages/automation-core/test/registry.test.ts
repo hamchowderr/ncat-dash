@@ -2,6 +2,7 @@ import { allSteps } from "@ncat-dash/step-catalog";
 import { describe, expect, it } from "vitest";
 
 import {
+  savedKind,
   actionTypesByGroup,
   applyOperation,
   applyOperations,
@@ -38,7 +39,7 @@ const empty: AutomationDraft = {
 };
 
 describe("node registry", () => {
-  it("describes every trigger, every catalog step, approval, clips, moments, chapters and export exactly once", () => {
+  it("describes every trigger, every catalog step, approval, clips, moments, chapters, motion, sound effects and export exactly once", () => {
     const names = NODE_TYPES.map((nodeType) => nodeType.type);
     expect(new Set(names).size).toBe(names.length);
     for (const kind of ["manual", "upload", "folder", "schedule", "webhook", "finished"]) {
@@ -51,7 +52,14 @@ describe("node registry", () => {
     expect(getNodeType("automation")).toMatchObject({ takes: "files", gives: "files" });
     expect(getNodeType("moments")).toMatchObject({ takes: "file", gives: "files", ask: ["platform"] });
     expect(getNodeType("chapters")).toMatchObject({ takes: "file", gives: "files" });
-    expect(names.length).toBe(6 + allSteps.length + 8);
+    expect(getNodeType("motion")).toMatchObject({ takes: "file", gives: "files", group: "video" });
+    expect(getNodeType("sound-effects")).toMatchObject({ takes: "file", gives: "files" });
+    // The motion graphics render is only sent by those two, never listed as a step.
+    expect(getNodeType("step:video-motion")).toBeDefined();
+    expect(names).not.toContain("step:video-motion");
+    expect(savedKind("step:video-motion")).toBeNull();
+    expect(savedKind("motion")).toEqual({ kind: "motion" });
+    expect(names.length).toBe(6 + allSteps.length + 10);
   });
 
   it("gives every type a title, a description and an object schema for its settings", () => {
@@ -68,7 +76,7 @@ describe("node registry", () => {
   it("lists only steps that can be added, with no trigger among them", () => {
     const listed = actionTypesByGroup().flatMap((group) => group.types);
     expect(listed.every((nodeType) => nodeType.role === "action")).toBe(true);
-    expect(listed.length).toBe(allSteps.length + 8);
+    expect(listed.length).toBe(allSteps.length + 10);
   });
 
   it("knows the type of every node in every template", () => {

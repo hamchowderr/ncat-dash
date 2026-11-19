@@ -5,6 +5,8 @@ import { createChatAgent } from '../../src/mastra/agents/chat';
 import { createChatAgentController } from '../../src/mastra/lib/agent-controller';
 import { features } from '../../src/mastra/lib/features';
 import { stableSection, turnContextSections } from '../../src/mastra/lib/turn-context';
+import { forgetSessions, rememberSession } from '../../src/mastra/ncat/session-store';
+import { useTeamKeysForTests } from '../../src/mastra/ncat/team-key';
 import { createControllerRoutes } from '../../src/mastra/routes/controller';
 import type { ChatServerDeps } from '../../src/mastra/routes/types';
 import { ctx, deps, find } from '../helpers/route-harness';
@@ -18,6 +20,10 @@ afterEach(() => vi.restoreAllMocks());
 
 type Block = { text: string; cache_control?: unknown };
 type Request = {
+  apiKey?: string | null;
+  model?: string;
+  thinking?: unknown;
+  output_config?: { effort?: string };
   system?: Block[];
   tools?: { name: string; cache_control?: unknown }[];
   messages?: { content: unknown }[];
@@ -31,7 +37,10 @@ function captureProviderRequests() {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (url.includes('/v1/messages') && typeof init?.body === 'string') {
-      sent.push(JSON.parse(init.body) as Request);
+      sent.push({
+        ...(JSON.parse(init.body) as Request),
+        apiKey: new Headers(init.headers).get('x-api-key'),
+      });
     }
     return realFetch(input, init);
   });
@@ -47,7 +56,11 @@ const breakpoints = (r: Request) => JSON.stringify(r).split('"cache_control"').l
 
 const EPHEMERAL = { type: 'ephemeral' };
 
-async function postStream(resourceId: string, text: string) {
+async function postStream(
+  resourceId: string,
+  text: string,
+  body: Record<string, unknown> = {},
+) {
   const controller = createChatAgentController({
     storage: new InMemoryStore(),
     resourceId,
@@ -59,6 +72,7 @@ async function postStream(resourceId: string, text: string) {
     const route = find(
       createControllerRoutes(
         deps({
+          modelAllowlist: new Set(['anthropic/claude-sonnet-4-6']),
           getSession: () => Promise.resolve(session),
           getAgentController: () =>
             Promise.resolve(
@@ -69,7 +83,7 @@ async function postStream(resourceId: string, text: string) {
       '/agent-controller/stream',
       'POST',
     );
-    const { c } = ctx({ body: { text, timeZone: 'UTC' } });
+    const { c } = ctx({ resourceId, body: { text, timeZone: 'UTC', ...body } });
     const res = await route.handler(c);
     if (res instanceof Response) await res.text();
   } finally {
@@ -121,6 +135,65 @@ describe('prompt caching on (AIMock)', () => {
     } finally {
       turnContextSections.splice(turnContextSections.indexOf(profile), 1);
     }
+  });
+});
+
+describe('what a turn costs (lib/cost.ts, AIMock)', () => {
+  it('thinks adaptively at medium effort when building, never with a fixed budget', async () => {
+    const sent = captureProviderRequests();
+    await postStream('u-cost-build', 'Make me an automation that clips every upload for TikTok.');
+    const request = chatRequest(sent);
+    expect(request?.model).toBe('claude-sonnet-4-6');
+    expect(request?.thinking).toEqual({ type: 'adaptive' });
+    expect(request?.output_config?.effort).toBe('medium');
+    expect(JSON.stringify(request)).not.toContain('budget_tokens');
+  });
+
+  it('answers a simple question on Claude Haiku 5.5 at low effort', async () => {
+    const sent = captureProviderRequests();
+    await postStream('u-cost-simple', 'When is Friday?');
+    const request = chatRequest(sent);
+    expect(request?.model).toBe('claude-haiku-5-5');
+    expect(request?.output_config?.effort).toBe('low');
+  });
+
+  it("keeps a model the composer picked, even for a simple question", async () => {
+    const sent = captureProviderRequests();
+    await postStream('u-cost-picked', 'When is Friday?', { model: 'anthropic/claude-sonnet-4-6' });
+    expect(chatRequest(sent)?.model).toBe('claude-sonnet-4-6');
+  });
+});
+
+describe("a team's own Anthropic key (ncat/team-key.ts, AIMock)", () => {
+  afterEach(() => {
+    useTeamKeysForTests();
+    forgetSessions();
+  });
+
+  const signedIn = (user: string, team: string) =>
+    rememberSession(user, { convexToken: 'token', organizationId: team, automationId: null });
+
+  it('runs the turn on the team key, building and simple questions alike', async () => {
+    useTeamKeysForTests(async (team) => (team === 'team_own_key' ? 'sk-ant-team-own' : null));
+    signedIn('u-key-build', 'team_own_key');
+    signedIn('u-key-simple', 'team_own_key');
+    const sent = captureProviderRequests();
+    await postStream('u-key-build', 'Make me an automation that clips every upload for TikTok.');
+    expect(chatRequest(sent)?.apiKey).toBe('sk-ant-team-own');
+
+    vi.restoreAllMocks();
+    const simple = captureProviderRequests();
+    await postStream('u-key-simple', 'When is Friday?');
+    expect(chatRequest(simple)?.model).toBe('claude-haiku-5-5');
+    expect(chatRequest(simple)?.apiKey).toBe('sk-ant-team-own');
+  });
+
+  it("uses the server's key for a team without one", async () => {
+    useTeamKeysForTests(async () => null);
+    signedIn('u-key-none', 'team_none');
+    const sent = captureProviderRequests();
+    await postStream('u-key-none', 'Make me an automation that clips every upload for TikTok.');
+    expect(chatRequest(sent)?.apiKey).toBe('mock');
   });
 });
 

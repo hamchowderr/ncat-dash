@@ -9,11 +9,13 @@ import {
   DiscordSettings,
   EditorsSettings,
   EmailSettings,
+  MotionSettings,
   NotificationsSettings,
   RunsSettings,
   SlackSettings,
   TeamSettings,
 } from "./settings-view";
+import { DropboxCard } from "./dropbox-card";
 import { GoogleMeetCard } from "./google-meet-card";
 import { MicrosoftCard } from "./microsoft-card";
 import { ZoomCard } from "./zoom-card";
@@ -21,6 +23,7 @@ import { ZoomCard } from "./zoom-card";
 const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   brand: BrandSettings,
   captions: CaptionsSettings,
+  motion: MotionSettings,
   editors: EditorsSettings,
   agent: AgentSettings,
   runs: RunsSettings,
@@ -31,6 +34,7 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   zoom: ZoomCard,
   "google-meet": GoogleMeetCard,
   microsoft: MicrosoftCard,
+  dropbox: DropboxCard,
   mcp: McpSettings,
   team: TeamSettings,
 };

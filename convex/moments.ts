@@ -19,12 +19,28 @@ import { signAgentToken } from "./reviewAgent";
  * The "pick" stage of the Best moments and Chapters steps (see lib/moments.ts): gets each
  * video's words, asks the agent server's model to pick from the transcript, and hands the
  * answers back to the run, which checks every pick against the words itself.
+ *
+ * What a pick costs:
+ * - The same question asked again (same transcript, settings and house rules, such as a
+ *   run tried again or a rerun on the same upload) is answered from `pickAnswers`.
+ * - A run nobody is watching (a trigger started it, not a person, and it is not a test)
+ *   sends its questions as one batch at half the price (agent ncat/moments-batch.ts), and
+ *   `checkBatch` looks for the answers, sooner at first and then less often. If the agent
+ *   server cannot batch, or the batch fails or takes over a day, the pick asks the usual
+ *   way.
  */
 
 // The model reads a long transcript; give it time.
 const AGENT_TIMEOUT_MS = 240_000;
 const WORDS_FILE_TIMEOUT_MS = 60_000;
 const WORDS_FILE_LIMIT = 50_000_000;
+// A batch is usually answered within minutes; Anthropic gives up on one after 24 hours.
+const FIRST_CHECK_MS = 60_000;
+const LONGEST_CHECK_GAP_MS = 15 * 60_000;
+const BATCH_GIVE_UP_MS = 25 * 60 * 60_000;
+const MAX_BATCH = 20;
+// Saved answers are forgotten after this long.
+const ANSWER_DAYS = 30;
 
 /** What the pick needs to know about a step waiting at "pick". */
 export const loadPick = internalQuery({
@@ -71,6 +87,7 @@ export const loadPick = internalQuery({
       input: node.input,
       title: typeof fileName === "string" ? fileName : run.automationName,
       askedBy: run.startedBy ?? "automation",
+      unattended: run.startedBy === null && run.test === undefined,
       houseRules: settings?.agent?.houseRules ?? "",
       videos,
     };
@@ -130,8 +147,139 @@ export const finishPick = internalMutation({
   },
 });
 
+/** Saved answers to these questions (by SHA-256), from the last 30 days. */
+export const savedAnswers = internalQuery({
+  args: { organizationId: v.string(), questions: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const since = Date.now() - ANSWER_DAYS * 86_400_000;
+    const found: { question: string; answer: string }[] = [];
+    for (const question of args.questions) {
+      const row = await ctx.db
+        .query("pickAnswers")
+        .withIndex("by_question", (q) =>
+          q.eq("organizationId", args.organizationId).eq("question", question),
+        )
+        .first();
+      if (row && row.savedAt >= since) found.push({ question, answer: row.answer });
+    }
+    return found;
+  },
+});
+
+/** Keeps the model's answers, so the same questions are not paid for again. */
+export const saveAnswers = internalMutation({
+  args: {
+    organizationId: v.string(),
+    answers: v.array(v.object({ question: v.string(), answer: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    for (const { question, answer } of args.answers) {
+      const found = await ctx.db
+        .query("pickAnswers")
+        .withIndex("by_question", (q) =>
+          q.eq("organizationId", args.organizationId).eq("question", question),
+        )
+        .first();
+      const row = { organizationId: args.organizationId, question, answer, savedAt: Date.now() };
+      if (found) await ctx.db.replace(found._id, row);
+      else await ctx.db.insert("pickAnswers", row);
+    }
+  },
+});
+
+/** Forgets saved answers more than 30 days old, a few hundred at a time. */
+export const forgetOldAnswers = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const before = Date.now() - ANSWER_DAYS * 86_400_000;
+    const old = await ctx.db
+      .query("pickAnswers")
+      .withIndex("by_saved", (q) => q.lt("savedAt", before))
+      .take(500);
+    for (const row of old) await ctx.db.delete(row._id);
+    if (old.length === 500) await ctx.scheduler.runAfter(0, internal.moments.forgetOldAnswers, {});
+  },
+});
+
+/** Notes the batch a step's questions went in, and when to look for its answers. */
+export const waitForBatch = internalMutation({
+  args: { runStepId: v.id("runSteps"), organizationId: v.string(), batchId: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("pickBatches", { ...args, sentAt: Date.now(), checks: 0 });
+    await ctx.scheduler.runAfter(FIRST_CHECK_MS, internal.moments.checkBatch, {
+      runStepId: args.runStepId,
+    });
+  },
+});
+
+/** The batch a step waits on, and whether the step still waits for it. */
+export const loadBatch = internalQuery({
+  args: { runStepId: v.id("runSteps") },
+  handler: async (ctx, args) => {
+    const batch = await ctx.db
+      .query("pickBatches")
+      .withIndex("by_step", (q) => q.eq("runStepId", args.runStepId))
+      .first();
+    if (!batch) return null;
+    const step = await ctx.db.get(args.runStepId);
+    const run = step ? await ctx.db.get(step.runId) : null;
+    const waiting =
+      !!step &&
+      step.status === "running" &&
+      step.stage === "pick" &&
+      !!run &&
+      (run.status === "running" || run.status === "waiting");
+    return {
+      batchId: batch.batchId,
+      organizationId: batch.organizationId,
+      sentAt: batch.sentAt,
+      waiting,
+    };
+  },
+});
+
+/** Looks again later, waiting twice as long each time up to 15 minutes. */
+export const checkLater = internalMutation({
+  args: { runStepId: v.id("runSteps") },
+  handler: async (ctx, args) => {
+    const batch = await ctx.db
+      .query("pickBatches")
+      .withIndex("by_step", (q) => q.eq("runStepId", args.runStepId))
+      .first();
+    if (!batch) return;
+    const checks = batch.checks + 1;
+    await ctx.db.patch(batch._id, { checks });
+    await ctx.scheduler.runAfter(
+      Math.min(FIRST_CHECK_MS * 2 ** checks, LONGEST_CHECK_GAP_MS),
+      internal.moments.checkBatch,
+      args,
+    );
+  },
+});
+
+/**
+ * Done with a step's batch. When the step still waits, the pick runs again: the answers
+ * the batch brought are saved by then, and any it did not bring are asked the usual way.
+ */
+export const endBatch = internalMutation({
+  args: { runStepId: v.id("runSteps"), pickAgain: v.boolean() },
+  handler: async (ctx, args) => {
+    const batch = await ctx.db
+      .query("pickBatches")
+      .withIndex("by_step", (q) => q.eq("runStepId", args.runStepId))
+      .first();
+    if (batch) await ctx.db.delete(batch._id);
+    if (args.pickAgain) {
+      await ctx.scheduler.runAfter(0, internal.moments.pick, {
+        runStepId: args.runStepId,
+        live: true,
+      });
+    }
+  },
+});
+
 /** The words in a toolkit transcript file of segments with word timestamps. */
-async function readWordsFile(url: string): Promise<Word[] | null> {
+export async function readWordsFile(url: string): Promise<Word[] | null> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(WORDS_FILE_TIMEOUT_MS) });
     if (!response.ok) return null;
@@ -145,8 +293,63 @@ async function readWordsFile(url: string): Promise<Word[] | null> {
 
 class PickError extends Error {}
 
+/** The question's SHA-256, which its saved answer is kept under. */
+async function questionKey(body: Record<string, unknown>): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(body)),
+  );
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** A signed POST to the agent server, or null when it is not set up or not reachable. */
+async function postToAgent(
+  path: string,
+  body: unknown,
+  askedBy: string,
+  timeoutMs = 60_000,
+): Promise<Response | null> {
+  const url = process.env.AGENT_URL;
+  const secret = process.env.MASTRA_JWT_SECRET;
+  if (!url || !secret) return null;
+  try {
+    return await fetch(new URL(path, url), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${await signAgentToken(secret, askedBy)}`,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Sends the questions as one batch. Returns its id, or null to ask the usual way. */
+async function sendBatch(
+  questions: { key: string; body: Record<string, unknown> }[],
+  askedBy: string,
+  organizationId: string,
+): Promise<string | null> {
+  if (questions.length === 0 || questions.length > MAX_BATCH) return null;
+  const response = await postToAgent(
+    "/ncat/moments/batch",
+    { organizationId, requests: questions.map(({ key, body }) => ({ id: key, request: body })) },
+    askedBy,
+  );
+  if (!response?.ok) return null;
+  const result = (await response.json().catch(() => null)) as { batchId?: unknown } | null;
+  return typeof result?.batchId === "string" ? result.batchId : null;
+}
+
 /** Asks the agent server's model to pick from one transcript. Returns its answer as text. */
-async function askModel(body: Record<string, unknown>, askedBy: string): Promise<string> {
+async function askModel(
+  body: Record<string, unknown>,
+  askedBy: string,
+  organizationId: string,
+): Promise<string> {
   const url = process.env.AGENT_URL;
   const secret = process.env.MASTRA_JWT_SECRET;
   if (!url || !secret) {
@@ -162,7 +365,8 @@ async function askModel(body: Record<string, unknown>, askedBy: string): Promise
         "content-type": "application/json",
         authorization: `Bearer ${await signAgentToken(secret, askedBy)}`,
       },
-      body: JSON.stringify(body),
+      // The team, so the agent server uses the team's own Anthropic key when it has one.
+      body: JSON.stringify({ ...body, organizationId }),
       signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
     });
   } catch {
@@ -175,11 +379,15 @@ async function askModel(body: Record<string, unknown>, askedBy: string): Promise
   return result.answer;
 }
 
-/** The pick itself: words for each video, then one question to the model per video. */
+/**
+ * The pick itself: words for each video, then one question to the model per video,
+ * answered from a saved answer, a batch (unattended runs) or the model straight away.
+ * `live` skips the batch, once a batch has been tried.
+ */
 export const pick = internalAction({
-  args: { runStepId: v.id("runSteps") },
+  args: { runStepId: v.id("runSteps"), live: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const loaded = await ctx.runQuery(internal.moments.loadPick, args);
+    const loaded = await ctx.runQuery(internal.moments.loadPick, { runStepId: args.runStepId });
     if (!loaded) return;
     const finish = (answers: { url: string; answer: string }[], error?: string) =>
       ctx.runMutation(internal.moments.finishPick, {
@@ -188,7 +396,7 @@ export const pick = internalAction({
         ...(error !== undefined ? { error } : {}),
       });
     try {
-      const answers: { url: string; answer: string }[] = [];
+      const questions: { url: string; key: string; body: Record<string, unknown> }[] = [];
       for (const video of loaded.videos) {
         let words: Word[] | null = video.words;
         if (!words) {
@@ -221,19 +429,50 @@ export const pick = internalAction({
                 };
               })()
             : chapterSettings(loaded.input);
-        const answer = await askModel(
-          {
-            kind: loaded.kind,
-            title: loaded.title.slice(0, 300),
-            duration,
-            transcript: transcriptText(words),
-            settings,
-            ...(loaded.kind === "moments" ? { avoid: video.avoid } : {}),
-            houseRules: loaded.houseRules.slice(0, 2000),
-          },
-          loaded.askedBy,
-        );
-        answers.push({ url: video.url, answer });
+        const body = {
+          kind: loaded.kind,
+          title: loaded.title.slice(0, 300),
+          duration,
+          transcript: transcriptText(words),
+          settings,
+          ...(loaded.kind === "moments" ? { avoid: video.avoid } : {}),
+          houseRules: loaded.houseRules.slice(0, 2000),
+        };
+        questions.push({ url: video.url, key: await questionKey(body), body });
+      }
+
+      const saved = new Map(
+        (
+          await ctx.runQuery(internal.moments.savedAnswers, {
+            organizationId: loaded.organizationId,
+            questions: questions.map(({ key }) => key),
+          })
+        ).map(({ question, answer }) => [question, answer]),
+      );
+      const unanswered = questions.filter(({ key }) => !saved.has(key));
+      if (unanswered.length > 0 && loaded.unattended && !args.live) {
+        const batchId = await sendBatch(unanswered, loaded.askedBy, loaded.organizationId);
+        if (batchId) {
+          await ctx.runMutation(internal.moments.waitForBatch, {
+            runStepId: args.runStepId,
+            organizationId: loaded.organizationId,
+            batchId,
+          });
+          return;
+        }
+      }
+
+      const answers: { url: string; answer: string }[] = [];
+      for (const question of questions) {
+        let answer = saved.get(question.key);
+        if (answer === undefined) {
+          answer = await askModel(question.body, loaded.askedBy, loaded.organizationId);
+          await ctx.runMutation(internal.moments.saveAnswers, {
+            organizationId: loaded.organizationId,
+            answers: [{ question: question.key, answer }],
+          });
+        }
+        answers.push({ url: question.url, answer });
       }
       await finish(answers);
     } catch (error) {
@@ -242,5 +481,47 @@ export const pick = internalAction({
         error instanceof PickError ? error.message : "Picking failed. Run it again in a moment.",
       );
     }
+  },
+});
+
+/** Looks for a batch's answers; saves them and picks again once they are in. */
+export const checkBatch = internalAction({
+  args: { runStepId: v.id("runSteps") },
+  handler: async (ctx, args) => {
+    const batch = await ctx.runQuery(internal.moments.loadBatch, args);
+    if (!batch) return;
+    if (!batch.waiting) {
+      await ctx.runMutation(internal.moments.endBatch, { ...args, pickAgain: false });
+      return;
+    }
+    const response = await postToAgent(
+      "/ncat/moments/batch/answers",
+      { batchId: batch.batchId, organizationId: batch.organizationId },
+      "automation",
+    );
+    const result = response?.ok
+      ? ((await response.json().catch(() => null)) as {
+          pending?: unknown;
+          answers?: { id?: unknown; answer?: unknown }[];
+        } | null)
+      : null;
+    const answers = Array.isArray(result?.answers) ? result.answers : null;
+    // Still working, or not reachable just now: look again later, up to a day.
+    if (!answers && Date.now() - batch.sentAt < BATCH_GIVE_UP_MS && response?.status !== 409) {
+      await ctx.runMutation(internal.moments.checkLater, args);
+      return;
+    }
+    const good = (answers ?? []).flatMap(({ id, answer }) =>
+      typeof id === "string" && typeof answer === "string" && answer.trim() !== ""
+        ? [{ question: id, answer }]
+        : [],
+    );
+    if (good.length > 0) {
+      await ctx.runMutation(internal.moments.saveAnswers, {
+        organizationId: batch.organizationId,
+        answers: good,
+      });
+    }
+    await ctx.runMutation(internal.moments.endBatch, { ...args, pickAgain: true });
   },
 });

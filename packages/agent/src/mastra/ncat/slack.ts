@@ -6,6 +6,8 @@ import { env } from '../../lib/env';
 import { TURN_USER_KEY } from '../lib/turn-user';
 import { rememberSession } from './session-store';
 import { hearVoiceNotes } from './voice-notes';
+import { LONG_CACHE_KEY } from '../lib/cost';
+import { convexSiteUrl, signForDashboard } from './dashboard-site';
 
 /**
  * The agent in Slack, on each team's own Slack app: a regular self-managed Mastra
@@ -41,31 +43,7 @@ export type SlackPerson =
   // blocked, or they have sent a great many messages. `message` is what to tell them.
   | { ok: false; reason: 'refused'; email: null; message: string };
 
-/** Where the dashboard's HTTP actions answer. */
-export function convexSiteUrl(): string | null {
-  if (env.CONVEX_SITE_URL) return env.CONVEX_SITE_URL.replace(/\/$/, '');
-  if (!env.CONVEX_URL) return null;
-  const url = new URL(env.CONVEX_URL);
-  if (url.hostname.endsWith('.convex.cloud')) {
-    url.hostname = url.hostname.replace(/\.convex\.cloud$/, '.convex.site');
-  } else if (url.port) {
-    url.port = String(Number(url.port) + 1);
-  }
-  return url.origin;
-}
-
-function base64url(value: Buffer | string): string {
-  return Buffer.from(value).toString('base64url');
-}
-
-/** A five-minute HS256 token, as the dashboard signs its own calls to us. */
-export function signForDashboard(secret: string, now = Date.now()): string {
-  const iat = Math.floor(now / 1000);
-  const body = `${base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${base64url(
-    JSON.stringify({ sub: 'agent-server', iat, exp: iat + 300 }),
-  )}`;
-  return `${body}.${base64url(createHmac('sha256', secret).update(body).digest())}`;
-}
+export { convexSiteUrl, signForDashboard };
 
 type Ask = <T>(path: string, body: Record<string, string>) => Promise<T | null>;
 
@@ -231,6 +209,8 @@ export const asTheWriter: ChannelHandler = async (thread, message, next, ctx) =>
     automationId: null,
   });
   ctx.requestContext.set(TURN_USER_KEY, resourceId);
+  // Chat-app messages come minutes apart: keep the prompt cached an hour (lib/cost.ts).
+  ctx.requestContext.set(LONG_CACHE_KEY, true);
   // A voice note is read as the words said in it, by the team's own toolkit.
   await hearVoiceNotes(thread, message, person.organizationId);
   await next(thread, message);

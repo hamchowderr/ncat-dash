@@ -82,6 +82,8 @@ export function nodeTitle(node: Pick<AutomationNode, "kind" | "stepId" | "label"
   if (node.kind === "clips") return "Clips for a platform";
   if (node.kind === "moments") return "Best moments";
   if (node.kind === "chapters") return "Chapters and show notes";
+  if (node.kind === "motion") return "Add Motion Graphics";
+  if (node.kind === "sound-effects") return "Add Sound Effects";
   if (node.kind === "if") return "If";
   if (node.kind === "wait") return "Wait";
   if (node.kind === "export") return "Export for editors";

@@ -28,6 +28,11 @@ export const SETTINGS_GROUPS = [
           "How captions read and look. Every caption step uses these unless it is told otherwise.",
       },
       {
+        slug: "motion",
+        title: "Motion",
+        description: "How motion graphics and sound effects look. Every motion step uses these.",
+      },
+      {
         slug: "team",
         title: "Members",
         description: "Who is on the team and what they can do.",
@@ -87,6 +92,11 @@ export const SETTINGS_GROUPS = [
         slug: "microsoft",
         title: "Microsoft 365",
         description: "Teams meeting recordings come into Uploads by themselves, ready to clip.",
+      },
+      {
+        slug: "dropbox",
+        title: "Dropbox",
+        description: "Footage in the folders you pick comes into Uploads; finished clips can go back.",
       },
       {
         slug: "mcp",

@@ -1,6 +1,7 @@
 import { Agent } from "@mastra/core/agent";
 import { z } from "zod";
 import { env } from "../../lib/env";
+import { onTeamKey, TEAM_KEY } from "./team-key";
 
 /**
  * Picking the best moments of a recording, and grouping one into chapters, for the
@@ -58,12 +59,28 @@ Your answer is read by a program, so:
 - Answer with one JSON object and nothing else: no words before or after it, no code fence.
 - Every quote you give is copied exactly from the transcript, word for word, as one unbroken stretch: the same words in the same order, nothing added, left out, reworded or corrected. Leave out the [times]. A quote that is not in the transcript exactly is thrown away.`;
 
+/**
+ * How hard the model thinks when it picks. Left out, Claude Sonnet 5.5 thinks at high,
+ * which reads a long transcript at length for a short answer; medium picks as well for
+ * far fewer thinking tokens.
+ */
+export const MOMENTS_EFFORT = "medium" as const;
+
 export const momentsAgent = new Agent({
   id: "moments",
   name: "Best moments",
   description: "Picks the best moments of a transcript, or groups it into chapters.",
   instructions: MOMENTS_INSTRUCTIONS,
-  model: env.CHAT_MODEL,
+  // On the team's own Anthropic key when the dashboard sent the team and it has one.
+  model: ({ requestContext }) => {
+    const key = requestContext.get(TEAM_KEY);
+    return onTeamKey(env.CHAT_MODEL, typeof key === "string" ? key : null);
+  },
+  defaultOptions: {
+    providerOptions: {
+      anthropic: { thinking: { type: "adaptive" }, effort: MOMENTS_EFFORT },
+    },
+  },
 });
 
 /** "1:05" or "1:02:03". */

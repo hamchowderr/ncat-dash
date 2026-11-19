@@ -11,10 +11,12 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
 import { AgentCard } from "./agent-card";
+import { AnthropicKeyCard } from "./anthropic-key-card";
 import { BrandCard } from "./brand-card";
 import { CaptionsCard } from "./captions-card";
 import { EditorsCard } from "./editors-card";
 import { EmailCard } from "./email-card";
+import { MotionCard } from "./motion-card";
 import { NotificationsCard } from "./notifications-card";
 import { SettingRow, SettingsLoading, SettingsSection, useTeamSettings } from "./settings-shell";
 import { DiscordCard } from "./discord-card";
@@ -45,6 +47,19 @@ export function CaptionsSettings() {
   );
 }
 
+/** Motion: the style motion graphics start from, and the names they show. */
+export function MotionSettings() {
+  const settings = useTeamSettings();
+  if (!settings) return <SettingsLoading />;
+  return (
+    <MotionCard
+      motion={settings.motion}
+      presets={settings.motionPresets}
+      canEdit={settings.canEdit}
+    />
+  );
+}
+
 /** The editors the team finishes videos in. */
 export function EditorsSettings() {
   const settings = useTeamSettings();
@@ -57,12 +72,15 @@ export function AgentSettings() {
   const settings = useTeamSettings();
   if (!settings) return <SettingsLoading />;
   return (
-    <AgentCard
-      agent={settings.agent}
-      models={settings.agentModels}
-      mostHouseRules={settings.mostHouseRules}
-      canEdit={settings.canEdit}
-    />
+    <div className="flex flex-col gap-12">
+      <AgentCard
+        agent={settings.agent}
+        models={settings.agentModels}
+        mostHouseRules={settings.mostHouseRules}
+        canEdit={settings.canEdit}
+      />
+      <AnthropicKeyCard anthropicKey={settings.anthropicKey} canEdit={settings.canEdit} />
+    </div>
   );
 }
 

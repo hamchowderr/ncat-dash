@@ -10,6 +10,7 @@
 
 import type * as access from "../access.js";
 import type * as alerts from "../alerts.js";
+import type * as anthropicKey from "../anthropicKey.js";
 import type * as auth from "../auth.js";
 import type * as automations from "../automations.js";
 import type * as blocks from "../blocks.js";
@@ -18,6 +19,7 @@ import type * as clients from "../clients.js";
 import type * as contentGoals from "../contentGoals.js";
 import type * as crons from "../crons.js";
 import type * as discord from "../discord.js";
+import type * as dropbox from "../dropbox.js";
 import type * as email from "../email.js";
 import type * as files from "../files.js";
 import type * as googleMeet from "../googleMeet.js";
@@ -38,6 +40,7 @@ import type * as lib_clients from "../lib/clients.js";
 import type * as lib_crypto from "../lib/crypto.js";
 import type * as lib_disposableDomains from "../lib/disposableDomains.js";
 import type * as lib_drawing from "../lib/drawing.js";
+import type * as lib_dropbox from "../lib/dropbox.js";
 import type * as lib_edition from "../lib/edition.js";
 import type * as lib_emailKey from "../lib/emailKey.js";
 import type * as lib_exports from "../lib/exports.js";
@@ -51,6 +54,7 @@ import type * as lib_mcpKeys from "../lib/mcpKeys.js";
 import type * as lib_mcpServer from "../lib/mcpServer.js";
 import type * as lib_microsoft from "../lib/microsoft.js";
 import type * as lib_moments from "../lib/moments.js";
+import type * as lib_motion from "../lib/motion.js";
 import type * as lib_notifications from "../lib/notifications.js";
 import type * as lib_oauth from "../lib/oauth.js";
 import type * as lib_outputs from "../lib/outputs.js";
@@ -74,6 +78,7 @@ import type * as mcp from "../mcp.js";
 import type * as mcpKeys from "../mcpKeys.js";
 import type * as microsoft from "../microsoft.js";
 import type * as moments from "../moments.js";
+import type * as motion from "../motion.js";
 import type * as notes from "../notes.js";
 import type * as notifications from "../notifications.js";
 import type * as oauth from "../oauth.js";
@@ -112,6 +117,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   access: typeof access;
   alerts: typeof alerts;
+  anthropicKey: typeof anthropicKey;
   auth: typeof auth;
   automations: typeof automations;
   blocks: typeof blocks;
@@ -120,6 +126,7 @@ declare const fullApi: ApiFromModules<{
   contentGoals: typeof contentGoals;
   crons: typeof crons;
   discord: typeof discord;
+  dropbox: typeof dropbox;
   email: typeof email;
   files: typeof files;
   googleMeet: typeof googleMeet;
@@ -140,6 +147,7 @@ declare const fullApi: ApiFromModules<{
   "lib/crypto": typeof lib_crypto;
   "lib/disposableDomains": typeof lib_disposableDomains;
   "lib/drawing": typeof lib_drawing;
+  "lib/dropbox": typeof lib_dropbox;
   "lib/edition": typeof lib_edition;
   "lib/emailKey": typeof lib_emailKey;
   "lib/exports": typeof lib_exports;
@@ -153,6 +161,7 @@ declare const fullApi: ApiFromModules<{
   "lib/mcpServer": typeof lib_mcpServer;
   "lib/microsoft": typeof lib_microsoft;
   "lib/moments": typeof lib_moments;
+  "lib/motion": typeof lib_motion;
   "lib/notifications": typeof lib_notifications;
   "lib/oauth": typeof lib_oauth;
   "lib/outputs": typeof lib_outputs;
@@ -176,6 +185,7 @@ declare const fullApi: ApiFromModules<{
   mcpKeys: typeof mcpKeys;
   microsoft: typeof microsoft;
   moments: typeof moments;
+  motion: typeof motion;
   notes: typeof notes;
   notifications: typeof notifications;
   oauth: typeof oauth;
