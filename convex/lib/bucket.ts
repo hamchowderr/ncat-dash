@@ -22,6 +22,12 @@ export interface Bucket {
   root: string;
 }
 
+/** A file name made safe to use in a key: letters, digits, dots, dashes, underscores. */
+export function safeName(fileName: string): string {
+  const cleaned = fileName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "");
+  return cleaned.slice(-120) || "file";
+}
+
 /** The key in the bucket for a key inside the team's folder. */
 function inBucket(bucket: Bucket, key: string): string {
   return `${bucket.root}${key}`;
