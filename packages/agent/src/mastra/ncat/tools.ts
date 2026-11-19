@@ -167,6 +167,28 @@ export const platformGuide = createTool({
   },
 });
 
+export const motionGuide = createTool({
+  id: "motion_guide",
+  description:
+    "The motion graphics preset styles (id, name, what each is best for, its look, pieces and sound) and the pieces they draw. Read it before setting a Motion Graphics step's style to a preset, or when the person asks which styles there are.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({ text: z.string() }),
+  execute: async (_input, ctx) => {
+    const { client } = dashFor(userOf(ctx));
+    try {
+      return (await client.query(dash.automations.motionGuide, {})) as { text: string };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+/** When to add the motion graphics and sound effects steps, and where their style lives. */
+export const MOTION_INSTRUCTIONS = `- Motion graphics and sound effects: Add Motion Graphics draws designed titles, the speaker's name, the numbers said, chapter cards and a follow card onto each video; Add Sound Effects adds sounds alone and leaves the picture as it is. Both place things by plain rules from the transcript, with no AI and no AI cost per video. Add them when the person asks for motion graphics, animated text, titles, a more edited or produced look, or sound effects; do not add them unasked.
+- Order: put Chapters before them, so motion graphics get a card and sound effects a whoosh at each chapter. Steps that change the picture underneath, such as Follow the speaker, a layout or B-roll when there is a step for it, go before Add Motion Graphics so the graphics sit on top of the final picture. Add Motion Graphics already plays a sound with each piece, so use Add Sound Effects on its own when the person wants sounds without graphics, or set the Motion Graphics step's sounds to off when both are wanted, so sounds are not played twice.
+- Style: the team's motion style lives in Settings > Motion (you are told it with the team's settings when it has one), and a step left on the team style uses it. When the person wants a different look for one automation, set the step's style to a preset id; read motion_guide to pick the one that fits and say which you picked. To change the style for every automation, send the person to Settings > Motion rather than setting it on each step. The name lower third and follow card need the speaker's name and the handle in Settings > Motion: if they are empty, tell the person those pieces are skipped until they fill them in.
+- These steps run on the team's own toolkit. Never mention or suggest hosted, paid or outside motion graphics services.`;
+
 const operation = z.discriminatedUnion("op", [
   z.object({
     op: z.literal("add"),
@@ -633,6 +655,7 @@ export const ncatTools = {
   describe_automation: describeAutomation,
   list_step_types: listStepTypes,
   platform_guide: platformGuide,
+  motion_guide: motionGuide,
   change_automation: changeAutomation,
   create_automation: createAutomation,
   switch_automation: switchAutomation,
@@ -653,6 +676,7 @@ export const NCAT_READ_TOOLS = [
   "describe_automation",
   "list_step_types",
   "platform_guide",
+  "motion_guide",
   "list_uploads",
   "check_run",
   "list_folder",
@@ -678,6 +702,7 @@ How to work:
 - Once it has no problems, try it before calling it done: try_automation runs it on one of the team's uploads (the newest it would take, unless the person named one; list_uploads shows them), then check_run tells you how each step went. If a step failed, read its error, fix what you can with change_automation and try again; say plainly what you could not fix. If the run stops at an approval step, that is it working: tell the person it is waiting for them, with a link to the run. If there are no uploads, ask the person to upload a file on the Uploads page rather than skipping the try.
 - Report a try in plain words: which file it ran on, what each step made (how many clips, for example), and any step that failed and why. Link to the run with the address try_automation returned, like [See the run](/automations/.../runs/...).
 ${TEAM_STEP_INSTRUCTIONS}
+${MOTION_INSTRUCTIONS}
 - Only switch an automation on when the person asked for it to run, and it has no problems.
 - Say what you built in plain words: what starts it and what each step does. No ids, no JSON, no jargon unless they ask. After making a new automation, link to it with the address create_automation returned, like [Open it](/automations/...).
 ${LIBRARY_INSTRUCTIONS}

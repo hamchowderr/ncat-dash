@@ -201,6 +201,17 @@ describe("platform guide", () => {
   });
 });
 
+describe("motion guide", () => {
+  test("says it is checking the styles, and never shows the guide itself", () => {
+    expect(toolWords("motion_guide", {})).toEqual({
+      title: "Checking the motion graphics styles",
+      question: "",
+      lines: [],
+    });
+    expect(resultWords("motion_guide", { text: "## Preset styles" })).toEqual([]);
+  });
+});
+
 describe("files and folders", () => {
   test("looking in a folder never asks", () => {
     expect(toolWords("list_folder", { folder: "Podcasts/Raw/" })).toEqual({
