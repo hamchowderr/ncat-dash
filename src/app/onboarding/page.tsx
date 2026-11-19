@@ -7,6 +7,7 @@ import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { FullPageLoader } from "@/components/full-page-loader";
+import { START_TOUR_SEARCH } from "@/components/app-shell/dashboard-tour";
 import { ConnectToolkitForm } from "@/components/onboarding/connect-toolkit-form";
 import { ContentGoalsFlow } from "@/components/onboarding/content-goals-flow";
 import { CreateTeamForm } from "@/components/onboarding/create-team-form";
@@ -70,6 +71,9 @@ function Onboarding() {
     state.status === "no-team" ? "team" : (stage ?? (connectOnly ? "connect" : "ask"));
   const step = current === "team" ? 1 : current === "brand" ? 3 : current === "goals" ? 4 : 2;
   const finish = () => router.replace("/");
+  // Once setting up is done, Home starts the tour of the dashboard for someone who has not
+  // had it. Connecting a toolkit later from Home goes back without it.
+  const finishSetup = () => router.replace(`/${START_TOUR_SEARCH}`);
   const toGoals = () => setStage("goals");
   // No: on ours when the operator lends one, otherwise on without a toolkit for now.
   const withoutToolkit = async () => {
@@ -189,7 +193,7 @@ function Onboarding() {
             stepsBefore={3}
             stepsTotal={STEPS}
             hasToolkit={hasToolkit}
-            onFinish={finish}
+            onFinish={finishSetup}
           />
         )}
       </div>

@@ -1,0 +1,42 @@
+import { ConvexError, v } from "convex/values";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { authComponent } from "./auth";
+
+// Whether someone has been through a guided tour of the dashboard. It starts by itself
+// once, when setting up ends; after it is finished or closed it only starts from the menu.
+
+const tourId = v.literal("dashboard");
+
+async function requireUser(ctx: QueryCtx | MutationCtx) {
+  const user = await authComponent.safeGetAuthUser(ctx);
+  if (!user) throw new ConvexError({ code: "unauthenticated", message: "Sign in first." });
+  return user._id as string;
+}
+
+function endOf(ctx: QueryCtx | MutationCtx, userId: string, tour: "dashboard") {
+  return ctx.db
+    .query("tourEnds")
+    .withIndex("by_user_and_tour", (q) => q.eq("userId", userId).eq("tourId", tour))
+    .unique();
+}
+
+/** Whether the person asking has finished or closed the tour. */
+export const ended = query({
+  args: { tourId },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    return (await endOf(ctx, userId, args.tourId)) !== null;
+  },
+});
+
+/** Notes that the person asking finished the tour or closed it part way. */
+export const end = mutation({
+  args: { tourId, how: v.union(v.literal("finished"), v.literal("closed")) },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    const existing = await endOf(ctx, userId, args.tourId);
+    const fields = { how: args.how, endedAt: Date.now() };
+    if (existing) await ctx.db.patch(existing._id, fields);
+    else await ctx.db.insert("tourEnds", { userId, tourId: args.tourId, ...fields });
+  },
+});
