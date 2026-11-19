@@ -17,6 +17,9 @@ export const nodeValidator = v.object({
     // Picks the best moments of each video and cuts them; groups a video into chapters.
     v.literal("moments"),
     v.literal("chapters"),
+    // Draws motion graphics, or adds sound effects, onto each video.
+    v.literal("motion"),
+    v.literal("sound-effects"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -213,6 +216,25 @@ export const captionSetupValidator = v.object({
   }),
 });
 
+/** A team's Motion settings: the preset picked, its style as changed, and the names shown. */
+export const motionSetupValidator = v.object({
+  preset: v.string(),
+  style: v.object({
+    look: v.string(),
+    busy: v.string(),
+    pieces: v.array(v.string()),
+    opening: v.string(),
+    ending: v.string(),
+    sound: v.string(),
+    showsUnsaid: v.boolean(),
+  }),
+  hostName: v.string(),
+  hostRole: v.string(),
+  handle: v.string(),
+  callToAction: v.string(),
+  notes: v.string(),
+});
+
 // Users, sessions, organizations (teams), members and invitations live in the
 // Better Auth component (convex/betterAuth). App tables point at a team by its
 // organization id, and every read or write checks membership first (lib/authz.ts).
@@ -308,6 +330,8 @@ export default defineSchema({
     agent: v.optional(agentSettingsValidator),
     // How captions read and look: word fixes, saved styles and a style per video shape.
     captions: v.optional(captionSetupValidator),
+    // How motion graphics and sound effects look and sound (Settings > Motion).
+    motion: v.optional(motionSetupValidator),
     // What the team makes and where it posts, from setting up (content-goals.ts). The
     // posting apps also become the agent's default platforms.
     contentGoals: v.optional(
@@ -576,6 +600,8 @@ export default defineSchema({
     // ("listen"), then waits for the model to pick ("pick"); a "moments" step then cuts
     // its moments ("cut").
     // A caption step reading its videos' sizes, to pick the style for each shape, is at "size".
+    // A "motion" or "sound-effects" step transcribes each video ("listen"), reads its words
+    // and places what goes on it ("place"), then draws on it ("render").
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -585,6 +611,8 @@ export default defineSchema({
         v.literal("listen"),
         v.literal("pick"),
         v.literal("size"),
+        v.literal("place"),
+        v.literal("render"),
       ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
@@ -644,6 +672,16 @@ export default defineSchema({
           start: v.number(),
           title: v.string(),
           bullets: v.array(v.string()),
+        }),
+      ),
+    ),
+    // For a "motion" or "sound-effects" step: what it put on each video and when, so a
+    // later step (such as B-roll) can keep clear of it.
+    placed: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          items: v.array(v.object({ start: v.number(), end: v.number(), kind: v.string() })),
         }),
       ),
     ),

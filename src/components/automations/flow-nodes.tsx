@@ -10,6 +10,7 @@ import {
   canFailOver,
   FAILURE_WAY,
   conditionSentence,
+  getPreset,
   missingBrandOf,
   missingSettings,
   NODE_GAP,
@@ -53,6 +54,8 @@ import {
   Signpost,
   Star,
   ListOrdered,
+  AudioLines,
+  PanelsTopLeft,
   Terminal,
   TriangleAlert,
   Upload,
@@ -170,6 +173,23 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
       icon: ListOrdered,
       tint: "text-orange-600 dark:text-orange-400",
       kind: "From the transcript",
+    };
+  }
+  if (node.kind === "motion") {
+    const preset = getPreset(node.input.style);
+    return {
+      icon: PanelsTopLeft,
+      tint: CATEGORY_TINTS.video,
+      kind: preset ? preset.name : "Your team's style",
+    };
+  }
+  if (node.kind === "sound-effects") {
+    const level = node.input.level;
+    return {
+      icon: AudioLines,
+      tint: CATEGORY_TINTS.video,
+      kind:
+        level === "heavy" ? "On every number" : level === "light" ? "A few" : "Your team's level",
     };
   }
   if (node.kind === "if") {

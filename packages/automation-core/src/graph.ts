@@ -12,7 +12,8 @@ export interface AutomationNode {
    * sends each file one of two ways; "wait" holds the run for a length of time;
    * "automation" runs another of the team's automations on its files (chain.ts);
    * "moments" picks the best moments of each video and cuts them as clips; "chapters"
-   * groups a long video into chapters (both moments.ts).
+   * groups a long video into chapters (both moments.ts); "motion" draws motion graphics
+   * and "sound-effects" adds sound effects onto each video (motion.ts).
    */
   kind:
     | "step"
@@ -23,7 +24,9 @@ export interface AutomationNode {
     | "wait"
     | "automation"
     | "moments"
-    | "chapters";
+    | "chapters"
+    | "motion"
+    | "sound-effects";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */
