@@ -24,8 +24,8 @@ export function DropboxSend({ automationId }: { automationId: Id<"automations"> 
 
   async function save(on: boolean, folder?: string) {
     try {
+      // The folder shown beside the switch says where files go, so no message pops up.
       await setSend({ automationId, on, ...(folder !== undefined ? { folder } : {}) });
-      if (on) toast.success(`Finished files will go to ${folder || state!.folder} in Dropbox`);
     } catch (caught) {
       toast.error(errorMessage(caught, "That could not be changed."));
     }

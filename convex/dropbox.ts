@@ -796,7 +796,8 @@ export const skipAhead = internalAction({
     }
     for (const folder of await ctx.runQuery(internal.dropbox.watchedFolders, args)) {
       const cursor = await latestCursor(token, row, folder).catch(() => null);
-      if (cursor) await ctx.runMutation(internal.dropbox.saveCursor, { folderId: folder._id, cursor });
+      if (cursor)
+        await ctx.runMutation(internal.dropbox.saveCursor, { folderId: folder._id, cursor });
     }
   },
 });
@@ -893,7 +894,9 @@ export const startImport = internalMutation({
     const before = (
       await ctx.db
         .query("dropboxImports")
-        .withIndex("by_file", (q) => q.eq("organizationId", organizationId).eq("fileId", file.fileId))
+        .withIndex("by_file", (q) =>
+          q.eq("organizationId", organizationId).eq("fileId", file.fileId),
+        )
         .order("desc")
         .take(10)
     ).find((one) => one.contentHash === file.contentHash);
@@ -1095,7 +1098,8 @@ async function filesIn(
       const body = (await response.json()) as ListPage;
       for (const entry of body.entries ?? []) {
         const picked = pickFile(entry);
-        if (picked && !all.has(picked.fileId)) all.set(picked.fileId, { ...picked, folder: folder.path });
+        if (picked && !all.has(picked.fileId))
+          all.set(picked.fileId, { ...picked, folder: folder.path });
       }
       if (!body.has_more || !body.cursor) break;
       response = await rpc(token, found.row, "files/list_folder/continue", { cursor: body.cursor });
@@ -1158,7 +1162,9 @@ export const bringOver = action({
     const wanted = new Set(args.fileIds);
     const files = (await filesIn(ctx, found)).filter((one) => wanted.has(one.fileId));
     let started = 0;
-    for (const { folder: _folder, ...file } of files) {
+    for (const one of files) {
+      const { folder, ...file } = one;
+      void folder; // Only used to show the file under its folder in Settings.
       const outcome = await ctx.runMutation(internal.dropbox.startImport, {
         connectionId: found.row._id,
         file,
@@ -1211,7 +1217,8 @@ export const setSend = mutation({
   },
   handler: async (ctx, args) => {
     const automation = await ctx.db.get(args.automationId);
-    if (!automation) throw new ConvexError({ code: "not_found", message: "That automation is gone." });
+    if (!automation)
+      throw new ConvexError({ code: "not_found", message: "That automation is gone." });
     const { userId } = await requireMember(ctx, automation.organizationId);
     if (!args.on) {
       await ctx.db.patch(automation._id, { dropboxSend: undefined });

@@ -337,7 +337,8 @@ export function DropboxCard() {
                     <span className="font-medium">{one.name}</span>
                     <span className="text-muted-foreground">
                       {" "}
-                      · {one.automationName} · {one.dropboxPath ? parentOf(one.dropboxPath) : one.folder}
+                      · {one.automationName} ·{" "}
+                      {one.dropboxPath ? parentOf(one.dropboxPath) : one.folder}
                     </span>
                   </span>
                   {one.status === "failed" ? (
@@ -395,18 +396,19 @@ function FolderPicker({
   const browse = useAction(api.dropbox.browse);
   const addFolder = useAction(api.dropbox.addFolder);
   const [path, setPath] = useState("");
-  const [folders, setFolders] = useState<FolderChoice[] | null>(null);
+  // What Dropbox listed, and for which folder: anything else is still loading.
+  const [listed, setListed] = useState<{ path: string; list: FolderChoice[] } | null>(null);
+  const folders = listed?.path === path ? listed.list : null;
   const [adding, setAdding] = useState<string | null>(null);
 
   useEffect(() => {
     let current = true;
-    setFolders(null);
     browse({ organizationId: team.id, path })
-      .then((list) => current && setFolders(list))
+      .then((list) => current && setListed({ path, list }))
       .catch((caught) => {
         if (!current) return;
         toast.error(errorMessage(caught, "Dropbox did not list that folder."));
-        setFolders([]);
+        setListed({ path, list: [] });
       });
     return () => {
       current = false;
