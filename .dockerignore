@@ -8,3 +8,5 @@
 .git
 test-results
 playwright-report
+# The pnpm store the agent image workflow keeps between runs
+pnpm-store
