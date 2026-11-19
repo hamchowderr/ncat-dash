@@ -59,7 +59,7 @@ import { edgeValidator, nodeValidator, operationValidator, triggerValidator } fr
 
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
 
-function randomToken(): string {
+export function randomToken(): string {
   return `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
 }
 
@@ -102,7 +102,7 @@ function watchStart(
   return same ? (automation.watchFrom ?? Date.now()) : Date.now();
 }
 
-async function storageProblem(
+export async function storageProblem(
   ctx: Parameters<typeof requireMember>[0],
   organizationId: string,
   trigger: Doc<"automations">["trigger"],
@@ -117,7 +117,7 @@ function scheduledNext(trigger: Doc<"automations">["trigger"], enabled: boolean)
 }
 
 /** Problems that stop an automation being switched on or run. Null when there are none. */
-function automationProblem(
+export function automationProblem(
   trigger: Doc<"automations">["trigger"],
   nodes: AutomationNode[],
   edges: AutomationEdge[],

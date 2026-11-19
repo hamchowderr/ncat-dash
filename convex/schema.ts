@@ -302,6 +302,11 @@ export default defineSchema({
     agent: v.optional(agentSettingsValidator),
     // How captions read and look: word fixes, saved styles and a style per video shape.
     captions: v.optional(captionSetupValidator),
+    // What the team makes and where it posts, from setting up (content-goals.ts). The
+    // posting apps also become the agent's default platforms.
+    contentGoals: v.optional(
+      v.object({ kinds: v.array(v.string()), apps: v.array(v.string()), answeredAt: v.number() }),
+    ),
   }).index("by_organization", ["organizationId"]),
 
   // A saved automation: what starts it, and the steps it runs.

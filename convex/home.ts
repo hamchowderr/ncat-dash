@@ -75,7 +75,10 @@ export const summary = query({
         brand: Boolean(settings?.brand?.logo),
         automationOn: automations.some((automation) => automation.enabled),
         firstRun: runs.some((run) => run.status === "done"),
+        goals: settings?.contentGoals !== undefined,
       },
+      // What the team makes, so the ready-made automations it sees first fit it.
+      contentKinds: settings?.contentGoals?.kinds ?? [],
     };
   },
 });
