@@ -78,6 +78,8 @@ export function logicNote(step: {
   if (step.stage === "listen" && step.status === "running") return "Transcribing";
   if (step.stage === "pick" && step.status === "running") return "Reading the transcript";
   if (step.stage === "size" && step.status === "running") return "Reading each video's shape";
+  if (step.stage === "place" && step.status === "running") return "Placing the pieces";
+  if (step.stage === "render" && step.status === "running") return "Drawing on the video";
   if (step.stage === "wait" && step.status === "running" && step.resumeAt) {
     return `Until ${until(step.resumeAt)}`;
   }

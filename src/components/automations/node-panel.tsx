@@ -54,6 +54,7 @@ import { AutomationPicker } from "./automation-picker";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
+import { MotionMain, SoundEffectsMain } from "./motion-settings";
 import { PlatformPicker } from "./platform-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
@@ -201,7 +202,12 @@ export function NodePanel({
       });
     }
   }
-  if (node.kind === "moments" || node.kind === "chapters") {
+  if (
+    node.kind === "moments" ||
+    node.kind === "chapters" ||
+    node.kind === "motion" ||
+    node.kind === "sound-effects"
+  ) {
     handled.push({
       label: "Video",
       text: "the nearest video before this step, transcribed with each word's timing",
@@ -363,6 +369,14 @@ export function NodePanel({
 
       {node.kind === "chapters" && (
         <ChaptersMain node={node} onChange={(input) => onChange({ input })} />
+      )}
+
+      {node.kind === "motion" && (
+        <MotionMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
+      )}
+
+      {node.kind === "sound-effects" && (
+        <SoundEffectsMain node={node} onChange={(input) => onChange({ input })} />
       )}
 
       {captionStep && (

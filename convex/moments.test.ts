@@ -37,13 +37,21 @@ const SEGMENTS = segmentsOf(SENTENCES);
 
 type Sent = { url: string; body: Record<string, unknown> };
 
+/** Where a /v1/ffmpeg/compose request starts its clip, from its -ss option. */
+function clipStart(body: Record<string, unknown>): number {
+  const inputs = body.inputs as { options?: { option: string; argument?: unknown }[] }[];
+  const seek = inputs?.[0]?.options?.find((one) => one.option === "-ss");
+  return Number(seek?.argument ?? 0);
+}
+
+const clipUrl = (start: number) => `https://files.example/out/moment-at-${start}.mp4`;
+
 /**
  * A stand-in toolkit that answers each job straight away, and a stand-in agent server
  * whose answers come from `answer` in turn, one per question.
  */
 function fakeServers(answers: unknown[]) {
   const sent: Sent[] = [];
-  let cut = 0;
   let asked = 0;
   vi.stubGlobal(
     "fetch",
@@ -61,8 +69,8 @@ function fakeServers(answers: unknown[]) {
         return done({ text: null, srt: null, segments: null, segments_url: WORDS_FILE });
       }
       if (url.endsWith("/v1/ffmpeg/compose")) {
-        cut++;
-        return done([{ file_url: `https://files.example/out/moment-${cut}.mp4` }]);
+        // Named by where the clip starts, so the name does not depend on which job is sent first.
+        return done([{ file_url: clipUrl(clipStart(body)) }]);
       }
       if (url === `${AGENT_URL}/ncat/moments`) {
         const answer = answers[Math.min(asked++, answers.length - 1)];
@@ -189,10 +197,8 @@ describe("Best moments", () => {
     expect(step.pickNote).toBe(
       "1 pick was left out: 1 did not match the transcript word for word.",
     );
-    expect(step.outputs).toEqual([
-      "https://files.example/out/moment-1.mp4",
-      "https://files.example/out/moment-2.mp4",
-    ]);
+    // One clip per moment, in the order of the moments.
+    expect(step.outputs).toEqual(step.moments!.map((one) => clipUrl(one.start)));
 
     // The transcript was asked for with each word's timing, as a file.
     const transcribe = sent.find((one) => one.url.endsWith("/v1/media/transcribe"))!;

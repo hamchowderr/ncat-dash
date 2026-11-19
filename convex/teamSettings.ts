@@ -10,7 +10,11 @@ import {
   MAX_HOUSE_RULES_CHARS,
   NO_AGENT_SETTINGS,
   MAX_STEP_RETRIES,
+  MOTION_PRESETS,
+  type MotionSetup,
+  motionSetupText,
   retryLimit,
+  tidyMotionSetup,
 } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
@@ -23,6 +27,7 @@ import {
   pump,
 } from "./lib/queue";
 import { captionSetupOf } from "./lib/captions";
+import { motionSetupOf } from "./lib/motion";
 import { checkedBrand, checkedMusic } from "./lib/brand";
 import { editorsOf } from "./lib/exports";
 import {
@@ -30,6 +35,7 @@ import {
   brandValidator,
   captionSetupValidator,
   editorValidator,
+  motionSetupValidator,
   musicValidator,
 } from "./schema";
 
@@ -51,6 +57,8 @@ export const get = query({
       captions: await captionSetupOf(ctx, args.organizationId),
       builtInCaptionStyles: BUILT_IN_STYLES,
       builtInByShape: BUILT_IN_BY_SHAPE,
+      motion: await motionSetupOf(ctx, args.organizationId),
+      motionPresets: MOTION_PRESETS,
       agentModels: AGENT_MODELS.map(({ id, name, note }) => ({ id, name, note })),
       mostHouseRules: MAX_HOUSE_RULES_CHARS,
       mostAllowed: MAX_PARALLEL_JOBS,
@@ -196,6 +204,32 @@ export const setCaptions = mutation({
 });
 
 /**
+ * Sets the team's Motion settings: the preset its motion graphics start from, how that
+ * style is changed, and the names and handle the pieces show. Owners and admins only.
+ */
+export const setMotion = mutation({
+  args: { organizationId: v.string(), motion: motionSetupValidator },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId, MANAGER_ROLES);
+    const tidied = tidyMotionSetup(args.motion as Partial<MotionSetup>);
+    if (!tidied.ok) throw new ConvexError({ code: "invalid_input", message: tidied.message });
+    const motion = tidied.setup;
+    const existing = await ctx.db
+      .query("teamSettings")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, { motion });
+    else {
+      await ctx.db.insert("teamSettings", {
+        organizationId: args.organizationId,
+        maxParallelJobs: DEFAULT_PARALLEL_JOBS,
+        motion,
+      });
+    }
+  },
+});
+
+/**
  * Sets how the agent works for the team: the model it runs on, house rules it always
  * follows, and the platforms it makes clips for when nobody names any. Owners and admins
  * only.
@@ -244,7 +278,11 @@ export const agentBrief = query({
     const setup = await captionSetupOf(ctx, args.organizationId);
     const custom = setup.fixes.length + setup.styles.length + Object.keys(setup.byShape).length;
     const captions = custom > 0 ? captionSetupText(setup) : null;
-    const text = [agentSettingsText(agent), captions].filter(Boolean).join("\n\n");
+    // The team's motion style, once it has picked one, so the agent can talk about it.
+    const motion = settings?.motion
+      ? motionSetupText(await motionSetupOf(ctx, args.organizationId))
+      : null;
+    const text = [agentSettingsText(agent), captions, motion].filter(Boolean).join("\n\n");
     return { model: agent.model, text: text || null };
   },
 });

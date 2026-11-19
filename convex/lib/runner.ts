@@ -59,6 +59,7 @@ import { cutListOf } from "./exports";
 import { captionSetupOf } from "./captions";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { finishListening, startListening } from "./moments";
+import { finishMotionListening, isMotionKind } from "./motion";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
@@ -262,6 +263,11 @@ async function startNode(
     // Chapters reads speech, so an audio file will do; moments are cut from a video.
     const kind = node.kind === "moments" ? "video" : "media";
     await startListening(ctx, run, node, step, byNode, filesFor(kind, node, run, byNode));
+    return;
+  }
+
+  if (isMotionKind(node.kind)) {
+    await startListening(ctx, run, node, step, byNode, filesFor("video", node, run, byNode));
     return;
   }
 
@@ -915,7 +921,20 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
   }
 
   if (step.stage === "listen") {
-    await finishListening(ctx, run, step, jobs);
+    const node = (run.nodes as AutomationNode[]).find((other) => other.id === step.nodeId);
+    if (node && isMotionKind(node.kind)) {
+      const steps = await ctx.db
+        .query("runSteps")
+        .withIndex("by_run", (q) => q.eq("runId", run._id))
+        .take(200);
+      await finishMotionListening(
+        ctx,
+        run,
+        step,
+        new Map(steps.map((other) => [other.nodeId, other])),
+        jobs,
+      );
+    } else await finishListening(ctx, run, step, jobs);
     await advance(ctx, run._id);
     return;
   }

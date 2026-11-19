@@ -15,6 +15,7 @@ import { BrandCard } from "./brand-card";
 import { CaptionsCard } from "./captions-card";
 import { EditorsCard } from "./editors-card";
 import { EmailCard } from "./email-card";
+import { MotionCard } from "./motion-card";
 import { NotificationsCard } from "./notifications-card";
 import { SettingRow, SettingsLoading, SettingsSection, useTeamSettings } from "./settings-shell";
 import { DiscordCard } from "./discord-card";
@@ -40,6 +41,19 @@ export function CaptionsSettings() {
       builtIn={settings.builtInCaptionStyles}
       builtInByShape={settings.builtInByShape}
       font={settings.brand.font}
+      canEdit={settings.canEdit}
+    />
+  );
+}
+
+/** Motion: the style motion graphics start from, and the names they show. */
+export function MotionSettings() {
+  const settings = useTeamSettings();
+  if (!settings) return <SettingsLoading />;
+  return (
+    <MotionCard
+      motion={settings.motion}
+      presets={settings.motionPresets}
       canEdit={settings.canEdit}
     />
   );
