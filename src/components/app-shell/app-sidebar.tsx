@@ -120,6 +120,7 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   team: Users,
   agent: MessagesSquare,
   runs: RotateCcw,
+  broll: Clapperboard,
   editors: Film,
   email: Mail,
   slack: SlackLogo,

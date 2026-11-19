@@ -1,15 +1,7 @@
 import { z } from "zod";
 
 export type StepCategory =
-    | "video"
-  | "audio"
-  | "media"
-  | "image"
-  | "recipe"
-  | "team"
-  | "ffmpeg"
-  | "code"
-  | "storage";
+  "video" | "audio" | "media" | "image" | "recipe" | "team" | "ffmpeg" | "code" | "storage";
 
 /**
  * What a finished step hands to the next one.

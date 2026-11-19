@@ -1365,5 +1365,54 @@
     },
     "required": ["video_url"],
     "type": "object"
+  },
+  "/v1/media/look": {
+    "additionalProperties": false,
+    "anyOf": [
+      {
+        "required": ["media_url"]
+      },
+      {
+        "required": ["image_urls"]
+      },
+      {
+        "required": ["texts"]
+      }
+    ],
+    "properties": {
+      "every": {
+        "maximum": 60,
+        "minimum": 0.5,
+        "type": "number"
+      },
+      "id": {
+        "type": "string"
+      },
+      "image_urls": {
+        "items": {
+          "format": "uri",
+          "type": "string"
+        },
+        "maxItems": 60,
+        "type": "array"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "texts": {
+        "items": {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        "maxItems": 200,
+        "type": "array"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "type": "object"
   }
 }

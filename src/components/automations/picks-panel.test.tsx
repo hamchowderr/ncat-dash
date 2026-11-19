@@ -140,3 +140,53 @@ describe("what Chapters picked", () => {
     expect(screen.getByRole("button", { name: "Download show notes" })).toBeTruthy();
   });
 });
+
+describe("what Add B-Roll laid over the video", () => {
+  test("lists each cutaway with its words, and credits stock footage with a link", () => {
+    const run = runWith({
+      nodeId: "broll",
+      pickNote: "2 cutaways: 1 from your library and 1 from free stock.",
+      cutaways: [
+        {
+          source: SOURCE,
+          start: 4,
+          end: 7,
+          said: "Last summer I rebuilt an old truck in my garage.",
+          show: "old truck garage",
+          kind: "library",
+          ref: "V7",
+          title: "Truck build",
+          score: 0.31,
+        },
+        {
+          source: SOURCE,
+          start: 16.5,
+          end: 19.5,
+          said: "Every morning started with strong coffee.",
+          show: "strong coffee",
+          kind: "stock",
+          ref: "pixabay:1234",
+          title: "coffee, cup, morning",
+          score: 0.29,
+          credit: { site: "Pixabay", page: "https://pixabay.com/videos/id-1234/", by: "Brewer" },
+        },
+      ],
+    } as Partial<Step>);
+    (run.nodes as unknown[]).push({
+      id: "broll",
+      kind: "broll",
+      input: {},
+      position: { x: 0, y: 0 },
+    });
+    renderInApp(<PicksPanel run={run} busy={false} onFindMore={vi.fn()} />);
+    const section = screen.getByRole("region", { name: "Add B-Roll" });
+    expect(section.textContent).toContain("2 cutaways over the video");
+    expect(section.textContent).toContain("Truck build");
+    expect(section.textContent).toContain("V7 in your library");
+    expect(section.textContent).toContain("0:04 to 0:07");
+    expect(screen.getByRole("link", { name: "coffee, cup, morning" }).getAttribute("href")).toBe(
+      "https://pixabay.com/videos/id-1234/",
+    );
+    expect(section.textContent).toContain("Brewer on Pixabay");
+  });
+});

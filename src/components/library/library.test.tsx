@@ -285,6 +285,32 @@ describe("a library file", () => {
     );
   });
 
+  test("a video says whether Add B-Roll may use it, and it can be set by hand", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      broll: { use: "auto", looked: "ready", looksLike: true, usable: true },
+    });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.getByText(/no talking face, so Add B-Roll can use it/)).toBeTruthy();
+    const picker = screen.getByRole("combobox", { name: "Use as B-Roll" });
+    expect(picker.textContent).toContain("When it looks like B-Roll");
+    fireEvent.click(picker);
+    fireEvent.click(await screen.findByRole("option", { name: "Never" }));
+    await waitFor(() =>
+      expect(mutationOf(api.broll.setUse)).toHaveBeenCalledWith({
+        organizationId: "team_1",
+        itemId: "i1",
+        use: "no",
+      }),
+    );
+  });
+
+  test("a sound file has no B-Roll setting", () => {
+    answerQuery(api.library.get, { ...DETAIL, broll: null });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.queryByText("Use as B-Roll")).toBeNull();
+  });
+
   test("a clip says what it was made from", () => {
     answerQuery(api.library.get, { ...DETAIL, ...CLIP, children: [], pieces: [] });
     renderInApp(<LibraryItemView itemId={"i2" as never} />);
