@@ -109,7 +109,7 @@ export async function storageProblem(
 ): Promise<string | null> {
   if (trigger.kind !== "folder" && trigger.kind !== "upload") return null;
   const storage = await storageConnection(ctx, organizationId);
-  return storage ? null : "Connect your toolkit in Settings first.";
+  return storage ? null : "Connect your toolkit from Home first.";
 }
 
 function scheduledNext(trigger: Doc<"automations">["trigger"], enabled: boolean): number | null {

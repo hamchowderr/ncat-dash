@@ -167,6 +167,17 @@ describe("the home page", () => {
     expect(screen.queryByRole("region", { name: /Getting started/ })).toBeNull();
   });
 
+  test("Connect your toolkit opens the toolkit form, not the start of setting up", () => {
+    answerQuery(api.home.summary, summary({ setup: { ...SETUP_DONE, toolkit: false } }));
+    renderInApp(<HomeView />);
+    const setup = screen.getByRole("region", { name: /Getting started/ });
+    expect(
+      within(setup)
+        .getByRole("link", { name: /Connect your toolkit/ })
+        .getAttribute("href"),
+    ).toBe("/onboarding?toolkit=connect");
+  });
+
   test("asks what the team makes until it is answered", () => {
     answerQuery(api.home.summary, summary({ setup: { ...SETUP_DONE, goals: false } }));
     renderInApp(<HomeView />);

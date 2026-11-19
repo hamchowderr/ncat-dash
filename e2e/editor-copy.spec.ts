@@ -29,7 +29,7 @@ test("steps can be duplicated, copied, pasted and joined, here and in another au
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Copy Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.locator("#baseUrl")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
 
   await newAutomation(page, "First");
   await page.getByRole("button", { name: "Add step" }).click();

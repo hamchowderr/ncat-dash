@@ -2,7 +2,14 @@ import { testConnection } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import {
+  action,
+  type ActionCtx,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { checkStorage } from "./lib/bucket";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
@@ -96,43 +103,88 @@ export const list = query({
 export const connect = action({
   args: { organizationId: v.string(), baseUrl: v.string(), apiKey: v.string() },
   returns: testResult,
+  handler: async (ctx, args) => connectTeam(ctx, args),
+});
+
+/** The toolkit the operator lends to teams without one, when both its address and key are set. */
+function ourToolkit(): { baseUrl: string; apiKey: string } | null {
+  const baseUrl = process.env.HOSTED_TOOLKIT_URL?.trim();
+  const apiKey = process.env.HOSTED_TOOLKIT_API_KEY?.trim();
+  return baseUrl && apiKey ? { baseUrl, apiKey } : null;
+}
+
+/** Whether setting up can offer "just use ours" for a team without its own toolkit. */
+export const offersOurs = query({
+  args: { organizationId: v.string() },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
-    const { userId } = await ctx.runQuery(internal.toolkitConnections.authorize, {
-      organizationId: args.organizationId,
-    });
-    const baseUrl = normaliseBaseUrl(args.baseUrl);
-    const apiKey = args.apiKey.trim();
-    if (!baseUrl) {
-      return {
-        ok: false as const,
-        reason: "invalid_url" as const,
-        detail: "Enter the toolkit's full address, starting with https://",
-      };
-    }
-    if (!apiKey) {
-      return { ok: false as const, reason: "unauthorized" as const, detail: "Enter the API key." };
-    }
-
-    // Fork only: a toolkit without the storage requests is refused with steps to switch.
-    const { result, storage } = await checkToolkit({ baseUrl, apiKey });
-    if (!result.ok || !storage) return result;
-
-    await ctx.runMutation(internal.toolkitConnections.save, {
-      organizationId: args.organizationId,
-      baseUrl,
-      apiKeyCipher: await encryptSecret(apiKey),
-      apiKeyHint: apiKey.slice(-4),
-      buildNumber: result.buildNumber,
-      storage,
-      createdBy: userId,
-    });
-    // The team's own folder in the bucket, ready for Files (see lib/bucket.ts).
-    await ctx.scheduler.runAfter(0, internal.files.settleTeamFolder, {
-      organizationId: args.organizationId,
-    });
-    return result;
+    await requireMember(ctx, args.organizationId);
+    return ourToolkit() !== null;
   },
 });
+
+/**
+ * Connects the team to the toolkit the operator runs (HOSTED_TOOLKIT_URL and
+ * HOSTED_TOOLKIT_API_KEY), tested the same way as a team's own. The key never reaches
+ * the browser. With either unset it answers `not_offered` and saves nothing.
+ */
+export const connectOurs = action({
+  args: { organizationId: v.string() },
+  returns: v.union(
+    testResult,
+    v.object({ ok: v.literal(false), reason: v.literal("not_offered") }),
+  ),
+  handler: async (ctx, args) => {
+    const ours = ourToolkit();
+    if (!ours) {
+      await ctx.runQuery(internal.toolkitConnections.authorize, {
+        organizationId: args.organizationId,
+      });
+      return { ok: false as const, reason: "not_offered" as const };
+    }
+    return connectTeam(ctx, { organizationId: args.organizationId, ...ours });
+  },
+});
+
+async function connectTeam(
+  ctx: ActionCtx,
+  args: { organizationId: string; baseUrl: string; apiKey: string },
+) {
+  const { userId } = await ctx.runQuery(internal.toolkitConnections.authorize, {
+    organizationId: args.organizationId,
+  });
+  const baseUrl = normaliseBaseUrl(args.baseUrl);
+  const apiKey = args.apiKey.trim();
+  if (!baseUrl) {
+    return {
+      ok: false as const,
+      reason: "invalid_url" as const,
+      detail: "Enter the toolkit's full address, starting with https://",
+    };
+  }
+  if (!apiKey) {
+    return { ok: false as const, reason: "unauthorized" as const, detail: "Enter the API key." };
+  }
+
+  // Fork only: a toolkit without the storage requests is refused with steps to switch.
+  const { result, storage } = await checkToolkit({ baseUrl, apiKey });
+  if (!result.ok || !storage) return result;
+
+  await ctx.runMutation(internal.toolkitConnections.save, {
+    organizationId: args.organizationId,
+    baseUrl,
+    apiKeyCipher: await encryptSecret(apiKey),
+    apiKeyHint: apiKey.slice(-4),
+    buildNumber: result.buildNumber,
+    storage,
+    createdBy: userId,
+  });
+  // The team's own folder in the bucket, ready for Files (see lib/bucket.ts).
+  await ctx.scheduler.runAfter(0, internal.files.settleTeamFolder, {
+    organizationId: args.organizationId,
+  });
+  return result;
+}
 
 /** Runs the connection test again for a saved connection and records the outcome. */
 export const recheck = action({

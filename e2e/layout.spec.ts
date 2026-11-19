@@ -68,7 +68,7 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Layout Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.locator("#baseUrl")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
 
   await page.goto("/automations");
   await page
@@ -156,7 +156,7 @@ test("settings open from the team menu and swap the sidebar for their own menu, 
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Wide Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.locator("#baseUrl")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
 
   // Old addresses still land on the right page.
   await page.goto("/settings");

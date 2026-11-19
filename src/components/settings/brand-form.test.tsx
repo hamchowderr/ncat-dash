@@ -46,4 +46,33 @@ describe("the brand form", () => {
     expect(screen.getByText(CARD)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Clear Card template" })).toBeTruthy();
   });
+
+  test("while setting up asks only for the logo and colour, keeping the rest when saved", async () => {
+    answerQuery(api.storage.listUploads, []);
+    const music = [{ name: "Upbeat", file: "https://files.example/upbeat.mp3" }];
+    renderInApp(
+      <BrandForm
+        brand={{ card: CARD, font: "Inter" }}
+        music={music}
+        canEdit
+        essentials
+        submitLabel="Save and continue"
+      />,
+    );
+    const user = userEvent.setup();
+    expect(screen.getByText("Logo")).toBeTruthy();
+    expect(screen.getByText("Brand colour")).toBeTruthy();
+    for (const hidden of ["Font", "Card template", "Intro", "Outro", "Music library"]) {
+      expect(screen.queryByText(hidden)).toBeNull();
+    }
+    fireEvent.change(screen.getByRole("textbox", { name: "Brand colour" }), {
+      target: { value: "#FFCC00" },
+    });
+    await user.click(screen.getByRole("button", { name: "Save and continue" }));
+    expect(mutationOf(api.teamSettings.setBrand)).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      brand: { color: "#FFCC00", font: "Inter", card: CARD },
+      music,
+    });
+  });
 });

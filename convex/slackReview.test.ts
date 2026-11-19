@@ -411,6 +411,7 @@ describe("replies written in Slack", () => {
 
   test("someone not on the team is told their reply stays in Slack", async () => {
     const { t, jordan, clipId, rootId, threadTs } = await threadInSlack();
+    const before = posted.length;
     await slackEvent(t, {
       type: "message",
       user: "U0SAM",
@@ -421,12 +422,11 @@ describe("replies written in Slack", () => {
     });
     const comments = await jordan.as.query(api.reviews.comments, { clipId });
     expect(comments.filter((one) => one.parentId === rootId)).toEqual([]);
-    expect(posted.at(-1)).toMatchObject({
-      method: "chat.postEphemeral",
-      user: "U0SAM",
-      thread_ts: threadTs,
-    });
-    expect(posted.at(-1)?.text).toMatch(/sam@elsewhere.test is not on the team/);
+    // Found among what was posted since the reply, not as the very last post: a message the
+    // room setting up scheduled can still land after it on a slow machine.
+    const told = posted.slice(before).find((one) => one.method === "chat.postEphemeral");
+    expect(told).toMatchObject({ user: "U0SAM", thread_ts: threadTs });
+    expect(told?.text).toMatch(/sam@elsewhere.test is not on the team/);
   });
 
   test("a forged event, a bot's message and a reply in some other thread change nothing", async () => {
