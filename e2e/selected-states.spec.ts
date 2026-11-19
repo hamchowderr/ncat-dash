@@ -135,6 +135,16 @@ test("picked things look the same across the app", async ({ page }) => {
   await expect(views).toHaveAttribute("data-slot", "segmented");
   await pause(page);
   await shot(page, "11-calendar-views");
+  // Pick lists are the app's own, opening below the field, not the browser's.
+  const side = page.getByRole("complementary", { name: "Side list" });
+  await side.getByRole("button", { name: "Repeating Slots" }).click();
+  await side.getByLabel("Day", { exact: true }).click();
+  await expect(page.getByRole("option", { name: "Friday", exact: true })).toBeVisible();
+  await expect(side.locator("select")).toHaveCount(0);
+  await pause(page);
+  await shot(page, "11b-pick-list-open");
+  await page.getByRole("option", { name: "Friday", exact: true }).click();
+  await expect(side.getByLabel("Day", { exact: true })).toContainText("Friday");
 
   await page.goto("/projects/new");
   await pause(page);
