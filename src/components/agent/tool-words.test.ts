@@ -2,6 +2,48 @@ import { describe, expect, test } from "vitest";
 
 import { errorWords, resultWords, toolWords } from "./tool-words";
 
+/** Something shaped like a tool id: snake_case, camelCase or a dotted/dashed name. */
+const TOOL_ID = /\b[a-z]+(?:[_.-][a-z0-9]+)+\b|\b[a-z]+[A-Z][A-Za-z]*\b/;
+
+/** Every tool the agent server gives the chat agent today (packages/agent). */
+const KNOWN_TOOL_IDS = [
+  "dash_overview",
+  "describe_automation",
+  "list_step_types",
+  "platform_guide",
+  "change_automation",
+  "create_automation",
+  "list_uploads",
+  "check_run",
+  "try_automation",
+  "try_team_step",
+  "check_job",
+  "save_team_step",
+  "list_folder",
+  "make_folder",
+  "move_files",
+  "rename_file",
+  "switch_automation",
+  "find_in_library",
+  "moments",
+  "run_on_library_file",
+  "list_schedules",
+  "start_schedule",
+  "stop_schedule",
+  "doltHistory",
+  "doltQuery",
+  "doltWrite",
+  "task_write",
+  "task_update",
+  "task_complete",
+  "task_check",
+  "updateWorkingMemory",
+  "firecrawl_search",
+  "firecrawl_scrape",
+  "getWeather",
+  "searchKnowledge",
+];
+
 describe("what the agent's tools are called", () => {
   test("reading tools have a title and nothing to ask", () => {
     for (const name of ["dash_overview", "describe_automation", "list_step_types"]) {
@@ -11,9 +53,31 @@ describe("what the agent's tools are called", () => {
     }
   });
 
-  test("a tool that is not the dashboard's is left to the chat's own view", () => {
-    expect(toolWords("getWeather", { city: "Tokyo" })).toBeNull();
-    expect(toolWords(undefined, undefined)).toBeNull();
+  test("the agent's other tools get plain words too, never their tool id", () => {
+    expect(toolWords("task_update", {}).title).toBe("Updated the plan");
+    expect(toolWords("updateWorkingMemory", {}).title).toBe("Saved a note");
+    expect(toolWords("browser_click", {}).title).toBe("Using the browser");
+    expect(toolWords("mastra_workspace_write_file", {}).title).toBe("Working on files");
+    expect(toolWords("something_new_later", {}).title).toBe("Working on it");
+    expect(toolWords(undefined, undefined).title).toBe("Working on it");
+  });
+
+  test("no title ever looks like a tool id", () => {
+    const names = [
+      ...KNOWN_TOOL_IDS,
+      "browser_goto",
+      "firecrawl_anything",
+      "mastra_workspace_execute_command",
+      "subagent",
+      "a_tool_nobody_has_named",
+      "someCamelCaseTool",
+    ];
+    for (const name of names) {
+      const title = toolWords(name, {}).title;
+      // A one-word id such as "moments" is a plain word; any other id must not show.
+      if (TOOL_ID.test(name)) expect(title, name).not.toContain(name);
+      expect(title, name).not.toMatch(TOOL_ID);
+    }
   });
 
   test("a change is listed step by step, by the names people see", () => {
@@ -240,9 +304,9 @@ describe("files and folders", () => {
   });
 
   test("renaming says the old and the new name", () => {
-    expect(toolWords("rename_file", { key: "Raw/ep12.mp4", name: "Episode 12.mp4" })?.lines).toEqual([
-      'ep12.mp4 becomes "Episode 12.mp4"',
-    ]);
+    expect(
+      toolWords("rename_file", { key: "Raw/ep12.mp4", name: "Episode 12.mp4" })?.lines,
+    ).toEqual(['ep12.mp4 becomes "Episode 12.mp4"']);
   });
 
   test("what came back, in plain words", () => {
