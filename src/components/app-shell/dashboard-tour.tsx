@@ -5,7 +5,14 @@ import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
-import { CALENDAR_TOUR, CALENDAR_TOUR_ID } from "@/components/calendar/calendar-tour";
+import { EDITOR_TOUR } from "@/components/automations/editor-tour";
+import { NEW_AUTOMATION_TOUR } from "@/components/automations/new-automation-tour";
+import { CALENDAR_TOUR } from "@/components/calendar/calendar-tour";
+import { LIBRARY_TOUR } from "@/components/library/library-tour";
+import { PROJECT_TOUR } from "@/components/projects/project-tour";
+import { REVIEW_TOUR } from "@/components/review/review-tour";
+import { BRAND_TOUR } from "@/components/settings/brand-tour";
+import type { TourId } from "@/components/tours/page-tour";
 import { useSidebar } from "@/components/ui/sidebar";
 import { type Tour, type TourEnd, TourProvider, useTour } from "@/components/ui/tour";
 
@@ -102,16 +109,27 @@ export const DASHBOARD_TOUR: Tour = {
   ],
 };
 
-/** What each tour says once finished, about where to take it again. */
-const AGAIN: Record<string, string> = {
-  [DASHBOARD_TOUR_ID]: "You can take the tour again from your menu.",
-  [CALENDAR_TOUR_ID]: "You can take this tour again from the top of the calendar.",
-};
+const TOURS = [
+  DASHBOARD_TOUR,
+  CALENDAR_TOUR,
+  EDITOR_TOUR,
+  REVIEW_TOUR,
+  PROJECT_TOUR,
+  LIBRARY_TOUR,
+  BRAND_TOUR,
+  NEW_AUTOMATION_TOUR,
+];
+const TOUR_IDS = new Set<string>(TOURS.map((tour) => tour.id));
 
-const TOURS = [DASHBOARD_TOUR, CALENDAR_TOUR];
+/** What a tour says once finished, about where to take it again. */
+function again(tourId: string) {
+  return tourId === DASHBOARD_TOUR_ID
+    ? "You can take the tour again from your menu."
+    : "You can take this tour again from the top of the page.";
+}
 
 /**
- * Holds the guided tours for the signed-in pages (the dashboard's and the calendar's):
+ * Holds the guided tours for the signed-in pages (the dashboard's and each page's own):
  * opens the menu so the dashboard tour can point into it, remembers each once it is
  * finished or closed, and starts the dashboard tour by itself the first time someone
  * lands with `?tour=start`, which is where setting up sends them.
@@ -133,12 +151,10 @@ export function DashboardTour({ children }: { children: ReactNode }) {
 
   const onEnd = useCallback(
     (tourId: string, how: TourEnd) => {
-      if (tourId !== DASHBOARD_TOUR_ID && tourId !== CALENDAR_TOUR_ID) return;
-      void end({ tourId: tourId as typeof DASHBOARD_TOUR_ID | typeof CALENDAR_TOUR_ID, how }).then(
-        () => {
-          if (how === "finished") toast.success(AGAIN[tourId]!);
-        },
-      );
+      if (!TOUR_IDS.has(tourId)) return;
+      void end({ tourId: tourId as TourId, how }).then(() => {
+        if (how === "finished") toast.success(again(tourId));
+      });
     },
     [end],
   );

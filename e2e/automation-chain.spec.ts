@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./test";
 
 // Automations that start other automations, in a real browser against a real backend: a
 // Run an automation step, a run page that links the two runs, a loop refused on save, and

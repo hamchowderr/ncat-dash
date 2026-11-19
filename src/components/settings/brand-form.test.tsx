@@ -5,8 +5,10 @@ import { describe, expect, test } from "vitest";
 
 import { answerQuery, mutationOf } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
+import { missingTourTargets } from "@/test/tours";
 
 import { BrandForm } from "./brand-form";
+import { BRAND_TOUR } from "./brand-tour";
 
 const CARD = "https://files.example/brand/card.png";
 
@@ -74,5 +76,12 @@ describe("the brand form", () => {
       brand: { color: "#FFCC00", font: "Inter", card: CARD },
       music,
     });
+  });
+});
+
+describe("the tour of the brand settings", () => {
+  test("has a place on the page for every part it points at, music too", () => {
+    form();
+    expect(missingTourTargets(BRAND_TOUR, { includeOptional: true })).toEqual([]);
   });
 });

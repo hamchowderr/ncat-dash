@@ -1,12 +1,7 @@
 "use client";
 
-import { api } from "@convex/_generated/api";
-import { useQuery } from "convex/react";
-import { Compass } from "lucide-react";
-import { useEffect, useRef } from "react";
-
-import { Button } from "@/components/ui/button";
-import { type Tour, useTour } from "@/components/ui/tour";
+import { PageTourButton, StartPageTour } from "@/components/tours/page-tour";
+import type { Tour } from "@/components/ui/tour";
 
 export const CALENDAR_TOUR_ID = "calendar" as const;
 
@@ -84,28 +79,10 @@ export const CALENDAR_TOUR: Tour = {
 
 /** Starts the calendar tour the first time someone opens the calendar, once it has loaded. */
 export function StartCalendarTour({ ready }: { ready: boolean }) {
-  const tour = useTour();
-  const ended = useQuery(api.tours.ended, { tourId: CALENDAR_TOUR_ID });
-  const handled = useRef(false);
-
-  useEffect(() => {
-    if (!ready || handled.current || ended === undefined || !tour) return;
-    handled.current = true;
-    // Another tour already showing (the dashboard's, taken from the menu) goes first.
-    if (!ended && tour.activeTourId === null) tour.start(CALENDAR_TOUR_ID);
-  }, [ready, ended, tour]);
-
-  return null;
+  return <StartPageTour tourId={CALENDAR_TOUR_ID} ready={ready} />;
 }
 
 /** Takes the calendar tour again. */
 export function CalendarTourButton() {
-  const tour = useTour();
-  if (!tour) return null;
-  return (
-    <Button size="sm" variant="ghost" onClick={() => tour.start(CALENDAR_TOUR_ID)}>
-      <Compass />
-      Take the Tour
-    </Button>
-  );
+  return <PageTourButton tourId={CALENDAR_TOUR_ID} />;
 }

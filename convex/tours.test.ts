@@ -44,6 +44,22 @@ describe("the guided tours", () => {
     expect(notes.map((note) => note.tourId).sort()).toEqual(["calendar", "dashboard"]);
   });
 
+  test("remembers each page's tour on its own", async () => {
+    const t = backend();
+    const maya = await addPerson(t, "Maya Ortiz");
+    await maya.as.mutation(api.tours.end, { tourId: "automation-editor", how: "finished" });
+    expect(await maya.as.query(api.tours.ended, { tourId: "automation-editor" })).toBe(true);
+    for (const tourId of [
+      "review-room",
+      "project",
+      "library",
+      "brand",
+      "new-automation",
+    ] as const) {
+      expect(await maya.as.query(api.tours.ended, { tourId })).toBe(false);
+    }
+  });
+
   test("needs someone signed in", async () => {
     const t = backend();
     await expect(t.query(api.tours.ended, { tourId: "dashboard" })).rejects.toThrow(/Sign in/);

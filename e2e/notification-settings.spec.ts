@@ -1,4 +1,4 @@
-import { type Browser, expect, type Page, test } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "./test";
 
 // Notification settings in a real browser against a real backend: a member switches
 // mentions and approvals off in the Inbox, so a teammate's @mention and a waiting

@@ -9,6 +9,8 @@ import { renderInApp, TEAM } from "@/test/render";
 import { NewProjectView } from "./new-project-view";
 import { ProjectView } from "./project-view";
 import { ProjectsView } from "./projects-view";
+import { missingTourTargets } from "@/test/tours";
+import { PROJECT_TOUR } from "./project-tour";
 
 const counts = { todo: 0, in_progress: 0, review: 0, approved: 0, published: 0 };
 
@@ -332,5 +334,14 @@ describe("running an automation on a slot", () => {
     await user.selectOptions(within(run).getByLabelText("Automation"), "a1");
     await user.click(within(run).getByRole("button", { name: "Run" }));
     expect(runOnSlot).toHaveBeenCalledWith({ deliverableId: "s2", automationId: "a1" });
+  });
+});
+
+describe("the tour of a project", () => {
+  test("has a place on the page for every part it points at", () => {
+    answerQuery(api.projects.get, project());
+    answerQuery(api.clients.list, []);
+    renderInApp(<ProjectView projectId={"p1" as never} />);
+    expect(missingTourTargets(PROJECT_TOUR)).toEqual([]);
   });
 });

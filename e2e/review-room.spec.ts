@@ -1,4 +1,4 @@
-import { type Browser, expect, type Page, test } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "./test";
 
 // One story from start to finish, in a real browser against a real backend: two
 // teammates, an automation that stops at an approval step, the room it opens, comments

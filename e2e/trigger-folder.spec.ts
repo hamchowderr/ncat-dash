@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // The watched-folder trigger, in a real browser: the folder is picked from the bucket,
 // or made there, and nobody types a path. The bucket is the stand-in toolkit's, and the

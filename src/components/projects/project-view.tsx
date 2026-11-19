@@ -16,6 +16,7 @@ import { type CSSProperties, type DragEvent, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { PageTourButton, StartPageTour } from "@/components/tours/page-tour";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
@@ -223,7 +224,7 @@ function AddSlot({ projectId }: { projectId: Id<"projects"> }) {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" data-tour-step-id="tour-project-add">
       <select
         aria-label="Kind of slot to add"
         value={kind}
@@ -308,7 +309,7 @@ function Header({ project }: { project: Loaded }) {
         />
         <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-2 px-1.5 text-sm">
           <span>{project.package}</span>
-          <label className="flex items-center gap-2">
+          <label className="flex items-center gap-2" data-tour-step-id="tour-project-client">
             <span>For</span>
             <select
               aria-label="Client"
@@ -328,8 +329,9 @@ function Header({ project }: { project: Loaded }) {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        <PageTourButton tourId="project" />
         {project.review && (
-          <Button asChild size="sm" variant="outline">
+          <Button asChild size="sm" variant="outline" data-tour-step-id="tour-project-review">
             <Link href={`/review/${project.review._id}`}>
               <MessagesSquare />
               Review room
@@ -393,10 +395,16 @@ function Project({ project }: { project: Loaded }) {
 
   return (
     <>
+      <StartPageTour tourId="project" />
       <Header key={project.name} project={project} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="Layout" className="bg-surface flex rounded-lg p-0.5">
+        <div
+          role="group"
+          aria-label="Layout"
+          data-tour-step-id="tour-project-layout"
+          className="bg-surface flex rounded-lg p-0.5"
+        >
           {(
             [
               ["list", "List", List],
@@ -430,7 +438,7 @@ function Project({ project }: { project: Loaded }) {
         )}
         style={{ "--panel-width": selected ? "24rem" : "0rem" } as CSSProperties}
       >
-        <div className="min-w-0">
+        <div className="min-w-0" data-tour-step-id="tour-project-slots">
           {slots.length === 0 ? (
             <p className="text-muted-foreground rounded-xl bg-surface px-4 py-3 text-sm">
               No slots yet. Add the first one above.
