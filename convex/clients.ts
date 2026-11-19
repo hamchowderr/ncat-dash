@@ -217,6 +217,14 @@ export const remove = mutation({
       .withIndex("by_client", (q) => q.eq("clientId", client._id))
       .take(2000);
     for (const file of files) await ctx.db.patch(file._id, { clientId: undefined });
+    // Its calendar posts and slots stay, as the team's own.
+    for (const table of ["calendarPosts", "calendarSlots"] as const) {
+      const rows = await ctx.db
+        .query(table)
+        .withIndex("by_client", (q) => q.eq("clientId", client._id))
+        .take(2000);
+      for (const row of rows) await ctx.db.patch(row._id, { clientId: undefined });
+    }
     // Its portal link stops working.
     const portals = await ctx.db
       .query("clientPortals")

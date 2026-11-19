@@ -162,6 +162,12 @@ export async function deleteLibraryItem(ctx: MutationCtx, itemId: Id<"libraryIte
     .withIndex("by_parent", (q) => q.eq("parentId", itemId))
     .take(500);
   for (const child of children) await ctx.db.patch(child._id, { parentId: undefined });
+  // Posts planned with it stay on the calendar, without the file.
+  const posts = await ctx.db
+    .query("calendarPosts")
+    .withIndex("by_libraryItem", (q) => q.eq("libraryItemId", itemId))
+    .take(500);
+  for (const post of posts) await ctx.db.patch(post._id, { libraryItemId: undefined });
   await ctx.db.delete(itemId);
 }
 

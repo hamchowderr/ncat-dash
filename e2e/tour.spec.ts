@@ -30,7 +30,7 @@ test("the tour walks someone new around the dashboard once, and again when they 
 
   // Where setting up sends a new team: Home, with the tour started.
   await page.goto("/?tour=start");
-  const card = page.getByRole("dialog");
+  const card = page.locator("[data-tour-card]");
   await expect(card).toContainText("Welcome to Your Dashboard");
   await expect(card).toContainText("Step 1 of 11");
   await expect(page).toHaveURL(/\/$/);
