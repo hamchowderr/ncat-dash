@@ -464,6 +464,10 @@ function FirstUpload({
         >
           <UploadCloud className="text-muted-foreground size-8" aria-hidden="true" />
           <p className="text-sm">Drop a recording here, or choose it from your computer.</p>
+          <p className="text-muted-foreground max-w-sm text-sm text-pretty">
+            Start with one about 5 minutes long, so you have something to work with in a few
+            minutes. Longer recordings work too; they just take a bit longer.
+          </p>
           <input
             ref={input}
             type="file"

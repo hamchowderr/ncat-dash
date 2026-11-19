@@ -162,8 +162,8 @@ function Onboarding() {
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Add your brand</h1>
               <p className="text-muted-foreground">
-                Set these once. Any step that adds a logo, writes text or adds music uses them by
-                itself, in every automation. You can change them later in Settings.
+                Your logo and colour, set once. Every automation that adds a logo or writes text
+                uses them by itself.
               </p>
             </div>
             <BrandForm
@@ -172,7 +172,12 @@ function Onboarding() {
               canEdit={settings.canEdit}
               submitLabel="Save and continue"
               onSaved={toGoals}
+              essentials
             />
+            <p className="text-muted-foreground text-sm">
+              Font, card template, intro, outro and music can be added later in Settings, under
+              Brand.
+            </p>
             <Button variant="ghost" className="w-full" onClick={toGoals}>
               Skip for now
             </Button>

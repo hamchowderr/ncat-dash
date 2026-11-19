@@ -104,6 +104,10 @@ test("someone without a toolkit skips every toolkit field, sets up, and connects
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("button", { name: /No, Not Yet/ }).click();
   await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
+  // Only the logo and colour while setting up, so the step fits on one screen.
+  await expect(page.locator("#brand-font")).toHaveCount(0);
+  const tall = await page.evaluate(() => document.scrollingElement!.scrollHeight);
+  expect(tall, "the brand step fits on a 900px screen").toBeLessThanOrEqual(900);
   await page.getByRole("button", { name: "Skip for now" }).click();
 
   await page.getByRole("button", { name: /Coaching or Courses/ }).click();

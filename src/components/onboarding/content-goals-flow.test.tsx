@@ -190,6 +190,8 @@ describe("the first upload", () => {
     renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={onFinish} />);
     await toUpload();
     expect(screen.getByText(/Coaching session pack/).closest("li")?.textContent).toContain("is on");
+    expect(screen.getByText(/about 5 minutes long/)).toBeTruthy();
+    expect(screen.getByText(/Longer recordings work too/)).toBeTruthy();
     const file = new File(["video"], "Session with Dana.mp4", { type: "video/mp4" });
     fireEvent.change(screen.getByLabelText("Choose a recording to upload"), {
       target: { files: [file] },
