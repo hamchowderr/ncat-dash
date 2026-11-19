@@ -38,6 +38,8 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
   const router = useRouter();
   const session = authClient.useSession();
   const email = useQuery(api.email.status);
+  const settings = useQuery(api.settings.get);
+  const trialDays = mode === "sign-up" ? (settings?.trialDays ?? null) : null;
   // Where to go once signed in: an invitation link sends people here first. Only paths
   // inside this app are followed.
   const wanted = useSearchParams().get("next");
@@ -102,7 +104,11 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
             <CardTitle>
               <h1>{text.title}</h1>
             </CardTitle>
-            <CardDescription>{text.description}</CardDescription>
+            <CardDescription>
+              {trialDays
+                ? `Free for ${trialDays} ${trialDays === 1 ? "day" : "days"}, with no card needed. ${text.description}`
+                : text.description}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={onSubmit}>
