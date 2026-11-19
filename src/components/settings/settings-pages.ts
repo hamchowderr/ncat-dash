@@ -49,7 +49,7 @@ export const SETTINGS_GROUPS = [
       },
       {
         slug: "editors",
-        title: "Video editors",
+        title: "Video Editors",
         description: "Where your team finishes videos. Runs with cuts can open in these.",
       },
     ],
