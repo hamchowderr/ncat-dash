@@ -8,6 +8,9 @@ import {
   NO_MOTION_SETUP,
   PRESET_GROUPS,
   getPreset,
+  motionBeatsFromPicks,
+  motionPicksFrom,
+  motionPlanSettings,
   motionRequest,
   motionSetupFor,
   motionSetupText,
@@ -304,5 +307,126 @@ describe("the toolkit request", () => {
 
   it("makes a title from a file name", () => {
     expect(pieceInfo("follow").place).toBe("bottom");
+  });
+});
+
+describe("the Plan Motion Graphics step", () => {
+  const words = [
+    ...say("Welcome back to the show."),
+    ...say("We grew revenue 40 percent in six months.", 3),
+    ...say("Consistency beats talent every single time.", 8),
+    ...say("Now let us talk about hiring.", 14),
+  ];
+  const all = setup(
+    {},
+    { busy: "medium", pieces: ["keyword", "stat", "quote", "transition", "title"] },
+  );
+
+  it("asks for the pieces the style uses, as often as it is busy", () => {
+    const settings = motionPlanSettings(all, 60, { lookFor: " the numbers " });
+    expect(settings).toMatchObject({
+      count: 5,
+      gap: 12,
+      pieces: ["keyword", "stat", "quote", "transition"],
+      sounds: true,
+      lookFor: "the numbers",
+    });
+    expect(motionPlanSettings(all, 60, {}, "off").sounds).toBe(false);
+  });
+
+  it("keeps only well-formed beats from the answer", () => {
+    expect(
+      motionPicksFrom({
+        beats: [
+          { quote: "We grew revenue", piece: "stat", text: "40%", subtitle: "revenue growth" },
+          { piece: "keyword", text: "no quote" },
+          "not a beat",
+        ],
+      }),
+    ).toEqual([
+      {
+        quote: "We grew revenue",
+        piece: "stat",
+        text: "40%",
+        subtitle: "revenue growth",
+        sound: "",
+      },
+    ]);
+    expect(motionPicksFrom({ moments: [] })).toEqual([]);
+  });
+
+  it("places each beat where its quote is said and drops the rest", () => {
+    const settings = motionPlanSettings(all, 20, {});
+    const { beats, dropped } = motionBeatsFromPicks(
+      words,
+      [
+        { quote: "Now let us talk", piece: "transition", text: "", subtitle: "", sound: "" },
+        {
+          quote: "We grew revenue 40 percent",
+          piece: "stat",
+          text: "40%",
+          subtitle: "revenue growth",
+          sound: "ding",
+        },
+        {
+          quote: "Consistency beats talent every single time.",
+          piece: "quote",
+          text: "",
+          subtitle: "",
+          sound: "none",
+        },
+        { quote: "never said", piece: "keyword", text: "Growth", subtitle: "", sound: "" },
+        // Not one of this style's pieces.
+        { quote: "Welcome back", piece: "follow", text: "@x", subtitle: "", sound: "" },
+        // Says what was not said, which this style does not allow.
+        { quote: "Welcome back", piece: "keyword", text: "Hello", subtitle: "", sound: "" },
+      ],
+      settings,
+    );
+    expect(dropped).toBe(1);
+    expect(beats).toEqual([
+      {
+        type: "stat",
+        start: 3,
+        duration: 3,
+        title: "40%",
+        subtitle: "revenue growth",
+        sound: "ding",
+      },
+      {
+        type: "quote",
+        start: 8,
+        duration: 4.5,
+        title: "Consistency beats talent every single time.",
+        sound: null,
+      },
+      { type: "transition", start: 13.65, duration: 0.7 },
+    ]);
+  });
+
+  it("lets a keyword say what was not said when the style allows it", () => {
+    const pick = {
+      quote: "Welcome back",
+      piece: "keyword",
+      text: "Hello",
+      subtitle: "",
+      sound: "pop",
+    };
+    const allowed = motionBeatsFromPicks(words, [pick], { pieces: ["keyword"], showsUnsaid: true });
+    expect(allowed.beats).toEqual([
+      { type: "keyword", start: 0, duration: 1.2, title: "Hello", sound: "pop" },
+    ]);
+  });
+
+  it("draws the plan's beats in place of the numbers found by rules", () => {
+    const plan = planMotionByRules({
+      words,
+      duration: 20,
+      setup: setup({}, { pieces: ["keyword", "stat"], opening: "none", ending: "none" }),
+      beats: [{ type: "keyword", start: 8, duration: 1.2, title: "Consistency" }],
+    });
+    expect(plan.pieces).toEqual([
+      { type: "keyword", start: 8, duration: 1.2, title: "Consistency" },
+    ]);
   });
 });

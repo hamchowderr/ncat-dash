@@ -55,7 +55,7 @@ import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
 import { BrollMain, BrollMore, BrollPlanMain } from "./broll-settings";
-import { MotionMain, SoundEffectsMain } from "./motion-settings";
+import { MotionMain, MotionPlanMain, SoundEffectsMain } from "./motion-settings";
 import { PlatformPicker } from "./platform-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
@@ -208,6 +208,7 @@ export function NodePanel({
     node.kind === "chapters" ||
     node.kind === "broll" ||
     node.kind === "broll-plan" ||
+    node.kind === "motion-plan" ||
     node.kind === "motion" ||
     node.kind === "sound-effects"
   ) {
@@ -387,7 +388,16 @@ export function NodePanel({
       )}
 
       {node.kind === "motion" && (
-        <MotionMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
+        <MotionMain
+          key={node.id}
+          node={node}
+          planned={before.some((one) => one.kind === "motion-plan")}
+          onChange={(input) => onChange({ input })}
+        />
+      )}
+
+      {node.kind === "motion-plan" && (
+        <MotionPlanMain node={node} onChange={(input) => onChange({ input })} />
       )}
 
       {node.kind === "sound-effects" && (

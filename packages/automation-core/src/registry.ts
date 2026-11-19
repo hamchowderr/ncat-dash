@@ -565,6 +565,29 @@ const BROLL_PLAN: NodeType = {
   automatic: null,
 };
 
+const MOTION_PLAN: NodeType = {
+  type: "motion-plan",
+  role: "action",
+  group: "video",
+  title: "Plan Motion Graphics",
+  description:
+    "AI reads each video's transcript and says which motion graphics go where, in the team's style: a keyword as it is said, a number with what it counts, a line worth repeating as a quote card, a card or wipe where the talk moves on, and the sound each one makes. Put it before Add Motion Graphics, which draws the plan; without it, Add Motion Graphics places pieces by plain rules. The AI only quotes the words; every quote is found in the transcript word for word. The video carries on unchanged.",
+  takes: "file",
+  gives: "file",
+  settings: {
+    type: "object",
+    properties: {
+      lookFor: {
+        type: "string",
+        default: "",
+        description:
+          "What the graphics should bring out, in plain words, such as the numbers, the product's name, or the strongest lines.",
+      },
+    },
+  },
+  automatic: null,
+};
+
 const MOTION: NodeType = {
   type: "motion",
   role: "action",
@@ -755,6 +778,7 @@ export const NODE_TYPES: NodeType[] = [
   CHAPTERS,
   BROLL,
   BROLL_PLAN,
+  MOTION_PLAN,
   MOTION,
   SOUND_EFFECTS,
   EXPORT,
@@ -822,6 +846,7 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
     type === "broll" ||
     type === "broll-plan" ||
     type === "motion" ||
+    type === "motion-plan" ||
     type === "sound-effects" ||
     type === "export" ||
     type === "if" ||

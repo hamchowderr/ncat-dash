@@ -16,6 +16,7 @@ import { useState } from "react";
 
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -46,9 +47,12 @@ const SettingsLink = () => (
 /** Add Motion Graphics: the style (the team's or a preset), the opening title, the sounds. */
 export function MotionMain({
   node,
+  planned,
   onChange,
 }: {
   node: NodeContent;
+  /** A Plan Motion Graphics step comes before it and picks the pieces between. */
+  planned?: boolean;
   onChange: (input: Settings) => void;
 }) {
   const settings = motionStepSettings(node.input);
@@ -77,6 +81,9 @@ export function MotionMain({
           </SelectContent>
         </Select>
         <FieldDescription>
+          {planned
+            ? "Plan Motion Graphics before this step picks the pieces between the opening and the ending. "
+            : ""}
           Your team&apos;s style, names and handle are set in <SettingsLink />.
         </FieldDescription>
       </Field>
@@ -110,6 +117,39 @@ export function MotionMain({
         </Select>
         <FieldDescription>Each piece comes in with its own sound.</FieldDescription>
       </Field>
+    </FieldGroup>
+  );
+}
+
+/**
+ * Plan Motion Graphics: what the pieces should bring out. Which pieces, how often and the
+ * look come from the Add Motion Graphics step after it, which draws them.
+ */
+export function MotionPlanMain({
+  node,
+  onChange,
+}: {
+  node: NodeContent;
+  onChange: (input: Settings) => void;
+}) {
+  return (
+    <FieldGroup>
+      <Field>
+        <FieldLabel htmlFor={`node-${node.id}-bring-out`}>What to bring out</FieldLabel>
+        <Textarea
+          id={`node-${node.id}-bring-out`}
+          defaultValue={typeof node.input.lookFor === "string" ? node.input.lookFor : ""}
+          placeholder="Numbers, names and the main points"
+          maxLength={1000}
+          rows={2}
+          onChange={(event) => onChange(setOrClear(node.input, "lookFor", event.target.value))}
+        />
+      </Field>
+      <FieldDescription>
+        Uses AI once per video to read the transcript and pick each piece and its sound. Which
+        pieces, how often and the look come from the Add Motion Graphics step after it, and from
+        your style notes in <SettingsLink />.
+      </FieldDescription>
     </FieldGroup>
   );
 }

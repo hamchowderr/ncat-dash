@@ -14,6 +14,7 @@ export interface AutomationNode {
    * "moments" picks the best moments of each video and cuts them as clips; "chapters"
    * groups a long video into chapters (both moments.ts); "broll" lays cutaway footage over
    * each video, and "broll-plan" has the AI say where and what to show first (broll.ts);
+   * "motion-plan" has the AI say which pieces go where first,
    * "motion" draws motion graphics and "sound-effects" adds sound effects onto each video
    * (motion.ts).
    */
@@ -30,6 +31,7 @@ export interface AutomationNode {
     | "broll"
     | "broll-plan"
     | "motion"
+    | "motion-plan"
     | "sound-effects";
   /** Catalog step id, for kind "step". */
   stepId?: string;

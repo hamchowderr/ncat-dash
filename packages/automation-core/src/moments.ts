@@ -51,7 +51,7 @@ export function wordKey(text: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
-function quoteKeys(quote: string): string[] {
+export function quoteKeys(quote: string): string[] {
   return quote
     .split(/\s+/)
     .map(wordKey)

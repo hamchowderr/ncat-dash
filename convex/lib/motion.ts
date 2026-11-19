@@ -1,4 +1,5 @@
 import {
+  type AutomationEdge,
   type AutomationNode,
   type Chapter,
   type MotionPlan,
@@ -8,11 +9,15 @@ import {
   motionStepLevel,
   motionStepSettings,
   NO_MOTION_SETUP,
+  nearestUpstreamOfKind,
+  type PlacedPiece,
   placedFrom,
   planMotionByRules,
   planSoundsByRules,
   soundStepLevel,
+  type SoundLevel,
   soundStepSettings,
+  TEAM_STYLE,
   titleFromFileName,
   tidyMotionSetup,
 } from "@ncat-dash/automation-core";
@@ -42,6 +47,51 @@ export async function motionSetupOf(ctx: QueryCtx, organizationId: string): Prom
   // Saved settings were checked when saved; tidy again in case a preset has changed since.
   const tidied = tidyMotionSetup(settings.motion as Partial<MotionSetup>);
   return tidied.ok ? tidied.setup : NO_MOTION_SETUP;
+}
+
+/**
+ * For a Plan Motion Graphics step: the style of the Add Motion Graphics step after it that
+ * will draw the plan, and the sound level that step plays at. With no motion step after it,
+ * the team's own style.
+ */
+export async function motionPlanOf(
+  ctx: QueryCtx,
+  organizationId: string,
+  planNodeId: string,
+  nodes: AutomationNode[],
+  edges: AutomationEdge[],
+): Promise<{ setup: MotionSetup; level: SoundLevel }> {
+  const carried = nodes.find(
+    (node) =>
+      node.kind === "motion" &&
+      nearestUpstreamOfKind(node.id, "motion-plan", nodes, edges)?.id === planNodeId,
+  );
+  const settings = motionStepSettings(carried?.input ?? {});
+  const team = await motionSetupOf(ctx, organizationId);
+  const setup = motionSetupFor(team, settings.style === TEAM_STYLE ? undefined : settings.style);
+  return { setup, level: motionStepLevel(setup, settings) };
+}
+
+/** The beats a Plan Motion Graphics step before this one planned for each video, if any. */
+function plannedBeats(
+  run: Doc<"runs">,
+  nodeId: string,
+  byNode: Map<string, Doc<"runSteps">>,
+): Map<string, PlacedPiece[]> | null {
+  const planNode = nearestUpstreamOfKind(
+    nodeId,
+    "motion-plan",
+    run.nodes as AutomationNode[],
+    run.edges as AutomationEdge[],
+  );
+  const planStep = planNode ? byNode.get(planNode.id) : undefined;
+  if (!Array.isArray(planStep?.aiPlan)) return null;
+  return new Map(
+    (planStep.aiPlan as { source: string; beats: PlacedPiece[] }[]).map((one) => [
+      one.source,
+      one.beats,
+    ]),
+  );
 }
 
 /** After "listen": reads each video's words, unless a job could not be done. */
@@ -97,6 +147,7 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
   const brand = await brandOf(ctx, run.organizationId, run.clientId);
   const fileName = (run.trigger as { file_name?: unknown } | null)?.file_name;
 
+  const planned = node.kind === "motion" ? plannedBeats(run, node.id, byNode) : null;
   const renders: { stepId: string; input: unknown }[] = [];
   const placed: NonNullable<Doc<"runSteps">["placed"]> = [];
   for (const heard of heardFrom(jobs)) {
@@ -123,6 +174,8 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
         chapters,
         title,
         logo: brand.logo,
+        // A Plan Motion Graphics step before this one chose the beats; the rules add the rest.
+        ...(planned ? { beats: planned.get(heard.url) ?? [] } : {}),
       });
       const level = motionStepLevel(setup, settings);
       request = motionRequest(heard.url, plan, setup, brand, {

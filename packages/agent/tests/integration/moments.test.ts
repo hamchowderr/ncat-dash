@@ -162,6 +162,52 @@ describe("the moments prompt", () => {
     ).toBe(false);
   });
 
+  it("plans motion graphics with the style's pieces, gap, sounds and notes", () => {
+    const motion = {
+      kind: "motion",
+      title: "Growth talk",
+      duration: 120,
+      transcript: "[0:00] We grew revenue 40 percent.",
+      settings: {
+        count: 10,
+        gap: 12,
+        pieces: ["keyword", "stat"],
+        showsUnsaid: false,
+        sounds: true,
+        look: "bold",
+        notes: "Never use red.",
+        lookFor: "the numbers",
+      },
+    };
+    const prompt = momentsPrompt(momentsRequest.parse(motion));
+    expect(prompt).toContain("up to 10 beats");
+    expect(prompt).toContain("- keyword:");
+    expect(prompt).toContain("- stat:");
+    expect(prompt).not.toContain("- quote:");
+    expect(prompt).toContain("Keep at least 12 seconds between two beats");
+    expect(prompt).toContain("A keyword uses only words said in its quote.");
+    expect(prompt).toContain("Give each beat the sound it comes in with");
+    expect(prompt).toContain("Never use red.");
+    expect(prompt).toContain("What the graphics should bring out: the numbers");
+    expect(prompt).toContain(
+      '{"beats":[{"quote":"…","piece":"…","text":"…","subtitle":"…","sound":"…"}]}',
+    );
+    const quiet = momentsPrompt(
+      momentsRequest.parse({
+        ...motion,
+        settings: { ...motion.settings, sounds: false, showsUnsaid: true, notes: "", lookFor: "" },
+      }),
+    );
+    expect(quiet).not.toContain("Give each beat the sound");
+    expect(quiet).toContain("in your own words");
+    expect(
+      momentsRequest.safeParse({
+        ...motion,
+        settings: { ...motion.settings, pieces: ["follow"] },
+      }).success,
+    ).toBe(false);
+  });
+
   it("writes times as minutes and seconds", () => {
     expect(clockTime(0)).toBe("0:00");
     expect(clockTime(65.9)).toBe("1:05");

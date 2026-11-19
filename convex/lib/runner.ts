@@ -264,7 +264,8 @@ async function startNode(
     node.kind === "moments" ||
     node.kind === "chapters" ||
     node.kind === "broll" ||
-    node.kind === "broll-plan"
+    node.kind === "broll-plan" ||
+    node.kind === "motion-plan"
   ) {
     // Chapters reads speech, so an audio file will do; moments are cut from a video, and
     // B-Roll is laid over one.

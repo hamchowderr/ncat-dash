@@ -51,7 +51,14 @@ function offsetAt(timeZone: string, instant: number): number {
 }
 
 /** The instant at which the zone's wall clock reads the given date and time. */
-export function instantOf(timeZone: string, y: number, m: number, d: number, hh: number, mm: number) {
+export function instantOf(
+  timeZone: string,
+  y: number,
+  m: number,
+  d: number,
+  hh: number,
+  mm: number,
+) {
   const wall = Date.UTC(y, m - 1, d, hh, mm);
   // Two passes settle the offset on days when the clocks change.
   const guess = wall - offsetAt(timeZone, wall);
