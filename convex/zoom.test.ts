@@ -18,6 +18,7 @@ let refreshes = 0;
 let toolkitCalls: { url: string; body: Record<string, unknown> }[] = [];
 let recordings: unknown[] = [];
 let accountRecordings: unknown[] = [];
+let adminRecordingsRefused = false;
 // Which app's keys each sign-in code was traded with.
 let tradedWith: Record<string, string> = {};
 const ACCOUNT_SECRET = "zoom-account-webhook-secret-token";
@@ -37,6 +38,7 @@ beforeEach(() => {
   toolkitCalls = [];
   recordings = [];
   accountRecordings = [];
+  adminRecordingsRefused = false;
   tradedWith = {};
   vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
@@ -72,8 +74,29 @@ beforeEach(() => {
       const code = String(headers.get("authorization")).replace("Bearer access-", "");
       return codes[code] ? Response.json(codes[code]) : new Response("no", { status: 401 });
     }
-    if (url.startsWith("https://api.zoom.test/v2/accounts/me/recordings")) {
+    if (url.startsWith("https://api.zoom.test/v2/accounts/")) {
+      // Zoom's one-call account list is only for master accounts.
+      return Response.json(
+        { code: 200, message: "Only available for master account." },
+        { status: 400 },
+      );
+    }
+    if (url.startsWith("https://api.zoom.test/v2/users?")) {
+      const page = new URL(url).searchParams.get("next_page_token");
+      return Response.json(
+        page
+          ? { users: [{ id: "zoom-user-somebody-else" }] }
+          : { users: [{ id: "zoom-user-admin" }], next_page_token: "page-2" },
+      );
+    }
+    if (url.startsWith("https://api.zoom.test/v2/users/zoom-user-somebody-else/recordings")) {
       return Response.json({ meetings: accountRecordings });
+    }
+    if (url.startsWith("https://api.zoom.test/v2/users/zoom-user-admin/recordings")) {
+      if (adminRecordingsRefused) {
+        return Response.json({ code: 124, message: "Invalid access token." }, { status: 401 });
+      }
+      return Response.json({ meetings: [] });
     }
     if (url.startsWith("https://api.zoom.test/v2/users/me/recordings")) {
       return Response.json({ meetings: recordings });
@@ -682,6 +705,40 @@ describe("a whole Zoom account", () => {
         meetingUuid: "meeting-uuid-1==",
       }),
     ).toBe("started");
+  });
+
+  test("past recordings are asked of every host, page by page, never the master-only list", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    await connectWhole(setup);
+    accountRecordings = [completed("zoom-user-somebody-else").payload.object];
+    const asked: string[] = [];
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      asked.push(String(input));
+      return real(input, init);
+    });
+    await setup.owner.as.action(api.zoom.pastRecordings, { organizationId: setup.team });
+    const paths = asked.map((one) => new URL(one).pathname);
+    expect(paths).not.toContain("/v2/accounts/me/recordings");
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "/v2/users",
+        "/v2/users/zoom-user-admin/recordings",
+        "/v2/users/zoom-user-somebody-else/recordings",
+      ]),
+    );
+    expect(paths.filter((one) => one === "/v2/users")).toHaveLength(2);
+  });
+
+  test("a refusal from Zoom says Zoom's own reason", async () => {
+    withAccountApp();
+    const setup = await setUp();
+    await connectWhole(setup);
+    adminRecordingsRefused = true;
+    await expect(
+      setup.owner.as.action(api.zoom.pastRecordings, { organizationId: setup.team }),
+    ).rejects.toThrow("Zoom did not list your recordings (HTTP 401): Invalid access token.");
   });
 
   test("its sign-in is renewed with the account app's keys", async () => {
