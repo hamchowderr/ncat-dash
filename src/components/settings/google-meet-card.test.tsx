@@ -134,10 +134,16 @@ describe("the Google Meet card", () => {
     expect(
       await screen.findByText("5 recordings in your Drive. 3 not in Uploads yet."),
     ).toBeInTheDocument();
-    // Grouped by year; the ones already in are said so and cannot be picked.
+    // Grouped by year, the newest open; the ones already in are said so and cannot be picked.
     expect(screen.getByRole("group", { name: String(thisYear - 1) })).toBeInTheDocument();
     expect(screen.getByText("Brought in")).toBeInTheDocument();
     expect(screen.getByText("Already in Uploads")).toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox", { name: /^Pick .*,/ })).toHaveLength(1);
+    const lastYear = screen.getByRole("button", {
+      name: `${thisYear - 1} · 2 recordings · 2 picked`,
+    });
+    expect(lastYear).toHaveAttribute("aria-expanded", "false");
+    await user.click(lastYear);
     expect(screen.getAllByRole("checkbox", { name: /^Pick .*,/ })).toHaveLength(3);
     // Everything new is picked to start with.
     expect(screen.getByText("All 3 picked")).toBeInTheDocument();
@@ -222,7 +228,13 @@ describe("the Google Meet card", () => {
     await user.click(shared);
     expect(setShared).toHaveBeenCalledWith({ organizationId: TEAM.id, includeShared: true });
     await user.click(screen.getByRole("button", { name: "Find recordings" }));
-    expect(await screen.findByText(/shared by Andrew Fink/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "1 recording in your Drive, 1 shared with you. 1 not in Uploads yet.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Shared with you", { selector: "[data-slot=badge]" })).toBeVisible();
+    expect(screen.getByText(/from Andrew Fink/)).toBeInTheDocument();
   });
 
   test("with bringing in switched off, the shared switch is not offered", async () => {

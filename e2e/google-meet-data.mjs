@@ -74,3 +74,27 @@ export function sharedRecording() {
     owners: [{ displayName: "Pat Rivera", emailAddress: "pat@partner.test", me: false }],
   };
 }
+
+/**
+ * A recording Meet named only by its meeting code, since the meeting was not started from
+ * a calendar invite, and the calendar event that links to that call (which gives its name).
+ */
+export function codeNamedRecording() {
+  const saved = Date.now() - 9 * 864e5;
+  return {
+    id: "driveFileCodeNamed0001",
+    name: `kqp-wmzt-rsv (${new Date(saved).toISOString().slice(0, 10)} 14:00 GMT-8) - Recording`,
+    size: "34000000",
+    mimeType: "video/mp4",
+    createdTime: new Date(saved).toISOString(),
+    videoMediaMetadata: { durationMillis: String(28 * 60 * 1000) },
+  };
+}
+
+export function codeNamedEvent() {
+  return {
+    summary: "Design Review",
+    hangoutLink: "https://meet.google.com/kqp-wmzt-rsv",
+    conferenceData: { conferenceId: "kqp-wmzt-rsv" },
+  };
+}

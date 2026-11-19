@@ -319,6 +319,7 @@ export const listUploads = query({
       status: upload.status,
       purpose: upload.purpose ?? null,
       source: upload.source ?? null,
+      sharedBy: upload.sharedBy ?? null,
       details: upload.details ?? null,
     }));
   },

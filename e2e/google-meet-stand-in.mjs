@@ -7,13 +7,15 @@ import {
   GOOGLE,
   GOOGLE_PORT,
   GOOGLE_USER,
+  codeNamedEvent,
+  codeNamedRecording,
   meeting,
   oldRecording,
   sharedRecording,
 } from "./google-meet-data.mjs";
 
 const SCOPES =
-  "openid email profile https://www.googleapis.com/auth/meetings.space.readonly https://www.googleapis.com/auth/drive.meet.readonly";
+  "openid email profile https://www.googleapis.com/auth/meetings.space.readonly https://www.googleapis.com/auth/drive.meet.readonly https://www.googleapis.com/auth/calendar.events.readonly";
 
 function read(request) {
   return new Promise((resolve) => {
@@ -86,9 +88,14 @@ const server = createServer(async (request, response) => {
     const found = meetings.find((one) => one.recording.name === oneRecording[1]);
     return found ? send(response, 200, found.recording) : send(response, 404, {});
   }
-  // Drive's files Meet made: every meeting's recording, one from long ago, and one someone
-  // else shared.
-  const files = () => [...meetings.map((one) => one.file), oldRecording(), sharedRecording()];
+  // Drive's files Meet made: every meeting's recording, one from long ago, one someone else
+  // shared, and one Meet named only by its meeting code.
+  const files = () => [
+    ...meetings.map((one) => one.file),
+    oldRecording(),
+    sharedRecording(),
+    codeNamedRecording(),
+  ];
   if (url.pathname === "/drive/v3/files") {
     // One page, newest first, is all the browser tests need.
     return send(response, 200, {
@@ -99,6 +106,11 @@ const server = createServer(async (request, response) => {
   if (file) {
     const found = files().find((one) => one.id === file[1]);
     return found ? send(response, 200, found) : send(response, 404, {});
+  }
+  // The calendar: the one event that names the code-named recording. Every month asked
+  // gets it, which is all the browser tests need.
+  if (url.pathname === "/calendar/v3/calendars/primary/events") {
+    return send(response, 200, { items: [codeNamedEvent()] });
   }
   if (url.pathname === "/health") return send(response, 200, { ok: true });
   send(response, 404, { message: "unknown" });
