@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { addPerson, addTeam, backend } from "./test.setup";
 
@@ -488,5 +488,32 @@ describe("building automations through MCP", () => {
     expect(index.data.index).toContain("step:video-caption");
     const one = await call(t, key, "list_step_types", { type: "step:video-caption" });
     expect(one.data.type).toBeTruthy();
+  });
+});
+
+describe("the MCP server once nothing new can start", () => {
+  test("a blocked team, or one whose trial is over, is told why and nothing runs", async () => {
+    const { t, team, key } = await setUp();
+    expect((await rpc(t, key, "tools/list")).status).toBe(200);
+    await t.mutation(internal.blocks.blockTeam, { organizationId: team });
+    const blocked = await rpc(t, key, "tools/list");
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error.message).toMatch(/paused/);
+    expect(typeof blocked.body.id).toBe("number");
+
+    await t.mutation(internal.blocks.unblockTeam, { organizationId: team });
+    await t.run((ctx) =>
+      ctx.db.insert("teamTrials", { organizationId: team, startedAt: 0, endsAt: 1 }),
+    );
+    const ended = await rpc(t, key, "tools/list");
+    expect(ended.status).toBe(403);
+    expect(ended.body.error.message).toMatch(/trial has ended/);
+  });
+
+  test("an AI client stuck in a loop is slowed down", async () => {
+    const { t, key } = await setUp();
+    let last = 0;
+    for (let i = 0; i < 61; i++) last = (await rpc(t, key, "tools/list")).status;
+    expect(last).toBe(429);
   });
 });

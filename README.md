@@ -245,6 +245,31 @@ Everything is built on open-source [shadcn/ui](https://ui.shadcn.com) components
 npx shadcn add <component-or-block>
 ```
 
+## Free trial, limits and blocking (hosted edition)
+
+On the hosted edition (`NCAT_EDITION=hosted`) each new team gets a free trial with no card (`TRIAL_DAYS`, 3 unless set; 0 turns it off). Once it ends, or once the operator blocks the team or a person, nothing new starts: no runs, no agent replies in the dashboard, Slack or Discord, and no MCP calls. Everything already made is kept.
+
+A trial is one person's, not one team's or one address's:
+
+- A new team whose owner already had a trial (the same mailbox, however it is written: `Maya.Ortiz+2@googlemail.com` is `mayaortiz@gmail.com`) shares what is left of it.
+- Once `TRIALS_PER_NETWORK` teams (2 unless set) from one network have had a trial in 30 days, the next starts already over. The dashboard's `/api/auth` route passes the visitor's address to Convex signed with `MASTRA_JWT_SECRET`; only a keyed hash of the network is stored.
+- Throwaway email services are refused at sign-up (a list of about 10,000, refreshed with `node scripts/update-disposable-domains.mjs`), plus any in `BLOCKED_EMAIL_DOMAINS` (comma-separated).
+- Email confirmation turns on by itself once the deployment can send email (`TOSEND_API_KEY` and `EMAIL_FROM`). `REQUIRE_EMAIL_VERIFICATION=false` turns it off.
+
+Limits a real person never meets (`convex/lib/limits.ts`): sign-ups (5 an hour from one network, 10 an hour shared by unknown networks, a ceiling for everyone), 3 new teams a day per person, agent replies per person and per team, and MCP calls per key. Sign-up and new-team limits apply on the hosted edition only.
+
+Operator commands:
+
+```bash
+npx convex run trial:markPaid '{"organizationId":"..."}'
+npx convex run trial:extend '{"organizationId":"...","days":2}'
+npx convex run blocks:blockTeam '{"organizationId":"...","reason":"..."}'
+npx convex run blocks:unblockTeam '{"organizationId":"..."}'
+npx convex run blocks:blockUser '{"email":"someone@example.com"}'   # also signs them out everywhere
+npx convex run blocks:unblockUser '{"email":"someone@example.com"}'
+npx convex run blocks:list
+```
+
 ## Issues
 
 Work is tracked in Beads (`bd`), not GitHub issues. The issues live in a Dolt database on DoltHub, `chowderr/ncat-dash` (private), and `.beads/issues.jsonl` is a read-only export of it. Every piece of work starts as a bead, and its PR names the bead it closes (for example "Closes dash-0y4").

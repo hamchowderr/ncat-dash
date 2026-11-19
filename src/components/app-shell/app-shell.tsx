@@ -12,9 +12,10 @@ import { FullPageLoader } from "@/components/full-page-loader";
 import { AlertNotices, useUnseenAlerts } from "@/components/inbox/alert-notices";
 import {
   AgentResting,
+  TeamPaused,
   TrialDays,
   TrialEnded,
-  useTrialEnded,
+  useAccessRefusal,
 } from "@/components/trial/trial-notice";
 import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -70,7 +71,7 @@ function Shell({
   const pathname = usePathname();
   const { onAutomation } = useAgentContext();
   const agentOpen = useAgentOpen();
-  const trialEnded = useTrialEnded(state.team.id);
+  const refusal = useAccessRefusal(state.team.id);
 
   return (
     <SidebarProvider className="md:h-svh md:overflow-hidden">
@@ -108,6 +109,7 @@ function Shell({
           >
             <PageTransition key={pathname}>
               <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">
+                <TeamPaused organizationId={state.team.id} />
                 <TrialEnded organizationId={state.team.id} />
                 {children}
               </div>
@@ -130,8 +132,11 @@ function Shell({
         >
           {agentOpen && (
             <div className="flex h-full min-h-0 flex-col lg:w-[26rem] lg:min-w-[26rem]">
-              {trialEnded ? (
-                <AgentResting onClose={() => showAgent(false)} />
+              {refusal ? (
+                <AgentResting
+                  message={refusal.reason === "trial_ended" ? undefined : refusal.message}
+                  onClose={() => showAgent(false)}
+                />
               ) : (
                 <AgentPanel onAutomation={onAutomation} onClose={() => showAgent(false)} />
               )}

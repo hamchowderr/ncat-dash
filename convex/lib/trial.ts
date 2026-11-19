@@ -21,8 +21,8 @@ export function trialDays(env: Record<string, string | undefined> = process.env)
 export type TrialState =
   | { kind: "none" }
   | { kind: "paid" }
-  | { kind: "trial"; endsAt: number }
-  | { kind: "ended"; endsAt: number };
+  | { kind: "trial"; endsAt: number; repeat: boolean }
+  | { kind: "ended"; endsAt: number; repeat: boolean };
 
 /** Where a team whose trial is ending goes to buy, from BUY_URL. Null when it is not set. */
 export function buyUrl(env: Record<string, string | undefined> = process.env): string | null {
@@ -41,9 +41,10 @@ export async function trialOf(
     .unique();
   if (!trial) return { kind: "none" };
   if (trial.paidAt !== undefined) return { kind: "paid" };
+  const repeat = trial.repeatOf !== undefined;
   return trial.endsAt > now
-    ? { kind: "trial", endsAt: trial.endsAt }
-    : { kind: "ended", endsAt: trial.endsAt };
+    ? { kind: "trial", endsAt: trial.endsAt, repeat }
+    : { kind: "ended", endsAt: trial.endsAt, repeat };
 }
 
 /** Said wherever something would have started for a team whose trial is over. */
@@ -58,4 +59,10 @@ export function trialEnd(startedAt: number, days: number): number {
 /** Whole days left, rounded up, so the last few hours still read as "1 day left". */
 export function daysLeft(endsAt: number, now = Date.now()): number {
   return Math.max(0, Math.ceil((endsAt - now) / DAY));
+}
+
+/** How many teams made from one network in 30 days get fresh trial days (TRIALS_PER_NETWORK, 2). */
+export function trialsPerNetwork(env: Record<string, string | undefined> = process.env): number {
+  const raw = Number(env.TRIALS_PER_NETWORK?.trim() || "");
+  return Number.isInteger(raw) && raw > 0 ? raw : 2;
 }

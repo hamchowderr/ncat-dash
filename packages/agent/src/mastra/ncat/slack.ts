@@ -36,7 +36,10 @@ export type Installation = {
 
 export type SlackPerson =
   | { ok: true; userId: string; name: string; organizationId: string; convexToken: string }
-  | { ok: false; reason: 'not_connected' | 'no_email' | 'not_member'; email: string | null };
+  | { ok: false; reason: 'not_connected' | 'no_email' | 'not_member'; email: string | null }
+  // The dashboard says no to this reply: the trial is over, the team or person is
+  // blocked, or they have sent a great many messages. `message` is what to tell them.
+  | { ok: false; reason: 'refused'; email: null; message: string };
 
 /** Where the dashboard's HTTP actions answer. */
 export function convexSiteUrl(): string | null {
@@ -197,6 +200,8 @@ export function refusalText(person: SlackPerson | null): string {
   if (!person) return "I can't reach the dashboard right now. Try again in a minute.";
   if (person.ok) return '';
   switch (person.reason) {
+    case 'refused':
+      return person.message;
     case 'not_member':
       return `I only work for people on the team. Ask a team owner to invite ${person.email} in the dashboard, then write to me again.`;
     case 'no_email':
