@@ -897,6 +897,9 @@ export default defineSchema({
     autoImport: v.boolean(),
     // Recordings of meetings that end after this come in by themselves.
     watchFrom: v.number(),
+    // Set while recordings other people share with this account come in by themselves
+    // too: those Meet saves after this time.
+    sharedFrom: v.optional(v.number()),
     // Set when Google stopped accepting the sign-in (taken back, or run out).
     signInLostAt: v.optional(v.number()),
   })

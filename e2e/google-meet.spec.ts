@@ -51,25 +51,33 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
     page.getByRole("region", { name: "Your Google account" }).getByText(GOOGLE_USER.name),
   ).toBeVisible();
   await expect(page.getByRole("switch", { name: /Bring in new recordings/ })).toBeChecked();
+  // Recordings others share can come in by themselves too; off until switched on.
+  const shared = page.getByRole("switch", { name: /recordings shared with you/ });
+  await expect(shared).not.toBeChecked();
+  await shared.click();
+  await expect(shared).toBeChecked();
 
   // A past recording, brought in by hand.
   // Every past recording found at once: the recent one, and one from over a year ago that
   // only Drive still has. Both are picked; one press brings them over.
   await page.getByRole("button", { name: "Find recordings" }).click();
   const past = page.getByRole("region", { name: "Past recordings" });
-  await expect(past.getByText("2 recordings in your Drive. 2 not in Uploads yet.")).toBeVisible();
+  await expect(past.getByText("3 recordings in your Drive. 3 not in Uploads yet.")).toBeVisible();
   await expect(past.getByText("Client Kickoff")).toBeVisible();
   await expect(past.getByText(/37 min/)).toBeVisible();
   await expect(past.getByText("Annual Review")).toBeVisible();
   await expect(past.getByText(/52 min/)).toBeVisible();
-  await expect(past.getByText("All 2 picked")).toBeVisible();
-  await past.getByRole("button", { name: "Bring over 2 recordings" }).click();
-  await expect(page.getByText("2 recordings on the way to Uploads")).toBeVisible();
+  // One someone else organized and shared says who shared it.
+  await expect(past.getByText("Partner Sync")).toBeVisible();
+  await expect(past.getByText(/shared by Pat Rivera/)).toBeVisible();
+  await expect(past.getByText("All 3 picked")).toBeVisible();
+  await past.getByRole("button", { name: "Bring over 3 recordings" }).click();
+  await expect(page.getByText("3 recordings on the way to Uploads")).toBeVisible();
   await expect(
-    past.getByText("2 recordings in your Drive. All of them are in Uploads."),
+    past.getByText("3 recordings in your Drive. All of them are in Uploads."),
   ).toBeVisible();
   const brought = page.getByRole("region", { name: "Brought in from Google Meet" });
-  await expect(brought.getByRole("link", { name: "In Uploads" })).toHaveCount(2, {
+  await expect(brought.getByRole("link", { name: "In Uploads" })).toHaveCount(3, {
     timeout: 60_000,
   });
 
@@ -84,6 +92,9 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
   // Both are uploads now, named after the meeting and its day.
   await page.goto("/uploads");
   const uploads = page.getByRole("region", { name: "Your uploads" });
+  await expect(uploads.getByText(/^Partner Sync \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(uploads.getByText(/^Annual Review \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
     timeout: 30_000,
   });

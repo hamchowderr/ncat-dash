@@ -55,6 +55,7 @@ export function GoogleMeetCard() {
   const startLink = useMutation(api.googleMeet.startLink);
   const disconnect = useMutation(api.googleMeet.disconnect);
   const setAutoImport = useMutation(api.googleMeet.setAutoImport);
+  const setIncludeShared = useMutation(api.googleMeet.setIncludeShared);
   const [busy, setBusy] = useState<string | null>(null);
 
   // Coming back from Google: say how it went once, then tidy the address.
@@ -166,6 +167,27 @@ export function GoogleMeetCard() {
                 </p>
               </div>
             </div>
+            {meet.me.autoImport && (
+              <div className="flex items-start gap-3">
+                <Switch
+                  id="meet-shared"
+                  checked={meet.me.includeShared}
+                  disabled={busy !== null}
+                  onCheckedChange={(checked) =>
+                    run("shared", () =>
+                      setIncludeShared({ organizationId: team.id, includeShared: checked }),
+                    )
+                  }
+                />
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="meet-shared">Also bring in recordings shared with you</Label>
+                  <p className="text-muted-foreground text-sm">
+                    Recordings of meetings someone else organized come in too, once they share them
+                    with your Google account.
+                  </p>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <>

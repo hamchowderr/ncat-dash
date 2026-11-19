@@ -18,6 +18,7 @@ type Past = {
   minutes: number | null;
   size: number;
   standing: Standing;
+  sharedBy: string | null;
 };
 
 const STANDING_TEXT = { brought: "Brought in", duplicate: "Already in Uploads" } as const;
@@ -206,6 +207,7 @@ export function MeetPastRecordings({ organizationId }: { organizationId: string 
                         · {when(meeting.startTime)}
                         {meeting.minutes ? ` · ${meeting.minutes} min` : ""}
                         {meeting.size ? ` · ${formatBytes(meeting.size)}` : ""}
+                        {meeting.sharedBy ? ` · shared by ${meeting.sharedBy}` : ""}
                       </span>
                     </span>
                     {meeting.standing !== "new" && (
