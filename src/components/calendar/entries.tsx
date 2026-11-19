@@ -163,7 +163,7 @@ export function EntryChip({
           "text-muted-foreground hover:bg-background/70",
         entry.type === "open" &&
           "text-muted-foreground/80 hover:bg-background/70 hover:text-foreground",
-        selected && "ring-foreground/25 ring-2",
+        selected && "picked-ring",
         draggable && "cursor-grab active:cursor-grabbing",
       )}
     >

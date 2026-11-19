@@ -43,6 +43,7 @@ import {
   usePreviewLinks,
   type UploadKind,
 } from "./upload-media";
+import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
 
 type InFlight = { name: string; percent: number };
 type Layout = "tiles" | "list";
@@ -355,25 +356,23 @@ export function UploadsView() {
             <p className="text-muted-foreground text-sm tabular-nums">
               {shown.length === 1 ? "1 file" : `${shown.length} files`}
             </p>
-            <div className="bg-surface flex rounded-lg p-0.5" role="group" aria-label="Show as">
+            <SegmentedGroup aria-label="Show as">
               {(
                 [
                   ["tiles", LayoutGrid, "Tiles"],
                   ["list", List, "List"],
                 ] as const
               ).map(([value, Icon, label]) => (
-                <Button
+                <SegmentedButton
                   key={value}
-                  variant={layout === value ? "secondary" : "ghost"}
-                  size="sm"
-                  aria-pressed={layout === value}
+                  pressed={layout === value}
                   onClick={() => chooseLayout(value)}
                 >
                   <Icon />
                   {label}
-                </Button>
+                </SegmentedButton>
               ))}
-            </div>
+            </SegmentedGroup>
           </div>
 
           {layout === "tiles" ? (

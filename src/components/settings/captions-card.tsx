@@ -226,8 +226,7 @@ export function CaptionsCard({
                 aria-label={`${style.name}${own ? "" : ", built in"}`}
                 onClick={() => setOpen(active ? null : style.name)}
                 className={cn(
-                  "hover:bg-muted focus-visible:ring-ring/50 flex w-24 flex-col gap-1.5 rounded-lg p-1.5 text-left outline-none transition-colors focus-visible:ring-3",
-                  active && "bg-muted",
+                  "choice-tile focus-visible:ring-ring/50 flex w-24 flex-col gap-1.5 rounded-xl p-1.5 text-left focus-visible:ring-3",
                 )}
               >
                 <CaptionPreview look={style.look} font={font} zoom={0.75} />
@@ -422,7 +421,11 @@ function StyleEditor({
           />
         </div>
         <LookField label="Position">
-          <div role="radiogroup" aria-label="Position" className="bg-muted flex rounded-lg p-0.5">
+          <div
+            role="radiogroup"
+            aria-label="Position"
+            className="flex h-9 items-stretch gap-0.5 rounded-[11px] bg-foreground/[0.055] p-[3px]"
+          >
             {CAPTION_POSITIONS.map((position) => {
               const on = (look.position ?? "bottom_center") === position;
               return (
@@ -434,8 +437,9 @@ function StyleEditor({
                   disabled={!canEdit}
                   onClick={() => set({ position })}
                   className={cn(
-                    "text-muted-foreground focus-visible:ring-ring/50 flex-1 rounded-md px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-3",
-                    on && "bg-background text-foreground shadow-xs",
+                    "text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex-1 rounded-lg px-3 text-sm font-medium outline-none transition-[color,background-color,box-shadow] focus-visible:ring-3",
+                    on &&
+                      "bg-background text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.06),0_1px_1px_rgb(0_0_0/0.04)]",
                   )}
                 >
                   {POSITION_WORDS[position]}

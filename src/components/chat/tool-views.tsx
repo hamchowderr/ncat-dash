@@ -283,10 +283,8 @@ export function AskUserPrompt({
                       title={o.description}
                       aria-pressed={on}
                       className={cn(
-                        'rounded-lg border px-3 py-1.5 text-sm transition-[background-color,border-color,color,scale] active:scale-[0.96]',
-                        on
-                          ? 'border-primary bg-primary/10 text-foreground'
-                          : 'border-border bg-background text-muted-foreground hover:text-foreground',
+                        'choice-chip rounded-lg px-3 py-1.5 text-sm active:scale-[0.96]',
+                        !on && 'bg-surface',
                       )}
                     >
                       {o.label}

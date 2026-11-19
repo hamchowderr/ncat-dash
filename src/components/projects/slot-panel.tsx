@@ -20,7 +20,8 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
-import { KindIcon, kindLabel, selectClass, STATUSES } from "./slot-status";
+import { KindIcon, kindLabel, STATUSES } from "./slot-status";
+import { PickList } from "@/components/ui/pick-list";
 
 export type Slot = {
   _id: Id<"deliverables">;
@@ -172,19 +173,19 @@ function RunAutomation({ slot }: { slot: Slot }) {
     <section aria-label="Run an automation" className="flex flex-col gap-2">
       <h3 className="text-sm font-semibold">Run an automation on it</h3>
       <div className="flex gap-2">
-        <select
+        <PickList
           aria-label="Automation"
+          className="min-w-0 flex-1"
           value={picked}
-          onChange={(event) => setPicked(event.target.value)}
-          className={cn(selectClass, "min-w-0 flex-1")}
-        >
-          <option value="">Pick one</option>
-          {automations.map((automation) => (
-            <option key={automation._id} value={automation._id}>
-              {automation.name}
-            </option>
-          ))}
-        </select>
+          onChange={setPicked}
+          options={[
+            { value: "", label: "Pick one" },
+            ...automations.map((automation) => ({
+              value: automation._id,
+              label: automation.name,
+            })),
+          ]}
+        />
         <Button variant="outline" disabled={pending || !picked} onClick={() => void onRun()}>
           <Play />
           Run
@@ -280,22 +281,17 @@ export function SlotPanel({
           <label htmlFor={`status-${slot._id}`}>Status</label>
         </dt>
         <dd>
-          <select
+          <PickList
             id={`status-${slot._id}`}
+            className="w-full"
             value={slot.status}
-            onChange={(event) => void onStatus(event.target.value as DeliverableStatus)}
-            className={cn(selectClass, "w-full")}
-          >
-            {STATUSES.map(({ status, label: name }) => (
-              <option
-                key={status}
-                value={status}
-                disabled={slot.versions === 0 && NEEDS_FILE.includes(status)}
-              >
-                {name}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => void onStatus(next as DeliverableStatus)}
+            options={STATUSES.map(({ status, label: name }) => ({
+              value: status,
+              label: name,
+              disabled: slot.versions === 0 && NEEDS_FILE.includes(status),
+            }))}
+          />
         </dd>
         <dt className="text-muted-foreground">Kind</dt>
         <dd>{kindLabel(slot.kind)}</dd>

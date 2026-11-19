@@ -313,7 +313,7 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
         className={cn(
           tile,
           "rounded-2xl",
-          selected && "ring-ring/50 border-ring ring-3",
+          selected && "picked-ring",
           status === "running" && "border-primary",
           status === "retrying" && "border-amber-500/70",
           status === "done" && "border-emerald-600/60",
@@ -446,7 +446,7 @@ function TriggerNode({ data, selected }: NodeProps<TriggerFlowNode>) {
         className={cn(
           tile,
           "rounded-l-[2.5rem] rounded-r-2xl",
-          selected && "ring-ring/50 border-ring ring-3",
+          selected && "picked-ring",
         )}
       >
         <Icon className={cn("size-8", TRIGGER_TINT)} strokeWidth={1.6} aria-hidden="true" />

@@ -126,7 +126,8 @@ describe("the Google Meet card", () => {
       complete: true,
     });
     const bring = actionOf(api.googleMeet.bringIn);
-    bring.mockResolvedValue({ started: 2, already: 0, duplicate: 0, missing: 0 });
+    // One of the two was taken by the watcher in the meantime: it is on its way all the same.
+    bring.mockResolvedValue({ started: 1, already: 1, duplicate: 0, missing: 0 });
     renderInApp(<GoogleMeetCard />);
     const user = userEvent.setup();
     expect(screen.getByText(/however old/)).toBeInTheDocument();
