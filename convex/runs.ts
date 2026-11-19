@@ -171,6 +171,10 @@ export const get = query({
             facts: jobs.length === 1 && jobs[0]?.status === "done" ? factsOf(jobs[0].result) : [],
             stage: step.stage,
             plan: step.plan,
+            // For Best moments: what it picked. For Chapters: the chapters it placed.
+            moments: step.moments ?? null,
+            chapters: step.chapters ?? null,
+            pickNote: step.pickNote ?? null,
             // For an If: the files that left by each way. For a Wait: when it carries on.
             branches: step.branches,
             resumeAt: step.resumeAt,

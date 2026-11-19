@@ -13,6 +13,9 @@ export const nodeValidator = v.object({
     v.literal("wait"),
     // Runs another of the team's automations on its files.
     v.literal("automation"),
+    // Picks the best moments of each video and cuts them; groups a video into chapters.
+    v.literal("moments"),
+    v.literal("chapters"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -499,6 +502,9 @@ export default defineSchema({
     // and pauses ("probe"), then it cuts the clips ("cut"). jobIds holds the current
     // stage's jobs.
     // An "if" step reading its files' details is at "check"; a "wait" step is at "wait".
+    // A "moments" or "chapters" step first transcribes each video with word timestamps
+    // ("listen"), then waits for the model to pick ("pick"); a "moments" step then cuts
+    // its moments ("cut").
     // A caption step reading its videos' sizes, to pick the style for each shape, is at "size".
     stage: v.optional(
       v.union(
@@ -506,6 +512,8 @@ export default defineSchema({
         v.literal("cut"),
         v.literal("check"),
         v.literal("wait"),
+        v.literal("listen"),
+        v.literal("pick"),
         v.literal("size"),
       ),
     ),
@@ -544,6 +552,33 @@ export default defineSchema({
         }),
       ),
     ),
+    // For a "moments" step: the moments it picked, best first, in the order of the cut
+    // jobs and `plan`. Each one's edges are snapped to the transcript's words.
+    moments: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          start: v.number(),
+          end: v.number(),
+          title: v.string(),
+          why: v.string(),
+          text: v.string(),
+        }),
+      ),
+    ),
+    // For a "chapters" step: the chapters of each video, in order.
+    chapters: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          start: v.number(),
+          title: v.string(),
+          bullets: v.array(v.string()),
+        }),
+      ),
+    ),
+    // What a "moments" or "chapters" step left out, said plainly ("2 picks were left out…").
+    pickNote: v.optional(v.string()),
     // Who approved or rejected, for an approval step.
     decidedBy: v.optional(v.string()),
     // For an approval step: the reviewers it named when the run reached it (empty for the
@@ -562,6 +597,27 @@ export default defineSchema({
   })
     .index("by_run", ["runId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
+
+  // A video's words with when each is said, from a transcript made with word timestamps,
+  // kept so the same video is not transcribed again (Find more moments, Chapters after
+  // Best moments). `source` is the file's address without its query, so a fresh signed
+  // link to the same file still finds it. t: the word, s: start, e: end, in seconds.
+  spokenWords: defineTable({
+    organizationId: v.string(),
+    source: v.string(),
+    words: v.array(v.object({ t: v.string(), s: v.number(), e: v.number() })),
+    duration: v.number(),
+  }).index("by_source", ["organizationId", "source"]),
+
+  // A moment a Best moments step cut from a video, so a later run on the same video can
+  // find new ones instead of the same again.
+  pickedMoments: defineTable({
+    organizationId: v.string(),
+    source: v.string(),
+    start: v.number(),
+    end: v.number(),
+    runId: v.id("runs"),
+  }).index("by_source", ["organizationId", "source"]),
 
   // Something people should know about: a run that failed after all its tries, an
   // approval waiting or run out of time, a mention in a review. Shown under the bell to

@@ -51,6 +51,8 @@ import {
   Scissors,
   Shapes,
   Signpost,
+  Star,
+  ListOrdered,
   Terminal,
   TriangleAlert,
   Upload,
@@ -151,6 +153,23 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
       icon: Scissors,
       tint: "text-orange-600 dark:text-orange-400",
       kind: String(node.input.platform ?? "No platform picked"),
+    };
+  }
+  if (node.kind === "moments") {
+    const count = Number(node.input.count) || 5;
+    return {
+      icon: Star,
+      tint: "text-orange-600 dark:text-orange-400",
+      kind: node.input.platform
+        ? `${count} for ${String(node.input.platform)}`
+        : "No platform picked",
+    };
+  }
+  if (node.kind === "chapters") {
+    return {
+      icon: ListOrdered,
+      tint: "text-orange-600 dark:text-orange-400",
+      kind: "From the transcript",
     };
   }
   if (node.kind === "if") {

@@ -10,9 +10,20 @@ export interface AutomationNode {
    * cuts each incoming video into clips that fit the platform in `input.platform`;
    * "export" makes the timeline files that open the run's cuts in a video editor; "if"
    * sends each file one of two ways; "wait" holds the run for a length of time;
-   * "automation" runs another of the team's automations on its files (chain.ts).
+   * "automation" runs another of the team's automations on its files (chain.ts);
+   * "moments" picks the best moments of each video and cuts them as clips; "chapters"
+   * groups a long video into chapters (both moments.ts).
    */
-  kind: "step" | "approval" | "clips" | "export" | "if" | "wait" | "automation";
+  kind:
+    | "step"
+    | "approval"
+    | "clips"
+    | "export"
+    | "if"
+    | "wait"
+    | "automation"
+    | "moments"
+    | "chapters";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */
