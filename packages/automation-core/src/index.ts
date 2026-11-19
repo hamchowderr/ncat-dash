@@ -28,3 +28,4 @@ export * from "./share-links";
 export * from "./library";
 export * from "./moments";
 export * from "./content-goals";
+export * from "./upload-parts";

@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
-import { putWithProgress } from "@/lib/upload";
+import { useSendFile } from "@/lib/send-file";
 
 /**
  * Sends a logo or a music track to the team's storage and hands back a lasting pointer to
@@ -18,6 +18,7 @@ import { putWithProgress } from "@/lib/upload";
 export function useBrandUpload() {
   const team = useActiveTeam();
   const startUpload = useAction(api.storage.startUpload);
+  const sendFile = useSendFile();
   const finishUpload = useMutation(api.storage.finishUpload);
   const removeUpload = useMutation(api.storage.removeUpload);
   const [busy, setBusy] = useState(false);
@@ -34,7 +35,7 @@ export function useBrandUpload() {
         purpose: "brand",
       });
       uploadId = started.uploadId;
-      await putWithProgress(started.uploadUrl, file, () => {});
+      await sendFile(started, file, () => {});
       await finishUpload({ uploadId });
       return uploadRef(uploadId);
     } catch (caught) {

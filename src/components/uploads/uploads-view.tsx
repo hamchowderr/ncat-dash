@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/table";
 import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
-import { putWithProgress } from "@/lib/upload";
+import { useSendFile } from "@/lib/send-file";
 
 import { NeedsToolkit } from "./needs-toolkit";
 import {
@@ -128,6 +128,7 @@ export function UploadsView() {
   const storage = useQuery(api.storage.get, { organizationId: team.id });
   const uploads = useQuery(api.storage.listUploads, { organizationId: team.id });
   const startUpload = useAction(api.storage.startUpload);
+  const sendFile = useSendFile();
   const finishUpload = useMutation(api.storage.finishUpload);
   const removeUpload = useMutation(api.storage.removeUpload);
   const linkFor = useAction(api.storage.linkFor);
@@ -178,7 +179,7 @@ export function UploadsView() {
         uploadId = started.uploadId;
         const id = started.uploadId;
         setInFlight((current) => ({ ...current, [id]: { name: file.name, percent: 0 } }));
-        await putWithProgress(started.uploadUrl, file, (percent) =>
+        await sendFile(started, file, (percent) =>
           setInFlight((current) => ({ ...current, [id]: { name: file.name, percent } })),
         );
         await finishUpload({ uploadId: id });
