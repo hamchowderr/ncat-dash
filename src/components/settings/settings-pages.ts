@@ -73,6 +73,12 @@ export const SETTINGS_GROUPS = [
         title: "Discord",
         description: "Talk to the agent in your Discord server.",
       },
+      {
+        slug: "mcp",
+        title: "MCP",
+        description:
+          "Connect Claude, ChatGPT, Cursor and other AI apps to your automations through MCP.",
+      },
     ],
   },
 ] as const;
@@ -93,6 +99,7 @@ const MOVED: Record<string, SettingsSlug> = {
   failures: "runs",
   chat: "slack",
   members: "team",
+  "ai-agents": "mcp",
 };
 
 /** The page an old address (`/settings/chat`) or old section link (`#jobs`) now lives on. */

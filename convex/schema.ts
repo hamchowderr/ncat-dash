@@ -312,6 +312,65 @@ export default defineSchema({
   // A saved automation: what starts it, and the steps it runs.
   // Sticky notes on an automation's canvas, for the team. Not part of its versions: they
   // explain the automation and never change what it does, so they save as they are typed.
+  // Keys that let Claude and other AI agents reach the team through the dashboard's MCP
+  // server (convex/mcp.ts). Only a hash of each key is kept; the key is shown once.
+  mcpKeys: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    hash: v.string(),
+    // The key's last four characters, to tell keys apart.
+    hint: v.string(),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    lastUsedAt: v.union(v.null(), v.number()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_hash", ["hash"]),
+
+  // AI agents that registered themselves to sign in with OAuth (RFC 7591). Agents that
+  // name themselves by a metadata document address are not stored here.
+  oauthClients: defineTable({
+    clientId: v.string(),
+    name: v.string(),
+    uri: v.union(v.null(), v.string()),
+    redirectUris: v.array(v.string()),
+    createdAt: v.number(),
+  }).index("by_client", ["clientId"]),
+
+  // An agent asking to sign in: shown to the person on /connect/<id>. Once they allow it,
+  // it holds the code the agent swaps for tokens (stored as a hash), used once.
+  oauthRequests: defineTable({
+    clientId: v.string(),
+    clientName: v.string(),
+    clientUri: v.union(v.null(), v.string()),
+    redirectUri: v.string(),
+    state: v.union(v.null(), v.string()),
+    codeChallenge: v.string(),
+    expiresAt: v.number(),
+    userId: v.optional(v.string()),
+    organizationId: v.optional(v.string()),
+    codeHash: v.optional(v.string()),
+    codeExpiresAt: v.optional(v.number()),
+  }).index("by_code", ["codeHash"]),
+
+  // An agent someone let in: it acts as that person, on one team, with their role there.
+  // Tokens are stored as hashes; the refresh token changes each time it is used.
+  oauthGrants: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    clientId: v.string(),
+    clientName: v.string(),
+    accessHash: v.string(),
+    accessExpiresAt: v.number(),
+    refreshHash: v.string(),
+    refreshExpiresAt: v.number(),
+    createdAt: v.number(),
+    lastUsedAt: v.union(v.null(), v.number()),
+  })
+    .index("by_access", ["accessHash"])
+    .index("by_refresh", ["refreshHash"])
+    .index("by_organization", ["organizationId"]),
+
   // A team's own FFmpeg steps, written by the agent (or a person) when no ready-made step
   // fits: a compose request with {{name}} blanks. See step-catalog's team-steps.ts.
   teamSteps: defineTable({

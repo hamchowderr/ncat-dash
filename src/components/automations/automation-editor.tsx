@@ -5,7 +5,6 @@ import "@xyflow/react/style.css";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
-  actionTypesByGroup,
   applyOperations,
   type AutomationDraft,
   type AutomationEdge,
@@ -111,6 +110,7 @@ import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
 import { VersionsPanel } from "./versions-panel";
 import { TriggerPanel } from "./trigger-panel";
+import { pickerGroups } from "@/lib/step-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
 const EMPTY_BRAND: Brand = {};
@@ -804,7 +804,7 @@ function Editor({ automation }: { automation: Loaded }) {
                   </Button>
                 </div>
                 <div className="max-h-80 flex-1 overflow-y-auto p-2 lg:max-h-none">
-                  {actionTypesByGroup().map(({ group, label, types }) => {
+                  {pickerGroups().map(({ group, label, types }) => {
                     const matches = types.filter(
                       (nodeType) =>
                         !query ||

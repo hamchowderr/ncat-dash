@@ -2,7 +2,6 @@ import { stepsByCategory } from "@ncat-dash/step-catalog";
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { TeamStepsList } from "@/components/steps/team-steps-list";
 import { Badge } from "@/components/ui/badge";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/catalog";
 
@@ -22,30 +21,31 @@ export default function StepsPage() {
           hand on a sample file. Day to day, an automation runs these for you.
         </p>
       </div>
-      {CATEGORY_ORDER.filter((category) => category !== "team" && grouped[category]?.length).map((category) => (
-        <section key={category} className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium">{CATEGORY_LABELS[category]}</h2>
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {grouped[category].map((step) => (
-              <li key={step.id}>
-                <Link
-                  href={`/steps/${step.id}`}
-                  className="bg-card hover:bg-accent/50 focus-visible:ring-ring/50 flex h-full flex-col gap-2 rounded-xl p-4 ring-1 ring-foreground/10 outline-none transition-colors focus-visible:ring-3"
-                >
-                  <span className="flex items-start justify-between gap-2">
-                    <span className="font-medium">{step.title}</span>
-                    <Badge variant="outline">{OUTPUT_LABELS[step.output]}</Badge>
-                  </span>
-                  <span className="text-muted-foreground line-clamp-2 text-sm">
-                    {step.description}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-      <TeamStepsList />
+      {CATEGORY_ORDER.filter((category) => category !== "team" && grouped[category]?.length).map(
+        (category) => (
+          <section key={category} className="flex flex-col gap-3">
+            <h2 className="text-sm font-medium">{CATEGORY_LABELS[category]}</h2>
+            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {grouped[category].map((step) => (
+                <li key={step.id}>
+                  <Link
+                    href={`/steps/${step.id}`}
+                    className="bg-card hover:bg-accent/50 focus-visible:ring-ring/50 flex h-full flex-col gap-2 rounded-xl p-4 ring-1 ring-foreground/10 outline-none transition-colors focus-visible:ring-3"
+                  >
+                    <span className="flex items-start justify-between gap-2">
+                      <span className="font-medium">{step.title}</span>
+                      <Badge variant="outline">{OUTPUT_LABELS[step.output]}</Badge>
+                    </span>
+                    <span className="text-muted-foreground line-clamp-2 text-sm">
+                      {step.description}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ),
+      )}
     </>
   );
 }

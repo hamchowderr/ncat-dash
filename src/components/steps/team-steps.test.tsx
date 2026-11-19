@@ -1,14 +1,13 @@
 import { api } from "@convex/_generated/api";
 import { actionTypesByGroup } from "@ncat-dash/automation-core";
 import { getStep, setTeamSteps } from "@ncat-dash/step-catalog";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 
+import { pickerGroups } from "@/lib/step-picker";
 import { TeamStepsSync, useTeamStepsVersion } from "@/lib/team-steps-sync";
-import { answerQuery, mutationOf } from "@/test/convex";
+import { answerQuery } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
-
-import { TeamStepsList } from "./team-steps-list";
 
 const BLUR = {
   stepId: "team-abc",
@@ -29,45 +28,16 @@ const BLUR = {
 
 afterEach(() => setTeamSteps([]));
 
-describe("the team's own steps on the Steps page", () => {
-  test("says how to get one when there are none", () => {
-    answerQuery(api.teamSteps.list, []);
-    renderInApp(<TeamStepsList />);
-    expect(screen.getByRole("heading", { name: "Your team's steps" })).toBeTruthy();
-    expect(screen.getByText(/ask the agent/)).toBeTruthy();
-  });
-
-  test("lists each with what it does and the settings it takes", () => {
-    answerQuery(api.teamSteps.list, [BLUR]);
-    renderInApp(<TeamStepsList />);
-    expect(screen.getByText(BLUR.title)).toBeTruthy();
-    expect(screen.getByText(BLUR.description)).toBeTruthy();
-    expect(screen.getByText("Blur amount")).toBeTruthy();
-  });
-
-  test("removes one, and says why when an automation still uses it", async () => {
-    answerQuery(api.teamSteps.list, [BLUR]);
-    const remove = mutationOf(api.teamSteps.remove);
-    remove.mockRejectedValueOnce(
-      Object.assign(new Error("x"), {
-        data: { code: "in_use", message: "Vertical podcast still uses this step. Take it out of that automation first." },
-      }),
-    );
-    renderInApp(<TeamStepsList />);
-    fireEvent.click(screen.getByRole("button", { name: `Remove ${BLUR.title}` }));
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/Vertical podcast/));
-    expect(remove).toHaveBeenCalledWith({ organizationId: TEAM.id, stepId: "team-abc" });
-  });
-});
-
 function Picker() {
   useTeamStepsVersion();
   const team = actionTypesByGroup().find((group) => group.group === "team");
-  return <p data-testid="picker">{team ? team.types.map((type) => type.title).join(", ") : "none"}</p>;
+  return (
+    <p data-testid="picker">{team ? team.types.map((type) => type.title).join(", ") : "none"}</p>
+  );
 }
 
 describe("the team's steps in the browser's catalog", () => {
-  test("are known to the canvas and the step picker", () => {
+  test("are known to the catalog the canvas draws from", () => {
     answerQuery(api.teamSteps.list, [BLUR]);
     renderInApp(
       <TeamStepsSync organizationId={TEAM.id}>
@@ -76,5 +46,21 @@ describe("the team's steps in the browser's catalog", () => {
     );
     expect(getStep("team-abc")?.title).toBe(BLUR.title);
     expect(screen.getByTestId("picker").textContent).toBe(BLUR.title);
+  });
+
+  test("stay out of the canvas's list of steps to add", () => {
+    setTeamSteps([
+      {
+        id: "abc",
+        title: BLUR.title,
+        description: BLUR.description,
+        blanks: BLUR.blanks,
+        primary: BLUR.primary,
+        request: BLUR.request,
+      },
+    ]);
+    expect(actionTypesByGroup().some((group) => group.group === "team")).toBe(true);
+    expect(pickerGroups().some((group) => group.group === "team")).toBe(false);
+    expect(pickerGroups().length).toBeGreaterThan(3);
   });
 });

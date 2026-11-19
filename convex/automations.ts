@@ -222,32 +222,43 @@ export const create = mutation({
   returns: v.id("automations"),
   handler: async (ctx, args) => {
     const { userId } = await requireMember(ctx, args.organizationId);
-    const starter = args.starterId ? STARTERS.find((s) => s.id === args.starterId) : undefined;
-    if (args.starterId && !starter) fail("not_found", "Unknown starter.");
-    const name = (args.name.trim() || starter?.name || "").slice(0, 80);
-    if (!name) fail("invalid_input", "Give the automation a name.");
-    const content = {
-      name,
-      trigger: starter?.trigger ?? ({ kind: "manual" } as const),
-      nodes: starter?.nodes ?? [],
-      edges: starter?.edges ?? [],
-    };
-    const automationId = await ctx.db.insert("automations", {
-      organizationId: args.organizationId,
-      ...content,
-      enabled: false,
-      hookToken: randomToken(),
-      nextRunAt: null,
-      createdBy: userId,
-      updatedAt: Date.now(),
-    });
-    await recordVersion(ctx, { _id: automationId, organizationId: args.organizationId }, content, {
-      userId,
-      source: "created",
-    });
-    return automationId;
+    return await createAutomation(ctx, args.organizationId, userId, args.name, args.starterId);
   },
 });
+
+/** Makes a new automation, switched off: empty, or from a ready-made one. */
+async function createAutomation(
+  ctx: MutationCtx,
+  organizationId: string,
+  userId: string,
+  givenName: string,
+  starterId?: string,
+) {
+  const starter = starterId ? STARTERS.find((s) => s.id === starterId) : undefined;
+  if (starterId && !starter) fail("not_found", "Unknown starter.");
+  const name = (givenName.trim() || starter?.name || "").slice(0, 80);
+  if (!name) fail("invalid_input", "Give the automation a name.");
+  const content = {
+    name,
+    trigger: starter?.trigger ?? ({ kind: "manual" } as const),
+    nodes: starter?.nodes ?? [],
+    edges: starter?.edges ?? [],
+  };
+  const automationId = await ctx.db.insert("automations", {
+    organizationId,
+    ...content,
+    enabled: false,
+    hookToken: randomToken(),
+    nextRunAt: null,
+    createdBy: userId,
+    updatedAt: Date.now(),
+  });
+  await recordVersion(ctx, { _id: automationId, organizationId }, content, {
+    userId,
+    source: "created",
+  });
+  return automationId;
+}
 
 const savedValidator = v.object({
   enabled: v.boolean(),
@@ -426,9 +437,11 @@ async function storeChanges(
   automation: Doc<"automations">,
   changed: Version,
   userId: string,
+  // Kept as a draft even when the automation is off, for changes someone else publishes.
+  asDraft = false,
 ): Promise<{ enabled: boolean; problem: string | null; draft: boolean }> {
   const version = checked(changed);
-  if (!automation.enabled && !automation.draft) {
+  if (!asDraft && !automation.enabled && !automation.draft) {
     const stored = await storeLive(ctx, automation, version, { userId, source: "saved" });
     return { ...stored, draft: false };
   }
@@ -535,20 +548,84 @@ export const describe = query({
   returns: describedValidator,
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
-    const draft = workingCopy(automation) as AutomationDraft;
-    const { brand, music } = await brandAndMusicOf(
-      ctx,
-      automation.organizationId,
-      automation.clientId,
+    return await describeAutomation(ctx, automation);
+  },
+});
+
+async function describeAutomation(ctx: QueryCtx, automation: Doc<"automations">) {
+  const draft = workingCopy(automation) as AutomationDraft;
+  const { brand, music } = await brandAndMusicOf(
+    ctx,
+    automation.organizationId,
+    automation.clientId,
+  );
+  return {
+    outline: outline(draft, brand),
+    problems: draftProblems(draft, brand),
+    enabled: automation.enabled,
+    draft: automation.draft !== undefined,
+    music: music.map((track) => ({ name: track.name, value: track.file })),
+    ...(await teamFor(ctx, automation.organizationId, draft)),
+  };
+}
+
+// For the MCP server (mcp.ts), which has already checked who is asking and their team.
+// Changes it makes are always kept as a draft, for someone to publish in the dashboard.
+
+async function teamAutomation(ctx: QueryCtx, organizationId: string, automationId: string) {
+  const id = ctx.db.normalizeId("automations", automationId);
+  const automation = id ? await ctx.db.get(id) : null;
+  if (!automation || automation.organizationId !== organizationId) {
+    fail(
+      "not_found",
+      "There is no automation with that id on this team. list_automations gives the ids.",
     );
+  }
+  await withTeamSteps(ctx, organizationId);
+  return automation;
+}
+
+export const createAs = internalMutation({
+  args: { organizationId: v.string(), userId: v.string(), name: v.string() },
+  handler: async (ctx, args) => {
+    await withTeamSteps(ctx, args.organizationId);
+    return await createAutomation(ctx, args.organizationId, args.userId, args.name);
+  },
+});
+
+export const changeAs = internalMutation({
+  args: {
+    organizationId: v.string(),
+    userId: v.string(),
+    automationId: v.string(),
+    operations: v.array(operationValidator),
+  },
+  handler: async (ctx, args) => {
+    const automation = await teamAutomation(ctx, args.organizationId, args.automationId);
+    return await changeAutomation(ctx, automation, args.userId, args.operations, true);
+  },
+});
+
+export const describeAs = internalQuery({
+  args: { organizationId: v.string(), automationId: v.string() },
+  handler: async (ctx, args) => {
+    const automation = await teamAutomation(ctx, args.organizationId, args.automationId);
     return {
-      outline: outline(draft, brand),
-      problems: draftProblems(draft, brand),
-      enabled: automation.enabled,
-      draft: automation.draft !== undefined,
-      music: music.map((track) => ({ name: track.name, value: track.file })),
-      ...(await teamFor(ctx, automation.organizationId, draft)),
+      automation_id: automation._id,
+      name: workingCopy(automation).name,
+      ...(await describeAutomation(ctx, automation)),
     };
+  },
+});
+
+export const nodeTypesAs = internalQuery({
+  args: { organizationId: v.string(), type: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    await withTeamSteps(ctx, args.organizationId);
+    if (!args.type) return { index: nodeTypeIndex() };
+    const found = getNodeType(args.type);
+    if (!found) fail("not_found", `There is no step type called ${args.type}.`);
+    return { type: withoutReservedKeys(found) };
   },
 });
 
@@ -572,30 +649,39 @@ export const change = mutation({
   returns: describedValidator,
   handler: async (ctx, args) => {
     const { automation, userId } = await loadForMember(ctx, args.automationId);
-    if (args.operations.length === 0 || args.operations.length > 100) {
-      fail("invalid_input", "Send between 1 and 100 changes at a time.");
-    }
-    let next: AutomationDraft;
-    try {
-      next = applyOperations(workingCopy(automation) as AutomationDraft, args.operations);
-    } catch (caught) {
-      if (caught instanceof OperationError) fail("invalid_input", caught.message);
-      throw caught;
-    }
-    const { enabled, draft } = await storeChanges(ctx, automation, next, userId);
-    const brand = await brandOf(ctx, automation.organizationId, automation.clientId);
-    const links = await linkProblem(ctx, automation, next);
-    return {
-      outline: outline(next, brand),
-      problems: [
-        ...draftProblems(next, brand),
-        ...(links ? [{ nodeId: null, message: links }] : []),
-      ],
-      enabled,
-      draft,
-    };
+    return await changeAutomation(ctx, automation, userId, args.operations);
   },
 });
+
+type Operation = (typeof operationValidator)["type"];
+
+async function changeAutomation(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  userId: string,
+  operations: Operation[],
+  asDraft = false,
+) {
+  if (operations.length === 0 || operations.length > 100) {
+    fail("invalid_input", "Send between 1 and 100 changes at a time.");
+  }
+  let next: AutomationDraft;
+  try {
+    next = applyOperations(workingCopy(automation) as AutomationDraft, operations);
+  } catch (caught) {
+    if (caught instanceof OperationError) fail("invalid_input", caught.message);
+    throw caught;
+  }
+  const { enabled, draft } = await storeChanges(ctx, automation, next, userId, asDraft);
+  const brand = await brandOf(ctx, automation.organizationId, automation.clientId);
+  const links = await linkProblem(ctx, automation, next);
+  return {
+    outline: outline(next, brand),
+    problems: [...draftProblems(next, brand), ...(links ? [{ nodeId: null, message: links }] : [])],
+    enabled,
+    draft,
+  };
+}
 
 export const setEnabled = mutation({
   args: { automationId: v.id("automations"), enabled: v.boolean() },
