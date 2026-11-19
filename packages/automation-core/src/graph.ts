@@ -12,7 +12,8 @@ export interface AutomationNode {
    * sends each file one of two ways; "wait" holds the run for a length of time;
    * "automation" runs another of the team's automations on its files (chain.ts);
    * "moments" picks the best moments of each video and cuts them as clips; "chapters"
-   * groups a long video into chapters (both moments.ts).
+   * groups a long video into chapters (both moments.ts); "broll" lays cutaway footage over
+   * each video, and "broll-plan" has the AI say where and what to show first (broll.ts).
    */
   kind:
     | "step"
@@ -23,7 +24,9 @@ export interface AutomationNode {
     | "wait"
     | "automation"
     | "moments"
-    | "chapters";
+    | "chapters"
+    | "broll"
+    | "broll-plan";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */

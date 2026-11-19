@@ -52,6 +52,7 @@ export function PicksPanel({
     if (!node) return [];
     if (node.kind === "moments" && step.moments?.length) return [{ node, step }];
     if (node.kind === "chapters" && step.chapters?.length) return [{ node, step }];
+    if (node.kind === "broll" && step.cutaways?.length) return [{ node, step }];
     return [];
   });
   if (shown.length === 0) return null;
@@ -68,6 +69,8 @@ export function PicksPanel({
             busy={busy}
             onFindMore={onFindMore}
           />
+        ) : node.kind === "broll" ? (
+          <CutawaysSection key={step._id} title={nodeTitle(node)} step={step} />
         ) : (
           <ChaptersSection key={step._id} title={nodeTitle(node)} step={step} />
         ),
@@ -254,6 +257,78 @@ function ChaptersSection({ title, step }: { title: string; step: RunStep }) {
                   ))}
                 </ul>
               )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/**
+ * What Add B-Roll laid over the video: each cutaway, the words it covers, and where its
+ * footage is from. Stock clips name their site and maker and link their page, as the sites
+ * ask.
+ */
+function CutawaysSection({ title, step }: { title: string; step: RunStep }) {
+  const cutaways = step.cutaways ?? [];
+  return (
+    <section aria-label={title} className="bg-surface rounded-xl">
+      <header className="grid px-4 py-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="text-muted-foreground text-xs">
+          {cutaways.length} {cutaways.length === 1 ? "cutaway" : "cutaways"} over the video, while
+          the voice carries on.
+          {step.pickNote ? ` ${step.pickNote}` : ""}
+        </p>
+      </header>
+      <ol className="grid gap-1 px-4 pb-4">
+        {cutaways.map((cut) => (
+          <li
+            key={`${cut.source}-${cut.start}`}
+            className="bg-background grid grid-cols-[6.5rem_1fr] gap-x-3 rounded-lg px-3 py-2"
+          >
+            <span className="text-muted-foreground text-sm tabular-nums">
+              {clock(cut.start)} to {clock(cut.end)}
+            </span>
+            <div className="grid gap-1">
+              <p className="text-sm font-medium">
+                {cut.kind === "library" ? (
+                  <>
+                    {cut.title}{" "}
+                    <span className="text-muted-foreground font-normal">
+                      · {cut.ref} in your library
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {cut.credit ? (
+                      <a
+                        href={cut.credit.page}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline-offset-2 hover:underline"
+                      >
+                        {cut.title || "Stock clip"}
+                      </a>
+                    ) : (
+                      cut.title || "Stock clip"
+                    )}{" "}
+                    {cut.credit && (
+                      <span className="text-muted-foreground font-normal">
+                        · {cut.credit.by ? `${cut.credit.by} on ` : ""}
+                        {cut.credit.site}
+                      </span>
+                    )}
+                  </>
+                )}
+              </p>
+              <p
+                className="text-muted-foreground line-clamp-2 text-xs text-pretty"
+                title={cut.said}
+              >
+                “{cut.said}”
+              </p>
             </div>
           </li>
         ))}

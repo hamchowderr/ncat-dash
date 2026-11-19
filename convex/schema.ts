@@ -17,6 +17,9 @@ export const nodeValidator = v.object({
     // Picks the best moments of each video and cuts them; groups a video into chapters.
     v.literal("moments"),
     v.literal("chapters"),
+    // Lays cutaway footage over each video; has the AI plan where and what first.
+    v.literal("broll"),
+    v.literal("broll-plan"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -576,6 +579,8 @@ export default defineSchema({
     // ("listen"), then waits for the model to pick ("pick"); a "moments" step then cuts
     // its moments ("cut").
     // A caption step reading its videos' sizes, to pick the style for each shape, is at "size".
+    // An Add B-Roll step listens too, then finds footage ("match"), has the picture model
+    // look at the words and the stock found ("look"), and lays the cutaways over ("lay").
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -585,6 +590,9 @@ export default defineSchema({
         v.literal("listen"),
         v.literal("pick"),
         v.literal("size"),
+        v.literal("match"),
+        v.literal("look"),
+        v.literal("lay"),
       ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
@@ -649,6 +657,29 @@ export default defineSchema({
     ),
     // What a "moments" or "chapters" step left out, said plainly ("2 picks were left out…").
     pickNote: v.optional(v.string()),
+    // What a Plan step decided, for the step that carries it out (automation-core plans.ts).
+    // For Plan B-Roll: per video, the moments to cover and what to show.
+    aiPlan: v.optional(v.any()),
+    // While an Add B-Roll step finds footage: the moments and the footage that could cover
+    // them, between "match" and "look". Cleared once the cutaways are chosen.
+    brollWork: v.optional(v.any()),
+    // For a finished Add B-Roll step: the cutaways laid over each video.
+    cutaways: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          start: v.number(),
+          end: v.number(),
+          said: v.string(),
+          show: v.string(),
+          kind: v.union(v.literal("library"), v.literal("stock")),
+          ref: v.string(),
+          title: v.string(),
+          score: v.number(),
+          credit: v.optional(v.object({ site: v.string(), page: v.string(), by: v.string() })),
+        }),
+      ),
+    ),
     // Who approved or rejected, for an approval step.
     decidedBy: v.optional(v.string()),
     // For an approval step: the reviewers it named when the run reached it (empty for the
@@ -1382,6 +1413,20 @@ export default defineSchema({
         at: v.number(),
       }),
     ),
+    // Whether the picture model has looked at it, so it can be found by what it shows.
+    // The frames are in libraryFrames.
+    look: v.optional(
+      v.object({
+        status: v.union(v.literal("working"), v.literal("ready"), v.literal("failed")),
+        jobId: v.optional(v.id("jobs")),
+        error: v.optional(v.string()),
+        // Short, small faces, little said: it looks like B-Roll (broll.ts looksLikeBroll).
+        brollLike: v.optional(v.boolean()),
+        at: v.number(),
+      }),
+    ),
+    // Set by a person: use it as B-Roll ("yes") or never ("no"), whatever it looks like.
+    broll: v.optional(v.union(v.literal("yes"), v.literal("no"))),
     // Who brought it in; null for a file an automation made.
     createdBy: v.union(v.null(), v.string()),
   })
@@ -1406,6 +1451,51 @@ export default defineSchema({
   })
     .index("by_item_and_start", ["itemId", "start"])
     .searchIndex("search_speech", { searchField: "text", filterFields: ["organizationId"] }),
+
+  // Frames of a library video (or the one picture), as the picture model sees them, so
+  // footage can be found by what it shows. `vector` is CLIP ViT-B/32, length 1.
+  libraryFrames: defineTable({
+    organizationId: v.string(),
+    itemId: v.id("libraryItems"),
+    time: v.number(),
+    // How much of the frame the largest face covers, 0 to 1.
+    face: v.number(),
+    vector: v.array(v.float64()),
+  })
+    .index("by_item", ["itemId"])
+    .vectorIndex("by_vector", {
+      vectorField: "vector",
+      dimensions: 512,
+      filterFields: ["organizationId"],
+    }),
+
+  // Stock searches kept for a day, as Pixabay asks, so the same words are not asked again.
+  stockSearches: defineTable({
+    site: v.union(v.literal("pixabay"), v.literal("pexels")),
+    query: v.string(),
+    hits: v.array(
+      v.object({
+        id: v.string(),
+        url: v.string(),
+        thumbnail: v.string(),
+        page: v.string(),
+        by: v.string(),
+        title: v.string(),
+        duration: v.number(),
+        width: v.number(),
+        height: v.number(),
+      }),
+    ),
+    at: v.number(),
+  }).index("by_site_and_query", ["site", "query"]),
+
+  // A team's stock footage keys, for a dashboard that has none built in. Encrypted.
+  stockKeys: defineTable({
+    organizationId: v.string(),
+    pixabay: v.optional(v.string()),
+    pexels: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_organization", ["organizationId"]),
 
   // The next number for each short ID letter, per team.
   libraryCounters: defineTable({

@@ -157,6 +157,8 @@ const KINDS = [
   "automation",
   "moments",
   "chapters",
+  "broll",
+  "broll-plan",
 ];
 const MAX_DEPTH = 12;
 // Names the database accepts for a setting: plain text that does not start with $ or _.

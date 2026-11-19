@@ -6,6 +6,7 @@ import { imageToVideo } from "./image/to-video";
 import { mediaConvert } from "./media/convert";
 import { mediaDownload } from "./media/download";
 import { mediaGenerateAss } from "./media/generate-ass";
+import { mediaLook } from "./media/look";
 import { mediaMetadata } from "./media/metadata";
 import { mediaSilenceDetect } from "./media/silence-detect";
 import { mediaToMp3 } from "./media/to-mp3";
@@ -29,6 +30,7 @@ export const steps = [
   mediaConvert,
   mediaDownload,
   mediaGenerateAss,
+  mediaLook,
   mediaMetadata,
   mediaSilenceDetect,
   mediaToMp3,
@@ -53,6 +55,7 @@ export {
   mediaConvert,
   mediaDownload,
   mediaGenerateAss,
+  mediaLook,
   mediaMetadata,
   mediaSilenceDetect,
   mediaToMp3,

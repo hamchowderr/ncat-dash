@@ -48,6 +48,11 @@ export const SETTINGS_GROUPS = [
         description: "How runs use your toolkit, and what happens when a step fails.",
       },
       {
+        slug: "broll",
+        title: "B-Roll",
+        description: "Where cutaway footage comes from: your own library first, then free stock.",
+      },
+      {
         slug: "editors",
         title: "Video Editors",
         description: "Where your team finishes videos. Runs with cuts can open in these.",

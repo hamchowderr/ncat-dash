@@ -109,6 +109,30 @@ describe("the moments prompt", () => {
     expect(capped).not.toContain("bullets of show notes");
   });
 
+  it("plans B-Roll with the gap, the opening and what to favour", () => {
+    const prompt = momentsPrompt(
+      momentsRequest.parse({
+        kind: "broll",
+        title: "Shop story",
+        duration: 300,
+        transcript: "[0:00] I started in my dad's garage.",
+        settings: { count: 12, gap: 7, skipOpening: 3, lookFor: "the product" },
+      }),
+    );
+    expect(prompt).toContain("up to 12 short cutaways");
+    expect(prompt).toContain("No cutaway in the first 3 seconds. Keep at least 7 seconds between");
+    expect(prompt).toContain("What the cutaways should favour: the product");
+    expect(prompt).toContain('{"cutaways":[{"quote":"…","show":"…"}]}');
+    expect(
+      momentsRequest.safeParse({
+        kind: "broll",
+        duration: 1,
+        transcript: "x",
+        settings: { count: 0, gap: 1, skipOpening: 0 },
+      }).success,
+    ).toBe(false);
+  });
+
   it("writes times as minutes and seconds", () => {
     expect(clockTime(0)).toBe("0:00");
     expect(clockTime(65.9)).toBe("1:05");

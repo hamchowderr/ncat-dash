@@ -11,6 +11,7 @@
 import type * as alerts from "../alerts.js";
 import type * as auth from "../auth.js";
 import type * as automations from "../automations.js";
+import type * as broll from "../broll.js";
 import type * as calendar from "../calendar.js";
 import type * as clients from "../clients.js";
 import type * as contentGoals from "../contentGoals.js";
@@ -27,6 +28,7 @@ import type * as lib_alerts from "../lib/alerts.js";
 import type * as lib_approvals from "../lib/approvals.js";
 import type * as lib_authz from "../lib/authz.js";
 import type * as lib_brand from "../lib/brand.js";
+import type * as lib_broll from "../lib/broll.js";
 import type * as lib_bucket from "../lib/bucket.js";
 import type * as lib_captions from "../lib/captions.js";
 import type * as lib_chain from "../lib/chain.js";
@@ -106,6 +108,7 @@ declare const fullApi: ApiFromModules<{
   alerts: typeof alerts;
   auth: typeof auth;
   automations: typeof automations;
+  broll: typeof broll;
   calendar: typeof calendar;
   clients: typeof clients;
   contentGoals: typeof contentGoals;
@@ -122,6 +125,7 @@ declare const fullApi: ApiFromModules<{
   "lib/approvals": typeof lib_approvals;
   "lib/authz": typeof lib_authz;
   "lib/brand": typeof lib_brand;
+  "lib/broll": typeof lib_broll;
   "lib/bucket": typeof lib_bucket;
   "lib/captions": typeof lib_captions;
   "lib/chain": typeof lib_chain;

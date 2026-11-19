@@ -8,6 +8,7 @@ import {
   type AutomationDraft,
   draftProblems,
   getNodeType,
+  savedKind,
   graphProblem,
   brandProblem,
   describeFileDetails,
@@ -37,6 +38,9 @@ const empty: AutomationDraft = {
   edges: [],
 };
 
+const listedTypes = () =>
+  actionTypesByGroup().flatMap((group) => group.types.map((nodeType) => nodeType.type));
+
 describe("node registry", () => {
   it("describes every trigger, every catalog step, approval, clips, moments, chapters and export exactly once", () => {
     const names = NODE_TYPES.map((nodeType) => nodeType.type);
@@ -44,14 +48,28 @@ describe("node registry", () => {
     for (const kind of ["manual", "upload", "folder", "schedule", "webhook", "finished"]) {
       expect(getNodeType(`trigger:${kind}`)?.role).toBe("trigger");
     }
-    for (const step of allSteps) expect(getNodeType(`step:${step.id}`)?.title).toBe(step.title);
+    const shown = allSteps.filter((step) => !step.hidden);
+    for (const step of shown) expect(getNodeType(`step:${step.id}`)?.title).toBe(step.title);
+    // The picture model is used by the dashboard itself, never added as a step.
+    expect(listedTypes()).not.toContain("step:media-look");
+    expect(savedKind("step:media-look")).toBeNull();
     expect(getNodeType("approval")?.takes).toBe("files");
     expect(getNodeType("clips")?.gives).toBe("files");
     expect(getNodeType("export")).toMatchObject({ takes: "files", gives: "files" });
     expect(getNodeType("automation")).toMatchObject({ takes: "files", gives: "files" });
-    expect(getNodeType("moments")).toMatchObject({ takes: "file", gives: "files", ask: ["platform"] });
+    expect(getNodeType("moments")).toMatchObject({
+      takes: "file",
+      gives: "files",
+      ask: ["platform"],
+    });
     expect(getNodeType("chapters")).toMatchObject({ takes: "file", gives: "files" });
-    expect(names.length).toBe(6 + allSteps.length + 8);
+    expect(getNodeType("broll")).toMatchObject({
+      title: "Add B-Roll",
+      takes: "file",
+      gives: "file",
+    });
+    expect(getNodeType("broll-plan")).toMatchObject({ title: "Plan B-Roll", group: "video" });
+    expect(names.length).toBe(6 + shown.length + 10);
   });
 
   it("gives every type a title, a description and an object schema for its settings", () => {
@@ -68,7 +86,7 @@ describe("node registry", () => {
   it("lists only steps that can be added, with no trigger among them", () => {
     const listed = actionTypesByGroup().flatMap((group) => group.types);
     expect(listed.every((nodeType) => nodeType.role === "action")).toBe(true);
-    expect(listed.length).toBe(allSteps.length + 8);
+    expect(listed.length).toBe(allSteps.filter((step) => !step.hidden).length + 10);
   });
 
   it("knows the type of every node in every template", () => {

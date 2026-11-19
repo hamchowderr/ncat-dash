@@ -47,10 +47,12 @@ import {
   Image as ImageIcon,
   type LucideIcon,
   Music,
+  PictureInPicture2,
   Plus,
   Scissors,
   Shapes,
   Signpost,
+  Sparkles,
   Star,
   ListOrdered,
   Terminal,
@@ -163,6 +165,27 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
       kind: node.input.platform
         ? `${count} for ${String(node.input.platform)}`
         : "No platform picked",
+    };
+  }
+  if (node.kind === "broll") {
+    const often = { light: "Now and then", busy: "Often" }[String(node.input.often)] ?? "Regularly";
+    const from =
+      node.input.sources === "library"
+        ? "your library"
+        : node.input.sources === "stock"
+          ? "free stock"
+          : "library and stock";
+    return {
+      icon: PictureInPicture2,
+      tint: "text-orange-600 dark:text-orange-400",
+      kind: `${often}, from ${from}`,
+    };
+  }
+  if (node.kind === "broll-plan") {
+    return {
+      icon: Sparkles,
+      tint: "text-orange-600 dark:text-orange-400",
+      kind: "AI picks the moments",
     };
   }
   if (node.kind === "chapters") {
