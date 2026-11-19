@@ -31,7 +31,7 @@ import {
   UserPlus,
   Users,
   UploadCloud,
-  Workflow,
+  Waypoints,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -71,7 +71,7 @@ type NavItem = { title: string; url: string; icon: LucideIcon };
 const navEveryday: NavItem[] = [
   { title: "Home", url: "/", icon: Home },
   { title: "Inbox", url: "/inbox", icon: Inbox },
-  { title: "Automations", url: "/automations", icon: Workflow },
+  { title: "Automations", url: "/automations", icon: Waypoints },
   { title: "Runs", url: "/runs", icon: History },
   { title: "Projects", url: "/projects", icon: FolderKanban },
   { title: "Review", url: "/review", icon: MessagesSquare },
@@ -152,7 +152,7 @@ function InboxCount() {
       <span
         data-alerts-count
         aria-hidden="true"
-        className="bg-destructive ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs leading-none font-medium text-white tabular-nums"
+        className="bg-destructive ml-auto flex h-5 group-data-[collapsible=icon]:hidden min-w-5 items-center justify-center rounded-full px-1.5 text-xs leading-none font-medium text-white tabular-nums"
       >
         {unseen > 99 ? "99+" : unseen}
       </span>
@@ -202,7 +202,7 @@ export function AppSidebar({
     toolkitShown === false ? navBuilder.filter((item) => item.url !== "/toolkit") : navBuilder;
 
   return (
-    <Sidebar variant="inset" {...props}>
+    <Sidebar variant="inset" collapsible="icon" {...props}>
       <SidebarHeader>
         <TeamMenu teamName={teamName} edition={edition} />
       </SidebarHeader>
@@ -218,7 +218,12 @@ export function AppSidebar({
               key={group.label ?? "everyday"}
               {...(group.label === "Builder" ? { "data-tour-step-id": "tour-builder" } : {})}
             >
-              {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+              {/* Folded, the label would sit invisibly over the entry above it and take its clicks. */}
+              {group.label && (
+                <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
+                  {group.label}
+                </SidebarGroupLabel>
+              )}
               <SidebarGroupContent>
                 <SidebarMenu>
                   {group.items.map((item) => (
@@ -324,7 +329,9 @@ function SettingsMenu({ pathname, back }: { pathname: string; back: string }) {
       <nav aria-label="Settings" className="contents">
         {SETTINGS_GROUPS.map((group) => (
           <SidebarGroup key={group.label}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupLabel className="group-data-[collapsible=icon]:hidden">
+              {group.label}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.pages.map((page) => {

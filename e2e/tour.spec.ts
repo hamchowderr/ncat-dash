@@ -82,6 +82,20 @@ test("the tour walks someone new around the dashboard once, and again when they 
   await page.keyboard.press("Escape");
   await expect(card).toHaveCount(0);
 
+  // Folding the menu leaves its icons in place, each still a link, named on hover.
+  const automations = page.getByRole("link", { name: "Automations", exact: true });
+  const wide = (await automations.boundingBox())!.width;
+  await page.getByRole("button", { name: "Toggle Sidebar" }).first().click();
+  await expect(page.locator("[data-collapsible='icon']")).toHaveCount(1);
+  await expect(automations).toBeVisible();
+  await expect.poll(async () => (await automations.boundingBox())!.width).toBeLessThan(wide / 3);
+  await automations.hover();
+  await expect(page.getByRole("tooltip", { name: "Automations" })).toBeVisible();
+  await automations.click();
+  await expect(page).toHaveURL(/\/automations$/);
+  await page.getByRole("button", { name: "Toggle Sidebar" }).first().click();
+  await expect(page.locator("[data-collapsible='icon']")).toHaveCount(0);
+
   // On a phone the menu is folded away, so the cards sit in the middle of the screen and
   // nothing scrolls sideways.
   await page.setViewportSize({ width: 390, height: 844 });
