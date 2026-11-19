@@ -24,11 +24,9 @@ function panel(node: Parameters<typeof NodePanel>[0]["node"]) {
   return onChange;
 }
 
-const at = { x: 0, y: 0 };
-
 describe("the Add Motion Graphics step", () => {
   test("uses the team's style by default and links to Settings > Motion", () => {
-    panel({ id: "motion", kind: "motion", input: {}, position: at });
+    panel({ id: "motion", kind: "motion", input: {} });
     expect(screen.getByRole("combobox", { name: "Style" })).toHaveTextContent("Your team's style");
     expect(screen.getByRole("combobox", { name: "Sounds" })).toHaveTextContent("As the style says");
     expect(screen.getByRole("link", { name: "Settings > Motion" })).toHaveAttribute(
@@ -40,7 +38,7 @@ describe("the Add Motion Graphics step", () => {
 
   test("saves a typed opening title", async () => {
     const user = userEvent.setup();
-    const onChange = panel({ id: "motion", kind: "motion", input: {}, position: at });
+    const onChange = panel({ id: "motion", kind: "motion", input: {} });
     await user.type(screen.getByRole("textbox", { name: "Opening title" }), "Big Year");
     await user.tab();
     expect(onChange).toHaveBeenLastCalledWith({ input: { title: "Big Year" } });
@@ -54,7 +52,7 @@ describe("the Add Motion Graphics step", () => {
 
 describe("the Add Sound Effects step", () => {
   test("follows the team's level unless it picks one", () => {
-    panel({ id: "sounds", kind: "sound-effects", input: {}, position: at });
+    panel({ id: "sounds", kind: "sound-effects", input: {} });
     expect(screen.getByRole("combobox", { name: "How many" })).toHaveTextContent(
       "As your team's setting",
     );
