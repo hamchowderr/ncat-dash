@@ -6,8 +6,8 @@ import { GOOGLE, GOOGLE_USER } from "./google-meet-data.mjs";
 
 // Google Meet recordings brought in by themselves, in a real browser against a real
 // backend: a member connects Google from Settings (the stand-in Google signs in at once),
-// brings in a past recording by hand, and a meeting that just ended arrives at the next
-// check by itself.
+// finds every past recording and brings them over at once, and a meeting that just ended
+// arrives at the next check by itself.
 
 const TOOLKIT = "http://127.0.0.1:8767";
 const stamp = Date.now().toString(36);
@@ -18,7 +18,7 @@ if (process.env.RECORD_VIDEO === "1") {
   });
 }
 
-test("connects Google Meet, brings a past meeting in, and a finished one arrives by itself", async ({
+test("connects Google Meet, brings past meetings over at once, and a finished one arrives by itself", async ({
   page,
 }) => {
   await page.goto("/sign-up");
@@ -53,21 +53,25 @@ test("connects Google Meet, brings a past meeting in, and a finished one arrives
   await expect(page.getByRole("switch", { name: /Bring in new recordings/ })).toBeChecked();
 
   // A past recording, brought in by hand.
-  await page.getByRole("button", { name: "Show recordings" }).click();
+  // Every past recording found at once: the recent one, and one from over a year ago that
+  // only Drive still has. Both are picked; one press brings them over.
+  await page.getByRole("button", { name: "Find recordings" }).click();
   const past = page.getByRole("region", { name: "Past recordings" });
+  await expect(past.getByText("2 recordings in your Drive. 2 not in Uploads yet.")).toBeVisible();
   await expect(past.getByText("Client Kickoff")).toBeVisible();
   await expect(past.getByText(/37 min/)).toBeVisible();
-  // Drive keeps recordings long after Meet forgets the meeting: those show too.
   await expect(past.getByText("Annual Review")).toBeVisible();
   await expect(past.getByText(/52 min/)).toBeVisible();
-  await past
-    .getByRole("listitem")
-    .filter({ hasText: "Client Kickoff" })
-    .getByRole("button", { name: "Bring in" })
-    .click();
-  await expect(page.getByText("Client Kickoff is on its way to Uploads")).toBeVisible();
+  await expect(past.getByText("All 2 picked")).toBeVisible();
+  await past.getByRole("button", { name: "Bring over 2 recordings" }).click();
+  await expect(page.getByText("2 recordings on the way to Uploads")).toBeVisible();
+  await expect(
+    past.getByText("2 recordings in your Drive. All of them are in Uploads."),
+  ).toBeVisible();
   const brought = page.getByRole("region", { name: "Brought in from Google Meet" });
-  await expect(brought.getByRole("link", { name: "In Uploads" })).toBeVisible({ timeout: 30_000 });
+  await expect(brought.getByRole("link", { name: "In Uploads" })).toHaveCount(2, {
+    timeout: 60_000,
+  });
 
   // A meeting that just ended comes in at the next check (every few minutes; run now).
   await fetch(`${GOOGLE}/stand-in/meeting`, {
@@ -80,6 +84,9 @@ test("connects Google Meet, brings a past meeting in, and a finished one arrives
   // Both are uploads now, named after the meeting and its day.
   await page.goto("/uploads");
   const uploads = page.getByRole("region", { name: "Your uploads" });
+  await expect(uploads.getByText(/^Annual Review \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(uploads.getByText(/^Client Kickoff \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
     timeout: 30_000,
   });
