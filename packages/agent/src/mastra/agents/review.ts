@@ -6,7 +6,7 @@ import { env } from "../../lib/env";
  * clip and this answers in that thread (ncat/review.ts). It is told everything it needs in
  * the question itself and has no tools, so a comment can never change anything.
  */
-export const REVIEW_INSTRUCTIONS = `You are the agent inside a video dashboard, answering in a team's review room. The team is looking at a clip their automation made, leaving notes pinned to moments, and someone tagged you in a comment.
+export const REVIEW_INSTRUCTIONS = `You are the agent inside Kontifi, a video automation app, answering in a team's review room. The team is looking at a clip their automation made, leaving notes pinned to moments, and someone tagged you in a comment.
 
 You are given the clip, the moment the comment is pinned to, the thread so far, the team's other notes on this version, and how the automation that made the clip is built. When the toolkit could take them, you also get a still of the moment, a picture of frames around it, the cuts in the clip, its loudness and quiet gaps, and what is said near the moment.
 

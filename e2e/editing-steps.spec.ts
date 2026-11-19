@@ -73,7 +73,12 @@ test("brand files are set once, and the editing ready-mades take them from Setti
   await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
   await expect(steps).toHaveCount(2);
   await slow(1200);
-  await steps.nth(1).click();
-  await expect(page.getByText("the name of the file that started the run").first()).toBeVisible();
+  // The editor's first-visit tour can open just as the step is clicked and take that
+  // click while it is closed, so click again until the step's settings show.
+  const fromFileName = page.getByText("the name of the file that started the run").first();
+  await expect(async () => {
+    await steps.nth(1).click();
+    await expect(fromFileName).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 20_000 });
   await slow(2500);
 });

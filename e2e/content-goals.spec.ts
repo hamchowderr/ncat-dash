@@ -67,7 +67,7 @@ test("a coach is asked what they make and their first upload starts the fitting 
   await page.getByRole("button", { name: /Go to the dashboard/ }).click();
   await expect(page).toHaveURL(/\/$/);
   // Setting up ends with the tour of the dashboard (e2e/tour.spec.ts walks it).
-  await expect(page.getByRole("dialog")).toContainText("Welcome to Your Dashboard");
+  await expect(page.getByRole("dialog")).toContainText("Welcome to Kontifi");
   await page.getByRole("button", { name: "Close the tour" }).click();
   // Answered, so Home no longer asks; the agent now makes clips for these by default.
   await expect(page.getByRole("link", { name: /Tell us what you make/ })).toHaveCount(0);
@@ -127,7 +127,7 @@ test("someone without a toolkit skips every toolkit field, sets up, and connects
   await expect(page.getByText(/Coaching session pack/).first()).toBeVisible();
   await page.getByRole("button", { name: /Go to the dashboard/ }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("dialog")).toContainText("Welcome to Your Dashboard");
+  await expect(page.getByRole("dialog")).toContainText("Welcome to Kontifi");
   await page.getByRole("button", { name: "Close the tour" }).click();
 
   // Home still offers the toolkit, and that link goes straight to the form.

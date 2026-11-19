@@ -185,7 +185,7 @@ describe("the MCP server", () => {
     expect(hello.body.result).toMatchObject({
       protocolVersion: "2025-03-26",
       capabilities: { tools: {} },
-      serverInfo: { name: "ncat-dash" },
+      serverInfo: { name: "kontifi", title: "Kontifi" },
     });
     const notified = await t.fetch("/mcp", {
       method: "POST",
@@ -334,7 +334,7 @@ describe("the 2026-07-28 protocol", () => {
         },
       },
       instructions: expect.stringContaining("content-automations skill"),
-      _meta: { "io.modelcontextprotocol/serverInfo": { name: "ncat-dash" } },
+      _meta: { "io.modelcontextprotocol/serverInfo": { name: "kontifi" } },
     });
   });
 
