@@ -1,0 +1,6 @@
+# What the test copy's server (Coolify) deploys: the image GitHub Actions already built
+# for this commit (.github/workflows/agent-image.yml), so the server only downloads it.
+# The workflow moves the `agent-release` branch to a commit once its image is published,
+# and Coolify passes that commit in as SOURCE_COMMIT.
+ARG SOURCE_COMMIT
+FROM ghcr.io/hamchowderr/ncat-dash-agent:sha-${SOURCE_COMMIT}
