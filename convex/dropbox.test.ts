@@ -39,8 +39,12 @@ let pending: DropboxEntry[] = [];
 let gone = new Set<string>();
 let toolkitCalls: { url: string; body: Record<string, unknown> }[] = [];
 let rpcCalls: { path: string; body: unknown; root: string | null }[] = [];
-let contentCalls: { path: string; arg: Record<string, unknown>; bytes: number; root: string | null }[] =
-  [];
+let contentCalls: {
+  path: string;
+  arg: Record<string, unknown>;
+  bytes: number;
+  root: string | null;
+}[] = [];
 // Bytes of files in the bucket, by key, for reading them back in pieces.
 let bucketSizes: Record<string, number> = {};
 let toolkit: ReturnType<typeof fakeToolkitStorage>;
@@ -298,7 +302,7 @@ describe("reading Dropbox", () => {
 
   test("settings for Dropbox are sent as plain ASCII, and folders get sensible names", () => {
     expect(apiArg({ path: "/Café/clip.mp4" })).toBe('{"path":"/Caf\\u00e9/clip.mp4"}');
-    expect(sendFolderOf(undefined, "Weekly / shorts")).toBe("/NCA Dashboard/Weekly - shorts");
+    expect(sendFolderOf(undefined, "Weekly / shorts")).toBe("/Kontifi/Weekly - shorts");
     expect(sendFolderOf("/Clients/Acme/", "Weekly shorts")).toBe("/Clients/Acme");
   });
 });
@@ -470,7 +474,9 @@ describe("watching folders", () => {
     ]);
     // The toolkit was sent a fresh four-hour link, made only as the job went out.
     const links = toolkitCalls.map((one) => one.body.file_url);
-    expect(links).toContain(`https://dl.dropbox.test/${encodeURIComponent("id:/Raw footage/Day 1/Interview.mov")}`);
+    expect(links).toContain(
+      `https://dl.dropbox.test/${encodeURIComponent("id:/Raw footage/Day 1/Interview.mov")}`,
+    );
     expect(String(toolkitCalls[0].body.filename)).toMatch(new RegExp(`^teams/.+/uploads/`));
     // Nothing new: nothing more comes in.
     await notify(setup.t, [JORDAN.account_id]);
@@ -668,7 +674,7 @@ describe("sending finished files to Dropbox", () => {
       canSwitch: true,
       account: "Jordan Lee",
       mine: true,
-      folder: "/NCA Dashboard/Weekly shorts",
+      folder: "/Kontifi/Weekly shorts",
     });
     await expect(
       setup.member.as.mutation(api.dropbox.setSend, { automationId, on: true }),
@@ -693,7 +699,7 @@ describe("sending finished files to Dropbox", () => {
     expect(contentCalls).toHaveLength(1);
     expect(contentCalls[0]).toMatchObject({ path: "files/upload", bytes: 1000, root: null });
     expect(contentCalls[0].arg).toMatchObject({ mode: "add", autorename: true });
-    expect(String(contentCalls[0].arg.path)).toMatch(/^\/NCA Dashboard\/Weekly shorts\/.+\.mp4$/);
+    expect(String(contentCalls[0].arg.path)).toMatch(/^\/Kontifi\/Weekly shorts\/.+\.mp4$/);
     const sent = await setup.t.run((ctx) => ctx.db.query("dropboxSends").collect());
     expect(sent[0]).toMatchObject({ status: "done", size: 1000 });
     // Keeping the run's files again does not send them twice.
@@ -734,9 +740,9 @@ describe("sending finished files to Dropbox", () => {
     await connect(setup);
     const { automationId } = await finishedRun(setup, 1000);
     await setup.owner.as.mutation(api.dropbox.setSend, { automationId, on: true });
-    expect(
-      (await setup.owner.as.query(api.dropbox.forAutomation, { automationId }))?.on,
-    ).toBe(true);
+    expect((await setup.owner.as.query(api.dropbox.forAutomation, { automationId }))?.on).toBe(
+      true,
+    );
     await setup.owner.as.mutation(api.dropbox.disconnect, { organizationId: setup.team });
     const automation = await setup.t.run((ctx) => ctx.db.get(automationId));
     expect(automation?.dropboxSend).toBeUndefined();

@@ -98,7 +98,7 @@ test("connects Dropbox, watches folders, brings files over, and sends clips back
   await expect(send).not.toBeChecked();
   await send.click();
   await expect(send).toBeChecked();
-  await page.getByRole("button", { name: /^\/NCA Dashboard\// }).click();
+  await page.getByRole("button", { name: /^\/Kontifi\// }).click();
   const folder = page.getByRole("textbox", { name: "Dropbox folder for finished files" });
   await folder.fill("/Marketing/Shorts");
   await folder.press("Enter");
