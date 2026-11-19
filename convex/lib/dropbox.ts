@@ -2,6 +2,8 @@
 // it checks that a notice really came from Dropbox, and how files are sent back in
 // pieces. No database or network here.
 
+import { PRODUCT_NAME } from "@ncat-dash/automation-core";
+
 /** One entry in a Dropbox folder listing (files/list_folder). */
 export interface DropboxEntry {
   ".tag"?: "file" | "folder" | "deleted";
@@ -163,7 +165,7 @@ export function dropboxName(name: string, fallback = "Automation"): string {
 }
 
 /** Where an automation's finished files go in Dropbox when nobody picked a folder. */
-export const DEFAULT_SEND_ROOT = "/NCA Dashboard";
+export const DEFAULT_SEND_ROOT = `/${PRODUCT_NAME}`;
 
 /** The folder an automation's finished files go to: the chosen one, or the default. */
 export function sendFolderOf(chosen: string | undefined, automationName: string): string {

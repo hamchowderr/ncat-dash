@@ -1,6 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
+import { PRODUCT_NAME } from "@ncat-dash/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -31,7 +32,7 @@ export const DASHBOARD_TOUR: Tour = {
   steps: [
     {
       id: "tour-welcome",
-      title: "Welcome to Your Dashboard",
+      title: `Welcome to ${PRODUCT_NAME}`,
       content:
         "A quick look around: where your automations live, where your files go, and where finished clips wait for you. It takes about a minute.",
       nextLabel: "Show me",
