@@ -17,6 +17,8 @@ export function fakeToolkitStorage({
 } = {}) {
   const files = new Map<string, { size: number; etag: string; lastModified: number }>();
   const calls: { request: string; body: Record<string, unknown> }[] = [];
+  // Uploads in parts still open: upload id -> key.
+  const openUploads = new Map<string, string>();
   const realFetch = globalThis.fetch;
   const answer = (response: unknown, status = 200) =>
     new Response(
@@ -88,6 +90,39 @@ export function fakeToolkitStorage({
       case "folder":
         files.set(String(body.prefix), { size: 0, etag: "folder", lastModified: Date.now() });
         return answer({ prefix: body.prefix });
+      case "upload/start": {
+        const uploadId = `parts-${openUploads.size + 1}`;
+        openUploads.set(uploadId, String(body.key));
+        return answer({ key: body.key, upload_id: uploadId });
+      }
+      case "upload/sign": {
+        if (openUploads.get(String(body.upload_id)) !== body.key) {
+          return answer("That upload was finished, cancelled or never started.", 404);
+        }
+        return answer({
+          parts: (body.part_numbers as number[]).map((number) => ({
+            part_number: number,
+            url: `https://r2.example/${bucket}/${String(body.key)}?uploadId=${String(body.upload_id)}&partNumber=${number}&signature=fake`,
+          })),
+          expires_in: body.expires_in ?? 3600,
+        });
+      }
+      case "upload/complete": {
+        if (openUploads.get(String(body.upload_id)) !== body.key) {
+          return answer("That upload was finished, cancelled or never started.", 404);
+        }
+        openUploads.delete(String(body.upload_id));
+        const parts = body.parts as { part_number: number }[];
+        files.set(String(body.key), {
+          size: 0,
+          etag: `etag-${String(body.key)}-${parts.length}`,
+          lastModified: Date.now(),
+        });
+        return answer({ key: body.key, etag: `etag-${parts.length}` });
+      }
+      case "upload/abort":
+        openUploads.delete(String(body.upload_id));
+        return answer({ key: body.key, cancelled: true });
       default:
         return answer("not found", 404);
     }
@@ -119,6 +154,7 @@ export function fakeToolkitStorage({
     bucket,
     files,
     calls,
+    openUploads,
     /** Puts a file in the bucket, as if it had been uploaded. */
     put(key: string, size = 1000) {
       files.set(key, { size, etag: `etag-${key}`, lastModified: Date.now() });

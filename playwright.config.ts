@@ -39,6 +39,11 @@ export default defineConfig({
       reuseExistingServer: true,
     },
     {
+      command: "node e2e/zoom-stand-in.mjs",
+      url: "http://127.0.0.1:8770/health",
+      reuseExistingServer: true,
+    },
+    {
       command: "node e2e/slack-stand-in.mjs",
       url: "http://127.0.0.1:8768/stand-in/posted",
       reuseExistingServer: true,

@@ -4,6 +4,7 @@ import { api } from "@convex/_generated/api";
 import { useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 
+import { START_TOUR_SEARCH } from "@/components/app-shell/dashboard-tour";
 import { FullPageLoader } from "@/components/full-page-loader";
 import { ContentGoalsFlow } from "@/components/onboarding/content-goals-flow";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
@@ -30,7 +31,9 @@ export default function GetStartedPage() {
         <ContentGoalsFlow
           organizationId={state.team.id}
           hasToolkit={connections.length > 0}
-          onFinish={() => router.replace("/", { transitionTypes: ["nav-back"] })}
+          onFinish={() =>
+            router.replace(`/${START_TOUR_SEARCH}`, { transitionTypes: ["nav-back"] })
+          }
         />
       </div>
     </section>

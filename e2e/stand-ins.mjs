@@ -33,6 +33,11 @@ let jobs = 0;
 // The bucket's folders, so a folder can be picked and made. Files are not kept.
 const folders = new Set(["incoming/", "podcast/", "podcast/raw/"]);
 
+// Parts sent to the bucket for uploads in parts: upload id -> { key, parts: part -> bytes }.
+const partUploads = new Map();
+// Uploads in parts that were put together: key -> { parts, bytes }.
+const joined = new Map();
+
 const TYPES = { png: "image/png", jpg: "image/jpeg", mp3: "audio/mpeg", mp4: "video/mp4" };
 
 function run(command, args) {
@@ -81,16 +86,25 @@ async function compose(body) {
 createServer((request, response) => {
   // An upload from the browser: the bucket takes the bytes (and allows the PUT first).
   if (request.method === "OPTIONS" || request.method === "PUT") {
-    request.resume();
-    request.on("end", () =>
+    // A part of an upload in parts: its link names the upload and the part.
+    const link = new URL(request.url, FILES);
+    const part = Number(link.searchParams.get("partNumber"));
+    const into = partUploads.get(link.searchParams.get("uploadId"));
+    let bytes = 0;
+    request.on("data", (chunk) => (bytes += chunk.length));
+    request.on("end", () => {
+      if (request.method === "PUT" && into && part) into.parts.set(part, bytes);
       response
         .writeHead(200, {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, PUT",
           "Access-Control-Allow-Headers": "*",
+          // As the bucket's CORS rule must, so the browser can read each part's ETag.
+          "Access-Control-Expose-Headers": "ETag",
+          ETag: `"part-${part || "whole"}"`,
         })
-        .end(),
-    );
+        .end();
+    });
     return;
   }
   // What the stand-in transcribe "heard", in Whisper's shape, as the toolkit uploads it.
@@ -206,6 +220,53 @@ createServer((request, response) => {
     }
     if (request.url.startsWith("/v1/toolkit/authenticate")) {
       response.end(JSON.stringify({ code: 200, response: "Authorized", build_number: "204" }));
+      return;
+    }
+    // What reached the bucket through uploads in parts, for a test to check.
+    if (request.url === "/__stand-in/joined") {
+      response.end(JSON.stringify(Object.fromEntries(joined)));
+      return;
+    }
+    // The fork's uploads in parts.
+    if (request.url.startsWith("/v1/storage/upload/")) {
+      const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      const step = request.url.slice("/v1/storage/upload/".length);
+      let answer = null;
+      if (step === "start") {
+        const uploadId = `parts-${partUploads.size + joined.size + 1}`;
+        partUploads.set(uploadId, { key: body.key, parts: new Map() });
+        answer = { key: body.key, upload_id: uploadId };
+      } else if (step === "sign") {
+        answer = {
+          parts: body.part_numbers.map((number) => ({
+            part_number: number,
+            url: `${FILES}/${body.key}?uploadId=${body.upload_id}&partNumber=${number}`,
+          })),
+          expires_in: body.expires_in ?? 3600,
+        };
+      } else if (step === "complete") {
+        const upload = partUploads.get(body.upload_id);
+        const sent = body.parts.every(
+          (part) =>
+            upload?.parts.has(part.part_number) && part.etag === `"part-${part.part_number}"`,
+        );
+        if (!sent) {
+          response.end(
+            JSON.stringify({ code: 400, response: null, message: "A part is missing." }),
+          );
+          return;
+        }
+        joined.set(body.key, {
+          parts: body.parts.length,
+          bytes: [...upload.parts.values()].reduce((sum, bytes) => sum + bytes, 0),
+        });
+        partUploads.delete(body.upload_id);
+        answer = { key: body.key, etag: `stand-in-${body.parts.length}` };
+      } else if (step === "abort") {
+        partUploads.delete(body.upload_id);
+        answer = { key: body.key, cancelled: true };
+      }
+      response.end(JSON.stringify({ code: 200, response: answer, message: "success" }));
       return;
     }
     // The fork's storage requests: its bucket is the file server above.

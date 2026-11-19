@@ -101,3 +101,21 @@ describe("the uploading card", () => {
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
   });
 });
+
+/** A Zoom recording the toolkit is still bringing in is named above the files until it lands. */
+describe("a Zoom recording on its way", () => {
+  test("is named as coming in from Zoom, and not as a stray upload", () => {
+    window.localStorage.clear();
+    answerQuery(api.storage.get, STORAGE);
+    answerQuery(api.storage.listUploads, [
+      { ...row("z1", "Weekly Sync 2026-11-18.mp4", "uploading"), source: "zoom" },
+      row("u5", "Left half-way yesterday.mp4", "uploading"),
+    ]);
+    actionOf(api.storage.previewLinks).mockResolvedValue([]);
+    renderInApp(<UploadsView />);
+    expect(
+      screen.getByText(/Coming in from Zoom: Weekly Sync 2026-11-18\.mp4\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Left half-way yesterday/)).toBeNull();
+  });
+});

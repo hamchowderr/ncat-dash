@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, ChevronsUpDown, LogOut, Settings } from "lucide-react";
+import { Bell, ChevronsUpDown, Compass, LogOut, Settings } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -19,7 +19,10 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useTour } from "@/components/ui/tour";
 import { authClient } from "@/lib/auth-client";
+
+import { DASHBOARD_TOUR_ID } from "./dashboard-tour";
 
 export type ShellUser = { name: string; email: string; image?: string | null };
 
@@ -46,6 +49,7 @@ function Identity({ user }: { user: ShellUser }) {
 export function NavUser({ user }: { user: ShellUser }) {
   const { isMobile } = useSidebar();
   const router = useRouter();
+  const tour = useTour();
 
   async function signOut() {
     await authClient.signOut();
@@ -90,6 +94,12 @@ export function NavUser({ user }: { user: ShellUser }) {
                 Notifications
               </Link>
             </DropdownMenuItem>
+            {tour && (
+              <DropdownMenuItem onSelect={() => tour.start(DASHBOARD_TOUR_ID)}>
+                <Compass />
+                Take the tour
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={signOut}>
               <LogOut />
