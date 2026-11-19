@@ -127,6 +127,8 @@ test("someone without a toolkit skips every toolkit field, sets up, and connects
   await expect(page.getByText(/Coaching session pack/).first()).toBeVisible();
   await page.getByRole("button", { name: /Go to the dashboard/ }).click();
   await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("dialog")).toContainText("Welcome to Your Dashboard");
+  await page.getByRole("button", { name: "Close the tour" }).click();
 
   // Home still offers the toolkit, and that link goes straight to the form.
   await page
