@@ -36,7 +36,7 @@ test("the team picks a motion style, changes it, and it is kept", async ({ page 
   await expect(card.getByText("Bold Hook, changed")).toBeVisible();
   await slow(800);
   await card.getByRole("textbox", { name: "Usual speaker" }).fill("Ana Moreno");
-  await card.getByRole("textbox", { name: "Handle" }).fill("morenostudio");
+  await card.getByRole("textbox", { name: "Handle", exact: true }).fill("morenostudio");
   await slow(800);
   await card.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Motion settings saved.")).toBeVisible();
@@ -51,6 +51,8 @@ test("the team picks a motion style, changes it, and it is kept", async ({ page 
     "false",
   );
   // The handle is saved with its @.
-  await expect(card.getByRole("textbox", { name: "Handle" })).toHaveValue("@morenostudio");
+  await expect(card.getByRole("textbox", { name: "Handle", exact: true })).toHaveValue(
+    "@morenostudio",
+  );
   await slow(1500);
 });
