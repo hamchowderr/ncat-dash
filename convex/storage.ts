@@ -13,7 +13,7 @@ import {
   query,
 } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
-import { bucketOf, presign, storageConnection } from "./lib/bucket";
+import { bucketOf, presign, safeName, storageConnection } from "./lib/bucket";
 import { addUploadToLibrary, deleteLibraryItem } from "./lib/library";
 import { fileDetailsValidator } from "./schema";
 
@@ -26,11 +26,6 @@ const PREVIEW_LINK_SECONDS = 6 * 60 * 60;
 const MAX_PREVIEW_LINKS = 25;
 
 const NO_STORAGE = "Connect your toolkit first, so there is somewhere for your files to go.";
-
-function safeName(fileName: string): string {
-  const cleaned = fileName.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "");
-  return cleaned.slice(-120) || "file";
-}
 
 /**
  * The team's bucket, as its toolkit reports it. Null until a toolkit is connected: files
@@ -141,6 +136,7 @@ export const listUploads = query({
       size: upload.size,
       status: upload.status,
       purpose: upload.purpose ?? null,
+      source: upload.source ?? null,
       details: upload.details ?? null,
     }));
   },

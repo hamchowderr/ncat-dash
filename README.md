@@ -144,6 +144,16 @@ People can tag the agent in their Discord server or message it directly, and it 
 
 Then, in Settings, Discord, a team owner presses "Add to Discord", picks the team's server on Discord and is sent back; that links the server to the team (one server belongs to one team). Discord gives bots no email address, so each member presses "Link my Discord" once. The agent finds who wrote by their Discord id on the team that owns the server (`POST /discord/person` on the Convex site, signed with `MASTRA_JWT_SECRET`) and works as them, with their rights and nothing more. Someone who has not linked is told how to, and nothing else happens. In a direct message it is the one team they linked; someone on several teams is asked to write in that team's server. The code is in `convex/discord.ts` and `packages/agent/src/mastra/ncat/discord.ts`.
 
+### Zoom
+
+Cloud recordings of Zoom meetings come into Uploads by themselves. The dashboard has ONE Zoom app that every team uses; whoever runs the dashboard sets it up once:
+
+1. On the [Zoom App Marketplace](https://marketplace.zoom.us/), press Develop, Build App, General App. Pick User-managed. Under OAuth Information add the redirect `https://<your Convex site>/zoom/callback` (and the same address to the allow list). Under Scopes add `user:read:user`, `cloud_recording:read:list_user_recordings` and `cloud_recording:read:recording`.
+2. On the Convex deployment set `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET` and `ZOOM_WEBHOOK_SECRET` (the Secret Token on Features, Access), and push the functions.
+3. Back on Features, Access, switch on Event Subscription and add the event "All Recordings have completed" (`recording.completed`) with the address `https://<your Convex site>/zoom/events`. Zoom checks the address as it is saved, which works once step 2 is done.
+
+Then, in Settings, Zoom, each person who hosts meetings presses "Connect Zoom". When Zoom finishes a cloud recording of a meeting they host, the dashboard picks its best video (the shared screen with the speaker first, the sound alone when there is no video) and has the team's toolkit stream it from Zoom into the team's folder (`/v1/s3/upload`, which copies in parts, so size does not matter and nothing passes through the dashboard). It then becomes an upload like any other: it joins the library and starts the automations set to run on an upload. The last 30 days of recordings can also be brought in by hand. Zoom's sign-in for the download is added only as the job is sent, never kept with the job. Until the Zoom app is published, its development keys work only for accounts on the Zoom account that made it. The code is in `convex/zoom.ts` and `convex/lib/zoom.ts`.
+
 ### The agent
 
 The Agent button in the top bar opens a chat beside whatever is on screen. Describe what should run by itself and the agent builds the automation; ask for a change to the one that is open and it makes it on the canvas. It asks before it makes, changes or switches on anything, on a card that lists the change in plain words.

@@ -278,6 +278,8 @@ export default defineSchema({
     lastAskedAt: v.optional(v.number()),
     // Set when the library asked for the job, to make one of its files searchable.
     libraryItemId: v.optional(v.id("libraryItems")),
+    // Set when the job brings a Zoom recording into the team's folder.
+    zoomImportId: v.optional(v.id("zoomImports")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
@@ -818,6 +820,59 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_nonce", ["nonce"]),
 
+  // A team member's own Zoom account, connected from Settings so the cloud recordings of
+  // meetings they host come into the team's uploads. The dashboard has ONE Zoom app, set
+  // up once by whoever runs it (ZOOM_* env). One Zoom account belongs to one team. The
+  // tokens are stored encrypted and never leave the server.
+  zoomConnections: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    zoomUserId: v.string(),
+    zoomAccountId: v.string(),
+    zoomEmail: v.string(),
+    zoomName: v.string(),
+    accessTokenCipher: v.string(),
+    refreshTokenCipher: v.string(),
+    // When the access token stops working.
+    expiresAt: v.number(),
+    connectedAt: v.number(),
+    // False: new recordings wait to be brought in by hand from Settings.
+    autoImport: v.boolean(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_member", ["organizationId", "userId"])
+    .index("by_zoom_user", ["zoomUserId"]),
+
+  // A Zoom sign-in someone started from Settings, matched when Zoom sends them back.
+  zoomLinkStarts: defineTable({
+    nonce: v.string(),
+    organizationId: v.string(),
+    userId: v.string(),
+    createdAt: v.number(),
+  }).index("by_nonce", ["nonce"]),
+
+  // One Zoom recording being brought in, or brought in: the toolkit streams the file from
+  // Zoom straight into the team's folder, then it becomes an upload like any other.
+  zoomImports: defineTable({
+    organizationId: v.string(),
+    connectionId: v.id("zoomConnections"),
+    meetingUuid: v.string(),
+    // Zoom's id for the one file brought in (the best video of the meeting).
+    recordingFileId: v.string(),
+    topic: v.string(),
+    startTime: v.number(),
+    status: v.union(v.literal("importing"), v.literal("done"), v.literal("failed")),
+    uploadId: v.optional(v.id("uploads")),
+    jobId: v.optional(v.id("jobs")),
+    error: v.optional(v.string()),
+    // The download token Zoom sent with the event (good for a day), encrypted. Left out
+    // for a recording brought in by hand: the account's own sign-in is used.
+    downloadTokenCipher: v.optional(v.string()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_file", ["organizationId", "recordingFileId"])
+    .index("by_job", ["jobId"]),
+
   // The toSend account this dashboard sends email through: failed-run alerts, sign-in
   // emails and team invitations. One for the whole deployment, set once in Settings by
   // the team named here. TOSEND_API_KEY and EMAIL_FROM on the deployment win over it.
@@ -901,6 +956,9 @@ export default defineSchema({
     // "brand" for a logo or a music track added in Settings. Those are kept to be used
     // by steps, so they never start an automation.
     purpose: v.optional(v.literal("brand")),
+    // Where the file came from, when it was not the browser: "zoom" for a meeting
+    // recording brought in from a connected Zoom account.
+    source: v.optional(v.literal("zoom")),
     // Read from the file by the toolkit once the upload finishes. Missing while that is
     // still to happen, or when the toolkit could not read the file.
     details: v.optional(fileDetailsValidator),

@@ -122,7 +122,11 @@ export const byHand = query({
       ...page,
       page: page.page
         .filter(
-          (job) => job.runStepId === undefined && job.outputs.length > 0 && !job.libraryItemId,
+          (job) =>
+            job.runStepId === undefined &&
+            job.outputs.length > 0 &&
+            !job.libraryItemId &&
+            !job.zoomImportId,
         )
         .map((job) => ({
           jobId: job._id,

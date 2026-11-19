@@ -7,6 +7,7 @@ import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { noStream, serve } from "./mcp";
+import { settingsUrl as zoomSettingsUrl } from "./zoom";
 import {
   authorizationServer,
   authorize,
@@ -238,6 +239,43 @@ http.route({
       });
     }
     return new Response(null, { status: 302, headers: { location } });
+  }),
+});
+
+// Zoom sends people back here after they connect their Zoom account from Settings.
+http.route({
+  path: "/zoom/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const location =
+      code && state
+        ? await ctx.runAction(internal.zoom.finishLink, { code, state })
+        : zoomSettingsUrl(
+            url.searchParams.get("error") === "access_denied" ? "cancelled" : "refused",
+          );
+    return new Response(null, { status: 302, headers: { location } });
+  }),
+});
+
+// Zoom's events: finished cloud recordings, the app being removed, and Zoom checking the
+// address. Each is signed with the Zoom app's secret token (zoom.ts checks it).
+http.route({
+  path: "/zoom/events",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const body = await request.text();
+    if (body.length > 1_000_000) return new Response("Body too large", { status: 413 });
+    const answer = await ctx.runAction(internal.zoom.takeEvent, {
+      body,
+      timestamp: request.headers.get("x-zm-request-timestamp") ?? "",
+      signature: request.headers.get("x-zm-signature") ?? "",
+    });
+    return answer.json
+      ? Response.json(answer.json, { status: answer.status })
+      : new Response(null, { status: answer.status });
   }),
 });
 
