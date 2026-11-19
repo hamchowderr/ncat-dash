@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "./test";
 
 // The automation editor never scrolls sideways: not the page, not the list of steps, not
 // the canvas's frame and not a step's settings, for every kind of step, at the window
