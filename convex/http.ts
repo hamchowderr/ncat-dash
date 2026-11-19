@@ -7,6 +7,7 @@ import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { noStream, serve } from "./mcp";
+import { settingsUrl as microsoftSettingsUrl } from "./microsoft";
 import { settingsUrl as zoomSettingsUrl } from "./zoom";
 import {
   authorizationServer,
@@ -276,6 +277,44 @@ http.route({
     return answer.json
       ? Response.json(answer.json, { status: answer.status })
       : new Response(null, { status: answer.status });
+  }),
+});
+
+// Microsoft sends people back here after they connect their Microsoft 365 account.
+http.route({
+  path: "/microsoft/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const location =
+      code && state
+        ? await ctx.runAction(internal.microsoft.finishLink, { code, state })
+        : microsoftSettingsUrl(
+            url.searchParams.get("error") === "access_denied" ? "cancelled" : "refused",
+          );
+    return new Response(null, { status: 302, headers: { location } });
+  }),
+});
+
+// Microsoft's change notices for watched OneDrives. When a watch is made, Microsoft first
+// checks the address by sending a token to say back as plain text.
+http.route({
+  path: "/microsoft/events",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const validationToken = new URL(request.url).searchParams.get("validationToken");
+    if (validationToken !== null) {
+      return new Response(validationToken.slice(0, 1000), {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      });
+    }
+    const body = await request.text();
+    if (body.length > 1_000_000) return new Response("Body too large", { status: 413 });
+    const answer = await ctx.runAction(internal.microsoft.takeEvent, { body });
+    return new Response(null, { status: answer.status });
   }),
 });
 

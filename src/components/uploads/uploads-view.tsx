@@ -154,6 +154,14 @@ export function UploadsView() {
       (uploads ?? []).filter((upload) => upload.status === "uploading" && upload.source === "zoom"),
     [uploads],
   );
+  // Teams recordings the toolkit is still bringing in, straight from OneDrive to the bucket.
+  const fromTeams = useMemo(
+    () =>
+      (uploads ?? []).filter(
+        (upload) => upload.status === "uploading" && upload.source === "microsoft",
+      ),
+    [uploads],
+  );
   // A file still going up sits where it will land, as a skeleton with its percentage.
   const shown = useMemo(
     () =>
@@ -292,6 +300,13 @@ export function UploadsView() {
         <p className="text-muted-foreground text-sm" data-zoom-coming>
           Coming in from Zoom: {fromZoom.map((upload) => upload.fileName).join(", ")}. They show
           here once they arrive.
+        </p>
+      )}
+
+      {fromTeams.length > 0 && (
+        <p className="text-muted-foreground text-sm" data-teams-coming>
+          Coming in from Microsoft Teams: {fromTeams.map((upload) => upload.fileName).join(", ")}.
+          They show here once they arrive.
         </p>
       )}
 

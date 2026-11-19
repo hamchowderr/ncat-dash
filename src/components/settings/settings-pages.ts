@@ -79,6 +79,11 @@ export const SETTINGS_GROUPS = [
         description: "Meeting recordings come into Uploads by themselves, ready to clip.",
       },
       {
+        slug: "microsoft",
+        title: "Microsoft 365",
+        description: "Teams meeting recordings come into Uploads by themselves, ready to clip.",
+      },
+      {
         slug: "mcp",
         title: "MCP",
         description:

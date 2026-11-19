@@ -46,6 +46,11 @@ export default async function globalSetup() {
     ["ZOOM_WEBHOOK_SECRET", ZOOM_WEBHOOK_SECRET],
     ["ZOOM_OAUTH_URL", "http://127.0.0.1:8770"],
     ["ZOOM_API_URL", "http://127.0.0.1:8770/v2"],
+    // Microsoft, as the Microsoft stand-in (e2e/microsoft-stand-in.mjs) plays it.
+    ["MICROSOFT_CLIENT_ID", "stand-in-microsoft-client"],
+    ["MICROSOFT_CLIENT_SECRET", "stand-in-microsoft-secret"],
+    ["MICROSOFT_LOGIN_URL", "http://127.0.0.1:8771/common"],
+    ["MICROSOFT_GRAPH_URL", "http://127.0.0.1:8771/v1.0"],
   ]) {
     execSync(`npx convex env set ${name} ${value}`, { stdio: "ignore" });
   }

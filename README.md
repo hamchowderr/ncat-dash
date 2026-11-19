@@ -154,6 +154,16 @@ Cloud recordings of Zoom meetings come into Uploads by themselves. The dashboard
 
 Then, in Settings, Zoom, each person who hosts meetings presses "Connect Zoom". When Zoom finishes a cloud recording of a meeting they host, the dashboard picks its best video (the shared screen with the speaker first, the sound alone when there is no video) and has the team's toolkit stream it from Zoom into the team's folder (`/v1/s3/upload`, which copies in parts, so size does not matter and nothing passes through the dashboard). It then becomes an upload like any other: it joins the library and starts the automations set to run on an upload. The last 30 days of recordings can also be brought in by hand. Zoom's sign-in for the download is added only as the job is sent, never kept with the job. Until the Zoom app is published, its development keys work only for accounts on the Zoom account that made it. The code is in `convex/zoom.ts` and `convex/lib/zoom.ts`.
 
+### Microsoft 365
+
+Teams meeting recordings come into Uploads by themselves. Teams saves the recording of a meeting to the organizer's OneDrive, in its Recordings folder, and the dashboard watches that folder. The dashboard has ONE Microsoft app that every team uses; whoever runs the dashboard sets it up once:
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com/), open App registrations, New registration. Name it, pick "Accounts in any organizational directory and personal Microsoft accounts", and add a Web redirect URI `https://<your Convex site>/microsoft/callback`.
+2. Under API permissions, add Microsoft Graph delegated permissions `User.Read`, `Files.Read` and `offline_access`. Each person consents for themselves when they connect; an organization that blocks that can grant consent for everyone on the same page.
+3. Under Certificates & secrets, make a client secret. On the Convex deployment set `MICROSOFT_CLIENT_ID` (the Application (client) ID) and `MICROSOFT_CLIENT_SECRET` (the secret's Value), and push the functions.
+
+Then, in Settings, Microsoft 365, each person who organizes meetings presses "Connect Microsoft 365". The dashboard asks Microsoft Graph to tell it when their OneDrive changes (`POST https://<your Convex site>/microsoft/events`, checked with a secret each watch is given; watches last just under 30 days and are renewed by themselves). When a new video is in the Recordings folder, the team's toolkit streams it from OneDrive into the team's folder (`/v1/s3/upload`, with a short-lived OneDrive download link asked for only as the job is sent), and it becomes an upload like any other. A check every 15 minutes catches anything a notice missed, and the last 30 days of recordings can be brought in by hand. Recordings of channel meetings live in the team's SharePoint, not anyone's OneDrive, so they do not come in. The code is in `convex/microsoft.ts` and `convex/lib/microsoft.ts`.
+
 ### The agent
 
 The Agent button in the top bar opens a chat beside whatever is on screen. Describe what should run by itself and the agent builds the automation; ask for a change to the one that is open and it makes it on the canvas. It asks before it makes, changes or switches on anything, on a card that lists the change in plain words.

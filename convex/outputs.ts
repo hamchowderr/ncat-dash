@@ -126,7 +126,8 @@ export const byHand = query({
             job.runStepId === undefined &&
             job.outputs.length > 0 &&
             !job.libraryItemId &&
-            !job.zoomImportId,
+            !job.zoomImportId &&
+            !job.microsoftImportId,
         )
         .map((job) => ({
           jobId: job._id,
