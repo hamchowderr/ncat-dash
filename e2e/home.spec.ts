@@ -27,7 +27,7 @@ test("a new team's home leads with getting set up and ready-made automations", a
     "No automations yet. Start from a ready-made one below.",
   );
   await expect(page.getByTestId("connection-status")).toHaveText("Toolkit connected");
-  const setup = page.getByRole("region", { name: /^Getting started, 2 of 5 done$/ });
+  const setup = page.getByRole("region", { name: /^Getting started, 2 of 6 done$/ });
   await expect(setup.getByRole("link", { name: /Add your logo/ })).toBeVisible();
 
   // Nothing is on yet, so ready-made automations come before the latest runs.
@@ -44,16 +44,16 @@ test("a new team's home leads with getting set up and ready-made automations", a
   await page.setViewportSize({ width: 1280, height: 900 });
 
   // Every ready-made automation is on one page, by category, and can be searched.
-  await ready.getByRole("link", { name: /See all 61/ }).click();
+  await ready.getByRole("link", { name: /See all 62/ }).click();
   await expect(page).toHaveURL(/\/automations\/new$/);
-  await expect(page.getByRole("button", { name: /^All 61$/ })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: /^All 62$/ })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await page.getByRole("button", { name: /^Music \d+$/ }).click();
   await expect(page.getByText("Lyric video with highlighted words")).toBeVisible();
   await expect(page.getByText("Clips for social")).toHaveCount(0);
-  await page.getByRole("button", { name: /^All 61$/ }).click();
+  await page.getByRole("button", { name: /^All 62$/ }).click();
   await page.getByLabel("Find a ready-made automation").fill("loudness");
   await expect(page.getByText("Even out loudness for platforms")).toBeVisible();
 

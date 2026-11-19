@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { FullPageLoader } from "@/components/full-page-loader";
 import { ConnectToolkitForm } from "@/components/onboarding/connect-toolkit-form";
+import { ContentGoalsFlow } from "@/components/onboarding/content-goals-flow";
 import { CreateTeamForm } from "@/components/onboarding/create-team-form";
 import { BrandForm } from "@/components/settings/brand-form";
 import { Button } from "@/components/ui/button";
@@ -14,12 +15,14 @@ import { TeamContext } from "@/lib/team-context";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
 
-const STEPS = 3;
+// Name, toolkit and brand, then the four content goals screens (content-goals-flow.tsx).
+const STEPS = 7;
 
 /**
- * Setting up, in order: name the team, connect the toolkit, then the brand every
- * automation uses. Files go to the toolkit's own storage, so there is no storage step.
- * The brand can be skipped and set later in Settings.
+ * Setting up, in order: name the team, connect the toolkit, the brand every automation
+ * uses, then what the team makes: where it posts, the ready-made automations that fit,
+ * and a first upload. Files go to the toolkit's own storage, so there is no storage step.
+ * The brand and the first upload can be skipped.
  */
 export default function OnboardingPage() {
   const router = useRouter();
@@ -31,7 +34,7 @@ export default function OnboardingPage() {
   );
   const settings = useQuery(api.teamSettings.get, teamId ? { organizationId: teamId } : "skip");
   // How far this visit has got past connecting the toolkit: 2 is the toolkit step itself.
-  const [stage, setStage] = useState<2 | 3 | null>(null);
+  const [stage, setStage] = useState<2 | 3 | 4 | null>(null);
 
   const signedOut = state.status === "signed-out";
   // Someone who set up on an earlier visit goes straight to the dashboard.
@@ -48,13 +51,16 @@ export default function OnboardingPage() {
 
   const step = state.status === "no-team" ? 1 : (stage ?? 2);
   const finish = () => router.replace("/");
+  const toGoals = () => setStage(4);
 
   return (
     <section className="flex min-h-screen w-full items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md space-y-6">
-        <p className="text-muted-foreground text-sm">
-          Step {step} of {STEPS}
-        </p>
+      <div className={step === 4 ? "w-full max-w-2xl" : "w-full max-w-md space-y-6"}>
+        {step < 4 && (
+          <p className="text-muted-foreground text-sm">
+            Step {step} of {STEPS}
+          </p>
+        )}
         {step === 1 && (
           <>
             <div className="space-y-2">
@@ -96,13 +102,21 @@ export default function OnboardingPage() {
               brand={settings.brand}
               music={settings.music}
               canEdit={settings.canEdit}
-              submitLabel="Save and go to the dashboard"
-              onSaved={finish}
+              submitLabel="Save and continue"
+              onSaved={toGoals}
             />
-            <Button variant="ghost" className="w-full" onClick={finish}>
+            <Button variant="ghost" className="w-full" onClick={toGoals}>
               Skip for now
             </Button>
           </TeamContext.Provider>
+        )}
+        {step === 4 && state.status === "ready" && (
+          <ContentGoalsFlow
+            organizationId={state.team.id}
+            stepsBefore={3}
+            stepsTotal={STEPS}
+            onFinish={finish}
+          />
         )}
       </div>
     </section>
