@@ -690,6 +690,28 @@ export default defineSchema({
     duration: v.number(),
   }).index("by_source", ["organizationId", "source"]),
 
+  // The model's answer to a Best moments or Chapters question, kept so the same question
+  // (the same transcript, settings and house rules) is not paid for twice. `question` is
+  // the question's SHA-256. Forgotten after 30 days (crons.ts).
+  pickAnswers: defineTable({
+    organizationId: v.string(),
+    question: v.string(),
+    answer: v.string(),
+    savedAt: v.number(),
+  })
+    .index("by_question", ["organizationId", "question"])
+    .index("by_saved", ["savedAt"]),
+
+  // Questions of an unattended run's pick, sent to Anthropic as one batch at half the
+  // price; checked until the answers are in (moments.checkBatch).
+  pickBatches: defineTable({
+    organizationId: v.string(),
+    runStepId: v.id("runSteps"),
+    batchId: v.string(),
+    sentAt: v.number(),
+    checks: v.number(),
+  }).index("by_step", ["runStepId"]),
+
   // A moment a Best moments step cut from a video, so a later run on the same video can
   // find new ones instead of the same again.
   pickedMoments: defineTable({

@@ -15,7 +15,8 @@
     "eval": "tsx scripts/eval.ts",
     "measure:cache": "tsx scripts/measure-cache.ts",
     "test:ui": "vitest --ui",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "measure:session": "tsx scripts/measure-session.ts"
   },
   "license": "GPL-2.0-or-later",
   "type": "module",
@@ -25,6 +26,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.19",
     "@ai-sdk/openai": "^4.0.20",
+    "@anthropic-ai/sdk": "^1.11.0",
     "@chat-adapter/discord": "4.45.0",
     "@chat-adapter/slack": "4.45.0",
     "@mastra/agent-browser": "0.6.0",

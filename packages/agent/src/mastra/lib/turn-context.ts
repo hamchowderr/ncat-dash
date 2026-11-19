@@ -44,6 +44,7 @@ import type { CoreMessage, CoreSystemMessage } from '@mastra/core/llm';
 import type { ProcessInputStepArgs, Processor } from '@mastra/core/processors';
 import type { RequestContext } from '@mastra/core/request-context';
 import { env } from '../../lib/env';
+import { cacheBreakpoint } from './cost';
 import { isTimeZone, TIME_ZONE_KEY } from './time-zone';
 
 export { isTimeZone, TIME_ZONE_KEY };
@@ -99,7 +100,7 @@ function partsIn(date: Date, timeZone: string) {
   return {
     iso: `${get('year')}-${get('month')}-${get('day')}`,
     weekday: get('weekday'),
-    time: `${get('hour')}:${get('minute')}`,
+    hour: Number(get('hour')),
     offset: get('timeZoneName').replace('GMT', 'UTC') || 'UTC',
   };
 }
@@ -118,8 +119,12 @@ export const todaySection: TurnContextSection = ({ requestContext, now }) => {
     const weekday = d.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
     return `${weekday} ${d.toISOString().slice(0, 10)}`;
   });
+  // The hour, not the minute: this text sits ahead of the conversation, and a change to it
+  // makes Anthropic write the whole conversation into its cache again. A clock that moved
+  // every minute did that on nearly every turn.
+  const hh = (h: number) => `${String(h % 24).padStart(2, '0')}:00`;
   return [
-    `Current date and time: ${today.weekday} ${today.iso}, ${today.time} (${timeZone}, ${today.offset}).`,
+    `Current date and time: ${today.weekday} ${today.iso}, between ${hh(today.hour)} and ${hh(today.hour + 1)} (${timeZone}, ${today.offset}).`,
     `The next seven days: ${week.join(', ')}.`,
     'Resolve relative dates ("today", "tomorrow", "Friday", "next week") from this date, in this time zone. A weekday on its own means its next date in that list. Write dates as YYYY-MM-DD.',
   ].join('\n');
@@ -159,14 +164,20 @@ export async function turnContextParts(
   return { stable, volatile };
 }
 
-/** `message` with Anthropic's cache breakpoint added to its provider options. */
-function withBreakpoint<M extends CoreMessage>(message: M): M {
+/**
+ * `message` with Anthropic's cache breakpoint added to its provider options: five
+ * minutes, or an hour for a chat-app turn (lib/cost.ts).
+ */
+function withBreakpoint<M extends CoreMessage>(
+  message: M,
+  requestContext?: Pick<RequestContext, 'get'>,
+): M {
   const options = message.providerOptions;
   return {
     ...message,
     providerOptions: {
       ...options,
-      anthropic: { ...options?.anthropic, ...CACHE_BREAKPOINT.anthropic },
+      anthropic: { ...options?.anthropic, ...cacheBreakpoint(requestContext).anthropic },
     },
   };
 }
@@ -194,8 +205,8 @@ async function withTurnContextMessages<M extends CoreMessage>(
   }
   const last = own.length - 1;
   return [
-    ...own.map((message, i) => (i === last ? withBreakpoint(message) : message)),
-    ...(stable ? [withBreakpoint(turnContextMessage(stable))] : []),
+    ...own.map((message, i) => (i === last ? withBreakpoint(message, args.requestContext) : message)),
+    ...(stable ? [withBreakpoint(turnContextMessage(stable), args.requestContext)] : []),
     ...(volatile ? [turnContextMessage(volatile)] : []),
   ];
 }
