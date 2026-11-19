@@ -280,6 +280,8 @@ export default defineSchema({
     libraryItemId: v.optional(v.id("libraryItems")),
     // Set when the job brings a Zoom recording into the team's folder.
     zoomImportId: v.optional(v.id("zoomImports")),
+    // Set when the job brings a Google Meet recording into the team's folder.
+    googleMeetImportId: v.optional(v.id("googleMeetImports")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
@@ -873,6 +875,59 @@ export default defineSchema({
     .index("by_file", ["organizationId", "recordingFileId"])
     .index("by_job", ["jobId"]),
 
+  // A team member's own Google account, connected from Settings so the Meet recordings of
+  // meetings they organize come into the team's uploads. The dashboard has ONE Google Cloud
+  // app, set up once by whoever runs it (GOOGLE_MEET_* env). One Google account belongs to
+  // one team. The tokens are stored encrypted and never leave the server.
+  googleMeetConnections: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    // Google's own id for the account ("sub").
+    googleUserId: v.string(),
+    googleEmail: v.string(),
+    googleName: v.string(),
+    accessTokenCipher: v.string(),
+    refreshTokenCipher: v.string(),
+    // When the access token stops working.
+    expiresAt: v.number(),
+    connectedAt: v.number(),
+    // False: new recordings wait to be brought in by hand from Settings.
+    autoImport: v.boolean(),
+    // Recordings of meetings that end after this come in by themselves.
+    watchFrom: v.number(),
+    // Set when Google stopped accepting the sign-in (taken back, or run out).
+    signInLostAt: v.optional(v.number()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_member", ["organizationId", "userId"])
+    .index("by_google_user", ["googleUserId"]),
+
+  // A Google sign-in someone started from Settings, matched when Google sends them back.
+  googleMeetLinkStarts: defineTable({
+    nonce: v.string(),
+    organizationId: v.string(),
+    userId: v.string(),
+    createdAt: v.number(),
+  }).index("by_nonce", ["nonce"]),
+
+  // One Meet recording being brought in, or brought in: the toolkit streams the file from
+  // the organizer's Drive straight into the team's folder, then it becomes an upload.
+  googleMeetImports: defineTable({
+    organizationId: v.string(),
+    connectionId: v.id("googleMeetConnections"),
+    // Meet's name for the recording: conferenceRecords/<id>/recordings/<id>.
+    recordingName: v.string(),
+    driveFileId: v.string(),
+    topic: v.string(),
+    startTime: v.number(),
+    status: v.union(v.literal("importing"), v.literal("done"), v.literal("failed")),
+    uploadId: v.optional(v.id("uploads")),
+    jobId: v.optional(v.id("jobs")),
+    error: v.optional(v.string()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_file", ["organizationId", "driveFileId"]),
+
   // The toSend account this dashboard sends email through: failed-run alerts, sign-in
   // emails and team invitations. One for the whole deployment, set once in Settings by
   // the team named here. TOSEND_API_KEY and EMAIL_FROM on the deployment win over it.
@@ -966,9 +1021,9 @@ export default defineSchema({
     // "brand" for a logo or a music track added in Settings. Those are kept to be used
     // by steps, so they never start an automation.
     purpose: v.optional(v.literal("brand")),
-    // Where the file came from, when it was not the browser: "zoom" for a meeting
-    // recording brought in from a connected Zoom account.
-    source: v.optional(v.literal("zoom")),
+    // Where the file came from, when it was not the browser: a meeting recording brought
+    // in from a connected Zoom or Google account.
+    source: v.optional(v.union(v.literal("zoom"), v.literal("google_meet"))),
     // Read from the file by the toolkit once the upload finishes. Missing while that is
     // still to happen, or when the toolkit could not read the file.
     details: v.optional(fileDetailsValidator),

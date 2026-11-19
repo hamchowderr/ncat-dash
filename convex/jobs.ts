@@ -25,6 +25,11 @@ import { enqueueJob, pump } from "./lib/queue";
 import { onJobFinished } from "./lib/runner";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { UploadLinkError, withUploadLinks } from "./storage";
+import {
+  GoogleSignInError,
+  googleMeetDownloadHeaders,
+  onGoogleMeetJobFinished,
+} from "./googleMeet";
 import { downloadHeadersFor, onZoomJobFinished, ZoomSignInError } from "./zoom";
 
 // A Convex document holds at most 1 MB, so a larger result is kept as its links only.
@@ -77,8 +82,8 @@ export const list = query({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .order("desc")
       .take(100);
-    // Zoom recordings being brought in show in Settings and Uploads, not with step jobs.
-    return jobs.filter((job) => !job.zoomImportId).map(toPublic);
+    // Meeting recordings being brought in show in Settings and Uploads, not with step jobs.
+    return jobs.filter((job) => !job.zoomImportId && !job.googleMeetImportId).map(toPublic);
   },
 });
 
@@ -115,7 +120,13 @@ export const outputs = query({
       .take(100);
     return await Promise.all(
       done
-        .filter((job) => job.outputs.length > 0 && !job.libraryItemId && !job.zoomImportId)
+        .filter(
+          (job) =>
+            job.outputs.length > 0 &&
+            !job.libraryItemId &&
+            !job.zoomImportId &&
+            !job.googleMeetImportId,
+        )
         .map(async (job) => ({
           jobId: job._id,
           stepId: job.stepId,
@@ -146,8 +157,18 @@ export const loadForDispatch = internalQuery({
  * as it is sent, so the token is never stored with the job.
  */
 async function withZoomSignIn(ctx: ActionCtx, job: Doc<"jobs">, input: unknown): Promise<unknown> {
-  if (!job.zoomImportId || !input || typeof input !== "object") return input;
-  return { ...input, download_headers: await downloadHeadersFor(ctx, job.zoomImportId) };
+  if (!input || typeof input !== "object") return input;
+  if (job.zoomImportId) {
+    return { ...input, download_headers: await downloadHeadersFor(ctx, job.zoomImportId) };
+  }
+  // Likewise a Google Meet recording, fetched from the organizer's Drive.
+  if (job.googleMeetImportId) {
+    return {
+      ...input,
+      download_headers: await googleMeetDownloadHeaders(ctx, job.googleMeetImportId),
+    };
+  }
+  return input;
 }
 
 /** Sends the job to the toolkit and asks it to post the result back to our webhook. */
@@ -199,7 +220,8 @@ export const dispatch = internalAction({
           ? `The toolkit ${isTransientStatus(error.status) ? "was not ready for" : "refused"} the job (HTTP ${error.status}). ${error.body.slice(0, 300)}`
           : error instanceof UploadLinkError ||
               error instanceof StepSetupError ||
-              error instanceof ZoomSignInError
+              error instanceof ZoomSignInError ||
+              error instanceof GoogleSignInError
             ? error.message
             : "The toolkit could not be reached.";
       // A request the toolkit refuses, or a file that is gone, fails the same way every
@@ -209,7 +231,8 @@ export const dispatch = internalAction({
           ? !isTransientStatus(error.status)
           : error instanceof UploadLinkError ||
             error instanceof StepSetupError ||
-            error instanceof ZoomSignInError;
+            error instanceof ZoomSignInError ||
+            error instanceof GoogleSignInError;
       await ctx.runMutation(internal.jobs.finish, {
         jobId: job._id,
         ok: false,
@@ -271,6 +294,12 @@ export const finish = internalMutation({
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
     // A Zoom recording on its way in: it becomes an upload, or the import says why not.
     await onZoomJobFinished(ctx, job, args.ok, args.ok ? null : (args.error ?? "The step failed."));
+    await onGoogleMeetJobFinished(
+      ctx,
+      job,
+      args.ok,
+      args.ok ? null : (args.error ?? "The step failed."),
+    );
     // A library file being made searchable: keep what was said in it.
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
@@ -292,6 +321,12 @@ export const giveUp = internalMutation({
     });
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
     await onZoomJobFinished(ctx, job, false, "The toolkit never reported a result for this job.");
+    await onGoogleMeetJobFinished(
+      ctx,
+      job,
+      false,
+      "The toolkit never reported a result for this job.",
+    );
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
     }

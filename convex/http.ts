@@ -7,6 +7,7 @@ import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { noStream, serve } from "./mcp";
+import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
 import { settingsUrl as zoomSettingsUrl } from "./zoom";
 import {
   authorizationServer,
@@ -276,6 +277,24 @@ http.route({
     return answer.json
       ? Response.json(answer.json, { status: answer.status })
       : new Response(null, { status: answer.status });
+  }),
+});
+
+// Google sends people back here after they connect their Google account for Meet.
+http.route({
+  path: "/google-meet/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const location =
+      code && state
+        ? await ctx.runAction(internal.googleMeet.finishLink, { code, state })
+        : googleMeetSettingsUrl(
+            url.searchParams.get("error") === "access_denied" ? "cancelled" : "refused",
+          );
+    return new Response(null, { status: 302, headers: { location } });
   }),
 });
 
