@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { startRun } from "./lib/runner";
@@ -9,13 +10,18 @@ import { addPerson, addTeam, backend } from "./test.setup";
 
 type Call = { method: string; body: Record<string, unknown> };
 let calls: Call[] = [];
+/** The bot as Telegram describes it: privacy mode, and its place in each group. */
+let bot: { privacyOff: boolean; adminIn: string[] } = { privacyOff: false, adminIn: [] };
+const SECRET = "agent-secret-for-tests";
 
 beforeEach(() => {
   vi.useFakeTimers();
   process.env.TELEGRAM_BOT_TOKEN = "123:secret";
   process.env.TELEGRAM_BOT_USERNAME = "SaltHouseBot";
   process.env.TELEGRAM_API_URL = "https://telegram.stand-in";
+  process.env.MASTRA_JWT_SECRET = SECRET;
   calls = [];
+  bot = { privacyOff: false, adminIn: [] };
   let next = 100;
   vi.stubGlobal(
     "fetch",
@@ -25,7 +31,18 @@ beforeEach(() => {
         throw new Error(`Unexpected fetch ${address}`);
       }
       const method = address.split("/").pop() ?? "";
-      calls.push({ method, body: JSON.parse(String(init?.body ?? "{}")) });
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      if (method === "getMe") {
+        return Response.json({
+          ok: true,
+          result: { id: 42, username: "SaltHouseBot", can_read_all_group_messages: bot.privacyOff },
+        });
+      }
+      if (method === "getChatMember") {
+        const admin = bot.adminIn.includes(String(body.chat_id));
+        return Response.json({ ok: true, result: { status: admin ? "administrator" : "member" } });
+      }
+      calls.push({ method, body });
       return Response.json({ ok: true, result: { message_id: next++ } });
     }),
   );
@@ -37,7 +54,39 @@ afterEach(() => {
   delete process.env.TELEGRAM_BOT_TOKEN;
   delete process.env.TELEGRAM_BOT_USERNAME;
   delete process.env.TELEGRAM_API_URL;
+  delete process.env.MASTRA_JWT_SECRET;
 });
+
+function agentToken() {
+  const b = (value: string) => Buffer.from(value).toString("base64url");
+  const iat = Math.floor(Date.now() / 1000);
+  const body = `${b(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${b(
+    JSON.stringify({ sub: "agent-server", iat, exp: iat + 300 }),
+  )}`;
+  return `${body}.${createHmac("sha256", SECRET).update(body).digest("base64url")}`;
+}
+
+/** An owner adds the bot to a group the way Telegram does it: /start reaches the agent server. */
+async function addGroupThroughBot(setup: Awaited<ReturnType<typeof team>>, chatId: string) {
+  const url = await setup.olu.as.mutation(api.telegram.startLink, {
+    organizationId: setup.teamId,
+    kind: "group",
+  });
+  const code = new URL(url).searchParams.get("startgroup")!;
+  const answer = await setup.t.fetch("/telegram/link", {
+    method: "POST",
+    headers: { authorization: `Bearer ${agentToken()}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      code,
+      chatId,
+      telegramUserId: "5550009",
+      isGroup: "true",
+      chatTitle: "Edit team",
+      telegramName: "Olu",
+    }),
+  });
+  expect(answer.status).toBe(200);
+}
 
 async function team() {
   const t = backend();
@@ -169,6 +218,61 @@ describe("linking Telegram from Settings", () => {
         kind: "person",
       }),
     ).rejects.toThrow("Telegram is not set up on this dashboard yet.");
+  });
+});
+
+describe("tagging the agent in a group", () => {
+  // Telegram starts every bot in privacy mode: in a group it then only gets commands and
+  // replies to its own messages, never a plain message that tags it.
+  test("with privacy mode on, Settings learns tagging won't reach it there", async () => {
+    const setup = await team();
+    await addGroupThroughBot(setup, "-100777");
+    expect(
+      await setup.olu.as.action(api.telegram.groupHearing, { organizationId: setup.teamId }),
+    ).toEqual([{ chatId: "-100777", hears: false, privacyOff: false }]);
+  });
+
+  test("privacy mode turned off later only counts once the bot is added to the group again", async () => {
+    const setup = await team();
+    await addGroupThroughBot(setup, "-100777");
+    bot.privacyOff = true;
+    const before = await setup.ana.as.action(api.telegram.groupHearing, {
+      organizationId: setup.teamId,
+    });
+    expect(before).toEqual([{ chatId: "-100777", hears: false, privacyOff: true }]);
+    await addGroupThroughBot(setup, "-100777");
+    const after = await setup.ana.as.action(api.telegram.groupHearing, {
+      organizationId: setup.teamId,
+    });
+    expect(after).toEqual([{ chatId: "-100777", hears: true, privacyOff: true }]);
+  });
+
+  test("a bot that joins with privacy mode off, or is an admin of the group, hears it", async () => {
+    const setup = await team();
+    bot.privacyOff = true;
+    await addGroupThroughBot(setup, "-100777");
+    bot.privacyOff = false;
+    bot.adminIn = ["-100888"];
+    await addGroupThroughBot(setup, "-100888");
+    const found = await setup.olu.as.action(api.telegram.groupHearing, {
+      organizationId: setup.teamId,
+    });
+    expect(found).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ chatId: "-100777", hears: true }),
+        expect.objectContaining({ chatId: "-100888", hears: true }),
+      ]),
+    );
+  });
+
+  test("someone outside the team can't ask about its groups", async () => {
+    const setup = await team();
+    await addGroupThroughBot(setup, "-100777");
+    const otherTeam = await addTeam(setup.t, "Elsewhere");
+    const stranger = await addPerson(setup.t, "Sam Stone", [otherTeam]);
+    await expect(
+      stranger.as.action(api.telegram.groupHearing, { organizationId: setup.teamId }),
+    ).rejects.toThrow();
   });
 });
 

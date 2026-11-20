@@ -27,7 +27,7 @@ import { withTeamSteps } from "./lib/teamSteps";
  */
 
 const INSTRUCTIONS =
-  "This is Kontifi, a content automation dashboard. Each automation is a set of plain steps (cut clips, add captions, reframe, and so on) that runs by itself on the team's own toolkit, with no AI per video. Read the content-automations skill before building. list_automations and describe_automation show what the team has; create_automation and change_automation build (changes are kept as a draft that someone publishes in the dashboard); start_automation runs one on an upload or a file link; check_run shows how a run is going and the files it made.";
+  "This is Kontifi, a content automation dashboard. Each automation is a set of plain steps (cut clips, add captions, reframe, and so on) that runs by itself on the team's own toolkit, with no AI per video. Read the content-automations skill before building. list_automations and describe_automation show what the team has; create_automation and change_automation build (changes are kept as a draft that someone publishes in the dashboard); start_automation runs one on an upload or a file link; check_run shows how a run is going and the files it made. A chain of linked automations can be one workflow (set_up_workflow) with a single review before its files go out.";
 
 const SERVER_INFO = { name: "kontifi", title: PRODUCT_NAME, version: "2.0.0" };
 
@@ -173,6 +173,75 @@ const TOOLS: McpTool[] = [
     },
     readOnly: true,
   },
+  {
+    name: "list_workflows",
+    title: "List workflows",
+    description:
+      "The team's workflows: chains of linked automations with one review before their files go out. For each: its kind of work, client, whether it is on, who reviews and any time limit, and its automations, with where the review happens.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    readOnly: true,
+  },
+  {
+    name: "set_up_workflow",
+    title: "Set up a workflow",
+    description:
+      "Makes the chain an automation is part of (it and every automation linked to it) into a workflow, or changes the workflow it is already in. While the review is on, Approval steps inside the chain are passed through and one review happens just before the last automations' files go out. Client work, UGC and your own content come with the review on; a quick personal job without. Leave out anything that should stay as it is.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        automation_id: automationId,
+        name: { type: "string", minLength: 1, maxLength: 80 },
+        kind: {
+          type: "string",
+          enum: ["client", "ugc", "own", "quick"],
+          description:
+            "client: client work. ugc: UGC and ads. own: your own content. quick: a quick personal job. Changing it switches the review to that kind's default unless review.on is sent too.",
+        },
+        client_id: {
+          type: ["string", "null"],
+          description: "A client of the team, or null for the team itself.",
+        },
+        review: {
+          type: "object",
+          properties: {
+            on: { type: "boolean" },
+            reviewers: {
+              type: "array",
+              items: { type: "string" },
+              description: "User ids of who decides. Empty: anyone on the team.",
+            },
+            time_limit: {
+              type: "number",
+              minimum: 0,
+              description: "Decide by itself after this long; 0 waits until someone decides.",
+            },
+            time_limit_unit: { type: "string", enum: ["hours", "days"] },
+            when_time_up: { type: "string", enum: ["reject", "approve"] },
+          },
+          additionalProperties: false,
+        },
+      },
+      required: ["automation_id"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+  },
+  {
+    name: "switch_workflow",
+    title: "Switch a workflow on or off",
+    description:
+      "Switches every automation in a workflow on or off together. Switching on refuses, naming the automation, while one of them still has a problem.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        workflow_id: { type: "string", description: "From list_workflows or set_up_workflow." },
+        on: { type: "boolean" },
+      },
+      required: ["workflow_id", "on"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+  },
 ];
 
 const site = () => (process.env.SITE_URL ?? "").replace(/\/+$/, "");
@@ -272,7 +341,12 @@ export const automations = internalQuery({
           automation_id: automation._id,
           name: automation.name,
           on: automation.enabled,
-          starts_with: STARTS[automation.trigger.kind] ?? automation.trigger.kind,
+          starts_with: [
+            automation.trigger,
+            ...(automation.moreTriggers ?? []).map((each) => each.trigger),
+          ]
+            .map((trigger) => STARTS[trigger.kind] ?? trigger.kind)
+            .join(", or "),
           steps: automation.nodes.length,
           has_draft: automation.draft !== undefined,
           address: automationLink(automation._id),
@@ -510,6 +584,51 @@ async function callTool(
           automationId: text(args.automation_id),
           limit: count(args.limit, 10, 50),
         });
+      case "list_workflows":
+        return await ctx.runQuery(internal.workflows.listAs, { organizationId });
+      case "set_up_workflow": {
+        const review = (args.review ?? {}) as Record<string, unknown>;
+        const kind = text(args.kind);
+        const limit = typeof review.time_limit === "number" ? review.time_limit : undefined;
+        const unit = text(review.time_limit_unit);
+        const timeUp = text(review.when_time_up);
+        return await ctx.runMutation(internal.workflows.setUpAs, {
+          organizationId,
+          userId,
+          automationId: automation(),
+          name: text(args.name),
+          // Checked by the mutation's own validator; a wrong value comes back as a tool error.
+          kind: kind as never,
+          ...(args.client_id === null
+            ? { clientId: null }
+            : text(args.client_id)
+              ? { clientId: text(args.client_id) }
+              : {}),
+          ...(args.review
+            ? {
+                review: {
+                  ...(typeof review.on === "boolean" ? { on: review.on } : {}),
+                  ...(Array.isArray(review.reviewers)
+                    ? { reviewers: review.reviewers.filter((id) => typeof id === "string") }
+                    : {}),
+                  ...(limit !== undefined ? { timeLimit: limit } : {}),
+                  ...(unit ? { timeLimitUnit: unit as never } : {}),
+                  ...(timeUp ? { whenTimeUp: timeUp as never } : {}),
+                },
+              }
+            : {}),
+        });
+      }
+      case "switch_workflow": {
+        const workflowId = text(args.workflow_id);
+        if (!workflowId) throw new ToolSaid("workflow_id is needed. list_workflows gives the ids.");
+        if (typeof args.on !== "boolean") throw new ToolSaid("on is needed: true or false.");
+        return await ctx.runMutation(internal.workflows.switchAs, {
+          organizationId,
+          workflowId,
+          on: args.on,
+        });
+      }
       default:
         throw new ToolSaid(`There is no tool called ${name}.`);
     }
@@ -532,7 +651,8 @@ async function callTool(
 function asSent(op: unknown): unknown {
   if (!op || typeof op !== "object") return op;
   const change = op as { op?: unknown; trigger?: { kind?: unknown } };
-  if (change.op !== "trigger" || typeof change.trigger?.kind !== "string") return op;
+  if (change.op !== "trigger" && change.op !== "addTrigger") return op;
+  if (typeof change.trigger?.kind !== "string") return op;
   const kind = change.trigger.kind.replace(/^trigger:/, "");
   return { ...change, trigger: { ...change.trigger, kind } };
 }

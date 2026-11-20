@@ -8,6 +8,7 @@ import { finishedFilesOf } from "./chain";
 import { type DeliverableKind, type DeliverableStatus, fileKindOf, slotProblem } from "./packages";
 import { CLIP_LIMIT, VERSION_LIMIT } from "./reviews";
 import { startRun } from "./runner";
+import { enabledWithTrigger, triggersOfKind } from "./triggers";
 import { toReviewChannels } from "./reviewChannels";
 
 /** The project's review room, opened the first time a slot gets a version. */
@@ -173,24 +174,23 @@ export async function slotMoved(
   slot: Doc<"deliverables">,
   status: DeliverableStatus,
 ): Promise<void> {
-  const waiting = await ctx.db
-    .query("automations")
-    .withIndex("by_enabled_and_trigger_kind", (q) =>
-      q.eq("enabled", true).eq("trigger.kind", "slot"),
-    )
-    .take(500);
-  const starting = waiting.filter(
-    ({ organizationId, trigger }) =>
-      organizationId === slot.organizationId &&
-      trigger.kind === "slot" &&
-      trigger.status === status &&
-      (trigger.slotKind === "any" || trigger.slotKind === slot.kind),
+  const waiting = await enabledWithTrigger(ctx, "slot", 500);
+  const starting = waiting.flatMap((automation) =>
+    automation.organizationId === slot.organizationId
+      ? triggersOfKind(automation, "slot")
+          .filter(
+            ({ trigger }) =>
+              trigger.status === status &&
+              (trigger.slotKind === "any" || trigger.slotKind === slot.kind),
+          )
+          .map(({ id }) => ({ automation, triggerId: id }))
+      : [],
   );
   if (starting.length === 0) return;
   const project = await ctx.db.get(slot.projectId);
   if (!project) return;
   const newest = slot.versions[slot.versions.length - 1]?.url;
-  for (const automation of starting) {
+  for (const { automation, triggerId } of starting) {
     await startRun(
       ctx,
       automation,
@@ -202,7 +202,7 @@ export async function slotMoved(
         status,
       },
       null,
-      { project: projectOf(project, slot._id) },
+      { project: projectOf(project, slot._id), triggerId },
     );
   }
 }

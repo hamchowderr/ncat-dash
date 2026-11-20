@@ -26,7 +26,6 @@ import {
   missingBrandOf,
   withinLength,
   missingSettings,
-  nextRunAt,
   platformGuideText,
   nodeTypeIndex,
   nodeTypeOf,
@@ -37,6 +36,11 @@ import {
   starterOf,
   STARTERS,
   chainGroup,
+  FIRST_TRIGGER,
+  tidyTriggers,
+  triggersOf,
+  triggersProblem,
+  triggerWithId,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
@@ -61,7 +65,20 @@ import { withTeamSteps } from "./lib/teamSteps";
 import { deleteVersions, recordVersion } from "./lib/versions";
 import { deleteNotes, notesOf } from "./notes";
 import { bucketOf, presign, storageConnection } from "./lib/bucket";
-import { edgeValidator, nodeValidator, operationValidator, triggerValidator } from "./schema";
+import {
+  edgeValidator,
+  moreTriggersValidator,
+  nodeValidator,
+  operationValidator,
+  triggerValidator,
+} from "./schema";
+import {
+  dueSchedules,
+  multiTriggerOf,
+  scheduleTimesOf,
+  triggersOfKind,
+  watchStartOf,
+} from "./lib/triggers";
 
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
 
@@ -83,29 +100,41 @@ async function loadForMember(
   return { automation, ...member };
 }
 
-type Version = Pick<Doc<"automations">, "name" | "trigger" | "nodes" | "edges">;
+type Version = Pick<
+  Doc<"automations">,
+  "name" | "trigger" | "moreTriggers" | "triggerStarts" | "nodes" | "edges"
+>;
 
 function versionOf(source: Version): Version {
-  return { name: source.name, trigger: source.trigger, nodes: source.nodes, edges: source.edges };
+  return {
+    name: source.name,
+    trigger: source.trigger,
+    ...(source.moreTriggers?.length ? { moreTriggers: source.moreTriggers } : {}),
+    ...(source.triggerStarts ? { triggerStarts: source.triggerStarts } : {}),
+    nodes: source.nodes,
+    edges: source.edges,
+  };
+}
+
+/** The fields to write with a new live version; `moreTriggers` and the rest go when unused. */
+function liveFields(
+  automation: Doc<"automations">,
+  version: Version,
+  enabled: boolean,
+): Partial<Doc<"automations">> {
+  return {
+    ...version,
+    moreTriggers: version.moreTriggers,
+    triggerStarts: version.triggerStarts,
+    multiTrigger: multiTriggerOf(version),
+    ...scheduleTimesOf(automation, version, enabled),
+    watchFrom: watchStartOf(automation, version, enabled),
+  };
 }
 
 /** What the editor and the agent work on: the draft when there is one, else the live version. */
 function workingCopy(automation: Doc<"automations">): Version {
   return versionOf(automation.draft ?? automation);
-}
-
-/** A watched folder starts counting from the moment it is switched on. */
-function watchStart(
-  automation: Doc<"automations">,
-  trigger: Doc<"automations">["trigger"],
-  enabled: boolean,
-): number | undefined {
-  if (!enabled || trigger.kind !== "folder") return undefined;
-  const same =
-    automation.enabled &&
-    automation.trigger.kind === "folder" &&
-    automation.trigger.prefix === trigger.prefix;
-  return same ? (automation.watchFrom ?? Date.now()) : Date.now();
 }
 
 export async function storageProblem(
@@ -118,8 +147,17 @@ export async function storageProblem(
   return storage ? null : "Connect your toolkit from Home first.";
 }
 
-function scheduledNext(trigger: Doc<"automations">["trigger"], enabled: boolean): number | null {
-  return enabled && trigger.kind === "schedule" ? nextRunAt(trigger.schedule, Date.now()) : null;
+/** Whether any of the version's triggers needs the team's storage, and it is not there. */
+async function storageProblemOf(
+  ctx: Parameters<typeof requireMember>[0],
+  organizationId: string,
+  version: Pick<Version, "trigger" | "moreTriggers">,
+): Promise<string | null> {
+  for (const { trigger } of triggersOf(version as AutomationDraft)) {
+    const problem = await storageProblem(ctx, organizationId, trigger);
+    if (problem) return problem;
+  }
+  return null;
 }
 
 /** Problems that stop an automation being switched on or run. Null when there are none. */
@@ -128,6 +166,7 @@ export function automationProblem(
   nodes: AutomationNode[],
   edges: AutomationEdge[],
   brand: Brand,
+  more: Pick<Version, "moreTriggers" | "triggerStarts"> = {},
 ): string | null {
   const graph = graphProblem(nodes, edges);
   if (graph) return graph;
@@ -150,11 +189,25 @@ export function automationProblem(
     const logic = logicProblem(node);
     if (logic) return `${title}: ${logic}`;
   }
+  const all = { trigger, ...more, nodes, edges } as AutomationDraft;
+  for (const each of triggersOf(all)) {
+    const problem = oneTriggerProblem(each.trigger);
+    if (problem) return problem;
+  }
+  return triggersProblem(all);
+}
+
+function oneTriggerProblem(trigger: Doc<"automations">["trigger"]): string | null {
   if (trigger.kind === "schedule") return scheduleProblem(trigger.schedule);
   if (trigger.kind === "finished") return followProblem(trigger);
   if (trigger.kind === "folder" && trigger.prefix.length > 500)
     return "That folder name is too long.";
   return null;
+}
+
+/** `automationProblem` for a whole version. */
+function versionProblem(version: Version, brand: Brand): string | null {
+  return automationProblem(version.trigger, version.nodes, version.edges, brand, version);
 }
 
 /** A team's automations with the state of each one's latest run. */
@@ -181,6 +234,8 @@ export const list = query({
           // True when there are changes that have not been published yet.
           hasDraft: automation.draft !== undefined,
           trigger: automation.trigger,
+          // The other triggers, when it has more than one.
+          moreTriggers: automation.moreTriggers?.map(({ trigger }) => trigger) ?? [],
           stepCount: automation.nodes.length,
           nodes: automation.nodes,
           edges: automation.edges,
@@ -379,6 +434,7 @@ export const chainView = query({
       id: each._id,
       name: each.name,
       trigger: each.trigger as ChainMember["trigger"],
+      moreTriggers: each.moreTriggers,
       nodes: each.nodes,
     }));
     const { columns, links } = chainGroup(members, automation._id);
@@ -425,9 +481,18 @@ async function followOnsOf(ctx: QueryCtx, automation: Doc<"automations">) {
 /** What `followOns` says about `automation`, given all of its team's automations. */
 function followOnsAmong(team: Doc<"automations">[], automation: Doc<"automations">) {
   const following = team.flatMap((other) => {
-    const { trigger } = workingCopy(other);
-    return trigger.kind === "finished" && trigger.automationId === automation._id
-      ? [{ automationId: other._id, name: other.name, enabled: other.enabled, when: trigger.when }]
+    const follows = triggersOfKind(workingCopy(other), "finished").find(
+      ({ trigger }) => trigger.automationId === automation._id,
+    );
+    return follows
+      ? [
+          {
+            automationId: other._id,
+            name: other.name,
+            enabled: other.enabled,
+            when: follows.trigger.when,
+          },
+        ]
       : [];
   });
   const setUp = new Set(
@@ -607,11 +672,9 @@ export const importFile = mutation({
     if (!read.ok) fail("invalid_input", read.message);
     const automationId = await ctx.db.insert("automations", {
       organizationId: args.organizationId,
-      name: read.draft.name,
       enabled: false,
-      trigger: read.draft.trigger,
-      nodes: read.draft.nodes,
-      edges: read.draft.edges,
+      ...versionOf(read.draft as Version),
+      multiTrigger: multiTriggerOf(read.draft as Version),
       hookToken: randomToken(),
       nextRunAt: null,
       createdBy: userId,
@@ -646,6 +709,8 @@ export const save = mutation({
     automationId: v.id("automations"),
     name: v.string(),
     trigger: triggerValidator,
+    moreTriggers: v.optional(moreTriggersValidator),
+    triggerStarts: v.optional(v.array(v.string())),
     nodes: v.array(nodeValidator),
     edges: v.array(edgeValidator),
   },
@@ -663,7 +728,7 @@ function checked(version: Version): Version {
   if (JSON.stringify(version.nodes).length > 400_000) {
     fail("invalid_input", "This automation's settings are too large to save.");
   }
-  return { ...versionOf(version), name };
+  return versionOf(tidyTriggers({ ...versionOf(version), name } as AutomationDraft) as Version);
 }
 
 async function problemOf(
@@ -674,13 +739,8 @@ async function problemOf(
   const { organizationId } = automation;
   await withTeamSteps(ctx, organizationId);
   return (
-    automationProblem(
-      version.trigger,
-      version.nodes,
-      version.edges,
-      await brandOf(ctx, organizationId, automation.clientId),
-    ) ??
-    (await storageProblem(ctx, organizationId, version.trigger)) ??
+    versionProblem(version, await brandOf(ctx, organizationId, automation.clientId)) ??
+    (await storageProblemOf(ctx, organizationId, version)) ??
     (await linkProblem(ctx, automation, version))
   );
 }
@@ -695,8 +755,10 @@ async function linkProblem(
   version: Version,
 ): Promise<string | null> {
   const targets = version.nodes.flatMap((node) => targetOf(node) ?? []);
-  const followed = version.trigger.kind === "finished" ? version.trigger.automationId : null;
-  if (targets.length === 0 && !followed) return null;
+  const followedIds = triggersOfKind(version, "finished").map(
+    ({ trigger }) => trigger.automationId,
+  );
+  if (targets.length === 0 && followedIds.length === 0) return null;
   const team = await ctx.db
     .query("automations")
     .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
@@ -705,7 +767,7 @@ async function linkProblem(
   if (targets.some((id) => !ids.has(id))) {
     return "A Run an automation step points at an automation that no longer exists. Pick another.";
   }
-  if (followed && !ids.has(followed)) {
+  if (followedIds.some((followed) => followed && !ids.has(followed))) {
     return "The automation this one waits for no longer exists. Pick another.";
   }
   // Every other automation as it will run (its draft too, which may be published later),
@@ -717,6 +779,7 @@ async function linkProblem(
       id: other._id,
       name: other.name,
       trigger: each.trigger,
+      moreTriggers: each.moreTriggers,
       nodes: each.nodes,
     }));
   });
@@ -724,6 +787,7 @@ async function linkProblem(
     id: automation._id,
     name: version.name,
     trigger: version.trigger,
+    moreTriggers: version.moreTriggers,
     nodes: version.nodes,
   });
   const loop = chainLoop(automation._id, members);
@@ -778,11 +842,9 @@ async function storeLive(
   const problem = await problemOf(ctx, automation, version);
   const enabled = automation.enabled && problem === null;
   await ctx.db.patch(automation._id, {
-    ...version,
+    ...liveFields(automation, version, enabled),
     draft: undefined,
     enabled,
-    nextRunAt: scheduledNext(version.trigger, enabled),
-    watchFrom: watchStart(automation, version.trigger, enabled),
     updatedAt: Date.now(),
   });
   await recordVersion(ctx, automation, version, by);
@@ -1019,25 +1081,36 @@ export const setEnabled = mutation({
   args: { automationId: v.id("automations"), enabled: v.boolean() },
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
-    if (args.enabled) {
-      const problem =
-        automationProblem(
-          automation.trigger,
-          automation.nodes,
-          automation.edges,
-          await brandOf(ctx, automation.organizationId, automation.clientId),
-        ) ??
-        (await storageProblem(ctx, automation.organizationId, automation.trigger)) ??
-        (await linkProblem(ctx, automation, automation));
-      if (problem) fail("invalid_input", problem);
-    }
-    await ctx.db.patch(args.automationId, {
-      enabled: args.enabled,
-      nextRunAt: scheduledNext(automation.trigger, args.enabled),
-      watchFrom: watchStart(automation, automation.trigger, args.enabled),
-    });
+    await switchAutomation(ctx, automation, args.enabled);
   },
 });
+
+/**
+ * Switches an automation on or off. Switching on refuses, in plain words, while something
+ * stops it running. Workflows switch all of theirs this way too.
+ */
+export async function switchAutomation(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  enabled: boolean,
+): Promise<void> {
+  if (enabled) {
+    const problem =
+      versionProblem(
+        automation,
+        await brandOf(ctx, automation.organizationId, automation.clientId),
+      ) ??
+      (await storageProblemOf(ctx, automation.organizationId, automation)) ??
+      (await linkProblem(ctx, automation, automation));
+    if (problem) fail("invalid_input", problem);
+  }
+  await ctx.db.patch(automation._id, {
+    enabled,
+    // Switching on starts every schedule afresh.
+    ...scheduleTimesOf(null, automation, enabled),
+    watchFrom: watchStartOf(automation, automation, enabled),
+  });
+}
 
 /** Deletes the automation. Its past runs stay in the run history. */
 export const remove = mutation({
@@ -1060,6 +1133,9 @@ export const runNow = mutation({
     automationId: v.id("automations"),
     fileUrl: v.optional(v.string()),
     version: v.optional(v.union(v.literal("draft"), v.literal("live"))),
+    // With several triggers: which one's steps to run, as if it had started it. The first
+    // when left out.
+    triggerId: v.optional(v.string()),
   },
   returns: v.id("runs"),
   handler: async (ctx, args) => {
@@ -1068,17 +1144,40 @@ export const runNow = mutation({
     if (fileUrl && !/^https?:\/\//.test(fileUrl)) {
       fail("invalid_input", "The file address must start with http:// or https://.");
     }
+    const version = args.version === "live" ? automation : withWorkingCopy(automation);
+    const triggerId = knownTrigger(version, args.triggerId);
     const started = await startRun(
       ctx,
-      args.version === "live" ? automation : { ...automation, ...workingCopy(automation) },
+      version,
       "manual",
       fileUrl ? { file_url: fileUrl } : {},
       userId,
+      { triggerId },
     );
     if (!started.ok) fail("invalid_input", started.message);
     return started.runId;
   },
 });
+
+/** The automation with what the canvas shows in place of the live version. */
+function withWorkingCopy(automation: Doc<"automations">): Doc<"automations"> {
+  const working = workingCopy(automation);
+  return {
+    ...automation,
+    ...working,
+    moreTriggers: working.moreTriggers,
+    triggerStarts: working.triggerStarts,
+  };
+}
+
+/** The trigger id asked for, checked, or the first trigger's. */
+function knownTrigger(version: Version, asked: string | undefined): string {
+  if (!asked || asked === FIRST_TRIGGER) return FIRST_TRIGGER;
+  if (!triggerWithId(version as AutomationDraft, asked)) {
+    fail("invalid_input", "That trigger is no longer on this automation.");
+  }
+  return asked;
+}
 
 /**
  * The file a try run works on: the upload asked for, or else the team's newest upload the
@@ -1109,15 +1208,25 @@ function pickUpload(
 
 /** The upload a try run would use, and the team's storage to make its link. Members only. */
 export const tryTarget = internalQuery({
-  args: { automationId: v.id("automations"), uploadId: v.optional(v.string()) },
+  args: {
+    automationId: v.id("automations"),
+    uploadId: v.optional(v.string()),
+    triggerId: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
+    const working = workingCopy(automation);
+    const triggerId = knownTrigger(working, args.triggerId);
     const uploads = await ctx.db
       .query("uploads")
       .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
       .order("desc")
       .take(100);
-    const upload = pickUpload(uploads, workingCopy(automation).trigger, args.uploadId);
+    const upload = pickUpload(
+      uploads,
+      triggerWithId(working as AutomationDraft, triggerId) ?? working.trigger,
+      args.uploadId,
+    );
     if (typeof upload === "string") fail("invalid_input", upload);
     const storage = await storageConnection(ctx, automation.organizationId);
     if (!storage) fail("no_storage", "Connect your toolkit first.");
@@ -1127,16 +1236,22 @@ export const tryTarget = internalQuery({
 
 /** Starts the try run. Members only, checked again here. */
 export const startTry = internalMutation({
-  args: { automationId: v.id("automations"), trigger: v.any() },
+  args: {
+    automationId: v.id("automations"),
+    trigger: v.any(),
+    triggerId: v.optional(v.string()),
+  },
   returns: v.id("runs"),
   handler: async (ctx, args) => {
     const { automation, userId } = await loadForMember(ctx, args.automationId);
+    const version = withWorkingCopy(automation);
     const started = await startRun(
       ctx,
-      { ...automation, ...workingCopy(automation) },
+      version,
       "manual",
       args.trigger as Record<string, unknown>,
       userId,
+      { triggerId: knownTrigger(version, args.triggerId) },
     );
     if (!started.ok) fail("invalid_input", started.message);
     return started.runId;
@@ -1149,13 +1264,18 @@ export const startTry = internalMutation({
  * takes the newest one the automation's trigger would take.
  */
 export const tryOnUpload = action({
-  args: { automationId: v.id("automations"), uploadId: v.optional(v.string()) },
+  args: {
+    automationId: v.id("automations"),
+    uploadId: v.optional(v.string()),
+    triggerId: v.optional(v.string()),
+  },
   returns: v.object({ runId: v.id("runs"), fileName: v.string() }),
   handler: async (ctx, args): Promise<{ runId: Id<"runs">; fileName: string }> => {
     const { upload, storage } = await ctx.runQuery(internal.automations.tryTarget, args);
     const fileUrl = await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
     const runId: Id<"runs"> = await ctx.runMutation(internal.automations.startTry, {
       automationId: args.automationId,
+      ...(args.triggerId ? { triggerId: args.triggerId } : {}),
       trigger: {
         file_url: fileUrl,
         file_name: upload.fileName,
@@ -1246,7 +1366,8 @@ export const startFromHook = internalMutation({
     const automation = id ? await ctx.db.get(id) : null;
     if (!automation) return { outcome: "not_found" as const };
     if (automation.hookToken !== args.token) return { outcome: "forbidden" as const };
-    if (!automation.enabled || automation.trigger.kind !== "webhook") {
+    const hook = triggersOfKind(automation, "webhook")[0];
+    if (!automation.enabled || !hook) {
       return { outcome: "off" as const };
     }
     const body = args.body as Record<string, unknown> | null;
@@ -1259,6 +1380,7 @@ export const startFromHook = internalMutation({
       "webhook",
       { ...(fileUrl ? { file_url: fileUrl } : {}), body: body ?? {} },
       null,
+      { triggerId: hook.id },
     );
     if (!started.ok) return { outcome: "invalid" as const, message: started.message };
     return { outcome: "started" as const, runId: started.runId };
@@ -1277,13 +1399,19 @@ export const tick = internalMutation({
       )
       .take(50);
     for (const automation of due) {
-      if (automation.trigger.kind !== "schedule") {
-        await ctx.db.patch(automation._id, { nextRunAt: null });
-        continue;
-      }
-      await ctx.db.patch(automation._id, {
-        nextRunAt: nextRunAt(automation.trigger.schedule, now),
-      });
+      const fired = dueSchedules(automation, now);
+      // Each schedule that came due moves on to its next time; the others keep theirs.
+      await ctx.db.patch(
+        automation._id,
+        scheduleTimesOf(
+          automation,
+          automation,
+          true,
+          now,
+          fired.map((each) => each.id),
+        ),
+      );
+      if (fired.length === 0) continue;
       // If the last run is still going, skip this turn so runs never pile up.
       const lastRun = await ctx.db
         .query("runs")
@@ -1291,7 +1419,11 @@ export const tick = internalMutation({
         .order("desc")
         .first();
       if (lastRun && (lastRun.status === "running" || lastRun.status === "waiting")) continue;
-      await startRun(ctx, automation, "schedule", { scheduled_for: automation.nextRunAt }, null);
+      for (const { id, at } of fired) {
+        await startRun(ctx, automation, "schedule", { scheduled_for: at }, null, {
+          triggerId: id,
+        });
+      }
     }
   },
 });
@@ -1306,17 +1438,23 @@ export const loadUploadForTrigger = internalQuery({
       .withIndex("by_organization", (q) => q.eq("organizationId", upload.organizationId))
       .take(200);
     const family = upload.contentType.split("/")[0];
-    const matching = automations.filter(
-      (automation) =>
-        automation.enabled &&
-        automation.trigger.kind === "upload" &&
-        (automation.trigger.fileType === "any" || automation.trigger.fileType === family) &&
-        withinLength(automation.trigger, upload.details),
+    // One run for each upload trigger that wants the file; an automation with two that
+    // both want it runs both branches.
+    const matching = automations.flatMap((automation) =>
+      automation.enabled
+        ? triggersOfKind(automation, "upload")
+            .filter(
+              ({ trigger }) =>
+                (trigger.fileType === "any" || trigger.fileType === family) &&
+                withinLength(trigger, upload.details),
+            )
+            .map(({ id }) => ({ automationId: automation._id, triggerId: id }))
+        : [],
     );
     if (matching.length === 0) return null;
     const storage = await storageConnection(ctx, upload.organizationId);
     if (!storage) return null;
-    return { upload, storage, automationIds: matching.map((automation) => automation._id) };
+    return { upload, storage, starts: matching };
   },
 });
 
@@ -1329,7 +1467,7 @@ export const uploadFinished = internalAction({
     const { upload, storage } = found;
     const fileUrl = await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
     await ctx.runMutation(internal.automations.startFromUpload, {
-      automationIds: found.automationIds,
+      starts: found.starts,
       trigger: {
         file_url: fileUrl,
         file_name: upload.fileName,
@@ -1345,12 +1483,16 @@ export const uploadFinished = internalAction({
 });
 
 export const startFromUpload = internalMutation({
-  args: { automationIds: v.array(v.id("automations")), trigger: v.any() },
+  args: {
+    starts: v.array(v.object({ automationId: v.id("automations"), triggerId: v.string() })),
+    trigger: v.any(),
+  },
   handler: async (ctx, args) => {
-    for (const automationId of args.automationIds) {
+    for (const { automationId, triggerId } of args.starts) {
       const automation = await ctx.db.get(automationId);
-      if (!automation || !automation.enabled || automation.trigger.kind !== "upload") continue;
-      await startRun(ctx, automation, "upload", args.trigger, null);
+      if (!automation || !automation.enabled) continue;
+      if (!triggersOfKind(automation, "upload").some((each) => each.id === triggerId)) continue;
+      await startRun(ctx, automation, "upload", args.trigger, null, { triggerId });
     }
   },
 });

@@ -8,6 +8,8 @@ import {
   type AutomationNode,
   automationFileName,
   exportAutomation,
+  startsByTrigger,
+  triggersOf,
 } from "@ncat-dash/automation-core";
 import { Background, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
@@ -33,9 +35,8 @@ import {
   type FlowNode,
   flowEdge,
   nodeTypes,
-  TRIGGER_ID,
   triggerEdges,
-  triggerPosition,
+  triggerPositions,
 } from "./flow-nodes";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
@@ -68,13 +69,15 @@ function VersionCanvas({ version }: { version: AutomationDraft }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
   const flow = useMemo(() => {
+    const starts = startsByTrigger(version);
+    const places = triggerPositions([...starts.keys()], version.nodes, starts);
     const nodes: FlowNode[] = [
-      {
-        id: TRIGGER_ID,
-        type: "trigger",
-        position: triggerPosition(version.nodes),
-        data: { trigger: version.trigger as Trigger },
-      },
+      ...triggersOf(version).map(({ id, trigger }) => ({
+        id,
+        type: "trigger" as const,
+        position: places.get(id) ?? { x: 0, y: 0 },
+        data: { trigger: trigger as Trigger },
+      })),
       ...version.nodes.map(({ position, ...node }) => ({
         id: node.id,
         type: "step" as const,
@@ -86,6 +89,7 @@ function VersionCanvas({ version }: { version: AutomationDraft }) {
       ...triggerEdges(
         version.nodes.map((node) => node.id),
         version.edges,
+        starts.size > 1 ? starts : undefined,
       ),
       ...version.edges.map((edge) => flowEdge(canvasEdge(edge))),
     ];

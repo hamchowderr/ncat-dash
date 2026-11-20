@@ -111,15 +111,17 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
     expect(narrowed.x + narrowed.width).toBeLessThanOrEqual(settings.x + 1);
     expect(await covered(page), `step settings at ${size.width}`).toEqual([]);
 
-    // The agent is a sidebar folded to a strip on the right, beside the page and not over
-    // it. It opens beside the page, and the notices stay clear of it.
-    const strip = page.getByRole("complementary", { name: "Agent" });
-    await expect(strip).toBeVisible();
-    const stripBox = (await strip.boundingBox())!;
-    const pageBeside = await box(page, "[data-page-frame]");
-    expect(pageBeside.x + pageBeside.width).toBeLessThanOrEqual(stripBox.x + 1);
+    // Closed, the agent takes no room: its robot sits in the bar along the top, inside the
+    // page, the mirror of the menu's button. It opens beside the page, and the notices stay
+    // clear of it.
+    const robot = page.locator("header").getByRole("button", { name: "Open the agent" });
+    await expect(robot).toBeVisible();
+    const pageFrame = await box(page, "[data-page-frame]");
+    const robotBox = (await robot.boundingBox())!;
+    expect(robotBox.x + robotBox.width).toBeLessThanOrEqual(pageFrame.x + pageFrame.width + 1);
+    await expect(page.getByRole("complementary", { name: "Agent" })).toBeHidden();
     await expect(page.getByRole("button", { name: "Agent", exact: true })).toHaveCount(0);
-    await strip.getByRole("button", { name: "Open the agent" }).click();
+    await robot.click();
     const agent = page.getByRole("complementary", { name: "Agent" });
     await expect(agent).toBeVisible();
     await page.waitForTimeout(500);
@@ -128,12 +130,12 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
     expect(page_.x + page_.width).toBeLessThanOrEqual(agentBox.x + 1);
     expect(await covered(page), `agent at ${size.width}`).toEqual([]);
     await agent.getByRole("button", { name: /Close/ }).click();
-    await expect(agent.getByRole("button", { name: "Open the agent" })).toBeVisible();
+    await expect(robot).toBeVisible();
     // Cmd/Ctrl+J opens and closes it from the keyboard.
     await page.keyboard.press("ControlOrMeta+j");
     await expect(agent.getByRole("button", { name: /Close the agent/ })).toBeVisible();
     await page.keyboard.press("ControlOrMeta+j");
-    await expect(agent.getByRole("button", { name: "Open the agent" })).toBeVisible();
+    await expect(robot).toBeVisible();
   }
 
   // On a screen too narrow for a column beside the page, the agent takes the page's place
@@ -141,7 +143,7 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 800 });
   await page.goto(editor);
   const agent = page.getByRole("complementary", { name: "Agent" });
-  await agent.getByRole("button", { name: "Open the agent" }).click();
+  await page.locator("header").getByRole("button", { name: "Open the agent" }).click();
   await expect(agent).toBeVisible();
   await expect(page.locator("[data-page-frame]")).toBeHidden();
   expect(await covered(page), "agent on a narrow screen").toEqual([]);

@@ -46,6 +46,10 @@ function changeLine(change: Record<string, unknown>): string | null {
         : "Rename a step";
     case "trigger":
       return `Start it with: ${typeTitle((change.trigger as { kind?: unknown } | undefined)?.kind)}`;
+    case "addTrigger":
+      return `Also start it with: ${typeTitle((change.trigger as { kind?: unknown } | undefined)?.kind)}`;
+    case "removeTrigger":
+      return "Remove a trigger";
     case "name":
       return typeof change.name === "string"
         ? `Rename the automation to "${change.name}"`
@@ -56,6 +60,40 @@ function changeLine(change: Record<string, unknown>): string | null {
     default:
       return "Make a change";
   }
+}
+
+const KIND_LABELS: Record<string, string> = {
+  client: "client work",
+  ugc: "UGC and ads",
+  own: "your own content",
+  quick: "a quick personal job",
+};
+
+/** What a workflow set-up would change, one line each. */
+function workflowLines(given: Args): string[] {
+  const lines: string[] = [];
+  if (isText(given?.name)) lines.push(`Called "${given.name}"`);
+  if (isText(given?.kind) && KIND_LABELS[given.kind]) lines.push(`For ${KIND_LABELS[given.kind]}`);
+  if (given?.clientId === null) lines.push("For your team, not a client");
+  else if (isText(given?.clientId)) lines.push("For one of your clients");
+  const review = (given?.review ?? {}) as Record<string, unknown>;
+  if (review.on === false) lines.push("No review: the files go out as soon as they are made");
+  else if (review.on === true) lines.push("One review just before the last files go out");
+  if (Array.isArray(review.reviewers)) {
+    lines.push(
+      review.reviewers.length === 0
+        ? "Anyone on the team can approve"
+        : `${count(review.reviewers.length, "person", "people")} picked to approve`,
+    );
+  }
+  if (typeof review.timeLimit === "number") {
+    lines.push(
+      review.timeLimit > 0
+        ? `Decides by itself after ${review.timeLimit} ${isText(review.timeLimitUnit) ? review.timeLimitUnit : "hours"}`
+        : "Waits until someone decides",
+    );
+  }
+  return lines.length > 0 ? lines : ["Its automations become one workflow with one review"];
 }
 
 export function toolWords(name: string | undefined, args: unknown): ToolWords {
@@ -173,6 +211,24 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
         question: "Rename this file?",
         lines: [
           `${isText(given?.key) ? fileName(given.key) : "The file"} becomes "${isText(given?.name) ? given.name : ""}"`,
+        ],
+      };
+    case "describe_workflow":
+      return { title: "Reading the workflow", question: "", lines: [] };
+    case "set_up_workflow":
+      return {
+        title: "Setting up the workflow",
+        question: "Set up this workflow?",
+        lines: workflowLines(given),
+      };
+    case "switch_workflow":
+      return {
+        title: given?.on ? "Switching the workflow on" : "Switching the workflow off",
+        question: given?.on ? "Switch this whole workflow on?" : "Switch this whole workflow off?",
+        lines: [
+          given?.on
+            ? "Every automation in it will then start by itself, with nobody logged in."
+            : "None of its automations will start by themselves.",
         ],
       };
     case "switch_automation":

@@ -10,6 +10,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
 import { requireMember } from "./lib/authz";
+import { enabledWithTrigger, triggersOfKind } from "./lib/triggers";
 
 // The content calendar: posts planned for a day and time, repeating slots that queued
 // posts fill, project slots that are due, and the times scheduled automations run.
@@ -222,36 +223,29 @@ export const range = query({
     }
 
     // When the team's switched-on scheduled automations run, from now on.
-    const automations = (
-      await ctx.db
-        .query("automations")
-        .withIndex("by_enabled_and_trigger_kind", (q) =>
-          q.eq("enabled", true).eq("trigger.kind", "schedule"),
-        )
-        .take(1000)
-    ).filter(
+    const automations = (await enabledWithTrigger(ctx, "schedule", 1000)).filter(
       (automation) => automation.organizationId === args.organizationId && forClient(automation),
     );
     const runs: { automationId: Id<"automations">; name: string; at: number }[] = [];
     const repeating: { automationId: Id<"automations">; name: string; minutes: number }[] = [];
     for (const automation of automations) {
-      if (automation.trigger.kind !== "schedule") continue;
-      const schedule = automation.trigger.schedule;
-      const { times, perDay } = scheduleTimes(
-        schedule,
-        Math.max(args.from, now),
-        args.to,
-        automation.nextRunAt,
-      );
-      if (perDay && schedule.mode === "interval") {
-        repeating.push({
-          automationId: automation._id,
-          name: automation.name,
-          minutes: schedule.minutes,
-        });
+      for (const { id, trigger } of triggersOfKind(automation, "schedule")) {
+        const schedule = trigger.schedule;
+        // With several schedules, each has its own next time.
+        const next = automation.scheduleTimes
+          ? (automation.scheduleTimes.find((each) => each.triggerId === id)?.at ?? null)
+          : automation.nextRunAt;
+        const { times, perDay } = scheduleTimes(schedule, Math.max(args.from, now), args.to, next);
+        if (perDay && schedule.mode === "interval") {
+          repeating.push({
+            automationId: automation._id,
+            name: automation.name,
+            minutes: schedule.minutes,
+          });
+        }
+        for (const at of times)
+          runs.push({ automationId: automation._id, name: automation.name, at });
       }
-      for (const at of times)
-        runs.push({ automationId: automation._id, name: automation.name, at });
     }
 
     return {

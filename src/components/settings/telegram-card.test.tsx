@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { answerQuery, mutationOf, toastError, toastSuccess } from "@/test/convex";
+import { actionOf, answerQuery, mutationOf, toastError, toastSuccess } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
 import { TelegramCard } from "./telegram-card";
@@ -43,6 +43,34 @@ function stubTab() {
 }
 
 describe("the Telegram card", () => {
+  test("a group where tagging the agent can't reach it says how to fix it", async () => {
+    answerQuery(api.telegram.forTeam, linked);
+    actionOf(api.telegram.groupHearing).mockResolvedValue([
+      { chatId: "-100777", hears: false, privacyOff: false },
+    ]);
+    renderInApp(<TelegramCard />);
+    const note = await screen.findByRole("note");
+    expect(note).toHaveTextContent(/Tagging the agent here doesn.t reach it yet/);
+    expect(note).toHaveTextContent(/send \/setprivacy to @BotFather/);
+    expect(note).toHaveTextContent(/add it to this group again/);
+    expect(actionOf(api.telegram.groupHearing)).toHaveBeenCalledWith({ organizationId: TEAM.id });
+  });
+
+  test("a group that hears the agent being tagged shows no warning", async () => {
+    answerQuery(api.telegram.forTeam, linked);
+    const check = actionOf(api.telegram.groupHearing);
+    check.mockResolvedValue([{ chatId: "-100777", hears: true, privacyOff: true }]);
+    renderInApp(<TelegramCard />);
+    await waitFor(() => expect(check).toHaveBeenCalled());
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  test("with no groups, Telegram is not asked about them", () => {
+    answerQuery(api.telegram.forTeam, empty);
+    renderInApp(<TelegramCard />);
+    expect(actionOf(api.telegram.groupHearing)).not.toHaveBeenCalled();
+  });
+
   test("the group that hears about reviews says so, and an owner can stop it", async () => {
     answerQuery(api.telegram.forTeam, {
       ...linked,

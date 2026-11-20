@@ -1,4 +1,4 @@
-import { type AutomationNode, nodeTypeOf } from "@ncat-dash/automation-core";
+import { type AutomationNode, nodeTypeOf, triggersOf } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, type MutationCtx, query } from "./_generated/server";
@@ -379,7 +379,15 @@ export const runAgain = mutation({
           userId,
           { test: run.test },
         )
-      : await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
+      : await startRun(ctx, automation, run.triggerKind, run.trigger, userId, {
+          // The same trigger's steps again, when that trigger is still there.
+          ...(run.triggerId &&
+          triggersOf(automation as Parameters<typeof triggersOf>[0]).some(
+            (each) => each.id === run.triggerId,
+          )
+            ? { triggerId: run.triggerId }
+            : {}),
+        });
     if (!started.ok) throw new ConvexError({ code: "invalid_input", message: started.message });
     return started.runId;
   },
