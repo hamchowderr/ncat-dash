@@ -1,4 +1,8 @@
-import type { AgentControllerChannelsConfig, ChannelHandler } from "@mastra/core/channels";
+import type {
+  ActionChannelHandler,
+  AgentControllerChannelsConfig,
+  ChannelHandler,
+} from "@mastra/core/channels";
 import { onAlertButton } from "./alert-buttons";
 import { asTheDiscordWriter, discordAdapter } from "./discord";
 import { onReviewReply } from "./review-replies";
@@ -15,6 +19,10 @@ export const byPlatform: ChannelHandler = async (thread, message, next, ctx) => 
   if (thread.id.startsWith("teams:")) return await asTheTeamsWriter(thread, message, next, ctx);
   return await asTheWriter(thread, message, next, ctx);
 };
+
+/** Approve and Send back on the dashboard's alerts: Discord's presses, then Teams'. */
+export const onChatAlertButton: ActionChannelHandler = (event, next, ctx) =>
+  onAlertButton(event, () => onTeamsAlertButton(event, next, ctx), ctx);
 
 export function chatChannels(): AgentControllerChannelsConfig | undefined {
   const slack = slackChannels();
@@ -33,8 +41,7 @@ export function chatChannels(): AgentControllerChannelsConfig | undefined {
       onSubscribedMessage: byPlatform,
       // Approve and Send back on the dashboard's alerts: Discord presses, then Teams
       // presses; anything else as before.
-      onAction: (event, next, ctx) =>
-        onAlertButton(event, () => onTeamsAlertButton(event, next, ctx), ctx),
+      onAction: onChatAlertButton,
       // Teammates' replies in a review's Discord thread go to the review; nothing else.
       ...(discord ? { onMessage: onReviewReply } : {}),
     },
