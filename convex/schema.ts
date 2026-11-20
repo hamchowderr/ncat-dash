@@ -243,6 +243,24 @@ export const motionSetupValidator = v.object({
 // Users, sessions, organizations (teams), members and invitations live in the
 // Better Auth component (convex/betterAuth). App tables point at a team by its
 // organization id, and every read or write checks membership first (lib/authz.ts).
+// For one kind of news: whether it shows under the bell, is emailed, and goes to each
+// chat app the member linked. Left out: the kind's default.
+const kindChannels = v.object({
+  bell: v.optional(v.boolean()),
+  email: v.optional(v.boolean()),
+  telegram: v.optional(v.boolean()),
+  slack: v.optional(v.boolean()),
+  discord: v.optional(v.boolean()),
+  teams: v.optional(v.boolean()),
+});
+
+const chatAppValidator = v.union(
+  v.literal("telegram"),
+  v.literal("slack"),
+  v.literal("discord"),
+  v.literal("teams"),
+);
+
 export default defineSchema({
   toolkitConnections: defineTable({
     organizationId: v.string(),
@@ -818,6 +836,8 @@ export default defineSchema({
       v.literal("client_feedback"),
       // "ready_for_review": a new version went into a project's slot and waits for review.
       v.literal("ready_for_review"),
+      // "clip_finished": a run is done and its finished files were kept in Files.
+      v.literal("clip_finished"),
     ),
     // The members it is for. Left out: everyone on the team.
     recipients: v.optional(v.array(v.string())),
@@ -1254,31 +1274,40 @@ export default defineSchema({
 
   // A member who has switched off emails about failed runs for a team. No row means
   // they get them.
+  // Each alert message a chat app was sent, so that once an approval is decided (from the
+  // dashboard or any app) every message about it can be changed to say so and lose its
+  // buttons. `userId` is left out for a message to a team channel rather than a person.
+  chatAlertMessages: defineTable({
+    organizationId: v.string(),
+    alertId: v.id("alerts"),
+    // The approval step it asks about, kept because the alert itself goes once decided.
+    runStepId: v.optional(v.id("runSteps")),
+    app: chatAppValidator,
+    userId: v.optional(v.string()),
+    // Whatever the app needs to find the message again, such as "chat id:message id".
+    ref: v.string(),
+    // The text it was sent with, so it can be edited without building it again.
+    text: v.string(),
+    settledAt: v.optional(v.number()),
+  })
+    .index("by_alert", ["alertId"])
+    .index("by_runStep", ["runStepId"]),
+
   notificationPreferences: defineTable({
     organizationId: v.string(),
     userId: v.string(),
-    // Per kind of news: under the bell, by email. Anything left out keeps its default
-    // (see NOTIFICATION_KINDS in convex/lib/notifications.ts).
+    // Per kind of news: under the bell, by email, and in each chat app the member linked.
+    // Anything left out keeps its default (see NOTIFICATION_KINDS in
+    // convex/lib/notifications.ts).
     kinds: v.optional(
       v.object({
-        run_failed: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
-        approval_waiting: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
-        approval_timed_out: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
-        mention: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
-        client_feedback: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
-        ready_for_review: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
+        run_failed: v.optional(kindChannels),
+        approval_waiting: v.optional(kindChannels),
+        approval_timed_out: v.optional(kindChannels),
+        mention: v.optional(kindChannels),
+        client_feedback: v.optional(kindChannels),
+        ready_for_review: v.optional(kindChannels),
+        clip_finished: v.optional(kindChannels),
       }),
     ),
     // "now": each email as it happens. "daily": one summary a day at `digestHour` in

@@ -1126,6 +1126,8 @@ export async function decideApproval(
     .withIndex("by_runStep", (q) => q.eq("runStepId", step._id))
     .take(10);
   for (const alert of waiting) await ctx.db.delete(alert._id);
+  // Messages in chat apps that asked about it now say how it ended, without buttons.
+  await ctx.scheduler.runAfter(0, internal.chatAlerts.settle, { runStepId: step._id });
   // Nobody decided in time: the people who were asked hear what it decided by itself.
   if (userId === null && !run.test) {
     const limit = node ? approvalSettings(node.input).limit : null;

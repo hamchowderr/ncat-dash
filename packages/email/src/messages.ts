@@ -295,6 +295,31 @@ export function readyForReviewEmail(
   );
 }
 
+export function clipFinishedEmail(
+  args: {
+    teamName?: string;
+    automationName: string;
+    summary: string;
+    runUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const automation = oneLine(args.automationName, 80);
+  return compose(
+    `New files from ${automation}`,
+    {
+      heading: `${automation} finished`,
+      paragraphs: [
+        `${oneLine(args.summary, 300)}${args.teamName ? ` In ${oneLine(args.teamName, 60)}.` : ""}`,
+      ],
+      button: { label: "Open the run", url: args.runUrl },
+      footnote: `To stop these emails, change your notification settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
 /** One line in a daily summary. */
 export type DigestItem = { title: string; detail?: string; url: string };
 
