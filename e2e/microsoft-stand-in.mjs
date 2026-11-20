@@ -6,7 +6,13 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
-import { MICROSOFT, MICROSOFT_PORT, MICROSOFT_USER, recording } from "./microsoft-data.mjs";
+import {
+  MICROSOFT,
+  MICROSOFT_PORT,
+  MICROSOFT_USER,
+  recording,
+  TEAMS_TEAM,
+} from "./microsoft-data.mjs";
 
 function read(request) {
   return new Promise((resolve) => {
@@ -29,6 +35,8 @@ let files = [recording("past-1", "Client Kickoff", 2 * 24 * 60)];
 // Recordings of other people's meetings, in their OneDrive, shared with the account.
 let shared = [];
 const watches = new Map();
+// What the Teams bot posted.
+const posts = [];
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", MICROSOFT);
@@ -42,11 +50,38 @@ const server = createServer(async (request, response) => {
   }
   if (path === "/common/oauth2/v2.0/token" && request.method === "POST") {
     await read(request);
+    // The id token names the account's organization, as Microsoft's does ("tid").
+    const claims = Buffer.from(JSON.stringify({ tid: user.tid, oid: user.id })).toString(
+      "base64url",
+    );
     return send(response, 200, {
       access_token: "stand-in-access",
       refresh_token: "stand-in-refresh",
+      id_token: `e30.${claims}.stand-in`,
       expires_in: 3600,
     });
+  }
+  // The Teams bot's own token, and the parts of the Bot Framework API the dashboard uses:
+  // a team's channels, and posting to one. Posts are kept for the tests to read.
+  if (path === "/botframework.com/oauth2/v2.0/token" && request.method === "POST") {
+    await read(request);
+    return send(response, 200, { access_token: "stand-in-bot", expires_in: 3600 });
+  }
+  if (path.startsWith("/bot/v3/teams/") && path.endsWith("/conversations")) {
+    return send(response, 200, {
+      conversations: [
+        { id: TEAMS_TEAM.id, name: null },
+        { id: "19:edits@thread.tacv2", name: "Edits" },
+      ],
+    });
+  }
+  if (path.startsWith("/bot/v3/conversations/") && request.method === "POST") {
+    posts.push({ path, body: JSON.parse(await read(request)) });
+    return send(response, 201, { id: String(posts.length) });
+  }
+  if (path === "/stand-in/posts") return send(response, 200, posts);
+  if (path === "/v1.0/organization") {
+    return send(response, 200, { value: [{ id: user.tid, displayName: "Harbour Films Ltd" }] });
   }
   if (path === "/stand-in/user" && request.method === "POST") {
     user = { ...MICROSOFT_USER, ...JSON.parse((await read(request)) || "{}") };

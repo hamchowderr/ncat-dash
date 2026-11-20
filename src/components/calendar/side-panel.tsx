@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 
 import { dayKey, DUE_HOUR, fromInputValue, timeLabel, toInputValue } from "./dates";
 import { type LibraryFile, LibraryPicker, PickedFiles } from "./library-picker";
+import { movePostLocally, setDueLocally } from "./optimistic";
 import { type Dragged, type Due, PlatformMark, type Post, type Waiting } from "./entries";
 import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
 import { PickList } from "@/components/ui/pick-list";
@@ -495,7 +496,7 @@ function AddPost({
 }
 
 function PostDetails({ post, onClose }: { post: Post; onClose: () => void }) {
-  const move = useMutation(api.calendar.movePost);
+  const move = useMutation(api.calendar.movePost).withOptimisticUpdate(movePostLocally);
   const queue = useMutation(api.calendar.queuePost);
   const update = useMutation(api.calendar.updatePost);
   const remove = useMutation(api.calendar.removePost);
@@ -624,7 +625,7 @@ function PostDetails({ post, onClose }: { post: Post; onClose: () => void }) {
 }
 
 function DueDetails({ due }: { due: Due }) {
-  const setDue = useMutation(api.calendar.setDue);
+  const setDue = useMutation(api.calendar.setDue).withOptimisticUpdate(setDueLocally);
   const value = due.dueAt === null ? "" : dayKey(due.dueAt);
   return (
     <div className="flex flex-col gap-4">
