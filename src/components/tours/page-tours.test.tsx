@@ -100,6 +100,52 @@ describe("a page's tour", () => {
     }
   });
 
+  test("leaves someone alone who has a pick list open", async () => {
+    const opened = document.createElement("div");
+    opened.setAttribute("role", "listbox");
+    document.body.append(opened);
+    try {
+      renderPage();
+      await act(async () => {});
+      expect(screen.queryByText("Step 1 of", { exact: false })).toBeNull();
+    } finally {
+      opened.remove();
+    }
+  });
+
+  // Someone picks a ready-made straight away: the page's tour must not follow them onto
+  // the next page, nor start again while the backend has not caught up.
+  test("closes when its page is left, and does not start again before the backend knows", async () => {
+    function Page({ open }: { open: boolean }) {
+      return (
+        <TooltipProvider>
+          <SidebarProvider>
+            <DashboardTour>
+              {open && <StartPageTour tourId="project" ready />}
+              {PROJECT_TOUR.steps.map((step) => (
+                <div key={step.id} data-tour-step-id={step.id}>
+                  {step.id}
+                </div>
+              ))}
+            </DashboardTour>
+          </SidebarProvider>
+        </TooltipProvider>
+      );
+    }
+    const view = render(<Page open />);
+    await act(async () => {});
+    expect(card()).toHaveTextContent(PROJECT_TOUR.steps[0]!.title as string);
+    view.rerender(<Page open={false} />);
+    await act(async () => {});
+    expect(card()).toBeNull();
+    expect(mutationOf(api.tours.end)).toHaveBeenCalledWith({ tourId: "project", how: "closed" });
+    // Back on the page with the backend still saying it was never had.
+    view.rerender(<Page open />);
+    await act(async () => {});
+    expect(card()).toBeNull();
+    view.unmount();
+  });
+
   test("waits until the page has loaded", async () => {
     renderPage({ ready: false });
     await act(async () => {});
