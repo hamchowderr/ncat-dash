@@ -136,14 +136,32 @@ test("links the organization; alerts with Approve and review activity go both wa
   type Post = {
     path: string;
     method: string;
+    /** The id the stand-in answered with when it was posted. */
+    id?: string;
     body: { text?: string; attachments?: { content: Card }[] };
   };
   type Card = {
-    body: { text: string }[];
+    body: {
+      type?: string;
+      text: string;
+      columns?: { items: { type: string; text?: string }[] }[];
+      items?: { text: string }[];
+    }[];
     actions: { type: string; data?: { actionId: string; value: string } }[];
   };
   const posts = async () => (await (await fetch(`${MICROSOFT}/stand-in/posts`)).json()) as Post[];
   const cardOf = (post?: Post) => post?.body.attachments?.[0]?.content;
+  // Review activity someone wrote comes as a card headed by their name: read it back as
+  // "Name: words" with any quote on the next line.
+  const said = (post: Post) => {
+    const card = cardOf(post);
+    if (card?.body[0]?.type !== "ColumnSet") return String(post.body.text ?? "");
+    const name = card.body[0].columns
+      ?.flatMap((column) => column.items)
+      .find((item) => item.type === "TextBlock")?.text;
+    const quote = card.body[2]?.items?.[0]?.text;
+    return `${name}: ${card.body[1].text}${quote ? `\n> ${quote}` : ""}`;
+  };
   await expect
     .poll(
       async () =>
@@ -173,8 +191,7 @@ test("links the organization; alerts with Approve and review activity go both wa
   expect(await pressed.json()).toEqual({ ok: true, message: "Approved." });
 
   // The card changes to say who approved, with no buttons left.
-  // The stand-in numbers what it was sent, so this card is message number index + 1.
-  const activityId = String(index + 1);
+  const activityId = String(approval.id);
   await expect
     .poll(
       async () => {
@@ -221,17 +238,17 @@ test("links the organization; alerts with Approve and review activity go both wa
     .poll(
       async () => {
         const all = await posts();
-        root = all.findIndex(
+        root = all.findLastIndex(
           (post) =>
             post.path === channelPath &&
-            String(post.body.text ?? "").startsWith("**Riley Client** (client) commented on"),
+            said(post).startsWith("Riley Client (client): Commented on"),
         );
-        return root >= 0 ? String(all[root].body.text) : "";
+        return root >= 0 ? said(all[root]) : "";
       },
       { timeout: 30_000 },
     )
     .toMatch(/> Can the end card stay up a little longer\?$/);
-  const rootActivityId = String(root + 1);
+  const rootActivityId = String((await posts())[root].id);
 
   // The owner answers in Teams, in that thread, without tagging the bot. The agent server
   // passes the message on, and it becomes their reply in the review room.
@@ -261,13 +278,10 @@ test("links the organization; alerts with Approve and review activity go both wa
   const threadPath = `/bot/v3/conversations/${encodeURIComponent(
     `19:edits@thread.tacv2;messageid=${rootActivityId}`,
   )}/activities`;
-  const inThread = async () =>
-    (await posts())
-      .filter((post) => post.path === threadPath)
-      .map((post) => String(post.body.text ?? ""));
+  const inThread = async () => (await posts()).filter((post) => post.path === threadPath).map(said);
   await expect
     .poll(async () => (await inThread()).join("\n"), { timeout: 30_000 })
-    .toContain("**Harbour Organizer**: Done, version 2 is up.");
+    .toContain("Harbour Organizer: Done, version 2 is up.");
   // What came from Teams is not posted back to it.
   expect((await inThread()).join("\n")).not.toContain("Sure, two more seconds.");
   await client.context().close();
