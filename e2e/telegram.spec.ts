@@ -7,7 +7,8 @@ import { expect, type Page, test } from "./test";
 // opens the dashboard's bot from Settings with a one-time code, the bot (played here by
 // asking the dashboard the way the agent server does) links them when they press Start,
 // the agent then knows who wrote, Notifications gets a Telegram column, and the owner
-// adds the bot to a group and picks it for review activity.
+// adds the bot to a group, is told tagging it there needs privacy mode off, and picks the
+// group for review activity.
 
 const CONVEX_SITE = "http://127.0.0.1:3211";
 const stamp = Date.now().toString(36);
@@ -141,6 +142,8 @@ test("links a Telegram from Settings, then a group for review activity", async (
   expect(added.result).toBe("added");
   const groups = page.getByRole("region", { name: "Your Telegram groups" });
   await expect(groups.getByText("Harbour edit team")).toBeVisible();
+  // The bot joined in privacy mode, so tagging it there can't reach it: Settings says so.
+  await expect(groups.getByRole("note")).toContainText("send /setprivacy to @BotFather");
 
   await groups.getByRole("button", { name: "Post reviews here" }).click();
   await expect(groups.getByText(/review activity posts here/)).toBeVisible();
