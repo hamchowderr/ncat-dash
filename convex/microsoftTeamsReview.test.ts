@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, components } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { plainFromTeams } from "./microsoftTeamsReview";
 import { addPerson, addTeam, backend } from "./test.setup";
@@ -16,7 +16,36 @@ const SERVICE = "https://smba.trafficmanager.net/amer";
 const CHANNEL = "19:edits@thread.tacv2";
 const CLIP = "https://files.example/opening_hello.mp4";
 
-type Posted = { conversation: string; text: string; entities?: unknown[]; id: string };
+type Card = {
+  body: {
+    type: string;
+    text?: string;
+    columns?: { items: { type: string; url?: string; text?: string }[] }[];
+    items?: { text: string }[];
+  }[];
+  msteams?: { entities?: unknown[] };
+};
+type Posted = {
+  conversation: string;
+  text?: string;
+  summary?: string;
+  card?: Card;
+  entities?: unknown[];
+  id: string;
+};
+
+/** A card as read in Teams: who it is from, their picture, then the words and any quote. */
+function shown(card: Card | undefined) {
+  if (!card) return null;
+  const [header, lead, quote] = card.body;
+  const items = header.columns?.flatMap((column) => column.items) ?? [];
+  return {
+    from: items.find((item) => item.type === "TextBlock")?.text,
+    picture: items.find((item) => item.type === "Image")?.url ?? null,
+    words: lead?.text,
+    quote: quote?.items?.[0]?.text ?? null,
+  };
+}
 let posted: Posted[] = [];
 let nextId = 1000;
 
@@ -38,6 +67,8 @@ beforeEach(() => {
       posted.push({
         conversation: decodeURIComponent(url.slice(prefix.length, -"/activities".length)),
         text: body.text,
+        summary: body.summary,
+        card: body.attachments?.[0]?.content,
         entities: body.entities,
         id,
       });
@@ -160,9 +191,15 @@ describe("what the Teams channel hears", () => {
       `New review: [Weekly clips](http://localhost:3000/review/${reviewId}) (1 clip), opened by Jordan Lee.`,
     );
     const thread = posted[1];
-    expect(thread.text).toBe(
-      `**Riley** (client) commented on [Weekly clips](http://localhost:3000/review/${reviewId}?clip=${clipId}&comment=${rootId}), Opening hello at 1:02:\n\n> Can the end card stay up longer?`,
-    );
+    // Riley's words come headed by her name, marked as the client; she has no picture.
+    expect(thread.text).toBeUndefined();
+    expect(shown(thread.card)).toEqual({
+      from: "Riley (client)",
+      picture: null,
+      words: `Commented on [Weekly clips](http://localhost:3000/review/${reviewId}?clip=${clipId}&comment=${rootId}), Opening hello at 1:02`,
+      quote: "Can the end card stay up longer?",
+    });
+    expect(thread.summary).toBe("Riley (client): Can the end card stay up longer?");
     // Only feedback the review posts as a thread; it is not posted a second time as an alert.
     expect(posted).toHaveLength(2);
 
@@ -184,9 +221,15 @@ describe("what the Teams channel hears", () => {
       parentId: rootId,
     });
     await settled(t);
-    expect(posted.slice(2).map((one) => [one.conversation, one.text])).toEqual([
-      [`${CHANNEL};messageid=${thread.id}`, "**Jordan Lee**: Sure, two more seconds."],
-      [`${CHANNEL};messageid=${thread.id}`, "**Riley** (client): Thanks!"],
+    expect(posted.slice(2).map((one) => [one.conversation, shown(one.card)])).toEqual([
+      [
+        `${CHANNEL};messageid=${thread.id}`,
+        { from: "Jordan Lee", picture: null, words: "Sure, two more seconds.", quote: null },
+      ],
+      [
+        `${CHANNEL};messageid=${thread.id}`,
+        { from: "Riley (client)", picture: null, words: "Thanks!", quote: null },
+      ],
     ]);
   });
 
@@ -203,16 +246,63 @@ describe("what the Teams channel hears", () => {
     });
     await settled(setup.t);
     expect(posted).toHaveLength(1);
-    expect(posted[0].text).toMatch(
-      /^\*\*Jordan Lee\*\* mentioned <at>Dev Patel<\/at> on \[Weekly clips\]\(.*\), Opening hello at 0:05:\n\n> @Dev Patel can you look at the cut\?$/,
-    );
-    expect(posted[0].entities).toEqual([
+    expect(shown(posted[0].card)).toEqual({
+      from: "Jordan Lee",
+      picture: null,
+      words: expect.stringMatching(
+        /^Mentioned <at>Dev Patel<\/at> on \[Weekly clips\]\(.*\), Opening hello at 0:05$/,
+      ),
+      quote: "@Dev Patel can you look at the cut?",
+    });
+    // The tag lives in the card, so Teams tells Dev.
+    expect(posted[0].card?.msteams?.entities).toEqual([
       {
         type: "mention",
         text: "<at>Dev Patel</at>",
         mentioned: { id: "aad-dev", name: "Dev Patel" },
       },
     ]);
+  });
+
+  test("a teammate's picture heads the card only when it is at an https address", async () => {
+    const setup = await setUp();
+    const setPicture = (userId: string, image: string) =>
+      setup.t.run((ctx) =>
+        ctx.runMutation(components.betterAuth.adapter.updateOne, {
+          input: {
+            model: "user",
+            where: [{ field: "_id", value: userId }],
+            update: { image },
+          },
+        } as never),
+      );
+    await setPicture(setup.jordan.id, "https://cdn.example/jordan.png");
+    await setPicture(setup.dev.id, "data:image/png;base64,AAAA");
+    const { clipId } = await openRoom(setup);
+    await settled(setup.t);
+    posted = [];
+    const rootId = await setup.jordan.as.mutation(api.reviews.comment, {
+      clipId,
+      body: "@Dev Patel tighten the intro?",
+      time: 3,
+      version: 1,
+    });
+    await settled(setup.t);
+    await setup.dev.as.mutation(api.reviews.comment, {
+      clipId,
+      body: "@Jordan Lee done.",
+      time: 0,
+      version: 1,
+      parentId: rootId,
+    });
+    await settled(setup.t);
+    expect(posted.map((one) => shown(one.card)?.from)).toEqual(["Jordan Lee", "Dev Patel"]);
+    expect(posted.map((one) => shown(one.card)?.picture)).toEqual([
+      "https://cdn.example/jordan.png",
+      null,
+    ]);
+    const header = posted[0].card?.body[0].columns?.[0].items[0];
+    expect(header).toMatchObject({ type: "Image", style: "Person", altText: "Jordan Lee" });
   });
 
   test("a plain reply in the room stays out of Teams until its thread is there", async () => {
