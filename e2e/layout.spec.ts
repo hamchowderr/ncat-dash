@@ -139,14 +139,18 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
   // Starting an automation is a page of its own, not a window over the list.
   await page.setViewportSize(SIZES[0]);
   await page.goto("/automations");
+  // This page's own tour starts on a first visit; the check is of the page under it. The
+  // spec's tour closer is set aside here, or it can close the card before it is seen when
+  // the tour starts quickly.
+  const card = page.locator("[data-tour-card]");
+  await page.removeLocatorHandler(card);
   await page.getByRole("link", { name: "New automation", exact: true }).click();
   await expect(page).toHaveURL(/\/automations\/new$/);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  // This page's own tour starts on a first visit; the check is of the page under it.
-  // Wait for the card without an assertion, which would let the spec's handler close it
-  // first, then let that handler close it.
-  await page.waitForFunction(() => document.querySelector("[data-tour-card]"));
+  await expect(card).toBeVisible();
   await expect(page.locator("[data-tour-overlay]")).toHaveCount(0);
+  await card.getByRole("button", { name: "Close the tour" }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await covered(page), "new automation page").toEqual([]);
 });
 
