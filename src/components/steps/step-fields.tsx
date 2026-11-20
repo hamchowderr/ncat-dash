@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import { KIND_WORDS, readUploadRef, uploadRef, wantedKind } from "@ncat-dash/automation-core";
 import { getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
 import { useAction, useQuery } from "convex/react";
-import { FileCheck, Upload, X } from "lucide-react";
+import { FileCheck, FileX, Upload, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -130,38 +130,57 @@ export function FileChoice({
   preview?: boolean;
 }) {
   const team = useActiveTeam();
-  const uploads = useQuery(api.storage.listUploads, { organizationId: team.id });
   const { send, busy } = useBrandUpload();
   const picker = useRef<HTMLInputElement>(null);
   const uploadId = readUploadRef(value);
-  const upload_ = uploadId ? uploads?.find((candidate) => candidate._id === uploadId) : undefined;
+  const names = useQuery(
+    api.storage.uploadNames,
+    uploadId ? { organizationId: team.id, ids: [uploadId] } : "skip",
+  );
+  const fileName = names?.find((name) => name.id === uploadId)?.fileName;
+  const gone = uploadId !== null && names !== undefined && !fileName;
   const chosen = uploadId !== null || (preview && /^https?:\/\/\S+$/.test(value));
   if (chosen) {
     return (
-      <div className="flex items-center gap-3">
-        {preview && <FilePicture value={value} label={label} className="size-16" />}
-        <div
-          id={id}
-          className="bg-muted/50 flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border px-3 text-sm"
-        >
-          <FileCheck className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
-          <span className="truncate">
-            {uploadId
-              ? (upload_?.fileName ?? (uploads ? "An upload that was removed" : "Your upload"))
-              : value}
-          </span>
-        </div>
-        {!disabled && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="shrink-0"
-            onClick={() => onChange("")}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-3">
+          {preview && !gone && <FilePicture value={value} label={label} className="size-16" />}
+          <div
+            id={id}
+            className={cn(
+              "flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border px-3 text-sm",
+              gone ? "border-destructive/30 bg-destructive/5 text-destructive" : "bg-muted/50",
+            )}
           >
-            <X />
-            <span className="sr-only">Clear {label}</span>
-          </Button>
+            {gone ? (
+              <FileX className="size-4 shrink-0" aria-hidden="true" />
+            ) : (
+              <FileCheck className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
+            )}
+            <span className="truncate">
+              {uploadId
+                ? (fileName ?? (gone ? "An upload that was removed" : "Your upload"))
+                : value}
+            </span>
+          </div>
+          {!disabled && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              onClick={() => onChange("")}
+            >
+              <X />
+              <span className="sr-only">Clear {label}</span>
+            </Button>
+          )}
+        </div>
+        {gone && (
+          <p className="text-destructive text-xs">
+            This file was removed from your uploads.{" "}
+            {disabled ? "A team owner or admin can pick another." : "Pick another, or clear it."}
+          </p>
         )}
       </div>
     );

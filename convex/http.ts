@@ -269,6 +269,114 @@ http.route({
   }),
 });
 
+// The agent server asks who a Telegram user is on the team: in a group, the team that
+// added the bot there; in a direct chat, the team they linked last. Only a caller
+// holding MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/telegram/person",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.chatId || !asked.telegramUserId) {
+      return new Response("Missing chatId or telegramUserId", { status: 400 });
+    }
+    const found = await ctx.runAction(internal.telegram.person, {
+      chatId: asked.chatId,
+      telegramUserId: asked.telegramUserId,
+      isGroup: asked.isGroup === "true",
+    });
+    return Response.json(found);
+  }),
+});
+
+// Someone sent the bot /start with a code from Settings: link them, or the group, to the
+// team. Only a caller holding MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/telegram/link",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.code || !asked.chatId || !asked.telegramUserId) {
+      return new Response("Missing code, chatId or telegramUserId", { status: 400 });
+    }
+    const found = await ctx.runMutation(internal.telegram.link, {
+      code: asked.code,
+      chatId: asked.chatId,
+      telegramUserId: asked.telegramUserId,
+      isGroup: asked.isGroup === "true",
+      telegramName: asked.telegramName || "Telegram account",
+      ...(asked.chatTitle ? { chatTitle: asked.chatTitle } : {}),
+      ...(asked.username ? { username: asked.username } : {}),
+    });
+    return Response.json(found);
+  }),
+});
+
+// Someone pressed Approve or Send back on an alert in Telegram. Only a caller holding
+// MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/telegram/decide",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    const decision = asked.decision;
+    if (
+      !asked.runStepId ||
+      !asked.telegramUserId ||
+      (decision !== "approve" && decision !== "send_back")
+    ) {
+      return new Response("Missing runStepId, telegramUserId or decision", { status: 400 });
+    }
+    const found = await ctx.runMutation(internal.telegram.decide, {
+      runStepId: asked.runStepId,
+      telegramUserId: asked.telegramUserId,
+      decision,
+    });
+    return Response.json(found);
+  }),
+});
+
+// A reply in a Telegram group to one of the bot's posts about a review. A linked
+// teammate's reply goes into the review room. Only a caller holding MASTRA_JWT_SECRET is
+// answered.
+http.route({
+  path: "/telegram/review-reply",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const replyTo = Number(body.replyTo);
+    const messageId = Number(body.messageId);
+    if (
+      typeof body.chatId !== "string" ||
+      typeof body.telegramUserId !== "string" ||
+      typeof body.text !== "string" ||
+      !Number.isInteger(replyTo) ||
+      !Number.isInteger(messageId)
+    ) {
+      return new Response("Missing chatId, telegramUserId, text, replyTo or messageId", {
+        status: 400,
+      });
+    }
+    const answer = await ctx.runMutation(internal.telegramReview.reply, {
+      chatId: body.chatId.slice(0, 64),
+      telegramUserId: body.telegramUserId.slice(0, 64),
+      text: body.text.slice(0, 4000),
+      replyTo,
+      messageId,
+    });
+    return Response.json(answer);
+  }),
+});
+
 // The agent server asks before one of the agent's own schedules fires: may this team
 // (and person, when known) still start something? Only a caller holding
 // MASTRA_JWT_SECRET is answered.
@@ -482,6 +590,78 @@ http.route({
         : {}),
     });
     return Response.json(found);
+  }),
+});
+
+// Approve or Send back pressed on an alert in Microsoft Teams. Teams hands the press to the
+// agent server, which passes it here with who pressed it (their Microsoft account).
+http.route({
+  path: "/teams/alert-action",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const text = (key: string) => {
+      const value = body[key];
+      return typeof value === "string" && value.length > 0 && value.length <= 512 ? value : "";
+    };
+    const decision = text("decision");
+    const runStepId = text("runStepId");
+    if (!text("tenantId") || !text("aadObjectId") || !runStepId) {
+      return new Response("Missing tenantId, aadObjectId or runStepId", { status: 400 });
+    }
+    if (decision !== "approve" && decision !== "send_back") {
+      return new Response("Unknown decision", { status: 400 });
+    }
+    const answer = await ctx.runMutation(internal.microsoftTeams.alertPress, {
+      tenantId: text("tenantId"),
+      aadObjectId: text("aadObjectId"),
+      runStepId,
+      decision,
+    });
+    return Response.json(answer);
+  }),
+});
+
+// A message in a Teams reply thread: when the thread is a review thread, it becomes the
+// writer's reply in the review room, and the agent server does not answer it.
+http.route({
+  path: "/teams/review-reply",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const text = (key: string, limit = 512) => {
+      const value = body[key];
+      return typeof value === "string" && value.length > 0 && value.length <= limit ? value : "";
+    };
+    const fields = {
+      tenantId: text("tenantId"),
+      aadObjectId: text("aadObjectId"),
+      conversationId: text("conversationId"),
+      rootActivityId: text("rootActivityId"),
+      activityId: text("activityId"),
+      text: text("text", 20_000),
+    };
+    if (Object.values(fields).some((value) => !value)) {
+      return Response.json({ handled: false });
+    }
+    const botName = text("botName", 100);
+    const answer = await ctx.runAction(internal.microsoftTeamsReview.reply, {
+      ...fields,
+      ...(botName ? { botName } : {}),
+    });
+    return Response.json(answer);
   }),
 });
 

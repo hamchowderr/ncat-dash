@@ -45,6 +45,7 @@ import {
   MicrosoftLogo,
   MicrosoftTeamsLogo,
   SlackLogo,
+  TelegramLogo,
   ZoomLogo,
 } from "@/components/brand-logos";
 import {
@@ -126,6 +127,7 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   email: Mail,
   slack: SlackLogo,
   discord: DiscordLogo,
+  telegram: TelegramLogo,
   zoom: ZoomLogo,
   "google-meet": GoogleMeetLogo,
   microsoft: MicrosoftLogo,

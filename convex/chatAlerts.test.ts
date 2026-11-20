@@ -27,17 +27,21 @@ function standIn(linked: Set<string>) {
       settled.push({ ...message, outcome });
     },
   };
-  SENDERS.push(sender);
+  SENDERS.splice(0, SENDERS.length, sender);
   return { sent, settled };
 }
 
 // Scheduled work (sending, changing messages) runs only when a test lets it.
 beforeEach(() => {
+  // Only the stand-in below; each real app has its own tests.
+  SENDERS.length = 0;
   vi.useFakeTimers();
 });
 
+const REAL_SENDERS = [...SENDERS];
+
 afterEach(() => {
-  SENDERS.length = 0;
+  SENDERS.splice(0, SENDERS.length, ...REAL_SENDERS);
   vi.useRealTimers();
 });
 

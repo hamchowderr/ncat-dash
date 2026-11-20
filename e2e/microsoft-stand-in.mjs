@@ -78,8 +78,13 @@ const server = createServer(async (request, response) => {
     });
   }
   if (path.startsWith("/bot/v3/conversations/") && request.method === "POST") {
-    posts.push({ path, body: JSON.parse(await read(request)) });
+    posts.push({ path, method: "POST", body: JSON.parse(await read(request)) });
     return send(response, 201, { id: String(posts.length) });
+  }
+  // Changing a message the bot posted, such as an approval card once it is decided.
+  if (path.startsWith("/bot/v3/conversations/") && request.method === "PUT") {
+    posts.push({ path, method: "PUT", body: JSON.parse(await read(request)) });
+    return send(response, 200, { id: decodeURIComponent(path.split("/").pop() ?? "") });
   }
   if (path === "/stand-in/posts") return send(response, 200, posts);
   if (path === "/v1.0/organization") {

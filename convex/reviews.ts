@@ -317,6 +317,52 @@ export const comment = mutation({
  * A teammate's reply written in the Slack thread for a review thread. Slack can send the
  * same message twice; it is written once.
  */
+/** A teammate's reply written in the team's Teams thread for a review comment. */
+export const commentFromTeams = internalMutation({
+  args: {
+    commentId: v.id("reviewComments"),
+    userId: v.string(),
+    body: v.string(),
+    conversationId: v.string(),
+    activityId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const seen = await ctx.db
+      .query("teamsReplies")
+      .withIndex("by_message", (q) =>
+        q.eq("conversationId", args.conversationId).eq("activityId", args.activityId),
+      )
+      .first();
+    if (seen) return null;
+    const root = await ctx.db.get(args.commentId);
+    const clip = root ? await ctx.db.get(root.clipId) : null;
+    if (!root || !clip) return null;
+    const team = await ctx.runQuery(components.betterAuth.members.people, {
+      organizationId: clip.organizationId,
+    });
+    const member = team.find((person) => person.id === args.userId);
+    if (!member) return null;
+    const id = await writeTeamComment(
+      ctx,
+      clip,
+      { userId: args.userId, name: member.name },
+      {
+        body: args.body.slice(0, COMMENT_LIMIT),
+        time: root.time,
+        version: root.version,
+        parentId: root._id,
+      },
+      "teams",
+    );
+    await ctx.db.insert("teamsReplies", {
+      conversationId: args.conversationId,
+      activityId: args.activityId,
+      commentId: id,
+    });
+    return id;
+  },
+});
+
 export const commentFromSlack = internalMutation({
   args: {
     commentId: v.id("reviewComments"),
@@ -407,6 +453,40 @@ export const commentFromDiscord = internalMutation({
 });
 
 /**
+ * A teammate's reply in the team's Telegram group, under one of the bot's posts about a
+ * comment thread (convex/telegramReview.ts), written as their reply in the review room.
+ */
+export const commentFromTelegram = internalMutation({
+  args: {
+    commentId: v.id("reviewComments"),
+    userId: v.string(),
+    authorName: v.string(),
+    body: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const root = await ctx.db.get(args.commentId);
+    const clip = root ? await ctx.db.get(root.clipId) : null;
+    if (!root || !clip) return null;
+    const team = await ctx.runQuery(components.betterAuth.members.people, {
+      organizationId: clip.organizationId,
+    });
+    if (!team.some((person) => person.id === args.userId)) return null;
+    return await writeTeamComment(
+      ctx,
+      clip,
+      { userId: args.userId, name: args.authorName },
+      {
+        body: args.body.slice(0, COMMENT_LIMIT),
+        time: root.time,
+        version: root.version,
+        parentId: root._id,
+      },
+      "telegram",
+    );
+  },
+});
+
+/**
  * Writes a teammate's comment or reply, wherever it was written: tells the people it
  * mentions, asks the agent when it says "@Agent", and keeps the team's Slack thread for
  * it up to date.
@@ -422,7 +502,7 @@ async function writeTeamComment(
     parentId?: Id<"reviewComments">;
     drawing?: Doc<"reviewComments">["drawing"];
   },
-  from: "room" | "slack" | "discord",
+  from: "room" | "slack" | "discord" | "teams" | "telegram",
 ): Promise<Id<"reviewComments">> {
   const { userId } = author;
   const body = args.body.trim();
@@ -471,6 +551,8 @@ async function writeTeamComment(
     // A drawing belongs to the moment a thread is about, so a reply carries none.
     drawing: parentId ? undefined : (cleanDrawing(args.drawing) ?? undefined),
     slack: from === "slack" ? true : undefined,
+    teams: from === "teams" ? true : undefined,
+    telegram: from === "telegram" ? true : undefined,
   });
 
   // Teammates named after "@" hear about it, under the bell and by email as they chose.

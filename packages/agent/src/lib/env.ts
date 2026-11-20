@@ -166,6 +166,15 @@ const envSchema = z
     TEAMS_APP_ID: z.string().optional(),
     TEAMS_APP_PASSWORD: z.string().optional(),
     TEAMS_APP_TENANT_ID: z.string().optional(),
+    // The bot's name in Teams (the Teams app's name), so a tag of it is taken out of replies.
+    TEAMS_APP_NAME: z.string().optional(),
+    // The dashboard's one Telegram bot (BotFather: the token, and its @name without the
+    // @). Left out, the agent is not in Telegram. The bot asks Telegram for new messages
+    // itself, so no public address is needed.
+    TELEGRAM_BOT_TOKEN: z.string().optional(),
+    TELEGRAM_BOT_USERNAME: z.string().optional(),
+    // A stand-in Telegram Bot API for tests and local runs. Left out, Telegram itself.
+    TELEGRAM_API_URL: z.string().url().optional(),
 
     USE_AIMOCK: boolish.default(false),
     AIMOCK_URL: z.string().url().default('http://localhost:4010'),

@@ -1032,6 +1032,92 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_nonce", ["nonce"]),
 
+  // A review comment thread and the Teams reply thread it was posted as, in the team's
+  // alert channel. Replies written in that Teams thread come back to the review thread.
+  teamsReviewThreads: defineTable({
+    organizationId: v.string(),
+    // The channel's conversation id, and the id of the first message of the thread.
+    conversationId: v.string(),
+    rootActivityId: v.string(),
+    serviceUrl: v.string(),
+    reviewId: v.id("reviews"),
+    commentId: v.id("reviewComments"),
+  })
+    .index("by_comment", ["commentId"])
+    .index("by_teams_thread", ["conversationId", "rootActivityId"])
+    .index("by_review", ["reviewId"])
+    .index("by_organization", ["organizationId"]),
+
+  // Teams messages already brought into a review, so a message Teams sends twice is
+  // added once.
+  teamsReplies: defineTable({
+    conversationId: v.string(),
+    activityId: v.string(),
+    commentId: v.id("reviewComments"),
+  }).index("by_message", ["conversationId", "activityId"]),
+
+  // A member's own Telegram account on a team, linked from Settings by opening the
+  // dashboard's one Telegram bot with a one-time code. The agent then acts as them when
+  // they write to the bot, and alerts go to their chat with it (`chatId`).
+  telegramPeople: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    telegramUserId: v.string(),
+    // Their private chat with the bot, where alerts go.
+    chatId: v.string(),
+    telegramName: v.string(),
+    username: v.optional(v.string()),
+    linkedAt: v.number(),
+    sessionToken: v.optional(v.string()),
+    sessionExpiresAt: v.optional(v.number()),
+  })
+    .index("by_telegram_user", ["telegramUserId", "organizationId"])
+    .index("by_member", ["organizationId", "userId"]),
+
+  // A Telegram group the team added the bot to. Linked members can tag it there. At most
+  // one of a team's groups hears its review activity (`reviews`), the way Slack's channel
+  // does.
+  telegramGroups: defineTable({
+    organizationId: v.string(),
+    chatId: v.string(),
+    title: v.string(),
+    addedBy: v.string(),
+    addedAt: v.number(),
+    reviews: v.optional(v.boolean()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_chat", ["chatId"]),
+
+  // A message the bot posted about a review comment in the team's Telegram group. Every
+  // post about the same comment replies to the first, and a teammate's Telegram reply to
+  // any of them becomes their reply in the review room.
+  telegramReviewPosts: defineTable({
+    organizationId: v.string(),
+    chatId: v.string(),
+    messageId: v.number(),
+    reviewId: v.id("reviews"),
+    commentId: v.id("reviewComments"),
+  })
+    .index("by_comment", ["commentId"])
+    .index("by_message", ["chatId", "messageId"]),
+
+  // A teammate's Telegram reply already written into a review, so it is never added twice.
+  telegramReviewReplies: defineTable({
+    chatId: v.string(),
+    messageId: v.number(),
+    commentId: v.id("reviewComments"),
+  }).index("by_message", ["chatId", "messageId"]),
+
+  // A one-time code made in Settings and sent to the bot with /start, to link a person
+  // ("person") or a group ("group") to the team.
+  telegramLinkStarts: defineTable({
+    code: v.string(),
+    organizationId: v.string(),
+    userId: v.string(),
+    kind: v.union(v.literal("person"), v.literal("group")),
+    createdAt: v.number(),
+  }).index("by_code", ["code"]),
+
   // A team member's own Zoom account, connected from Settings so the cloud recordings of
   // meetings they host come into the team's uploads. The dashboard has ONE Zoom app, set
   // up once by whoever runs it (ZOOM_* env). One Zoom account belongs to one team. The
@@ -1578,6 +1664,10 @@ export default defineSchema({
     client: v.optional(v.boolean()),
     // Written by a teammate as a reply in the team's Slack thread for this comment.
     slack: v.optional(v.boolean()),
+    // Written by a teammate as a reply in the team's Teams thread for this comment.
+    teams: v.optional(v.boolean()),
+    // Written by a teammate as a reply in the team's Telegram group.
+    telegram: v.optional(v.boolean()),
     // Marks drawn over the paused frame, on a thread's first comment only.
     drawing: v.optional(drawingValidator),
     // Set on the agent's answer to an "@Agent" comment. The answer is written by the
