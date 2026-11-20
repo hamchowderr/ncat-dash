@@ -8,7 +8,7 @@ import {
   type PressAnswer,
   useDashboardForTests,
 } from "../../src/mastra/ncat/alert-buttons";
-import { chatChannels } from "../../src/mastra/ncat/channels";
+import { chatChannels, onChatAlertButton } from "../../src/mastra/ncat/channels";
 
 // Approve and Send back on the dashboard's alerts in Discord: the press goes to the
 // dashboard as the Discord user who pressed it, and every other button is left alone.
@@ -85,6 +85,6 @@ describe("alert buttons in Discord", () => {
       MASTRA_JWT_SECRET: "secret",
       CONVEX_SITE_URL: "https://convex.test",
     });
-    expect(chatChannels()?.handlers?.onAction).toBe(onAlertButton);
+    expect(chatChannels()?.handlers?.onAction).toBe(onChatAlertButton);
   });
 });

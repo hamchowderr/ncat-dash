@@ -106,7 +106,7 @@ function AlertChannel({
     return (
       <p className="text-muted-foreground text-sm">
         {channel
-          ? `Failed runs, approvals, review mentions and client feedback are posted to ${channel.name}.`
+          ? `New reviews, client feedback, mentions, failed runs and approvals are posted to ${channel.name}. Replies in a review's thread there go into the review.`
           : "Alerts are not posted to Teams."}
       </p>
     );
@@ -143,7 +143,7 @@ function AlertChannel({
           ? "Teams did not list the channels. Try again in a minute."
           : teamsSeen.length === 0
             ? "Once the app is in a team, mention the agent once in any of its channels. That team's channels then show here."
-            : "Failed runs, approvals, review mentions and client feedback are posted here."}
+            : "New reviews, client feedback, mentions, failed runs and approvals are posted here, and approvals can be decided right in Teams. Each comment gets its own thread, and replies written in it go into the review."}
       </FieldDescription>
       {problem && (
         <Alert variant="destructive">

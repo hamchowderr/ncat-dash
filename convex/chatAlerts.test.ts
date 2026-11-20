@@ -33,6 +33,8 @@ function standIn(linked: Set<string>) {
 
 // Scheduled work (sending, changing messages) runs only when a test lets it.
 beforeEach(() => {
+  // Only the stand-in below; each real app has its own tests.
+  SENDERS.length = 0;
   vi.useFakeTimers();
 });
 

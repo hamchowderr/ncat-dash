@@ -166,6 +166,8 @@ const envSchema = z
     TEAMS_APP_ID: z.string().optional(),
     TEAMS_APP_PASSWORD: z.string().optional(),
     TEAMS_APP_TENANT_ID: z.string().optional(),
+    // The bot's name in Teams (the Teams app's name), so a tag of it is taken out of replies.
+    TEAMS_APP_NAME: z.string().optional(),
 
     USE_AIMOCK: boolish.default(false),
     AIMOCK_URL: z.string().url().default('http://localhost:4010'),
