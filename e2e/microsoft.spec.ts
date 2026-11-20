@@ -5,8 +5,8 @@ import { MICROSOFT, MICROSOFT_USER } from "./microsoft-data.mjs";
 // Teams meetings brought in by themselves, in a real browser against a real backend: a
 // member connects Microsoft 365 from Settings (the stand-in signs in at once and checks
 // the dashboard's address before it watches the OneDrive), brings in a past recording by
-// hand, a recording Teams just saved arrives by itself, and, once switched on, a recording
-// of someone else's meeting shared with them comes in too.
+// hand, a recording Teams just saved arrives by itself, once switched on a recording of
+// someone else's meeting shared with them comes in too, and so does a channel meeting.
 
 const TOOLKIT = "http://127.0.0.1:8767";
 const stamp = Date.now().toString(36);
@@ -92,7 +92,27 @@ test("connects Microsoft 365, brings a past meeting in, and a new one arrives by
     page.getByRole("region", { name: "Brought in from Teams" }).getByText("Board Review"),
   ).toBeVisible({ timeout: 30_000 });
 
-  // Both are uploads now, named after the meeting and its day.
+  // A meeting held in a Teams channel is saved to the channel's files: the member allows
+  // reading their teams once, picks the channel, and its next recording comes in.
+  const channels = page.getByRole("region", { name: "Channel meetings" });
+  await channels.getByRole("button", { name: "Choose channels" }).click();
+  await expect(page).toHaveURL(/\/settings\/microsoft$/, { timeout: 30_000 });
+  await expect(page.getByText("Now pick the channels to bring in")).toBeVisible();
+  const add = page.getByRole("combobox", { name: "Add a channel" });
+  await expect(add).toBeEnabled();
+  await add.click();
+  await page.getByRole("option", { name: "Video team › Edits" }).click();
+  await expect(page.getByText("Recordings from Edits now come in")).toBeVisible();
+  await expect(channels.getByText("Video team › Edits")).toBeVisible();
+  await fetch(`${MICROSOFT}/stand-in/channel-recording`, {
+    method: "POST",
+    body: JSON.stringify({ id: `channel-${stamp}`, topic: "Edit Review", size: 61_000_000 }),
+  });
+  await expect(
+    page.getByRole("region", { name: "Brought in from Teams" }).getByText("Edit Review"),
+  ).toBeVisible({ timeout: 30_000 });
+
+  // All of them are uploads now, named after the meeting and its day.
   await page.goto("/uploads");
   const uploads = page.getByRole("region", { name: "Your uploads" });
   await expect(uploads.getByText(/^Client Kickoff \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
@@ -102,6 +122,9 @@ test("connects Microsoft 365, brings a past meeting in, and a new one arrives by
     timeout: 30_000,
   });
   await expect(uploads.getByText(/^Board Review \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(uploads.getByText(/^Edit Review \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
     timeout: 30_000,
   });
   await page.waitForTimeout(1500);
