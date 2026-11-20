@@ -22,6 +22,7 @@ export * from "./retry";
 export * from "./approval";
 export * from "./agent-settings";
 export * from "./platform-guide";
+export * from "./motion-guide";
 export * from "./failure-text";
 export * from "./chain";
 export * from "./output-names";
