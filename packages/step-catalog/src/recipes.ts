@@ -59,6 +59,9 @@ const font = z
   .regex(/^[A-Za-z0-9 ._-]{1,80}$/)
   .describe("A font installed on your toolkit");
 
+// Top right first: it is where viewers expect a channel's logo, and the default.
+const LOGO_CORNERS = ["top right", "top left", "bottom left", "bottom right"] as const;
+
 const textBlanks = {
   video_url: url("The video to write on"),
   text: text("The words to show"),
@@ -226,25 +229,30 @@ export const recipes: StepDefinition[] = [
   recipe({
     id: "recipe-logo",
     title: "Add a logo",
-    description: "Puts a logo in the bottom-left corner of a video for its whole length.",
+    description:
+      "Puts a logo in a corner of a video for its whole length. Top right unless you pick another corner.",
     primaryInput: "video_url",
     brandInputs: { logo_url: "logo" },
     blanks: {
       video_url: url("The video"),
       logo_url: url("The logo image, ideally a PNG with a clear background"),
       logo_size: whole("Logo size in pixels, along its longest side", 8, 4000).default(150),
+      corner: z.enum(LOGO_CORNERS).describe("Which corner the logo sits in").default("top right"),
       margin: whole("Gap from the edges in pixels", 0, 4000).default(50),
     },
-    toRequest: (b) =>
-      request(
+    toRequest: (b) => {
+      const x = b.corner.endsWith("right") ? `main_w-overlay_w-${b.margin}` : `${b.margin}`;
+      const y = b.corner.startsWith("bottom") ? `main_h-overlay_h-${b.margin}` : `${b.margin}`;
+      return request(
         [b.video_url, b.logo_url],
         [
           // Fits the logo in a square of that size and keeps its own shape, so a wide logo
           // is not squashed.
-          `[1:v]scale=w=${b.logo_size}:h=${b.logo_size}:force_original_aspect_ratio=decrease[logo];[0:v][logo]overlay=x=${b.margin}:y=main_h-overlay_h-${b.margin}`,
+          `[1:v]scale=w=${b.logo_size}:h=${b.logo_size}:force_original_aspect_ratio=decrease[logo];[0:v][logo]overlay=x=${x}:y=${y}`,
         ],
         [opt("-f", "mp4"), opt("-c:v", "libx264"), opt("-preset", "veryfast")],
-      ),
+      );
+    },
   }),
   recipe({
     id: "recipe-picture-on-picture",
