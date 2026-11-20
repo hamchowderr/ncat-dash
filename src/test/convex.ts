@@ -83,7 +83,10 @@ export const convexReact = {
     return { ...(rows as object), loadMore };
   },
   useMutation(mutation: FunctionReference<"mutation">) {
-    return mutationOf(mutation);
+    const mock = mutationOf(mutation);
+    // The guess a screen draws before the server answers is tested on its own; here the
+    // call itself is what is checked.
+    return Object.assign(mock, { withOptimisticUpdate: () => mock });
   },
   useAction(action: FunctionReference<"action">) {
     return actionOf(action);
