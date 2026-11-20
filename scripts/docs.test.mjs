@@ -176,10 +176,21 @@ test("the docs keep to the product's wording", () => {
 
 test("the self-hosting guide says how to reach each piece and what machine to use", () => {
   const guide = read("docs/self-hosting.md");
-  for (const port of ["8080", "3210", "3211", "4111"])
+  for (const port of ["3000", "8080", "3210", "3211", "4111"])
     assert.match(guide, new RegExp(`\\b${port}\\b`));
   assert.match(guide, /Mac Mini/);
-  assert.match(guide, /x86-64/);
+  // Every kind of machine an owner might bring, and both kinds of processor.
+  for (const machine of [
+    /Windows/,
+    /Docker Desktop/,
+    /Linux/,
+    /Apple-chip/,
+    /Intel and AMD/,
+    /ARM/,
+  ])
+    assert.match(guide, machine);
+  // The images are no longer one-processor only; the guide must not say so.
+  assert.doesNotMatch(guide, /x86-64[^.]*only/i);
   assert.match(
     guide,
     new RegExp(relative(root, join(root, "deploy/compose.yml")).replace(/\./g, "\\.")),

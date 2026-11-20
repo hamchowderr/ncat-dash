@@ -168,3 +168,24 @@ export const caller = query({
     return userId ? await ctx.db.get(userId) : null;
   },
 });
+
+/**
+ * What an invite-only copy needs to know before someone signs up: whether anyone has an
+ * account yet (the first person, the owner, always may), and whether this address has an
+ * invitation to a team that is still open.
+ */
+export const signUpCheck = query({
+  args: { email: v.string() },
+  returns: v.object({ hasAccounts: v.boolean(), invited: v.boolean() }),
+  handler: async (ctx, args) => {
+    const someone = await ctx.db.query("user").first();
+    const email = args.email.trim().toLowerCase();
+    const invitations = await ctx.db
+      .query("invitation")
+      .withIndex("email", (q) => q.eq("email", email))
+      .take(50);
+    const now = Date.now();
+    const invited = invitations.some((i) => i.status === "pending" && i.expiresAt > now);
+    return { hasAccounts: someone !== null, invited };
+  },
+});

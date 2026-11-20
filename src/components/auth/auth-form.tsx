@@ -105,9 +105,11 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
               <h1>{text.title}</h1>
             </CardTitle>
             <CardDescription>
-              {trialDays
-                ? `Free for ${trialDays} ${trialDays === 1 ? "day" : "days"}, with no card needed. ${text.description}`
-                : text.description}
+              {mode === "sign-up" && settings?.inviteOnly
+                ? "This dashboard is invite-only. Use the email address your invitation went to."
+                : trialDays
+                  ? `Free for ${trialDays} ${trialDays === 1 ? "day" : "days"}, with no card needed. ${text.description}`
+                  : text.description}
             </CardDescription>
           </CardHeader>
           <CardContent>

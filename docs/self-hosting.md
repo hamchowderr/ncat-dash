@@ -6,15 +6,15 @@ This guide is for whoever runs a copy. It covers what to run, what machine to ru
 
 ## What You Run
 
-| Piece        | What it is                                                                                                                                                                                                                 | How it ships                                          |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Toolkit      | [The NCA Toolkit fork](https://github.com/hamchowderr/no-code-architects-toolkit), with Redis for its job queue. Kontifi needs this fork; the original toolkit lacks the storage, health and look endpoints Kontifi calls. | `ghcr.io/hamchowderr/no-code-architects-toolkit`      |
-| Bucket       | Where every file lives: Cloudflare R2, AWS S3, DigitalOcean Spaces, Backblaze B2 or MinIO. Only the toolkit holds its keys.                                                                                                | Your storage account                                  |
-| Convex       | The backend: database, sign-in, the automation runner, webhooks, the MCP server. Self-host it, or use a Convex Cloud project.                                                                                              | `ghcr.io/convex/convex-backend`                       |
-| Agent server | The Mastra server behind the agent, in the dashboard and in Slack, Discord, Telegram and Microsoft Teams.                                                                                                                  | `ghcr.io/hamchowderr/ncat-dash-agent`                 |
-| Web app      | The Next.js dashboard people sign in to.                                                                                                                                                                                   | Vercel, or `pnpm build && pnpm start` on your machine |
+| Piece        | What it is                                                                                                                                                                                                                 | How it ships                                     |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Toolkit      | [The NCA Toolkit fork](https://github.com/hamchowderr/no-code-architects-toolkit), with Redis for its job queue. Kontifi needs this fork; the original toolkit lacks the storage, health and look endpoints Kontifi calls. | `ghcr.io/hamchowderr/no-code-architects-toolkit` |
+| Bucket       | Where every file lives: Cloudflare R2, AWS S3, DigitalOcean Spaces, Backblaze B2 or MinIO. Only the toolkit holds its keys.                                                                                                | Your storage account                             |
+| Convex       | The backend: database, sign-in, the automation runner, webhooks, the MCP server. Self-host it, or use a Convex Cloud project.                                                                                              | `ghcr.io/convex/convex-backend`                  |
+| Agent server | The Mastra server behind the agent, in the dashboard and in Slack, Discord, Telegram and Microsoft Teams.                                                                                                                  | `ghcr.io/hamchowderr/ncat-dash-agent`            |
+| Web app      | The Next.js dashboard people sign in to.                                                                                                                                                                                   | `ghcr.io/hamchowderr/ncat-dash-web`, or Vercel   |
 
-Every image is built by GitHub Actions and pulled ready-made. Nothing is compiled on the machine that runs it, which matters: the toolkit's image compiles FFmpeg from source and takes 20 to 40 minutes to build.
+Every image is built by GitHub Actions and pulled ready-made, for both kinds of processor (see The Machine). Nothing is compiled on the machine that runs it, which matters: the toolkit's image compiles FFmpeg from source and takes 20 to 40 minutes to build.
 
 ## The Machine
 
@@ -40,7 +40,20 @@ What to start with:
 
 Video work is limited by CPU. More cores mean more jobs at once and faster encodes. Finished files go to the bucket, so the disk only holds work in progress.
 
-**Processor type.** The two Kontifi images (toolkit and agent) are published for x86-64 (Intel and AMD) only. On an Apple Silicon Mac, Docker Desktop runs them through emulation, which works but is slower; a Mac Mini on Intel, or any x86-64 server, runs them natively. The Convex images are published for both.
+**Any machine that runs Docker.** Every image is published for both kinds of processor, and Docker picks the right one by itself:
+
+- Intel and AMD: most rented servers, Windows PCs, Intel Macs and Linux boxes.
+- ARM: Apple-chip Macs (a Mac Mini with M1 or later), Ampere and AWS Graviton servers.
+
+Each kind is built and tested on its own kind of machine, so nothing runs through slow emulation. On every change, GitHub Actions starts the images on both and signs up through the dashboard.
+
+| Machine                   | What to install                         | Keep in mind                                                                                                                                                                                                            |
+| ------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Linux server or PC        | Docker Engine with the Compose plugin   | Nothing else.                                                                                                                                                                                                           |
+| Mac (Apple chip or Intel) | Docker Desktop                          | Give Docker enough memory in Docker Desktop, Settings, Resources (8 GB or more). Turn on "Start Docker Desktop when you sign in", and stop the Mac from sleeping (System Settings, Energy, Prevent automatic sleeping). |
+| Windows 10 or 11          | Docker Desktop with WSL 2 (its default) | Run the commands in this guide in a WSL terminal (Ubuntu), which has `openssl` and `curl`. Docker's memory comes from WSL's limit, set in `.wslconfig` in your user folder. Set the PC never to sleep.                  |
+
+The minimums above apply to each. A Windows PC or Mac also needs the memory for whatever else it runs.
 
 ## Before You Start
 
@@ -55,7 +68,7 @@ Video work is limited by CPU. More cores mean more jobs at once and faster encod
 
 ### 1. Start the services
 
-[`deploy/compose.yml`](../deploy/compose.yml) runs the toolkit with Redis, the Convex backend with its admin page, and the agent server.
+[`deploy/compose.yml`](../deploy/compose.yml) runs the toolkit with Redis, the Convex backend with its admin page, the agent server and the web app.
 
 ```bash
 cp deploy/.env.example deploy/.env      # fill it in; make each secret with: openssl rand -hex 32
@@ -66,6 +79,7 @@ Every service listens on `127.0.0.1` only. Point your reverse proxy at them:
 
 | Address                                        | Port |
 | ---------------------------------------------- | ---- |
+| Dashboard, e.g. `https://app.example.com`      | 3000 |
 | Toolkit, e.g. `https://toolkit.example.com`    | 8080 |
 | Convex API, `CONVEX_URL`                       | 3210 |
 | Convex HTTP actions, `CONVEX_SITE_URL`         | 3211 |
@@ -108,15 +122,20 @@ npx convex env set BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
 npx convex env set CONNECTIONS_SECRET "$(openssl rand -base64 32)"
 npx convex env set MASTRA_JWT_SECRET "<the MASTRA_JWT_SECRET from deploy/.env>"
 npx convex env set AGENT_URL https://agent.example.com
+npx convex env set SIGN_UPS invite-only       # only you, then the people you invite
 
 npx convex deploy -y
 ```
 
 `CONNECTIONS_SECRET` encrypts every saved key (toolkit, Slack, Zoom and so on). Keep it: if it changes, every team has to connect everything again.
 
-### 4. Deploy the web app
+`SIGN_UPS invite-only` keeps strangers out: the first account made (yours) is allowed, and after that only email addresses invited to a team can sign up. Leave it out, or set `SIGN_UPS open`, to let anyone who reaches the address make an account.
 
-On **Vercel**, import this repository and set these environment variables, then deploy. Build command `pnpm build`.
+### 4. The web app
+
+The web app is already running from step 1, on port 3000. It reads `CONVEX_URL`, `CONVEX_SITE_URL` and `MASTRA_JWT_SECRET` from `deploy/.env`, and reaches the agent server inside Docker. Check it: `https://app.example.com/sign-up` loads.
+
+The web app can live elsewhere instead. Either way, set these:
 
 | Variable                      | Value                                                         |
 | ----------------------------- | ------------------------------------------------------------- |
@@ -126,15 +145,12 @@ On **Vercel**, import this repository and set these environment variables, then 
 | `MASTRA_SERVER_URL`           | the agent server's address                                    |
 | `MASTRA_JWT_SECRET`           | the same value as everywhere else                             |
 
-On **your own machine**, set the same five variables in the environment, then:
+- **Vercel**: import this repository, set the variables above and deploy. Build command `pnpm build`. Stop the `web` service in compose (`docker compose ... stop web`) or leave its port unpublished.
+- **From the code**: `pnpm install`, `pnpm build` (the `NEXT_PUBLIC_` values are built in, so build again when they change), then `pnpm start` on port 3000 under a process manager such as systemd or pm2.
 
-```bash
-pnpm install
-pnpm build          # the NEXT_PUBLIC_ values are built in, so build again when they change
-pnpm start          # port 3000; run it under a process manager (systemd, pm2) and behind HTTPS
-```
+The image needs no rebuild when an address changes: it writes the addresses in each time it starts, so a restart is enough.
 
-Vercel does not push Convex functions. Each time you update, push the functions too (step 3's `npx convex deploy`), or the dashboard and backend drift apart and pages fail with "Could not find public function".
+Neither Vercel nor the image pushes Convex functions. Each time you update, push the functions too (step 3's `npx convex deploy`), or the dashboard and backend drift apart and pages fail with "Could not find public function".
 
 ### 5. Sign up and connect the toolkit
 
@@ -142,7 +158,7 @@ Open the dashboard, create an account and name your team. When asked "Do you hav
 
 Test it end to end: under Builder, Steps, open Video Thumbnail, give it a link to a short video and press Run step. Jobs shows it Done within seconds once the toolkit has posted the result back to `CONVEX_SITE_URL/toolkit/webhook`. The Toolkit page shows the toolkit's CPU, memory, disk and queue.
 
-Anyone who can open the dashboard's address can create an account. Each account only sees the teams it belongs to.
+With `SIGN_UPS invite-only` (step 3), the account you make here is the only one until you invite people from Settings, Team; an invitation's link lets that address sign up. Without it, anyone who can open the dashboard's address can create an account. Each account only sees the teams it belongs to.
 
 ### 6. Let browsers reach the bucket
 
@@ -194,6 +210,7 @@ Settings on Convex take effect at once; settings on the agent server need a rest
 | `MASTRA_JWT_SECRET`                                                                   | for the agent        | Shared with the agent server and the web app; signs the requests between them.                                       |
 | `AGENT_URL`                                                                           | for the agent        | The agent server's address, for @Agent in review rooms and scheduled agent turns.                                    |
 | `TRUSTED_ORIGINS`                                                                     | no                   | Extra addresses allowed to sign in, comma-separated, `*` allowed.                                                    |
+| `SIGN_UPS`                                                                            | recommended          | `invite-only`: the first account, then only invited addresses. `open` (the default): anyone who reaches the address. |
 | `NCAT_EDITION`                                                                        | no                   | `self-hosted` (the default) or `hosted`. Only the hosted edition has trials and sign-up limits.                      |
 | `HOSTED_TOOLKIT_URL`, `HOSTED_TOOLKIT_API_KEY`                                        | no                   | A toolkit you lend to teams. Teams on it do not see the Toolkit page, and setting up offers "Just use ours for now". |
 | `TRIAL_DAYS`, `TRIALS_PER_NETWORK`, `BUY_URL`, `BLOCKED_EMAIL_DOMAINS`                | hosted edition       | Free trial length (3), trials per network in 30 days (2), where "Buy" goes, extra email domains refused at sign-up.  |
@@ -211,6 +228,8 @@ Settings on Convex take effect at once; settings on the agent server need a rest
 `CONVEX_SITE_URL` is provided by Convex itself (from `CONVEX_SITE_ORIGIN` when self-hosted); do not set it.
 
 ### Web app
+
+In `deploy/compose.yml` the web app takes these from `deploy/.env` (`CONVEX_URL`, `CONVEX_SITE_URL`, `MASTRA_JWT_SECRET`) and needs nothing more. Elsewhere:
 
 | Name                          | Needed        | What it does                                                              |
 | ----------------------------- | ------------- | ------------------------------------------------------------------------- |
@@ -244,9 +263,9 @@ The agent server takes many more optional settings from the chat kit it is built
 
 ## Updating
 
-1. Pull the new images. On a server you rely on, pin both Kontifi images to a `sha-<commit>` tag in `deploy/.env` (`TOOLKIT_IMAGE`, `AGENT_IMAGE`) and move the tag on purpose. A commit's image appears once its GitHub Actions run has finished.
+1. Pull the new images. On a server you rely on, pin the Kontifi images to a `sha-<commit>` tag in `deploy/.env` (`TOOLKIT_IMAGE`, `AGENT_IMAGE`, `WEB_IMAGE`) and move the tags on purpose. A commit's image appears once its GitHub Actions run has finished.
 2. `docker compose -f deploy/compose.yml --env-file deploy/.env up -d` restarts only what changed.
-3. Push the Convex functions from the same commit (`npx convex deploy -y`), then deploy the web app from it.
+3. Push the Convex functions from the same commit (`npx convex deploy -y`). If the web app is on Vercel instead, deploy it from that commit too.
 
 Never set a service to build its image on the machine that serves people. The toolkit's build takes 20 to 40 minutes of full CPU; if a restart falls back to building, the toolkit stays down that long.
 
