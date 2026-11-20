@@ -20,6 +20,8 @@ import {
   snapToPause,
   startCode,
   StepSetupError,
+  takesOf,
+  BODY_ONLY,
   variantCodes,
   variantCuts,
   variantRecipes,
@@ -139,6 +141,43 @@ describe("variant steps", () => {
     expect(() =>
       variantCuts({ duration: 4, openingSeconds: 3, endingSeconds: 3, hasOtherEndings: true }),
     ).toThrow(StepSetupError);
+  });
+
+  it("puts every take around a base cut that is only the body", () => {
+    const body = {
+      base_cut: BODY_ONLY,
+      hook_1_url: at("hook2.mp4"),
+      hook_2_url: at("hook3.mp4"),
+      hook_3_url: undefined,
+      ending_1_url: at("cta2.mp4"),
+      ending_2_url: undefined,
+    };
+    const { request, labels } = build("recipe-hook-variants", body);
+    // Two hooks, one ending: h01 and h02, each with the one ending take.
+    expect(labels).toEqual(["h01_c01", "h02_c01"]);
+    expect(request.outputs).toHaveLength(2);
+    expect(request.inputs.map((input) => input.file_url)).toEqual([
+      at("base.mp4"),
+      at("hook2.mp4"),
+      at("hook3.mp4"),
+      at("cta2.mp4"),
+    ]);
+    // The whole body is used: nothing of it is trimmed off as a hook or an ending.
+    expect(request.filters.some(({ filter }) => filter.startsWith("[v0x0]trim"))).toBe(false);
+    // No ending takes: the body's own end closes each video.
+    expect(build("recipe-hook-variants", { ...body, ending_1_url: undefined }).labels).toEqual([
+      "h01_c01",
+      "h02_c01",
+    ]);
+    // Takes 2 on still count with a base cut that has its own hook, but take 1 does not.
+    expect(takesOf({ hook_1_url: at("a"), hook_2_url: at("b") })).toEqual({
+      bodyOnly: false,
+      hooks: ["hook_2_url"],
+      endings: [],
+    });
+    const step = getStep("recipe-hook-variants")!;
+    const only = step.input.parse({ video_url: at("base.mp4"), base_cut: BODY_ONLY });
+    expect(() => step.toRequest!(only, { video_url: FACTS["base.mp4"] })).toThrow(/hook take/);
   });
 
   it("needs another take and the base cut's size and length", () => {
@@ -360,6 +399,25 @@ describe.skipIf(!hasFfmpeg)("variant steps on a real FFmpeg", () => {
       expect(probe(file, "stream=width,height")).toBe("1080x1920");
       expect(probe(file, "stream=codec_type", "a")).toBe("audio");
     }
+  }, 180_000);
+
+  it("puts each hook take in front of the whole body, then each ending", async () => {
+    const files = await run(
+      build("recipe-hook-variants", {
+        base_cut: BODY_ONLY,
+        hook_1_url: at("hook2.mp4"),
+        hook_2_url: at("hook3.mp4"),
+        hook_3_url: undefined,
+        ending_1_url: at("cta2.mp4"),
+        ending_2_url: undefined,
+      }).request,
+      "body-only",
+    );
+    expect(files).toHaveLength(2);
+    // 2.5 s hook + the whole 12 s body + 2 s ending; then the 3 s silent, wide hook.
+    expect(length(files[0])).toBeCloseTo(2.5 + 12 + 2, 0);
+    expect(length(files[1])).toBeCloseTo(3 + 12 + 2, 0);
+    for (const file of files) expect(probe(file, "stream=width,height")).toBe("1080x1920");
   }, 180_000);
 
   it("cuts each length, never longer than asked", async () => {

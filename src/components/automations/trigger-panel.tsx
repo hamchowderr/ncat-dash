@@ -275,7 +275,37 @@ export function TriggerPanel({
         </Field>
       )}
 
-      {(trigger.kind === "upload" || trigger.kind === "folder") && (
+      {trigger.kind === "folder" && (
+        <Field>
+          <FieldLabel htmlFor="trigger-folder-layout">What lands there</FieldLabel>
+          <Select
+            value={trigger.layout ?? "files"}
+            onValueChange={(layout) => {
+              const next = { ...trigger };
+              if (layout === "creators") {
+                next.layout = "creators";
+                next.fileType = "video";
+              } else delete next.layout;
+              onChange(next);
+            }}
+          >
+            <SelectTrigger id="trigger-folder-layout" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="files">Single files</SelectItem>
+              <SelectItem value="creators">A folder for each creator</SelectItem>
+            </SelectContent>
+          </Select>
+          <FieldDescription>
+            {trigger.layout === "creators"
+              ? "Inside it, each creator has a folder with hooks, body and, if you like, endings in it, like Maya/hooks/. Once a creator has a body and a hook take, and nothing new has landed for 3 minutes, one run starts with all their takes: up to 5 hooks and 3 endings. A new take later makes the set again."
+              : "Each file that lands starts a run of its own."}
+          </FieldDescription>
+        </Field>
+      )}
+
+      {(trigger.kind === "upload" || (trigger.kind === "folder" && !trigger.layout)) && (
         <Field>
           <FieldLabel htmlFor="trigger-file-type">Which files</FieldLabel>
           <Select

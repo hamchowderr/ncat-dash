@@ -1,8 +1,15 @@
-import { fileFamily } from "@ncat-dash/automation-core";
+import { creatorSets, fileFamily, withCreatorTakes } from "@ncat-dash/automation-core";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import {
+  type ActionCtx,
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
+import type { FunctionReturnType } from "convex/server";
+import type { CreatorTakes } from "@ncat-dash/automation-core";
 import { startRun } from "./lib/runner";
 import { enabledWithTrigger, triggersOfKind } from "./lib/triggers";
 import { bucketOf, listObjects, presign, storageConnection } from "./lib/bucket";
@@ -29,6 +36,7 @@ export const watchers = internalQuery({
           triggerId: id,
           prefix: trigger.prefix,
           fileType: trigger.fileType,
+          ...(trigger.layout ? { layout: trigger.layout } : {}),
           watchFrom: automation.watchFrom ?? automation.updatedAt,
           storage,
         });
@@ -59,8 +67,13 @@ export const poll = internalAction({
         continue;
       }
 
-      const candidates = listings
-        .get(listingKey)!
+      const listing = listings.get(listingKey)!;
+      if (watcher.layout === "creators") {
+        await startCreatorSets(ctx, watcher, config, listing);
+        continue;
+      }
+
+      const candidates = listing
         .filter(
           (object) =>
             object.size > 0 &&
@@ -91,6 +104,82 @@ export const poll = internalAction({
         });
       }
     }
+  },
+});
+
+type Watcher = FunctionReturnType<typeof internal.watch.watchers>[number];
+
+/**
+ * A folder laid out one folder per creator: each creator whose takes have settled and
+ * have something new since the last run starts one run, on their body, with every take.
+ * Takes that were already there count too, so a new hook take re-makes the whole set.
+ */
+async function startCreatorSets(
+  ctx: ActionCtx,
+  watcher: Watcher,
+  config: Awaited<ReturnType<typeof bucketOf>>,
+  listing: Awaited<ReturnType<typeof listObjects>>,
+) {
+  const isVideo = (key: string) => {
+    const family = fileFamily(key);
+    return watcher.fileType === "any" ? family === "video" : family === watcher.fileType;
+  };
+  let started = 0;
+  for (const set of creatorSets(listing, watcher.prefix, Date.now(), isVideo)) {
+    if (started >= MAX_NEW_FILES_PER_CHECK) break;
+    // Only a set with a file that landed after the folder was switched on.
+    if (!set.files.some((object) => object.lastModified > watcher.watchFrom)) continue;
+    const fresh: boolean = await ctx.runMutation(internal.watch.claimSet, {
+      automationId: watcher.automationId,
+      objects: set.files
+        .filter((object) => object.lastModified > watcher.watchFrom)
+        .map(({ key, etag }) => ({ key, etag })),
+    });
+    if (!fresh) continue;
+    const link = async (object: { key: string }) => ({
+      file_url: await presign(config, "GET", object.key, READ_LINK_SECONDS),
+      file_name: object.key.split("/").pop() ?? object.key,
+    });
+    await ctx.runMutation(internal.watch.start, {
+      automationId: watcher.automationId,
+      triggerId: watcher.triggerId,
+      trigger: {
+        ...(await link(set.body)),
+        key: set.body.key,
+        size: set.body.size,
+        creator: set.creator,
+        hooks: await Promise.all(set.hooks.map(link)),
+        endings: await Promise.all(set.endings.map(link)),
+      },
+    });
+    started += 1;
+  }
+}
+
+/**
+ * Marks a creator's files as taken. True when one of them is new, or has new contents,
+ * since the last time: then the set starts a run.
+ */
+export const claimSet = internalMutation({
+  args: {
+    automationId: v.id("automations"),
+    objects: v.array(v.object({ key: v.string(), etag: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    let fresh = false;
+    for (const object of args.objects) {
+      const seen = await ctx.db
+        .query("watchedFiles")
+        .withIndex("by_automation_and_key", (q) =>
+          q.eq("automationId", args.automationId).eq("key", object.key),
+        )
+        .first();
+      if (seen?.etag === object.etag) continue;
+      fresh = true;
+      if (seen) await ctx.db.patch(seen._id, { etag: object.etag });
+      else await ctx.db.insert("watchedFiles", { automationId: args.automationId, ...object });
+    }
+    return fresh;
   },
 });
 
@@ -139,6 +228,24 @@ export const start = internalMutation({
     const folders = triggersOfKind(automation, "folder");
     const folder = args.triggerId ? folders.find((each) => each.id === args.triggerId) : folders[0];
     if (!folder) return;
-    await startRun(ctx, automation, "folder", args.trigger, null, { triggerId: folder.id });
+    // A creator's takes go into the steps that pair them up, on this run only.
+    const takes = creatorTakesOf(args.trigger);
+    const running = takes
+      ? { ...automation, nodes: withCreatorTakes(automation.nodes, takes) }
+      : automation;
+    await startRun(ctx, running, "folder", args.trigger, null, { triggerId: folder.id });
   },
 });
+
+/** The takes a creator folder's run was started with, or null for a single file. */
+function creatorTakesOf(trigger: unknown): CreatorTakes | null {
+  if (!trigger || typeof trigger !== "object") return null;
+  const { creator, hooks, endings } = trigger as Record<string, unknown>;
+  if (typeof creator !== "string" || !Array.isArray(hooks)) return null;
+  const links = (list: unknown) =>
+    (Array.isArray(list) ? list : []).filter(
+      (each): each is { file_url: string; file_name: string } =>
+        !!each && typeof each === "object" && typeof each.file_url === "string",
+    );
+  return { creator, hooks: links(hooks), endings: links(endings) };
+}
