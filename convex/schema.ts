@@ -1119,8 +1119,6 @@ export default defineSchema({
     addedBy: v.string(),
     addedAt: v.number(),
     reviews: v.optional(v.boolean()),
-    // The bot's privacy mode was off when it joined, so it hears being tagged here.
-    privacyOffAtJoin: v.optional(v.boolean()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_chat", ["chatId"]),

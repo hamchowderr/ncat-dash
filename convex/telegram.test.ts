@@ -232,34 +232,26 @@ describe("tagging the agent in a group", () => {
     ).toEqual([{ chatId: "-100777", hears: false, privacyOff: false }]);
   });
 
-  test("privacy mode turned off later only counts once the bot is added to the group again", async () => {
+  test("turning privacy mode off counts at once, without adding the bot again", async () => {
     const setup = await team();
     await addGroupThroughBot(setup, "-100777");
     bot.privacyOff = true;
-    const before = await setup.ana.as.action(api.telegram.groupHearing, {
-      organizationId: setup.teamId,
-    });
-    expect(before).toEqual([{ chatId: "-100777", hears: false, privacyOff: true }]);
-    await addGroupThroughBot(setup, "-100777");
-    const after = await setup.ana.as.action(api.telegram.groupHearing, {
-      organizationId: setup.teamId,
-    });
-    expect(after).toEqual([{ chatId: "-100777", hears: true, privacyOff: true }]);
+    expect(
+      await setup.ana.as.action(api.telegram.groupHearing, { organizationId: setup.teamId }),
+    ).toEqual([{ chatId: "-100777", hears: true, privacyOff: true }]);
   });
 
-  test("a bot that joins with privacy mode off, or is an admin of the group, hears it", async () => {
+  test("a bot that is an admin of the group hears it even in privacy mode", async () => {
     const setup = await team();
-    bot.privacyOff = true;
-    await addGroupThroughBot(setup, "-100777");
-    bot.privacyOff = false;
     bot.adminIn = ["-100888"];
+    await addGroupThroughBot(setup, "-100777");
     await addGroupThroughBot(setup, "-100888");
     const found = await setup.olu.as.action(api.telegram.groupHearing, {
       organizationId: setup.teamId,
     });
     expect(found).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ chatId: "-100777", hears: true }),
+        expect.objectContaining({ chatId: "-100777", hears: false }),
         expect.objectContaining({ chatId: "-100888", hears: true }),
       ]),
     );
