@@ -521,8 +521,10 @@ describe("an approval in Teams", () => {
     expect(
       (await member.as.query(api.notifications.get, { organizationId: team })).chatApps,
     ).toEqual(["teams"]);
-    expect(posted).toHaveLength(1);
-    const card = (posted[0].body.attachments as { content: Record<string, unknown> }[])[0].content;
+    // The approval card (an automation waiting also opens a review, posted as review news).
+    const cards = posted.filter((one) => one.body.attachments);
+    expect(cards).toHaveLength(1);
+    const card = (cards[0].body.attachments as { content: Record<string, unknown> }[])[0].content;
     expect(card.body).toContainEqual(
       expect.objectContaining({ text: "Weekly clips is waiting for your approval (Approval)" }),
     );
@@ -557,8 +559,9 @@ describe("an approval in Teams", () => {
     const after = await t.run(async (ctx) => await ctx.db.get(step._id));
     expect(after).toMatchObject({ status: "done" });
     const edit = posted.find((one) => one.method === "PUT")!;
+    const sent = posted.findIndex((one) => one.method === "POST" && one.body.attachments);
     expect(edit.url).toBe(
-      `${SERVICE}/v3/conversations/${encodeURIComponent("19:edits@thread.tacv2")}/activities/activity-1`,
+      `${SERVICE}/v3/conversations/${encodeURIComponent("19:edits@thread.tacv2")}/activities/activity-${sent + 1}`,
     );
     const card = (edit.body.attachments as { content: Record<string, unknown> }[])[0].content;
     expect(card.body).toContainEqual(expect.objectContaining({ text: "Approved by Jordan Lee." }));

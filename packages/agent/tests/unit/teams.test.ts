@@ -160,8 +160,15 @@ describe("which chat app a message goes through", () => {
     expect(t.post).toHaveBeenCalledWith(expect.stringContaining("not linked to a team"));
   });
 
-  usePressDashboardForTests();
-  useReviewDashboardForTests();
+  it("reads untagged channel messages only for review threads", () => {
+    env.TEAMS_APP_ID = "c4d4ec4e-0000-0000-0000-000000000001";
+    env.TEAMS_APP_PASSWORD = "a-bot-password";
+    env.MASTRA_JWT_SECRET = "the-agent-shared-secret-of-at-least-32-chars";
+    env.CONVEX_SITE_URL = "https://site.test";
+    expect(chatChannels()?.handlers?.onMessage).toBe(onReviewMessage);
+  });
+
+  it("is in Teams only with a bot, the shared secret and the dashboard address", () => {
     expect(teamsReady()).toBe(false);
     expect(chatChannels()).toBeUndefined();
     env.TEAMS_APP_ID = "c4d4ec4e-0000-0000-0000-000000000001";
