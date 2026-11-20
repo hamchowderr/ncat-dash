@@ -60,15 +60,21 @@ describe("what the agent knows about motion graphics", () => {
     expect(NCAT_INSTRUCTIONS).toContain(MOTION_INSTRUCTIONS);
   });
 
-  it("puts Chapters before the motion steps, and picture steps such as B-roll before motion", () => {
+  it("puts Chapters before the motion steps, and picture steps such as Add B-Roll before motion", () => {
     expect(MOTION_INSTRUCTIONS).toContain("put Chapters before them");
-    expect(MOTION_INSTRUCTIONS).toMatch(/B-roll[^.]*go before Add Motion Graphics/);
+    expect(MOTION_INSTRUCTIONS).toMatch(/Add B-Roll, go before Add Motion Graphics/);
   });
 
   it("knows the team's style is in Settings > Motion and a step can pick a preset by id", () => {
     expect(MOTION_INSTRUCTIONS).toContain("Settings > Motion");
     expect(MOTION_INSTRUCTIONS).toContain("set the step's style to a preset id");
     expect(MOTION_INSTRUCTIONS).toContain("read motion_guide");
+  });
+
+  it("adds Plan Motion Graphics only when asked, straight before Add Motion Graphics", () => {
+    expect(MOTION_INSTRUCTIONS).toContain("Plan Motion Graphics is the one AI step here");
+    expect(MOTION_INSTRUCTIONS).toContain("Put it straight before Add Motion Graphics");
+    expect(MOTION_INSTRUCTIONS).toContain("lookFor");
   });
 
   it("knows the steps use no AI, and never suggests hosted services", () => {
