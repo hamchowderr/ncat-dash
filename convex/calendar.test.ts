@@ -15,6 +15,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function omitSystem<T extends { _id: unknown; _creationTime: unknown }>(doc: T) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { _id, _creationTime, ...rest } = doc;
+  return rest;
+}
+
 async function team() {
   const t = backend();
   const org = await addTeam(t, "Harbor Cuts");
@@ -143,6 +149,84 @@ describe("planned posts", () => {
     // Taking the file out of the library leaves the post, without the file.
     await ana.as.mutation(api.library.remove, { itemId });
     expect((await range()).posts[0]).toMatchObject({ title: "Best moment 3", file: null });
+  });
+
+  test("can be made for several files picked from the library at once", async () => {
+    const { t, org, ana, outsider, range } = await team();
+    const clientId = await ana.as.mutation(api.clients.create, {
+      organizationId: org,
+      name: "Acme",
+    });
+    const file = (shortId: string, title: string, more: Record<string, unknown> = {}) =>
+      t.run((ctx) =>
+        ctx.db.insert("libraryItems", {
+          organizationId: org,
+          shortId,
+          kind: "video",
+          source: "upload",
+          title,
+          tags: [],
+          searchText: `${shortId} ${title}`.toLowerCase(),
+          createdBy: "someone",
+          ...more,
+        }),
+      );
+    const one = await file("V1", "Episode 1");
+    const two = await file("V2", "Episode 2", { clientId });
+    await ana.as.mutation(api.calendar.addSlot, { organizationId: org, ...instagramMondays });
+
+    // Queued, they take the next free slots in the order they were picked.
+    const postIds = await ana.as.mutation(api.calendar.addPosts, {
+      organizationId: org,
+      platform: "instagram",
+      queue: true,
+      itemIds: [two, one, two],
+    });
+    expect(postIds).toHaveLength(2);
+    const { posts } = await range();
+    expect(
+      posts.map((post) => ({ title: post.title, at: post.at, client: post.client?.name })),
+    ).toEqual([
+      { title: "Episode 2", at: at("2026-11-02T10:00:00Z"), client: "Acme" },
+      { title: "Episode 1", at: at("2026-11-09T10:00:00Z"), client: undefined },
+    ]);
+
+    // At a time with a title of their own, every one shares both.
+    await ana.as.mutation(api.calendar.addPosts, {
+      organizationId: org,
+      title: "Recap",
+      platform: "tiktok",
+      at: at("2026-11-12T17:00:00Z"),
+      itemIds: [one, two],
+    });
+    const recaps = (await range()).posts.filter((post) => post.platform === "tiktok");
+    expect(recaps.map((post) => [post.title, post.file?.shortId, post.at])).toEqual([
+      ["Recap", "V1", at("2026-11-12T17:00:00Z")],
+      ["Recap", "V2", at("2026-11-12T17:00:00Z")],
+    ]);
+
+    await expect(
+      ana.as.mutation(api.calendar.addPosts, { organizationId: org, platform: "x", itemIds: [] }),
+    ).rejects.toThrow(/at least one/);
+    // Another team's file, or a person outside the team, is refused.
+    const theirs = await t.run(async (ctx) => {
+      const other = (await ctx.db.get(two))!;
+      return ctx.db.insert("libraryItems", { ...omitSystem(other), organizationId: "elsewhere" });
+    });
+    await expect(
+      ana.as.mutation(api.calendar.addPosts, {
+        organizationId: org,
+        platform: "x",
+        itemIds: [theirs],
+      }),
+    ).rejects.toThrow(/no longer in the library/);
+    await expect(
+      outsider.as.mutation(api.calendar.addPosts, {
+        organizationId: org,
+        platform: "x",
+        itemIds: [one],
+      }),
+    ).rejects.toThrow();
   });
 
   test("are only for their team", async () => {

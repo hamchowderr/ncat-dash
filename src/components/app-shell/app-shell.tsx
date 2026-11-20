@@ -2,12 +2,12 @@
 
 import { api } from "@convex/_generated/api";
 import { useQuery } from "convex/react";
-import { MessagesSquare } from "lucide-react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useRef, ViewTransition } from "react";
 
 import { useAgentContext } from "@/components/agent/agent-context";
+import { AgentRail, AgentTrigger, useAgentShortcut } from "@/components/agent/agent-rail";
 import { FullPageLoader } from "@/components/full-page-loader";
 import { AlertNotices, useUnseenAlerts } from "@/components/inbox/alert-notices";
 import {
@@ -17,7 +17,6 @@ import {
   TrialEnded,
   useAccessRefusal,
 } from "@/components/trial/trial-notice";
-import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { showAgent, useAgentOpen } from "@/lib/agent-open";
 import { TeamContext } from "@/lib/team-context";
@@ -72,6 +71,7 @@ function Shell({
   const { onAutomation } = useAgentContext();
   const agentOpen = useAgentOpen();
   const refusal = useAccessRefusal(state.team.id);
+  useAgentShortcut(agentOpen);
 
   return (
     <SidebarProvider className="md:h-svh md:overflow-hidden">
@@ -90,17 +90,8 @@ function Shell({
             )}
             <div className="ml-auto flex items-center gap-3">
               <TrialDays organizationId={state.team.id} />
-              {!agentOpen && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  data-tour-step-id="tour-agent"
-                  onClick={() => showAgent(true)}
-                >
-                  <MessagesSquare />
-                  Agent
-                </Button>
-              )}
+              {/* On a phone the agent's strip has no room, so its button sits here. */}
+              {!agentOpen && <AgentTrigger className="-mr-1 md:hidden" />}
             </div>
           </header>
           <div
@@ -116,21 +107,21 @@ function Shell({
             </PageTransition>
           </div>
         </SidebarInset>
-        {/* Always in place on a wide screen and opened by growing, so the page makes room
-          for the chat instead of jumping. On a narrow screen there is no room beside the
-          page, so the agent takes the page's place until it is closed: nothing lies over
-          anything. */}
+        {/* The agent is a sidebar of its own on the right, the mirror of the menu on the
+          left: folded to a slim strip, or open beside the page, which makes room for it
+          instead of being covered. It opens by growing, so nothing jumps. On a screen too
+          narrow for both, the open agent takes the page's place until it is closed; on a
+          phone the strip has no room, and the bar along the top opens it instead. */}
         <aside
           aria-label="Agent"
-          aria-hidden={!agentOpen}
-          inert={!agentOpen}
+          data-state={agentOpen ? "open" : "closed"}
           className={cn(
-            "bg-background h-svh flex-col overflow-hidden lg:flex lg:shrink-0",
-            "motion-safe:lg:transition-[width] motion-safe:lg:duration-300 motion-safe:lg:ease-[cubic-bezier(0.16,1,0.3,1)]",
-            agentOpen ? "flex min-w-0 flex-1 lg:w-[26rem] lg:flex-none" : "hidden lg:w-0",
+            "bg-sidebar text-sidebar-foreground h-svh flex-col overflow-hidden md:flex md:shrink-0 md:py-2",
+            "motion-safe:md:transition-[width] motion-safe:md:duration-300 motion-safe:md:ease-[cubic-bezier(0.16,1,0.3,1)]",
+            agentOpen ? "flex min-w-0 flex-1 lg:w-[26rem] lg:flex-none" : "hidden md:w-12",
           )}
         >
-          {agentOpen && (
+          {agentOpen ? (
             <div className="flex h-full min-h-0 flex-col lg:w-[26rem] lg:min-w-[26rem]">
               {refusal ? (
                 <AgentResting
@@ -141,6 +132,8 @@ function Shell({
                 <AgentPanel onAutomation={onAutomation} onClose={() => showAgent(false)} />
               )}
             </div>
+          ) : (
+            <AgentRail />
           )}
         </aside>
       </DashboardTour>

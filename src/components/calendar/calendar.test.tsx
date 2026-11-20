@@ -3,7 +3,7 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test } from "vitest";
 
-import { answerQuery, mutationOf, pushed } from "@/test/convex";
+import { actionOf, answerQuery, mutationOf, pushed } from "@/test/convex";
 import { pick, renderInApp, TEAM } from "@/test/render";
 
 import { CalendarView } from "./calendar-view";
@@ -229,7 +229,6 @@ describe("the Calendar", () => {
     const side = screen.getByRole("complementary", { name: "Side list" });
     await userEvent.click(within(side).getByRole("button", { name: "Add Post" }));
     await userEvent.type(within(side).getByLabelText("Title"), "Clip 4");
-    await userEvent.type(within(side).getByLabelText("Library File"), "c12");
     await userEvent.click(within(side).getByRole("button", { name: "Add Post" }));
     expect(add).toHaveBeenCalledWith({
       organizationId: TEAM.id,
@@ -237,7 +236,6 @@ describe("the Calendar", () => {
       platform: "instagram",
       at: null,
       queue: true,
-      file: "c12",
     });
 
     await userEvent.click(within(side).getByRole("button", { name: "Back" }));
@@ -254,6 +252,101 @@ describe("the Calendar", () => {
         queue: false,
       }),
     );
+  });
+
+  test("videos are picked from the library, not typed in, and each one becomes a post", async () => {
+    answer();
+    const file = (id: string, shortId: string, title: string, kind = "video") => ({
+      _id: id,
+      _creationTime: 1,
+      shortId,
+      kind,
+      source: "upload",
+      title,
+      tags: id === "v2" ? ["podcast"] : [],
+      rating: null,
+      duration: 75,
+      automationName: null,
+      parent: null,
+      client: null,
+      made: 0,
+      searchable: "no",
+    });
+    answerQuery(api.library.list, {
+      items: [
+        file("v1", "V1", "Episode 1"),
+        file("v2", "V2", "Episode 2"),
+        file("p1", "P1", "Cover art", "image"),
+        file("a1", "A1", "Theme music", "audio"),
+      ],
+      searchNewFiles: false,
+      filled: true,
+      canChangeSettings: true,
+      tags: [],
+      clients: [],
+    });
+    actionOf(api.library.previewLinks).mockImplementation(async (args: unknown) =>
+      (args as { itemIds: string[] }).itemIds.map((itemId) => ({
+        itemId,
+        url: `https://files.test/${itemId}`,
+      })),
+    );
+    renderInApp(<CalendarView now={NOW} />);
+    const addMany = mutationOf(api.calendar.addPosts);
+    addMany.mockResolvedValue(["post8", "post9"]);
+    const side = screen.getByRole("complementary", { name: "Side list" });
+    await userEvent.click(within(side).getByRole("button", { name: "Add Post" }));
+    // Nothing to type a file's ID into any more.
+    expect(within(side).queryByLabelText("Library File")).toBeNull();
+    await userEvent.click(within(side).getByRole("button", { name: "Choose Videos" }));
+
+    const picker = await screen.findByRole("dialog", { name: "Choose From Your Library" });
+    const grid = within(picker).getByRole("list", { name: "Library files" });
+    // Videos and pictures can be posted; a sound cannot.
+    expect(
+      within(grid)
+        .getAllByRole("button")
+        .map((tile) => tile.getAttribute("aria-label")),
+    ).toEqual(["V1 Episode 1", "V2 Episode 2", "P1 Cover art"]);
+    await userEvent.click(within(picker).getByRole("button", { name: "Videos" }));
+    expect(within(grid).queryByRole("button", { name: "P1 Cover art" })).toBeNull();
+    // Search reads tags as well as names.
+    await userEvent.type(within(picker).getByLabelText("Search your library"), "podcast");
+    expect(within(grid).getAllByRole("button")).toHaveLength(1);
+    await userEvent.click(within(grid).getByRole("button", { name: "V2 Episode 2" }));
+    await userEvent.clear(within(picker).getByLabelText("Search your library"));
+    await userEvent.click(within(grid).getByRole("button", { name: "V1 Episode 1" }));
+    expect(within(grid).getByRole("button", { name: "V2 Episode 2" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(within(picker).getByText("2 picked")).toBeInTheDocument();
+    await userEvent.click(within(picker).getByRole("button", { name: "Use 2 Files" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // The picked ones show in the order picked, and one can be taken out again.
+    const picked = within(side).getByRole("list", { name: "Picked files" });
+    expect(
+      within(picked)
+        .getAllByRole("listitem")
+        .map((row) => row.textContent),
+    ).toEqual(["Episode 2V2", "Episode 1V1"]);
+    await userEvent.click(within(side).getByRole("button", { name: "Change Videos" }));
+    const again = await screen.findByRole("dialog", { name: "Choose From Your Library" });
+    await userEvent.click(within(again).getByRole("button", { name: "P1 Cover art" }));
+    await userEvent.click(within(again).getByRole("button", { name: "Use 3 Files" }));
+    await userEvent.click(within(side).getByRole("button", { name: "Take out P1" }));
+
+    await userEvent.click(within(side).getByRole("button", { name: "Add 2 Posts" }));
+    expect(addMany).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      platform: "instagram",
+      at: null,
+      queue: true,
+      itemIds: ["v2", "v1"],
+    });
+    // Several posts at once go back to the side list rather than opening one of them.
+    expect(await within(side).findByRole("button", { name: "Add Post" })).toBeInTheDocument();
   });
 
   test("a scheduled run opens its automation", async () => {
