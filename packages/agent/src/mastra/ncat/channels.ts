@@ -1,7 +1,9 @@
-import type { AgentControllerChannelsConfig, ChannelHandler } from '@mastra/core/channels';
-import { asTheDiscordWriter, discordAdapter } from './discord';
-import { asTheWriter, slackChannels } from './slack';
-import { asTheTeamsWriter, teamsAdapter } from './teams';
+import type { AgentControllerChannelsConfig, ChannelHandler } from "@mastra/core/channels";
+import { onAlertButton } from "./alert-buttons";
+import { asTheDiscordWriter, discordAdapter } from "./discord";
+import { onReviewReply } from "./review-replies";
+import { asTheWriter, slackChannels } from "./slack";
+import { asTheTeamsWriter, teamsAdapter } from "./teams";
 
 /**
  * The chat apps the agent answers in: Slack (each team's own app), and Discord and
@@ -9,8 +11,8 @@ import { asTheTeamsWriter, teamsAdapter } from './teams';
  * on this server. Every message first finds who wrote it, the way that app allows.
  */
 export const byPlatform: ChannelHandler = async (thread, message, next, ctx) => {
-  if (thread.id.startsWith('discord:')) return await asTheDiscordWriter(thread, message, next, ctx);
-  if (thread.id.startsWith('teams:')) return await asTheTeamsWriter(thread, message, next, ctx);
+  if (thread.id.startsWith("discord:")) return await asTheDiscordWriter(thread, message, next, ctx);
+  if (thread.id.startsWith("teams:")) return await asTheTeamsWriter(thread, message, next, ctx);
   return await asTheWriter(thread, message, next, ctx);
 };
 
@@ -29,6 +31,10 @@ export function chatChannels(): AgentControllerChannelsConfig | undefined {
       onMention: byPlatform,
       onDirectMessage: byPlatform,
       onSubscribedMessage: byPlatform,
+      // Approve and Send back on the dashboard's alerts; anything else as before.
+      onAction: onAlertButton,
+      // Teammates' replies in a review's Discord thread go to the review; nothing else.
+      ...(discord ? { onMessage: onReviewReply } : {}),
     },
   };
 }

@@ -1,11 +1,22 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
@@ -33,6 +44,121 @@ function day(at: number) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+const NONE = "none";
+
+type ReviewChannel = { id: string; name: string; guildId: string; guildName: string };
+
+/**
+ * Where review activity goes in Discord: new reviews, client feedback and mentions, each
+ * comment thread as a Discord thread whose replies come back to the review.
+ */
+function ReviewActivity({
+  channel,
+  canEdit,
+}: {
+  channel: { id: string; name: string; guildName: string } | null;
+  canEdit: boolean;
+}) {
+  const team = useActiveTeam();
+  const listChannels = useAction(api.discordReview.channels);
+  const setAlertChannel = useAction(api.discordReview.setAlertChannel);
+  const [channels, setChannels] = useState<ReviewChannel[] | null | "failed">(null);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canEdit) return;
+    let live = true;
+    listChannels({ organizationId: team.id })
+      .then((found) => live && setChannels(found ?? "failed"))
+      .catch(() => live && setChannels("failed"));
+    return () => {
+      live = false;
+    };
+  }, [canEdit, listChannels, team.id]);
+
+  async function onPick(value: string) {
+    setProblem(null);
+    setSaving(true);
+    try {
+      const result = await setAlertChannel({
+        organizationId: team.id,
+        channelId: value === NONE ? null : value,
+      });
+      if (result.ok) {
+        toast.success(
+          value === NONE
+            ? "Review activity stays in the dashboard"
+            : "Review activity goes to Discord",
+        );
+      } else setProblem(result.detail);
+    } catch (caught) {
+      setProblem(errorMessage(caught, "That could not be saved. Try again."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!canEdit) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        {channel
+          ? `New reviews, client feedback and mentions are posted to #${channel.name} in ${channel.guildName}. Replies in a review's Discord thread come back to the review.`
+          : "Review activity is not posted to Discord."}
+      </p>
+    );
+  }
+
+  const listed = Array.isArray(channels) ? channels : [];
+  // The saved channel stays pickable even before Discord's list arrives.
+  const options: ReviewChannel[] =
+    channel && !listed.some((one) => one.id === channel.id)
+      ? [{ ...channel, guildId: "saved" }, ...listed]
+      : listed;
+  const servers = [...new Set(options.map((one) => one.guildName))];
+
+  return (
+    <Field>
+      <FieldLabel htmlFor="discord-review-channel">Review activity</FieldLabel>
+      <Select
+        value={channel?.id ?? NONE}
+        onValueChange={onPick}
+        disabled={saving || channels === null}
+      >
+        <SelectTrigger id="discord-review-channel" className="w-64">
+          <SelectValue placeholder={channels === null ? "Loading channels" : undefined} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NONE}>Not posted</SelectItem>
+          {servers.map((server) => (
+            <SelectGroup key={server}>
+              {servers.length > 1 && <SelectLabel>{server}</SelectLabel>}
+              {options
+                .filter((one) => one.guildName === server)
+                .map((one) => (
+                  <SelectItem key={one.id} value={one.id}>
+                    #{one.name}
+                  </SelectItem>
+                ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+      <FieldDescription>
+        {channels === "failed"
+          ? "Discord did not list the channels. Try again in a minute."
+          : "New reviews, client feedback and mentions are posted here, each comment as its own thread. Replies in that thread come back to the review from people who linked their Discord."}
+      </FieldDescription>
+      {problem && (
+        <Alert variant="destructive">
+          <AlertTitle>That channel was not picked</AlertTitle>
+          <AlertDescription>{problem}</AlertDescription>
+        </Alert>
+      )}
+    </Field>
+  );
 }
 
 /**
@@ -151,6 +277,10 @@ export function DiscordCard() {
               </div>
             )}
           </section>
+
+          {discord.servers.length > 0 && (
+            <ReviewActivity channel={discord.reviewChannel} canEdit={discord.canEdit} />
+          )}
 
           <section className="flex flex-col gap-2" aria-label="Your Discord account">
             <p className="text-sm font-medium">Your Discord account</p>

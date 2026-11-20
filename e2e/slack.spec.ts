@@ -296,6 +296,65 @@ test("a client's comment starts a Slack thread, and a teammate's reply there lan
   await client.context().close();
 });
 
+test("the approval waiting comes to Jordan as a Slack message, and Approve there decides it", async () => {
+  // Settings, Notifications has a Slack column now that the team has Slack.
+  await jordan.goto("/settings/notifications");
+  await expect(jordan.getByRole("columnheader", { name: "Slack" })).toBeVisible();
+  await expect(
+    jordan.getByRole("switch", { name: "An approval is waiting for me: in Slack" }),
+  ).toBeChecked();
+
+  const approval = async () =>
+    (await posted()).find(
+      (message) =>
+        message.method === "chat.postMessage" &&
+        message.channel === "U0JORDAN" &&
+        message.text.includes("waiting for your approval"),
+    ) as (Posted & { blocks: string | null }) | undefined;
+  await expect.poll(async () => Boolean(await approval()), { timeout: 30_000 }).toBe(true);
+  const message = (await approval())!;
+  const buttons = JSON.parse(message.blocks ?? "[]")[1].elements as {
+    action_id: string;
+    value: string;
+  }[];
+  expect(buttons.map((button) => button.action_id)).toEqual([
+    "ncat_alert_approve",
+    "ncat_alert_send_back",
+  ]);
+
+  // Jordan presses Approve in Slack: Slack posts the press, signed, to the dashboard.
+  const body = new URLSearchParams({
+    payload: JSON.stringify({
+      type: "block_actions",
+      team: { id: slackTeam },
+      user: { id: "U0JORDAN" },
+      container: { channel_id: message.channel, message_ts: message.ts },
+      actions: [{ action_id: "ncat_alert_approve", value: buttons[0].value }],
+    }),
+  }).toString();
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = `v0=${createHmac("sha256", signingSecret).update(`v0:${timestamp}:${body}`).digest("hex")}`;
+  const pressed = await fetch(`${APP}/api/slack/events`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "x-slack-request-timestamp": timestamp,
+      "x-slack-signature": signature,
+    },
+    body,
+  });
+  expect(pressed.status).toBe(200);
+
+  // The message now says who approved, and its buttons are gone.
+  const same = async () =>
+    (await posted()).find((one) => one.ts === message.ts) as Posted & { blocks: string | null };
+  await expect
+    .poll(async () => (await same()).blocks ?? "", { timeout: 30_000 })
+    .toContain("Approved by Jordan Lee.");
+  expect((await same()).blocks).not.toContain("ncat_alert_");
+  expect((await same()).text).toBe("Approved by Jordan Lee.");
+});
+
 test("a request not signed with the team's secret is refused", async () => {
   const ts = `${Math.floor(Date.now() / 1000)}.000400`;
   const response = await sendEvent(

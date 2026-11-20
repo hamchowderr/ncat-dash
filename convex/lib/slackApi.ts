@@ -163,3 +163,41 @@ export async function postEphemeral(
   });
   return reply?.ok === true;
 }
+
+/** A Slack message the dashboard posted, as Slack names it: its conversation and ts. */
+export type SlackMessageRef = { channel: string; ts: string };
+
+/**
+ * Posts a message built from Block Kit blocks, with `text` as what notifications and
+ * screen readers show. Posting to a person's Slack user id lands in their direct
+ * messages with the app. Returns where it went, or null.
+ */
+export async function postBlocks(
+  token: string,
+  message: { channel: string; text: string; blocks: unknown[] },
+): Promise<SlackMessageRef | null> {
+  const reply = await call("chat.postMessage", token, {
+    channel: message.channel,
+    text: message.text,
+    blocks: JSON.stringify(message.blocks),
+    unfurl_links: "false",
+    unfurl_media: "false",
+  });
+  if (!reply?.ok || typeof reply.ts !== "string" || typeof reply.channel !== "string") return null;
+  return { channel: reply.channel, ts: reply.ts };
+}
+
+/** Rewrites a message the app posted, such as taking its buttons away once decided. */
+export async function updateBlocks(
+  token: string,
+  ref: SlackMessageRef,
+  message: { text: string; blocks: unknown[] },
+): Promise<boolean> {
+  const reply = await call("chat.update", token, {
+    channel: ref.channel,
+    ts: ref.ts,
+    text: message.text,
+    blocks: JSON.stringify(message.blocks),
+  });
+  return reply?.ok === true;
+}
