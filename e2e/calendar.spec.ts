@@ -18,11 +18,14 @@ test.use({
 /** Drags one element onto another the way the browser does, with one shared DataTransfer. */
 async function drag(page: Page, source: Locator, target: Locator) {
   const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-  await source.dispatchEvent("dragstart", { dataTransfer });
+  // Held on to, as the browser does: the drop redraws the entry where it lands at once,
+  // so the element it was dragged from may already be gone when the drag ends.
+  const dragged = await source.elementHandle();
+  await dragged!.dispatchEvent("dragstart", { dataTransfer });
   await target.dispatchEvent("dragenter", { dataTransfer });
   await target.dispatchEvent("dragover", { dataTransfer });
   await target.dispatchEvent("drop", { dataTransfer });
-  await source.dispatchEvent("dragend", { dataTransfer });
+  await dragged!.dispatchEvent("dragend", { dataTransfer });
 }
 
 test("posts are planned on the calendar, fill repeating slots, and move by dragging", async ({
