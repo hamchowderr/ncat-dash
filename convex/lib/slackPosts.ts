@@ -21,6 +21,8 @@ export const reviewPostValidator = v.union(
     reviewId: v.id("reviews"),
     commentId: v.id("reviewComments"),
     from: v.string(),
+    // The teammate who wrote it, so chat apps can show their name and picture.
+    fromUserId: v.optional(v.string()),
     body: v.string(),
     mentioned: v.array(v.string()),
   }),
@@ -29,6 +31,7 @@ export const reviewPostValidator = v.union(
     reviewId: v.id("reviews"),
     commentId: v.id("reviewComments"),
     from: v.string(),
+    fromUserId: v.optional(v.string()),
     body: v.string(),
   }),
 );

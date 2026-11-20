@@ -97,7 +97,13 @@ export async function joinChannel(token: string, channel: string): Promise<boole
 /** Posts a message, in a thread when `threadTs` is given. Returns its ts, or null. */
 export async function postMessage(
   token: string,
-  message: { channel: string; text: string; threadTs?: string },
+  message: {
+    channel: string;
+    text: string;
+    threadTs?: string;
+    // Posts under this name and picture (needs the app's chat:write.customize scope).
+    as?: { name: string; image: string | null };
+  },
 ): Promise<string | null> {
   const reply = await call("chat.postMessage", token, {
     channel: message.channel,
@@ -105,8 +111,29 @@ export async function postMessage(
     unfurl_links: "false",
     unfurl_media: "false",
     ...(message.threadTs ? { thread_ts: message.threadTs } : {}),
+    ...(message.as ? { username: message.as.name.slice(0, 80) } : {}),
+    ...(message.as?.image ? { icon_url: message.as.image } : {}),
   });
   return reply?.ok && typeof reply.ts === "string" ? reply.ts : null;
+}
+
+/**
+ * Whether the app may post under someone else's name and picture: Slack's
+ * chat:write.customize scope, which apps made before it was in the manifest lack until
+ * they are reinstalled. Slack lists a token's scopes on every answer.
+ */
+export async function canPostAsOthers(token: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${slackApiBase()}auth.test`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const scopes = (response.headers.get("x-oauth-scopes") ?? "").split(",");
+    return scopes.map((scope) => scope.trim()).includes("chat:write.customize");
+  } catch {
+    return false;
+  }
 }
 
 /** The Slack user with this email address, so a mention can tag them there. */
