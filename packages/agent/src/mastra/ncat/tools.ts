@@ -85,6 +85,7 @@ export const dashOverview = createTool({
         enabled: boolean;
         stepCount: number;
         trigger: { kind: string };
+        moreTriggers?: { kind: string }[];
         lastRun: { status: string } | null;
       }[];
       return {
@@ -94,7 +95,9 @@ export const dashOverview = createTool({
           name: row.name,
           on: row.enabled,
           steps: row.stepCount,
-          startsWith: row.trigger.kind,
+          startsWith: [row.trigger, ...(row.moreTriggers ?? [])]
+            .map((each) => each.kind)
+            .join(", "),
           lastRun: row.lastRun?.status ?? null,
         })),
       };
@@ -256,7 +259,29 @@ const operation = z.discriminatedUnion("op", [
       .describe(
         'What starts the automation: kind is the trigger type from list_step_types without "trigger:" (so "upload" for trigger:upload), plus that type\'s settings.',
       ),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        'Which trigger to change, when it has several ("__trigger_2" and up). The first when left out.',
+      ),
   }),
+  z
+    .object({
+      op: z.literal("addTrigger"),
+      trigger: z
+        .object({ kind: z.string() })
+        .passthrough()
+        .describe("Another thing that starts the same automation, like the trigger in op trigger."),
+      starts: z
+        .array(z.string())
+        .optional()
+        .describe("Ids of steps nothing else feeds that this trigger starts too."),
+    })
+    .describe(
+      'Adds another trigger, with the id "__trigger_2" (then 3 and up). Each run does only the steps its trigger starts: add steps with after set to its id for its own branch, or connect its id to a step nothing else feeds to share steps. All triggers share one on/off switch.',
+    ),
+  z.object({ op: z.literal("removeTrigger"), id: z.string() }),
   z.object({ op: z.literal("name"), name: z.string() }),
   z.object({ op: z.literal("tidy") }),
 ]);
@@ -266,7 +291,8 @@ const operation = z.discriminatedUnion("op", [
  * so on, and a model reasonably sends that name as the kind; the dashboard wants "upload".
  */
 export function asSent(op: z.infer<typeof operation>): z.infer<typeof operation> {
-  if (op.op !== "trigger" || !op.trigger.kind.startsWith("trigger:")) return op;
+  if (op.op !== "trigger" && op.op !== "addTrigger") return op;
+  if (!op.trigger.kind.startsWith("trigger:")) return op;
   return { ...op, trigger: { ...op.trigger, kind: op.trigger.kind.slice("trigger:".length) } };
 }
 
@@ -359,6 +385,92 @@ export const setUpFollowOn = createTool({
       })) as { automationId: string; on: boolean; problem: string | null };
       rememberMade(userOf(ctx) ?? "", made.automationId);
       return { ...made, address: `/automations/${made.automationId}` };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+const reviewInput = z
+  .object({
+    on: z.boolean().optional(),
+    reviewers: z
+      .array(z.string())
+      .optional()
+      .describe("User ids of who decides (the team from describe_automation). Empty: anyone on the team."),
+    timeLimit: z
+      .number()
+      .min(0)
+      .optional()
+      .describe("Decide by itself after this long, 6 days at most. 0 waits until someone decides."),
+    timeLimitUnit: z.enum(["hours", "days"]).optional(),
+    whenTimeUp: z.enum(["reject", "approve"]).optional(),
+  })
+  .optional();
+
+export const describeWorkflow = createTool({
+  id: "describe_workflow",
+  description:
+    "The workflow an automation is part of: its kind of work, client, whether it is on, who reviews, and its automations with where the review happens. When it is in none, what one made from its chain would start with.",
+  inputSchema: z.object({ automationId }),
+  execute: async (input, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    const id = need(input.automationId, workingAutomationOf(session));
+    try {
+      return await client.query(dash.workflows.describeFor, { automationId: id });
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+export const setUpWorkflow = createTool({
+  id: "set_up_workflow",
+  description:
+    "Make an automation's chain (it and every automation linked to it) one workflow, or change the workflow it is in: name, kind of work, client, and its one review. While the review is on, Approval steps inside the chain are passed through and one review happens just before the last automations' files go out. Leave out what should stay as it is.",
+  inputSchema: z.object({
+    automationId,
+    name: z.string().min(1).max(80).optional(),
+    kind: z
+      .enum(["client", "ugc", "own", "quick"])
+      .optional()
+      .describe(
+        "client: client work. ugc: UGC and ads. own: the person's own content. quick: a quick personal job, with no review. Changing it brings that kind's review on or off unless review.on is given too.",
+      ),
+    clientId: z.string().nullable().optional().describe("One of the team's clients, or null for the team."),
+    review: reviewInput,
+  }),
+  execute: async (input, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    const id = need(input.automationId, workingAutomationOf(session));
+    try {
+      return await client.mutation(dash.workflows.setUp, {
+        automationId: id,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.kind !== undefined ? { kind: input.kind } : {}),
+        ...(input.clientId !== undefined ? { clientId: input.clientId } : {}),
+        ...(input.review !== undefined ? { review: input.review } : {}),
+      });
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+export const switchWorkflow = createTool({
+  id: "switch_workflow",
+  description:
+    "Switch every automation in a workflow on or off together. Switching on refuses, naming the automation, while one of them has a problem.",
+  inputSchema: z.object({
+    workflowId: z.string().min(1).describe("From describe_workflow or set_up_workflow."),
+    on: z.boolean(),
+  }),
+  outputSchema: z.object({ workflowId: z.string(), on: z.boolean() }),
+  execute: async (input, ctx) => {
+    const { client } = dashFor(userOf(ctx));
+    try {
+      await client.mutation(dash.workflows.setOn, { workflowId: input.workflowId, on: input.on });
+      return { workflowId: input.workflowId, on: input.on };
     } catch (caught) {
       throw new Error(plainError(caught));
     }
@@ -673,6 +785,9 @@ export const ncatTools = {
   create_automation: createAutomation,
   switch_automation: switchAutomation,
   set_up_follow_on: setUpFollowOn,
+  describe_workflow: describeWorkflow,
+  set_up_workflow: setUpWorkflow,
+  switch_workflow: switchWorkflow,
   list_uploads: listUploads,
   try_automation: tryAutomation,
   check_run: checkRun,
@@ -688,6 +803,7 @@ export const ncatTools = {
 export const NCAT_READ_TOOLS = [
   "dash_overview",
   "describe_automation",
+  "describe_workflow",
   "list_step_types",
   "platform_guide",
   "list_uploads",
@@ -702,6 +818,7 @@ export const NCAT_EDIT_TOOLS = [
   "change_automation",
   "create_automation",
   "set_up_follow_on",
+  "set_up_workflow",
   "make_folder",
 ] as const;
 
@@ -720,7 +837,9 @@ How to work:
 - Once it has no problems, try it before calling it done: try_automation runs it on one of the team's uploads (the newest it would take, unless the person named one; list_uploads shows them), then check_run tells you how each step went. If a step failed, read its error, fix what you can with change_automation and try again; say plainly what you could not fix. If the run stops at an approval step, that is it working: tell the person it is waiting for them, with a link to the run. If there are no uploads, ask the person to upload a file on the Uploads page rather than skipping the try.
 - Report a try in plain words: which file it ran on, what each step made (how many clips, for example), and any step that failed and why. Link to the run with the address try_automation returned, like [See the run](/automations/.../runs/...).
 ${TEAM_STEP_INSTRUCTIONS}
+- One automation can have several triggers (an upload and a schedule, say), all under its one on/off switch; each run does only the steps its trigger starts. Use addTrigger when the person wants the same automation started another way too; use a separate automation that starts when another finishes when the work happens one after another.
 - Automations can start other automations: a Run an automation step, or a trigger that starts one when another finishes. When describe_automation lists followOns for an automation you built or the person is looking at, mention the one or two that fit what they make, in a sentence, and set one up with set_up_follow_on if they want it. Never set one up without being asked; it switches itself on.
+- Workflows: automations linked into a chain can be one workflow with a single review just before the last files go out, instead of an Approval step in each piece. When the person asks for one review for the whole chain, wants to say who a chain is for, or asks to switch a whole chain on, use describe_workflow and set_up_workflow. Client work, UGC and their own content come with the review on; a quick personal job without. Ask which kind it is when you cannot tell. switch_workflow switches all of a chain's automations together.
 - Only switch an automation on when the person asked for it to run, and it has no problems.
 - Say what you built in plain words: what starts it and what each step does. No ids, no JSON, no jargon unless they ask. After making a new automation, link to it with the address create_automation returned, like [Open it](/automations/...).
 ${LIBRARY_INSTRUCTIONS}

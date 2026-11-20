@@ -252,6 +252,8 @@ export function AutomationsView() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {triggerSummary(automation.trigger)}
+                    {automation.moreTriggers.length > 0 &&
+                      `, or ${automation.moreTriggers.length === 1 ? "one other way" : `${automation.moreTriggers.length} other ways`}`}
                   </TableCell>
                   <TableCell>
                     <FlowStrip

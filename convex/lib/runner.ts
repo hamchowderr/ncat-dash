@@ -1,4 +1,6 @@
 import {
+  branchOf,
+  FIRST_TRIGGER,
   explainFailure,
   approvalLimitMs,
   approvalSettings,
@@ -28,6 +30,7 @@ import {
   getPlatform,
   tooShortFor,
   graphProblem,
+  isWorkflowReview,
   type NodeStatus,
   nodeTypeOf,
   parseSilences,
@@ -72,6 +75,7 @@ import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
 import { refusalFor } from "./access";
+import { workflowRunGraph } from "./workflows";
 
 // One step may fan out over this many incoming files at most.
 const MAX_JOBS_PER_STEP = 100;
@@ -90,6 +94,11 @@ export async function startRun(
   startedBy: string | null,
   options: {
     test?: string;
+    /**
+     * Which trigger started it, when the automation has more than one: the run only does
+     * the steps that trigger starts. The first trigger when left out.
+     */
+    triggerId?: string;
     /** The run that started this one, and the step that waits for it when one does. */
     parent?: { runId: Id<"runs">; runStepId?: Id<"runSteps">; chain: Id<"automations">[] };
     /** The project it works for: its finished files fill the project's empty slots. */
@@ -102,6 +111,14 @@ export async function startRun(
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
   if (problem) return { ok: false, message: problem };
+  // A test runs exactly the step it was given; any other run only its trigger's branch.
+  const triggerId = options.triggerId ?? FIRST_TRIGGER;
+  const { nodes, edges } = options.test
+    ? { nodes: automation.nodes, edges: automation.edges }
+    : branchOf(automation, triggerId);
+  if (nodes.length === 0) {
+    return { ok: false, message: "That trigger is not connected to any steps yet." };
+  }
   // A team whose free trial is over, or that the operator blocked, keeps everything, but
   // nothing new runs.
   const refusal = await refusalFor(ctx, automation.organizationId, startedBy);
@@ -109,6 +126,14 @@ export async function startRun(
   const { parent, project } = options;
   // A project's client wins over the automation's own, so the run is for the right client.
   const clientId = project ? project.clientId : automation.clientId;
+  // A workflow's review, when the automation is part of one, is added to the run's steps.
+  const graph = await workflowRunGraph(
+    ctx,
+    automation,
+    nodes,
+    edges,
+    options.test !== undefined,
+  );
 
   const runId = await ctx.db.insert("runs", {
     organizationId: automation.organizationId,
@@ -116,16 +141,18 @@ export async function startRun(
     automationName: automation.name,
     status: "running",
     triggerKind,
+    ...(triggerId !== FIRST_TRIGGER ? { triggerId } : {}),
     // A Drive or Dropbox share link the trigger handed over becomes its download link,
     // so every step, and the run page, works with the file itself.
     trigger: withDownloadLinks(trigger),
-    nodes: automation.nodes,
-    edges: automation.edges,
+    nodes: graph.nodes,
+    edges: graph.edges,
     error: null,
     startedBy,
     finishedAt: null,
     ...(options.test ? { test: options.test } : {}),
     ...(clientId ? { clientId } : {}),
+    ...(graph.workflowId ? { workflowId: graph.workflowId } : {}),
     ...(project
       ? {
           projectId: project.projectId,
@@ -140,7 +167,7 @@ export async function startRun(
         }
       : {}),
   });
-  for (const node of automation.nodes) {
+  for (const node of graph.nodes) {
     await ctx.db.insert("runSteps", {
       runId,
       organizationId: automation.organizationId,
@@ -257,6 +284,18 @@ async function startNode(
       finishedAt: now,
     });
     return;
+  }
+
+  // A workflow's review is for files that go out, so a run that already failed skips it.
+  if (isWorkflowReview(node)) {
+    const failed = [...byNode.values()].some(
+      (other) =>
+        other.status === "failed" && !failsOver(other.nodeId, run.edges as AutomationEdge[]),
+    );
+    if (failed) {
+      await ctx.db.patch(step._id, { status: "skipped", startedAt: now, finishedAt: now });
+      return;
+    }
   }
 
   if (node.kind === "approval") {

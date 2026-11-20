@@ -15,6 +15,7 @@ describe("the Slack app manifest", () => {
       expect.arrayContaining([
         "app_mentions:read",
         "chat:write",
+        "chat:write.customize",
         "users:read.email",
         "channels:read",
         "channels:join",

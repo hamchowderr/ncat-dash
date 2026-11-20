@@ -26,6 +26,10 @@ import {
   startHistory,
   stepsBefore,
   triggerTypeOf,
+  isTriggerId,
+  replaceTrigger,
+  startsByTrigger,
+  triggersOf,
   undo,
   valueSources,
   clipsKeepShape,
@@ -39,6 +43,7 @@ import {
   type Edge,
   type NodeChange,
   NodeChangeset,
+  EdgeChangeset,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
@@ -53,6 +58,7 @@ import {
   LayoutGrid,
   Play,
   Plus,
+  Zap,
   Redo2,
   Save,
   Search,
@@ -73,7 +79,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { PageTourButton, StartPageTour } from "@/components/tours/page-tour";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { nodeTitle, type Trigger } from "@/lib/automations";
+import { nodeTitle, type Trigger, TRIGGER_LABELS } from "@/lib/automations";
 import { errorMessage } from "@/lib/catalog";
 import { downloadJson } from "@/lib/download";
 import { copiedSteps, holdSteps } from "@/lib/step-clipboard";
@@ -97,9 +103,11 @@ import {
   GROUP_ICONS,
   TRIGGER_ID,
   triggerEdges,
-  triggerPosition,
+  type TriggerFlowNode,
+  triggerPositions,
 } from "./flow-nodes";
 import { isNoteId, notePlace, useCanvasNotes } from "./canvas-notes";
+import { ChainView, useChainView } from "./chain-view";
 import { ClientPicker } from "./client-picker";
 import { DropboxSend } from "./dropbox-send";
 import { DraftBar } from "./draft-bar";
@@ -113,7 +121,7 @@ import { STEP_ICONS } from "./step-icons";
 import { RunDialog } from "./run-dialog";
 import { RunsList } from "./runs-list";
 import { VersionsPanel } from "./versions-panel";
-import { TriggerPanel } from "./trigger-panel";
+import { newTriggerKind, TriggerPanel } from "./trigger-panel";
 import { pickerGroups } from "@/lib/step-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
 
@@ -137,6 +145,49 @@ function isTyping(target: EventTarget | null): boolean {
 function toFlowNode(node: AutomationNode): StepFlowNode {
   const { position, ...content } = node;
   return { id: node.id, type: "step", position, data: { node: content } };
+}
+
+/** What starts the automation: its first trigger, any others, and what each one starts. */
+type TriggerSet = Pick<AutomationDraft, "trigger" | "moreTriggers" | "triggerStarts">;
+
+function triggerSetOf(source: TriggerSet): TriggerSet {
+  return {
+    trigger: source.trigger,
+    ...(source.moreTriggers?.length ? { moreTriggers: source.moreTriggers } : {}),
+    ...(source.triggerStarts ? { triggerStarts: source.triggerStarts } : {}),
+  };
+}
+
+/**
+ * A box on the canvas for each trigger. One already shown keeps its place unless `place`
+ * says to put every trigger back beside the steps it starts; a new one is put there.
+ */
+function triggerNodes(
+  set: TriggerSet,
+  steps: AutomationNode[],
+  edges: AutomationEdge[],
+  current: FlowNode[] = [],
+  place = false,
+  select?: string,
+): TriggerFlowNode[] {
+  const all = triggersOf(set);
+  const places = triggerPositions(
+    all.map(({ id }) => id),
+    steps,
+    startsByTrigger({ ...set, nodes: steps, edges }),
+  );
+  return all.map(({ id, trigger }) => {
+    const shown = current.find((node) => node.id === id && node.type === "trigger");
+    return {
+      id,
+      type: "trigger",
+      position: shown && !place ? shown.position : (places.get(id) ?? { x: 0, y: 0 }),
+      data: { trigger },
+      // The last trigger cannot go: an automation needs something to start it.
+      deletable: all.length > 1,
+      selected: select !== undefined ? select === id : (shown?.selected ?? false),
+    };
+  });
 }
 
 export function AutomationEditor({ automationId }: { automationId: Id<"automations"> }) {
@@ -210,18 +261,17 @@ function Editor({ automation }: { automation: Loaded }) {
   const discardDraft = useMutation(api.automations.discardDraft);
 
   const [name, setName] = useState(automation.name);
-  const [trigger, setTrigger] = useState<Trigger>(automation.trigger);
+  const [triggers, setTriggers] = useState<TriggerSet>(() => triggerSetOf(automation));
+  const trigger = triggers.trigger;
+  const several = (triggers.moreTriggers?.length ?? 0) > 0;
   const notes = useCanvasNotes(automation._id);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([
-    {
-      id: TRIGGER_ID,
-      type: "trigger",
-      position: triggerPosition(automation.nodes),
-      data: { trigger: automation.trigger },
-      deletable: false,
-    },
+    ...triggerNodes(triggers, automation.nodes as AutomationNode[], automation.edges),
     ...(automation.nodes as AutomationNode[]).map(toFlowNode),
   ]);
+  // Lines from a trigger are drawn from what each trigger starts, not kept with the
+  // others, so which of them is chosen is kept here.
+  const [chosenStarts, setChosenStarts] = useState<Set<string>>(() => new Set());
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(
     (automation.edges as AutomationEdge[]).map(canvasEdge),
   );
@@ -243,18 +293,16 @@ function Editor({ automation }: { automation: Loaded }) {
         position: { x: Math.round(node.position.x), y: Math.round(node.position.y) },
       }));
     const savedEdges: AutomationEdge[] = edges.map(savedEdge);
-    return { name, trigger, nodes: savedNodes, edges: savedEdges };
-  }, [name, trigger, nodes, edges]);
+    return { name, ...triggers, nodes: savedNodes, edges: savedEdges };
+  }, [name, triggers, nodes, edges]);
   /** Puts a whole automation on the canvas, keeping what is selected and where the trigger sits. */
   const [revision, setRevision] = useState(0);
   function show(next: AutomationDraft) {
     const chosen = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
     setName(next.name);
-    setTrigger(next.trigger);
+    setTriggers(triggerSetOf(next));
     setNodes((current) => [
-      ...current
-        .filter((node) => node.type === "trigger")
-        .map((node) => ({ ...node, data: { trigger: next.trigger } })),
+      ...triggerNodes(next, next.nodes, next.edges, current),
       ...next.nodes.map((node) => ({ ...toFlowNode(node), selected: chosen.has(node.id) })),
     ]);
     setEdges(next.edges.map(canvasEdge));
@@ -282,7 +330,7 @@ function Editor({ automation }: { automation: Loaded }) {
   // or a teammate edits it.
   const incomingDraft: AutomationDraft = {
     name: automation.name,
-    trigger: automation.trigger,
+    ...triggerSetOf(automation),
     nodes: automation.nodes as AutomationNode[],
     edges: automation.edges,
   };
@@ -315,6 +363,7 @@ function Editor({ automation }: { automation: Loaded }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The side column for what runs after this automation, when no step's settings are in it.
   const followOns = useFollowOns(automation._id);
+  const chainSize = useChainView(automation._id)?.automations.length ?? 1;
   const [afterOpen, setAfterOpen] = useState(false);
   // Choosing a step puts its settings in the column instead.
   const afterShown = afterOpen && !selected;
@@ -331,6 +380,9 @@ function Editor({ automation }: { automation: Loaded }) {
     return () => timers.forEach(clearTimeout);
   }, [fitView, nodeCount, tab, panelShown, paletteOpen, afterShown]);
 
+  // What each trigger starts, for its lines and for the "+" on one that starts nothing.
+  const starts = useMemo(() => startsByTrigger(draft), [draft]);
+
   // Each step nothing follows offers a "+" to carry on from it, and so does each way out
   // of an If that nothing hangs off yet.
   const shownNodes = useMemo(() => {
@@ -340,6 +392,10 @@ function Editor({ automation }: { automation: Loaded }) {
     );
     const open = openWaysOf(draft.nodes, draft.edges);
     return nodes.map((node) => {
+      if (node.type === "trigger") {
+        const idle = starts.size > 1 && (starts.get(node.id)?.length ?? 0) === 0;
+        return idle === Boolean(node.data.idle) ? node : { ...node, data: { ...node.data, idle } };
+      }
       if (node.type !== "step") return node;
       // While a run goes, each step it has reached shows how it is doing.
       const now = running.steps.get(node.id);
@@ -362,7 +418,7 @@ function Editor({ automation }: { automation: Loaded }) {
         },
       };
     });
-  }, [nodes, stepNodes, edges, draft, running.steps]);
+  }, [nodes, stepNodes, edges, draft, running.steps, starts]);
 
   // The line a new step is being put on, when it was started from a plus on a line.
   const [insertOn, setInsertOn] = useState<{ source: string; target: string } | null>(null);
@@ -395,7 +451,11 @@ function Editor({ automation }: { automation: Loaded }) {
   const onConnectEnd: OnConnectEnd = (_event, connection) => {
     if (connection.isValid || connection.fromHandle?.type !== "source") return;
     const from = connection.fromNode?.id;
-    if (from && from !== TRIGGER_ID) addAfter(from, connection.fromHandle?.id ?? undefined);
+    // From a trigger, only when there are several: with one, a step joined to nothing
+    // already runs from it.
+    if (from && (!isTriggerId(from) || several)) {
+      addAfter(from, connection.fromHandle?.id ?? undefined);
+    }
   };
 
   /**
@@ -413,6 +473,7 @@ function Editor({ automation }: { automation: Loaded }) {
     // A change to the steps themselves (adding, pasting, removing) is undone on its own,
     // even straight after another; typing in a setting is undone a run of keys at a time.
     setHistory((current) => record(current, next, Date.now(), { merge: false }));
+    setTriggers(triggerSetOf(next));
     setNodes((current) => {
       const known = new Map(current.map((node) => [node.id, node]));
       const steps = next.nodes.map((node): FlowNode => {
@@ -424,13 +485,14 @@ function Editor({ automation }: { automation: Loaded }) {
           selected: options.select ? node.id === options.select : (shown?.selected ?? false),
         };
       });
-      const start = current
-        .filter((node) => node.type === "trigger")
-        .map((node) => ({
-          ...node,
-          selected: options.select ? false : node.selected,
-          position: options.moveTrigger ? triggerPosition(next.nodes) : node.position,
-        }));
+      const start = triggerNodes(
+        next,
+        next.nodes,
+        next.edges,
+        current,
+        options.moveTrigger,
+        options.select,
+      );
       return [...start, ...steps];
     });
     setEdges(next.edges.map(canvasEdge));
@@ -518,23 +580,45 @@ function Editor({ automation }: { automation: Loaded }) {
       ...triggerEdges(
         stepNodes.map((node) => node.id),
         edges,
-      ),
+        starts.size > 1 ? starts : undefined,
+      ).map((edge) => (chosenStarts.has(edge.id) ? { ...edge, selected: true } : edge)),
       ...edges.map((edge) => ({
         ...flowEdge(edge),
         // The line into the step a run is on moves.
         animated: running.steps.get(edge.target)?.status === "running",
       })),
     ],
-    [stepNodes, edges, running.steps],
+    [stepNodes, edges, running.steps, starts, chosenStarts],
   );
 
-  function changeTrigger(next: Trigger) {
-    setTrigger(next);
+  /** Changes one trigger's settings as they are typed in its panel. */
+  function changeTrigger(id: string, next: Trigger) {
+    setTriggers((current) => replaceTrigger({ ...current, nodes: [], edges: [] }, id, next));
     setNodes((current) =>
       current.map((node) =>
-        node.type === "trigger" ? { ...node, data: { trigger: next } } : node,
+        node.type === "trigger" && node.id === id
+          ? { ...node, data: { ...node.data, trigger: next } }
+          : node,
       ),
     );
+  }
+
+  /** Adds another trigger and opens its settings, to pick what it is and what it starts. */
+  function addTriggerHere() {
+    const id = `__trigger_${
+      Math.max(
+        1,
+        ...(triggers.moreTriggers ?? []).map((each) => Number(each.id.split("_").pop()) || 1),
+      ) + 1
+    }`;
+    const made = change([{ op: "addTrigger", trigger: newTriggerKind(triggersOf(triggers)) }], {
+      select: id,
+    });
+    if (made) setAfterOpen(false);
+  }
+
+  function removeTrigger(id: string) {
+    change([{ op: "removeTrigger", id }]);
   }
 
   function addNode(type: string) {
@@ -542,7 +626,12 @@ function Editor({ automation }: { automation: Loaded }) {
     setPaletteOpen(false);
     setSearch("");
     const onLine = insertOn && draft.nodes.some((node) => node.id === insertOn.target);
-    const after = selected?.type === "step" ? selected.id : undefined;
+    // After a trigger when one is chosen and there are several; with one, a step joined to
+    // nothing already runs from it.
+    const after =
+      selected?.type === "step" || (selected?.type === "trigger" && several)
+        ? selected.id
+        : undefined;
     // With several steps chosen, the new step joins them: it runs once all have finished.
     const chosen = chosenSteps();
     const join = !onWay && chosen.length > 1 ? chosen.filter((other) => other !== after) : [];
@@ -554,7 +643,7 @@ function Editor({ automation }: { automation: Loaded }) {
               type,
               id,
               before: insertOn.target,
-              after: insertOn.source === TRIGGER_ID ? undefined : insertOn.source,
+              after: isTriggerId(insertOn.source) ? undefined : insertOn.source,
             }
           : {
               op: "add",
@@ -574,7 +663,13 @@ function Editor({ automation }: { automation: Loaded }) {
   // Drawing a line goes the same way as the agent's "connect", so a line out of an If
   // carries the way it left by.
   function onConnect(connection: Connection) {
-    if (connection.source === TRIGGER_ID || connection.target === TRIGGER_ID) return;
+    if (isTriggerId(connection.target)) return;
+    if (isTriggerId(connection.source)) {
+      // With one trigger, every step nothing feeds already runs from it.
+      if (several)
+        change([{ op: "connect", source: connection.source, target: connection.target }]);
+      return;
+    }
     change([
       {
         op: "connect",
@@ -669,9 +764,18 @@ function Editor({ automation }: { automation: Loaded }) {
       }
     });
 
+  // With several triggers, which one's steps Run now runs.
+  const [runTrigger, setRunTrigger] = useState<string>(TRIGGER_ID);
   async function onRun(fileUrl?: string) {
     if (!(await persist(true))) return;
-    const runId = await runNow({ automationId: automation._id, fileUrl });
+    const triggerId = several && runTrigger !== TRIGGER_ID ? runTrigger : undefined;
+    const runId = await runNow({
+      automationId: automation._id,
+      fileUrl,
+      ...(triggerId && triggersOf(triggers).some((each) => each.id === triggerId)
+        ? { triggerId }
+        : {}),
+    });
     router.push(`/automations/${automation._id}/runs/${runId}`, {
       transitionTypes: ["nav-forward"],
     });
@@ -768,6 +872,15 @@ function Editor({ automation }: { automation: Loaded }) {
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
           <TabsTrigger value="versions">Versions</TabsTrigger>
+          <TabsTrigger value="chain">
+            Chain
+            {chainSize > 1 && (
+              <span className="text-muted-foreground font-normal">
+                <span className="sr-only">, </span>
+                {chainSize}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="editor" className="flex min-h-0 flex-col">
@@ -873,6 +986,10 @@ function Editor({ automation }: { automation: Loaded }) {
                   <Plus />
                   {joining > 1 ? `Add a step after these ${joining}` : "Add step"}
                 </Button>
+                <Button variant="outline" size="sm" onClick={addTriggerHere}>
+                  <Zap />
+                  Add trigger
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -964,12 +1081,63 @@ function Editor({ automation }: { automation: Loaded }) {
                             if (isNoteId(node.id)) notes.onNoteDragStop(node.id, node.position);
                           }
                         }}
-                        onEdgesChange={onEdgesChange}
+                        onEdgesChange={(changes) => {
+                          // Lines from a trigger are drawn, not kept: only which is chosen is.
+                          const all = changes.toArray();
+                          const fromTrigger = (id: string) =>
+                            isTriggerId(id.split(">")[0]) && !edges.some((edge) => edge.id === id);
+                          const mine = all.filter(
+                            (change) => "id" in change && fromTrigger(change.id),
+                          );
+                          if (mine.length > 0) {
+                            setChosenStarts((current) => {
+                              const next = new Set(current);
+                              for (const change of mine) {
+                                if (change.type === "select") {
+                                  if (change.selected) next.add(change.id);
+                                  else next.delete(change.id);
+                                } else if (change.type === "remove") next.delete(change.id);
+                              }
+                              return next;
+                            });
+                          }
+                          const rest = all.filter((change) => !mine.includes(change));
+                          if (rest.length > 0) onEdgesChange(new EdgeChangeset(rest));
+                        }}
                         onConnect={onConnect}
                         onConnectEnd={onConnectEnd}
-                        onBeforeDelete={async ({ nodes: doomed, edges: cut }) => {
+                        onBeforeDelete={async ({ nodes: picked, edges: picks }) => {
+                          let doomed = picked;
+                          let cut = picks;
+                          // A line from a trigger, deleted, means it no longer starts that step.
+                          const unstarted = cut.filter(
+                            (edge) =>
+                              isTriggerId(edge.source) &&
+                              !doomed.some(
+                                (node) => node.id === edge.source || node.id === edge.target,
+                              ),
+                          );
+                          const doomedTriggers = doomed.filter((node) => node.type === "trigger");
+                          if (unstarted.length > 0 || doomedTriggers.length > 0) {
+                            change([
+                              ...unstarted.map((edge) => ({
+                                op: "disconnect" as const,
+                                source: edge.source,
+                                target: edge.target,
+                              })),
+                              ...doomedTriggers.map((node) => ({
+                                op: "removeTrigger" as const,
+                                id: node.id,
+                              })),
+                            ]);
+                            setChosenStarts(new Set());
+                          }
+                          doomed = doomed.filter((node) => node.type !== "trigger");
+                          cut = cut.filter((edge) => !isTriggerId(edge.source));
                           // Deleting steps with the keyboard goes the same way as Remove step.
-                          if (doomed.length === 0) return { nodes: doomed, edges: cut };
+                          if (doomed.length === 0) {
+                            return cut.length > 0 ? { nodes: doomed, edges: cut } : false;
+                          }
                           const doomedNotes = doomed.filter((node) => isNoteId(node.id));
                           if (doomedNotes.length > 0) {
                             void notes.removeNotes(doomedNotes.map((node) => node.id));
@@ -1025,6 +1193,7 @@ function Editor({ automation }: { automation: Loaded }) {
                     automationId={automation._id}
                     automationName={automation.name}
                     followOns={followOns}
+                    onShowChain={chainSize > 1 ? () => setTab("chain") : undefined}
                   />
                 </div>
               </aside>
@@ -1053,7 +1222,9 @@ function Editor({ automation }: { automation: Loaded }) {
                           .flat()
                           .flatMap((id) => stepNodes.find((node) => node.id === id) ?? [])
                           .map((node) => node.data.node)}
-                        startGivesFile={triggerTypeOf(trigger).gives === "file"}
+                        startGivesFile={triggersOf(triggers).some(
+                          (each) => triggerTypeOf(each.trigger).gives === "file",
+                        )}
                         filled={{
                           ...Object.fromEntries(
                             valueSources(
@@ -1129,12 +1300,36 @@ function Editor({ automation }: { automation: Loaded }) {
                     </>
                   ) : (
                     <>
-                      <h2 className="mb-4 text-sm font-semibold">Trigger</h2>
+                      <h2 className="mb-4 text-sm font-semibold">
+                        {several
+                          ? `Trigger ${triggersOf(triggers).findIndex((each) => each.id === selected.id) + 1}`
+                          : "Trigger"}
+                      </h2>
                       <TriggerPanel
-                        trigger={trigger}
-                        onChange={changeTrigger}
+                        key={selected.id}
+                        trigger={
+                          triggersOf(triggers).find((each) => each.id === selected.id)?.trigger ??
+                          trigger
+                        }
+                        onChange={(next) => changeTrigger(selected.id, next)}
                         automationId={automation._id}
                         hookToken={automation.hookToken}
+                        // Only one webhook (one address) and one Run now per automation.
+                        taken={triggersOf(triggers)
+                          .filter((each) => each.id !== selected.id)
+                          .map((each) => each.trigger.kind)}
+                        {...(several
+                          ? {
+                              starts: (starts.get(selected.id) ?? []).flatMap((id) => {
+                                const step = draft.nodes.find((node) => node.id === id);
+                                return step ? [{ id, title: nodeTitle(step) }] : [];
+                              }),
+                              onStopStarting: (id: string) =>
+                                change([{ op: "disconnect", source: selected.id, target: id }]),
+                              onAddStep: () => addAfter(selected.id),
+                              onRemove: () => removeTrigger(selected.id),
+                            }
+                          : {})}
                       />
                     </>
                   )}
@@ -1142,6 +1337,10 @@ function Editor({ automation }: { automation: Loaded }) {
               </aside>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="chain" className="flex min-h-0 flex-col">
+          <ChainView automationId={automation._id} />
         </TabsContent>
 
         <TabsContent value="runs">
@@ -1163,8 +1362,25 @@ function Editor({ automation }: { automation: Loaded }) {
       <RunDialog
         open={runOpen}
         onOpenChange={setRunOpen}
-        startsOnUpload={automation.enabled && !dirty && !hasDraft && trigger.kind === "upload"}
+        startsOnUpload={
+          automation.enabled &&
+          !dirty &&
+          !hasDraft &&
+          // The trigger being tried takes uploads, so a dropped file starts it by itself.
+          (triggersOf(triggers).find((each) => each.id === runTrigger) ?? triggersOf(triggers)[0])
+            .trigger.kind === "upload"
+        }
         start={onRun}
+        {...(several
+          ? {
+              triggers: triggersOf(triggers).map((each, index) => ({
+                id: each.id,
+                label: `Trigger ${index + 1}: ${TRIGGER_LABELS[each.trigger.kind]}`,
+              })),
+              triggerId: runTrigger,
+              onTriggerChange: setRunTrigger,
+            }
+          : {})}
         onUploadedOnly={() => {
           setRunOpen(false);
           setTab("runs");

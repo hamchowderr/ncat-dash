@@ -37,6 +37,8 @@ export function slackManifest(origin: string, teamName: string) {
           "im:write",
           // Answering, and posting review activity to the channel the team picks.
           "chat:write",
+          // Copying a teammate's review reply under their own name and picture.
+          "chat:write.customize",
           "channels:read",
           "groups:read",
           "channels:join",

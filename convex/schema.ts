@@ -108,6 +108,11 @@ export const triggerValidator = v.union(
   }),
 );
 
+/** Triggers after the first one, each with the steps it starts. See automation-core triggers.ts. */
+export const moreTriggersValidator = v.array(
+  v.object({ id: v.string(), trigger: triggerValidator, starts: v.array(v.string()) }),
+);
+
 /**
  * One change to an automation, as the canvas and the agent send it. The shapes are the
  * `Operation` type in packages/automation-core/src/operations.ts.
@@ -137,7 +142,13 @@ export const operationValidator = v.union(
   v.object({ op: v.literal("rename"), id: v.string(), label: v.string() }),
   v.object({ op: v.literal("switch"), id: v.string(), on: v.boolean() }),
   v.object({ op: v.literal("duplicate"), ids: v.array(v.string()) }),
-  v.object({ op: v.literal("trigger"), trigger: triggerValidator }),
+  v.object({ op: v.literal("trigger"), trigger: triggerValidator, id: v.optional(v.string()) }),
+  v.object({
+    op: v.literal("addTrigger"),
+    trigger: triggerValidator,
+    starts: v.optional(v.array(v.string())),
+  }),
+  v.object({ op: v.literal("removeTrigger"), id: v.string() }),
   v.object({ op: v.literal("name"), name: v.string() }),
   v.object({ op: v.literal("tidy") }),
 );
@@ -480,14 +491,23 @@ export default defineSchema({
     // Off: only "Run now" starts it. On: its trigger starts it with nobody logged in.
     enabled: v.boolean(),
     trigger: triggerValidator,
+    // Any triggers after the first, and which first steps the first one starts (left out:
+    // all the rest). Each run does only what its trigger starts.
+    moreTriggers: v.optional(moreTriggersValidator),
+    triggerStarts: v.optional(v.array(v.string())),
+    // True while the live version has more than one trigger, so the minute-by-minute
+    // checks can find its other triggers without reading every automation.
+    multiTrigger: v.optional(v.boolean()),
     nodes: v.array(nodeValidator),
     edges: v.array(edgeValidator),
     // Secret part of the webhook address that starts this automation.
     hookToken: v.string(),
     // The ready-made automation it was made from, so follow-ons can be suggested for it.
     starterId: v.optional(v.string()),
-    // For a schedule trigger: when it next fires. Null otherwise.
+    // For a schedule trigger: when it next fires (the soonest, with several). Null otherwise.
     nextRunAt: v.union(v.null(), v.number()),
+    // With more than one schedule trigger: when each one next fires.
+    scheduleTimes: v.optional(v.array(v.object({ triggerId: v.string(), at: v.number() }))),
     // For a watched folder: only files added after this moment start a run, so
     // switching it on never reprocesses what was already there.
     watchFrom: v.optional(v.number()),
@@ -497,6 +517,8 @@ export default defineSchema({
       v.object({
         name: v.string(),
         trigger: triggerValidator,
+        moreTriggers: v.optional(moreTriggersValidator),
+        triggerStarts: v.optional(v.array(v.string())),
         nodes: v.array(nodeValidator),
         edges: v.array(edgeValidator),
         updatedBy: v.string(),
@@ -523,7 +545,8 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_client", ["clientId"])
     .index("by_enabled_and_nextRunAt", ["enabled", "nextRunAt"])
-    .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"]),
+    .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"])
+    .index("by_enabled_and_multiTrigger", ["enabled", "multiTrigger"]),
 
   // Files a watched folder has already started a run for, so each starts only one.
   // Every version an automation has had as its live version, numbered from 1, so an
@@ -534,6 +557,8 @@ export default defineSchema({
     number: v.number(),
     name: v.string(),
     trigger: triggerValidator,
+    moreTriggers: v.optional(moreTriggersValidator),
+    triggerStarts: v.optional(v.array(v.string())),
     nodes: v.array(nodeValidator),
     edges: v.array(edgeValidator),
     // How it became live: made new, saved while off, published from a draft, or imported.
@@ -581,6 +606,9 @@ export default defineSchema({
       // A project slot moved to the status its trigger waits for.
       v.literal("slot"),
     ),
+    // Which of the automation's triggers started it, when it has more than one and it was
+    // not the first ("__trigger"). Its run only has the steps that trigger starts.
+    triggerId: v.optional(v.string()),
     // What the trigger handed over: file_url, the webhook body, the upload's details.
     trigger: v.any(),
     nodes: v.array(nodeValidator),
@@ -604,6 +632,8 @@ export default defineSchema({
     // The automations whose runs led to this one, the first one first, this one last. A
     // run never starts one of them again, nor goes deeper than MAX_CHAIN_DEPTH.
     chain: v.optional(v.array(v.id("automations"))),
+    // The workflow the automation was part of when the run started, when its review was on.
+    workflowId: v.optional(v.id("workflows")),
     // The client the automation was for when the run started.
     clientId: v.optional(v.id("clients")),
     // The project the run works for, and the slot it started from. Its finished files
@@ -934,6 +964,11 @@ export default defineSchema({
     // here. A team has at most one such channel across its servers.
     alertChannelId: v.optional(v.string()),
     alertChannelName: v.optional(v.string()),
+    // The webhook in that channel that copies a teammate's reply under their own name
+    // and picture. Made the first time it is needed; its token is kept encrypted.
+    reviewWebhook: v.optional(
+      v.object({ channelId: v.string(), id: v.string(), tokenCipher: v.string() }),
+    ),
   })
     .index("by_organization", ["organizationId"])
     .index("by_guild", ["guildId"]),
@@ -1086,6 +1121,8 @@ export default defineSchema({
     addedBy: v.string(),
     addedAt: v.number(),
     reviews: v.optional(v.boolean()),
+    // The bot's privacy mode was off when it joined, so it hears being tagged here.
+    privacyOffAtJoin: v.optional(v.boolean()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_chat", ["chatId"]),
@@ -1697,6 +1734,27 @@ export default defineSchema({
     // Where its finished files go, inside the team's folder. Left out: Clients/<name>/.
     deliveryFolder: v.optional(v.string()),
     createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
+  // A workflow: a chain of linked automations with a name, a kind of work, a client, and
+  // one review for the whole chain (automation-core workflows.ts). The automations are
+  // the chain around those stored here, so links made later join it by themselves.
+  workflows: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    kind: v.union(v.literal("client"), v.literal("ugc"), v.literal("own"), v.literal("quick")),
+    automationIds: v.array(v.id("automations")),
+    clientId: v.optional(v.id("clients")),
+    // Same settings as an Approval step, plus whether the review happens at all.
+    review: v.object({
+      on: v.boolean(),
+      reviewers: v.array(v.string()),
+      timeLimit: v.optional(v.number()),
+      timeLimitUnit: v.optional(v.union(v.literal("hours"), v.literal("days"))),
+      whenTimeUp: v.optional(v.union(v.literal("reject"), v.literal("approve"))),
+    }),
+    createdBy: v.string(),
+    updatedAt: v.number(),
   }).index("by_organization", ["organizationId"]),
 
   // A project: one piece of work, such as an episode, with a slot for each thing to

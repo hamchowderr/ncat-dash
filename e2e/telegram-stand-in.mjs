@@ -1,6 +1,7 @@
 // A stand-in for Telegram's Bot API, for the browser tests and local runs. It answers
 // what the dashboard sends (sendMessage, editMessageText) and keeps it so a test can read
-// it back. Nothing here is used by the product.
+// it back. The bot it plays is in privacy mode, as every new Telegram bot is, and is not
+// an admin of any group. Nothing here is used by the product.
 //
 //   POST /bot<token>/<method>   a Bot API call; answers { ok: true, result: { message_id } }
 //   GET  /stand-in/sent         the calls made, oldest first
@@ -33,6 +34,18 @@ createServer((request, response) => {
     } catch {
       return reply(400, { ok: false, description: "Bad JSON" });
     }
+    if (call[1] === "getMe") {
+      return reply(200, {
+        ok: true,
+        result: {
+          id: 777,
+          is_bot: true,
+          username: "KontifiStandInBot",
+          can_read_all_group_messages: false,
+        },
+      });
+    }
+    if (call[1] === "getChatMember") return reply(200, { ok: true, result: { status: "member" } });
     const result = { message_id: ++messageId };
     sent.push({ method: call[1], body: parsed, result });
     reply(200, { ok: true, result });

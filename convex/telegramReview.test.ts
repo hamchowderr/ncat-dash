@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { toReviewChannels } from "./lib/reviewChannels";
+import { postText, speakerEntities } from "./telegramReview";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 // Review activity in the team's Telegram group, the way its Slack channel works: an owner
@@ -12,7 +13,14 @@ import { addPerson, addTeam, backend } from "./test.setup";
 const CLIP = "https://files.example/opening_hello.mp4";
 const GROUP = "-100777";
 
-type Sent = { chat_id: string; text: string; replyTo: number | null; messageId: number };
+type Sent = {
+  chat_id: string;
+  text: string;
+  replyTo: number | null;
+  messageId: number;
+  entities: { type: string; offset: number; length: number }[];
+  parseMode: string | null;
+};
 let sent: Sent[] = [];
 let next = 500;
 
@@ -36,6 +44,8 @@ beforeEach(() => {
           text: body.text,
           replyTo: body.reply_parameters?.message_id ?? null,
           messageId,
+          entities: body.entities ?? [],
+          parseMode: body.parse_mode ?? null,
         });
       }
       return Response.json({ ok: true, result: { message_id: messageId } });
@@ -156,6 +166,8 @@ describe("review activity in the group", () => {
     const room = await openRoom(setup);
     await settled(t);
     expect(inGroup()).toHaveLength(1);
+    // A new review is the dashboard's own post: nobody's name in bold.
+    expect(inGroup()[0].entities).toEqual([]);
     expect(inGroup()[0].text).toBe(
       `New review: "Weekly clips" (1 clip), opened by Jordan Lee.\n\nOpen the review: http://localhost:3000/review/${room.reviewId}`,
     );
@@ -177,9 +189,14 @@ describe("review activity in the group", () => {
       parentId: rootId,
     });
     await settled(t);
+    // The client's name leads, in bold, the way a chat app shows who wrote a message.
+    expect(first.entities).toEqual([{ type: "bold", offset: 0, length: "Riley (client)".length }]);
+    expect(first.parseMode).toBeNull();
+    // The reply is the teammate's: their name in bold over their words.
     expect(inGroup()[2]).toMatchObject({
       replyTo: first.messageId,
-      text: "Jordan Lee: Sure, two more seconds.",
+      text: "Jordan Lee\nSure, two more seconds.",
+      entities: [{ type: "bold", offset: 0, length: "Jordan Lee".length }],
     });
   });
 
@@ -199,6 +216,52 @@ describe("review activity in the group", () => {
     expect(inGroup()[0].text).toMatch(
       /^Jordan Lee mentioned @devp on "Weekly clips", Opening hello at 0:04:\n\n@Dev Patel is the logo too small\?/,
     );
+    expect(inGroup()[0].entities).toEqual([
+      { type: "bold", offset: 0, length: "Jordan Lee".length },
+    ]);
+  });
+});
+
+describe("who wrote it, in bold", () => {
+  const context = {
+    reviewTitle: "Weekly clips",
+    fromAutomation: false,
+    openedBy: null,
+    clipCount: 1,
+    clipId: null,
+    clipTitle: "Opening hello",
+    time: 62,
+    replyTo: 77,
+    tags: [],
+  };
+  const reviewId = "r1" as Id<"reviews">;
+  const commentId = "c1" as Id<"reviewComments">;
+
+  test("a client's reply in a thread leads with their name, counted the way Telegram counts", () => {
+    const post = {
+      kind: "client_feedback" as const,
+      reviewId,
+      commentId,
+      from: "Zoë 🎬",
+      body: "Love it",
+    };
+    const text = postText(post, context);
+    expect(text).toBe("Zoë 🎬 (client)\nLove it");
+    // Telegram measures in UTF-16 units: the emoji is two of them.
+    expect(speakerEntities(post, text)).toEqual([{ type: "bold", offset: 0, length: 15 }]);
+  });
+
+  test("words that look like formatting stay words, and only the name is bold", () => {
+    const post = {
+      kind: "team_reply" as const,
+      reviewId,
+      commentId,
+      from: "Jordan Lee",
+      body: "*not bold* <b>x</b>",
+    };
+    const text = postText(post, context);
+    expect(text).toBe("Jordan Lee\n*not bold* <b>x</b>");
+    expect(speakerEntities(post, text)).toEqual([{ type: "bold", offset: 0, length: 10 }]);
   });
 });
 
@@ -221,7 +284,7 @@ describe("one fan-out for every chat app", () => {
     });
     await settled(setup.t);
     const texts = inGroup().map((one) => one.text);
-    expect(texts).toContain("Dev Patel: Written in Slack");
+    expect(texts).toContain("Dev Patel\nWritten in Slack");
     expect(texts.some((text) => text.includes("Written in Telegram"))).toBe(false);
   });
 });

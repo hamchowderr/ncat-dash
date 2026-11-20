@@ -15,7 +15,7 @@ Content creators and video editing agencies, and the small teams inside them. Th
 ncat-dash is the interface the No-Code Architects Toolkit never had: a dashboard for building automations that run unattended on the customer's own self-hosted toolkit. AI (the agent) helps set automations up; plain, non-AI steps run them, so no AI tokens are spent on each video. Success is an automation that runs on its own, day after day.
 
 ## Positioning
-Customers own their copy (one-time purchase, private repo access, GPL-2.0 toolkit) instead of renting a SaaS with per-video fees. Automations run inside the app itself; n8n is optional, never required.
+Customers own their copy (one-time purchase, open source under AGPL-3.0, on the free GPL-2.0 toolkit) instead of renting a SaaS with per-video fees. Automations run inside the app itself; n8n is optional, never required.
 
 ## Operating Context
 Teams work in the dashboard alongside Slack or Discord, approve clips in the Review room, and finish in Premiere Pro, DaVinci Resolve, Final Cut Pro or CapCut. The toolkit runs on a server or an always-on machine such as a Mac Mini.

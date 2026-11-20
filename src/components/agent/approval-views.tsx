@@ -8,6 +8,8 @@ const DASHBOARD_VIEWS: ApprovalViews = Object.fromEntries(
     "change_automation",
     "create_automation",
     "switch_automation",
+    "set_up_workflow",
+    "switch_workflow",
     "try_automation",
     "try_team_step",
     "save_team_step",

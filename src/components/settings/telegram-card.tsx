@@ -1,8 +1,8 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,22 @@ export function TelegramCard() {
   const unlinkMe = useMutation(api.telegram.unlinkMe);
   const [busy, setBusy] = useState<string | null>(null);
   const [waiting, setWaiting] = useState<"person" | "group" | null>(null);
+  const groupHearing = useAction(api.telegram.groupHearing);
+  const [hearing, setHearing] = useState<Record<string, boolean | null>>({});
+  // Asked of Telegram again whenever the team's groups change.
+  const groupKey = telegram?.groups.map((group) => group.chatId).join(",") ?? "";
+  useEffect(() => {
+    if (!groupKey) return;
+    let live = true;
+    groupHearing({ organizationId: team.id })
+      .then((found) => {
+        if (live) setHearing(Object.fromEntries(found.map((one) => [one.chatId, one.hears])));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [groupHearing, team.id, groupKey]);
 
   if (telegram === undefined) return <Skeleton className="h-40 rounded-xl" />;
   if (telegram === null) return null;
@@ -143,14 +159,24 @@ export function TelegramCard() {
           <ul className="flex flex-col gap-2 text-sm">
             {telegram.groups.map((group) => (
               <li key={group.chatId} className="flex items-center justify-between gap-3">
-                <span>
-                  <span className="font-medium">{group.title}</span>
-                  <span className="text-muted-foreground">
-                    {" "}
-                    · added {day(group.addedAt)}
-                    {group.addedBy ? ` by ${group.addedBy}` : ""}
-                    {group.reviews ? " · review activity posts here" : ""}
+                <span className="flex flex-col gap-1">
+                  <span>
+                    <span className="font-medium">{group.title}</span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · added {day(group.addedAt)}
+                      {group.addedBy ? ` by ${group.addedBy}` : ""}
+                      {group.reviews ? " · review activity posts here" : ""}
+                    </span>
                   </span>
+                  {hearing[group.chatId] === false && (
+                    <span className="text-amber-700" role="note">
+                      Tagging the agent here doesn&apos;t reach it yet, only replies to its messages
+                      do. In Telegram, send /setprivacy to @BotFather, pick the bot and choose
+                      Disable, then add it to this group again. Making the bot an admin of the group
+                      works too.
+                    </span>
+                  )}
                 </span>
                 {telegram.canEdit && (
                   <span className="flex shrink-0 items-center gap-1">

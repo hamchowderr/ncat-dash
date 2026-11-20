@@ -2,7 +2,7 @@
   "name": "@ncat-dash/review-core",
   "version": "0.1.0",
   "private": true,
-  "license": "GPL-2.0-or-later",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",

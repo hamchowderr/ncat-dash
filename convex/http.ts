@@ -7,6 +7,7 @@ import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
 import { decryptSecret } from "./lib/crypto";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
+import { botHearsGroup, telegramReady } from "./lib/chatAlerts/telegram";
 import { noStream, serve } from "./mcp";
 import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
 import { settingsUrl as microsoftSettingsUrl } from "./microsoft";
@@ -301,11 +302,15 @@ http.route({
     if (!asked.code || !asked.chatId || !asked.telegramUserId) {
       return new Response("Missing code, chatId or telegramUserId", { status: 400 });
     }
+    const isGroup = asked.isGroup === "true";
+    // Whether the bot joins with privacy mode off, so tagging it works in this group.
+    const heard = isGroup && telegramReady() ? await botHearsGroup(asked.chatId) : null;
     const found = await ctx.runMutation(internal.telegram.link, {
       code: asked.code,
       chatId: asked.chatId,
       telegramUserId: asked.telegramUserId,
-      isGroup: asked.isGroup === "true",
+      isGroup,
+      ...(heard ? { privacyOff: heard.privacyOff } : {}),
       telegramName: asked.telegramName || "Telegram account",
       ...(asked.chatTitle ? { chatTitle: asked.chatTitle } : {}),
       ...(asked.username ? { username: asked.username } : {}),

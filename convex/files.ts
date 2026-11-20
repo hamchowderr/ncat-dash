@@ -61,6 +61,7 @@ import { finishedFiles } from "./lib/exports";
 import { deliveryFolderOf } from "./lib/clients";
 import { followLibraryKey } from "./lib/library";
 import { outputNamesOf } from "./lib/outputs";
+import { hasTriggerOf } from "./lib/triggers";
 import { fileDetailsValidator } from "./schema";
 import { checkUploadSize, prepareSend, sendPlanValidator } from "./storage";
 
@@ -681,7 +682,7 @@ export const followRecords = internalMutation({
       .query("automations")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .take(500);
-    const watchers = automations.filter((automation) => automation.trigger.kind === "folder");
+    const watchers = automations.filter((automation) => hasTriggerOf(automation, "folder"));
 
     for (const { from, to, etag } of args.moves) {
       const uploads = await ctx.db
@@ -856,10 +857,22 @@ export const followLinks = internalMutation({
         .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
         .take(500);
       for (const automation of automations) {
-        if (automation.trigger.kind !== "folder") continue;
-        const prefix = followFolder(automation.trigger.prefix, args.folders);
-        if (prefix !== automation.trigger.prefix) {
-          await ctx.db.patch(automation._id, { trigger: { ...automation.trigger, prefix } });
+        // Every watched folder follows, the first trigger's and any other's.
+        const moved = (trigger: Doc<"automations">["trigger"]) => {
+          if (trigger.kind !== "folder") return trigger;
+          const prefix = followFolder(trigger.prefix, args.folders);
+          return prefix === trigger.prefix ? trigger : { ...trigger, prefix };
+        };
+        const trigger = moved(automation.trigger);
+        const more = automation.moreTriggers?.map((each) => ({
+          ...each,
+          trigger: moved(each.trigger),
+        }));
+        const changed =
+          trigger !== automation.trigger ||
+          more?.some((each, index) => each.trigger !== automation.moreTriggers![index].trigger);
+        if (changed) {
+          await ctx.db.patch(automation._id, { trigger, ...(more ? { moreTriggers: more } : {}) });
         }
       }
     }
