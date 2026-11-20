@@ -452,7 +452,7 @@ const WORKFLOWS: Starter[] = [
     category: "variants",
     name: "UGC Ad Variants",
     description:
-      "Start it with the creator's base cut and pick their other hook and ending takes on the first step. You get every hook and ending pairing at 6, 15, 30 and 60 seconds, in 9:16, 4:5 and 16:9, both clean and captioned, each named for what is in it, like h02_c01_15s_9x16. Plain editing on real footage, no AI.",
+      "Start it with the creator's base cut and pick their other hook and ending takes on the first step. You get every hook and ending pairing at 6, 15, 30 and 60 seconds, in 9:16, 4:5 and 16:9, both clean and captioned, each named for what is in it, like h02_c01_15s_9x16, in one folder per shape with an Ad files.csv list for your ads manager. Plain editing on real footage, no AI.",
     group: "workflow",
     trigger: { kind: "manual" },
     nodes: [
@@ -480,7 +480,7 @@ const WORKFLOWS: Starter[] = [
     category: "variants",
     name: "Ad Length Cuts In Every Shape",
     description:
-      "Each finished ad or promo you upload is cut to 6, 15, 30 and 60 seconds, keeping its call to action at the end, then made 9:16, 4:5 and 16:9. Every cut ends in a pause, never mid-word, and is named like 15s_9x16.",
+      "Each finished ad or promo you upload is cut to 6, 15, 30 and 60 seconds, keeping its call to action at the end, then made 9:16, 4:5 and 16:9. Every cut ends in a pause, never mid-word, and is named like 15s_9x16, in one folder per shape with an Ad files.csv list.",
     group: "workflow",
     trigger: { kind: "upload", fileType: "video" },
     nodes: [

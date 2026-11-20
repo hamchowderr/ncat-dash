@@ -270,6 +270,32 @@ export async function deleteObject(bucket: Bucket, key: string): Promise<void> {
     throw new BucketError("The toolkit would not delete the file.", 502);
 }
 
+/**
+ * Writes a small text file, such as a CSV list, through a short-lived upload link. The
+ * toolkit has no request for writing a file's contents, so the bytes go straight to the
+ * bucket the way a browser upload does.
+ */
+export async function putText(
+  bucket: Bucket,
+  key: string,
+  text: string,
+  contentType = "text/plain; charset=utf-8",
+): Promise<void> {
+  const url = await presign(bucket, "PUT", key, 300);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: text,
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    throw new BucketError("The bucket could not be reached.", 0);
+  }
+  if (!res.ok) throw new BucketError(`The bucket answered ${res.status}.`, res.status);
+}
+
 /** An empty object whose key ends in a slash: what every S3 console shows as an empty folder. */
 export async function putFolder(bucket: Bucket, prefix: string): Promise<void> {
   await ask(bucket, "folder", { prefix: inBucket(bucket, prefix) }, 30_000);

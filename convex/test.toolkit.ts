@@ -16,6 +16,8 @@ export function fakeToolkitStorage({
   broken = null as string | null,
 } = {}) {
   const files = new Map<string, { size: number; etag: string; lastModified: number }>();
+  // What was written through an upload link, by key: the CSV lists and other small files.
+  const texts = new Map<string, string>();
   const calls: { request: string; body: Record<string, unknown> }[] = [];
   // Uploads in parts still open: upload id -> key.
   const openUploads = new Map<string, string>();
@@ -138,6 +140,19 @@ export function fakeToolkitStorage({
         status: 200,
       });
     }
+    // A file written through a signed upload link.
+    if (
+      url.origin === "https://r2.example" &&
+      init?.method === "PUT" &&
+      url.searchParams.get("method") === "PUT" &&
+      url.pathname.startsWith(`/${bucket}/`)
+    ) {
+      const key = decodeURIComponent(url.pathname.slice(bucket.length + 2));
+      const text = String(init.body ?? "");
+      texts.set(key, text);
+      files.set(key, { size: text.length, etag: `etag-${key}`, lastModified: Date.now() });
+      return new Response(null, { status: 200 });
+    }
     if (url.origin !== new URL(baseUrl).origin || !url.pathname.startsWith("/v1/storage/")) {
       return realFetch(input, init);
     }
@@ -153,6 +168,7 @@ export function fakeToolkitStorage({
     baseUrl,
     bucket,
     files,
+    texts,
     calls,
     openUploads,
     /** Puts a file in the bucket, as if it had been uploaded. */
