@@ -236,6 +236,31 @@ export const setUse = mutation({
   },
 });
 
+/**
+ * Works out again, for every library video already looked at, whether it looks like
+ * B-Roll: for when the rules change (`npx convex run broll:judgeAgain`). A few files at a
+ * time, each read with its frames and words, then the next page is scheduled.
+ */
+export const judgeAgain = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  returns: v.object({ judged: v.number(), done: v.boolean() }),
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("libraryItems")
+      .paginate({ cursor: args.cursor ?? null, numItems: 20 });
+    let judged = 0;
+    for (const item of page.page) {
+      if (item.kind !== "video" || item.look?.status !== "ready") continue;
+      await refreshBrollLike(ctx, item._id);
+      judged++;
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.broll.judgeAgain, { cursor: page.continueCursor });
+    }
+    return { judged, done: page.isDone };
+  },
+});
+
 export const lookTargets = internalQuery({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
