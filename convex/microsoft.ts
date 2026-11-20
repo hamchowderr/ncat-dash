@@ -53,13 +53,24 @@ const GRACE_MS = 10 * 60 * 1000;
 export const MICROSOFT_SCOPES = ["offline_access", "User.Read", "Files.Read"];
 /** Asked for too once a member switches on recordings shared with them. */
 export const SHARED_SCOPE = "Files.Read.All";
+/**
+ * Asked for too once a member adds a Teams channel: listing their teams and channels, and
+ * reading the channel's files in SharePoint, where Teams saves channel meeting recordings.
+ */
+export const CHANNEL_SCOPES = ["Team.ReadBasic.All", "Channel.ReadBasic.All", "Files.Read.All"];
 /** What a search for shared recordings looks for: Teams names each "… Meeting Recording". */
 const SHARED_SEARCH = "Recording";
 /** At most this many shared files are looked at closely on each check. */
 const SHARED_LOOKUPS = 25;
 
-function scopesFor(shared: boolean | undefined): string {
-  return [...MICROSOFT_SCOPES, ...(shared ? [SHARED_SCOPE] : [])].join(" ");
+/** What a sign-in asks for, from what the member allowed: shared files, Teams channels. */
+export function scopesFor(granted: { shared?: boolean; channels?: boolean }): string {
+  const scopes = new Set([
+    ...MICROSOFT_SCOPES,
+    ...(granted.shared ? [SHARED_SCOPE] : []),
+    ...(granted.channels ? CHANNEL_SCOPES : []),
+  ]);
+  return [...scopes].join(" ");
 }
 
 /** Where a file is in Microsoft Graph: in the member's own OneDrive, or a shared one. */
@@ -125,6 +136,15 @@ async function findMine(ctx: MutationCtx, organizationId: string, userId: string
     .unique();
 }
 
+/** Stops watching every Teams channel a Microsoft account was watching. */
+async function forgetChannels(ctx: MutationCtx, connectionId: Id<"microsoftConnections">) {
+  const rows = await ctx.db
+    .query("microsoftChannels")
+    .withIndex("by_connection", (q) => q.eq("connectionId", connectionId))
+    .take(100);
+  for (const one of rows) await ctx.db.delete(one._id);
+}
+
 /** What Settings shows: the viewer's own account, the team's, and what came in. */
 export const forTeam = query({
   args: { organizationId: v.string() },
@@ -158,8 +178,22 @@ export const forTeam = query({
             needsReconnect: mine.needsReconnect ?? false,
             includeShared: mine.includeShared ?? false,
             sharedGranted: mine.sharedGranted ?? false,
+            channelsGranted: mine.channelsGranted ?? false,
           }
         : null,
+      channels: mine
+        ? (
+            await ctx.db
+              .query("microsoftChannels")
+              .withIndex("by_connection", (q) => q.eq("connectionId", mine._id))
+              .take(50)
+          ).map((one) => ({
+            _id: one._id,
+            teamName: one.teamName,
+            channelName: one.channelName,
+            since: one.since,
+          }))
+        : [],
       others,
       imports: imports.map((one) => ({
         _id: one._id,
@@ -177,7 +211,11 @@ export const forTeam = query({
  * it also asks to read files shared with the member, and switches those on once done.
  */
 export const startLink = mutation({
-  args: { organizationId: v.string(), shared: v.optional(v.boolean()) },
+  args: {
+    organizationId: v.string(),
+    shared: v.optional(v.boolean()),
+    channels: v.optional(v.boolean()),
+  },
   returns: v.string(),
   handler: async (ctx, args) => {
     const { userId } = await requireMember(ctx, args.organizationId);
@@ -194,15 +232,22 @@ export const startLink = mutation({
       userId,
       createdAt: Date.now(),
       ...(args.shared ? { shared: true } : {}),
+      ...(args.channels ? { channels: true } : {}),
     });
-    // Someone who already allowed shared files keeps that when they sign in again.
+    // Someone who already allowed shared files or channels keeps that when they sign in again.
     const mine = await findMine(ctx, args.organizationId, userId);
     const url = new URL(`${loginBase()}/oauth2/v2.0/authorize`);
     url.searchParams.set("client_id", process.env.MICROSOFT_CLIENT_ID!);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("redirect_uri", redirectUri());
     url.searchParams.set("response_mode", "query");
-    url.searchParams.set("scope", scopesFor(args.shared || mine?.sharedGranted));
+    url.searchParams.set(
+      "scope",
+      scopesFor({
+        shared: args.shared || mine?.sharedGranted,
+        channels: args.channels || mine?.channelsGranted,
+      }),
+    );
     url.searchParams.set("state", nonce);
     url.searchParams.set("prompt", "select_account");
     return url.toString();
@@ -268,6 +313,7 @@ export const disconnect = mutation({
     const { userId } = await requireMember(ctx, args.organizationId);
     const mine = await findMine(ctx, args.organizationId, userId);
     if (!mine) return;
+    await forgetChannels(ctx, mine._id);
     await ctx.db.delete(mine._id);
     // Microsoft is asked to stop watching the OneDrive too.
     if (mine.subscriptionId) {
@@ -288,7 +334,7 @@ interface MicrosoftTokens {
 /** Trades a code or a refresh token for new tokens. Null when Microsoft refuses. */
 async function tokens(
   form: Record<string, string>,
-  shared?: boolean,
+  granted: { shared?: boolean; channels?: boolean } = {},
 ): Promise<MicrosoftTokens | null> {
   const response = await fetch(`${loginBase()}/oauth2/v2.0/token`, {
     method: "POST",
@@ -296,7 +342,7 @@ async function tokens(
     body: new URLSearchParams({
       client_id: process.env.MICROSOFT_CLIENT_ID ?? "",
       client_secret: process.env.MICROSOFT_CLIENT_SECRET ?? "",
-      scope: scopesFor(shared),
+      scope: scopesFor(granted),
       ...form,
     }).toString(),
   });
@@ -338,7 +384,12 @@ export const takeStart = internalMutation({
     if (!row) return null;
     await ctx.db.delete(row._id);
     if (Date.now() - row.createdAt > START_TTL_MS) return null;
-    return { organizationId: row.organizationId, userId: row.userId, shared: row.shared ?? false };
+    return {
+      organizationId: row.organizationId,
+      userId: row.userId,
+      shared: row.shared ?? false,
+      channels: row.channels ?? false,
+    };
   },
 });
 
@@ -355,6 +406,8 @@ export const saveConnection = internalMutation({
     expiresAt: v.number(),
     // Microsoft allowed reading files shared with the member on this sign-in.
     shared: v.optional(v.boolean()),
+    // Microsoft allowed reading the member's Teams channels and their files.
+    channels: v.optional(v.boolean()),
   },
   returns: v.string(),
   handler: async (ctx, args) => {
@@ -375,7 +428,8 @@ export const saveConnection = internalMutation({
     const mine = await findMine(ctx, args.organizationId, args.userId);
     // The same account signing in again keeps its watch and folder; another starts over.
     const same = mine?.msUserId === args.msUserId ? mine : null;
-    const { shared, ...account } = args;
+    const { shared, channels, ...account } = args;
+    const channelsGranted = Boolean(channels || same?.channelsGranted);
     const sharedGranted = Boolean(shared || same?.sharedGranted);
     const includeShared = Boolean(shared || same?.includeShared);
     const fields = {
@@ -388,6 +442,7 @@ export const saveConnection = internalMutation({
       clientState: same?.clientState,
       needsReconnect: undefined,
       sharedGranted: sharedGranted || undefined,
+      channelsGranted: channelsGranted || undefined,
       includeShared: includeShared || undefined,
       sharedSince: includeShared
         ? same?.includeShared
@@ -399,6 +454,8 @@ export const saveConnection = internalMutation({
     if (mine) {
       await ctx.db.replace(mine._id, fields);
       connectionId = mine._id;
+      // Another Microsoft account: the old one's channels are no longer watched.
+      if (!same) await forgetChannels(ctx, mine._id);
     } else {
       connectionId = await ctx.db.insert("microsoftConnections", fields);
     }
@@ -425,7 +482,7 @@ export const finishLink = internalAction({
     try {
       const token = await tokens(
         { grant_type: "authorization_code", code: args.code, redirect_uri: redirectUri() },
-        start.shared,
+        { shared: start.shared, channels: start.channels },
       );
       if (!token) return settingsUrl("refused");
       const meResponse = await fetch(`${graphBase()}/me`, {
@@ -450,8 +507,10 @@ export const finishLink = internalAction({
         refreshTokenCipher: await encryptSecret(token.refresh_token),
         expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
         ...(start.shared ? { shared: true } : {}),
+        ...(start.channels ? { channels: true } : {}),
       });
-      return settingsUrl(result === "connected" && start.shared ? "shared" : result);
+      if (result !== "connected") return settingsUrl(result);
+      return settingsUrl(start.channels ? "channels" : start.shared ? "shared" : result);
     } catch {
       return settingsUrl("unreachable");
     }
@@ -503,7 +562,7 @@ export async function accessTokenFor(
   if (row.expiresAt - Date.now() > RENEW_MS) return await decryptSecret(row.accessTokenCipher);
   const token = await tokens(
     { grant_type: "refresh_token", refresh_token: await decryptSecret(row.refreshTokenCipher) },
-    row.sharedGranted,
+    { shared: row.sharedGranted, channels: row.channelsGranted },
   );
   if (!token) {
     await ctx.runMutation(internal.microsoft.patchConnection, {
@@ -653,6 +712,182 @@ async function sharedRecordingsIn(token: string): Promise<SharedRecording[]> {
   );
 }
 
+// Teams channels.
+
+/**
+ * The recordings of a channel's meetings. Teams saves them in the channel's files, in a
+ * Recordings folder it makes on the first recorded meeting. Null when there is none yet.
+ */
+async function channelRecordingsIn(
+  token: string,
+  channel: Doc<"microsoftChannels">,
+): Promise<DriveItem[] | null> {
+  const items: DriveItem[] = [];
+  let next: string | null =
+    `${itemPath(channel.folderId, channel.driveId)}:/Recordings:/children?$top=200` +
+    "&$select=id,name,size,createdDateTime,lastModifiedDateTime,file,folder,video";
+  for (let page = 0; next && page < 5; page++) {
+    const response = await graph(token, next);
+    if (response.status === 404) return page === 0 ? null : items;
+    if (!response.ok) return null;
+    const body = (await response.json()) as {
+      value?: DriveItem[];
+      "@odata.nextLink"?: string;
+    };
+    items.push(...(body.value ?? []));
+    next = nextPage(body["@odata.nextLink"]);
+  }
+  return items;
+}
+
+/** The caller's own Microsoft account on a team, for the channel actions. */
+async function mineFor(ctx: ActionCtx, organizationId: string) {
+  const { row } = await ctx.runQuery(internal.microsoft.mine, { organizationId });
+  if (!row.channelsGranted) {
+    throw new ConvexError({
+      code: "needs_permission",
+      message: "Microsoft needs to allow reading your Teams channels first.",
+    });
+  }
+  return row;
+}
+
+/** The Teams teams the caller is in, each with its channels, to pick from in Settings. */
+export const teamChannels = action({
+  args: { organizationId: v.string() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ teamId: string; teamName: string; channels: { id: string; name: string }[] }[]> => {
+    const found = await mineFor(ctx, args.organizationId);
+    const token = await accessTokenFor(ctx, found._id);
+    const teams = await graph(token, "/me/joinedTeams?$select=id,displayName");
+    if (!teams.ok) {
+      throw new ConvexError({
+        code: "microsoft_refused",
+        message: `Microsoft did not list your teams (HTTP ${teams.status}).`,
+      });
+    }
+    const joined = ((await teams.json()) as { value?: { id?: string; displayName?: string }[] })
+      .value;
+    const listed = [];
+    for (const team of (joined ?? []).slice(0, 50)) {
+      if (!team.id) continue;
+      const response = await graph(
+        token,
+        `/teams/${encodeURIComponent(team.id)}/channels?$select=id,displayName`,
+      );
+      if (!response.ok) continue;
+      const channels = (
+        (await response.json()) as {
+          value?: { id?: string; displayName?: string }[];
+        }
+      ).value;
+      listed.push({
+        teamId: team.id,
+        teamName: team.displayName || "Team",
+        channels: (channels ?? [])
+          .filter((one): one is { id: string; displayName?: string } => Boolean(one.id))
+          .map((one) => ({ id: one.id, name: one.displayName || "Channel" })),
+      });
+    }
+    return listed;
+  },
+});
+
+/**
+ * Starts bringing in the recordings of a channel's meetings. Only meetings recorded from
+ * now on come in by themselves.
+ */
+export const watchChannel = action({
+  args: {
+    organizationId: v.string(),
+    teamId: v.string(),
+    teamName: v.string(),
+    channelId: v.string(),
+    channelName: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ ok: true } | { ok: false; detail: string }> => {
+    const found = await mineFor(ctx, args.organizationId);
+    const token = await accessTokenFor(ctx, found._id);
+    const response = await graph(
+      token,
+      `/teams/${encodeURIComponent(args.teamId)}/channels/${encodeURIComponent(args.channelId)}` +
+        "/filesFolder",
+    );
+    if (!response.ok) {
+      return {
+        ok: false,
+        detail: "Microsoft did not open that channel's files. Check you are still in the team.",
+      };
+    }
+    const folder = (await response.json()) as DriveItem & {
+      parentReference?: { driveId?: string };
+    };
+    const driveId = folder.parentReference?.driveId;
+    if (!folder.id || !driveId) {
+      return { ok: false, detail: "That channel has no files folder yet. Try again later." };
+    }
+    await ctx.runMutation(internal.microsoft.saveChannel, {
+      connectionId: found._id,
+      teamId: args.teamId,
+      teamName: args.teamName.slice(0, 200),
+      channelId: args.channelId,
+      channelName: args.channelName.slice(0, 200),
+      driveId,
+      folderId: folder.id,
+    });
+    return { ok: true };
+  },
+});
+
+export const saveChannel = internalMutation({
+  args: {
+    connectionId: v.id("microsoftConnections"),
+    teamId: v.string(),
+    teamName: v.string(),
+    channelId: v.string(),
+    channelName: v.string(),
+    driveId: v.string(),
+    folderId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const connection = await ctx.db.get(args.connectionId);
+    if (!connection) return;
+    const watching = await ctx.db
+      .query("microsoftChannels")
+      .withIndex("by_connection", (q) => q.eq("connectionId", args.connectionId))
+      .take(100);
+    if (watching.some((one) => one.channelId === args.channelId)) return;
+    await ctx.db.insert("microsoftChannels", {
+      ...args,
+      organizationId: connection.organizationId,
+      since: Date.now(),
+    });
+  },
+});
+
+/** Stops bringing in a channel's recordings. Recordings already in Uploads stay. */
+export const unwatchChannel = mutation({
+  args: { organizationId: v.string(), channelRowId: v.id("microsoftChannels") },
+  handler: async (ctx, args) => {
+    const { userId } = await requireMember(ctx, args.organizationId);
+    const mine = await findMine(ctx, args.organizationId, userId);
+    const row = await ctx.db.get(args.channelRowId);
+    if (!mine || !row || row.connectionId !== mine._id) return;
+    await ctx.db.delete(row._id);
+  },
+});
+
+export const channelsOf = internalQuery({
+  args: { connectionId: v.id("microsoftConnections") },
+  handler: async (ctx, args) =>
+    await ctx.db
+      .query("microsoftChannels")
+      .withIndex("by_connection", (q) => q.eq("connectionId", args.connectionId))
+      .take(100),
+});
+
 // Watching the OneDrive.
 
 /**
@@ -737,7 +972,10 @@ export const check = internalAction({
     const row = await ctx.runQuery(internal.microsoft.connection, args);
     if (!row || row.needsReconnect) return;
     const withShared = Boolean(row.includeShared && row.sharedGranted);
-    if (!row.autoImport && !withShared) return;
+    const channels = row.channelsGranted
+      ? await ctx.runQuery(internal.microsoft.channelsOf, { connectionId: row._id })
+      : [];
+    if (!row.autoImport && !withShared && channels.length === 0) return;
     let token: string;
     try {
       token = await accessTokenFor(ctx, row._id);
@@ -759,6 +997,18 @@ export const check = internalAction({
         connectionId: row._id,
         recording: picked,
       });
+    }
+    for (const channel of channels) {
+      const found = await channelRecordingsIn(token, channel).catch(() => null);
+      for (const item of found ?? []) {
+        if (Date.parse(item.createdDateTime ?? "") < channel.since - GRACE_MS) continue;
+        const picked = pickRecording(item, Date.now(), channel.driveId);
+        if (!picked) continue;
+        await ctx.runMutation(internal.microsoft.startImport, {
+          connectionId: row._id,
+          recording: picked,
+        });
+      }
     }
     const since = row.connectedAt - GRACE_MS;
     for (const item of items ?? []) {
@@ -793,7 +1043,7 @@ export const sweep = internalAction({
         row.subscriptionId && (row.subscriptionExpiresAt ?? 0) - Date.now() > RENEW_WATCH_MS;
       if (!running)
         await ctx.scheduler.runAfter(0, internal.microsoft.watch, { connectionId: row._id });
-      else if (row.autoImport || row.includeShared) {
+      else if (row.autoImport || row.includeShared || row.channelsGranted) {
         await ctx.scheduler.runAfter(0, internal.microsoft.check, { connectionId: row._id });
       }
     }

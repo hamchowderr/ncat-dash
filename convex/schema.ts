@@ -926,9 +926,33 @@ export default defineSchema({
     guildName: v.string(),
     addedBy: v.string(),
     addedAt: v.number(),
+    // The channel in this server review activity is posted to, when the team picked one
+    // here. A team has at most one such channel across its servers.
+    alertChannelId: v.optional(v.string()),
+    alertChannelName: v.optional(v.string()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_guild", ["guildId"]),
+
+  // A review comment thread as a Discord thread in the team's review channel: what
+  // follows in the room goes there, and a teammate's reply there comes back.
+  discordReviewThreads: defineTable({
+    organizationId: v.string(),
+    guildId: v.string(),
+    channelId: v.string(),
+    threadId: v.string(),
+    reviewId: v.id("reviews"),
+    commentId: v.id("reviewComments"),
+  })
+    .index("by_comment", ["commentId"])
+    .index("by_thread", ["threadId"])
+    .index("by_review", ["reviewId"]),
+
+  // Discord messages already brought into a review, so one is never added twice.
+  discordReplies: defineTable({
+    messageId: v.string(),
+    commentId: v.id("reviewComments"),
+  }).index("by_message", ["messageId"]),
 
   // A team member's own Discord account, linked by signing in with Discord once. Discord
   // gives bots no email address, so this is how the agent knows who wrote to it. The
@@ -1228,6 +1252,9 @@ export default defineSchema({
     // ones made after sharedSince, when it was switched on.
     includeShared: v.optional(v.boolean()),
     sharedSince: v.optional(v.number()),
+    // The member let the dashboard list their Teams channels and read channel files
+    // (Team.ReadBasic.All, Channel.ReadBasic.All, Files.Read.All).
+    channelsGranted: v.optional(v.boolean()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_member", ["organizationId", "userId"])
@@ -1242,7 +1269,30 @@ export default defineSchema({
     createdAt: v.number(),
     // Started from the "shared with me" switch: asks for reading shared files too.
     shared: v.optional(v.boolean()),
+    // Started from "Add a channel": asks for listing the member's Teams channels and
+    // reading their files too.
+    channels: v.optional(v.boolean()),
   }).index("by_nonce", ["nonce"]),
+
+  // A Teams channel a member watches for meeting recordings. Recordings of meetings held
+  // in a channel are saved in the channel's SharePoint files, in a Recordings folder, not
+  // in anyone's OneDrive. New ones made after `since` come into the team's uploads.
+  microsoftChannels: defineTable({
+    organizationId: v.string(),
+    connectionId: v.id("microsoftConnections"),
+    teamId: v.string(),
+    teamName: v.string(),
+    channelId: v.string(),
+    channelName: v.string(),
+    // The SharePoint drive the channel's files are in, and the channel's folder there.
+    driveId: v.string(),
+    folderId: v.string(),
+    // The Recordings folder inside it, once Teams has made one.
+    recordingsFolderId: v.optional(v.string()),
+    since: v.number(),
+  })
+    .index("by_connection", ["connectionId"])
+    .index("by_organization", ["organizationId"]),
 
   // One Teams recording being brought in, or brought in: the toolkit streams the file from
   // OneDrive straight into the team's folder, then it becomes an upload like any other.

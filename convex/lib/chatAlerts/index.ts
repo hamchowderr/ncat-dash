@@ -2,6 +2,8 @@ import { explainFailure } from "@ncat-dash/automation-core";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { ActionCtx, QueryCtx } from "../../_generated/server";
 import type { ChatApp } from "../notifications";
+import { discordSender } from "./discord";
+import { slackSender } from "./slack";
 import { telegramSender } from "./telegram";
 
 /**
@@ -51,7 +53,7 @@ export type ChatSender = {
   settle?(ctx: ActionCtx, message: SentMessage, outcome: string): Promise<void>;
 };
 
-export const SENDERS: ChatSender[] = [telegramSender];
+export const SENDERS: ChatSender[] = [slackSender, discordSender, telegramSender];
 
 export function senderFor(app: ChatApp): ChatSender | undefined {
   return SENDERS.find((sender) => sender.app === app);

@@ -3,12 +3,19 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { answerQuery, mutationOf, toastError, toastSuccess } from "@/test/convex";
+import { actionOf, answerQuery, mutationOf, toastError, toastSuccess } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
 import { DiscordCard } from "./discord-card";
 
-const empty = { ready: true, canEdit: true, servers: [], me: null, linkedCount: 0 };
+const empty = {
+  ready: true,
+  canEdit: true,
+  servers: [],
+  reviewChannel: null,
+  me: null,
+  linkedCount: 0,
+};
 const added = {
   ready: true,
   canEdit: true,
@@ -20,6 +27,7 @@ const added = {
       addedBy: "Jordan Lee",
     },
   ],
+  reviewChannel: null,
   me: { discordName: "Jordan", linkedAt: Date.UTC(2026, 10, 17, 18) },
   linkedCount: 1,
 };
@@ -95,5 +103,43 @@ describe("the Discord card", () => {
       ),
     );
     expect(window.location.search).toBe("");
+  });
+
+  test("an owner picks the Discord channel review activity goes to", async () => {
+    answerQuery(api.discord.forTeam, added);
+    actionOf(api.discordReview.channels).mockResolvedValue([
+      { id: "c1", name: "general", guildId: "300", guildName: "Salt House Crew" },
+      { id: "c2", name: "reviews", guildId: "300", guildName: "Salt House Crew" },
+    ]);
+    const pick = actionOf(api.discordReview.setAlertChannel);
+    pick.mockResolvedValue({ ok: true });
+    renderInApp(<DiscordCard />);
+    const select = screen.getByRole("combobox", { name: "Review activity" });
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(select).toHaveTextContent("Not posted");
+    const user = userEvent.setup();
+    await user.click(select);
+    await user.click(screen.getByRole("option", { name: "#reviews" }));
+    expect(pick).toHaveBeenCalledWith({ organizationId: TEAM.id, channelId: "c2" });
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Review activity goes to Discord"),
+    );
+  });
+
+  test("a member sees where review activity goes, without a picker", () => {
+    answerQuery(api.discord.forTeam, {
+      ...added,
+      canEdit: false,
+      reviewChannel: { id: "c2", name: "reviews", guildName: "Salt House Crew" },
+    });
+    renderInApp(<DiscordCard />);
+    expect(screen.queryByRole("combobox", { name: "Review activity" })).not.toBeInTheDocument();
+    expect(screen.getByText(/posted to #reviews in Salt House Crew/)).toBeInTheDocument();
+  });
+
+  test("no picker before the agent is in a server", () => {
+    answerQuery(api.discord.forTeam, empty);
+    renderInApp(<DiscordCard />);
+    expect(screen.queryByRole("combobox", { name: "Review activity" })).not.toBeInTheDocument();
   });
 });

@@ -3,7 +3,7 @@ import { clipTitleFrom, TITLE_LIMIT } from "@ncat-dash/review-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { outputNamesOf } from "./outputs";
-import { toSlack } from "./slackPosts";
+import { toReviewChannels } from "./reviewChannels";
 
 /**
  * A clip's title: its readable name when one is known ("Space interviews clip 1"), else
@@ -54,7 +54,7 @@ export async function openReview(
       versions: [{ url, addedBy: review.createdBy, addedAt: now }],
     });
   }
-  await toSlack(ctx, review.organizationId, { kind: "review_opened", reviewId });
+  await toReviewChannels(ctx, review.organizationId, { kind: "review_opened", reviewId });
   return reviewId;
 }
 

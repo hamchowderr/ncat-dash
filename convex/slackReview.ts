@@ -18,14 +18,12 @@ import {
   slackUserByEmail,
 } from "./lib/slackApi";
 import { type ReviewPost, reviewPostValidator } from "./lib/slackPosts";
+import { slackSigned } from "./lib/slackSignature";
 
 // Review activity in the team's Slack channel, and replies written there coming back.
 // New reviews, client feedback and mentions are posted to the channel the team picked in
 // Settings. Each comment thread gets its own Slack thread, and a teammate's reply in that
 // Slack thread becomes their reply in the review room.
-
-/** Slack refuses requests older than this, and so do we. */
-const TOLERANCE_S = 5 * 60;
 
 const outcome = v.union(
   v.object({ ok: v.literal(true) }),
@@ -293,25 +291,6 @@ export const threadFor = internalQuery({
   },
 });
 
-async function hmacHex(secret: string, text: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text));
-  return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function sameText(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let difference = 0;
-  for (let i = 0; i < a.length; i++) difference |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return difference === 0;
-}
-
 type SlackMessageEvent = {
   type?: string;
   subtype?: string;
@@ -343,11 +322,8 @@ export const takeEvent = internalAction({
       { slackTeamId: parsed.team_id },
     );
     if (!connection) return 404;
-    const seconds = Number(args.timestamp);
-    if (!Number.isFinite(seconds) || Math.abs(args.now / 1000 - seconds) > TOLERANCE_S) return 401;
     const secret = await decryptSecret(connection.signingSecretCipher);
-    const expected = `v0=${await hmacHex(secret, `v0:${args.timestamp}:${args.body}`)}`;
-    if (!sameText(expected, args.signature)) return 401;
+    if (!(await slackSigned(secret, args))) return 401;
 
     const event = parsed.event ?? {};
     if (

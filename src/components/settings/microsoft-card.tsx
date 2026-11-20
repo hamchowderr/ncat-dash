@@ -14,12 +14,14 @@ import { Switch } from "@/components/ui/switch";
 import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
+import { ChannelMeetings } from "./microsoft-channels";
 import { SettingsSection } from "./settings-shell";
 
 /** What Settings says when Microsoft sends someone back, by the result in the address. */
 export const MICROSOFT_RESULTS: Record<string, { ok: boolean; text: string }> = {
   connected: { ok: true, text: "Your Microsoft account is connected" },
   shared: { ok: true, text: "Meetings shared with you now come in too" },
+  channels: { ok: true, text: "Now pick the channels to bring in" },
   cancelled: { ok: false, text: "Nothing changed: Microsoft was closed before it finished." },
   expired: { ok: false, text: "That took too long. Press the button again." },
   taken: { ok: false, text: "That Microsoft account is already connected to another team." },
@@ -91,11 +93,15 @@ export function MicrosoftCard() {
   if (ms === undefined) return <Skeleton className="h-40 rounded-xl" />;
   if (ms === null) return null;
 
-  async function connect(shared = false) {
-    setBusy(shared ? "shared" : "connect");
+  async function connect(kind: "connect" | "shared" | "channels" = "connect") {
+    setBusy(kind);
     try {
       window.location.assign(
-        await startLink({ organizationId: team.id, ...(shared ? { shared: true } : {}) }),
+        await startLink({
+          organizationId: team.id,
+          ...(kind === "shared" ? { shared: true } : {}),
+          ...(kind === "channels" ? { channels: true } : {}),
+        }),
       );
     } catch (caught) {
       toast.error(errorMessage(caught, "Microsoft could not be opened. Try again."));
@@ -185,7 +191,7 @@ export function MicrosoftCard() {
                 disabled={busy !== null}
                 onCheckedChange={(checked) =>
                   checked && !ms.me?.sharedGranted
-                    ? connect(true)
+                    ? connect("shared")
                     : run("shared", () =>
                         setIncludeShared({ organizationId: team.id, includeShared: checked }),
                       )
@@ -224,6 +230,18 @@ export function MicrosoftCard() {
           </p>
         )}
       </section>
+
+      {ms.me && (
+        <section className="flex flex-col gap-3" aria-label="Channel meetings">
+          <p className="text-sm font-medium">Channel meetings</p>
+          <ChannelMeetings
+            granted={ms.me.channelsGranted}
+            watched={ms.channels}
+            opening={busy === "channels"}
+            onAllow={() => connect("channels")}
+          />
+        </section>
+      )}
 
       {ms.me && (
         <section className="flex flex-col gap-3" aria-label="Past recordings">

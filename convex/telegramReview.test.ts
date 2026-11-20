@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { toReviewChannels } from "./lib/reviewChannels";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 // Review activity in the team's Telegram group, the way its Slack channel works: an owner
@@ -198,6 +199,30 @@ describe("review activity in the group", () => {
     expect(inGroup()[0].text).toMatch(
       /^Jordan Lee mentioned @devp on "Weekly clips", Opening hello at 0:04:\n\n@Dev Patel is the logo too small\?/,
     );
+  });
+});
+
+describe("one fan-out for every chat app", () => {
+  test("a reply written in another chat app still reaches the group; one written in Telegram does not", async () => {
+    const setup = await setUp();
+    const room = await openRoom(setup);
+    const rootId = await clientComment(setup, room);
+    await settled(setup.t);
+    const post = (body: string) => ({
+      kind: "team_reply" as const,
+      reviewId: room.reviewId,
+      commentId: rootId,
+      from: "Dev Patel",
+      body,
+    });
+    await setup.t.run(async (ctx) => {
+      await toReviewChannels(ctx, setup.team, post("Written in Slack"), "slack");
+      await toReviewChannels(ctx, setup.team, post("Written in Telegram"), "telegram");
+    });
+    await settled(setup.t);
+    const texts = inGroup().map((one) => one.text);
+    expect(texts).toContain("Dev Patel: Written in Slack");
+    expect(texts.some((text) => text.includes("Written in Telegram"))).toBe(false);
   });
 });
 

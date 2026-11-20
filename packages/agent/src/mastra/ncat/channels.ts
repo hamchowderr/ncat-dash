@@ -4,7 +4,9 @@ import type {
   ChannelHandler,
   SlashCommandChannelHandler,
 } from '@mastra/core/channels';
+import { onAlertButton } from './alert-buttons';
 import { asTheDiscordWriter, discordAdapter } from './discord';
+import { onReviewReply } from './review-replies';
 import { asTheWriter, slackChannels } from './slack';
 import { asTheTeamsWriter, teamsAdapter } from './teams';
 import { asTheTelegramWriter, onTelegramAction, onTelegramCommand, telegramAdapter } from './telegram';
@@ -21,10 +23,13 @@ export const byPlatform: ChannelHandler = async (thread, message, next, ctx) => 
   return await asTheWriter(thread, message, next, ctx);
 };
 
-/** Button presses: Telegram's alert buttons are handled here; the rest as usual. */
+/**
+ * Button presses: Telegram's alert buttons are handled here, and Approve and Send back on
+ * Discord's alerts by onAlertButton, which leaves anything else to the usual handler.
+ */
 export const actionByPlatform: ActionChannelHandler = async (event, defaultHandler, ctx) => {
   if (event.threadId?.startsWith('telegram:')) return await onTelegramAction(event, defaultHandler, ctx);
-  return await defaultHandler();
+  return await onAlertButton(event, defaultHandler, ctx);
 };
 
 /** Commands: Telegram's /start links a person or group; the rest as usual. */
@@ -52,6 +57,8 @@ export function chatChannels(): AgentControllerChannelsConfig | undefined {
       onSubscribedMessage: byPlatform,
       onAction: actionByPlatform,
       onSlashCommand: commandByPlatform,
+      // Teammates' replies in a review's Discord thread go to the review; nothing else.
+      ...(discord ? { onMessage: onReviewReply } : {}),
     },
   };
 }

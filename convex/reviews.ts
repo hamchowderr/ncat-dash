@@ -16,7 +16,7 @@ import { drawingValidator } from "./lib/drawing";
 import { CLIP_LIMIT, openReview, shareOf, VERSION_LIMIT } from "./lib/reviews";
 import { decideProjectSlots, forgetProjectRoom, mirrorClipVersion } from "./lib/projects";
 import { decideApproval } from "./lib/runner";
-import { toSlack } from "./lib/slackPosts";
+import { toReviewChannels } from "./lib/reviewChannels";
 
 // A review shows this many comments at most; a room is for one round of notes.
 const COMMENTS_SHOWN = 500;
@@ -365,6 +365,48 @@ export const commentFromSlack = internalMutation({
 });
 
 /**
+ * A teammate's reply written in a review's Discord thread, as their reply in the review.
+ * Each Discord message is brought in once, however often it arrives.
+ */
+export const commentFromDiscord = internalMutation({
+  args: {
+    commentId: v.id("reviewComments"),
+    userId: v.string(),
+    authorName: v.string(),
+    body: v.string(),
+    messageId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const seen = await ctx.db
+      .query("discordReplies")
+      .withIndex("by_message", (q) => q.eq("messageId", args.messageId))
+      .first();
+    if (seen) return null;
+    const root = await ctx.db.get(args.commentId);
+    const clip = root ? await ctx.db.get(root.clipId) : null;
+    if (!root || !clip) return null;
+    const team = await ctx.runQuery(components.betterAuth.members.people, {
+      organizationId: clip.organizationId,
+    });
+    if (!team.some((person) => person.id === args.userId)) return null;
+    const id = await writeTeamComment(
+      ctx,
+      clip,
+      { userId: args.userId, name: args.authorName },
+      {
+        body: args.body.slice(0, COMMENT_LIMIT),
+        time: root.time,
+        version: root.version,
+        parentId: root._id,
+      },
+      "discord",
+    );
+    await ctx.db.insert("discordReplies", { messageId: args.messageId, commentId: id });
+    return id;
+  },
+});
+
+/**
  * A teammate's reply in the team's Telegram group, under one of the bot's posts about a
  * comment thread (convex/telegramReview.ts), written as their reply in the review room.
  */
@@ -414,7 +456,7 @@ async function writeTeamComment(
     parentId?: Id<"reviewComments">;
     drawing?: Doc<"reviewComments">["drawing"];
   },
-  from: "room" | "slack" | "telegram",
+  from: "room" | "slack" | "discord" | "telegram",
 ): Promise<Id<"reviewComments">> {
   const { userId } = author;
   const body = args.body.trim();
@@ -512,28 +554,37 @@ async function writeTeamComment(
     }
   }
 
-  // The team's Slack channel hears about mentions, and a reply written here goes to the
-  // Slack thread when the conversation is already there. One written in Slack is there.
-  if (from === "room") {
-    const review = await ctx.db.get(clip.reviewId);
-    if (review && mentioned.length > 0) {
-      await toSlack(ctx, clip.organizationId, {
+  // The team's chat channels hear about mentions, and a reply goes to each app's thread
+  // when the conversation is already there. One written in an app is already in it.
+  const review = await ctx.db.get(clip.reviewId);
+  const except = from === "room" ? undefined : from;
+  if (review && mentioned.length > 0) {
+    await toReviewChannels(
+      ctx,
+      clip.organizationId,
+      {
         kind: "mention",
         reviewId: review._id,
         commentId: parentId ?? id,
         from: author.name,
         body,
         mentioned,
-      });
-    } else if (review && parentId) {
-      await toSlack(ctx, clip.organizationId, {
+      },
+      except,
+    );
+  } else if (review && parentId) {
+    await toReviewChannels(
+      ctx,
+      clip.organizationId,
+      {
         kind: "team_reply",
         reviewId: review._id,
         commentId: parentId,
         from: author.name,
         body,
-      });
-    }
+      },
+      except,
+    );
   }
   return id;
 }
