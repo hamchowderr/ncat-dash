@@ -71,9 +71,13 @@ test("no part of the automation editor scrolls sideways, for any step, at any wi
   const panel = page.getByRole("complementary", { name: "Settings for this step" });
   await page.getByRole("button", { name: "Add step" }).click();
   // Opens the list of steps unless it is open already (the button closes an open list).
+  // Read from the list's own open state, not from whether it shows yet: it slides open,
+  // and a check made mid-slide would press the button again and close it.
+  const list = page.locator('aside[aria-label="Steps you can add"]');
   const openList = async () => {
-    if (!(await palette.isVisible()) || (await page.getByLabel("Search steps").isHidden()))
+    if ((await list.getAttribute("aria-hidden")) === "true")
       await page.getByRole("button", { name: "Add step" }).click();
+    await expect(list).toHaveAttribute("aria-hidden", "false");
     await expect(page.getByLabel("Search steps")).toBeVisible();
   };
   const names = (await palette.getByRole("button").allTextContents())
