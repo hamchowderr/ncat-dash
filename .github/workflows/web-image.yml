@@ -1,0 +1,129 @@
+name: Web image
+
+# Builds the web app's Docker image (Dockerfile) for self-hosted copies, once for
+# Intel/AMD (amd64) and once for ARM such as Apple-chip Macs (arm64), each on its own kind
+# of runner. On each, deploy/test/stack-check.sh starts Convex and the image from
+# deploy/compose.yml, pushes the backend and signs up through it. Main also publishes
+# both under one tag: ghcr.io/hamchowderr/ncat-dash-web:sha-<commit> and :latest.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: web-image-${{ github.ref }}
+  # Never cancel a publish half way; a newer push waits its turn.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}-web
+  PUBLISH: ${{ github.event_name != 'pull_request' }}
+
+jobs:
+  image:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    name: image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Restore the pnpm store
+        uses: actions/cache@v4
+        with:
+          path: pnpm-store
+          key: web-pnpm-store-${{ matrix.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: web-pnpm-store-${{ matrix.arch }}-
+      - uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-map: |
+            { "pnpm-store": { "target": "/pnpm/store", "id": "pnpm-store" } }
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: ncat-dash-web:check
+          cache-from: type=gha,scope=web-${{ matrix.arch }}
+          cache-to: type=gha,scope=web-${{ matrix.arch }},mode=max
+      - name: Image size
+        run: docker image inspect ncat-dash-web:check --format '{{.Size}}' | awk '{ printf "%.0f MB\n", $1 / 1000000 }'
+      # The Convex command that pushes the backend, as an owner runs it.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start the stack and sign up through it
+        env:
+          WEB_IMAGE: ncat-dash-web:check
+        run: deploy/test/stack-check.sh
+      - if: env.PUBLISH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Each machine publishes its half without a tag; the next job joins them.
+      - name: Publish this half
+        id: push
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=web-${{ matrix.arch }}
+      - if: env.PUBLISH == 'true'
+        run: |
+          mkdir -p digests
+          echo "${{ steps.push.outputs.digest }}" > "digests/${{ matrix.arch }}"
+      - if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-digest-${{ matrix.arch }}
+          path: digests/${{ matrix.arch }}
+          retention-days: 1
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: web-digest-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Join the two halves under one name
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:sha-$GITHUB_SHA" -t "$IMAGE:latest" \
+            "$IMAGE@$(cat digests/amd64)" "$IMAGE@$(cat digests/arm64)"
+          docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA"

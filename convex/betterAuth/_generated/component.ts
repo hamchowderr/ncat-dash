@@ -2185,6 +2185,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null | string,
         Name
       >;
+      signUpCheck: FunctionReference<
+        "query",
+        "internal",
+        { email: string },
+        { hasAccounts: boolean; invited: boolean },
+        Name
+      >;
       teamsFor: FunctionReference<
         "query",
         "internal",

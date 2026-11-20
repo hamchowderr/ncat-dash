@@ -1,11 +1,13 @@
 import { v } from "convex/values";
 
+import { components } from "./_generated/api";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { blockOf, rateLimitedMessage, refusalFor, takeAgentTurn } from "./lib/access";
 import { requireMember } from "./lib/authz";
 import { emailKey } from "./lib/emailKey";
 import { UNKNOWN_NETWORK } from "./lib/clientIp";
 import { getEdition } from "./lib/edition";
+import { INVITE_ONLY_MESSAGE, signUpsMode } from "./lib/signUps";
 import { limiter, waitLabel } from "./lib/limits";
 
 const refusal = v.object({
@@ -70,6 +72,23 @@ export const userBlocked = internalQuery({
   args: { userId: v.string() },
   returns: v.boolean(),
   handler: async (ctx, args) => (await blockOf(ctx, "user", args.userId)) !== null,
+});
+
+/**
+ * On an invite-only copy (SIGN_UPS=invite-only), what to tell someone who may not make an
+ * account: everyone but the first person needs an open invitation to a team. Null when
+ * they may.
+ */
+export const signUpRefusal = internalQuery({
+  args: { email: v.string() },
+  returns: v.union(v.null(), v.string()),
+  handler: async (ctx, args) => {
+    if (signUpsMode() !== "invite-only") return null;
+    const check = await ctx.runQuery(components.betterAuth.members.signUpCheck, {
+      email: args.email,
+    });
+    return !check.hasAccounts || check.invited ? null : INVITE_ONLY_MESSAGE;
+  },
 });
 
 /**

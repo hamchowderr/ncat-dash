@@ -8,7 +8,7 @@ Kontifi is a finished shell around the free, open-source NCA Toolkit: the toolki
 - It runs on a server: a rented one, or the owner's own always-on machine that meets the specs (a Mac Mini is the example). Never write that no server is needed.
 - n8n is optional; automations run inside Kontifi. Do not list Zapier or Make as integrations.
 - The MCP server (`<Convex site URL>/mcp`) works with any MCP client, not one vendor's.
-- The published images (toolkit, agent) are x86-64 only.
+- The published images (toolkit, agent, web app) are multi-arch: amd64 (Intel/AMD, Windows PCs) and arm64 (Apple-chip Macs). Docker picks the right one.
 
 ## Self-hosting checklist
 
@@ -17,16 +17,16 @@ Do these in order and check each before moving on. Values in capitals come from 
 1. **Services.** `cp deploy/.env.example deploy/.env`, fill it (secrets: `openssl rand -hex 32`), then `docker compose -f deploy/compose.yml --env-file deploy/.env up -d`. Never add a `build:` to a service on a machine people use; every image is pulled.
    Check: `curl $CONVEX_URL/version` answers; `curl <agent>/health` gives `{"success":true}`; `curl -H "x-api-key: $TOOLKIT_API_KEY" <toolkit>/v1/toolkit/test` gives `"message":"success"`.
 2. **Admin key.** `docker compose -f deploy/compose.yml --env-file deploy/.env exec convex ./generate_admin_key.sh`. Treat it as a secret; do not write it to a file in the repository.
-3. **Backend.** Move any `.env.local` aside. `export CONVEX_SELF_HOSTED_URL=$CONVEX_URL CONVEX_SELF_HOSTED_ADMIN_KEY=<key>`, then `npx convex env set` for `SITE_URL`, `BETTER_AUTH_SECRET`, `CONNECTIONS_SECRET`, `MASTRA_JWT_SECRET` (same as the agent's) and `AGENT_URL`, then `npx convex deploy -y`.
-   Check: `npx convex env list` shows all five.
-4. **Web app.** Set `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CONVEX_SITE_URL`, `NEXT_PUBLIC_SITE_URL`, `MASTRA_SERVER_URL`, `MASTRA_JWT_SECRET`; `pnpm build && pnpm start`, or deploy to Vercel with the same values.
+3. **Backend.** Move any `.env.local` aside. `export CONVEX_SELF_HOSTED_URL=$CONVEX_URL CONVEX_SELF_HOSTED_ADMIN_KEY=<key>`, then `npx convex env set` for `SITE_URL`, `BETTER_AUTH_SECRET`, `CONNECTIONS_SECRET`, `MASTRA_JWT_SECRET` (same as the agent's), `AGENT_URL` and `SIGN_UPS invite-only` (unless the owner wants open sign-ups), then `npx convex deploy -y`.
+   Check: `npx convex env list` shows all six.
+4. **Web app.** The `web` service in compose already runs it on port 3000. Only if the owner wants it on Vercel instead: set `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_CONVEX_SITE_URL`, `NEXT_PUBLIC_SITE_URL`, `MASTRA_SERVER_URL`, `MASTRA_JWT_SECRET` there and deploy.
    Check: the address returns 200 and `/sign-up` loads.
-5. **First team.** Sign up, create a team, answer Yes to having a toolkit, enter its address and `TOOLKIT_API_KEY`. Run Video Thumbnail on a short video under Steps.
+5. **First team.** Sign up (the owner's account; with invite-only on, it is the only open one), create a team, answer Yes to having a toolkit, enter its address and `TOOLKIT_API_KEY`. Run Video Thumbnail on a short video under Steps.
    Check: Jobs shows it Done. If it stays Running, the toolkit cannot reach `$CONVEX_SITE_URL/toolkit/webhook`.
 6. **Bucket CORS.** Allow the dashboard's origin for GET, PUT and HEAD and expose `ETag`.
 7. **Integrations.** Only the ones the owner asked for, from the table in docs/self-hosting.md. Ask the owner for each provider's keys; keep them in their secrets manager, never in files or commits.
 
-Updating: pin `TOOLKIT_IMAGE` and `AGENT_IMAGE` to `sha-<commit>`, `up -d`, then push the Convex functions and deploy the web app from that same commit. Skipping the functions push leaves pages failing with "Could not find public function".
+Updating: pin `TOOLKIT_IMAGE`, `AGENT_IMAGE` and `WEB_IMAGE` to `sha-<commit>`, `up -d`, then push the Convex functions from that same commit. Skipping the functions push leaves pages failing with "Could not find public function".
 
 ## Keeping the docs true
 
