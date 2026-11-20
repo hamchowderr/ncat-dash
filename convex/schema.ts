@@ -96,7 +96,14 @@ export const triggerValidator = v.union(
     maxSeconds: v.optional(v.number()),
   }),
   // A folder in the team's own bucket, checked every minute for new files.
-  v.object({ kind: v.literal("folder"), prefix: v.string(), fileType: fileTypeValidator }),
+  // With layout "creators", one folder per creator holds hooks/, body/ and endings/, and
+  // each creator's takes start one run together.
+  v.object({
+    kind: v.literal("folder"),
+    prefix: v.string(),
+    fileType: fileTypeValidator,
+    layout: v.optional(v.literal("creators")),
+  }),
   // A run of another of the team's automations ended. `automationId` is "" until picked.
   v.object({
     kind: v.literal("finished"),

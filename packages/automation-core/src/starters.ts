@@ -1,4 +1,10 @@
-import { editingRecipes, moreRecipes, recipes, variantRecipes } from "@ncat-dash/step-catalog";
+import {
+  BODY_ONLY,
+  editingRecipes,
+  moreRecipes,
+  recipes,
+  variantRecipes,
+} from "@ncat-dash/step-catalog";
 
 import { type AutomationEdge, type AutomationNode, NODE_GAP } from "./graph";
 import type { Schedule } from "./schedule";
@@ -19,7 +25,17 @@ export type StarterTrigger =
       /** Only files at most this long, in seconds, start the automation. */
       maxSeconds?: number;
     }
-  | { kind: "folder"; prefix: string; fileType: FileType }
+  | {
+      kind: "folder";
+      prefix: string;
+      fileType: FileType;
+      /**
+       * "creators": the folder holds one folder per creator with hooks/, body/ and endings/
+       * in it, and each creator's takes start one run together (creator-folders.ts).
+       * Left out: each new file starts a run of its own.
+       */
+      layout?: "creators";
+    }
   | {
       /** Starts when a run of another of the team's automations ends; see chain.ts. */
       kind: "finished";
@@ -509,6 +525,34 @@ const WORKFLOWS: Starter[] = [
     trigger: { kind: "folder", prefix: "raw-takes/", fileType: "video" },
     nodes: [cleanup({ hooks: "said" })],
     edges: [],
+  },
+  {
+    id: "ugc-ad-variants-from-creator-folders",
+    category: "variants",
+    name: "UGC Ad Variants From Creator Folders",
+    description:
+      "Starts by itself: each creator drops their takes in ugc/<creator>/hooks/, ugc/<creator>/body/ and, if they have other calls to action, ugc/<creator>/endings/. A few minutes after the last one lands, every hook goes in front of the body with each ending, then each pairing is cut to 6, 15, 30 and 60 seconds in 9:16, 4:5 and 16:9, clean and captioned, named like h02_c01_15s_9x16, in the creator's own folder with an Ad files.csv list. Nobody presses start or picks takes. Plain editing on real footage, no AI.",
+    group: "workflow",
+    trigger: { kind: "folder", prefix: "ugc/", fileType: "video", layout: "creators" },
+    nodes: [
+      step("variants_1", "recipe-hook-variants", 0, 0, { base_cut: BODY_ONLY }),
+      step("lengths_1", "recipe-length-cuts", 1, 0, {
+        lengths: "6, 15, 30, 60",
+        ending_seconds: 4,
+      }),
+      ...AD_SHAPES.map(([width, height], row) =>
+        step(`shape_${row + 1}`, "recipe-blur-fill", 2, row, { width, height }),
+      ),
+      ...AD_SHAPES.map((_, row) =>
+        step(`caption_${row + 1}`, "video-caption", 3, row, AD_CAPTIONS),
+      ),
+    ],
+    edges: [
+      ...chain("variants_1", "lengths_1"),
+      ...AD_SHAPES.flatMap((_, row) =>
+        chain("lengths_1", `shape_${row + 1}`, `caption_${row + 1}`),
+      ),
+    ],
   },
   {
     id: "ad-length-cuts",

@@ -51,7 +51,9 @@ export function triggerSummary(trigger: Trigger): string {
         ? "Starts when a file is uploaded"
         : `Starts when ${trigger.fileType === "image" ? "an" : "a"} ${trigger.fileType} file is uploaded`;
     case "folder":
-      return `Starts when a file lands in ${trigger.prefix || "your bucket"}`;
+      return trigger.layout === "creators"
+        ? `Starts when a creator's takes land in ${trigger.prefix || "your bucket"}`
+        : `Starts when a file lands in ${trigger.prefix || "your bucket"}`;
     case "finished":
       return trigger.when === "failed"
         ? "Starts when another automation fails"

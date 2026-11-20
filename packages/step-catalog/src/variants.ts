@@ -186,9 +186,44 @@ export function joinRequest(args: {
 
 const HOOK_FIELDS = ["hook_2_url", "hook_3_url", "hook_4_url", "hook_5_url"] as const;
 const ENDING_FIELDS = ["ending_2_url", "ending_3_url"] as const;
+/** Every hook and ending take, for a base cut that is only the body. */
+export const ALL_HOOK_FIELDS = ["hook_1_url", ...HOOK_FIELDS] as const;
+export const ALL_ENDING_FIELDS = ["ending_1_url", ...ENDING_FIELDS] as const;
+
+/** What the base cut holds: its own hook and ending, or only the body between them. */
+export const BASE_CUTS = ["has its own hook and ending", "is only the body"] as const;
+export const BODY_ONLY = BASE_CUTS[1];
 
 const setLinks = (blanks: Record<string, unknown>, fields: readonly string[]) =>
   fields.filter((field) => typeof blanks[field] === "string" && blanks[field] !== "");
+
+/**
+ * The hook and ending takes a step uses. With a base cut that has its own hook and ending,
+ * takes 2 on are swapped in for them; with a base cut that is only the body, every take
+ * goes around it, from take 1.
+ */
+export function takesOf(blanks: Record<string, unknown>): {
+  bodyOnly: boolean;
+  hooks: string[];
+  endings: string[];
+} {
+  const bodyOnly = blanks.base_cut === BODY_ONLY;
+  return bodyOnly
+    ? {
+        bodyOnly,
+        hooks: setLinks(blanks, ALL_HOOK_FIELDS),
+        endings: setLinks(blanks, ALL_ENDING_FIELDS),
+      }
+    : { bodyOnly, hooks: setLinks(blanks, HOOK_FIELDS), endings: setLinks(blanks, ENDING_FIELDS) };
+}
+
+/** How many hooks and endings the step pairs up, counting the base cut's own. */
+function pairCounts(blanks: Record<string, unknown>): [number, number] {
+  const { bodyOnly, hooks, endings } = takesOf(blanks);
+  return bodyOnly
+    ? [hooks.length, Math.max(1, endings.length)]
+    : [1 + hooks.length, 1 + endings.length];
+}
 
 /** The codes of every hook and ending pair, in the order the videos are made. */
 export function variantCodes(hooks: number, endings: number): string[] {
@@ -313,15 +348,27 @@ export const variantRecipes: StepDefinition[] = [
     id: "recipe-hook-variants",
     title: "Hook And Ending Variants",
     description:
-      "Makes every pairing of openings and endings from one base cut: its own hook, or another hook take in its place, then the same middle, then its own ending, or another call to action. Two other hooks and one other ending give six videos to test, named h01_c01 to h03_c02. Swaps land in a pause, so no word is cut.",
+      "Makes every pairing of openings and endings from one base cut: its own hook, or another hook take in its place, then the same middle, then its own ending, or another call to action. Two other hooks and one other ending give six videos to test, named h01_c01 to h03_c02. Swaps land in a pause, so no word is cut. When the base cut is only the body, each hook take goes in front of it and each ending take after it.",
     primaryInput: "video_url",
-    readsFirst: ["video_url", ...HOOK_FIELDS, ...ENDING_FIELDS],
+    readsFirst: ["video_url", ...ALL_HOOK_FIELDS, ...ALL_ENDING_FIELDS],
     readsPauses: ["video_url"],
     askFirst: ["hook_2_url", "hook_3_url", "ending_2_url", "creator"],
     blanks: {
-      video_url: url("The base cut, with its own hook at the start and ending at the end").meta({
+      video_url: url(
+        "The base cut, with its own hook at the start and ending at the end, or only the body",
+      ).meta({
         title: "Base cut",
       }),
+      base_cut: choice(
+        BASE_CUTS,
+        "Whether the base cut has its own hook and ending, which other takes replace, or is only the body, which every hook take goes in front of",
+      ).default(BASE_CUTS[0]),
+      hook_1_url: z
+        .string()
+        .url()
+        .optional()
+        .describe("The first hook take, used when the base cut is only the body")
+        .meta({ title: "Hook take 1" }),
       hook_2_url: z
         .string()
         .url()
@@ -346,6 +393,14 @@ export const variantRecipes: StepDefinition[] = [
         .optional()
         .describe("Another hook take")
         .meta({ title: "Hook take 5" }),
+      ending_1_url: z
+        .string()
+        .url()
+        .optional()
+        .describe(
+          "The first ending take, used when the base cut is only the body. With none, the body's own end closes each video",
+        )
+        .meta({ title: "Ending take 1" }),
       ending_2_url: z
         .string()
         .url()
@@ -377,11 +432,40 @@ export const variantRecipes: StepDefinition[] = [
         30,
       ).default(5),
     },
-    outputLabels: (b) =>
-      variantCodes(1 + setLinks(b, HOOK_FIELDS).length, 1 + setLinks(b, ENDING_FIELDS).length),
+    outputLabels: (b) => variantCodes(...pairCounts(b)),
     toRequest: (b, facts) => {
-      const hooks = setLinks(b, HOOK_FIELDS);
-      const endings = setLinks(b, ENDING_FIELDS);
+      const { bodyOnly, hooks, endings } = takesOf(b);
+      const record = b as unknown as Record<string, string>;
+      if (bodyOnly) {
+        if (hooks.length === 0) {
+          throw new StepSetupError(
+            "The base cut is only the body, so pick at least one hook take in the step's settings.",
+          );
+        }
+        const base = facts.video_url;
+        const size = sizeOf(base, "base cut");
+        const urls = [
+          b.video_url,
+          ...hooks.map((field) => record[field]),
+          ...endings.map((field) => record[field]),
+        ];
+        const factsList = [
+          base,
+          ...hooks.map((field) => facts[field]),
+          ...endings.map((field) => facts[field]),
+        ];
+        const outputs: Piece[][] = [];
+        for (let hook = 1; hook <= hooks.length; hook++) {
+          for (let ending = 0; ending < Math.max(1, endings.length); ending++) {
+            outputs.push([
+              { input: hook },
+              { input: 0 },
+              ...(endings.length === 0 ? [] : [{ input: hooks.length + 1 + ending }]),
+            ]);
+          }
+        }
+        return joinRequest({ urls, facts: factsList, size, rate: rateOf(base), outputs });
+      }
       if (hooks.length === 0 && endings.length === 0) {
         throw new StepSetupError(
           "Pick at least one other hook or ending take in the step's settings.",
@@ -398,7 +482,6 @@ export const variantRecipes: StepDefinition[] = [
         hasOtherEndings: endings.length > 0,
         pauses: base?.pauses,
       });
-      const record = b as unknown as Record<string, string>;
       const urls = [
         b.video_url,
         ...hooks.map((field) => record[field]),

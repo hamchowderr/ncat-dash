@@ -40,3 +40,4 @@ export * from "./burn-captions";
 export * from "./triggers";
 export * from "./workflows";
 export * from "./cleanup";
+export * from "./creator-folders";

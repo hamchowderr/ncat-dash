@@ -20,7 +20,7 @@ describe("the ready-made automations", () => {
     for (const starter of STARTERS) {
       expect(screen.getAllByText(starter.name, { exact: true }).length).toBeGreaterThan(0);
     }
-    expect(screen.getByRole("button", { name: /^All 85$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^All 86$/ })).toBeTruthy();
   });
 
   test("narrows to one category", () => {
@@ -91,6 +91,7 @@ describe("the ready-made automations", () => {
     const variants = screen.getByRole("region", { name: /^Hooks, lengths and ad variants/ });
     for (const name of [
       "UGC Ad Variants",
+      "UGC Ad Variants From Creator Folders",
       "Ad Length Cuts In Every Shape",
       "Teasers In Three Lengths",
       "Opening Line Tests",

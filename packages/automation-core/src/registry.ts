@@ -198,6 +198,12 @@ const TRIGGERS: NodeType[] = [
             'The folder to watch, for example "incoming/". Empty watches the whole bucket.',
         },
         fileType,
+        layout: {
+          type: "string",
+          enum: ["creators"],
+          description:
+            'Set to "creators" when the folder holds one folder per creator, each with hooks/, body/ and optionally endings/ inside: each creator\'s takes then start one run together, a few minutes after the last one lands, with the hook and ending variants step given every take. Leave it out for one run per new file.',
+        },
       },
       required: ["prefix", "fileType"],
     },

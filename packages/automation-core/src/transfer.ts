@@ -231,6 +231,7 @@ function readTrigger(value: unknown, notes: string[]): StarterTrigger {
         kind: "folder",
         prefix: typeof value.prefix === "string" ? value.prefix.slice(0, 500) : "",
         fileType,
+        ...(value.layout === "creators" ? { layout: "creators" as const } : {}),
       };
     case "finished":
       // The automation it followed belongs to the team the file came from.
