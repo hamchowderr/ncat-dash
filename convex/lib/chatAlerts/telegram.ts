@@ -89,19 +89,16 @@ export async function call(method: string, body: Record<string, unknown>): Promi
  * Whether the bot can see a message that tags it in this group. Telegram starts every bot
  * in privacy mode, which in groups only passes on commands and replies to the bot, so a
  * plain "@bot do this" never reaches it. The bot hears everything once privacy mode is
- * off in BotFather (it takes effect in groups it joins after that), or when it is an
- * admin of the group. `privacyOff` is the bot's setting now; `wasOff` is what it was
- * when the bot joined this group, when known. Null when Telegram can't be asked.
+ * off in BotFather (tried on a real group: it counts at once, without adding the bot
+ * again), or when it is an admin of the group. Null when Telegram can't be asked.
  */
 export async function botHearsGroup(
   chatId: string,
-  wasOff?: boolean,
 ): Promise<{ hears: boolean; privacyOff: boolean } | null> {
   try {
     const me = (await call("getMe", {})) as { id: number; can_read_all_group_messages?: boolean };
     const privacyOff = me.can_read_all_group_messages === true;
-    // The setting a group was joined under stays with it until the bot is added again.
-    if (wasOff ?? privacyOff) return { hears: true, privacyOff };
+    if (privacyOff) return { hears: true, privacyOff };
     const member = (await call("getChatMember", { chat_id: chatId, user_id: me.id }).catch(
       () => null,
     )) as { status?: string } | null;
