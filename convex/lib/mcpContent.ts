@@ -10,7 +10,7 @@ import { APP_MIME_TYPE, type McpResource, type McpSkill } from "./mcpServer";
 export const OPERATION_SCHEMA = {
   type: "object",
   description:
-    'One change. op is one of: add (type, optional id, after, before, branch, settings, label, join), remove (ids), connect (source, target, optional branch "yes"/"no"/"failed"), disconnect (source, target), set (id, settings merged; null clears one), use (id, field, from: "auto", "trigger" or a step id), rename (id, label), switch (id, on), duplicate (ids), trigger (trigger: {kind, ...settings}, kind as in list_step_types without "trigger:"), name (name), tidy.',
+    'One change. op is one of: add (type, optional id, after, before, branch, settings, label, join), remove (ids), connect (source, target, optional branch "yes"/"no"/"failed"), disconnect (source, target), set (id, settings merged; null clears one), use (id, field, from: "auto", "trigger" or a step id), rename (id, label), switch (id, on), duplicate (ids), trigger (trigger: {kind, ...settings}, kind as in list_step_types without "trigger:"; optional id to change a trigger other than the first), addTrigger (trigger, optional starts: ids of steps nothing else feeds) adds another trigger with the id "__trigger_2" and up, removeTrigger (id), name (name), tidy. With several triggers, each run does only the steps its trigger starts: add a step with after set to a trigger id to start a branch from it, or connect a trigger id to a step nothing else feeds.',
   properties: {
     op: {
       type: "string",
@@ -25,6 +25,8 @@ export const OPERATION_SCHEMA = {
         "switch",
         "duplicate",
         "trigger",
+        "addTrigger",
+        "removeTrigger",
         "name",
         "tidy",
       ],
@@ -59,6 +61,7 @@ When the automation makes clips or reshapes video, ask which platforms it is for
 - Leave file settings empty: each step takes the nearest fitting file before it by itself. Logo, colour, font and music come from the team's brand in Settings. Never ask the person to type file links or placeholders.
 - For several platforms, give each its own "Clips for a platform" step from the same start, with its own steps after it.
 - An Approval step asks anyone on the team unless reviewers are named; it waits until someone decides.
+- One automation can have more than one trigger (say an upload and a schedule), all under its one on/off switch. Each trigger starts only the steps it is connected to, so two triggers can share the same steps or each start their own. \`addTrigger\` adds one; then add steps \`after\` its id. For automations that should run one after another, use a trigger that starts when another automation finishes instead.
 
 ## Try it
 

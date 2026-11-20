@@ -174,12 +174,18 @@ export async function startFirecrawlBrowserMock(port = 0): Promise<FirecrawlBrow
   const warm = (): Promise<Started | Error> =>
     startChrome().catch((err) => (err instanceof Error ? err : new Error(String(err))));
   let spare: Promise<Started | Error> | null = warm();
+  // A spare that timed out while the runner was busiest (every package's tests importing
+  // at once) is not a reason to fail the session: start one more, with its own deadline.
   const take = async (): Promise<Started> => {
-    const next = spare ?? warm();
-    spare = warm();
-    const started = await next;
-    if (started instanceof Error) throw started;
-    return started;
+    let failed: Error | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const next = spare ?? warm();
+      spare = warm();
+      const started = await next;
+      if (!(started instanceof Error)) return started;
+      failed = started;
+    }
+    throw failed;
   };
 
   const server = createServer(async (req, res) => {

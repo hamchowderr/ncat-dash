@@ -74,6 +74,7 @@ describe("the tour of the calendar", () => {
     await act(async () => {});
     expect(toastSuccess).toHaveBeenCalledWith(
       "You can take this tour again from the top of the page.",
+      { id: "tour-again" },
     );
   });
 

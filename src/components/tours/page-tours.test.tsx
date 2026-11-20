@@ -79,8 +79,10 @@ describe("a page's tour", () => {
     expect(card()).toBeNull();
     expect(mutationOf(api.tours.end)).toHaveBeenCalledWith({ tourId: "project", how: "finished" });
     await act(async () => {});
+    // One shared id, so finishing a second tour replaces this note instead of stacking.
     expect(toastSuccess).toHaveBeenCalledWith(
       "You can take this tour again from the top of the page.",
+      { id: "tour-again" },
     );
     view.unmount();
   });

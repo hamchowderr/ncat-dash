@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { startRun } from "./lib/runner";
+import { enabledWithTrigger, triggersOfKind } from "./lib/triggers";
 import { bucketOf, listObjects, presign, storageConnection } from "./lib/bucket";
 
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
@@ -14,24 +15,24 @@ const MAX_NEW_FILES_PER_CHECK = 20;
 export const watchers = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const automations = await ctx.db
-      .query("automations")
-      .withIndex("by_enabled_and_trigger_kind", (q) =>
-        q.eq("enabled", true).eq("trigger.kind", "folder"),
-      )
-      .take(200);
+    const automations = await enabledWithTrigger(ctx, "folder", 200);
     const found = [];
     for (const automation of automations) {
-      if (automation.trigger.kind !== "folder") continue;
+      const folders = triggersOfKind(automation, "folder");
+      if (folders.length === 0) continue;
       const storage = await storageConnection(ctx, automation.organizationId);
       if (!storage) continue;
-      found.push({
-        automationId: automation._id,
-        prefix: automation.trigger.prefix,
-        fileType: automation.trigger.fileType,
-        watchFrom: automation.watchFrom ?? automation.updatedAt,
-        storage,
-      });
+      // An automation with two watched folders is one watcher for each.
+      for (const { id, trigger } of folders) {
+        found.push({
+          automationId: automation._id,
+          triggerId: id,
+          prefix: trigger.prefix,
+          fileType: trigger.fileType,
+          watchFrom: automation.watchFrom ?? automation.updatedAt,
+          storage,
+        });
+      }
     }
     return found;
   },
@@ -80,6 +81,7 @@ export const poll = internalAction({
       for (const object of fresh) {
         await ctx.runMutation(internal.watch.start, {
           automationId: watcher.automationId,
+          triggerId: watcher.triggerId,
           trigger: {
             file_url: await presign(config, "GET", object.key, READ_LINK_SECONDS),
             file_name: object.key.split("/").pop() ?? object.key,
@@ -125,10 +127,18 @@ export const claim = internalMutation({
 });
 
 export const start = internalMutation({
-  args: { automationId: v.id("automations"), trigger: v.any() },
+  args: {
+    automationId: v.id("automations"),
+    // Which folder trigger saw the file. Older calls left it out: the first one.
+    triggerId: v.optional(v.string()),
+    trigger: v.any(),
+  },
   handler: async (ctx, args) => {
     const automation = await ctx.db.get(args.automationId as Id<"automations">);
-    if (!automation || !automation.enabled || automation.trigger.kind !== "folder") return;
-    await startRun(ctx, automation, "folder", args.trigger, null);
+    if (!automation || !automation.enabled) return;
+    const folders = triggersOfKind(automation, "folder");
+    const folder = args.triggerId ? folders.find((each) => each.id === args.triggerId) : folders[0];
+    if (!folder) return;
+    await startRun(ctx, automation, "folder", args.trigger, null, { triggerId: folder.id });
   },
 });

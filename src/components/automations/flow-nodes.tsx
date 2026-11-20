@@ -270,7 +270,13 @@ export type StepNodeData = {
   failWay?: "used" | "offered";
 };
 /** On a run's canvas, `runKind` is what started the run, which can be another run. */
-export type TriggerNodeData = { trigger: Trigger; summary?: string; runKind?: RunTriggerKind };
+export type TriggerNodeData = {
+  trigger: Trigger;
+  summary?: string;
+  runKind?: RunTriggerKind;
+  /** With several triggers, one that starts no step yet offers a "+" to start one. */
+  idle?: boolean;
+};
 export type StepFlowNode = Node<StepNodeData, "step">;
 export type TriggerFlowNode = Node<TriggerNodeData, "trigger">;
 export type FlowNode = StepFlowNode | TriggerFlowNode;
@@ -446,20 +452,28 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
   );
 }
 
-function TriggerNode({ data, selected }: NodeProps<TriggerFlowNode>) {
+function TriggerNode({ id, data, selected }: NodeProps<TriggerFlowNode>) {
   const Icon = data.runKind ? RUN_TRIGGER_ICONS[data.runKind] : TRIGGER_ICONS[data.trigger.kind];
+  const addAfter = useContext(AddAfterContext);
   return (
-    <div className="relative" data-node={TRIGGER_ID}>
-      <div
-        className={cn(
-          tile,
-          "rounded-l-[2.5rem] rounded-r-2xl",
-          selected && "picked-ring",
-        )}
-      >
+    <div className="relative" data-node={id} data-trigger>
+      <div className={cn(tile, "rounded-l-[2.5rem] rounded-r-2xl", selected && "picked-ring")}>
         <Icon className={cn("size-8", TRIGGER_TINT)} strokeWidth={1.6} aria-hidden="true" />
         <Handle type="source" position={Position.Right} className={handle} />
       </div>
+      {data.idle && addAfter && (
+        <button
+          type="button"
+          aria-label={`Add a step after ${TRIGGER_LABELS[data.trigger.kind]}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            addAfter(id);
+          }}
+          className={cn(plus, "top-1/2 size-7")}
+        >
+          <Plus className="size-4" aria-hidden="true" />
+        </button>
+      )}
       <div className={caption}>
         <span className="truncate text-sm font-medium">
           {data.runKind ? RUN_TRIGGER_LABELS[data.runKind] : TRIGGER_LABELS[data.trigger.kind]}
@@ -600,8 +614,24 @@ export function triggerPosition(nodes: { position: { x: number; y: number } }[])
   return { x: left - NODE_GAP, y };
 }
 
-/** Lines from the trigger to every step that nothing else feeds. */
-export function triggerEdges(nodeIds: string[], edges: { target: string }[]): Edge[] {
+/**
+ * Lines from the trigger to every step that nothing else feeds. With several triggers,
+ * `starts` says which steps each one starts, and those lines can be chosen and deleted
+ * like any other.
+ */
+export function triggerEdges(
+  nodeIds: string[],
+  edges: { target: string }[],
+  starts?: Map<string, string[]>,
+): Edge[] {
+  if (starts && starts.size > 1) {
+    const known = new Set(nodeIds);
+    return [...starts].flatMap(([triggerId, ids]) =>
+      ids
+        .filter((id) => known.has(id))
+        .map((id) => flowEdge({ id: `${triggerId}>${id}`, source: triggerId, target: id })),
+    );
+  }
   const fed = new Set(edges.map((edge) => edge.target));
   return nodeIds
     .filter((id) => !fed.has(id))
@@ -615,6 +645,48 @@ export function triggerEdges(nodeIds: string[], edges: { target: string }[]): Ed
         focusable: false,
       }),
     );
+}
+
+/**
+ * Where each trigger sits: one place left of the steps it starts, level with their
+ * middle, and a trigger that starts nothing below the others. Triggers that would land
+ * on the same spot are stacked.
+ */
+export function triggerPositions(
+  triggerIds: string[],
+  nodes: { id: string; position: { x: number; y: number } }[],
+  starts: Map<string, string[]>,
+): Map<string, { x: number; y: number }> {
+  const places = new Map<string, { x: number; y: number }>();
+  if (triggerIds.length <= 1) {
+    for (const id of triggerIds) places.set(id, triggerPosition(nodes));
+    return places;
+  }
+  const left = nodes.length ? Math.min(...nodes.map((node) => node.position.x)) : 0;
+  const taken: { x: number; y: number }[] = [];
+  const free = (place: { x: number; y: number }) => {
+    let y = place.y;
+    while (taken.some((other) => other.x === place.x && Math.abs(other.y - y) < 120)) y += 150;
+    const spot = { x: place.x, y };
+    taken.push(spot);
+    return spot;
+  };
+  const idle: string[] = [];
+  for (const id of triggerIds) {
+    const started = nodes.filter((node) => (starts.get(id) ?? []).includes(node.id));
+    if (started.length === 0) {
+      idle.push(id);
+      continue;
+    }
+    const x = Math.min(...started.map((node) => node.position.x)) - NODE_GAP;
+    const y = started.reduce((sum, node) => sum + node.position.y, 0) / started.length;
+    places.set(id, free({ x: Math.min(x, left - NODE_GAP), y }));
+  }
+  for (const id of idle) {
+    const lowest = Math.max(0, ...nodes.map((node) => node.position.y), ...taken.map((p) => p.y));
+    places.set(id, free({ x: left - NODE_GAP, y: lowest + 150 }));
+  }
+  return places;
 }
 
 /** Ids of the steps nothing follows. */
