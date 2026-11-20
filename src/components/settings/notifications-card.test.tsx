@@ -70,6 +70,29 @@ describe("notification settings", () => {
     });
   });
 
+  test("Slack and Discord each get a column once the person can get alerts there", () => {
+    answerQuery(api.notifications.get, settings({ chatApps: ["slack", "discord"] }));
+    renderInApp(<NotificationsCard />);
+    expect(screen.getByRole("columnheader", { name: "Slack" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Discord" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "A run fails: in Discord" }));
+    expect(mutationOf(api.notifications.set)).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      kind: "run_failed",
+      channel: "discord",
+      enabled: false,
+    });
+    fireEvent.click(
+      screen.getByRole("switch", { name: "An approval is waiting for me: in Slack" }),
+    );
+    expect(mutationOf(api.notifications.set)).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      kind: "approval_waiting",
+      channel: "slack",
+      enabled: false,
+    });
+  });
+
   test("switching one off saves just that kind and channel", () => {
     answerQuery(api.notifications.get, settings());
     renderInApp(<NotificationsCard />);

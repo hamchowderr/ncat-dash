@@ -6,7 +6,7 @@ import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/s
 import { notify } from "./lib/alerts";
 import { drawingValidator } from "./lib/drawing";
 import { CLIP_LIMIT } from "./lib/reviews";
-import { toSlack } from "./lib/slackPosts";
+import { toReviewChannels } from "./lib/reviewChannels";
 
 // The client's side of a review's share link (/share/<token>). Nobody here is signed in:
 // the secret in the link is the only key, and every function checks it first. A client
@@ -147,7 +147,7 @@ async function tellTeam(
     commentId: at.commentId,
     from,
   });
-  await toSlack(ctx, review.organizationId, {
+  await toReviewChannels(ctx, review.organizationId, {
     kind: "client_feedback",
     reviewId: review._id,
     commentId: at.commentId,

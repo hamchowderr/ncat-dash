@@ -926,9 +926,33 @@ export default defineSchema({
     guildName: v.string(),
     addedBy: v.string(),
     addedAt: v.number(),
+    // The channel in this server review activity is posted to, when the team picked one
+    // here. A team has at most one such channel across its servers.
+    alertChannelId: v.optional(v.string()),
+    alertChannelName: v.optional(v.string()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_guild", ["guildId"]),
+
+  // A review comment thread as a Discord thread in the team's review channel: what
+  // follows in the room goes there, and a teammate's reply there comes back.
+  discordReviewThreads: defineTable({
+    organizationId: v.string(),
+    guildId: v.string(),
+    channelId: v.string(),
+    threadId: v.string(),
+    reviewId: v.id("reviews"),
+    commentId: v.id("reviewComments"),
+  })
+    .index("by_comment", ["commentId"])
+    .index("by_thread", ["threadId"])
+    .index("by_review", ["reviewId"]),
+
+  // Discord messages already brought into a review, so one is never added twice.
+  discordReplies: defineTable({
+    messageId: v.string(),
+    commentId: v.id("reviewComments"),
+  }).index("by_message", ["messageId"]),
 
   // A team member's own Discord account, linked by signing in with Discord once. Discord
   // gives bots no email address, so this is how the agent knows who wrote to it. The
