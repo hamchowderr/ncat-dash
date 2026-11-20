@@ -331,6 +331,7 @@ describe("cleanupRequest on real FFmpeg", () => {
     const video = await probe("v:0");
     const audio = await probe("a:0");
     expect(video).toBeCloseTo(2.6 + 3.1, 1);
+    expect(audio).toBeCloseTo(2.6 + 3.1, 1);
     expect(Math.abs(video - audio)).toBeLessThan(0.05);
   }, 60_000);
 });

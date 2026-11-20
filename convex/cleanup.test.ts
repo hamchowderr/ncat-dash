@@ -140,10 +140,12 @@ async function setUp(
 /** The kept stretches of a compose request, from its select expression, in seconds. */
 function keptFrames(body: Record<string, unknown>) {
   const filters = body.filters as { filter: string }[];
-  return [...filters[0].filter.matchAll(/between\(n,(\d+),(\d+)\)/g)].map((match) => [
-    Number(match[1]),
-    Number(match[2]),
-  ]);
+  return filters.flatMap(({ filter }) =>
+    [...filter.matchAll(/\btrim=start_frame=(\d+):end_frame=(\d+)/g)].map((match) => [
+      Number(match[1]),
+      Number(match[2]) - 1,
+    ]),
+  );
 }
 
 describe("Clean Up Pauses And Retakes", () => {
@@ -172,10 +174,17 @@ describe("Clean Up Pauses And Retakes", () => {
     // The 2 s pauses between the takes, and the retake, are not in any file.
     expect(step.cleaned![0].after).toBeLessThan(step.cleaned![0].before);
     // Cut on whole frames at 30 a second, the sound on the same frames.
-    expect(cuts[0].body.filters).toEqual([
-      expect.objectContaining({ filter: expect.stringContaining("fps=30,select=") }),
-      expect.objectContaining({ filter: expect.stringContaining("asetnsamples=n=1600") }),
-    ]);
+    expect(cuts[0].body.filters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ filter: expect.stringContaining("fps=30,") }),
+        expect.objectContaining({
+          filter: expect.stringMatching(/trim=start_frame=\d+:end_frame=\d+/),
+        }),
+        expect.objectContaining({
+          filter: expect.stringMatching(/atrim=start_sample=\d+:end_sample=\d+/),
+        }),
+      ]),
+    );
     // The first hook starts on its own words, after "Hook one." was cut out.
     const words = UGC.flatMap((segment) => segment.words);
     const seek = (

@@ -558,7 +558,7 @@ export function cutRate(fps: number | undefined): number {
 /**
  * The compose request for one part: the recording read from the part's first kept moment,
  * and only the kept frames passed on, picture and sound cut on the very same frames (the
- * sound is read in pieces exactly one frame long), so they never drift apart.
+ * sound by sample number, exactly 48000/rate samples a frame), so they never drift apart.
  */
 export function cleanupRequest(
   url: string,
@@ -577,8 +577,21 @@ export function cleanupRequest(
     if (previous && first <= previous[1] + 1) previous[1] = Math.max(previous[1], last);
     else frames.push([first, last]);
   }
-  const pick = frames.map(([first, last]) => `between(n,${first},${last})`).join("+") || "0";
+  if (frames.length === 0) frames.push([0, 0]);
   const samples = 48000 / rate;
+  const count = frames.length;
+  const names = (prefix: string) => frames.map((_, index) => `[${prefix}${index}]`).join("");
+  // Each kept stretch is trimmed by frame number from the picture and by the matching
+  // sample number from the sound (one frame is exactly 48000/rate samples), then joined.
+  const video = frames.map(
+    ([first, last], index) =>
+      `[pv${index}]trim=start_frame=${first}:end_frame=${last + 1},setpts=PTS-STARTPTS[cv${index}]`,
+  );
+  const audio = frames.map(
+    ([first, last], index) =>
+      `[pa${index}]atrim=start_sample=${first * samples}:end_sample=${(last + 1) * samples},asetpts=PTS-STARTPTS[ca${index}]`,
+  );
+  const joined = frames.map((_, index) => `[cv${index}][ca${index}]`).join("");
   return {
     inputs: [
       {
@@ -591,11 +604,14 @@ export function cleanupRequest(
     ],
     filters: [
       {
-        filter: `[0:v]setpts=PTS-STARTPTS,fps=${rate},select='${pick}',setpts=N/(${rate}*TB),format=yuv420p[v]`,
+        filter: `[0:v]setpts=PTS-STARTPTS,fps=${rate},format=yuv420p,split=${count}${names("pv")}`,
       },
       {
-        filter: `[0:a]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS,asetnsamples=n=${samples}:p=1,aselect='${pick}',asetpts=N/SR/TB[a]`,
+        filter: `[0:a]aresample=48000,aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS,asplit=${count}${names("pa")}`,
       },
+      ...video.map((filter) => ({ filter })),
+      ...audio.map((filter) => ({ filter })),
+      { filter: `${joined}concat=n=${count}:v=1:a=1[v][a]` },
     ],
     outputs: [
       {
