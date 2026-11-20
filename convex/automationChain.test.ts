@@ -141,9 +141,13 @@ describe("a Run an automation step", () => {
     });
     expect(waiting.byNode.run.childRunId).toBe(child._id);
     const childJob = (await look(child._id)).jobs[0];
-    expect(childJob.input).toMatchObject({ video_url: TRIMMED });
+    expect(childJob.input).toMatchObject({ media_url: TRIMMED });
 
-    await finish(childJob._id, CAPTIONED);
+    // The timed words, then the quick save that burns them in.
+    await finish(childJob._id, "https://files.example/out/words.ass");
+    const burn = (await look(child._id)).jobs.find((job) => job.stepId === "ffmpeg-compose")!;
+    expect(JSON.stringify(burn.input)).toContain("ass='https://files.example/out/words.ass'");
+    await finish(burn._id, CAPTIONED);
     const after = await look(runId);
     expect(after.byNode.run).toMatchObject({ status: "done", outputs: [CAPTIONED] });
     const thumbJob = after.jobs.find((job) => job.stepId === "video-thumbnail");

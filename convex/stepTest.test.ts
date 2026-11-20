@@ -79,7 +79,7 @@ describe("testing one step on its own", () => {
     expect(run).toMatchObject({ test: "caption", triggerKind: "manual", startedBy: maya.id });
     expect(steps.map((step) => step.nodeId)).toEqual(["caption"]);
     expect(jobs).toHaveLength(1);
-    expect(jobs[0]).toMatchObject({ stepId: "video-caption", input: { video_url: FILE } });
+    expect(jobs[0]).toMatchObject({ stepId: "media-generate-ass", input: { media_url: FILE } });
     // The file is named from its address, signed links and all.
     const shown = await maya.as.query(api.runs.get, { runId });
     expect(shown?.startedWith).toBe("station_interview.mp4");
@@ -94,7 +94,7 @@ describe("testing one step on its own", () => {
     });
     const { jobs } = await look(runId);
     expect(jobs).toHaveLength(1);
-    expect(jobs[0]).toMatchObject({ stepId: "video-caption" });
+    expect(jobs[0]).toMatchObject({ stepId: "media-generate-ass" });
   });
 
   test("shows as a test in the runs list, named after the step", async () => {

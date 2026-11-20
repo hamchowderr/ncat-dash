@@ -3,6 +3,10 @@ import {
   approvalLimitMs,
   approvalSettings,
   askedToDecide,
+  burnRequest,
+  burnsInFast,
+  captionVideoOf,
+  wordsRequest,
   type AutomationEdge,
   type AutomationNode,
   branchesToward,
@@ -56,6 +60,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { notify } from "./alerts";
 import { runEnded, startAutomationStep, startingFiles } from "./chain";
 import { cutListOf } from "./exports";
+import { collectUrls } from "./outputs";
 import { captionSetupOf } from "./captions";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { finishListening, startListening } from "./moments";
@@ -437,6 +442,28 @@ async function startToolkitStep(
     planned = planned.map((input) =>
       withCaptionSetup(input, setup, { details: details.get(urlOf(input)), brandFont }),
     );
+
+    // "Caption video" is made the fast way: the timed words first ("listen"), then one
+    // quick save that burns them in ("render"). See burn-captions.ts.
+    if (definition.id === "video-caption" && planned.every(burnsInFast)) {
+      const words = await enqueueAll(
+        ctx,
+        run,
+        step,
+        planned.map((input) => ({ stepId: "media-generate-ass", input: wordsRequest(input) })),
+      );
+      if (!words.ok) {
+        await failStep(ctx, run, step, byNode, words.message);
+        return;
+      }
+      await ctx.db.patch(step._id, {
+        status: "running",
+        stage: "listen",
+        jobIds: words.jobIds,
+        startedAt: step.startedAt ?? now,
+      });
+      return;
+    }
   }
 
   const queued = await enqueueAll(
@@ -904,6 +931,44 @@ async function finishSizes(
   await startToolkitStep(ctx, run, node, step, byNode, sizes);
 }
 
+/**
+ * Second stage of "Caption video": the timed words are in, so burn each caption file into
+ * its video with one quick save. The step finishes with those saves' files.
+ */
+async function burnCaptions(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  words: Doc<"jobs">[],
+) {
+  const steps = await ctx.db
+    .query("runSteps")
+    .withIndex("by_run", (q) => q.eq("runId", run._id))
+    .take(200);
+  const byNode = new Map(steps.map((other) => [other.nodeId, other]));
+  const failed = words.find((job) => job.status === "failed");
+  if (failed) {
+    await failStep(ctx, run, step, byNode, failed.error ?? "The captions could not be made.");
+    return;
+  }
+  const wanted: { stepId: string; input: unknown }[] = [];
+  for (const job of words) {
+    const video = captionVideoOf({ video_url: (job.input as { media_url?: unknown }).media_url });
+    const captions = job.outputs[0] ?? collectUrls(job.result)[0];
+    if (!video || !captions) {
+      await failStep(ctx, run, step, byNode, "The toolkit made no caption file for a video.");
+      return;
+    }
+    wanted.push({ stepId: "ffmpeg-compose", input: burnRequest(video, captions) });
+  }
+  const queued = await enqueueAll(ctx, run, step, wanted);
+  if (!queued.ok) {
+    await failStep(ctx, run, step, byNode, queued.message);
+    return;
+  }
+  await ctx.db.patch(step._id, { stage: "render", jobIds: queued.jobIds });
+}
+
 /** Called when a job that belongs to a run reaches a final state. */
 export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">): Promise<void> {
   const step = await ctx.db.get(runStepId);
@@ -930,6 +995,11 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
 
   if (step.stage === "listen") {
     const node = (run.nodes as AutomationNode[]).find((other) => other.id === step.nodeId);
+    if (node?.kind === "step" && node.stepId === "video-caption") {
+      await burnCaptions(ctx, run, step, jobs);
+      await advance(ctx, run._id);
+      return;
+    }
     if (node && isMotionKind(node.kind)) {
       const steps = await ctx.db
         .query("runSteps")

@@ -35,3 +35,4 @@ export * from "./calendar";
 export * from "./upload-parts";
 export * from "./motion";
 export * from "./product";
+export * from "./burn-captions";

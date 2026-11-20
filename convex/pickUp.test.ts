@@ -138,6 +138,8 @@ describe("picking a failed run up where it stopped", () => {
 
     await finishJob(after.jobs.thumbnail!._id, true, "https://files.example/out/thumb.mp4");
     await finishJob((await look(runId)).jobs.caption!._id, true);
+    // Captions are the timed words, then the quick save that burns them in.
+    await finishJob((await look(runId)).jobs.caption!._id, true);
     const done = await look(runId);
     expect(done.run.status).toBe("done");
     expect(done.byNode.thumbnail.retries).toBeUndefined();
