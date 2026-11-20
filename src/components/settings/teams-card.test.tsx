@@ -107,6 +107,7 @@ describe("the Microsoft Teams card", () => {
     const select = screen.getByRole("combobox", { name: "Alerts" });
     await waitFor(() => expect(select).toBeEnabled());
     expect(select).toHaveTextContent("Not posted");
+    expect(screen.getByText(/approvals can be decided right in Teams/)).toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(select);
     await user.click(screen.getByRole("option", { name: "Video team › Edits" }));

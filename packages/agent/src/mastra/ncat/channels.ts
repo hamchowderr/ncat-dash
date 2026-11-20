@@ -3,7 +3,7 @@ import { onAlertButton } from "./alert-buttons";
 import { asTheDiscordWriter, discordAdapter } from "./discord";
 import { onReviewReply } from "./review-replies";
 import { asTheWriter, slackChannels } from "./slack";
-import { asTheTeamsWriter, teamsAdapter } from "./teams";
+import { asTheTeamsWriter, onTeamsAlertButton, teamsAdapter } from "./teams";
 
 /**
  * The chat apps the agent answers in: Slack (each team's own app), and Discord and
@@ -31,8 +31,10 @@ export function chatChannels(): AgentControllerChannelsConfig | undefined {
       onMention: byPlatform,
       onDirectMessage: byPlatform,
       onSubscribedMessage: byPlatform,
-      // Approve and Send back on the dashboard's alerts; anything else as before.
-      onAction: onAlertButton,
+      // Approve and Send back on the dashboard's alerts: Discord presses, then Teams
+      // presses; anything else as before.
+      onAction: (event, next, ctx) =>
+        onAlertButton(event, () => onTeamsAlertButton(event, next, ctx), ctx),
       // Teammates' replies in a review's Discord thread go to the review; nothing else.
       ...(discord ? { onMessage: onReviewReply } : {}),
     },

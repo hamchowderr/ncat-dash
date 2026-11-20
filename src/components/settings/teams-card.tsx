@@ -143,7 +143,7 @@ function AlertChannel({
           ? "Teams did not list the channels. Try again in a minute."
           : teamsSeen.length === 0
             ? "Once the app is in a team, mention the agent once in any of its channels. That team's channels then show here."
-            : "Failed runs, approvals, review mentions and client feedback are posted here."}
+            : "Failed runs, approvals, mentions and finished runs are posted here, and approvals can be decided right in Teams."}
       </FieldDescription>
       {problem && (
         <Alert variant="destructive">

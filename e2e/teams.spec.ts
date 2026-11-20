@@ -8,9 +8,11 @@ import { MICROSOFT, MICROSOFT_USER, TEAMS_TEAM } from "./microsoft-data.mjs";
 // The agent in Microsoft Teams, in a real browser against a real backend: an owner links
 // the team's Microsoft organization from Settings (the stand-in signs in at once), the
 // Teams app can be downloaded, the agent server asks who wrote in a Teams team, and the
-// owner then picks one of that team's channels for alerts.
+// owner then picks one of that team's channels for alerts. An approval posted there as a
+// card is approved by pressing Approve in Teams, and the card then says who decided.
 
 const CONVEX_SITE = "http://127.0.0.1:3211";
+const FILES = "http://127.0.0.1:8766";
 const stamp = Date.now().toString(36);
 if (process.env.RECORD_VIDEO === "1") {
   test.use({
@@ -27,7 +29,7 @@ function agentToken() {
   return `${body}.${createHmac("sha256", AGENT_SECRET).update(body).digest("base64url")}`;
 }
 
-test("links the Microsoft organization, offers the Teams app, and sends alerts to a channel", async ({
+test("links the Microsoft organization, offers the Teams app, and alerts with Approve land in a channel", async ({
   page,
 }) => {
   await page.goto("/sign-up");
@@ -102,4 +104,76 @@ test("links the Microsoft organization, offers the Teams app, and sends alerts t
   await expect(page.getByRole("combobox", { name: "Alerts" })).toHaveText(
     `${TEAMS_TEAM.name} › Edits`,
   );
+
+  // Settings, Notifications now has a Teams column.
+  await page.goto("/settings/notifications");
+  await expect(
+    page.getByRole("switch", { name: "An approval is waiting for me: in Teams" }),
+  ).toBeChecked();
+
+  // A run reaches an Approval step; the card comes to the channel with its buttons.
+  await page.goto("/automations");
+  await page
+    .getByLabel("Automation file to import")
+    .setInputFiles("e2e/fixtures/weekly-clips.automation.json");
+  await expect(page).toHaveURL(/\/automations\/.+/);
+  await page.getByRole("switch").first().click();
+  await expect(page.getByRole("switch").first()).toBeChecked();
+  await page.locator(".react-flow__node-trigger").click();
+  const address = await page.locator("#trigger-address").inputValue();
+  const started = await fetch(address, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file_url: `${FILES}/station-interview.webm` }),
+  });
+  expect(started.status).toBe(202);
+
+  type Post = { path: string; method: string; body: { attachments?: { content: Card }[] } };
+  type Card = {
+    body: { text: string }[];
+    actions: { type: string; data?: { actionId: string; value: string } }[];
+  };
+  const posts = async () => (await (await fetch(`${MICROSOFT}/stand-in/posts`)).json()) as Post[];
+  const cardOf = (post?: Post) => post?.body.attachments?.[0]?.content;
+  await expect
+    .poll(
+      async () =>
+        (await posts()).some((post) =>
+          cardOf(post)?.actions.some((action) => action.data?.actionId === "ncat_alert_approve"),
+        ),
+      { timeout: 60_000 },
+    )
+    .toBe(true);
+  const approval = (await posts()).find((post) =>
+    cardOf(post)?.actions.some((action) => action.data?.actionId === "ncat_alert_approve"),
+  )!;
+  expect(approval.path).toContain(encodeURIComponent("19:edits@thread.tacv2"));
+  expect(cardOf(approval)!.body[0].text).toBe(
+    "Weekly clips is waiting for your approval (Approval)",
+  );
+  const runStepId = cardOf(approval)!.actions[0].data!.value;
+
+  // The owner presses Approve in Teams; the agent server hands the press to the dashboard.
+  const pressed = await fetch(`${CONVEX_SITE}/teams/alert-action`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${agentToken()}`, "content-type": "application/json" },
+    body: JSON.stringify({ tenantId: tenant, aadObjectId: userId, runStepId, decision: "approve" }),
+  });
+  expect(await pressed.json()).toEqual({ ok: true, message: "Approved." });
+
+  // The card changes to say who approved, with no buttons left.
+  const activityId = approval.path.split("/").pop();
+  await expect
+    .poll(
+      async () => {
+        const edit = (await posts()).find(
+          (post) => post.method === "PUT" && post.path.endsWith(`/activities/${activityId}`),
+        );
+        return cardOf(edit)?.body.map((block) => block.text) ?? [];
+      },
+      { timeout: 30_000 },
+    )
+    .toContain("Approved by Harbour Organizer.");
+  const edit = (await posts()).find((post) => post.method === "PUT")!;
+  expect(cardOf(edit)!.actions.map((action) => action.type)).toEqual(["Action.OpenUrl"]);
 });

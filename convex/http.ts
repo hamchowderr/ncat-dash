@@ -485,6 +485,41 @@ http.route({
   }),
 });
 
+// Approve or Send back pressed on an alert in Microsoft Teams. Teams hands the press to the
+// agent server, which passes it here with who pressed it (their Microsoft account).
+http.route({
+  path: "/teams/alert-action",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const text = (key: string) => {
+      const value = body[key];
+      return typeof value === "string" && value.length > 0 && value.length <= 512 ? value : "";
+    };
+    const decision = text("decision");
+    const runStepId = text("runStepId");
+    if (!text("tenantId") || !text("aadObjectId") || !runStepId) {
+      return new Response("Missing tenantId, aadObjectId or runStepId", { status: 400 });
+    }
+    if (decision !== "approve" && decision !== "send_back") {
+      return new Response("Unknown decision", { status: 400 });
+    }
+    const answer = await ctx.runMutation(internal.microsoftTeams.alertPress, {
+      tenantId: text("tenantId"),
+      aadObjectId: text("aadObjectId"),
+      runStepId,
+      decision,
+    });
+    return Response.json(answer);
+  }),
+});
+
 // The Teams app a team uploads to its Teams: the dashboard's one bot, and its icons.
 http.route({
   path: "/teams/app.zip",
