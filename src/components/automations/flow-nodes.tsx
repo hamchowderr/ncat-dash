@@ -353,29 +353,6 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
             <TriangleAlert className="size-4" aria-hidden="true" />
           </span>
         )}
-        {canFailOver(node.kind) && (
-          // The way out for when the step fails, low on its right, in the colour of an error.
-          // Always there, so lines can attach to it; seen only when it is used or chosen.
-          <span className={cn(!failWay && "pointer-events-none opacity-0")} aria-hidden={!failWay}>
-            {failWay === "used" && (
-              <span
-                className="text-destructive pointer-events-none absolute right-2 -translate-y-1/2 text-[10px] leading-none font-medium"
-                style={{ top: `${FAIL_TOP}%` }}
-              >
-                Fails
-              </span>
-            )}
-            <Handle
-              id={FAILURE_WAY}
-              type="source"
-              position={Position.Right}
-              isConnectable={Boolean(failWay)}
-              className="!border-background !bg-destructive !size-2.5 !border-2"
-              style={{ top: `${FAIL_TOP}%` }}
-              title="Drag to the step that runs when this one fails"
-            />
-          </span>
-        )}
         {ways.length === 0 ? (
           <Handle type="source" position={Position.Right} className={handle} />
         ) : (
@@ -397,6 +374,30 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
               />
             </span>
           ))
+        )}
+        {canFailOver(node.kind) && (
+          // The way out for when the step fails, low on its right, in the colour of an error.
+          // Always there, so lines can attach to it; seen only when it is used or chosen.
+          // It comes after the usual way out: a line that names no way joins the first one.
+          <span className={cn(!failWay && "pointer-events-none opacity-0")} aria-hidden={!failWay}>
+            {failWay === "used" && (
+              <span
+                className="text-destructive pointer-events-none absolute right-2 -translate-y-1/2 text-[10px] leading-none font-medium"
+                style={{ top: `${FAIL_TOP}%` }}
+              >
+                Fails
+              </span>
+            )}
+            <Handle
+              id={FAILURE_WAY}
+              type="source"
+              position={Position.Right}
+              isConnectable={Boolean(failWay)}
+              className="!border-background !bg-destructive !size-2.5 !border-2"
+              style={{ top: `${FAIL_TOP}%` }}
+              title="Drag to the step that runs when this one fails"
+            />
+          </span>
         )}
       </div>
       {last && addAfter && ways.length === 0 && (
