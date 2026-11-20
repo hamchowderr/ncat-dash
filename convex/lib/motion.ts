@@ -25,6 +25,7 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { heardFrom, wordsFor } from "./moments";
+import { startingFileName } from "./outputs";
 import { brandOf } from "./queue";
 import { advance, enqueueAll, failStep } from "./runner";
 
@@ -145,7 +146,8 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
   );
   const team = await motionSetupOf(ctx, run.organizationId);
   const brand = await brandOf(ctx, run.organizationId, run.clientId);
-  const fileName = (run.trigger as { file_name?: unknown } | null)?.file_name;
+  // As uploaded, or from its address when the run was started with a link or Run now.
+  const fileName = startingFileName(run.trigger) ?? "";
 
   const planned = node.kind === "motion" ? plannedBeats(run, node.id, byNode) : null;
   const renders: { stepId: string; input: unknown }[] = [];
@@ -165,8 +167,7 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
     if (node.kind === "motion") {
       const settings = motionStepSettings(node.input);
       const setup = motionSetupFor(team, settings.style === "team" ? undefined : settings.style);
-      const title =
-        settings.title || titleFromFileName(typeof fileName === "string" ? fileName : "");
+      const title = settings.title || titleFromFileName(fileName);
       plan = planMotionByRules({
         words,
         duration,
