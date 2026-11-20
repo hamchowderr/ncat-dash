@@ -28,9 +28,11 @@ const START_TTL_MS = 15 * 60 * 1000;
 
 /**
  * What the bot may do in a server: see channels, read history, send messages and
- * messages in threads, start public threads, attach files, embed links, add reactions.
+ * messages in threads, start public threads, attach files, embed links, add reactions,
+ * and manage webhooks (so review replies can show under the writer's own name and picture;
+ * without it the bot posts them with the name in the words).
  */
-export const BOT_PERMISSIONS = "309237763136";
+export const BOT_PERMISSIONS = "309774634048";
 
 type Kind = "server" | "person";
 

@@ -6,6 +6,7 @@ import { action, internalAction, internalMutation, internalQuery } from "./_gene
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
 import {
+  canPostAsOthers,
   channelsOf,
   emailOf,
   joinChannel,
@@ -17,6 +18,7 @@ import {
   slackEscape,
   slackUserByEmail,
 } from "./lib/slackApi";
+import { speakerOf } from "./lib/reviewSpeaker";
 import { type ReviewPost, reviewPostValidator } from "./lib/slackPosts";
 import { slackSigned } from "./lib/slackSignature";
 
@@ -138,7 +140,9 @@ export const postContext = internalQuery({
     });
     const nameOfMember = (userId: string | null) =>
       team.members.find((member) => member.userId === userId)?.name ?? null;
+    const people = await ctx.runQuery(components.betterAuth.members.people, { organizationId });
     return {
+      speaker: speakerOf(post, people),
       slackTeamId: connection.slackTeamId,
       channelId: connection.alertChannelId,
       tokenCipher: connection.botTokenCipher,
@@ -186,6 +190,8 @@ export function postText(
     threadTs: string | null;
   },
   tags: string[],
+  // Posted under the writer's own name, so the words leave it out.
+  asWriter = false,
 ): string {
   const query = new URLSearchParams();
   if (context.clipId) query.set("clip", context.clipId);
@@ -210,19 +216,31 @@ export function postText(
         context.openedBy ? `, opened by ${slackEscape(context.openedBy)}` : ""
       }.`;
     }
-    case "client_feedback":
+    case "client_feedback": {
+      if (asWriter) {
+        if (context.threadTs) return slackEscape(post.body);
+        return post.commentId
+          ? `Commented on ${where}:\n${quoted(post.body)}`
+          : `On ${link}: ${slackEscape(post.body)}`;
+      }
       if (context.threadTs)
         return `*${slackEscape(post.from)}* (client): ${slackEscape(post.body)}`;
       return post.commentId
         ? `*${slackEscape(post.from)}* (client) commented on ${where}:\n${quoted(post.body)}`
         : `*${slackEscape(post.from)}* (client) on ${link}: ${slackEscape(post.body)}`;
-    case "mention":
+    }
+    case "mention": {
+      const who = tags.length > 0 ? tags.join(" ") : "someone";
+      if (asWriter) {
+        if (context.threadTs) return `${tagged}${slackEscape(post.body)}`;
+        return `Mentioned ${who} on ${where}:\n${quoted(post.body)}`;
+      }
       if (context.threadTs)
         return `${tagged}*${slackEscape(post.from)}*: ${slackEscape(post.body)}`;
-      return `*${slackEscape(post.from)}* mentioned ${
-        tags.length > 0 ? tags.join(" ") : "someone"
-      } on ${where}:\n${quoted(post.body)}`;
+      return `*${slackEscape(post.from)}* mentioned ${who} on ${where}:\n${quoted(post.body)}`;
+    }
     case "team_reply":
+      if (asWriter) return slackEscape(post.body);
       return `*${slackEscape(post.from)}*: ${slackEscape(post.body)}`;
   }
 }
@@ -239,10 +257,14 @@ export const post = internalAction({
       const slackUser = await slackUserByEmail(token, person.email);
       tags.push(slackUser ? `<@${slackUser}>` : `@${slackEscape(person.name)}`);
     }
+    // Under the writer's own name and picture when the app may, else as the app with
+    // the name in the words.
+    const as = context.speaker && (await canPostAsOthers(token)) ? context.speaker : undefined;
     const ts = await postMessage(token, {
       channel: context.channelId,
-      text: postText(args.post, context, tags),
+      text: postText(args.post, context, tags, Boolean(as)),
       threadTs: context.threadTs ?? undefined,
+      as,
     });
     const commentId = "commentId" in args.post ? args.post.commentId : undefined;
     if (ts && commentId && !context.threadTs) {

@@ -932,6 +932,11 @@ export default defineSchema({
     // here. A team has at most one such channel across its servers.
     alertChannelId: v.optional(v.string()),
     alertChannelName: v.optional(v.string()),
+    // The webhook in that channel that copies a teammate's reply under their own name
+    // and picture. Made the first time it is needed; its token is kept encrypted.
+    reviewWebhook: v.optional(
+      v.object({ channelId: v.string(), id: v.string(), tokenCipher: v.string() }),
+    ),
   })
     .index("by_organization", ["organizationId"])
     .index("by_guild", ["guildId"]),

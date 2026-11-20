@@ -77,6 +77,7 @@ import type * as lib_pickUp from "../lib/pickUp.js";
 import type * as lib_projects from "../lib/projects.js";
 import type * as lib_queue from "../lib/queue.js";
 import type * as lib_reviewChannels from "../lib/reviewChannels.js";
+import type * as lib_reviewSpeaker from "../lib/reviewSpeaker.js";
 import type * as lib_reviews from "../lib/reviews.js";
 import type * as lib_runner from "../lib/runner.js";
 import type * as lib_slackApi from "../lib/slackApi.js";
@@ -208,6 +209,7 @@ declare const fullApi: ApiFromModules<{
   "lib/projects": typeof lib_projects;
   "lib/queue": typeof lib_queue;
   "lib/reviewChannels": typeof lib_reviewChannels;
+  "lib/reviewSpeaker": typeof lib_reviewSpeaker;
   "lib/reviews": typeof lib_reviews;
   "lib/runner": typeof lib_runner;
   "lib/slackApi": typeof lib_slackApi;

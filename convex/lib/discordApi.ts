@@ -106,3 +106,62 @@ export async function startThread(
   });
   return typeof thread?.id === "string" ? thread.id : null;
 }
+
+/** A channel webhook the dashboard made: posts under any name and picture. */
+export type DiscordWebhook = { id: string; token: string };
+
+/** Makes a webhook in a channel (the bot needs Manage Webhooks there). Null when refused. */
+export async function makeWebhook(channelId: string): Promise<DiscordWebhook | null> {
+  const made = await call("POST", `/channels/${channelId}/webhooks`, { name: "Review activity" });
+  return typeof made?.id === "string" && typeof made.token === "string"
+    ? { id: made.id, token: made.token }
+    : null;
+}
+
+/** Names Discord refuses for a webhook message. */
+const REFUSED_NAME = /discord|clyde|^(everyone|here)$/i;
+
+/**
+ * Posts through a webhook under someone's name and picture, into a thread when given.
+ * Returns the message id, or null (also when Discord would refuse the name), so the caller
+ * can post as the bot instead.
+ */
+export async function postAsWebhook(
+  webhook: DiscordWebhook,
+  message: {
+    content: string;
+    name: string;
+    image: string | null;
+    threadId?: string;
+    mention?: string[];
+  },
+): Promise<string | null> {
+  const name = message.name.trim().slice(0, 80);
+  if (!name || REFUSED_NAME.test(name)) return null;
+  const query = new URLSearchParams({ wait: "true" });
+  if (message.threadId) query.set("thread_id", message.threadId);
+  try {
+    const response = await fetch(
+      `${discordApi()}/webhooks/${webhook.id}/${webhook.token}?${query.toString()}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          content:
+            message.content.length > 2000
+              ? `${message.content.slice(0, 1997)}...`
+              : message.content,
+          username: name,
+          ...(message.image ? { avatar_url: message.image } : {}),
+          allowed_mentions: { parse: [], users: message.mention ?? [] },
+        }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!response.ok) return null;
+    const sent = (await response.json()) as { id?: unknown };
+    return typeof sent.id === "string" ? sent.id : null;
+  } catch {
+    return null;
+  }
+}
