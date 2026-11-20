@@ -14,8 +14,8 @@ export type { TourId };
 /**
  * Starts a page's tour the first time someone opens the page, once what it points at has
  * loaded. A tour already showing (the dashboard's, taken from the menu) goes first, and
- * someone who has already opened a dialog (sharing, say) is left to it: the tour waits for
- * their next visit rather than sitting on top.
+ * someone who has already opened a dialog (sharing, say) or a pick list is left to it: the
+ * tour waits for their next visit rather than sitting on top.
  */
 export function StartPageTour({ tourId, ready = true }: { tourId: TourId; ready?: boolean }) {
   const tour = useTour();
@@ -47,7 +47,9 @@ export function StartPageTour({ tourId, ready = true }: { tourId: TourId; ready?
 
 function dialogOpen() {
   return (
-    document.querySelector("[role='dialog'][data-state='open'], [role='alertdialog']") !== null
+    document.querySelector(
+      "[role='dialog'][data-state='open'], [role='alertdialog'], [role='listbox'], [role='menu']",
+    ) !== null
   );
 }
 

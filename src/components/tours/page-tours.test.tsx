@@ -100,6 +100,19 @@ describe("a page's tour", () => {
     }
   });
 
+  test("leaves someone alone who has a pick list open", async () => {
+    const opened = document.createElement("div");
+    opened.setAttribute("role", "listbox");
+    document.body.append(opened);
+    try {
+      renderPage();
+      await act(async () => {});
+      expect(screen.queryByText("Step 1 of", { exact: false })).toBeNull();
+    } finally {
+      opened.remove();
+    }
+  });
+
   // Someone picks a ready-made straight away: the page's tour must not follow them onto
   // the next page, nor start again while the backend has not caught up.
   test("closes when its page is left, and does not start again before the backend knows", async () => {
