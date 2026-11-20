@@ -48,13 +48,16 @@ import {
   Image as ImageIcon,
   type LucideIcon,
   Music,
+  PictureInPicture2,
   Plus,
   Scissors,
   Shapes,
   Signpost,
+  Sparkles,
   Star,
   ListOrdered,
   AudioLines,
+  ClipboardList,
   PanelsTopLeft,
   Terminal,
   TriangleAlert,
@@ -168,11 +171,39 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
         : "No platform picked",
     };
   }
+  if (node.kind === "broll") {
+    const often = { light: "Now and then", busy: "Often" }[String(node.input.often)] ?? "Regularly";
+    const from =
+      node.input.sources === "library"
+        ? "your library"
+        : node.input.sources === "stock"
+          ? "free stock"
+          : "library and stock";
+    return {
+      icon: PictureInPicture2,
+      tint: "text-orange-600 dark:text-orange-400",
+      kind: `${often}, from ${from}`,
+    };
+  }
+  if (node.kind === "broll-plan") {
+    return {
+      icon: Sparkles,
+      tint: "text-orange-600 dark:text-orange-400",
+      kind: "AI picks the moments",
+    };
+  }
   if (node.kind === "chapters") {
     return {
       icon: ListOrdered,
       tint: "text-orange-600 dark:text-orange-400",
       kind: "From the transcript",
+    };
+  }
+  if (node.kind === "motion-plan") {
+    return {
+      icon: ClipboardList,
+      tint: CATEGORY_TINTS.video,
+      kind: "AI plans the pieces",
     };
   }
   if (node.kind === "motion") {
@@ -290,7 +321,7 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
         className={cn(
           tile,
           "rounded-2xl",
-          selected && "ring-ring/50 border-ring ring-3",
+          selected && "picked-ring",
           status === "running" && "border-primary",
           status === "retrying" && "border-amber-500/70",
           status === "done" && "border-emerald-600/60",
@@ -423,7 +454,7 @@ function TriggerNode({ data, selected }: NodeProps<TriggerFlowNode>) {
         className={cn(
           tile,
           "rounded-l-[2.5rem] rounded-r-2xl",
-          selected && "ring-ring/50 border-ring ring-3",
+          selected && "picked-ring",
         )}
       >
         <Icon className={cn("size-8", TRIGGER_TINT)} strokeWidth={1.6} aria-hidden="true" />

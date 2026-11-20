@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -26,9 +27,9 @@ import { withTeamSteps } from "./lib/teamSteps";
  */
 
 const INSTRUCTIONS =
-  "This is a content automation dashboard. Each automation is a set of plain steps (cut clips, add captions, reframe, and so on) that runs by itself on the team's own toolkit, with no AI per video. Read the content-automations skill before building. list_automations and describe_automation show what the team has; create_automation and change_automation build (changes are kept as a draft that someone publishes in the dashboard); start_automation runs one on an upload or a file link; check_run shows how a run is going and the files it made.";
+  "This is Kontifi, a content automation dashboard. Each automation is a set of plain steps (cut clips, add captions, reframe, and so on) that runs by itself on the team's own toolkit, with no AI per video. Read the content-automations skill before building. list_automations and describe_automation show what the team has; create_automation and change_automation build (changes are kept as a draft that someone publishes in the dashboard); start_automation runs one on an upload or a file link; check_run shows how a run is going and the files it made.";
 
-const SERVER_INFO = { name: "ncat-dash", title: "Content automations", version: "2.0.0" };
+const SERVER_INFO = { name: "kontifi", title: PRODUCT_NAME, version: "2.0.0" };
 
 const automationId = { type: "string", description: "From list_automations or create_automation." };
 
@@ -560,6 +561,18 @@ export const serve = httpAction(async (ctx, request) => {
     return Response.json(
       { jsonrpc: "2.0", id: null, error: { code: -32700, message: "The body is not JSON." } },
       { status: 400, headers: CORS },
+    );
+  }
+  // Nothing new for a team whose trial is over or that is blocked, and no floods.
+  const allowed = await ctx.runMutation(internal.access.mcpCall, caller);
+  if (!allowed.ok) {
+    const id =
+      message && typeof message === "object" && "id" in message
+        ? (message as { id: unknown }).id
+        : null;
+    return Response.json(
+      { jsonrpc: "2.0", id: id ?? null, error: { code: -32000, message: allowed.message } },
+      { status: allowed.reason === "rate_limited" ? 429 : 403, headers: CORS },
     );
   }
   const reply = await handleMcp(message, request.headers, {

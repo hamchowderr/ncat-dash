@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { selectClass } from "@/components/projects/slot-status";
 import { UploadFrame } from "@/components/uploads/upload-media";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,12 +20,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "./library-media";
+import { PickList } from "@/components/ui/pick-list";
 
 /** Wraps each place the search words appear in a highlight. */
 function marked(text: string, words: string[]): ReactNode {
@@ -221,19 +228,17 @@ function ClientFact({
 
   return (
     <Fact label="Client">
-      <select
+      <PickList
         aria-label="Client"
+        size="sm"
+        className="max-w-44"
         value={client?._id ?? ""}
-        onChange={(event) => void onChange(event.target.value)}
-        className={cn(selectClass, "h-8 max-w-44")}
-      >
-        <option value="">Your team</option>
-        {clients.map((one) => (
-          <option key={one._id} value={one._id}>
-            {one.name}
-          </option>
-        ))}
-      </select>
+        onChange={(next) => void onChange(next)}
+        options={[
+          { value: "", label: "Your team" },
+          ...clients.map((one) => ({ value: one._id, label: one.name })),
+        ]}
+      />
     </Fact>
   );
 }
@@ -578,6 +583,8 @@ export function LibraryItemView({
             <TagEditor itemId={item._id} tags={item.tags} />
           </div>
 
+          {item.broll && <BrollUse itemId={item._id} organizationId={team.id} broll={item.broll} />}
+
           <Button
             variant="ghost"
             size="sm"
@@ -593,5 +600,68 @@ export function LibraryItemView({
         </aside>
       </div>
     </>
+  );
+}
+
+const BROLL_USES = [
+  { value: "auto", label: "When it looks like B-Roll" },
+  { value: "yes", label: "Always" },
+  { value: "no", label: "Never" },
+] as const;
+
+/** Whether Add B-Roll may lay this video over others, by hand or by how it looks. */
+function BrollUse({
+  itemId,
+  organizationId,
+  broll,
+}: {
+  itemId: Id<"libraryItems">;
+  organizationId: string;
+  broll: {
+    use: "auto" | "yes" | "no";
+    looked: "working" | "ready" | "failed" | null;
+    looksLike: boolean | null;
+    usable: boolean;
+  };
+}) {
+  const setUse = useMutation(api.broll.setUse);
+  const note =
+    broll.use !== "auto"
+      ? broll.usable
+        ? "Add B-Roll can use it as a cutaway."
+        : "Add B-Roll leaves it out."
+      : broll.looked === "ready"
+        ? broll.looksLike
+          ? "It has no talking face, so Add B-Roll can use it as a cutaway."
+          : "It looks like someone talking, so Add B-Roll leaves it out."
+        : broll.looked === "working"
+          ? "Being looked at now."
+          : "Not looked at yet. Make it searchable and it will be.";
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium" id="broll-use-label">
+        Use as B-Roll
+      </h2>
+      <Select
+        value={broll.use}
+        onValueChange={(use) =>
+          void setUse({ organizationId, itemId, use: use as "auto" | "yes" | "no" }).catch(
+            (caught) => toast.error(errorMessage(caught, "That could not be changed.")),
+          )
+        }
+      >
+        <SelectTrigger className="w-full" aria-labelledby="broll-use-label">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {BROLL_USES.map((one) => (
+            <SelectItem key={one.value} value={one.value}>
+              {one.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-muted-foreground text-xs">{note}</p>
+    </div>
   );
 }

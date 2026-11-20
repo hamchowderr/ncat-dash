@@ -55,7 +55,7 @@ test("a client's project is laid out from a package and worked through", async (
   // A video podcast for the client, with two shorts.
   await page.getByRole("link", { name: "New project" }).click();
   await expect(page).toHaveURL(/\/projects\/new\?client=/);
-  await expect(page.getByLabel("For", { exact: true })).toHaveValue(/.+/);
+  await expect(page.getByLabel("For", { exact: true })).toContainText("Acme");
   await page.getByLabel("Name", { exact: true }).fill("Episode 12");
   await page.getByLabel("Shorts", { exact: true }).fill("2");
   const planned = page.getByRole("region", { name: "Slots it will have" });
@@ -63,7 +63,7 @@ test("a client's project is laid out from a package and worked through", async (
   await page.getByRole("button", { name: "Make project" }).click();
   await expect(page).toHaveURL(/\/projects\/[a-z0-9]+$/);
   await expect(page.getByLabel("Project name", { exact: true })).toHaveValue("Episode 12");
-  await expect(page.getByLabel("Client", { exact: true })).toHaveValue(/.+/);
+  await expect(page.getByLabel("Client", { exact: true })).toContainText("Acme");
   await expect(page.getByText("0 of 7")).toBeVisible();
   const toDo = page.getByRole("region", { name: "To do" });
   await expect(toDo.getByRole("button")).toHaveCount(7);
@@ -75,7 +75,7 @@ test("a client's project is laid out from a package and worked through", async (
   await panel.getByLabel("File link", { exact: true }).fill(`${FILES}/episode-12.mp4`);
   await panel.getByRole("button", { name: "Add" }).click();
   await expect(page.getByRole("region", { name: "In review" })).toContainText("Full episode");
-  await expect(panel.getByLabel("Status", { exact: true })).toHaveValue("review");
+  await expect(panel.getByLabel("Status", { exact: true })).toContainText("In review");
   await expect(panel.locator("video")).toBeVisible();
   await expect(page.getByText("1 of 7")).toBeVisible();
   await expect(panel.getByRole("link", { name: "Open in the review room" })).toBeVisible();
@@ -96,7 +96,7 @@ test("a client's project is laid out from a package and worked through", async (
     .dragTo(approved);
   await expect(approved.getByRole("button", { name: /Full episode/ })).toBeVisible();
   await approved.getByRole("button", { name: /Full episode/ }).click();
-  await expect(panel.getByLabel("Status", { exact: true })).toHaveValue("approved");
+  await expect(panel.getByLabel("Status", { exact: true })).toContainText("Approved");
 
   // The project shows on the client and on the Projects list.
   await page.goto("/projects");

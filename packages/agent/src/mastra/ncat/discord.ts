@@ -6,6 +6,7 @@ import { TURN_USER_KEY } from '../lib/turn-user';
 import { rememberSession } from './session-store';
 import { convexSiteUrl, signForDashboard } from './slack';
 import { hearVoiceNotes } from './voice-notes';
+import { LONG_CACHE_KEY } from '../lib/cost';
 
 /**
  * The agent in Discord, on the dashboard's ONE Discord bot (DISCORD_BOT_TOKEN,
@@ -22,7 +23,10 @@ import { hearVoiceNotes } from './voice-notes';
 
 export type DiscordPerson =
   | { ok: true; userId: string; name: string; organizationId: string; convexToken: string }
-  | { ok: false; reason: 'not_connected' | 'not_linked' | 'pick_server' };
+  | { ok: false; reason: 'not_connected' | 'not_linked' | 'pick_server' }
+  // The dashboard says no to this reply: the trial is over, the team or person is
+  // blocked, or they have sent a great many messages. `message` is what to tell them.
+  | { ok: false; reason: 'refused'; message: string };
 
 type Ask = (body: Record<string, string>) => Promise<DiscordPerson | null>;
 
@@ -69,6 +73,8 @@ export function refusalText(person: DiscordPerson | null): string {
   if (!person) return "I can't reach the dashboard right now. Try again in a minute.";
   if (person.ok) return '';
   switch (person.reason) {
+    case 'refused':
+      return person.message;
     case 'not_linked':
       return `I only work for people on the team who linked their Discord. Open Settings in the dashboard, press "Link my Discord", then write to me again.`;
     case 'pick_server':
@@ -97,6 +103,8 @@ export const asTheDiscordWriter: ChannelHandler = async (thread, message: Messag
     automationId: null,
   });
   ctx.requestContext.set(TURN_USER_KEY, resourceId);
+  // Chat-app messages come minutes apart: keep the prompt cached an hour (lib/cost.ts).
+  ctx.requestContext.set(LONG_CACHE_KEY, true);
   // A voice note is read as the words said in it, by the team's own toolkit.
   await hearVoiceNotes(thread, message, person.organizationId);
   await next(thread, message);

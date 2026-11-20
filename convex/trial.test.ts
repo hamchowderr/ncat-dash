@@ -186,13 +186,23 @@ describe("making a team", () => {
     ) as unknown as {
       options: {
         organizationHooks: {
-          afterCreateOrganization: (data: { organization: { id: string } }) => Promise<void>;
+          afterCreateOrganization: (data: {
+            organization: { id: string };
+            user: { id: string; email: string };
+          }) => Promise<void>;
         };
       };
     };
     await organization.options.organizationHooks.afterCreateOrganization({
       organization: { id: "team_9" },
+      user: { id: "user_1", email: "maya@example.com" },
     });
-    expect(scheduled).toEqual([[0, internal.trial.begin, { organizationId: "team_9" }]]);
+    expect(scheduled).toEqual([
+      [
+        0,
+        internal.trial.begin,
+        { organizationId: "team_9", ownerId: "user_1", ownerEmail: "maya@example.com" },
+      ],
+    ]);
   });
 });

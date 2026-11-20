@@ -17,7 +17,7 @@ import {
   verificationEmail,
 } from "../src";
 
-const branding = { appName: "NCA Toolkit Dashboard" };
+const branding = { appName: "Kontifi" };
 
 function answer(status: number, body: unknown) {
   const calls: { url: string; init: RequestInit }[] = [];

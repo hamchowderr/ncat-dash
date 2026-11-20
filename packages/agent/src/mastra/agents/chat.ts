@@ -7,6 +7,8 @@ import { env } from '../../lib/env';
 import { type ChatFeatures, features as defaultFeatures } from '../lib/features';
 import { putImage } from '../lib/image-store';
 import { liveScorers } from '../lib/live-scorers';
+import { CostRouteProcessor } from '../lib/cost';
+import { onTeamKey, teamKeyForTurn } from '../ncat/team-key';
 import { createDefaultMemory } from '../lib/memory';
 import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
 import { toolScopeProcessor } from '../lib/tool-scope';
@@ -337,11 +339,13 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
         : baseInstructions,
     // The model the session has chosen (the composer's pick, or the team's own from
     // Settings → Agent, switched in routes/controller.ts), else the server's.
-    model: ({ requestContext }) => {
+    // On the team's own Anthropic key when it has one (ncat/team-key.ts).
+    model: async ({ requestContext }) => {
       const controller = requestContext.get('controller') as
         | { session?: { modelId?: string } }
         | undefined;
-      return controller?.session?.modelId || env.CHAT_MODEL;
+      const modelId = controller?.session?.modelId || env.CHAT_MODEL;
+      return onTeamKey(modelId, await teamKeyForTurn(requestContext));
     },
     // Native goal mechanism (flagship controller demo). Configuring `goal` auto-registers
     // the goal signal provider + the in-loop goal step: an objective set via
@@ -373,18 +377,20 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
         ? getChatWorkspace()
         : undefined,
     tools: chatTools(f),
-    // Default execution options applied to EVERY run: enable
-    // Anthropic extended thinking so the model emits real `reasoning` parts (→ the
-    // <Reasoning> element). Thinking requires temperature 1. With PROMPT_CACHE, a
-    // request-level cacheControl, which Anthropic places on the last block of the prompt:
-    // each step reads the one before it, so a tool loop pays full price only for what it
-    // adds (the other two breakpoints are in lib/turn-context.ts). Ignored by
+    // Default execution options applied to EVERY run. Adaptive thinking, so the model
+    // emits real `reasoning` parts (→ the <Reasoning> element): Claude Sonnet 5.5 and the
+    // other current models refuse a fixed thinking budget, and `effort` (CHAT_EFFORT, set
+    // per turn by lib/cost.ts) says how much to think. Thinking requires temperature 1.
+    // With PROMPT_CACHE, a request-level cacheControl, which Anthropic places on the last
+    // block of the prompt: each step reads the one before it, so a tool loop pays full
+    // price only for what it adds (the other two breakpoints are in lib/turn-context.ts;
+    // lib/cost.ts makes all three last an hour for a chat-app turn). Ignored by
     // non-Anthropic providers, so it's safe regardless of CHAT_MODEL.
     defaultOptions: {
       modelSettings: { temperature: 1 },
       providerOptions: {
         anthropic: {
-          thinking: { type: 'enabled', budgetTokens: 1500 },
+          thinking: { type: 'adaptive' },
           ...(f.promptCache ? CACHE_BREAKPOINT.anthropic : {}),
         },
       },
@@ -399,6 +405,7 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
       ...defaultInputProcessors,
       toolScopeProcessor,
       new TurnContextProcessor({ promptCache: f.promptCache }),
+      new CostRouteProcessor({ promptCache: f.promptCache }),
     ],
     outputProcessors: defaultOutputProcessors,
   });

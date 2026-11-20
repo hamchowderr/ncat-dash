@@ -18,6 +18,26 @@ const steps = (page: Page) => page.locator(".react-flow__node-step");
 const key = (page: Page, letter: string) =>
   page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+${letter}`);
 
+/**
+ * Waits for the canvas to stop moving. Opening or closing the settings panel resizes the
+ * canvas, and it fits itself to the new size a moment later, so a step clicked straight
+ * after would be clicked where it was, not where it is.
+ */
+async function settled(page: Page) {
+  let last = "";
+  await expect
+    .poll(
+      async () => {
+        const now = JSON.stringify(await steps(page).first().boundingBox());
+        const same = now === last;
+        last = now;
+        return same;
+      },
+      { intervals: [500] },
+    )
+    .toBe(true);
+}
+
 test("steps can be duplicated, copied, pasted and joined, here and in another automation", async ({
   page,
 }) => {
@@ -58,7 +78,9 @@ test("steps can be duplicated, copied, pasted and joined, here and in another au
   await key(page, "z");
   await expect(steps(page)).toHaveCount(3);
   // Two steps chosen together: a new step joins them, and runs once both have finished.
+  await settled(page);
   await steps(page).nth(0).click();
+  await settled(page);
   await steps(page)
     .nth(1)
     .click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] });

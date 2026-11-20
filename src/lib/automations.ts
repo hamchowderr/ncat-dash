@@ -66,7 +66,11 @@ export function triggerSummary(trigger: Trigger): string {
       } moves to ${SLOT_STATUS_WORDS[trigger.status]}`;
     case "schedule": {
       const { schedule } = trigger;
-      if (schedule.mode === "daily") return `Every day at ${schedule.time} (${schedule.timeZone})`;
+      if (schedule.mode === "daily") {
+        // "America/New_York" reads as "New York time".
+        const city = schedule.timeZone.split("/").at(-1)!.replaceAll("_", " ");
+        return `Every day at ${schedule.time}, ${city} time`;
+      }
       const { minutes } = schedule;
       if (minutes % 1440 === 0)
         return minutes === 1440 ? "Every day" : `Every ${minutes / 1440} days`;
@@ -82,6 +86,9 @@ export function nodeTitle(node: Pick<AutomationNode, "kind" | "stepId" | "label"
   if (node.kind === "clips") return "Clips for a platform";
   if (node.kind === "moments") return "Best moments";
   if (node.kind === "chapters") return "Chapters and show notes";
+  if (node.kind === "broll") return "Add B-Roll";
+  if (node.kind === "broll-plan") return "Plan B-Roll";
+  if (node.kind === "motion-plan") return "Plan Motion Graphics";
   if (node.kind === "motion") return "Add Motion Graphics";
   if (node.kind === "sound-effects") return "Add Sound Effects";
   if (node.kind === "if") return "If";

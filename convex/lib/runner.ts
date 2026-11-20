@@ -59,11 +59,12 @@ import { cutListOf } from "./exports";
 import { captionSetupOf } from "./captions";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { finishListening, startListening } from "./moments";
+import { finishLaying, finishLooking } from "./broll";
 import { finishMotionListening, isMotionKind } from "./motion";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
-import { TRIAL_ENDED_MESSAGE, trialOf } from "./trial";
+import { refusalFor } from "./access";
 
 // One step may fan out over this many incoming files at most.
 const MAX_JOBS_PER_STEP = 100;
@@ -94,10 +95,10 @@ export async function startRun(
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
   if (problem) return { ok: false, message: problem };
-  // A team whose free trial is over keeps everything, but nothing new runs.
-  if ((await trialOf(ctx, automation.organizationId)).kind === "ended") {
-    return { ok: false, message: TRIAL_ENDED_MESSAGE };
-  }
+  // A team whose free trial is over, or that the operator blocked, keeps everything, but
+  // nothing new runs.
+  const refusal = await refusalFor(ctx, automation.organizationId, startedBy);
+  if (refusal) return { ok: false, message: refusal.message };
   const { parent, project } = options;
   // A project's client wins over the automation's own, so the run is for the right client.
   const clientId = project ? project.clientId : automation.clientId;
@@ -259,9 +260,16 @@ async function startNode(
     return;
   }
 
-  if (node.kind === "moments" || node.kind === "chapters") {
-    // Chapters reads speech, so an audio file will do; moments are cut from a video.
-    const kind = node.kind === "moments" ? "video" : "media";
+  if (
+    node.kind === "moments" ||
+    node.kind === "chapters" ||
+    node.kind === "broll" ||
+    node.kind === "broll-plan" ||
+    node.kind === "motion-plan"
+  ) {
+    // Chapters reads speech, so an audio file will do; moments are cut from a video, and
+    // B-Roll is laid over one.
+    const kind = node.kind === "chapters" ? "media" : "video";
     await startListening(ctx, run, node, step, byNode, filesFor(kind, node, run, byNode));
     return;
   }
@@ -935,6 +943,18 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
         jobs,
       );
     } else await finishListening(ctx, run, step, jobs);
+    await advance(ctx, run._id);
+    return;
+  }
+
+  if (step.stage === "look") {
+    await finishLooking(ctx, run, step, jobs);
+    await advance(ctx, run._id);
+    return;
+  }
+
+  if (step.stage === "lay") {
+    await finishLaying(ctx, run, step, jobs);
     await advance(ctx, run._id);
     return;
   }

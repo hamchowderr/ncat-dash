@@ -1,9 +1,10 @@
 import { api } from "@convex/_generated/api";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test } from "vitest";
 
 import { actionOf, answerQuery, mutationOf, toastSuccess } from "@/test/convex";
-import { renderInApp } from "@/test/render";
+import { pick, renderInApp } from "@/test/render";
 
 import { LibraryItemView } from "./library-item-view";
 import { LibraryView } from "./library-view";
@@ -241,9 +242,9 @@ describe("a library file", () => {
     answerQuery(api.clients.list, [ACME]);
     answerQuery(api.library.get, { ...DETAIL, client: ACME });
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
-    const picker = screen.getByLabelText("Client") as HTMLSelectElement;
-    expect(picker.value).toBe("c1");
-    fireEvent.change(picker, { target: { value: "" } });
+    const picker = screen.getByLabelText("Client");
+    expect(picker).toHaveTextContent("Acme Coffee");
+    await pick(userEvent.setup(), picker, "Your team");
     await waitFor(() =>
       expect(mutationOf(api.library.setClient)).toHaveBeenCalledWith({
         itemId: "i1",
@@ -283,6 +284,32 @@ describe("a library file", () => {
         itemIds: ["i1"],
       }),
     );
+  });
+
+  test("a video says whether Add B-Roll may use it, and it can be set by hand", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      broll: { use: "auto", looked: "ready", looksLike: true, usable: true },
+    });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.getByText(/no talking face, so Add B-Roll can use it/)).toBeTruthy();
+    const picker = screen.getByRole("combobox", { name: "Use as B-Roll" });
+    expect(picker.textContent).toContain("When it looks like B-Roll");
+    fireEvent.click(picker);
+    fireEvent.click(await screen.findByRole("option", { name: "Never" }));
+    await waitFor(() =>
+      expect(mutationOf(api.broll.setUse)).toHaveBeenCalledWith({
+        organizationId: "team_1",
+        itemId: "i1",
+        use: "no",
+      }),
+    );
+  });
+
+  test("a sound file has no B-Roll setting", () => {
+    answerQuery(api.library.get, { ...DETAIL, broll: null });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.queryByText("Use as B-Roll")).toBeNull();
   });
 
   test("a clip says what it was made from", () => {

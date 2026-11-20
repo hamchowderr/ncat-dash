@@ -5,6 +5,7 @@ import { httpAction } from "./_generated/server";
 import { authComponent, createAuth } from "./auth";
 import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
+import { decryptSecret } from "./lib/crypto";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { noStream, serve } from "./mcp";
 import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
@@ -190,6 +191,24 @@ http.route({
   }),
 });
 
+// The agent server asks before one of the agent's own schedules fires: may this team
+// (and person, when known) still start something? Only a caller holding
+// MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/agent/scheduled-turn",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.organizationId) return new Response("Missing organizationId", { status: 400 });
+    const answer = await ctx.runMutation(internal.access.scheduledTurn, {
+      organizationId: asked.organizationId,
+      ...(asked.userId ? { userId: asked.userId } : {}),
+    });
+    return Response.json(answer);
+  }),
+});
+
 // The agent server sends a voice note someone sent it in Slack or Discord, and gets its
 // words back. It has already found who sent it, and on which team (?organizationId=).
 // Only a caller holding MASTRA_JWT_SECRET is answered.
@@ -217,6 +236,24 @@ http.route({
         typeof data?.message === "string" ? data.message : "The voice note could not be read.";
       return Response.json({ error: message }, { status: 422 });
     }
+  }),
+});
+
+// The agent server asks for a team's own Anthropic key here, to run that team's chats and
+// AI steps on it (anthropicKey.ts). 404 when the team has none. Only a caller holding
+// MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/agent/team-key",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.organizationId) return new Response("Missing organizationId", { status: 400 });
+    const cipher = await ctx.runQuery(internal.anthropicKey.forAgent, {
+      organizationId: asked.organizationId,
+    });
+    if (!cipher) return new Response("No key", { status: 404 });
+    return Response.json({ key: await decryptSecret(cipher) });
   }),
 });
 

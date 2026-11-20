@@ -50,7 +50,10 @@ const clipUrl = (start: number) => `https://files.example/out/moment-at-${start}
  * A stand-in toolkit that answers each job straight away, and a stand-in agent server
  * whose answers come from `answer` in turn, one per question.
  */
-function fakeServers(answers: unknown[]) {
+function fakeServers(
+  answers: unknown[],
+  batches?: (path: string, body: Record<string, unknown>) => Response,
+) {
   const sent: Sent[] = [];
   let asked = 0;
   vi.stubGlobal(
@@ -71,6 +74,11 @@ function fakeServers(answers: unknown[]) {
       if (url.endsWith("/v1/ffmpeg/compose")) {
         // Named by where the clip starts, so the name does not depend on which job is sent first.
         return done([{ file_url: clipUrl(clipStart(body)) }]);
+      }
+      if (url.startsWith(`${AGENT_URL}/ncat/moments/batch`)) {
+        return batches
+          ? batches(url.slice(AGENT_URL.length), body)
+          : new Response(JSON.stringify({ error: "cannot batch" }), { status: 409 });
       }
       if (url === `${AGENT_URL}/ncat/moments`) {
         const answer = answers[Math.min(asked++, answers.length - 1)];
@@ -99,8 +107,8 @@ afterEach(() => {
  * Lets the scheduled work play out a second at a time, so each job is sent long before the
  * time it would be given up on, as on a real deployment.
  */
-async function settled(t: ReturnType<typeof backend>) {
-  for (let second = 0; second < 60; second++) {
+async function settled(t: ReturnType<typeof backend>, seconds = 60) {
+  for (let second = 0; second < seconds; second++) {
     vi.advanceTimersByTime(1000);
     await t.finishInProgressScheduledFunctions();
   }
@@ -153,10 +161,17 @@ async function setUp(nodes: Node[], agent = true) {
       updatedAt: Date.now(),
     });
   });
-  const start = (file = FILE) =>
+  // A run a person started, or with `byTrigger`, one nobody is watching.
+  const start = (file = FILE, byTrigger = false) =>
     t.run(async (ctx) => {
       const automation = (await ctx.db.get(automationId))!;
-      const started = await startRun(ctx, automation, "webhook", { file_url: file }, maya.id);
+      const started = await startRun(
+        ctx,
+        automation,
+        "webhook",
+        { file_url: file },
+        byTrigger ? null : maya.id,
+      );
       if (!started.ok) throw new Error(started.message);
       return started.runId;
     });
@@ -216,6 +231,8 @@ describe("Best moments", () => {
       avoid: [],
     });
     expect(String(question.body.transcript)).toContain("[0:01] Welcome back to the show.");
+    // The team goes with it, so its own Anthropic key is used when it has one.
+    expect(typeof question.body.organizationId).toBe("string");
 
     // Each cut starts in the gap before the sentence's first word and ends in the gap after
     // its last, never inside a word.
@@ -339,5 +356,116 @@ describe("Chapters and show notes", () => {
     ]);
     expect(step.pickNote).toMatch(/^1 chapter was left out/);
     expect(step.outputs).toEqual([FILE]);
+  });
+});
+
+describe("what a pick costs", () => {
+  const chaptersAnswer = JSON.stringify({
+    chapters: [{ title: "Welcome", opening: "Welcome back to the show", bullets: [] }],
+  });
+  const chaptersNode: Node = { id: "chapters", kind: "chapters", input: { bullets: 0 } };
+  const live = (sent: Sent[]) => sent.filter((one) => one.url === `${AGENT_URL}/ncat/moments`);
+
+  test("the same question again is answered from the saved answer, not the model", async () => {
+    const sent = fakeServers([chaptersAnswer]);
+    const { t, start, runOf } = await setUp([chaptersNode]);
+    await start();
+    await settled(t);
+    const again = await start("https://files.example/uploads/podcast.mp4?X-Amz-Signature=second");
+    await settled(t);
+    expect((await runOf(again))!.status).toBe("done");
+    expect(live(sent)).toHaveLength(1);
+  });
+
+  test("different settings are a different question", async () => {
+    const sent = fakeServers([chaptersAnswer]);
+    const { t, start, team } = await setUp([chaptersNode]);
+    await start();
+    await settled(t);
+    await t.run(async (ctx) => {
+      const settings = (await ctx.db.query("teamSettings").first())!;
+      await ctx.db.patch(settings._id, {
+        agent: { model: null, houseRules: "Short titles.", platforms: [] },
+      } as never);
+      expect(settings.organizationId).toBe(team);
+    });
+    await start();
+    await settled(t);
+    expect(live(sent)).toHaveLength(2);
+  });
+
+  test("a run nobody is watching sends its questions as one batch and picks once answered", async () => {
+    let checks = 0;
+    let submitted: { id: string }[] = [];
+    const sent = fakeServers([], (path, body) => {
+      if (path === "/ncat/moments/batch") {
+        submitted = body.requests as { id: string }[];
+        return new Response(JSON.stringify({ batchId: "msgbatch_1" }), { status: 200 });
+      }
+      expect(body).toEqual({ batchId: "msgbatch_1", organizationId: expect.any(String) });
+      checks++;
+      return new Response(
+        JSON.stringify(
+          checks < 2
+            ? { pending: true }
+            : { answers: submitted.map(({ id }) => ({ id, answer: chaptersAnswer })) },
+        ),
+        { status: 200 },
+      );
+    });
+    const { t, start, runOf } = await setUp([chaptersNode]);
+    const runId = await start(FILE, true);
+    await settled(t, 30);
+    expect((await runOf(runId))!.status).toBe("running");
+    await settled(t, 240);
+
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    expect(run.steps[0].chapters?.map((chapter) => chapter.title)).toEqual(["Welcome"]);
+    expect(submitted).toHaveLength(1);
+    expect(checks).toBe(2);
+    expect(live(sent)).toHaveLength(0);
+    // Nothing is left waiting.
+    expect(await t.run((ctx) => ctx.db.query("pickBatches").collect())).toEqual([]);
+  });
+
+  test("asks straight away when the agent server cannot batch", async () => {
+    const sent = fakeServers([chaptersAnswer]);
+    const { t, start, runOf } = await setUp([chaptersNode]);
+    const runId = await start(FILE, true);
+    await settled(t);
+    expect((await runOf(runId))!.status).toBe("done");
+    expect(live(sent)).toHaveLength(1);
+  });
+
+  test("a question the batch could not answer is asked the usual way", async () => {
+    const sent = fakeServers([chaptersAnswer], (path, body) =>
+      path === "/ncat/moments/batch"
+        ? new Response(JSON.stringify({ batchId: "msgbatch_2" }), { status: 200 })
+        : new Response(
+            JSON.stringify({
+              answers: [{ id: String(body.batchId), error: "errored" }],
+            }),
+            { status: 200 },
+          ),
+    );
+    const { t, start, runOf } = await setUp([chaptersNode]);
+    const runId = await start(FILE, true);
+    await settled(t, 120);
+    expect((await runOf(runId))!.status).toBe("done");
+    expect(live(sent)).toHaveLength(1);
+  });
+
+  test("a run a person started is never batched", async () => {
+    let batched = 0;
+    const sent = fakeServers([chaptersAnswer], () => {
+      batched++;
+      return new Response(JSON.stringify({ batchId: "msgbatch_3" }), { status: 200 });
+    });
+    const { t, start } = await setUp([chaptersNode]);
+    await start();
+    await settled(t);
+    expect(batched).toBe(0);
+    expect(live(sent)).toHaveLength(1);
   });
 });

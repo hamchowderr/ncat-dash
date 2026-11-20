@@ -55,4 +55,21 @@ test("the team picks a motion style, changes it, and it is kept", async ({ page 
     "@morenostudio",
   );
   await slow(1500);
+
+  // The AI plan step is there to add, and asks only what to bring out.
+  await page.goto("/automations");
+  await page.getByRole("link", { name: "New automation", exact: true }).click();
+  await page.getByRole("button", { name: "Empty canvas" }).first().click();
+  await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
+  await page.getByRole("button", { name: "Add step" }).click();
+  await page.getByLabel("Search steps").fill("Plan Motion");
+  await page
+    .getByRole("complementary", { name: "Steps you can add" })
+    .getByRole("button", { name: "Plan Motion Graphics", exact: true })
+    .click();
+  const panel = page.getByRole("complementary", { name: "Settings for this step" });
+  await expect(panel.getByLabel("What to bring out")).toBeVisible();
+  await expect(panel.getByText(/come from the Add Motion Graphics step after it/)).toBeVisible();
+  await expect(page.getByText("AI plans the pieces")).toBeVisible();
+  await slow(1500);
 });

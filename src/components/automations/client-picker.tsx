@@ -5,10 +5,9 @@ import type { Id } from "@convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 
-import { selectClass } from "@/components/projects/slot-status";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
-import { cn } from "@/lib/utils";
+import { PickList } from "@/components/ui/pick-list";
 
 /**
  * Who an automation works for: the team itself or one of its clients. A client's runs use
@@ -41,19 +40,17 @@ export function ClientPicker({
       data-tour-step-id="tour-editor-client"
     >
       For
-      <select
+      <PickList
         aria-label="Client"
+        size="sm"
+        className="text-foreground max-w-44"
         value={clientId ?? ""}
-        onChange={(event) => void onChange(event.target.value)}
-        className={cn(selectClass, "text-foreground h-8 max-w-44")}
-      >
-        <option value="">Your team</option>
-        {clients.map((client) => (
-          <option key={client._id} value={client._id}>
-            {client.name}
-          </option>
-        ))}
-      </select>
+        onChange={(next) => void onChange(next)}
+        options={[
+          { value: "", label: "Your team" },
+          ...clients.map((client) => ({ value: client._id, label: client.name })),
+        ]}
+      />
     </label>
   );
 }

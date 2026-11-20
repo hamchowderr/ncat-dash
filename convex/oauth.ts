@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -84,7 +85,7 @@ export const preflight = httpAction(async () => new Response(null, { status: 204
 export const authorizationServer = httpAction(async () => json(authServerMetadata(issuer())));
 
 export const protectedResource = httpAction(async () =>
-  json(protectedResourceMetadata(issuer(), mcpResource(), "Content automations")),
+  json(protectedResourceMetadata(issuer(), mcpResource(), PRODUCT_NAME)),
 );
 
 // ---------------------------------------------------------------- clients

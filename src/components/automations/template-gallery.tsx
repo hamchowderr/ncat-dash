@@ -123,14 +123,10 @@ export function TemplateGallery({
                 key={c.id}
                 type="button"
                 aria-pressed={on}
-                className={cn(
-                  chip,
-                  on ? "bg-foreground text-background" : "bg-surface hover:bg-muted",
-                )}
+                className={cn(chip, "choice-chip", !on && "bg-surface")}
                 onClick={() => setCategory(c.id)}
               >
-                {c.label}{" "}
-                <span className={on ? "opacity-70" : "text-muted-foreground"}>{count}</span>
+                {c.label} <span className="text-muted-foreground font-normal">{count}</span>
               </button>
             );
           })}

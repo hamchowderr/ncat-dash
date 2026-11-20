@@ -132,9 +132,7 @@ export function withDownloadLinks<T>(value: T): T {
 }
 
 /** The first Drive or Dropbox link in a value that cannot be downloaded, with why. */
-export function unusableShareLink(
-  value: unknown,
-): Extract<ShareLink, { kind: "unusable" }> | null {
+export function unusableShareLink(value: unknown): Extract<ShareLink, { kind: "unusable" }> | null {
   if (typeof value === "string") {
     const link = readShareLink(value);
     return link.kind === "unusable" ? link : null;

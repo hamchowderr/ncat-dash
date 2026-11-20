@@ -1,9 +1,18 @@
 import { registerApiRoute } from "@mastra/core/server";
+import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
 import { resourceIdOf } from "../routes/resource";
 import { reviewAgent } from "../agents/review";
 import { momentsAgent, momentsPrompt, momentsRequest } from "./moments";
+import {
+  batchAnswers,
+  batchCheck,
+  batchModel,
+  batchSubmission,
+  submitBatch,
+} from "./moments-batch";
 import { reviewPrompt, reviewQuestion } from "./review";
+import { TEAM_KEY, teamKey } from "./team-key";
 import { rememberSession } from "./session-store";
 
 const body = z.object({
@@ -20,6 +29,12 @@ const body = z.object({
  * can only ever set their own session. That needs MASTRA_JWT_SECRET: without it there
  * is no trusted way to know who a request is for, and the route refuses.
  */
+/** The team a request from the dashboard is for, when it says. */
+function organizationOf(body: unknown): string | undefined {
+  const id = (body as { organizationId?: unknown } | undefined)?.organizationId;
+  return typeof id === "string" && id.length > 0 && id.length <= 200 ? id : undefined;
+}
+
 export const createNcatRoutes = () => [
   registerApiRoute("/ncat/session", {
     method: "POST",
@@ -98,17 +113,73 @@ export const createNcatRoutes = () => [
           401,
         );
       }
-      const parsed = momentsRequest.safeParse(await c.req.json().catch(() => undefined));
+      const body = await c.req.json().catch(() => undefined);
+      const parsed = momentsRequest.safeParse(body);
       if (!parsed.success) return c.json({ error: "invalid body" }, 400);
       try {
-        const result = await momentsAgent.generate([
-          { role: "user", content: momentsPrompt(parsed.data) },
-        ]);
+        // The team's own Anthropic key, when the dashboard says which team and it has one.
+        const requestContext = new RequestContext();
+        const key = await teamKey(organizationOf(body));
+        if (key) requestContext.set(TEAM_KEY, key);
+        const result = await momentsAgent.generate(
+          [{ role: "user", content: momentsPrompt(parsed.data) }],
+          { requestContext },
+        );
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);
         return c.json({ answer });
       } catch {
         return c.json({ error: "The model did not answer." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/moments/batch: the same questions for a run nobody is watching, sent to
+  // Anthropic as one batch at half the price (./moments-batch.ts). Answers { batchId }, or
+  // 409 when this server cannot batch, and then Convex asks POST /ncat/moments instead.
+  registerApiRoute("/ncat/moments/batch", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const model = batchModel();
+      if (!model) return c.json({ error: "This agent server cannot send batches." }, 409);
+      const body = await c.req.json().catch(() => undefined);
+      const parsed = batchSubmission.safeParse(body);
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        const key = await teamKey(organizationOf(body));
+        return c.json({ batchId: await submitBatch(model, parsed.data.requests, key) });
+      } catch {
+        return c.json({ error: "The batch could not be sent." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/moments/batch/answers: { batchId } → { pending: true } while it works, then
+  // { answers: [{ id, answer } | { id, error }] }.
+  registerApiRoute("/ncat/moments/batch/answers", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      if (!batchModel()) return c.json({ error: "This agent server cannot send batches." }, 409);
+      const body = await c.req.json().catch(() => undefined);
+      const parsed = batchCheck.safeParse(body);
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        // Read with the key it was sent with: the team's own, when it has one.
+        const key = await teamKey(organizationOf(body));
+        const answers = await batchAnswers(parsed.data.batchId, key);
+        return c.json(answers ? { answers } : { pending: true });
+      } catch {
+        return c.json({ error: "The batch could not be read." }, 502);
       }
     },
   }),

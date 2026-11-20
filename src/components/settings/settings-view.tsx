@@ -11,6 +11,7 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
 import { AgentCard } from "./agent-card";
+import { AnthropicKeyCard } from "./anthropic-key-card";
 import { BrandCard } from "./brand-card";
 import { CaptionsCard } from "./captions-card";
 import { EditorsCard } from "./editors-card";
@@ -71,12 +72,15 @@ export function AgentSettings() {
   const settings = useTeamSettings();
   if (!settings) return <SettingsLoading />;
   return (
-    <AgentCard
-      agent={settings.agent}
-      models={settings.agentModels}
-      mostHouseRules={settings.mostHouseRules}
-      canEdit={settings.canEdit}
-    />
+    <div className="flex flex-col gap-12">
+      <AgentCard
+        agent={settings.agent}
+        models={settings.agentModels}
+        mostHouseRules={settings.mostHouseRules}
+        canEdit={settings.canEdit}
+      />
+      <AnthropicKeyCard anthropicKey={settings.anthropicKey} canEdit={settings.canEdit} />
+    </div>
   );
 }
 

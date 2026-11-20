@@ -157,7 +157,10 @@ const KINDS = [
   "automation",
   "moments",
   "chapters",
+  "broll",
+  "broll-plan",
   "motion",
+  "motion-plan",
   "sound-effects",
 ];
 const MAX_DEPTH = 12;

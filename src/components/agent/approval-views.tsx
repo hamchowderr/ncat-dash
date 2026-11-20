@@ -1,9 +1,9 @@
 import type { ApprovalViews } from "@/components/chat/approval-view";
 
-import { toolWords } from "./tool-words";
+import { plainTitle, toolWords } from "./tool-words";
 
 /** What each card that asks first says: the change in plain words, never raw settings. */
-export const APPROVAL_VIEWS: ApprovalViews = Object.fromEntries(
+const DASHBOARD_VIEWS: ApprovalViews = Object.fromEntries(
   [
     "change_automation",
     "create_automation",
@@ -32,3 +32,15 @@ export const APPROVAL_VIEWS: ApprovalViews = Object.fromEntries(
     },
   ]),
 );
+
+/**
+ * Every other tool that asks first (the browser, schedules, files in the agent's
+ * workspace) gets a plain title too, in place of its tool id; its details show below.
+ */
+export const APPROVAL_VIEWS: ApprovalViews = new Proxy(DASHBOARD_VIEWS, {
+  get(views, name) {
+    if (typeof name !== "string") return undefined;
+    if (Object.hasOwn(views, name)) return views[name];
+    return () => ({ title: `Allow this? ${plainTitle(name)}` });
+  },
+});

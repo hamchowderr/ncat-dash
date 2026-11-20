@@ -1,9 +1,11 @@
 import { api } from "@convex/_generated/api";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 
-import { mutationOf, replaced, toastError } from "@/test/convex";
+import { DashboardTour } from "@/components/app-shell/dashboard-tour";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { answerQuery, mutationOf, replaced, toastError } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
 import { NewAutomationView } from "./new-automation-view";
@@ -51,5 +53,63 @@ describe("the tour of a new automation", () => {
   test("has a place on the page for every part it points at", () => {
     renderInApp(<NewAutomationView />);
     expect(missingTourTargets(NEW_AUTOMATION_TOUR)).toEqual([]);
+  });
+});
+
+describe("a template picked before the tour shows", () => {
+  beforeEach(() => {
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+  });
+
+  test("the tour still opens by itself for someone who has not picked yet", async () => {
+    answerQuery(api.tours.ended, false);
+    renderInApp(
+      <SidebarProvider>
+        <DashboardTour>
+          <NewAutomationView />
+        </DashboardTour>
+      </SidebarProvider>,
+    );
+    await act(async () => {});
+    expect(document.querySelector("[data-tour-card]")).not.toBeNull();
+  });
+
+  test("keeps the tour from opening over a page on its way out", async () => {
+    // Whether the tour was had is not known yet, as on a slow connection.
+    answerQuery(api.tours.ended, undefined);
+    let made: (id: string) => void = () => {};
+    mutationOf(api.automations.create).mockReturnValueOnce(
+      new Promise<string>((resolve) => (made = resolve)),
+    );
+    const view = renderInApp(
+      <SidebarProvider>
+        <DashboardTour>
+          <NewAutomationView />
+        </DashboardTour>
+      </SidebarProvider>,
+    );
+    await userEvent.setup().click(screen.getAllByRole("button", { name: /Empty canvas/ })[0]);
+    // The answer arrives while the automation is being made.
+    answerQuery(api.tours.ended, false);
+    view.rerender(
+      <SidebarProvider>
+        <DashboardTour>
+          <NewAutomationView />
+        </DashboardTour>
+      </SidebarProvider>,
+    );
+    await act(async () => {});
+    expect(document.querySelector("[data-tour-card]")).toBeNull();
+    await act(async () => made("auto_8"));
+    await waitFor(() =>
+      expect(replaced).toHaveBeenCalledWith("/automations/auto_8", {
+        transitionTypes: ["nav-forward"],
+      }),
+    );
   });
 });

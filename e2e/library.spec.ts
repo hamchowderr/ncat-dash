@@ -1,4 +1,4 @@
-import { expect, test } from "./test";
+import { expect, pick, test } from "./test";
 
 // The content library, in a real browser: an uploaded video joins it with a short ID, is
 // made searchable on the (stand-in) toolkit, and a search for something said in it lands
@@ -134,7 +134,7 @@ test("a caption file shows its lines, and they are searched like what was said",
   await expect(page).toHaveURL(/\/clients\/[a-z0-9]+$/);
   await page.goto("/library");
   await page.getByRole("link", { name: "Open F1 clip" }).click();
-  await page.getByLabel("Client", { exact: true }).selectOption({ label: "Acme Studio" });
+  await pick(page.getByLabel("Client", { exact: true }), "Acme Studio");
   await page.getByRole("link", { name: "Library", exact: true }).first().click();
   const tile = page.getByTestId("library-tile").filter({ hasText: "F1" });
   await expect(tile.getByText(/^Acme Studio · Uploaded/)).toBeVisible();

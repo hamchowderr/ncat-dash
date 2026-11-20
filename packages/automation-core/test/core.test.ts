@@ -183,7 +183,7 @@ describe("the ready-made list", () => {
   });
 
   it("has every ready-made step and the researched workflows", () => {
-    expect(STARTERS.filter((starter) => starter.group === "workflow")).toHaveLength(22);
+    expect(STARTERS.filter((starter) => starter.group === "workflow")).toHaveLength(24);
     expect(STARTERS.filter((starter) => starter.group === "recipe")).toHaveLength(40);
   });
 

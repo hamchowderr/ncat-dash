@@ -10,7 +10,7 @@ import Link from "next/link";
 import { type DragEvent, type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
-import { KindIcon, selectClass, StatusIcon, statusLabel } from "@/components/projects/slot-status";
+import { KindIcon, StatusIcon, statusLabel } from "@/components/projects/slot-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils";
 
 import { dayKey, DUE_HOUR, fromInputValue, timeLabel, toInputValue } from "./dates";
 import { type Dragged, type Due, PlatformMark, type Post, type Waiting } from "./entries";
+import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
+import { PickList } from "@/components/ui/pick-list";
 
 export type Panel =
   | { mode: "waiting" }
@@ -70,18 +72,16 @@ function PlatformSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <select
+    <PickList
       id={id}
+      className="w-full"
       value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className={cn(selectClass, "w-full")}
-    >
-      {CALENDAR_PLATFORMS.map((platform) => (
-        <option key={platform.id} value={platform.id}>
-          {platform.label}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      options={CALENDAR_PLATFORMS.map((platform) => ({
+        value: platform.id,
+        label: platform.label,
+      }))}
+    />
   );
 }
 
@@ -99,19 +99,16 @@ function ClientSelect({
   none: string;
 }) {
   return (
-    <select
+    <PickList
       id={id}
+      className="w-full"
       value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className={cn(selectClass, "w-full")}
-    >
-      <option value="">{none}</option>
-      {clients.map((client) => (
-        <option key={client._id} value={client._id}>
-          {client.name}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      options={[
+        { value: "", label: none },
+        ...clients.map((client) => ({ value: client._id, label: client.name })),
+      ]}
+    />
   );
 }
 
@@ -438,7 +435,10 @@ function AddPost({
             ["time", "Pick A Time"],
           ] as const
         ).map(([value, label]) => (
-          <label key={value} className="flex items-center gap-2 text-sm">
+          <label
+            key={value}
+            className="choice-tile has-focus-visible:ring-ring/50 flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm has-focus-visible:ring-3"
+          >
             <input
               type="radio"
               name="post-when"
@@ -721,18 +721,13 @@ function RepeatingSlots({ clients }: { clients: Client[] }) {
         <h3 className="text-sm font-semibold">Add A Slot</h3>
         <div className="grid grid-cols-2 gap-2">
           <Field id="slot-day" label="Day">
-            <select
+            <PickList
               id="slot-day"
-              value={weekday}
-              onChange={(event) => setWeekday(Number(event.target.value))}
-              className={cn(selectClass, "w-full")}
-            >
-              {WEEKDAYS.map((name, index) => (
-                <option key={name} value={index}>
-                  {name}
-                </option>
-              ))}
-            </select>
+              className="w-full"
+              value={String(weekday)}
+              onChange={(next) => setWeekday(Number(next))}
+              options={WEEKDAYS.map((name, index) => ({ value: String(index), label: name }))}
+            />
           </Field>
           <Field id="slot-time" label="Time">
             <Input
@@ -886,30 +881,24 @@ export function SidePanel({
         </p>
       )}
       {tabs && !dragging && (
-        <div role="group" aria-label="Side list view" className="bg-muted flex rounded-lg p-[3px]">
+        <SegmentedGroup aria-label="Side list view">
           {(
             [
               ["waiting", "Not Scheduled"],
               ["slots", "Repeating Slots"],
             ] as const
           ).map(([mode, label]) => (
-            <button
+            <SegmentedButton
               key={mode}
-              type="button"
-              aria-pressed={panel.mode === mode}
+              pressed={panel.mode === mode}
               data-tour-step-id={mode === "slots" ? "tour-calendar-slots" : undefined}
               onClick={() => setPanel({ mode })}
-              className={cn(
-                "focus-visible:ring-ring/50 flex-1 rounded-md px-2 py-1 text-sm outline-none transition-[background-color,color,box-shadow] focus-visible:ring-3",
-                panel.mode === mode
-                  ? "bg-background text-foreground shadow-xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
+              className="flex-1 px-2"
             >
               {label}
-            </button>
+            </SegmentedButton>
           ))}
-        </div>
+        </SegmentedGroup>
       )}
       {body}
     </aside>

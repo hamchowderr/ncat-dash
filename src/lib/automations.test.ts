@@ -15,3 +15,20 @@ describe("what a project slot trigger says", () => {
     );
   });
 });
+
+describe("what a daily schedule says", () => {
+  test("names the city of the time zone, not its code", () => {
+    expect(
+      triggerSummary({
+        kind: "schedule",
+        schedule: { mode: "daily", time: "09:00", timeZone: "America/New_York" },
+      }),
+    ).toBe("Every day at 09:00, New York time");
+    expect(
+      triggerSummary({
+        kind: "schedule",
+        schedule: { mode: "daily", time: "18:30", timeZone: "UTC" },
+      }),
+    ).toBe("Every day at 18:30, UTC time");
+  });
+});

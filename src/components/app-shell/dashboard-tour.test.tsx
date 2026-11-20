@@ -60,7 +60,7 @@ describe("the tour of the dashboard", () => {
   test("walks through every part, one card at a time, and notes when it is finished", async () => {
     renderTour();
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
-    expect(card()).toHaveTextContent("Welcome to Your Dashboard");
+    expect(card()).toHaveTextContent("Welcome to Kontifi");
     expect(card()).toHaveTextContent(`Step 1 of ${DASHBOARD_TOUR.steps.length}`);
     // The first card has nothing to go back to.
     expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
@@ -69,7 +69,7 @@ describe("the tour of the dashboard", () => {
     expect(card()).toHaveTextContent("Home");
     expect(card()).toHaveTextContent("Step 2 of");
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(card()).toHaveTextContent("Welcome to Your Dashboard");
+    expect(card()).toHaveTextContent("Welcome to Kontifi");
 
     fireEvent.click(screen.getByRole("button", { name: "Show me" }));
     for (let step = 2; step < DASHBOARD_TOUR.steps.length; step++) {
@@ -108,7 +108,7 @@ describe("the tour of the dashboard", () => {
     window.history.replaceState(null, "", "/?tour=start");
     renderTour();
     await act(async () => {});
-    expect(card()).toHaveTextContent("Welcome to Your Dashboard");
+    expect(card()).toHaveTextContent("Welcome to Kontifi");
     expect(window.location.search).toBe("");
   });
 

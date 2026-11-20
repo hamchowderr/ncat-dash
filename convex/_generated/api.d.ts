@@ -8,9 +8,13 @@
  * @module
  */
 
+import type * as access from "../access.js";
 import type * as alerts from "../alerts.js";
+import type * as anthropicKey from "../anthropicKey.js";
 import type * as auth from "../auth.js";
 import type * as automations from "../automations.js";
+import type * as blocks from "../blocks.js";
+import type * as broll from "../broll.js";
 import type * as calendar from "../calendar.js";
 import type * as clients from "../clients.js";
 import type * as contentGoals from "../contentGoals.js";
@@ -23,23 +27,29 @@ import type * as googleMeet from "../googleMeet.js";
 import type * as home from "../home.js";
 import type * as http from "../http.js";
 import type * as jobs from "../jobs.js";
+import type * as lib_access from "../lib/access.js";
 import type * as lib_agentToken from "../lib/agentToken.js";
 import type * as lib_alerts from "../lib/alerts.js";
 import type * as lib_approvals from "../lib/approvals.js";
 import type * as lib_authz from "../lib/authz.js";
 import type * as lib_brand from "../lib/brand.js";
+import type * as lib_broll from "../lib/broll.js";
 import type * as lib_bucket from "../lib/bucket.js";
 import type * as lib_captions from "../lib/captions.js";
 import type * as lib_chain from "../lib/chain.js";
+import type * as lib_clientIp from "../lib/clientIp.js";
 import type * as lib_clients from "../lib/clients.js";
 import type * as lib_crypto from "../lib/crypto.js";
+import type * as lib_disposableDomains from "../lib/disposableDomains.js";
 import type * as lib_drawing from "../lib/drawing.js";
 import type * as lib_dropbox from "../lib/dropbox.js";
 import type * as lib_edition from "../lib/edition.js";
+import type * as lib_emailKey from "../lib/emailKey.js";
 import type * as lib_exports from "../lib/exports.js";
 import type * as lib_facts from "../lib/facts.js";
 import type * as lib_googleMeet from "../lib/googleMeet.js";
 import type * as lib_library from "../lib/library.js";
+import type * as lib_limits from "../lib/limits.js";
 import type * as lib_logic from "../lib/logic.js";
 import type * as lib_mcpContent from "../lib/mcpContent.js";
 import type * as lib_mcpKeys from "../lib/mcpKeys.js";
@@ -107,9 +117,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  access: typeof access;
   alerts: typeof alerts;
+  anthropicKey: typeof anthropicKey;
   auth: typeof auth;
   automations: typeof automations;
+  blocks: typeof blocks;
+  broll: typeof broll;
   calendar: typeof calendar;
   clients: typeof clients;
   contentGoals: typeof contentGoals;
@@ -122,23 +136,29 @@ declare const fullApi: ApiFromModules<{
   home: typeof home;
   http: typeof http;
   jobs: typeof jobs;
+  "lib/access": typeof lib_access;
   "lib/agentToken": typeof lib_agentToken;
   "lib/alerts": typeof lib_alerts;
   "lib/approvals": typeof lib_approvals;
   "lib/authz": typeof lib_authz;
   "lib/brand": typeof lib_brand;
+  "lib/broll": typeof lib_broll;
   "lib/bucket": typeof lib_bucket;
   "lib/captions": typeof lib_captions;
   "lib/chain": typeof lib_chain;
+  "lib/clientIp": typeof lib_clientIp;
   "lib/clients": typeof lib_clients;
   "lib/crypto": typeof lib_crypto;
+  "lib/disposableDomains": typeof lib_disposableDomains;
   "lib/drawing": typeof lib_drawing;
   "lib/dropbox": typeof lib_dropbox;
   "lib/edition": typeof lib_edition;
+  "lib/emailKey": typeof lib_emailKey;
   "lib/exports": typeof lib_exports;
   "lib/facts": typeof lib_facts;
   "lib/googleMeet": typeof lib_googleMeet;
   "lib/library": typeof lib_library;
+  "lib/limits": typeof lib_limits;
   "lib/logic": typeof lib_logic;
   "lib/mcpContent": typeof lib_mcpContent;
   "lib/mcpKeys": typeof lib_mcpKeys;
@@ -229,4 +249,5 @@ export declare const internal: FilterApi<
 export declare const components: {
   betterAuth: import("../betterAuth/_generated/component.js").ComponentApi<"betterAuth">;
   presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
 };

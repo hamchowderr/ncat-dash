@@ -81,6 +81,10 @@ export async function addLibraryItem(ctx: MutationCtx, item: NewItem): Promise<I
   if (searchNewFiles && (item.kind === "video" || item.kind === "audio")) {
     await ctx.scheduler.runAfter(0, internal.library.transcribe, { itemId });
   }
+  // A new video is also looked at by the picture model, so it can be found as B-Roll.
+  if (searchNewFiles && item.kind === "video") {
+    await ctx.scheduler.runAfter(0, internal.broll.lookAt, { itemId });
+  }
   // A caption file is read straight away: its lines are already timed, nothing to transcribe.
   if (captionFileFormat(item.key ?? item.url ?? "")) {
     await ctx.db.patch(itemId, { transcript: { status: "working", at: Date.now() } });
