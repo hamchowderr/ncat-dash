@@ -272,7 +272,12 @@ export const automations = internalQuery({
           automation_id: automation._id,
           name: automation.name,
           on: automation.enabled,
-          starts_with: STARTS[automation.trigger.kind] ?? automation.trigger.kind,
+          starts_with: [
+            automation.trigger,
+            ...(automation.moreTriggers ?? []).map((each) => each.trigger),
+          ]
+            .map((trigger) => STARTS[trigger.kind] ?? trigger.kind)
+            .join(", or "),
           steps: automation.nodes.length,
           has_draft: automation.draft !== undefined,
           address: automationLink(automation._id),
@@ -532,7 +537,8 @@ async function callTool(
 function asSent(op: unknown): unknown {
   if (!op || typeof op !== "object") return op;
   const change = op as { op?: unknown; trigger?: { kind?: unknown } };
-  if (change.op !== "trigger" || typeof change.trigger?.kind !== "string") return op;
+  if (change.op !== "trigger" && change.op !== "addTrigger") return op;
+  if (typeof change.trigger?.kind !== "string") return op;
   const kind = change.trigger.kind.replace(/^trigger:/, "");
   return { ...change, trigger: { ...change.trigger, kind } };
 }

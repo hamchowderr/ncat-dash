@@ -13,6 +13,7 @@ import {
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { advance, failStep, startRun } from "./runner";
+import { enabledWithTrigger, triggersOfKind } from "./triggers";
 
 /** The automations that led to a run, itself last. Older runs only know themselves. */
 export function chainOf(run: Doc<"runs">): Id<"automations">[] {
@@ -182,37 +183,30 @@ export async function runEnded(
   if (run.parentRunStepId) await finishWaitingStep(ctx, run, status, error, files);
 
   if (status === "cancelled" || run.test) return;
-  const followers = await ctx.db
-    .query("automations")
-    .withIndex("by_enabled_and_trigger_kind", (q) =>
-      q.eq("enabled", true).eq("trigger.kind", "finished"),
-    )
-    .take(500);
+  const followers = await enabledWithTrigger(ctx, "finished", 500);
   const chain = chainOf(run);
   for (const follower of followers) {
-    const { trigger } = follower;
-    if (
-      trigger.kind !== "finished" ||
-      follower.organizationId !== run.organizationId ||
-      trigger.automationId !== run.automationId ||
-      !followsEnd(trigger, status)
-    ) {
-      continue;
-    }
-    // Saving refuses links that loop, so this only stops a chain changed while it ran.
-    if (chainProblem(chain, follower._id, follower.name)) continue;
-    await startRun(
-      ctx,
-      follower,
-      "finished",
-      // After a failure there are no finished files, so the follower gets the ones the
-      // run started with and can try something else with them.
-      status === "done"
-        ? { ...runFiles(files, run.trigger), earlier: earlierFilesOf(run, steps, files) }
-        : runFiles(startingFiles(run.trigger), run.trigger),
-      null,
-      { parent: { runId: run._id, chain } },
+    if (follower.organizationId !== run.organizationId) continue;
+    // The follower's triggers that wait for this automation to end this way. Two of them
+    // (one for done, one for failed, say) can only both match on "either".
+    const matching = triggersOfKind(follower, "finished").filter(
+      ({ trigger }) => trigger.automationId === run.automationId && followsEnd(trigger, status),
     );
+    // Saving refuses links that loop, so this only stops a chain changed while it ran.
+    if (matching.length === 0 || chainProblem(chain, follower._id, follower.name)) continue;
+    for (const { id: triggerId } of matching)
+      await startRun(
+        ctx,
+        follower,
+        "finished",
+        // After a failure there are no finished files, so the follower gets the ones the
+        // run started with and can try something else with them.
+        status === "done"
+          ? { ...runFiles(files, run.trigger), earlier: earlierFilesOf(run, steps, files) }
+          : runFiles(startingFiles(run.trigger), run.trigger),
+        null,
+        { parent: { runId: run._id, chain }, triggerId },
+      );
   }
 }
 

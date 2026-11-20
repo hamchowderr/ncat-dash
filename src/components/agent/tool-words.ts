@@ -46,6 +46,10 @@ function changeLine(change: Record<string, unknown>): string | null {
         : "Rename a step";
     case "trigger":
       return `Start it with: ${typeTitle((change.trigger as { kind?: unknown } | undefined)?.kind)}`;
+    case "addTrigger":
+      return `Also start it with: ${typeTitle((change.trigger as { kind?: unknown } | undefined)?.kind)}`;
+    case "removeTrigger":
+      return "Remove a trigger";
     case "name":
       return typeof change.name === "string"
         ? `Rename the automation to "${change.name}"`
