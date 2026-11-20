@@ -20,7 +20,7 @@ describe("the ready-made automations", () => {
     for (const starter of STARTERS) {
       expect(screen.getAllByText(starter.name, { exact: true }).length).toBeGreaterThan(0);
     }
-    expect(screen.getByRole("button", { name: /^All 73$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^All 82$/ })).toBeTruthy();
   });
 
   test("narrows to one category", () => {
@@ -84,5 +84,24 @@ describe("the ready-made automations", () => {
       expect.stringContaining("Backup When Following The Speaker Fails"),
       expect.stringContaining("Backup When Clips Can't Follow The Speaker"),
     ]);
+  });
+
+  test("lists hook variants and length cuts together, for every kind of video", () => {
+    renderInApp(<TemplateGallery onPick={vi.fn()} />);
+    const variants = screen.getByRole("region", { name: /^Hooks, lengths and ad variants/ });
+    for (const name of [
+      "UGC Ad Variants",
+      "Ad Length Cuts In Every Shape",
+      "Teasers In Three Lengths",
+      "Opening Line Tests",
+      "Hook And Ending Variants",
+      "Length Cuts",
+      "Opening Lines To Test",
+    ]) {
+      expect(within(variants).getByText(name, { exact: true })).toBeTruthy();
+    }
+    const music = screen.getByRole("region", { name: /^Music/ });
+    expect(within(music).getByText("Song Teasers For Reels And Shorts")).toBeTruthy();
+    expect(within(music).getByText("Song Teasers", { exact: true })).toBeTruthy();
   });
 });

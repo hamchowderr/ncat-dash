@@ -1,6 +1,7 @@
 import {
   type FileFacts,
   type MediaFacts,
+  type Pause,
   RUNNER_FIELDS,
   type StepDefinition,
   userInputSchema,
@@ -94,8 +95,55 @@ export async function readFacts(
     } catch {
       // Left out: the step works without it or says what it needs.
     }
+    if (!step.readsPauses?.includes(field)) continue;
+    const length = facts[field]?.duration;
+    if (!length || length > PAUSE_READ_LIMIT || facts[field]?.hasAudio === false) continue;
+    try {
+      const res = await doFetch(joinUrl(connection.baseUrl, "/v1/media/silence"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": connection.apiKey },
+        body: JSON.stringify({ media_url: url, duration: 0.3, noise: "-30dB", mono: true }),
+        signal: options.signal,
+      });
+      if (!res.ok) continue;
+      const envelope = (await res.json()) as { response?: unknown } | null;
+      facts[field] = { ...facts[field], pauses: readPauses(envelope?.response) };
+    } catch {
+      // Without pauses the cuts land on the exact second instead.
+    }
   }
   return facts;
+}
+
+/** Pauses are read only for files up to this long, in seconds, so a read stays quick. */
+export const PAUSE_READ_LIMIT = 20 * 60;
+
+/** "00:01:02.500" or 62.5 as seconds; NaN when it is neither. */
+export function clockSeconds(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return Number.NaN;
+  const parts = value.trim().split(":").map(Number);
+  if (parts.length === 0 || parts.some((part) => Number.isNaN(part))) return Number.NaN;
+  return parts.reduce((total, part) => total * 60 + part, 0);
+}
+
+/** The toolkit's silence answer as pauses in seconds, in order. Bad entries are dropped. */
+export function readPauses(raw: unknown): Pause[] {
+  const list = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { silences?: unknown })?.silences)
+      ? (raw as { silences: unknown[] }).silences
+      : [];
+  return list
+    .map((item) => {
+      const entry = (item ?? {}) as Record<string, unknown>;
+      return { start: clockSeconds(entry.start), end: clockSeconds(entry.end) };
+    })
+    .filter(
+      (pause) =>
+        Number.isFinite(pause.start) && Number.isFinite(pause.end) && pause.end > pause.start,
+    )
+    .sort((a, b) => a.start - b.start);
 }
 
 /**

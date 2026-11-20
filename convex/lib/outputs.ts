@@ -20,12 +20,14 @@ export function collectUrls(value: unknown, found: string[] = [], depth = 0): st
  */
 export function outputNamesOf(
   run: { trigger: unknown; automationName: string; nodes: unknown[] },
-  steps: { nodeId: string; outputs: string[] }[],
+  steps: { nodeId: string; outputs: string[]; labels?: { url: string; label: string }[] }[],
 ): Record<string, string> {
   const byNode = new Map(steps.map((step) => [step.nodeId, step]));
   const ordered = (run.nodes as { id: string; stepId?: string }[]).flatMap((node) => {
     const step = byNode.get(node.id);
-    return step ? [{ stepId: node.stepId ?? null, outputs: step.outputs }] : [];
+    return step
+      ? [{ stepId: node.stepId ?? null, outputs: step.outputs, labels: step.labels }]
+      : [];
   });
   return runOutputNames(runStem(startingFileName(run.trigger), run.automationName), ordered);
 }

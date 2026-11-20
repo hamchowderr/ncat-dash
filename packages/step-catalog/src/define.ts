@@ -70,6 +70,24 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    * what was read, by setting name.
    */
   readsFirst?: string[];
+  /**
+   * File settings among `readsFirst` whose pauses in speech are read too, so cuts can
+   * land between words. Only read for files up to 20 minutes long.
+   */
+  readsPauses?: string[];
+  /**
+   * Settings asked for up front although they are optional, because the step is only
+   * useful with some of them set (such as the other hook takes of hook variants).
+   */
+  askFirst?: string[];
+  /**
+   * Short codes for each file one job of this step makes, in order, such as "h02_c01" or
+   * "15s". They go into the files' names, after the code of the file the job worked on,
+   * so a finished ad is named for its hook, ending, length and shape.
+   */
+  outputLabels?: (input: Record<string, unknown>, count: number) => string[];
+  /** Only label files whose input already carries a code, such as a shape or captions. */
+  labelsFollow?: boolean;
   /** Builds the toolkit request from the filled-in blanks. Only recipes have one. */
   toRequest?: (input: z.output<TInput>, facts: FileFacts) => Record<string, unknown>;
 }
@@ -84,6 +102,14 @@ export interface MediaFacts {
   fps?: number;
   hasVideo?: boolean;
   hasAudio?: boolean;
+  /** Pauses in speech, in seconds, for settings named in `readsPauses`. */
+  pauses?: Pause[];
+}
+
+/** A stretch of silence, from and to, in seconds. */
+export interface Pause {
+  start: number;
+  end: number;
 }
 
 /** The facts read for each setting named in `readsFirst`. */
