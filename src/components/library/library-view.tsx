@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { formatMoment } from "@ncat-dash/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Columns3, LayoutGrid, List, Search, Sparkles } from "lucide-react";
+import { Bot, Columns3, LayoutGrid, List, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -569,7 +569,7 @@ export function LibraryView() {
                 disabled={sending}
                 onClick={() => void searchWaiting()}
               >
-                <Sparkles />
+                <Bot />
                 {waiting.length === 1
                   ? "Make 1 file searchable"
                   : `Make ${Math.min(waiting.length, 25)} files searchable`}

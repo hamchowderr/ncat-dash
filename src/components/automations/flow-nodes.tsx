@@ -43,7 +43,6 @@ import {
   FolderKanban,
   Hand,
   Layers,
-  WandSparkles,
   HardDriveUpload,
   Image as ImageIcon,
   type LucideIcon,
@@ -53,7 +52,7 @@ import {
   Scissors,
   Shapes,
   Signpost,
-  Sparkles,
+  Bot,
   Star,
   ListOrdered,
   AudioLines,
@@ -96,7 +95,7 @@ export const CATEGORY_ICONS: Record<StepCategory, LucideIcon> = {
   media: Shapes,
   image: ImageIcon,
   recipe: Layers,
-  team: WandSparkles,
+  team: Bot,
   ffmpeg: Terminal,
   code: Code,
   storage: HardDriveUpload,
@@ -187,7 +186,7 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
   }
   if (node.kind === "broll-plan") {
     return {
-      icon: Sparkles,
+      icon: Bot,
       tint: "text-orange-600 dark:text-orange-400",
       kind: "AI picks the moments",
     };

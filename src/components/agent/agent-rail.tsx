@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelRightOpen, Sparkles } from "lucide-react";
+import { Bot, PanelRightOpen } from "lucide-react";
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -65,7 +65,7 @@ export function AgentRail() {
         className="group text-muted-foreground hover:text-foreground flex w-full flex-1 cursor-pointer flex-col items-center pt-1 transition-colors"
       >
         <span className="group-hover:bg-sidebar-accent flex size-8 items-center justify-center rounded-lg transition-colors">
-          <Sparkles className="size-4" />
+          <Bot className="size-4" />
         </span>
       </button>
     </div>
