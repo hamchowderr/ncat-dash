@@ -109,6 +109,27 @@ export function TelegramLogo(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Microsoft's four-square logo, in one colour. */
+export function MicrosoftLogo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M1 1h10.5v10.5H1zM12.5 1H23v10.5H12.5zM1 12.5h10.5V23H1zM12.5 12.5H23V23H12.5z" />
+    </svg>
+  );
+}
+
+/** Microsoft's four-square logo in its own colours. */
+export function MicrosoftColorLogo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path fill="#F25022" d="M1 1h10.5v10.5H1z" />
+      <path fill="#7FBA00" d="M12.5 1H23v10.5H12.5z" />
+      <path fill="#00A4EF" d="M1 12.5h10.5V23H1z" />
+      <path fill="#FFB900" d="M12.5 12.5H23V23H12.5z" />
+    </svg>
+  );
+}
+
 /** Dropbox's mark, from simple-icons. */
 export function DropboxLogo(props: SVGProps<SVGSVGElement>) {
   return (
@@ -118,7 +139,8 @@ export function DropboxLogo(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export type ConnectedApp = "slack" | "discord" | "zoom" | "google-meet" | "microsoft" | "dropbox";
+export type ConnectedApp =
+  "slack" | "discord" | "zoom" | "google-meet" | "microsoft" | "teams" | "dropbox";
 
 const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactNode }> = {
   slack: { name: "Slack", tile: "bg-muted", mark: <SlackColorLogo className="size-6" /> },
@@ -134,6 +156,11 @@ const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactN
     mark: <GoogleMeetColorLogo className="size-6" />,
   },
   microsoft: {
+    name: "Microsoft 365",
+    tile: "bg-muted",
+    mark: <MicrosoftColorLogo className="size-6" />,
+  },
+  teams: {
     name: "Microsoft Teams",
     tile: "bg-[#5B5FC7] text-white",
     mark: <MicrosoftTeamsLogo className="size-6" />,
