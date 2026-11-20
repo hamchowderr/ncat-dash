@@ -74,7 +74,7 @@ export function followsLine(starter: Starter): string | null {
 /** Steps that make clips: what comes after them works on each clip. */
 const CLIP_KINDS = new Set(["clips", "moments"]);
 /** Steps whose files are finished videos. */
-const VIDEO_KINDS = new Set(["clips", "moments", "broll", "motion", "sound-effects"]);
+const VIDEO_KINDS = new Set(["clips", "moments", "broll", "motion", "sound-effects", "cleanup"]);
 const VIDEO_STEPS = new Set([
   "video-caption",
   FOLLOW_SPEAKER_STEP,

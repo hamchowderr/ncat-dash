@@ -4,6 +4,7 @@ import {
   type AutomationEdge,
   type AutomationNode,
   type Chapter,
+  cleanupSentence,
   clipsKeepShape,
   clock,
   frameSize,
@@ -53,6 +54,7 @@ export function PicksPanel({
     if (node.kind === "moments" && step.moments?.length) return [{ node, step }];
     if (node.kind === "chapters" && step.chapters?.length) return [{ node, step }];
     if (node.kind === "broll" && step.cutaways?.length) return [{ node, step }];
+    if (node.kind === "cleanup" && step.cleaned?.length) return [{ node, step }];
     return [];
   });
   if (shown.length === 0) return null;
@@ -71,11 +73,74 @@ export function PicksPanel({
           />
         ) : node.kind === "broll" ? (
           <CutawaysSection key={step._id} title={nodeTitle(node)} step={step} />
+        ) : node.kind === "cleanup" ? (
+          <CleanupSection key={step._id} title={nodeTitle(node)} step={step} />
         ) : (
           <ChaptersSection key={step._id} title={nodeTitle(node)} step={step} />
         ),
       )}
     </div>
+  );
+}
+
+/** A take's file code as it reads: "hook02" is "Hook 2". */
+function takeName(label: string | null): string {
+  if (!label) return "Cleaned video";
+  const hook = /^hook0?(\d)$/.exec(label);
+  return hook ? `Hook ${hook[1]}` : label === "body" ? "Body" : label;
+}
+
+/**
+ * What Clean Up Pauses And Retakes took out of each video, how long it was and is now, and
+ * the files it made: one cleaned video, or each hook take and the body.
+ */
+function CleanupSection({ title, step }: { title: string; step: RunStep }) {
+  const cleaned = step.cleaned ?? [];
+  // The step's files, in the order its plans were made.
+  const files = step.jobs.flatMap((job) => job.outputs);
+  let at = 0;
+  return (
+    <section aria-label={title} className="bg-surface rounded-xl">
+      <header className="grid px-4 py-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="text-muted-foreground text-xs">No AI: pauses and retakes found by rules.</p>
+      </header>
+      <ul className="grid gap-1 px-4 pb-4">
+        {cleaned.map((one) => {
+          const made = one.labels.map((label) => ({ label, url: files[at++] }));
+          return (
+            <li key={one.source} className="bg-background grid gap-2 rounded-lg px-3 py-2">
+              <p className="text-sm">{cleanupSentence(one)}</p>
+              <p className="text-muted-foreground text-xs tabular-nums">
+                {length(one.before)} down to {length(one.after)}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {made.map(({ label, url }, index) =>
+                  url ? (
+                    <a
+                      key={`${label}-${index}`}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-muted hover:bg-accent rounded-md px-2 py-1 text-xs font-medium"
+                    >
+                      {takeName(label)}
+                    </a>
+                  ) : (
+                    <span
+                      key={`${label}-${index}`}
+                      className="bg-muted text-muted-foreground rounded-md px-2 py-1 text-xs"
+                    >
+                      {takeName(label)}
+                    </span>
+                  ),
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

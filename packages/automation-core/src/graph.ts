@@ -16,7 +16,8 @@ export interface AutomationNode {
    * each video, and "broll-plan" has the AI say where and what to show first (broll.ts);
    * "motion-plan" has the AI say which pieces go where first,
    * "motion" draws motion graphics and "sound-effects" adds sound effects onto each video
-   * (motion.ts).
+   * (motion.ts); "cleanup" takes long pauses and retakes out of each recording and can
+   * split its hook takes into files of their own (cleanup.ts).
    */
   kind:
     | "step"
@@ -32,7 +33,8 @@ export interface AutomationNode {
     | "broll-plan"
     | "motion"
     | "motion-plan"
-    | "sound-effects";
+    | "sound-effects"
+    | "cleanup";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */

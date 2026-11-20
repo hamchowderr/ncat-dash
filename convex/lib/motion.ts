@@ -25,6 +25,7 @@ import { titleFromFileName } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { finishCleanup } from "./cleanup";
 import { heardFrom, wordsFor } from "./moments";
 import { startingFileName } from "./outputs";
 import { brandOf } from "./queue";
@@ -38,6 +39,9 @@ import { advance, enqueueAll, failStep } from "./runner";
  */
 
 export const isMotionKind = (kind: string) => kind === "motion" || kind === "sound-effects";
+
+/** Steps that transcribe, read the words into the dashboard ("place"), then render. */
+export const isPlaceKind = (kind: string) => isMotionKind(kind) || kind === "cleanup";
 
 /** The team's Motion settings, or the default style when it has not set any. */
 export async function motionSetupOf(ctx: QueryCtx, organizationId: string): Promise<MotionSetup> {
@@ -104,7 +108,10 @@ export async function finishMotionListening(
   byNode: Map<string, Doc<"runSteps">>,
   jobs: Doc<"jobs">[],
 ) {
-  const failed = jobs.find((job) => job.status === "failed");
+  // Without its pauses a cleanup still works, from the gaps between the words.
+  const failed = jobs.find(
+    (job) => job.status === "failed" && job.stepId !== "media-silence-detect",
+  );
   if (failed) {
     const what = failed.stepId === "media-transcribe" ? "transcribe" : "read";
     await failStep(
@@ -145,6 +152,10 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
   const jobs = (await Promise.all(step.jobIds.map((id) => ctx.db.get(id)))).filter(
     (job): job is Doc<"jobs"> => job !== null,
   );
+  if (node.kind === "cleanup") {
+    await finishCleanup(ctx, run, node, step, byNode, jobs);
+    return;
+  }
   const team = await motionSetupOf(ctx, run.organizationId);
   const brand = await brandOf(ctx, run.organizationId, run.clientId);
   // As uploaded, or from its address when the run was started with a link or Run now.

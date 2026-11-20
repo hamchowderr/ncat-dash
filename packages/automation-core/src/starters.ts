@@ -87,6 +87,13 @@ const approval = (column: number): AutomationNode => ({
   input: {},
   position: { x: column * NODE_GAP, y: 0 },
 });
+/** Clean Up Pauses And Retakes, first in an automation. */
+const cleanup = (input: Record<string, unknown> = {}): AutomationNode => ({
+  id: "cleanup_1",
+  kind: "cleanup",
+  input,
+  position: { x: 0, y: 0 },
+});
 /** Connects the nodes in the order given. */
 const chain = (...ids: string[]): AutomationEdge[] =>
   ids.slice(1).map((id, index) => ({ id: `${ids[index]}>${id}`, source: ids[index], target: id }));
@@ -101,6 +108,17 @@ const AD_SHAPES: [number, number][] = [
 const AD_CAPTIONS = { settings: { position: "middle_center" } };
 
 const WORKFLOWS: Starter[] = [
+  {
+    id: "clean-up-recording",
+    category: "clips",
+    name: "Clean Up Pauses And Retakes",
+    description:
+      "Each recording you upload comes back ready to edit: long pauses taken down to a short breath and every line you said again kept only as its last take, with picture and voice still together. Plain rules on the transcript and the pauses the toolkit hears, no AI on your video.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [cleanup({ hooks: "none" })],
+    edges: [],
+  },
   {
     id: "social-clips",
     category: "clips",
@@ -482,6 +500,17 @@ const WORKFLOWS: Starter[] = [
     ],
   },
   {
+    id: "ugc-clean-takes",
+    category: "variants",
+    name: "Clean Up Takes For UGC Ads",
+    description:
+      "For raw UGC recordings, dropped in a folder per creator inside raw-takes. The creator says \u201chook one\u201d, \u201chook two\u201d\u2026 before each opening and \u201cbody\u201d before the main part. Each recording comes back with its long pauses taken down and its retakes gone, every hook take as a file of its own and the body as another, in hooks and body folders per creator, ready for UGC Ad Variants. Plain rules on the transcript and the pauses, no AI.",
+    group: "workflow",
+    trigger: { kind: "folder", prefix: "raw-takes/", fileType: "video" },
+    nodes: [cleanup({ hooks: "said" })],
+    edges: [],
+  },
+  {
     id: "ad-length-cuts",
     category: "variants",
     name: "Ad Length Cuts In Every Shape",
@@ -586,6 +615,7 @@ const FOLLOW_ONS: Starter[] = [
     follows: [
       "brand-every-clip",
       "caption-uploads",
+      "caption-cleaned-recording",
       "clip-with-end-card",
       "talking-head-broll",
       "vertical-blur-captions",
@@ -646,11 +676,23 @@ const FOLLOW_ONS: Starter[] = [
     category: "after",
     name: "Clips From The Episode",
     description:
-      "Starts when an episode or recording pack is finished. The cleaned-up video is cut at pauses in speech into captioned clips that fit the platform you pick.",
+      "Starts when an episode, a recording pack or a cleaned-up recording is finished. The cleaned-up video is cut at pauses in speech into captioned clips that fit the platform you pick.",
     group: "workflow",
     trigger: after(),
-    follows: ["podcast-package", "recording-pack"],
+    follows: ["podcast-package", "recording-pack", "clean-up-recording"],
     ...clipsGraph({ platform: "Instagram Reels", captions: true, approve: false }),
+  },
+  {
+    id: "caption-cleaned-recording",
+    category: "after",
+    name: "Caption The Cleaned-Up Recording",
+    description:
+      "Starts when a recording has had its pauses and retakes taken out. The cleaned video is captioned and you get a thumbnail beside it.",
+    group: "workflow",
+    trigger: after(),
+    follows: ["clean-up-recording"],
+    nodes: [step("caption_1", "video-caption", 0, 0), step("thumbnail_1", "video-thumbnail", 0, 1)],
+    edges: [],
   },
   {
     id: "episode-video-youtube",

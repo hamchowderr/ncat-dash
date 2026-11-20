@@ -25,6 +25,7 @@ import {
   tooShortFor,
   type Word,
 } from "@ncat-dash/automation-core";
+import { readPauses } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -43,6 +44,11 @@ import { advance, enqueueAll, failStep, incomingFiles } from "./runner";
 export const MAX_VIDEOS_PER_PICK_STEP = 5;
 // A transcript this long, in words, is kept (about three hours of speech).
 export const MAX_WORDS = 30_000;
+
+/** The request that finds a video's pauses: a third of a second of quiet or longer. */
+export function silenceRequest(url: string): Record<string, unknown> {
+  return { media_url: url, duration: 0.3, noise: "-35dB", mono: true };
+}
 
 /** The request that transcribes a video with each word's timing, to a file. */
 export function listenRequest(url: string): Record<string, unknown> {
@@ -106,6 +112,9 @@ export async function startListening(
   const wanted: { stepId: string; input: unknown }[] = [];
   for (const url of inputs) {
     wanted.push({ stepId: "media-metadata", input: { media_url: url } });
+    // Clean Up Pauses And Retakes also needs where the toolkit hears silence.
+    if (node.kind === "cleanup")
+      wanted.push({ stepId: "media-silence-detect", input: silenceRequest(url) });
     if (!(await wordsFor(ctx, run.organizationId, url))) {
       wanted.push({ stepId: "media-transcribe", input: listenRequest(url) });
     }
@@ -170,6 +179,8 @@ export interface Heard {
   /** The words, when the toolkit handed them back in its answer. */
   segments: unknown;
   metadata: unknown;
+  /** Where the toolkit heard silence, when a "cleanup" step asked. */
+  pauses: { start: number; end: number }[] | null;
 }
 
 /** The videos of a step at "pick", in the order they reached it, with what was heard. */
@@ -184,6 +195,7 @@ export function heardFrom(jobs: Doc<"jobs">[]): Heard[] {
       wordsFile: null,
       segments: null,
       metadata: null,
+      pauses: null,
     };
     if (job.stepId === "media-metadata") {
       heard.metadata = job.result;
@@ -192,6 +204,8 @@ export function heardFrom(jobs: Doc<"jobs">[]): Heard[] {
       const result = (job.result ?? {}) as { segments_url?: unknown; segments?: unknown };
       heard.wordsFile = typeof result.segments_url === "string" ? result.segments_url : null;
       heard.segments = result.segments ?? null;
+    } else if (job.stepId === "media-silence-detect" && job.status === "done") {
+      heard.pauses = readPauses(job.result);
     }
     byUrl.set(url, heard);
   }

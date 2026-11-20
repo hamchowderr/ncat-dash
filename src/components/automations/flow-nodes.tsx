@@ -50,6 +50,7 @@ import {
   PictureInPicture2,
   Plus,
   Scissors,
+  ScissorsLineDashed,
   Shapes,
   Signpost,
   Bot,
@@ -211,6 +212,19 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
       icon: PanelsTopLeft,
       tint: CATEGORY_TINTS.video,
       kind: preset ? preset.name : "Your team's style",
+    };
+  }
+  if (node.kind === "cleanup") {
+    const hooks = node.input.hooks;
+    return {
+      icon: ScissorsLineDashed,
+      tint: CATEGORY_TINTS.video,
+      kind:
+        hooks === "none"
+          ? "One cleaned video"
+          : hooks === "count"
+            ? "First takes are hooks"
+            : "Splits hook takes you name",
     };
   }
   if (node.kind === "sound-effects") {
