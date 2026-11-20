@@ -9,26 +9,18 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { CATEGORY_ICONS, nodeLook } from "@/components/automations/flow-nodes";
 import { AGENT_PERSON, Face } from "@/components/review/person";
 
-import { AgentRail, AgentTrigger } from "./agent-rail";
+import { AgentTrigger } from "./agent-rail";
 
 // The agent's mark is a robot everywhere it shows, never the sparkle star.
 describe("the agent's robot icon", () => {
-  test("the folded agent strip's open button is the robot, with no star", () => {
+  test("the open button in the bar along the top is the robot, with no star", () => {
     const { container } = render(
       <TooltipProvider>
-        <AgentRail />
+        <AgentTrigger />
       </TooltipProvider>,
     );
     expect(container.querySelector("svg[class*='sparkles']")).toBeNull();
-    // One icon only: the open button is the robot, with no extra mark down the strip.
     expect(container.querySelectorAll("svg")).toHaveLength(1);
-    const open = screen.getByRole("button", { name: "Open the agent" });
-    expect(open.querySelector("svg.lucide-bot")).not.toBeNull();
-    expect(container.querySelector("[data-agent-rail] svg")).toBeNull();
-  });
-
-  test("the phone's open button in the top bar is the robot too", () => {
-    render(<AgentTrigger />);
     const open = screen.getByRole("button", { name: "Open the agent" });
     expect(open.querySelector("svg.lucide-bot")).not.toBeNull();
     expect(open.querySelector("svg[class*='panel-right']")).toBeNull();

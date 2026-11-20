@@ -60,10 +60,9 @@ test("the tour walks someone new around the dashboard once, and again when they 
     await card.getByRole("button", { name: "Next" }).click();
     await expect(card.getByText(title, { exact: true })).toBeVisible();
   }
-  // The Agent card hangs below the button at the top of the agent's strip on the right.
+  // The Agent card hangs below the robot in the bar along the top.
   const agent = (await page
-    .getByRole("complementary", { name: "Agent" })
-    .locator("[data-tour-step-id~='tour-agent']")
+    .locator("header [data-tour-step-id~='tour-agent']")
     .boundingBox())!;
   await expect.poll(async () => (await card.boundingBox())!.y >= agent.y + agent.height).toBe(true);
 
