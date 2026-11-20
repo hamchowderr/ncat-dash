@@ -96,7 +96,7 @@ test("links a Telegram from Settings, then a group for review activity", async (
   });
   expect(linked).toEqual({ result: "linked", teamName: `Harbour Films ${stamp}` });
   await expect(page.getByText("Linked as")).toBeVisible();
-  await expect(page.getByText("Harbour O")).toBeVisible();
+  await expect(page.getByText("Harbour O", { exact: true })).toBeVisible();
   // The same code never works twice.
   expect(
     (
