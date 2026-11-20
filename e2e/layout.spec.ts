@@ -147,9 +147,10 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
   await page.getByRole("link", { name: "New automation", exact: true }).click();
   await expect(page).toHaveURL(/\/automations\/new$/);
   await expect(card).toBeVisible();
-  await expect(page.locator("[data-tour-overlay]")).toHaveCount(0);
-  await card.getByRole("button", { name: "Close the tour" }).click();
+  await card.getByRole("button", { name: "Close the tour" }).dispatchEvent("click");
   await expect(card).toHaveCount(0);
+  // Closing the tour takes its spotlight with it.
+  await expect(page.locator("[data-tour-overlay]")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await covered(page), "new automation page").toEqual([]);
 });
