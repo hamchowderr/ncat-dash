@@ -77,3 +77,38 @@ test("UGC Ad Variants opens as variants, cuts, shapes and captions, with its tak
   await expect(page.locator("input[value='6, 15, 30, 60']")).toBeVisible();
   await pause(2500);
 });
+
+test("UGC Ad Variants From Creator Folders starts by itself from each creator's folder", async ({
+  page,
+}) => {
+  await page.goto("/sign-up");
+  await page.locator("#name").fill("Ade Bello");
+  await page.locator("#email").fill(`ade.${stamp}@example.test`);
+  await page.locator("#password").fill("creators-e2e-123456");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
+  await page.getByPlaceholder("Your company or channel").fill("Bello UGC");
+  await page.getByRole("button", { name: "Create team" }).click();
+  await page.getByRole("button", { name: /Yes, I Have One/ }).click();
+  await page.locator("#baseUrl").fill(TOOLKIT);
+  await page.locator("#apiKey").fill("stand-in-key-1234");
+  await page.getByRole("button", { name: "Test and connect" }).click();
+  await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
+
+  await page.goto("/automations/new");
+  await page.getByRole("button", { name: /^Hooks, lengths and ad variants \d+$/ }).click();
+  const variants = page.getByRole("region", { name: /^Hooks, lengths and ad variants/ });
+  await variants.getByText("UGC Ad Variants From Creator Folders", { exact: true }).click();
+  await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
+  await expect(page.locator(".react-flow__node-step")).toHaveCount(8);
+  await pause(1500);
+
+  // The watched folder waits for each creator's takes, not single files.
+  await page.locator(".react-flow__node-trigger").click();
+  await expect(page.getByRole("combobox", { name: "What lands there" })).toHaveText(
+    "A folder for each creator",
+  );
+  await expect(page.getByText(/each creator has a folder with hooks, body/)).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Which files" })).toHaveCount(0);
+  await pause(2500);
+});

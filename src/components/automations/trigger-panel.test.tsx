@@ -1,5 +1,6 @@
 import { api } from "@convex/_generated/api";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
 
 import { actionOf, answerQuery } from "@/test/convex";
@@ -41,6 +42,40 @@ describe("the Watched folder trigger panel", () => {
     // The bucket is the toolkit's, shared with other teams; its name is never shown.
     expect(document.body.textContent).not.toContain("salt-house");
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  test("can wait for each creator's takes instead of single files", async () => {
+    answerQuery(api.storage.get, { bucket: "salt-house", publicUrl: null, baseUrl: "" });
+    const onChange = vi.fn();
+    const { rerender } = renderInApp(
+      <TriggerPanel
+        trigger={{ ...folderTrigger, fileType: "any" }}
+        onChange={onChange}
+        automationId="a"
+        hookToken="t"
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: "What lands there" })).toHaveTextContent(
+      "Single files",
+    );
+    expect(screen.getByRole("combobox", { name: "Which files" })).toBeTruthy();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("combobox", { name: "What lands there" }));
+    await user.click(await screen.findByRole("option", { name: "A folder for each creator" }));
+    expect(onChange).toHaveBeenCalledWith({ ...folderTrigger, layout: "creators" });
+
+    const creators = { ...folderTrigger, layout: "creators" as const };
+    rerender(
+      <TriggerPanel trigger={creators} onChange={onChange} automationId="a" hookToken="t" />,
+    );
+    expect(screen.getByText(/each creator has a folder with hooks, body/)).toBeTruthy();
+    expect(screen.getByText(/one run starts with all their takes/)).toBeTruthy();
+    // Takes are always videos, so there is no file type to pick.
+    expect(screen.queryByRole("combobox", { name: "Which files" })).toBeNull();
+
+    await user.click(screen.getByRole("combobox", { name: "What lands there" }));
+    await user.click(await screen.findByRole("option", { name: "Single files" }));
+    expect(onChange).toHaveBeenLastCalledWith(folderTrigger);
   });
 
   test("picks a folder from the team's files", async () => {
