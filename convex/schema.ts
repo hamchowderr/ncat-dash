@@ -1030,6 +1030,30 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_nonce", ["nonce"]),
 
+  // A review comment thread and the Teams reply thread it was posted as, in the team's
+  // alert channel. Replies written in that Teams thread come back to the review thread.
+  teamsReviewThreads: defineTable({
+    organizationId: v.string(),
+    // The channel's conversation id, and the id of the first message of the thread.
+    conversationId: v.string(),
+    rootActivityId: v.string(),
+    serviceUrl: v.string(),
+    reviewId: v.id("reviews"),
+    commentId: v.id("reviewComments"),
+  })
+    .index("by_comment", ["commentId"])
+    .index("by_teams_thread", ["conversationId", "rootActivityId"])
+    .index("by_review", ["reviewId"])
+    .index("by_organization", ["organizationId"]),
+
+  // Teams messages already brought into a review, so a message Teams sends twice is
+  // added once.
+  teamsReplies: defineTable({
+    conversationId: v.string(),
+    activityId: v.string(),
+    commentId: v.id("reviewComments"),
+  }).index("by_message", ["conversationId", "activityId"]),
+
   // A member's own Telegram account on a team, linked from Settings by opening the
   // dashboard's one Telegram bot with a one-time code. The agent then acts as them when
   // they write to the bot, and alerts go to their chat with it (`chatId`).
@@ -1638,6 +1662,8 @@ export default defineSchema({
     client: v.optional(v.boolean()),
     // Written by a teammate as a reply in the team's Slack thread for this comment.
     slack: v.optional(v.boolean()),
+    // Written by a teammate as a reply in the team's Teams thread for this comment.
+    teams: v.optional(v.boolean()),
     // Written by a teammate as a reply in the team's Telegram group.
     telegram: v.optional(v.boolean()),
     // Marks drawn over the paused frame, on a thread's first comment only.

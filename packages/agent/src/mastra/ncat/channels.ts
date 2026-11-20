@@ -8,7 +8,7 @@ import { onAlertButton } from './alert-buttons';
 import { asTheDiscordWriter, discordAdapter } from './discord';
 import { onReviewReply } from './review-replies';
 import { asTheWriter, slackChannels } from './slack';
-import { asTheTeamsWriter, teamsAdapter } from './teams';
+import { asTheTeamsWriter, onTeamsAlertButton, teamsAdapter, teamsReviewRepliesOnly } from './teams';
 import { asTheTelegramWriter, onTelegramAction, onTelegramCommand, telegramAdapter } from './telegram';
 
 /**
@@ -23,13 +23,20 @@ export const byPlatform: ChannelHandler = async (thread, message, next, ctx) => 
   return await asTheWriter(thread, message, next, ctx);
 };
 
-/**
- * Button presses: Telegram's alert buttons are handled here, and Approve and Send back on
- * Discord's alerts by onAlertButton, which leaves anything else to the usual handler.
- */
+/** Approve and Send back on the dashboard's alerts: Discord's presses, then Teams'. */
+export const onChatAlertButton: ActionChannelHandler = (event, next, ctx) =>
+  onAlertButton(event, () => onTeamsAlertButton(event, next, ctx), ctx);
+
+/** Button presses: Telegram's alert buttons are handled here; the rest by onChatAlertButton. */
 export const actionByPlatform: ActionChannelHandler = async (event, defaultHandler, ctx) => {
   if (event.threadId?.startsWith('telegram:')) return await onTelegramAction(event, defaultHandler, ctx);
-  return await onAlertButton(event, defaultHandler, ctx);
+  return await onChatAlertButton(event, defaultHandler, ctx);
+};
+
+/** Untagged messages: a reply in a review's thread, in Discord or Teams. */
+export const onReviewMessage: ChannelHandler = async (thread, message, next, ctx) => {
+  if (thread.id.startsWith('teams:')) return await teamsReviewRepliesOnly(thread, message, next, ctx);
+  return await onReviewReply(thread, message, next, ctx);
 };
 
 /** Commands: Telegram's /start links a person or group; the rest as usual. */
@@ -55,10 +62,13 @@ export function chatChannels(): AgentControllerChannelsConfig | undefined {
       onMention: byPlatform,
       onDirectMessage: byPlatform,
       onSubscribedMessage: byPlatform,
+      // Telegram's alert buttons, then Approve and Send back on Discord and Teams alerts;
+      // anything else as before.
       onAction: actionByPlatform,
       onSlashCommand: commandByPlatform,
-      // Teammates' replies in a review's Discord thread go to the review; nothing else.
-      ...(discord ? { onMessage: onReviewReply } : {}),
+      // Untagged messages: only teammates' replies in a review's Discord or Teams thread
+      // are used, and they go to the review; nothing else.
+      ...(discord || teams ? { onMessage: onReviewMessage } : {}),
     },
   };
 }

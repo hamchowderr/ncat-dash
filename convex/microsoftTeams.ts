@@ -1,4 +1,3 @@
-import { explainFailure } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -11,7 +10,6 @@ import {
   query,
 } from "./_generated/server";
 import { isMember, MANAGER_ROLES, requireMember } from "./lib/authz";
-import { alertHref } from "./lib/notifications";
 
 /**
  * The agent in Microsoft Teams, and alerts posted to a Teams channel.
@@ -62,7 +60,7 @@ function redirectUri(): string {
   return `${(process.env.CONVEX_SITE_URL ?? "").replace(/\/+$/, "")}/microsoft/callback`;
 }
 
-function site(): string {
+export function site(): string {
   return (process.env.SITE_URL ?? "").replace(/\/+$/, "");
 }
 
@@ -213,6 +211,11 @@ export const removeOrganization = mutation({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .take(50);
     for (const one of seen) await ctx.db.delete(one._id);
+    const threads = await ctx.db
+      .query("teamsReviewThreads")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .take(500);
+    for (const one of threads) await ctx.db.delete(one._id);
   },
 });
 
@@ -481,7 +484,7 @@ export const sawTeam = internalMutation({
 // Alerts in a Teams channel.
 
 /** A token for the dashboard's bot to post with. Null when it is not set up or refused. */
-async function botToken(): Promise<string | null> {
+export async function botToken(): Promise<string | null> {
   const appId = process.env.TEAMS_APP_ID;
   const password = process.env.TEAMS_APP_PASSWORD;
   if (!appId || !password) return null;
@@ -623,104 +626,76 @@ export const saveAlertChannel = internalMutation({
 });
 
 /** Markdown special characters taken literally, so a name cannot change the message. */
-function plain(text: string): string {
+export function plain(text: string): string {
   return text.replace(/([\\`*_[\]<>#|])/g, "\\$1");
 }
 
-/** The words of an alert in Teams. Exported for the tests. */
-export function alertText(
-  alert: Pick<
-    Doc<"alerts">,
-    | "kind"
-    | "automationName"
-    | "stepName"
-    | "message"
-    | "from"
-    | "runId"
-    | "automationId"
-    | "reviewId"
-    | "clipId"
-    | "commentId"
-  >,
-  options: { siteUrl: string; recipients: string[] },
-): string {
-  const link = `[${plain(alert.automationName)}](${options.siteUrl}${alertHref(alert)})`;
-  const who = options.recipients.length > 0 ? options.recipients.map(plain).join(", ") : "";
-  const quote = (text: string) =>
-    text
-      .trim()
-      .split("\n")
-      .map((line) => `> ${plain(line)}`)
-      .join("\n");
-  switch (alert.kind) {
-    case "mention":
-      return `**${plain(alert.from ?? "Someone")}** mentioned ${who || "someone"} on ${link}:\n\n${quote(alert.message)}`;
-    case "client_feedback":
-      return `**${plain(alert.from ?? "A client")}** (client) left feedback on ${link}:\n\n${quote(alert.message)}`;
-    case "ready_for_review":
-      return `${plain(alert.stepName ?? "A deliverable")} in ${link} is ready for review.`;
-    case "approval_waiting":
-      return `${link} is waiting for approval${who ? ` from ${who}` : ""}.`;
-    case "approval_timed_out":
-      return `${link}: an approval ran out of time. ${plain(alert.message)}`;
-    default:
-      return `${link} failed${alert.stepName ? ` at ${plain(alert.stepName)}` : ""}: ${plain(
-        explainFailure(alert.message).reason,
-      )}`;
-  }
-}
-
-export const alertContext = internalQuery({
+/**
+ * Who an approval in a Teams alert waits for: each reviewer it names, with their Microsoft
+ * account when it is known, so the card tags them and Teams tells them. None when it is
+ * for the whole team.
+ */
+export const alertTags = internalQuery({
   args: { alertId: v.id("alerts") },
   handler: async (ctx, args) => {
     const alert = await ctx.db.get(args.alertId);
-    if (!alert) return null;
-    const tenant = await ctx.db
-      .query("teamsTenants")
-      .withIndex("by_organization", (q) => q.eq("organizationId", alert.organizationId))
-      .unique();
-    if (!tenant?.alertConversationId || !tenant.alertServiceUrl) return null;
-    let recipients: string[] = [];
-    if (alert.recipients?.length) {
-      const team = await ctx.runQuery(components.betterAuth.members.contactsFor, {
-        organizationId: alert.organizationId,
-      });
-      recipients = team.members
-        .filter((member) => alert.recipients!.includes(member.userId))
-        .map((member) => member.name);
+    if (!alert?.recipients?.length) return [];
+    const team = await ctx.runQuery(components.betterAuth.members.contactsFor, {
+      organizationId: alert.organizationId,
+    });
+    const tagged: { name: string; aadObjectId: string | null }[] = [];
+    for (const member of team.members) {
+      if (!alert.recipients.includes(member.userId)) continue;
+      const link = await ctx.db
+        .query("teamsPeople")
+        .withIndex("by_member", (q) =>
+          q.eq("organizationId", alert.organizationId).eq("userId", member.userId),
+        )
+        .unique();
+      tagged.push({ name: member.name, aadObjectId: link?.aadObjectId ?? null });
     }
-    return {
-      alert,
-      recipients,
-      conversationId: tenant.alertConversationId,
-      serviceUrl: tenant.alertServiceUrl,
-    };
+    return tagged;
   },
 });
 
-/** Posts one alert to the team's Teams channel. */
-export const postAlert = internalAction({
-  args: { alertId: v.id("alerts") },
-  handler: async (ctx, args) => {
-    const context = await ctx.runQuery(internal.microsoftTeams.alertContext, args);
-    if (!context) return;
-    const token = await botToken();
-    if (!token) return;
-    const base = context.serviceUrl.replace(/\/+$/, "");
-    const response = await fetch(
-      `${base}/v3/conversations/${encodeURIComponent(context.conversationId)}/activities`,
-      {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          type: "message",
-          textFormat: "markdown",
-          text: alertText(context.alert, { siteUrl: site(), recipients: context.recipients }),
-        }),
-      },
-    );
-    if (!response.ok) {
-      console.error(`Teams did not take an alert: ${response.status}`);
+/**
+ * Approve or Send back pressed on an alert card in Teams. The presser is known by their
+ * Microsoft account on the team whose Microsoft organization the press came from; the
+ * same rules as the run page then decide whether they may.
+ */
+export const alertPress = internalMutation({
+  args: {
+    tenantId: v.string(),
+    aadObjectId: v.string(),
+    runStepId: v.string(),
+    decision: v.union(v.literal("approve"), v.literal("send_back")),
+  },
+  handler: async (ctx, args): Promise<{ ok: boolean; message: string }> => {
+    const tenant = await ctx.db
+      .query("teamsTenants")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
+      .unique();
+    const runStepId = ctx.db.normalizeId("runSteps", args.runStepId);
+    const step = runStepId ? await ctx.db.get(runStepId) : null;
+    if (!tenant || !step || step.organizationId !== tenant.organizationId) {
+      return { ok: false, message: "This approval no longer exists." };
     }
+    const person: Doc<"teamsPeople"> | null = await ctx.runMutation(
+      internal.microsoftTeams.linkFor,
+      { aadObjectId: args.aadObjectId, organizationId: tenant.organizationId },
+    );
+    if (!person) {
+      return {
+        ok: false,
+        message:
+          'To approve from Teams, link your Microsoft account in the dashboard first (Settings, Microsoft Teams, "Link my Microsoft account").',
+      };
+    }
+    return await ctx.runMutation(internal.chatAlerts.decideFromChat, {
+      runStepId: step._id,
+      userId: person.userId,
+      decision: args.decision,
+      app: "teams",
+    });
   },
 });

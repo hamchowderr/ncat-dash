@@ -4,6 +4,7 @@ import type { ActionCtx, QueryCtx } from "../../_generated/server";
 import type { ChatApp } from "../notifications";
 import { discordSender } from "./discord";
 import { slackSender } from "./slack";
+import { teamsSender } from "./teams";
 import { telegramSender } from "./telegram";
 
 /**
@@ -53,7 +54,7 @@ export type ChatSender = {
   settle?(ctx: ActionCtx, message: SentMessage, outcome: string): Promise<void>;
 };
 
-export const SENDERS: ChatSender[] = [slackSender, discordSender, telegramSender];
+export const SENDERS: ChatSender[] = [slackSender, discordSender, teamsSender, telegramSender];
 
 export function senderFor(app: ChatApp): ChatSender | undefined {
   return SENDERS.find((sender) => sender.app === app);

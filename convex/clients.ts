@@ -172,9 +172,9 @@ export const setBrand = mutation({
   args: { clientId: v.id("clients"), brand: brandValidator, music: v.optional(musicValidator) },
   handler: async (ctx, args) => {
     const { client } = await loadForMember(ctx, args.clientId);
-    const brand = await checkedBrand(ctx, client.organizationId, args.brand);
+    const brand = await checkedBrand(ctx, client.organizationId, args.brand, client.brand);
     const music = args.music
-      ? await checkedMusic(ctx, client.organizationId, args.music)
+      ? await checkedMusic(ctx, client.organizationId, args.music, client.music)
       : client.music;
     await ctx.db.patch(client._id, { brand, music: music && music.length > 0 ? music : undefined });
   },
