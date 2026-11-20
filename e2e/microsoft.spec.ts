@@ -42,7 +42,7 @@ test("connects Microsoft 365, brings a past meeting in, and a new one arrives by
   });
   await page.goto("/settings/microsoft");
   await expect(page.getByRole("heading", { level: 1, name: "Microsoft 365" })).toBeVisible();
-  await expect(page.getByRole("img", { name: "Microsoft Teams logo" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Microsoft 365 logo" })).toBeVisible();
   await page.getByRole("button", { name: "Connect Microsoft 365" }).click();
   await expect(page).toHaveURL(/\/settings\/microsoft$/, { timeout: 30_000 });
   await expect(page.getByText("Your Microsoft account is connected")).toBeVisible();

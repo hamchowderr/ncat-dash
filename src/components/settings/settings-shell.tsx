@@ -35,6 +35,7 @@ export function SettingsLoading() {
 const APP_PAGES = new Set<string>([
   "slack",
   "discord",
+  "teams",
   "zoom",
   "google-meet",
   "microsoft",

@@ -427,7 +427,7 @@ export const person = internalAction({
 });
 
 /** A short-lived Convex token for a sign-in, as the browser gets one. */
-async function tokenFor(ctx: ActionCtx, sessionToken: string): Promise<string | null> {
+export async function tokenFor(ctx: ActionCtx, sessionToken: string): Promise<string | null> {
   try {
     const auth = createAuth(ctx);
     const result = (await auth.api.getConvexToken({

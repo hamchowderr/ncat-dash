@@ -55,6 +55,10 @@ export default async function globalSetup() {
     ["MICROSOFT_CLIENT_SECRET", "stand-in-microsoft-secret"],
     ["MICROSOFT_LOGIN_URL", "http://127.0.0.1:8772/common"],
     ["MICROSOFT_GRAPH_URL", "http://127.0.0.1:8772/v1.0"],
+    // The Teams bot, with its token from the same stand-in.
+    ["TEAMS_APP_ID", "stand-in-teams-bot"],
+    ["TEAMS_APP_PASSWORD", "stand-in-teams-password"],
+    ["TEAMS_LOGIN_URL", "http://127.0.0.1:8772"],
     // Dropbox, as the Dropbox stand-in (e2e/dropbox-stand-in.mjs) plays it.
     ["DROPBOX_APP_KEY", "stand-in-dropbox-key"],
     ["DROPBOX_APP_SECRET", DROPBOX_SECRET],
