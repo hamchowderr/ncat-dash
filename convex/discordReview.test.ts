@@ -16,13 +16,22 @@ type Sent = { channel: string; content: string; users: string[]; id: string };
 let sent: Sent[] = [];
 let threads: { channel: string; message: string; name: string; id: string }[] = [];
 let nextId = 9000;
+// Whether the bot may make webhooks (Manage Webhooks) in the stand-in server.
+let webhooksAllowed = false;
+let webhooksMade = 0;
+type AsWriter = { thread: string | null; content: string; name: string; users: string[] };
+let asWriters: AsWriter[] = [];
 
 beforeEach(() => {
   process.env.DISCORD_API_URL = "https://discord.test/api";
   process.env.DISCORD_BOT_TOKEN = "discord-bot";
   process.env.MASTRA_JWT_SECRET = SECRET;
+  process.env.CONNECTIONS_SECRET ??= "a-test-secret-that-is-long-enough-1234";
   sent = [];
   threads = [];
+  webhooksAllowed = false;
+  webhooksMade = 0;
+  asWriters = [];
   vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
     const path = String(input).replace("https://discord.test/api", "");
     const body = init?.body ? JSON.parse(String(init.body)) : {};
@@ -32,6 +41,27 @@ beforeEach(() => {
         { id: "c-reviews", name: "reviews", type: 0, position: 2 },
         { id: "c-general", name: "general", type: 0, position: 1 },
       ]);
+    }
+    if (path === "/channels/c-reviews/webhooks" && init?.method === "POST") {
+      if (!webhooksAllowed) return new Response("Missing Permissions", { status: 403 });
+      webhooksMade += 1;
+      return Response.json({ id: "wh-1", token: "wh-secret" });
+    }
+    const hook = String(input).match(/\/webhooks\/wh-1\/wh-secret\?(.*)$/);
+    if (hook) {
+      const query = new URLSearchParams(hook[1]);
+      const id = `m-${++nextId}`;
+      asWriters.push({
+        thread: query.get("thread_id"),
+        content: body.content,
+        name: body.username,
+        users: body.allowed_mentions?.users ?? [],
+      });
+      // A webhook message in the channel is still a message a thread can start from.
+      if (!query.get("thread_id")) {
+        sent.push({ channel: "c-reviews", content: body.content, users: [], id });
+      }
+      return Response.json({ id });
     }
     const thread = path.match(/^\/channels\/([^/]+)\/messages\/([^/]+)\/threads$/);
     if (thread) {
@@ -271,6 +301,73 @@ describe("what the Discord channel hears", () => {
     );
     // Only the linked person is pinged.
     expect(post.users).toEqual(["202"]);
+  });
+
+  test("with Manage Webhooks, replies go under the writer's own name, and never come back", async () => {
+    webhooksAllowed = true;
+    const setup = await setUp();
+    const { t, jordan } = setup;
+    const { reviewId, clipId } = await openRoom(setup);
+    await settled(t);
+    const token = await jordan.as.mutation(api.reviewShares.set, {
+      reviewId,
+      allowVerdict: true,
+      showTeamComments: false,
+    });
+    const rootId = await t.mutation(api.sharedReview.comment, {
+      token,
+      guestId: "riley-browser-0001",
+      name: "Riley",
+      clipId,
+      body: "Shorter intro?",
+      time: 3,
+      version: 1,
+    });
+    await settled(t);
+    // The client's comment is posted as "Riley (client)", and still starts the thread.
+    expect(asWriters[0]).toMatchObject({ thread: null, name: "Riley (client)" });
+    expect(asWriters[0].content).toMatch(/^Commented on \[Weekly clips\]/);
+    const threadId = threads[0].id;
+    expect(threads[0].message).toBe(sent.at(-1)?.id);
+
+    await jordan.as.mutation(api.reviews.comment, {
+      clipId,
+      body: "On it.",
+      time: 0,
+      version: 1,
+      parentId: rootId,
+    });
+    await settled(t);
+    expect(asWriters.at(-1)).toEqual({
+      thread: threadId,
+      content: "On it.",
+      name: "Jordan Lee",
+      users: [],
+    });
+    // One webhook for the channel, made once and kept.
+    expect(webhooksMade).toBe(1);
+
+    // Discord shows the webhook's own posts in the thread too: those are not replies.
+    const echo = await discordReply(t, { threadId, discordUserId: "wh-1", text: "On it." });
+    expect(await echo.json()).toEqual({ kind: "ignored" });
+    const comments = await jordan.as.query(api.reviews.comments, { clipId });
+    expect(comments.filter((one) => one.body === "On it.")).toHaveLength(1);
+  });
+
+  test("without Manage Webhooks, the bot posts with the name in the words", async () => {
+    const setup = await setUp();
+    const { t, jordan } = setup;
+    const { clipId } = await openRoom(setup);
+    await settled(t);
+    await jordan.as.mutation(api.reviews.comment, {
+      clipId,
+      body: "@Dev Patel quick look?",
+      time: 2,
+      version: 1,
+    });
+    await settled(t);
+    expect(asWriters).toEqual([]);
+    expect(inServer().at(-1)?.content).toMatch(/^\*\*Jordan Lee\*\* mentioned <@202>/);
   });
 
   test("someone not linked is told their reply stays in Discord; other threads are left alone", async () => {

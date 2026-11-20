@@ -19,8 +19,11 @@ type Posted = {
   thread_ts: string | null;
   ts: string;
   user: string | null;
+  username: string | null;
 };
 let posted: Posted[] = [];
+// Whether the stand-in app has chat:write.customize (made from the newer manifest).
+let customize = false;
 let joined: string[] = [];
 let calls: string[] = [];
 let slackUsers: Record<string, { email?: string; name: string }> = {};
@@ -33,13 +36,21 @@ beforeEach(() => {
   joined = [];
   calls = [];
   slackUsers = {};
+  customize = false;
   vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
     const method = String(input).replace("https://slack.test/api/", "");
     const params = new URLSearchParams(String(init?.body ?? ""));
     calls.push(method);
     switch (method) {
       case "auth.test":
-        return Response.json({ ok: true, team_id: "T0SALT", team: "Salt House", user_id: "U0BOT" });
+        return Response.json(
+          { ok: true, team_id: "T0SALT", team: "Salt House", user_id: "U0BOT" },
+          {
+            headers: {
+              "x-oauth-scopes": `chat:write,users:read${customize ? ",chat:write.customize" : ""}`,
+            },
+          },
+        );
       case "conversations.list":
         return Response.json({
           ok: true,
@@ -61,6 +72,7 @@ beforeEach(() => {
           text: params.get("text") ?? "",
           thread_ts: params.get("thread_ts"),
           user: params.get("user"),
+          username: params.get("username"),
           ts,
         });
         return Response.json({ ok: true, ts });
@@ -300,6 +312,46 @@ describe("what the channel hears", () => {
     expect(posted.at(-1)?.text).toMatch(
       /^\*Riley\* \(client\) on <.*\|Weekly clips>: Approved the review\.$/,
     );
+  });
+
+  test("with chat:write.customize, replies go under the writer's own name", async () => {
+    customize = true;
+    const setup = await setUp();
+    const { t, jordan } = setup;
+    const { reviewId, clipId } = await openRoom(setup);
+    await settled(t);
+    // A new review is the dashboard's own news.
+    expect(posted[0].username).toBeNull();
+    const token = await jordan.as.mutation(api.reviewShares.set, {
+      reviewId,
+      allowVerdict: true,
+      showTeamComments: false,
+    });
+    const rootId = await t.mutation(api.sharedReview.comment, {
+      token,
+      guestId: "riley-browser-0001",
+      name: "Riley",
+      clipId,
+      body: "Shorter intro?",
+      time: 3,
+      version: 1,
+    });
+    await settled(t);
+    await jordan.as.mutation(api.reviews.comment, {
+      clipId,
+      body: "On it.",
+      time: 0,
+      version: 1,
+      parentId: rootId,
+    });
+    await settled(t);
+    expect(posted.slice(1).map((one) => [one.username, one.text.split("\n")[0]])).toEqual([
+      [
+        "Riley (client)",
+        `Commented on <http://localhost:3000/review/${reviewId}?clip=${clipId}&comment=${rootId}|Weekly clips>, Opening hello at 0:03:`,
+      ],
+      ["Jordan Lee", "On it."],
+    ]);
   });
 
   test("a mention tags the person in Slack; a teammate's own comment with nobody named stays in the room", async () => {

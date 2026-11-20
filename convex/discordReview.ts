@@ -1,16 +1,27 @@
 import { formatMoment } from "@ncat-dash/review-core";
 import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
-import { action, internalAction, internalMutation, internalQuery } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import {
+  type ActionCtx,
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
+import { decryptSecret, encryptSecret } from "./lib/crypto";
 import {
   type DiscordChannel,
+  type DiscordWebhook,
   discordBotReady,
+  makeWebhook,
+  postAsWebhook,
   postToChannel,
   startThread,
   textChannelsOf,
 } from "./lib/discordApi";
+import { speakerOf } from "./lib/reviewSpeaker";
 import { type ReviewPost, reviewPostValidator } from "./lib/slackPosts";
 
 // Review activity in the team's Discord channel, and replies written there coming back,
@@ -162,7 +173,13 @@ export const postContext = internalQuery({
               }),
           )
         : [];
+    const people = await ctx.runQuery(components.betterAuth.members.people, { organizationId });
+    const webhook =
+      server.reviewWebhook?.channelId === server.alertChannelId ? server.reviewWebhook : null;
     return {
+      serverId: server._id,
+      speaker: speakerOf(post, people),
+      webhook: webhook ? { id: webhook.id, tokenCipher: webhook.tokenCipher } : null,
       guildId: server.guildId,
       channelId: server.alertChannelId,
       reviewTitle: review.title,
@@ -209,6 +226,8 @@ export function postText(
     threadId: string | null;
   },
   tags: string[],
+  // Posted under the writer's own name, so the words leave it out.
+  asWriter = false,
 ): string {
   const query = new URLSearchParams();
   if (context.clipId) query.set("clip", context.clipId);
@@ -235,16 +254,29 @@ export function postText(
       }.`;
     }
     case "client_feedback":
+      if (asWriter) {
+        if (context.threadId) return discordEscape(post.body);
+        return post.commentId
+          ? `Commented on ${where}:\n${quoted(post.body)}`
+          : `On ${link}: ${discordEscape(post.body)}`;
+      }
       if (context.threadId) return `${from} (client): ${discordEscape(post.body)}`;
       return post.commentId
         ? `${from} (client) commented on ${where}:\n${quoted(post.body)}`
         : `${from} (client) on ${link}: ${discordEscape(post.body)}`;
     case "mention":
+      if (asWriter) {
+        if (context.threadId) return `${tagged}${discordEscape(post.body)}`;
+        return `Mentioned ${tags.length > 0 ? tags.join(" ") : "someone"} on ${where}:\n${quoted(
+          post.body,
+        )}`;
+      }
       if (context.threadId) return `${tagged}${from}: ${discordEscape(post.body)}`;
       return `${from} mentioned ${tags.length > 0 ? tags.join(" ") : "someone"} on ${where}:\n${quoted(
         post.body,
       )}`;
     case "team_reply":
+      if (asWriter) return discordEscape(post.body);
       return `${from}: ${discordEscape(post.body)}`;
   }
 }
@@ -259,12 +291,27 @@ export const post = internalAction({
     const tags = context.mentioned.map((one) =>
       one.discordUserId ? `<@${one.discordUserId}>` : `@${discordEscape(one.name)}`,
     );
+    // A teammate's or client's words go under their own name and picture, through the
+    // channel's webhook; anything that can't goes as the bot, with the name in the words.
+    const asWriter = async (where: { threadId?: string }): Promise<string | null> => {
+      if (!context.speaker) return null;
+      const webhook = await webhookFor(ctx, context);
+      if (!webhook) return null;
+      return await postAsWebhook(webhook, {
+        content: postText(args.post, context, tags, true),
+        name: context.speaker.name,
+        image: context.speaker.image,
+        threadId: where.threadId,
+        mention: ping,
+      });
+    };
     const text = postText(args.post, context, tags);
     if (context.threadId) {
-      await postToChannel(context.threadId, text, ping);
+      const sent = await asWriter({ threadId: context.threadId });
+      if (!sent) await postToChannel(context.threadId, text, ping);
       return;
     }
-    const messageId = await postToChannel(context.channelId, text, ping);
+    const messageId = (await asWriter({})) ?? (await postToChannel(context.channelId, text, ping));
     const commentId = "commentId" in args.post ? args.post.commentId : undefined;
     if (!messageId || !commentId) return;
     const name = context.clipTitle
@@ -280,6 +327,50 @@ export const post = internalAction({
         reviewId: args.post.reviewId,
         commentId,
       });
+    }
+  },
+});
+
+/** The review channel's webhook, made and kept the first time one is needed. */
+async function webhookFor(
+  ctx: ActionCtx,
+  context: {
+    serverId: Id<"discordServers">;
+    channelId: string;
+    webhook: { id: string; tokenCipher: string } | null;
+  },
+): Promise<DiscordWebhook | null> {
+  try {
+    if (context.webhook) {
+      return { id: context.webhook.id, token: await decryptSecret(context.webhook.tokenCipher) };
+    }
+    const made = await makeWebhook(context.channelId);
+    if (!made) return null;
+    await ctx.runMutation(internal.discordReview.rememberWebhook, {
+      serverId: context.serverId,
+      channelId: context.channelId,
+      id: made.id,
+      tokenCipher: await encryptSecret(made.token),
+    });
+    return made;
+  } catch (error) {
+    // The post still goes, as the bot.
+    console.error("[discord] the review channel's webhook could not be used", error);
+    return null;
+  }
+}
+
+export const rememberWebhook = internalMutation({
+  args: {
+    serverId: v.id("discordServers"),
+    channelId: v.string(),
+    id: v.string(),
+    tokenCipher: v.string(),
+  },
+  handler: async (ctx, { serverId, ...webhook }) => {
+    const server = await ctx.db.get(serverId);
+    if (server?.alertChannelId === webhook.channelId) {
+      await ctx.db.patch(serverId, { reviewWebhook: webhook });
     }
   },
 });
@@ -310,6 +401,12 @@ export const replyContext = internalQuery({
       .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
       .first();
     if (!thread) return null;
+    // What the dashboard itself copied in through the channel's webhook is not a reply.
+    const server = await ctx.db
+      .query("discordServers")
+      .withIndex("by_guild", (q) => q.eq("guildId", thread.guildId))
+      .first();
+    if (server?.reviewWebhook?.id === args.discordUserId) return null;
     const link = await ctx.db
       .query("discordPeople")
       .withIndex("by_discord_user", (q) =>
