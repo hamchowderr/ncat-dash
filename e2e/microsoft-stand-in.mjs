@@ -34,6 +34,8 @@ let user = MICROSOFT_USER;
 let files = [recording("past-1", "Client Kickoff", 2 * 24 * 60)];
 // Recordings of other people's meetings, in their OneDrive, shared with the account.
 let shared = [];
+// Recordings of meetings held in a Teams channel, in the channel's files (SharePoint).
+let channelFiles = [];
 const watches = new Map();
 // What the Teams bot posted.
 const posts = [];
@@ -87,6 +89,7 @@ const server = createServer(async (request, response) => {
     user = { ...MICROSOFT_USER, ...JSON.parse((await read(request)) || "{}") };
     files = [recording("past-1", "Client Kickoff", 2 * 24 * 60)];
     shared = [];
+    channelFiles = [];
     return send(response, 200, user);
   }
   if (path === "/stand-in/recording" && request.method === "POST") {
@@ -108,6 +111,53 @@ const server = createServer(async (request, response) => {
     const { id, topic, size } = JSON.parse(await read(request));
     shared.unshift({ ...recording(id, topic, 0), size });
     return send(response, 200, { shared: shared.length });
+  }
+  if (path === "/stand-in/channel-recording" && request.method === "POST") {
+    const { id, topic, size } = JSON.parse(await read(request));
+    channelFiles.unshift({ ...recording(id, topic, 0), size });
+    // Microsoft does not tell OneDrive watches about channel files; the dashboard looks
+    // every 15 minutes. To keep the test short, the stand-in nudges the watches instead.
+    for (const [subscriptionId, watch] of watches) {
+      await fetch(watch.notificationUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          value: [{ subscriptionId, clientState: watch.clientState, changeType: "updated" }],
+        }),
+      });
+    }
+    return send(response, 200, { watches: watches.size });
+  }
+  if (path === "/v1.0/me/joinedTeams") {
+    return send(response, 200, { value: [{ id: "team-video", displayName: "Video team" }] });
+  }
+  if (path === "/v1.0/teams/team-video/channels") {
+    return send(response, 200, {
+      value: [
+        { id: "19:general", displayName: "General" },
+        { id: "19:edits", displayName: "Edits" },
+      ],
+    });
+  }
+  if (path.startsWith("/v1.0/teams/team-video/channels/") && path.endsWith("/filesFolder")) {
+    return send(response, 200, {
+      id: "folder-channel",
+      name: "Channel",
+      folder: {},
+      parentReference: { driveId: "drive-team" },
+    });
+  }
+  if (path === "/v1.0/drives/drive-team/items/folder-channel:/Recordings:/children") {
+    return send(response, 200, { value: channelFiles });
+  }
+  if (path.startsWith("/v1.0/drives/drive-team/items/")) {
+    const id = decodeURIComponent(path.slice("/v1.0/drives/drive-team/items/".length));
+    const file = channelFiles.find((one) => one.id === id);
+    if (!file) return send(response, 404, { error: { code: "itemNotFound" } });
+    return send(response, 200, {
+      ...file,
+      "@microsoft.graph.downloadUrl": "http://127.0.0.1:8766/clip.webm",
+    });
   }
   if (path === "/v1.0/me") return send(response, 200, user);
   if (path.startsWith("/v1.0/me/drive/search(")) {

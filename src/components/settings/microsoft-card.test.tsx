@@ -8,7 +8,7 @@ import { renderInApp, TEAM } from "@/test/render";
 
 import { MicrosoftCard } from "./microsoft-card";
 
-const empty = { ready: true, me: null, others: [], imports: [] };
+const empty = { ready: true, me: null, others: [], imports: [], channels: [] };
 const connected = {
   ready: true,
   me: {
@@ -19,7 +19,9 @@ const connected = {
     needsReconnect: false,
     includeShared: false,
     sharedGranted: false,
+    channelsGranted: false,
   },
+  channels: [] as { _id: string; teamName: string; channelName: string; since: number }[],
   others: [{ msName: "Maya O", memberName: "Maya Ortiz" }],
   imports: [
     {
@@ -239,5 +241,82 @@ describe("the Microsoft 365 card", () => {
     await waitFor(() =>
       expect(toastSuccess).toHaveBeenCalledWith("Meetings shared with you now come in too"),
     );
+  });
+
+  test("channel meetings: the first time asks Microsoft to read your teams", async () => {
+    answerQuery(api.microsoft.forTeam, connected);
+    actionOf(api.microsoft.pastRecordings).mockResolvedValue([]);
+    const start = mutationOf(api.microsoft.startLink);
+    start.mockResolvedValue("https://login.test/authorize?state=abc");
+    const assign = vi.fn();
+    vi.spyOn(window, "location", "get").mockReturnValue({
+      ...window.location,
+      assign,
+    } as Location);
+    renderInApp(<MicrosoftCard />);
+    const section = screen.getByRole("region", { name: "Channel meetings" });
+    expect(section).toHaveTextContent(/saved to the channel's files/);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Choose channels" }));
+    expect(start).toHaveBeenCalledWith({ organizationId: TEAM.id, channels: true });
+    await waitFor(() => expect(assign).toHaveBeenCalled());
+    vi.restoreAllMocks();
+  });
+
+  test("picking a channel brings its meetings in; a picked one can be stopped", async () => {
+    answerQuery(api.microsoft.forTeam, {
+      ...connected,
+      me: { ...connected.me, channelsGranted: true },
+      channels: [
+        {
+          _id: "c1",
+          teamName: "Video team",
+          channelName: "General",
+          since: Date.UTC(2026, 10, 19),
+        },
+      ],
+    });
+    actionOf(api.microsoft.pastRecordings).mockResolvedValue([]);
+    actionOf(api.microsoft.teamChannels).mockResolvedValue([
+      {
+        teamId: "team-video",
+        teamName: "Video team",
+        channels: [
+          { id: "19:general", name: "General" },
+          { id: "19:edits", name: "Edits" },
+        ],
+      },
+    ]);
+    const watch = actionOf(api.microsoft.watchChannel);
+    watch.mockResolvedValue({ ok: true });
+    const stop = mutationOf(api.microsoft.unwatchChannel);
+    stop.mockResolvedValue(null);
+    renderInApp(<MicrosoftCard />);
+    expect(screen.getByText("Video team › General")).toBeInTheDocument();
+    const select = screen.getByRole("combobox", { name: "Add a channel" });
+    await waitFor(() => expect(select).toBeEnabled());
+    const user = userEvent.setup();
+    await user.click(select);
+    // A channel already picked is not offered again.
+    expect(screen.queryByRole("option", { name: "Video team › General" })).toBeNull();
+    await user.click(screen.getByRole("option", { name: "Video team › Edits" }));
+    expect(watch).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      teamId: "team-video",
+      teamName: "Video team",
+      channelId: "19:edits",
+      channelName: "Edits",
+    });
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Recordings from Edits now come in"),
+    );
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+    expect(stop).toHaveBeenCalledWith({ organizationId: TEAM.id, channelRowId: "c1" });
+  });
+
+  test("coming back after allowing channels says to pick them", () => {
+    window.history.replaceState(null, "", "/settings/microsoft?microsoft=channels");
+    answerQuery(api.microsoft.forTeam, empty);
+    renderInApp(<MicrosoftCard />);
+    expect(toastSuccess).toHaveBeenCalledWith("Now pick the channels to bring in");
   });
 });
