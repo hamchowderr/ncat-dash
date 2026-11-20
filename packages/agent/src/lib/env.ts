@@ -160,6 +160,12 @@ const envSchema = z
     DISCORD_PUBLIC_KEY: z.string().optional(),
     // A stand-in Discord API for tests and local runs. Left out, Discord itself.
     DISCORD_API_URL: z.string().url().optional(),
+    // The dashboard's one Microsoft Teams bot: the Azure Bot's Microsoft app id and a
+    // client secret of that app, and for a bot that serves one Microsoft organization
+    // its tenant id. Left out, the agent is not in Teams.
+    TEAMS_APP_ID: z.string().optional(),
+    TEAMS_APP_PASSWORD: z.string().optional(),
+    TEAMS_APP_TENANT_ID: z.string().optional(),
 
     USE_AIMOCK: boolish.default(false),
     AIMOCK_URL: z.string().url().default('http://localhost:4010'),

@@ -1,0 +1,158 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const env = vi.hoisted(() => ({
+  CONVEX_URL: undefined as string | undefined,
+  CONVEX_SITE_URL: undefined as string | undefined,
+  MASTRA_JWT_SECRET: undefined as string | undefined,
+  SLACK_API_URL: undefined as string | undefined,
+  DISCORD_BOT_TOKEN: undefined as string | undefined,
+  DISCORD_APPLICATION_ID: undefined as string | undefined,
+  DISCORD_PUBLIC_KEY: undefined as string | undefined,
+  DISCORD_API_URL: undefined as string | undefined,
+  TEAMS_APP_ID: undefined as string | undefined,
+  TEAMS_APP_PASSWORD: undefined as string | undefined,
+  TEAMS_APP_TENANT_ID: undefined as string | undefined,
+}));
+vi.mock('../../src/lib/env', () => ({ env }));
+
+import { TURN_USER_KEY } from '../../src/mastra/lib/turn-user';
+import { byPlatform, chatChannels } from '../../src/mastra/ncat/channels';
+import { forgetSessions, sessionOf } from '../../src/mastra/ncat/session-store';
+import {
+  asTheTeamsWriter,
+  questionFor,
+  refusalText,
+  type TeamsPerson,
+  teamsReady,
+  useDashboardForTests,
+} from '../../src/mastra/ncat/teams';
+
+// The agent in Microsoft Teams, on the dashboard's one bot: who wrote (their Microsoft
+// account and organization), which Teams team it was in, and that the agent acts as them.
+
+afterEach(() => {
+  useDashboardForTests();
+  forgetSessions();
+  for (const key of Object.keys(env) as (keyof typeof env)[]) env[key] = undefined;
+});
+
+const IN_A_CHANNEL = {
+  serviceUrl: 'https://smba.trafficmanager.net/amer/',
+  from: { id: '29:abc', aadObjectId: 'aad-ada' },
+  conversation: { id: '19:edits@thread.tacv2', tenantId: 'tenant-1' },
+  channelData: { tenant: { id: 'tenant-1' }, team: { id: '19:team@thread.tacv2', name: 'Video team' } },
+};
+
+function message(raw: object = IN_A_CHANNEL, isBot = false) {
+  return { raw, author: { userId: '29:abc', isBot, isMe: false } } as never;
+}
+function thread(id = 'teams:abc:def') {
+  return { id, post: vi.fn(async () => undefined) };
+}
+function context() {
+  const values = new Map<string, unknown>();
+  return { requestContext: { set: (k: string, v: unknown) => values.set(k, v) }, values };
+}
+const ADA: TeamsPerson = {
+  ok: true,
+  userId: 'u1',
+  name: 'Ada',
+  organizationId: 'team_1',
+  convexToken: 'jwt-ada',
+};
+
+describe('what the dashboard is asked about a Teams message', () => {
+  it('names the Microsoft account, organization and the Teams team it was in', () => {
+    expect(questionFor(IN_A_CHANNEL)).toEqual({
+      tenantId: 'tenant-1',
+      aadObjectId: 'aad-ada',
+      teamId: '19:team@thread.tacv2',
+      teamName: 'Video team',
+      serviceUrl: 'https://smba.trafficmanager.net/amer/',
+    });
+  });
+
+  it('leaves the team out of a direct message, and gives up without an account', () => {
+    expect(
+      questionFor({
+        from: { aadObjectId: 'aad-ada' },
+        channelData: { tenant: { id: 'tenant-1' } },
+      }),
+    ).toEqual({ tenantId: 'tenant-1', aadObjectId: 'aad-ada' });
+    expect(questionFor({ from: {} })).toBeNull();
+    expect(questionFor(undefined)).toBeNull();
+  });
+});
+
+describe('who the agent works for in Teams', () => {
+  it('acts as the linked teammate who wrote', async () => {
+    const asked: Record<string, string>[] = [];
+    useDashboardForTests(async (body) => {
+      asked.push(body);
+      return ADA;
+    });
+    const t = thread();
+    const ctx = context();
+    const next = vi.fn(async () => undefined);
+    await asTheTeamsWriter(t as never, message(), next, ctx as never);
+    expect(asked[0]).toMatchObject({ tenantId: 'tenant-1', aadObjectId: 'aad-ada' });
+    expect(next).toHaveBeenCalledOnce();
+    const resource = `channel:${t.id}`;
+    expect(ctx.values.get(TURN_USER_KEY)).toBe(resource);
+    expect(sessionOf(resource)).toMatchObject({ convexToken: 'jwt-ada', organizationId: 'team_1' });
+  });
+
+  it('tells someone who has not linked their Microsoft account how to, and does nothing else', async () => {
+    useDashboardForTests(async () => ({ ok: false, reason: 'not_linked' }));
+    const t = thread();
+    const next = vi.fn();
+    await asTheTeamsWriter(t as never, message(), next, context() as never);
+    expect(next).not.toHaveBeenCalled();
+    expect(t.post).toHaveBeenCalledWith(expect.stringContaining('Link my Microsoft account'));
+  });
+
+  it("passes on the dashboard's own words when it says no", async () => {
+    const said = 'Your free trial has ended, so nothing new starts.';
+    useDashboardForTests(async () => ({ ok: false, reason: 'refused', message: said }));
+    const t = thread();
+    await asTheTeamsWriter(t as never, message(), vi.fn(), context() as never);
+    expect(t.post).toHaveBeenCalledWith(said);
+  });
+
+  it('ignores bots, and says so plainly when it cannot tell who wrote', async () => {
+    const asked = vi.fn(async () => ADA);
+    useDashboardForTests(asked);
+    const t = thread();
+    await asTheTeamsWriter(t as never, message(IN_A_CHANNEL, true), vi.fn(), context() as never);
+    expect(t.post).not.toHaveBeenCalled();
+    await asTheTeamsWriter(t as never, message({}), vi.fn(), context() as never);
+    expect(asked).not.toHaveBeenCalled();
+    expect(t.post).toHaveBeenCalledWith(expect.stringContaining("can't reach the dashboard"));
+  });
+
+  it('every refusal is in plain words', () => {
+    expect(refusalText({ ok: false, reason: 'not_connected' })).toMatch(/not linked to a team/);
+    expect(refusalText(ADA)).toBe('');
+  });
+});
+
+describe('which chat app a message goes through', () => {
+  it('sends a Teams thread to the Teams writer check', async () => {
+    useDashboardForTests(async () => ({ ok: false, reason: 'not_connected' }));
+    const t = thread('teams:abc:def');
+    await byPlatform(t as never, message(), vi.fn(), context() as never);
+    expect(t.post).toHaveBeenCalledWith(expect.stringContaining('not linked to a team'));
+  });
+
+  it('is in Teams only with a bot, the shared secret and the dashboard address', () => {
+    expect(teamsReady()).toBe(false);
+    expect(chatChannels()).toBeUndefined();
+    env.TEAMS_APP_ID = 'c4d4ec4e-0000-0000-0000-000000000001';
+    env.TEAMS_APP_PASSWORD = 'a-bot-password';
+    env.MASTRA_JWT_SECRET = 'the-agent-shared-secret-of-at-least-32-chars';
+    env.CONVEX_SITE_URL = 'https://site.test';
+    expect(teamsReady()).toBe(true);
+    env.TEAMS_APP_TENANT_ID = '11111111-2222-3333-4444-555555555555';
+    expect(Object.keys(chatChannels()?.adapters ?? {})).toContain('teams');
+  });
+});

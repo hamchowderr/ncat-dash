@@ -934,6 +934,58 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_nonce", ["nonce"]),
 
+  // The Microsoft organization (Entra tenant) a team linked for the agent in Microsoft
+  // Teams. The bot is the deployment's (TEAMS_APP_* env here and on the agent server),
+  // never a team's. One organization belongs to one team. Alerts can post to one channel.
+  teamsTenants: defineTable({
+    organizationId: v.string(),
+    tenantId: v.string(),
+    tenantName: v.string(),
+    addedBy: v.string(),
+    addedAt: v.number(),
+    alertConversationId: v.optional(v.string()),
+    alertServiceUrl: v.optional(v.string()),
+    alertChannelName: v.optional(v.string()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_tenant", ["tenantId"]),
+
+  // Teams (Microsoft Teams' own teams) the bot was seen in, so Settings can offer their
+  // channels for alerts. Recorded when someone writes to the agent there.
+  teamsTeams: defineTable({
+    organizationId: v.string(),
+    tenantId: v.string(),
+    teamId: v.string(),
+    teamName: v.string(),
+    serviceUrl: v.string(),
+    seenAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_team", ["teamId"]),
+
+  // A team member's own Microsoft account, linked by signing in once (or found from their
+  // Microsoft 365 connection). Teams says who wrote by their Entra object id.
+  teamsPeople: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    aadObjectId: v.string(),
+    name: v.string(),
+    linkedAt: v.number(),
+    sessionToken: v.optional(v.string()),
+    sessionExpiresAt: v.optional(v.number()),
+  })
+    .index("by_aad_user", ["aadObjectId", "organizationId"])
+    .index("by_member", ["organizationId", "userId"]),
+
+  // A Microsoft sign-in for Teams someone started from Settings.
+  teamsLinkStarts: defineTable({
+    nonce: v.string(),
+    organizationId: v.string(),
+    userId: v.string(),
+    kind: v.union(v.literal("organization"), v.literal("person")),
+    createdAt: v.number(),
+  }).index("by_nonce", ["nonce"]),
+
   // A team member's own Zoom account, connected from Settings so the cloud recordings of
   // meetings they host come into the team's uploads. The dashboard has ONE Zoom app, set
   // up once by whoever runs it (ZOOM_* env). One Zoom account belongs to one team. The
