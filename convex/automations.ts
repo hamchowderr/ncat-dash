@@ -35,7 +35,7 @@ import {
 import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { authComponent } from "./auth";
+import { getCaller } from "./lib/caller";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
@@ -1047,7 +1047,7 @@ export const nodeTypes = query({
   args: { type: v.optional(v.string()), organizationId: v.optional(v.string()) },
   returns: v.object({ index: v.optional(v.string()), type: v.optional(v.any()) }),
   handler: async (ctx, args) => {
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     if (!user) fail("unauthenticated", "Sign in first.");
     if (args.organizationId) await requireMember(ctx, args.organizationId);
     if (!args.type) return { index: nodeTypeIndex() };
@@ -1066,7 +1066,7 @@ export const platformGuide = query({
   args: { platforms: v.optional(v.array(v.string())) },
   returns: v.object({ text: v.string(), unknown: v.array(v.string()) }),
   handler: async (ctx, args) => {
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     if (!user) fail("unauthenticated", "Sign in first.");
     return platformGuideText(args.platforms?.slice(0, 30));
   },

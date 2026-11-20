@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
-import { authComponent } from "./auth";
+import { getCaller } from "./lib/caller";
 import { isMember, MANAGER_ROLES, requireMember } from "./lib/authz";
 import {
   type DeliverableStatus,
@@ -328,7 +328,7 @@ export const addVersion = mutation({
   args: { deliverableId: v.id("deliverables"), url: v.string() },
   handler: async (ctx, args) => {
     const { slot, userId } = await loadSlot(ctx, args.deliverableId);
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     await putInSlot(ctx, slot, args.url.trim(), {
       userId,
       name: user?.name?.trim() || "Someone",

@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 import { components } from "../_generated/api";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { authComponent } from "../auth";
+import { getCaller } from "./caller";
 import { withTeamSteps } from "./teamSteps";
 
 export type TeamRole = "owner" | "admin" | "member";
@@ -19,7 +19,7 @@ export async function requireMember(
   organizationId: string,
   allowedRoles?: TeamRole[],
 ): Promise<{ userId: string; role: TeamRole }> {
-  const user = await authComponent.safeGetAuthUser(ctx);
+  const user = await getCaller(ctx);
   if (!user) throw new ConvexError({ code: "unauthenticated", message: "Sign in first." });
 
   const role = (await ctx.runQuery(components.betterAuth.members.roleFor, {

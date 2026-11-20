@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import { authComponent } from "./auth";
+import { getCaller } from "./lib/caller";
 import { type TourId, tourIdValidator } from "./lib/tours";
 
 // Whether someone has been through one of the guided tours: the dashboard's, which starts
@@ -10,7 +10,7 @@ import { type TourId, tourIdValidator } from "./lib/tours";
 const tourId = tourIdValidator;
 
 async function requireUser(ctx: QueryCtx | MutationCtx) {
-  const user = await authComponent.safeGetAuthUser(ctx);
+  const user = await getCaller(ctx);
   if (!user) throw new ConvexError({ code: "unauthenticated", message: "Sign in first." });
   return user._id as string;
 }
