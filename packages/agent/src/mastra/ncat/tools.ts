@@ -365,6 +365,92 @@ export const setUpFollowOn = createTool({
   },
 });
 
+const reviewInput = z
+  .object({
+    on: z.boolean().optional(),
+    reviewers: z
+      .array(z.string())
+      .optional()
+      .describe("User ids of who decides (the team from describe_automation). Empty: anyone on the team."),
+    timeLimit: z
+      .number()
+      .min(0)
+      .optional()
+      .describe("Decide by itself after this long, 6 days at most. 0 waits until someone decides."),
+    timeLimitUnit: z.enum(["hours", "days"]).optional(),
+    whenTimeUp: z.enum(["reject", "approve"]).optional(),
+  })
+  .optional();
+
+export const describeWorkflow = createTool({
+  id: "describe_workflow",
+  description:
+    "The workflow an automation is part of: its kind of work, client, whether it is on, who reviews, and its automations with where the review happens. When it is in none, what one made from its chain would start with.",
+  inputSchema: z.object({ automationId }),
+  execute: async (input, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    const id = need(input.automationId, workingAutomationOf(session));
+    try {
+      return await client.query(dash.workflows.describeFor, { automationId: id });
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+export const setUpWorkflow = createTool({
+  id: "set_up_workflow",
+  description:
+    "Make an automation's chain (it and every automation linked to it) one workflow, or change the workflow it is in: name, kind of work, client, and its one review. While the review is on, Approval steps inside the chain are passed through and one review happens just before the last automations' files go out. Leave out what should stay as it is.",
+  inputSchema: z.object({
+    automationId,
+    name: z.string().min(1).max(80).optional(),
+    kind: z
+      .enum(["client", "ugc", "own", "quick"])
+      .optional()
+      .describe(
+        "client: client work. ugc: UGC and ads. own: the person's own content. quick: a quick personal job, with no review. Changing it brings that kind's review on or off unless review.on is given too.",
+      ),
+    clientId: z.string().nullable().optional().describe("One of the team's clients, or null for the team."),
+    review: reviewInput,
+  }),
+  execute: async (input, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    const id = need(input.automationId, workingAutomationOf(session));
+    try {
+      return await client.mutation(dash.workflows.setUp, {
+        automationId: id,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.kind !== undefined ? { kind: input.kind } : {}),
+        ...(input.clientId !== undefined ? { clientId: input.clientId } : {}),
+        ...(input.review !== undefined ? { review: input.review } : {}),
+      });
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+export const switchWorkflow = createTool({
+  id: "switch_workflow",
+  description:
+    "Switch every automation in a workflow on or off together. Switching on refuses, naming the automation, while one of them has a problem.",
+  inputSchema: z.object({
+    workflowId: z.string().min(1).describe("From describe_workflow or set_up_workflow."),
+    on: z.boolean(),
+  }),
+  outputSchema: z.object({ workflowId: z.string(), on: z.boolean() }),
+  execute: async (input, ctx) => {
+    const { client } = dashFor(userOf(ctx));
+    try {
+      await client.mutation(dash.workflows.setOn, { workflowId: input.workflowId, on: input.on });
+      return { workflowId: input.workflowId, on: input.on };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
 export const listUploads = createTool({
   id: "list_uploads",
   description:
@@ -673,6 +759,9 @@ export const ncatTools = {
   create_automation: createAutomation,
   switch_automation: switchAutomation,
   set_up_follow_on: setUpFollowOn,
+  describe_workflow: describeWorkflow,
+  set_up_workflow: setUpWorkflow,
+  switch_workflow: switchWorkflow,
   list_uploads: listUploads,
   try_automation: tryAutomation,
   check_run: checkRun,
@@ -688,6 +777,7 @@ export const ncatTools = {
 export const NCAT_READ_TOOLS = [
   "dash_overview",
   "describe_automation",
+  "describe_workflow",
   "list_step_types",
   "platform_guide",
   "list_uploads",
@@ -702,6 +792,7 @@ export const NCAT_EDIT_TOOLS = [
   "change_automation",
   "create_automation",
   "set_up_follow_on",
+  "set_up_workflow",
   "make_folder",
 ] as const;
 
@@ -721,6 +812,7 @@ How to work:
 - Report a try in plain words: which file it ran on, what each step made (how many clips, for example), and any step that failed and why. Link to the run with the address try_automation returned, like [See the run](/automations/.../runs/...).
 ${TEAM_STEP_INSTRUCTIONS}
 - Automations can start other automations: a Run an automation step, or a trigger that starts one when another finishes. When describe_automation lists followOns for an automation you built or the person is looking at, mention the one or two that fit what they make, in a sentence, and set one up with set_up_follow_on if they want it. Never set one up without being asked; it switches itself on.
+- Workflows: automations linked into a chain can be one workflow with a single review just before the last files go out, instead of an Approval step in each piece. When the person asks for one review for the whole chain, wants to say who a chain is for, or asks to switch a whole chain on, use describe_workflow and set_up_workflow. Client work, UGC and their own content come with the review on; a quick personal job without. Ask which kind it is when you cannot tell. switch_workflow switches all of a chain's automations together.
 - Only switch an automation on when the person asked for it to run, and it has no problems.
 - Say what you built in plain words: what starts it and what each step does. No ids, no JSON, no jargon unless they ask. After making a new automation, link to it with the address create_automation returned, like [Open it](/automations/...).
 ${LIBRARY_INSTRUCTIONS}

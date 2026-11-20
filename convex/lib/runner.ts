@@ -27,6 +27,7 @@ import {
   getPlatform,
   tooShortFor,
   graphProblem,
+  isWorkflowReview,
   type NodeStatus,
   nodeTypeOf,
   parseSilences,
@@ -70,6 +71,7 @@ import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
 import { refusalFor } from "./access";
+import { workflowRunGraph } from "./workflows";
 
 // One step may fan out over this many incoming files at most.
 const MAX_JOBS_PER_STEP = 100;
@@ -107,6 +109,14 @@ export async function startRun(
   const { parent, project } = options;
   // A project's client wins over the automation's own, so the run is for the right client.
   const clientId = project ? project.clientId : automation.clientId;
+  // A workflow's review, when the automation is part of one, is added to the run's steps.
+  const graph = await workflowRunGraph(
+    ctx,
+    automation,
+    automation.nodes,
+    automation.edges,
+    options.test !== undefined,
+  );
 
   const runId = await ctx.db.insert("runs", {
     organizationId: automation.organizationId,
@@ -117,13 +127,14 @@ export async function startRun(
     // A Drive or Dropbox share link the trigger handed over becomes its download link,
     // so every step, and the run page, works with the file itself.
     trigger: withDownloadLinks(trigger),
-    nodes: automation.nodes,
-    edges: automation.edges,
+    nodes: graph.nodes,
+    edges: graph.edges,
     error: null,
     startedBy,
     finishedAt: null,
     ...(options.test ? { test: options.test } : {}),
     ...(clientId ? { clientId } : {}),
+    ...(graph.workflowId ? { workflowId: graph.workflowId } : {}),
     ...(project
       ? {
           projectId: project.projectId,
@@ -138,7 +149,7 @@ export async function startRun(
         }
       : {}),
   });
-  for (const node of automation.nodes) {
+  for (const node of graph.nodes) {
     await ctx.db.insert("runSteps", {
       runId,
       organizationId: automation.organizationId,
@@ -255,6 +266,18 @@ async function startNode(
       finishedAt: now,
     });
     return;
+  }
+
+  // A workflow's review is for files that go out, so a run that already failed skips it.
+  if (isWorkflowReview(node)) {
+    const failed = [...byNode.values()].some(
+      (other) =>
+        other.status === "failed" && !failsOver(other.nodeId, run.edges as AutomationEdge[]),
+    );
+    if (failed) {
+      await ctx.db.patch(step._id, { status: "skipped", startedAt: now, finishedAt: now });
+      return;
+    }
   }
 
   if (node.kind === "approval") {

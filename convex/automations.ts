@@ -1019,25 +1019,37 @@ export const setEnabled = mutation({
   args: { automationId: v.id("automations"), enabled: v.boolean() },
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
-    if (args.enabled) {
-      const problem =
-        automationProblem(
-          automation.trigger,
-          automation.nodes,
-          automation.edges,
-          await brandOf(ctx, automation.organizationId, automation.clientId),
-        ) ??
-        (await storageProblem(ctx, automation.organizationId, automation.trigger)) ??
-        (await linkProblem(ctx, automation, automation));
-      if (problem) fail("invalid_input", problem);
-    }
-    await ctx.db.patch(args.automationId, {
-      enabled: args.enabled,
-      nextRunAt: scheduledNext(automation.trigger, args.enabled),
-      watchFrom: watchStart(automation, automation.trigger, args.enabled),
-    });
+    await switchAutomation(ctx, automation, args.enabled);
   },
 });
+
+/**
+ * Switches an automation on or off. Switching on refuses, in plain words, while something
+ * stops it running. Workflows switch all of theirs this way too.
+ */
+export async function switchAutomation(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  enabled: boolean,
+): Promise<void> {
+  if (enabled) {
+    const problem =
+      automationProblem(
+        automation.trigger,
+        automation.nodes,
+        automation.edges,
+        await brandOf(ctx, automation.organizationId, automation.clientId),
+      ) ??
+      (await storageProblem(ctx, automation.organizationId, automation.trigger)) ??
+      (await linkProblem(ctx, automation, automation));
+    if (problem) fail("invalid_input", problem);
+  }
+  await ctx.db.patch(automation._id, {
+    enabled,
+    nextRunAt: scheduledNext(automation.trigger, enabled),
+    watchFrom: watchStart(automation, automation.trigger, enabled),
+  });
+}
 
 /** Deletes the automation. Its past runs stay in the run history. */
 export const remove = mutation({

@@ -604,6 +604,8 @@ export default defineSchema({
     // The automations whose runs led to this one, the first one first, this one last. A
     // run never starts one of them again, nor goes deeper than MAX_CHAIN_DEPTH.
     chain: v.optional(v.array(v.id("automations"))),
+    // The workflow the automation was part of when the run started, when its review was on.
+    workflowId: v.optional(v.id("workflows")),
     // The client the automation was for when the run started.
     clientId: v.optional(v.id("clients")),
     // The project the run works for, and the slot it started from. Its finished files
@@ -1700,6 +1702,27 @@ export default defineSchema({
     // Where its finished files go, inside the team's folder. Left out: Clients/<name>/.
     deliveryFolder: v.optional(v.string()),
     createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
+  // A workflow: a chain of linked automations with a name, a kind of work, a client, and
+  // one review for the whole chain (automation-core workflows.ts). The automations are
+  // the chain around those stored here, so links made later join it by themselves.
+  workflows: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    kind: v.union(v.literal("client"), v.literal("ugc"), v.literal("own"), v.literal("quick")),
+    automationIds: v.array(v.id("automations")),
+    clientId: v.optional(v.id("clients")),
+    // Same settings as an Approval step, plus whether the review happens at all.
+    review: v.object({
+      on: v.boolean(),
+      reviewers: v.array(v.string()),
+      timeLimit: v.optional(v.number()),
+      timeLimitUnit: v.optional(v.union(v.literal("hours"), v.literal("days"))),
+      whenTimeUp: v.optional(v.union(v.literal("reject"), v.literal("approve"))),
+    }),
+    createdBy: v.string(),
+    updatedAt: v.number(),
   }).index("by_organization", ["organizationId"]),
 
   // A project: one piece of work, such as an episode, with a slot for each thing to
