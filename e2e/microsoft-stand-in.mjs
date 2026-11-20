@@ -39,6 +39,7 @@ let channelFiles = [];
 const watches = new Map();
 // What the Teams bot posted.
 const posts = [];
+const STARTED = Date.now().toString(36);
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", MICROSOFT);
@@ -78,8 +79,11 @@ const server = createServer(async (request, response) => {
     });
   }
   if (path.startsWith("/bot/v3/conversations/") && request.method === "POST") {
-    posts.push({ path, method: "POST", body: JSON.parse(await read(request)) });
-    return send(response, 201, { id: String(posts.length) });
+    // Ids carry when the stand-in started: the local Convex database outlives it, and a
+    // thread remembered from an earlier run must not answer to the same id.
+    const id = `${STARTED}-${posts.length + 1}`;
+    posts.push({ path, method: "POST", body: JSON.parse(await read(request)), id });
+    return send(response, 201, { id });
   }
   // Changing a message the bot posted, such as an approval card once it is decided.
   if (path.startsWith("/bot/v3/conversations/") && request.method === "PUT") {
