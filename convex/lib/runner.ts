@@ -58,7 +58,7 @@ import { components, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { notify } from "./alerts";
-import { runEnded, startAutomationStep, startingFiles } from "./chain";
+import { earlierFiles, runEnded, startAutomationStep, startingFiles } from "./chain";
 import { cutListOf } from "./exports";
 import { collectUrls } from "./outputs";
 import { captionSetupOf } from "./captions";
@@ -200,7 +200,9 @@ export function filesFor(
   const levels = stepsBefore(node.id, run.edges as AutomationEdge[]).map((ids) =>
     ids.flatMap((id) => outputsToward(byNode.get(id), node, run)),
   );
-  return chooseFiles(kind, [...levels, triggerFiles(run.trigger)]);
+  // A run another one started also has that run's earlier files, nearest first, for a
+  // step that wants a kind of file the other run did not finish with.
+  return chooseFiles(kind, [...levels, triggerFiles(run.trigger), ...earlierFiles(run.trigger)]);
 }
 
 export async function failStep(

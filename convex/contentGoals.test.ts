@@ -153,6 +153,35 @@ describe("turning on the ready-made automations that fit", () => {
     expect(versions).toHaveLength(1);
   });
 
+  test("wires a follow-on to start after what it follows, whatever order it is sent in", async () => {
+    const { t, team, owner } = await setUp();
+    const made = await owner.as.mutation(api.contentGoals.turnOn, {
+      organizationId: team,
+      starterIds: ["clips-from-episode", "recording-pack"],
+    });
+    expect(made.map((each) => [each.starterId, each.on])).toEqual([
+      ["recording-pack", true],
+      ["clips-from-episode", true],
+    ]);
+    const followOn = await t.run((ctx) => ctx.db.get(made[1].automationId!));
+    expect(followOn?.trigger).toEqual({
+      kind: "finished",
+      automationId: made[0].automationId,
+      when: "done",
+    });
+    expect(followOn?.starterId).toBe("clips-from-episode");
+  });
+
+  test("leaves a follow-on off when the team has nothing it follows", async () => {
+    const { team, owner } = await setUp();
+    const [made] = await owner.as.mutation(api.contentGoals.turnOn, {
+      organizationId: team,
+      starterIds: ["clips-from-episode"],
+    });
+    expect(made.on).toBe(false);
+    expect(made.problem).not.toBeNull();
+  });
+
   test("uses the app picked for clips", async () => {
     const { t, team, owner } = await setUp();
     await owner.as.mutation(api.contentGoals.save, {

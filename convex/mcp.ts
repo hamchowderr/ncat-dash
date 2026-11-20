@@ -81,6 +81,25 @@ const TOOLS: McpTool[] = [
     readOnly: false,
   },
   {
+    name: "set_up_follow_on",
+    title: "Set up a follow-on automation",
+    description:
+      "Makes one of the ready-made follow-ons that describe_automation lists under followOns, wired to start by itself when that automation finishes. It is switched on straight away unless something it needs is missing, which problem then says. Returns its id and dashboard address.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        automation_id: automationId,
+        follow_on: {
+          type: "string",
+          description: "The id of a follow-on from describe_automation's followOns.",
+        },
+      },
+      required: ["automation_id", "follow_on"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+  },
+  {
     name: "change_automation",
     title: "Change an automation",
     description:
@@ -437,6 +456,22 @@ async function callTool(
           name: named,
         });
         return { automation_id: id, address: automationLink(id) };
+      }
+      case "set_up_follow_on": {
+        const followOn = text(args.follow_on);
+        if (!followOn) throw new ToolSaid("follow_on is needed. describe_automation lists them.");
+        const made = await ctx.runMutation(internal.automations.setUpFollowOnAs, {
+          organizationId,
+          userId,
+          automationId: automation(),
+          starterId: followOn,
+        });
+        return {
+          automation_id: made.automationId,
+          address: automationLink(made.automationId),
+          on: made.on,
+          problem: made.problem,
+        };
       }
       case "change_automation": {
         const id = automation();
