@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   type ChainMember,
+  chainGroup,
   chainLinks,
   chainLoop,
   chainProblem,
@@ -149,5 +150,52 @@ describe("automations that start other automations", () => {
     expect(read.draft.nodes[0].input).toEqual({ wait: false });
     expect(read.notes.join(" ")).toMatch(/picked again/);
     expect(read.notes.join(" ")).toMatch(/another automation finished/);
+  });
+});
+
+describe("the chain view", () => {
+  const after = (id: string, when: "done" | "failed" | "either" = "done") => ({
+    trigger: { kind: "finished" as const, automationId: id, when },
+  });
+
+  it("gathers everything linked either way and lays it out by what starts what", () => {
+    const members = [
+      member("clips"),
+      member("brand", after("clips")),
+      member("post", after("brand")),
+      member("backup", after("clips", "failed")),
+      member("intro", { nodes: [runs("intro", "clips")] }),
+      member("other"),
+      member("ghost", after("deleted")),
+    ];
+    const { columns, links } = chainGroup(members, "post");
+    expect(columns).toEqual([["intro"], ["clips"], ["brand", "backup"], ["post"]]);
+    expect(links).toEqual([
+      { from: "clips", to: "brand", how: "done" },
+      { from: "brand", to: "post", how: "done" },
+      { from: "clips", to: "backup", how: "failed" },
+      { from: "intro", to: "clips", how: "step" },
+    ]);
+  });
+
+  it("puts one started from two places after the later of them", () => {
+    const members = [
+      member("a"),
+      member("b", after("a")),
+      member("c", { ...after("b"), nodes: [] }),
+      member("d", { nodes: [runs("d", "c")] }),
+    ];
+    expect(chainGroup(members, "a").columns).toEqual([["a", "d"], ["b"], ["c"]]);
+  });
+
+  it("shows one on its own, and nothing for one that is not there", () => {
+    expect(chainGroup([member("a")], "a")).toEqual({ columns: [["a"]], links: [] });
+    expect(chainGroup([member("a")], "z")).toEqual({ columns: [], links: [] });
+  });
+
+  it("stops at an old loop rather than going round it forever", () => {
+    const members = [member("a", after("b")), member("b", after("a"))];
+    const { columns } = chainGroup(members, "a");
+    expect(columns.flat().sort()).toEqual(["a", "b"]);
   });
 });

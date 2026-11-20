@@ -132,3 +132,79 @@ export function chainProblem(chain: string[], target: string, targetName: string
   }
   return null;
 }
+
+/** How one automation starts another on the chain view. */
+export type ChainLinkHow = FinishChoice | "step";
+
+export interface ChainViewLink {
+  from: string;
+  to: string;
+  how: ChainLinkHow;
+}
+
+/**
+ * Every automation linked to `startId`, however far away and in either direction, laid
+ * out for showing them together: `columns` lists them from the ones nothing starts to the
+ * last ones started, each column in the order the team's automations were given. A link
+ * to an automation that was deleted is left out.
+ */
+export function chainGroup(
+  members: ChainMember[],
+  startId: string,
+): { columns: string[][]; links: ChainViewLink[] } {
+  const known = new Set(members.map((member) => member.id));
+  if (!known.has(startId)) return { columns: [], links: [] };
+  const all: ChainViewLink[] = [];
+  for (const member of members) {
+    for (const node of member.nodes) {
+      const target = targetOf(node);
+      if (target && known.has(target)) all.push({ from: member.id, to: target, how: "step" });
+    }
+    if (
+      member.trigger.kind === "finished" &&
+      member.trigger.automationId &&
+      known.has(member.trigger.automationId)
+    ) {
+      const when = FINISH_CHOICES.includes(member.trigger.when) ? member.trigger.when : "done";
+      all.push({ from: member.trigger.automationId, to: member.id, how: when });
+    }
+  }
+  // Everything reachable from where it starts, following links either way.
+  const group = new Set([startId]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const link of all) {
+      if (group.has(link.from) !== group.has(link.to)) {
+        group.add(link.from);
+        group.add(link.to);
+        grew = true;
+      }
+    }
+  }
+  const links = all.filter(
+    (link, index) =>
+      group.has(link.from) &&
+      all.findIndex((other) => other.from === link.from && other.to === link.to) === index,
+  );
+  // Each one sits one column after the furthest one that starts it. Saving refuses loops,
+  // but the depth is capped in case an old one is still there.
+  const depth = new Map([...group].map((id) => [id, 0]));
+  for (let pass = 0; pass < group.size; pass++) {
+    let moved = false;
+    for (const link of links) {
+      const next = depth.get(link.from)! + 1;
+      if (next > depth.get(link.to)! && next < group.size) {
+        depth.set(link.to, next);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  const columns: string[][] = [];
+  for (const member of members) {
+    if (!group.has(member.id)) continue;
+    const at = depth.get(member.id)!;
+    (columns[at] ??= []).push(member.id);
+  }
+  return { columns: columns.filter((column) => column !== undefined), links };
+}
