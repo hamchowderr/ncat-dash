@@ -82,6 +82,7 @@ import type * as mcp from "../mcp.js";
 import type * as mcpKeys from "../mcpKeys.js";
 import type * as microsoft from "../microsoft.js";
 import type * as microsoftTeams from "../microsoftTeams.js";
+import type * as microsoftTeamsChat from "../microsoftTeamsChat.js";
 import type * as moments from "../moments.js";
 import type * as motion from "../motion.js";
 import type * as notes from "../notes.js";
@@ -194,6 +195,7 @@ declare const fullApi: ApiFromModules<{
   mcpKeys: typeof mcpKeys;
   microsoft: typeof microsoft;
   microsoftTeams: typeof microsoftTeams;
+  microsoftTeamsChat: typeof microsoftTeamsChat;
   moments: typeof moments;
   motion: typeof motion;
   notes: typeof notes;

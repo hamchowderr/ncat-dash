@@ -113,7 +113,12 @@ async function setUp() {
 }
 
 /** Plays Microsoft: the person signs in, and Microsoft sends them back with a code. */
-async function comeBack(t: ReturnType<typeof backend>, startUrl: string, code: string, user: MsUser) {
+async function comeBack(
+  t: ReturnType<typeof backend>,
+  startUrl: string,
+  code: string,
+  user: MsUser,
+) {
   codes[code] = user;
   const state = new URL(startUrl).searchParams.get("state");
   const back = await t.fetch(`/microsoft/callback?code=${code}&state=${state}`, { method: "GET" });
@@ -234,7 +239,9 @@ describe("linking a team's Microsoft organization", () => {
     const closed = await setup.t.fetch("/microsoft/callback?error=access_denied&state=teams.x", {
       method: "GET",
     });
-    expect(closed.headers.get("location")).toBe("http://localhost:3000/settings/teams?teams=cancelled");
+    expect(closed.headers.get("location")).toBe(
+      "http://localhost:3000/settings/teams?teams=cancelled",
+    );
     const microsoft = await setup.t.fetch("/microsoft/callback?error=access_denied", {
       method: "GET",
     });
@@ -339,7 +346,11 @@ describe("who the agent server is told wrote", () => {
     );
     expect(
       await (await askPerson(setup.t, { tenantId: TENANT, aadObjectId: JORDAN.id })).json(),
-    ).toMatchObject({ ok: false, reason: "refused", message: expect.stringMatching(/trial has ended/) });
+    ).toMatchObject({
+      ok: false,
+      reason: "refused",
+      message: expect.stringMatching(/trial has ended/),
+    });
   });
 });
 
@@ -413,7 +424,9 @@ describe("alerts in a Teams channel", () => {
       `${SERVICE}/v3/conversations/${encodeURIComponent("19:edits@thread.tacv2")}/activities`,
     );
     expect(posted[0].body).toMatchObject({ type: "message", textFormat: "markdown" });
-    expect(String(posted[0].body.text)).toMatch(/^\[Weekly podcast clips\]\(http:\/\/localhost:3000\/\) failed at Add captions/);
+    expect(String(posted[0].body.text)).toMatch(
+      /^\[Weekly podcast clips\]\(http:\/\/localhost:3000\/\) failed at Add captions/,
+    );
   });
 });
 

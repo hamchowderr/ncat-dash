@@ -396,10 +396,12 @@ http.route({
     }
     const teamId = text("teamId");
     const serviceUrl = text("serviceUrl");
-    const found = await ctx.runAction(internal.microsoftTeams.person, {
+    // Teams always names an https address to post to; the browser tests' stand-in is local.
+    const found = await ctx.runAction(internal.microsoftTeamsChat.person, {
       tenantId,
       aadObjectId,
-      ...(teamId && serviceUrl.startsWith("https://")
+      ...(teamId &&
+      (serviceUrl.startsWith("https://") || serviceUrl.startsWith("http://127.0.0.1:"))
         ? { team: { teamId, teamName: text("teamName") || "Team", serviceUrl } }
         : {}),
     });

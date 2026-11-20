@@ -90,7 +90,7 @@ export function refusalText(person: TeamsPerson | null): string {
     case 'not_linked':
       return 'I only work for people on the team who linked their Microsoft account. Open Settings in the dashboard, go to Microsoft Teams, press "Link my Microsoft account", then write to me again.';
     default:
-      return "Your Microsoft organization is not linked to a team in the dashboard. A team owner can link it in Settings under Microsoft Teams.";
+      return 'Your Microsoft organization is not linked to a team in the dashboard. A team owner can link it in Settings under Microsoft Teams.';
   }
 }
 

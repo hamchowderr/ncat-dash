@@ -84,6 +84,11 @@ export const SETTINGS_GROUPS = [
         description: "Talk to the agent in your Discord server.",
       },
       {
+        slug: "teams",
+        title: "Microsoft Teams",
+        description: "Talk to the agent in Teams, and get alerts in a channel.",
+      },
+      {
         slug: "zoom",
         title: "Zoom",
         description: "Meeting recordings come into Uploads by themselves, ready to clip.",

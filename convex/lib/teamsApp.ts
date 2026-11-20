@@ -121,9 +121,7 @@ function fromBase64(text: string): Uint8Array {
 
 /** The app package, ready to upload in Teams. */
 export function teamsAppPackage(options: { botId: string; name: string; siteUrl: string }) {
-  const manifest = new TextEncoder().encode(
-    JSON.stringify(teamsManifest(options), null, 2),
-  );
+  const manifest = new TextEncoder().encode(JSON.stringify(teamsManifest(options), null, 2));
   return zip([
     { name: "manifest.json", data: manifest },
     { name: "color.png", data: fromBase64(COLOR_ICON) },

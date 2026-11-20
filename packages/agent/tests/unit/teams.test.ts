@@ -40,7 +40,10 @@ const IN_A_CHANNEL = {
   serviceUrl: 'https://smba.trafficmanager.net/amer/',
   from: { id: '29:abc', aadObjectId: 'aad-ada' },
   conversation: { id: '19:edits@thread.tacv2', tenantId: 'tenant-1' },
-  channelData: { tenant: { id: 'tenant-1' }, team: { id: '19:team@thread.tacv2', name: 'Video team' } },
+  channelData: {
+    tenant: { id: 'tenant-1' },
+    team: { id: '19:team@thread.tacv2', name: 'Video team' },
+  },
 };
 
 function message(raw: object = IN_A_CHANNEL, isBot = false) {

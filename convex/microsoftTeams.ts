@@ -10,8 +10,6 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { createAuth } from "./auth";
-import { tokenFor } from "./discord";
 import { isMember, MANAGER_ROLES, requireMember } from "./lib/authz";
 import { alertHref } from "./lib/notifications";
 
@@ -32,9 +30,6 @@ import { alertHref } from "./lib/notifications";
  * MICROSOFT_CLIENT_SECRET) and come back to /microsoft/callback with a "teams." state.
  */
 
-/** A sign-in the agent uses is made for a day and replaced when it has under an hour left. */
-const SESSION_MS = 24 * 60 * 60 * 1000;
-const RENEW_MS = 60 * 60 * 1000;
 /** A Microsoft sign-in started from Settings must come back within this long. */
 const START_TTL_MS = 15 * 60 * 1000;
 /** What a Teams link sign-in asks for: only who you are and your organization. */
@@ -483,97 +478,6 @@ export const sawTeam = internalMutation({
   },
 });
 
-export const rememberSession = internalMutation({
-  args: { id: v.id("teamsPeople"), sessionToken: v.string(), sessionExpiresAt: v.number() },
-  handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.id);
-    if (row) {
-      await ctx.db.patch(args.id, {
-        sessionToken: args.sessionToken,
-        sessionExpiresAt: args.sessionExpiresAt,
-      });
-    }
-  },
-});
-
-export type TeamsPerson =
-  | { ok: true; userId: string; name: string; organizationId: string; convexToken: string }
-  | { ok: false; reason: "not_connected" | "not_linked" }
-  | { ok: false; reason: "refused"; message: string };
-
-/**
- * Who a Teams user is on the team that linked their Microsoft organization, with a Convex
- * token that acts as them. When they wrote in a Teams team, that team is noted so its
- * channels can be picked for alerts.
- */
-export const person = internalAction({
-  args: {
-    tenantId: v.string(),
-    aadObjectId: v.string(),
-    team: v.optional(
-      v.object({ teamId: v.string(), teamName: v.string(), serviceUrl: v.string() }),
-    ),
-  },
-  handler: async (ctx, args): Promise<TeamsPerson> => {
-    const tenant: Doc<"teamsTenants"> | null = await ctx.runQuery(internal.microsoftTeams.tenantById, {
-      tenantId: args.tenantId,
-    });
-    if (!tenant) return { ok: false, reason: "not_connected" };
-    if (args.team) {
-      await ctx.runMutation(internal.microsoftTeams.sawTeam, {
-        organizationId: tenant.organizationId,
-        tenantId: tenant.tenantId,
-        ...args.team,
-      });
-    }
-    const link: Doc<"teamsPeople"> | null = await ctx.runMutation(internal.microsoftTeams.linkFor, {
-      aadObjectId: args.aadObjectId,
-      organizationId: tenant.organizationId,
-    });
-    if (!link) return { ok: false, reason: "not_linked" };
-    const team = await ctx.runQuery(components.betterAuth.members.contactsFor, {
-      organizationId: link.organizationId,
-    });
-    const member = team.members.find((one) => one.userId === link.userId);
-    if (!member) return { ok: false, reason: "not_linked" };
-    // Checked before every reply: each one spends AI tokens.
-    const answer = await ctx.runMutation(internal.access.channelTurn, {
-      organizationId: link.organizationId,
-      userId: member.userId,
-    });
-    if (!answer.ok) return { ok: false, reason: "refused", message: answer.message };
-
-    const signedIn = (convexToken: string): TeamsPerson => ({
-      ok: true,
-      userId: member.userId,
-      name: member.name,
-      organizationId: link.organizationId,
-      convexToken,
-    });
-    if (link.sessionToken && (link.sessionExpiresAt ?? 0) - Date.now() > RENEW_MS) {
-      const convexToken = await tokenFor(ctx, link.sessionToken);
-      if (convexToken) return signedIn(convexToken);
-    }
-    const auth = createAuth(ctx);
-    const context = await auth.$context;
-    const expiresAt = Date.now() + SESSION_MS;
-    const session = await context.internalAdapter.createSession(member.userId, true, {
-      expiresAt: new Date(expiresAt),
-      userAgent: "Microsoft Teams",
-    });
-    const convexToken = session ? await tokenFor(ctx, session.token) : null;
-    if (!session || !convexToken) {
-      throw new ConvexError({ code: "failed", message: "Could not sign in for Teams." });
-    }
-    await ctx.runMutation(internal.microsoftTeams.rememberSession, {
-      id: link._id,
-      sessionToken: session.token,
-      sessionExpiresAt: expiresAt,
-    });
-    return signedIn(convexToken);
-  },
-});
-
 // Alerts in a Teams channel.
 
 /** A token for the dashboard's bot to post with. Null when it is not set up or refused. */
@@ -673,8 +577,11 @@ export const setAlertChannel = action({
   returns: outcome,
   handler: async (ctx, args) => {
     const setup: { tenant: Doc<"teamsTenants"> | null; seen: Doc<"teamsTeams">[] } =
-      await ctx.runQuery(internal.microsoftTeams.alertSetup, { organizationId: args.organizationId });
-    if (!setup.tenant) return { ok: false as const, detail: "Link your Microsoft organization first." };
+      await ctx.runQuery(internal.microsoftTeams.alertSetup, {
+        organizationId: args.organizationId,
+      });
+    if (!setup.tenant)
+      return { ok: false as const, detail: "Link your Microsoft organization first." };
     if (args.channelId === null) {
       await ctx.runMutation(internal.microsoftTeams.saveAlertChannel, {
         tenantId: setup.tenant._id,

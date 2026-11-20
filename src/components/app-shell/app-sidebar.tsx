@@ -42,6 +42,7 @@ import {
   DiscordLogo,
   DropboxLogo,
   GoogleMeetLogo,
+  MicrosoftLogo,
   MicrosoftTeamsLogo,
   SlackLogo,
   ZoomLogo,
@@ -127,7 +128,8 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   discord: DiscordLogo,
   zoom: ZoomLogo,
   "google-meet": GoogleMeetLogo,
-  microsoft: MicrosoftTeamsLogo,
+  microsoft: MicrosoftLogo,
+  teams: MicrosoftTeamsLogo,
   dropbox: DropboxLogo,
   mcp: KeyRound,
 };

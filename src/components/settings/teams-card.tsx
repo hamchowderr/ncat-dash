@@ -209,8 +209,8 @@ export function TeamsCard() {
     return (
       <SettingsSection data-teams-card>
         <p className="text-muted-foreground text-sm">
-          Microsoft Teams is not set up on this dashboard yet. Whoever runs the dashboard sets
-          up its Teams bot once, then every team can add it here.
+          Microsoft Teams is not set up on this dashboard yet. Whoever runs the dashboard sets up
+          its Teams bot once, then every team can add it here.
         </p>
       </SettingsSection>
     );
@@ -328,8 +328,8 @@ export function TeamsCard() {
         ) : (
           <>
             <p className="text-muted-foreground text-sm">
-              Link your Microsoft account once. The agent then knows it&apos;s you in Teams and
-              does only what you could do here.
+              Link your Microsoft account once. The agent then knows it&apos;s you in Teams and does
+              only what you could do here.
             </p>
             <div>
               <Button
