@@ -1,7 +1,7 @@
 import { type AutomationDraft, draftChanges } from "@ncat-dash/automation-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { authComponent } from "../auth";
+import { getCaller } from "./caller";
 
 /** How many versions of one automation are kept. The oldest go first. */
 export const VERSIONS_KEPT = 100;
@@ -45,7 +45,7 @@ export async function recordVersion(
 ): Promise<number | null> {
   const latest = await latestVersion(ctx, automation._id);
   if (latest && runsTheSame(latest, content)) return null;
-  const user = await authComponent.safeGetAuthUser(ctx);
+  const user = await getCaller(ctx);
   const number = (latest?.number ?? 0) + 1;
   await ctx.db.insert("automationVersions", {
     automationId: automation._id,

@@ -10,7 +10,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { authComponent } from "./auth";
+import { getCaller } from "./lib/caller";
 import { MANAGER_ROLES, requireMember, type TeamRole } from "./lib/authz";
 import {
   ACCESS_TOKEN_MS,
@@ -259,7 +259,7 @@ export const authorize = httpAction(async (ctx, request) => {
 export const request = query({
   args: { requestId: v.string() },
   handler: async (ctx, args) => {
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     if (!user) return { status: "signed-out" as const };
     const id = ctx.db.normalizeId("oauthRequests", args.requestId);
     const found = id ? await ctx.db.get(id) : null;
@@ -293,7 +293,7 @@ export const decide = mutation({
     }
     const base = { state: found.state, iss: issuer() };
     if (!args.allow) {
-      const user = await authComponent.safeGetAuthUser(ctx);
+      const user = await getCaller(ctx);
       if (!user) throw new ConvexError({ code: "unauthenticated", message: "Sign in first." });
       await ctx.db.delete(found._id);
       return {

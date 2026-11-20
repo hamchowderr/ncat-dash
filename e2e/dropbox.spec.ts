@@ -3,9 +3,9 @@ import { expect, test } from "./test";
 import { DROPBOX, DROPBOX_ACCOUNT } from "./dropbox-data.mjs";
 
 // Dropbox both ways, in a real browser against a real backend: a member connects Dropbox
-// from Settings (the stand-in signs in at once), picks two folders to watch, one of them a
-// team folder, brings over what is already there, and a file dropped into a watched folder
-// arrives by itself. Then an automation is switched to send its finished files to Dropbox.
+// from Settings (the stand-in signs in at once), the dashboard reads the whole Dropbox and
+// lists the folders with media, three are ticked and brought in with one press (one a team
+// folder), and a file dropped into a watched folder arrives by itself. Then an automation is switched to send its finished files to Dropbox.
 
 const TOOLKIT = "http://127.0.0.1:8767";
 const stamp = Date.now().toString(36);
@@ -16,9 +16,7 @@ if (process.env.RECORD_VIDEO === "1") {
   });
 }
 
-test("connects Dropbox, watches folders, brings files over, and sends clips back", async ({
-  page,
-}) => {
+test("connects Dropbox, ticks folders to bring in, and sends clips back", async ({ page }) => {
   await page.goto("/sign-up");
   await page.locator("#name").fill("Harbour Editor");
   await page.locator("#email").fill(`editor.dropbox.${stamp}@example.test`);
@@ -49,28 +47,17 @@ test("connects Dropbox, watches folders, brings files over, and sends clips back
     page.getByRole("region", { name: "Your Dropbox" }).getByText(DROPBOX_ACCOUNT.name.display_name),
   ).toBeVisible();
 
-  // Two folders: one of the member's own, opened from the top, and a team folder.
-  const watched = page.getByRole("region", { name: "Watched folders" });
-  await watched.getByRole("button", { name: "Add a folder" }).click();
-  await expect(watched.getByText("Team folder")).toBeVisible();
-  await watched.getByRole("button", { name: "Open Raw footage" }).click();
-  await expect(watched.getByRole("button", { name: "Open Day 1" })).toBeVisible();
-  await watched.getByRole("button", { name: "Watch Raw footage" }).click();
-  await expect(page.getByText("Watching /Raw footage")).toBeVisible();
-  await watched.getByRole("button", { name: "Add a folder" }).click();
-  await watched.getByRole("button", { name: "Watch Marketing" }).click();
-  await expect(watched.getByText("/Marketing")).toBeVisible();
-  await expect(watched.getByText("/Raw footage")).toBeVisible();
-
-  // What is already there: videos and sounds, not the PDF, brought over in one press.
-  const already = page.getByRole("region", { name: "Already in these folders" });
-  await already.getByRole("button", { name: "Find files" }).click();
-  await expect(already.getByText("All 2 picked")).toBeVisible();
-  await expect(already.getByText("Interview.mov")).toBeVisible();
-  await expect(already.getByText("Voiceover.wav")).toBeVisible();
-  await expect(already.getByText("Brief.pdf")).toHaveCount(0);
-  await already.getByRole("button", { name: "Bring over 2 files" }).click();
-  await expect(page.getByText("2 files on the way to Uploads")).toBeVisible();
+  // The whole Dropbox is read and the folders with media are listed, team folders too.
+  // Tick three and bring them in with one press: what is there comes over, the PDF does not.
+  const folders = page.getByRole("region", { name: "Folders with media" });
+  await expect(folders.getByText("Team folders are included.", { exact: false })).toBeVisible();
+  await folders.getByRole("checkbox", { name: "Bring in /Raw footage", exact: true }).click();
+  await folders.getByRole("checkbox", { name: "Bring in /Raw footage/Day 1" }).click();
+  await folders.getByRole("checkbox", { name: "Bring in /Marketing" }).click();
+  await expect(folders.getByText("3 folders ticked")).toBeVisible();
+  await folders.getByRole("button", { name: "Bring in 3 folders" }).click();
+  await expect(page.getByText("3 files on the way to Uploads")).toBeVisible({ timeout: 30_000 });
+  await expect(folders.getByText("Watching")).toHaveCount(3);
   const brought = page.getByRole("region", { name: "Brought in from Dropbox" });
   await expect(brought.getByRole("link", { name: "In Uploads" }).first()).toBeVisible({
     timeout: 30_000,
@@ -86,7 +73,7 @@ test("connects Dropbox, watches folders, brings files over, and sends clips back
 
   await page.goto("/uploads");
   const uploads = page.getByRole("region", { name: "Your uploads" });
-  for (const name of ["Interview.mov", "Voiceover.wav", "Launch teaser.mp4"]) {
+  for (const name of ["Interview.mov", "Voiceover.wav", "Logo.png", "Launch teaser.mp4"]) {
     await expect(uploads.getByText(name)).toBeVisible({ timeout: 30_000 });
   }
 

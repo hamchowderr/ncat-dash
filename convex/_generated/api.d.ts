@@ -35,6 +35,7 @@ import type * as lib_authz from "../lib/authz.js";
 import type * as lib_brand from "../lib/brand.js";
 import type * as lib_broll from "../lib/broll.js";
 import type * as lib_bucket from "../lib/bucket.js";
+import type * as lib_caller from "../lib/caller.js";
 import type * as lib_captions from "../lib/captions.js";
 import type * as lib_chain from "../lib/chain.js";
 import type * as lib_clientIp from "../lib/clientIp.js";
@@ -144,6 +145,7 @@ declare const fullApi: ApiFromModules<{
   "lib/brand": typeof lib_brand;
   "lib/broll": typeof lib_broll;
   "lib/bucket": typeof lib_bucket;
+  "lib/caller": typeof lib_caller;
   "lib/captions": typeof lib_captions;
   "lib/chain": typeof lib_chain;
   "lib/clientIp": typeof lib_clientIp;

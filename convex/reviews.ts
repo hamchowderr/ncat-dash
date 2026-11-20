@@ -9,7 +9,7 @@ import {
   query,
   type QueryCtx,
 } from "./_generated/server";
-import { authComponent } from "./auth";
+import { getCaller } from "./lib/caller";
 import { notify } from "./lib/alerts";
 import { isMember, requireMember } from "./lib/authz";
 import { drawingValidator } from "./lib/drawing";
@@ -302,7 +302,7 @@ export const comment = mutation({
     const clip = await ctx.db.get(args.clipId);
     if (!clip) throw gone();
     const { userId } = await requireMember(ctx, clip.organizationId);
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     return await writeTeamComment(
       ctx,
       clip,
