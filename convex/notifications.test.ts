@@ -73,7 +73,7 @@ const emailed = (t: Backend, alertId: Id<"alerts">) =>
   t.query(internal.email.alertRecipients, { alertId }).then((found) => found?.recipients.sort());
 
 describe("notification settings", () => {
-  test("start with everything on, bell and email, emails as they happen", async () => {
+  test("start with everything on, bell and email (finished runs aside), emails as they happen", async () => {
     const { ana, teamId } = await team();
     const settings = await ana.as.query(api.notifications.get, { organizationId: teamId });
     expect(settings.kinds.map((entry) => entry.kind)).toEqual([
@@ -83,8 +83,14 @@ describe("notification settings", () => {
       "mention",
       "client_feedback",
       "ready_for_review",
+      "clip_finished",
     ]);
-    expect(settings.kinds.every((entry) => entry.bell && entry.email)).toBe(true);
+    // Finished runs start off for the bell and email; every other kind starts on.
+    expect(
+      settings.kinds
+        .filter((entry) => entry.kind !== "clip_finished")
+        .every((entry) => entry.bell && entry.email),
+    ).toBe(true);
     expect(settings).toMatchObject({ emailTiming: "now", digestHour: 8, emailReady: true });
   });
 

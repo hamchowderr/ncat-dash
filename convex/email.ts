@@ -10,6 +10,7 @@ import {
   digestEmail,
   type DigestItem,
   clientFeedbackEmail,
+  clipFinishedEmail,
   readyForReviewEmail,
   mentionEmail,
   sendEmail,
@@ -296,30 +297,41 @@ export const sendAlert = internalAction({
                   },
                   branding,
                 )
-              : alert.kind === "client_feedback"
-                ? clientFeedbackEmail(
-                    {
-                      teamName,
-                      from: alert.from ?? "A client",
-                      reviewTitle: alert.automationName,
-                      feedback: alert.message,
-                      reviewUrl: link,
-                      settingsUrl,
-                    },
-                    branding,
-                  )
-                : runFailedEmail(
+              : alert.kind === "clip_finished"
+                ? clipFinishedEmail(
                     {
                       teamName,
                       automationName: alert.automationName,
-                      stepName: alert.stepName,
-                      message: explainFailure(alert.message).reason,
-                      retries: alert.retries,
+                      summary: alert.message,
                       runUrl: link,
                       settingsUrl,
                     },
                     branding,
-                  );
+                  )
+                : alert.kind === "client_feedback"
+                  ? clientFeedbackEmail(
+                      {
+                        teamName,
+                        from: alert.from ?? "A client",
+                        reviewTitle: alert.automationName,
+                        feedback: alert.message,
+                        reviewUrl: link,
+                        settingsUrl,
+                      },
+                      branding,
+                    )
+                  : runFailedEmail(
+                      {
+                        teamName,
+                        automationName: alert.automationName,
+                        stepName: alert.stepName,
+                        message: explainFailure(alert.message).reason,
+                        retries: alert.retries,
+                        runUrl: link,
+                        settingsUrl,
+                      },
+                      branding,
+                    );
     for (const to of found.recipients) {
       const result = await deliver(ctx, sending, { to, ...composed });
       // A bad key, an unpaid account or an unverified domain fails for everyone alike.
@@ -458,6 +470,8 @@ function digestLine(alert: Doc<"alerts">): Omit<DigestItem, "url"> {
         title: `${alert.automationName}: an approval ran out of time`,
         detail: alert.message,
       };
+    case "clip_finished":
+      return { title: `${alert.automationName} finished`, detail: alert.message };
     case "approval_waiting":
       return {
         title: `${alert.automationName} is waiting for your approval`,
