@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
+import { teamsCard } from "./lib/chatAlerts/teams";
 import { notify } from "./lib/alerts";
 import { teamsAppPackage, teamsManifest, zip } from "./lib/teamsApp";
-import { alertText, settingsUrl, tenantOfIdToken } from "./microsoftTeams";
+import { settingsUrl, tenantOfIdToken } from "./microsoftTeams";
+import { startRun } from "./lib/runner";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 // The agent in Microsoft Teams: an owner links the team's Microsoft organization by
@@ -17,7 +19,7 @@ const TEAM_ID = "19:team-general@thread.tacv2";
 
 type MsUser = { id: string; displayName: string; tid: string };
 let codes: Record<string, MsUser> = {};
-let posted: { url: string; body: Record<string, unknown> }[] = [];
+let posted: { url: string; method: string; body: Record<string, unknown> }[] = [];
 
 function base64url(value: string | Uint8Array) {
   return Buffer.from(value).toString("base64url");
@@ -79,8 +81,12 @@ beforeEach(() => {
       });
     }
     if (url.startsWith(`${SERVICE}/v3/conversations/`)) {
-      posted.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
-      return Response.json({ id: "1" });
+      posted.push({
+        url,
+        method: init?.method ?? "GET",
+        body: JSON.parse(String(init?.body ?? "{}")),
+      });
+      return Response.json({ id: `activity-${posted.length}` });
     }
     return new Response("unknown", { status: 404 });
   });
@@ -423,34 +429,226 @@ describe("alerts in a Teams channel", () => {
     expect(posted[0].url).toBe(
       `${SERVICE}/v3/conversations/${encodeURIComponent("19:edits@thread.tacv2")}/activities`,
     );
-    expect(posted[0].body).toMatchObject({ type: "message", textFormat: "markdown" });
-    expect(String(posted[0].body.text)).toMatch(
-      /^\[Weekly podcast clips\]\(http:\/\/localhost:3000\/\) failed at Add captions/,
-    );
+    const card = (posted[0].body.attachments as { content: Record<string, unknown> }[])[0].content;
+    expect(card).toMatchObject({ type: "AdaptiveCard" });
+    expect(card.body).toEqual([
+      expect.objectContaining({ text: "Weekly podcast clips failed (Add captions)" }),
+      expect.objectContaining({ text: expect.stringMatching(/toolkit/i) }),
+    ]);
+    // A failure has no buttons, only the link to the run.
+    expect(card.actions).toEqual([
+      { type: "Action.OpenUrl", title: "Open the run", url: "http://localhost:3000/" },
+    ]);
   });
 });
 
-describe("the words of an alert", () => {
-  const base = {
-    automationName: "Client reel",
-    stepName: undefined,
-    message: "Love the *pacing*",
-    from: "Avery",
-    runId: undefined,
-    automationId: undefined,
-    reviewId: undefined,
-    clipId: undefined,
-    commentId: undefined,
-  };
-  const options = { siteUrl: "https://dash.test", recipients: ["Jordan Lee", "Maya Ortiz"] };
+describe("an approval in Teams", () => {
+  /** The team linked, its channel picked, and a run waiting on an Approval step. */
+  async function waiting(reviewers?: "maya") {
+    const setup = await setUp();
+    await linkOrganization(setup);
+    await askPerson(setup.t, {
+      tenantId: TENANT,
+      aadObjectId: JORDAN.id,
+      teamId: TEAM_ID,
+      teamName: "Video team",
+      serviceUrl: SERVICE,
+    });
+    await setup.owner.as.action(api.microsoftTeams.setAlertChannel, {
+      organizationId: setup.team,
+      channelId: "19:edits@thread.tacv2",
+    });
+    vi.useFakeTimers();
+    const runId = await setup.t.run(async (ctx) => {
+      const automationId = await ctx.db.insert("automations", {
+        organizationId: setup.team,
+        name: "Weekly clips",
+        enabled: true,
+        trigger: { kind: "webhook" },
+        nodes: [
+          {
+            id: "approval",
+            kind: "approval",
+            input: reviewers === "maya" ? { reviewers: [setup.member.id] } : {},
+            position: { x: 0, y: 0 },
+          },
+        ],
+        edges: [],
+        hookToken: "token",
+        nextRunAt: null,
+        createdBy: setup.owner.id,
+        updatedAt: Date.now(),
+      });
+      const started = await startRun(
+        ctx,
+        (await ctx.db.get(automationId))!,
+        "webhook",
+        { file_url: "https://files.example/interview.mp4" },
+        null,
+      );
+      if (!started.ok) throw new Error(started.message);
+      return started.runId;
+    });
+    await setup.t.finishAllScheduledFunctions(vi.runAllTimers);
+    const step = await setup.t.run(
+      async (ctx) =>
+        (await ctx.db
+          .query("runSteps")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .unique())!,
+    );
+    return { ...setup, step };
+  }
 
-  test("names who an approval waits for, and quotes client feedback safely", () => {
-    expect(alertText({ ...base, kind: "approval_waiting" }, options)).toBe(
-      "[Client reel](https://dash.test/) is waiting for approval from Jordan Lee, Maya Ortiz.",
+  async function press(
+    t: ReturnType<typeof backend>,
+    body: Record<string, string>,
+    secret = SECRET,
+  ) {
+    return await t.fetch("/teams/alert-action", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${await agentToken(secret)}`,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  test("posts a card with Approve and Send back, and tags who it waits for", async () => {
+    const { step, member, team } = await waiting("maya");
+    // With a channel picked, everyone gets a Teams switch in Settings, Notifications.
+    expect(
+      (await member.as.query(api.notifications.get, { organizationId: team })).chatApps,
+    ).toEqual(["teams"]);
+    // The approval card (an automation waiting also opens a review, posted as review news).
+    const cards = posted.filter((one) => one.body.attachments);
+    expect(cards).toHaveLength(1);
+    const card = (cards[0].body.attachments as { content: Record<string, unknown> }[])[0].content;
+    expect(card.body).toContainEqual(
+      expect.objectContaining({ text: "Weekly clips is waiting for your approval (Approval)" }),
     );
-    expect(alertText({ ...base, kind: "client_feedback" }, options)).toBe(
-      "**Avery** (client) left feedback on [Client reel](https://dash.test/):\n\n> Love the \\*pacing\\*",
+    // Maya never linked her Microsoft account, so she is named but not tagged.
+    expect(card.body).toContainEqual(expect.objectContaining({ text: "For Maya Ortiz" }));
+    expect(card.actions).toEqual([
+      {
+        type: "Action.Submit",
+        title: "Approve",
+        style: "positive",
+        data: { actionId: "ncat_alert_approve", value: step._id },
+      },
+      {
+        type: "Action.Submit",
+        title: "Send back",
+        data: { actionId: "ncat_alert_send_back", value: step._id },
+      },
+      expect.objectContaining({ type: "Action.OpenUrl", title: "Open the run" }),
+    ]);
+  });
+
+  test("Approve pressed in Teams approves as the linked member, and the card says so", async () => {
+    const { t, step } = await waiting();
+    const answer = await press(t, {
+      tenantId: TENANT,
+      aadObjectId: JORDAN.id,
+      runStepId: step._id,
+      decision: "approve",
+    });
+    expect(await answer.json()).toEqual({ ok: true, message: "Approved." });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const after = await t.run(async (ctx) => await ctx.db.get(step._id));
+    expect(after).toMatchObject({ status: "done" });
+    const edit = posted.find((one) => one.method === "PUT")!;
+    const sent = posted.findIndex((one) => one.method === "POST" && one.body.attachments);
+    expect(edit.url).toBe(
+      `${SERVICE}/v3/conversations/${encodeURIComponent("19:edits@thread.tacv2")}/activities/activity-${sent + 1}`,
     );
+    const card = (edit.body.attachments as { content: Record<string, unknown> }[])[0].content;
+    expect(card.body).toContainEqual(expect.objectContaining({ text: "Approved by Jordan Lee." }));
+    expect(card.actions).toEqual([expect.objectContaining({ type: "Action.OpenUrl" })]);
+  });
+
+  test("someone without a linked account, another organization or a forged press is refused", async () => {
+    const { t, step } = await waiting();
+    const stranger = await press(t, {
+      tenantId: TENANT,
+      aadObjectId: "aad-nobody",
+      runStepId: step._id,
+      decision: "approve",
+    });
+    expect(await stranger.json()).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("Link my Microsoft account"),
+    });
+    const elsewhere = await press(t, {
+      tenantId: OTHER_TENANT,
+      aadObjectId: JORDAN.id,
+      runStepId: step._id,
+      decision: "approve",
+    });
+    expect(await elsewhere.json()).toEqual({
+      ok: false,
+      message: "This approval no longer exists.",
+    });
+    const forged = await press(
+      t,
+      { tenantId: TENANT, aadObjectId: JORDAN.id, runStepId: step._id, decision: "approve" },
+      "a-different-secret-that-is-also-long-enough",
+    );
+    expect(forged.status).toBe(401);
+    const odd = await press(t, {
+      tenantId: TENANT,
+      aadObjectId: JORDAN.id,
+      runStepId: step._id,
+      decision: "delete",
+    });
+    expect(odd.status).toBe(400);
+    const after = await t.run(async (ctx) => await ctx.db.get(step._id));
+    expect(after?.status).toBe("waiting_approval");
+  });
+});
+
+describe("the look of a Teams alert", () => {
+  const alert = {
+    title: "Client reel is waiting for your approval",
+    lines: ["Check the hook", " "],
+    link: "https://dash.test/runs/1",
+    linkLabel: "Open the run",
+    who: [
+      { name: "Jordan Lee", aadObjectId: "aad-jordan" },
+      { name: "Maya Ortiz", aadObjectId: null },
+    ],
+    runStepId: "step-1" as never,
+    actions: [
+      { id: "approve" as const, label: "Approve" },
+      { id: "send_back" as const, label: "Send back" },
+    ],
+  };
+
+  test("tags known accounts so Teams tells them, and names the rest", () => {
+    const { content } = teamsCard(alert);
+    expect(content.body).toContainEqual(
+      expect.objectContaining({ text: "For <at>Jordan Lee</at>, Maya Ortiz" }),
+    );
+    expect(content.msteams).toEqual({
+      entities: [
+        {
+          type: "mention",
+          text: "<at>Jordan Lee</at>",
+          mentioned: { id: "aad-jordan", name: "Jordan Lee" },
+        },
+      ],
+    });
+    // Blank lines are left out.
+    expect(content.body).toHaveLength(3);
+  });
+
+  test("once decided, says how it ended and drops the buttons", () => {
+    const { content } = teamsCard(alert, "Sent back by Maya Ortiz.");
+    expect(content.body.at(-1)).toMatchObject({ text: "Sent back by Maya Ortiz." });
+    expect(content.actions).toEqual([
+      { type: "Action.OpenUrl", title: "Open the run", url: "https://dash.test/runs/1" },
+    ]);
   });
 });
 
