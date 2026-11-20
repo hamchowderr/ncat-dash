@@ -6,7 +6,10 @@ import { getCaller } from "./caller";
 /** How many versions of one automation are kept. The oldest go first. */
 export const VERSIONS_KEPT = 100;
 
-export type Content = Pick<Doc<"automations">, "name" | "trigger" | "nodes" | "edges">;
+export type Content = Pick<
+  Doc<"automations">,
+  "name" | "trigger" | "moreTriggers" | "triggerStarts" | "nodes" | "edges"
+>;
 export type VersionSource = Doc<"automationVersions">["source"];
 
 /**
@@ -53,6 +56,8 @@ export async function recordVersion(
     number,
     name: content.name,
     trigger: content.trigger,
+    ...(content.moreTriggers?.length ? { moreTriggers: content.moreTriggers } : {}),
+    ...(content.triggerStarts ? { triggerStarts: content.triggerStarts } : {}),
     nodes: content.nodes,
     edges: content.edges,
     source: by.source,

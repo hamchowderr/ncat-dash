@@ -58,7 +58,24 @@ export interface ChainMember {
   id: string;
   name: string;
   trigger: StarterTrigger;
+  /** Its other triggers, when it has more than one. */
+  moreTriggers?: { trigger: StarterTrigger }[];
   nodes: Pick<AutomationNode, "kind" | "input">[];
+}
+
+/** The automations a member follows, with when: one for each of its finished triggers. */
+function followed(member: ChainMember): { automationId: string; when: FinishChoice }[] {
+  return [member.trigger, ...(member.moreTriggers ?? []).map((each) => each.trigger)].flatMap(
+    (trigger) =>
+      trigger.kind === "finished" && trigger.automationId
+        ? [
+            {
+              automationId: trigger.automationId,
+              when: FINISH_CHOICES.includes(trigger.when) ? trigger.when : ("done" as const),
+            },
+          ]
+        : [],
+  );
 }
 
 /**
@@ -76,9 +93,7 @@ export function chainLinks(members: ChainMember[]): Map<string, Set<string>> {
       const target = targetOf(node);
       if (target) add(member.id, target);
     }
-    if (member.trigger.kind === "finished" && member.trigger.automationId) {
-      add(member.trigger.automationId, member.id);
-    }
+    for (const { automationId } of followed(member)) add(automationId, member.id);
   }
   return links;
 }
@@ -160,13 +175,8 @@ export function chainGroup(
       const target = targetOf(node);
       if (target && known.has(target)) all.push({ from: member.id, to: target, how: "step" });
     }
-    if (
-      member.trigger.kind === "finished" &&
-      member.trigger.automationId &&
-      known.has(member.trigger.automationId)
-    ) {
-      const when = FINISH_CHOICES.includes(member.trigger.when) ? member.trigger.when : "done";
-      all.push({ from: member.trigger.automationId, to: member.id, how: when });
+    for (const { automationId, when } of followed(member)) {
+      if (known.has(automationId)) all.push({ from: automationId, to: member.id, how: when });
     }
   }
   // Everything reachable from where it starts, following links either way.

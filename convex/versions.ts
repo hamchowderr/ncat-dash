@@ -3,7 +3,7 @@ import type { Doc } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
 import { changesBetween, runsTheSame, VERSIONS_KEPT } from "./lib/versions";
-import { edgeValidator, nodeValidator, triggerValidator } from "./schema";
+import { edgeValidator, moreTriggersValidator, nodeValidator, triggerValidator } from "./schema";
 
 function fail(code: string, message: string): never {
   throw new ConvexError({ code, message });
@@ -81,6 +81,8 @@ export const get = query({
       number: v.number(),
       name: v.string(),
       trigger: triggerValidator,
+      moreTriggers: v.optional(moreTriggersValidator),
+      triggerStarts: v.optional(v.array(v.string())),
       nodes: v.array(nodeValidator),
       edges: v.array(edgeValidator),
     }),
@@ -93,6 +95,8 @@ export const get = query({
       number: version.number,
       name: version.name,
       trigger: version.trigger,
+      ...(version.moreTriggers ? { moreTriggers: version.moreTriggers } : {}),
+      ...(version.triggerStarts ? { triggerStarts: version.triggerStarts } : {}),
       nodes: version.nodes,
       edges: version.edges,
     };
@@ -122,6 +126,8 @@ export const restore = mutation({
       draft: {
         name: version.name,
         trigger: version.trigger,
+        ...(version.moreTriggers ? { moreTriggers: version.moreTriggers } : {}),
+        ...(version.triggerStarts ? { triggerStarts: version.triggerStarts } : {}),
         nodes: version.nodes,
         edges: version.edges,
         updatedBy: userId,
