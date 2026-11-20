@@ -270,8 +270,9 @@ describe("Add B-Roll", () => {
     });
     expect(step.pickNote).toMatch(/1 cutaway/);
 
-    // The picture model was asked about what each sentence shows, in plain words.
-    const look = sent.find((one) => one.url.endsWith("/v1/media/look"))!;
+    // The picture model was asked about what each sentence shows, in plain words. (The
+    // job that finds the video's camera cuts goes to the same address, in any order.)
+    const look = sent.find((one) => one.url.endsWith("/v1/media/look") && one.body.texts)!;
     expect(look.body.texts).toContain("a photo of old truck garage");
     expect(look.body.image_urls).toBeUndefined();
 
