@@ -19,7 +19,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import { useQuery } from "convex/react";
-import { Plus } from "lucide-react";
+import { Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -33,6 +33,7 @@ import { FIT_VIEW } from "./flow-nodes";
 import { FlowStrip } from "./flow-strip";
 import { useSetUp } from "./follow-ons";
 import { RunStatusBadge } from "./run-status";
+import { useWorkflowOf, WorkflowBar, workflowMarks } from "./workflow-bar";
 
 type ChainView = NonNullable<ReturnType<typeof useChainView>>;
 type Member = ChainView["automations"][number];
@@ -59,7 +60,10 @@ const SUGGESTED_EACH = 2;
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
-type AutomationCard = Node<{ member: Member; current: boolean }, "automation">;
+type AutomationCard = Node<
+  { member: Member; current: boolean; reviewHere?: boolean; covered?: boolean },
+  "automation"
+>;
 type SuggestionCard = Node<
   { starter: Starter; after: Member; onSetUp: () => void; pending: boolean; disabled: boolean },
   "suggestion"
@@ -69,7 +73,7 @@ type ChainEdge = Edge<{ words: string; how: How | "suggested" }, "chain">;
 const handle = "!size-2 !border-0 !bg-transparent";
 
 function AutomationNode({ data }: NodeProps<AutomationCard>) {
-  const { member, current } = data;
+  const { member, current, reviewHere, covered } = data;
   const follows = member.trigger.kind === "finished";
   return (
     <article
@@ -117,6 +121,17 @@ function AutomationNode({ data }: NodeProps<AutomationCard>) {
         edges={member.edges}
         className="justify-start overflow-hidden"
       />
+      {(reviewHere || covered) && (
+        <ul className="text-muted-foreground grid gap-0.5 text-xs" aria-label="Workflow review">
+          {reviewHere && (
+            <li className="text-foreground flex items-center gap-1.5">
+              <ShieldCheck className="size-3.5 shrink-0" aria-hidden="true" />
+              Reviewed here before the files go out
+            </li>
+          )}
+          {covered && <li>Its own Approval step is covered by the workflow&apos;s review</li>}
+        </ul>
+      )}
       {member.lastRun ? (
         <Link
           href={`/automations/${member.automationId}/runs/${member.lastRun.runId}`}
@@ -240,7 +255,9 @@ export function chainLayout(view: Pick<ChainView, "columns" | "automations">): {
 function ChainCanvas({ view, automationId }: { view: ChainView; automationId: Id<"automations"> }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const { pending, onSetUp } = useSetUp({ open: false });
+  const workflow = useWorkflowOf(automationId)?.workflow;
   const { nodes, edges } = useMemo(() => {
+    const marks = workflowMarks(workflow);
     const byId = new Map(view.automations.map((member) => [member.automationId as string, member]));
     const layout = chainLayout(view);
     const nodes: (AutomationCard | SuggestionCard)[] = view.automations.map((member) => ({
@@ -249,7 +266,11 @@ function ChainCanvas({ view, automationId }: { view: ChainView; automationId: Id
       // Nothing on this canvas is dragged or picked, but its links and buttons still work.
       style: { pointerEvents: "all" },
       position: layout.automations.get(member.automationId)!,
-      data: { member, current: member.automationId === automationId },
+      data: {
+        member,
+        current: member.automationId === automationId,
+        ...marks.get(member.automationId),
+      },
     }));
     const edges: ChainEdge[] = view.links.map((link) => ({
       id: `${link.from}-${link.to}`,
@@ -293,7 +314,7 @@ function ChainCanvas({ view, automationId }: { view: ChainView; automationId: Id
       });
     });
     return { nodes, edges };
-  }, [view, automationId, pending, onSetUp]);
+  }, [view, automationId, pending, onSetUp, workflow]);
 
   // A card built from here, or one that went, brings the whole chain back into view.
   const { fitView } = useReactFlow();
@@ -314,6 +335,7 @@ function ChainCanvas({ view, automationId }: { view: ChainView; automationId: Id
         <CanvasZoom fitViewOptions={FIT_VIEW} />
         <FitOnResize canvasRef={canvasRef} fitViewOptions={FIT_VIEW} />
       </CanvasBar>
+      <WorkflowBar automationId={automationId} />
       <div
         ref={canvasRef}
         className="bg-background relative mx-2 mb-2 h-[32rem] min-h-0 overflow-hidden rounded-lg lg:h-auto lg:flex-1"

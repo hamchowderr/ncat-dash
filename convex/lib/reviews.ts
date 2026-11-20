@@ -74,13 +74,22 @@ export async function openReviewForApproval(
     .take(200);
   await openReview(ctx, {
     organizationId: run.organizationId,
-    title: run.automationName,
+    title: reviewTitle(run, step),
     urls: files,
     createdBy: null,
     runId: run._id,
     runStepId: step._id,
     names: outputNamesOf(run, steps),
   });
+}
+
+/** A workflow's review is named after the workflow; any other after its automation. */
+function reviewTitle(run: Doc<"runs">, step: Doc<"runSteps">): string {
+  const node = (run.nodes as { id: string; input?: Record<string, unknown> }[]).find(
+    (candidate) => candidate.id === step.nodeId,
+  );
+  const name = node?.input?.workflowName;
+  return typeof name === "string" && name !== "" ? name : run.automationName;
 }
 
 /** Marks the room an approval step opened as decided, wherever the decision was made. */

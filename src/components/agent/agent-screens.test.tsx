@@ -83,7 +83,9 @@ describe("the card that asks first", () => {
       "move_files",
       "rename_file",
       "save_team_step",
+      "set_up_workflow",
       "switch_automation",
+      "switch_workflow",
       "try_automation",
       "try_team_step",
     ]);

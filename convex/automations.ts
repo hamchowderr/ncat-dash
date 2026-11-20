@@ -1081,24 +1081,36 @@ export const setEnabled = mutation({
   args: { automationId: v.id("automations"), enabled: v.boolean() },
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
-    if (args.enabled) {
-      const problem =
-        versionProblem(
-          automation,
-          await brandOf(ctx, automation.organizationId, automation.clientId),
-        ) ??
-        (await storageProblemOf(ctx, automation.organizationId, automation)) ??
-        (await linkProblem(ctx, automation, automation));
-      if (problem) fail("invalid_input", problem);
-    }
-    await ctx.db.patch(args.automationId, {
-      enabled: args.enabled,
-      // Switching on starts every schedule afresh.
-      ...scheduleTimesOf(null, automation, args.enabled),
-      watchFrom: watchStartOf(automation, automation, args.enabled),
-    });
+    await switchAutomation(ctx, automation, args.enabled);
   },
 });
+
+/**
+ * Switches an automation on or off. Switching on refuses, in plain words, while something
+ * stops it running. Workflows switch all of theirs this way too.
+ */
+export async function switchAutomation(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  enabled: boolean,
+): Promise<void> {
+  if (enabled) {
+    const problem =
+      versionProblem(
+        automation,
+        await brandOf(ctx, automation.organizationId, automation.clientId),
+      ) ??
+      (await storageProblemOf(ctx, automation.organizationId, automation)) ??
+      (await linkProblem(ctx, automation, automation));
+    if (problem) fail("invalid_input", problem);
+  }
+  await ctx.db.patch(automation._id, {
+    enabled,
+    // Switching on starts every schedule afresh.
+    ...scheduleTimesOf(null, automation, enabled),
+    watchFrom: watchStartOf(automation, automation, enabled),
+  });
+}
 
 /** Deletes the automation. Its past runs stay in the run history. */
 export const remove = mutation({
