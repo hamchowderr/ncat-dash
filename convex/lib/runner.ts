@@ -19,6 +19,7 @@ import {
   downstreamOf,
   failsOver,
   type FileDetails,
+  type FileLabel,
   isCaptionStep,
   needsDetails,
   withCaptionSetup,
@@ -50,6 +51,7 @@ import {
   withBrand,
   withDownloadLinks,
   withStart,
+  stepFileLabels,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
@@ -1055,14 +1057,57 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
       failed.error ?? "The step failed.",
     );
   } else {
+    const labels = await variantLabels(ctx, run, step, jobs);
     await ctx.db.patch(runStepId, {
       status: "done",
       outputs: jobs.flatMap((job) => job.outputs),
       finishedAt: Date.now(),
       retryError: undefined,
+      ...(labels.length > 0 ? { labels } : {}),
     });
   }
   await advance(ctx, run._id);
+}
+
+/**
+ * The variant codes for a finished step's files ("h02_c01_15s"), built on the codes the
+ * run's earlier steps gave the files it worked on. Empty for steps that make none.
+ */
+async function variantLabels(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  jobs: Doc<"jobs">[],
+): Promise<FileLabel[]> {
+  const node = (run.nodes as AutomationNode[]).find((other) => other.id === step.nodeId);
+  const definition = node?.stepId ? getStep(node.stepId) : undefined;
+  if (!node?.stepId || !definition?.outputLabels) return [];
+  const earlier = (
+    await ctx.db
+      .query("runSteps")
+      .withIndex("by_run", (q) => q.eq("runId", run._id))
+      .take(200)
+  ).flatMap((other) => other.labels ?? []);
+  if (definition.labelsFollow && earlier.length === 0) return [];
+  const stepId = node.stepId;
+  return stepFileLabels(
+    jobs.map((job) => {
+      if (job.stepId === stepId) return job;
+      // A later stage of the step, such as captions burned in with one quick save: the
+      // file it worked on is that save's first input.
+      const first = (job.input as { inputs?: { file_url?: unknown }[] } | null)?.inputs?.[0]
+        ?.file_url;
+      return {
+        stepId,
+        input:
+          definition.primaryInput && typeof first === "string"
+            ? { ...node.input, [definition.primaryInput]: first }
+            : {},
+        outputs: job.outputs,
+      };
+    }),
+    earlier,
+  );
 }
 
 /**

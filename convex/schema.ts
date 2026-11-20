@@ -631,6 +631,8 @@ export default defineSchema({
     jobIds: v.array(v.id("jobs")),
     // The file URLs this step hands to the next ones.
     outputs: v.array(v.string()),
+    // Variant codes for its files, such as "h02_c01_15s_9x16", which name them.
+    labels: v.optional(v.array(v.object({ url: v.string(), label: v.string() }))),
     error: v.union(v.null(), v.string()),
     // For a "clips" step, which works in two stages: first it reads each video's length
     // and pauses ("probe"), then it cuts the clips ("cut"). jobIds holds the current
