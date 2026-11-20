@@ -76,6 +76,11 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    */
   readsPauses?: string[];
   /**
+   * Settings asked for up front although they are optional, because the step is only
+   * useful with some of them set (such as the other hook takes of hook variants).
+   */
+  askFirst?: string[];
+  /**
    * Short codes for each file one job of this step makes, in order, such as "h02_c01" or
    * "15s". They go into the files' names, after the code of the file the job worked on,
    * so a finished ad is named for its hook, ending, length and shape.

@@ -31,6 +31,7 @@ import type * as home from "../home.js";
 import type * as http from "../http.js";
 import type * as jobs from "../jobs.js";
 import type * as lib_access from "../lib/access.js";
+import type * as lib_adFiles from "../lib/adFiles.js";
 import type * as lib_agentToken from "../lib/agentToken.js";
 import type * as lib_alerts from "../lib/alerts.js";
 import type * as lib_approvals from "../lib/approvals.js";
@@ -166,6 +167,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   jobs: typeof jobs;
   "lib/access": typeof lib_access;
+  "lib/adFiles": typeof lib_adFiles;
   "lib/agentToken": typeof lib_agentToken;
   "lib/alerts": typeof lib_alerts;
   "lib/approvals": typeof lib_approvals;

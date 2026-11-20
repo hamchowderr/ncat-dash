@@ -317,6 +317,7 @@ export const variantRecipes: StepDefinition[] = [
     primaryInput: "video_url",
     readsFirst: ["video_url", ...HOOK_FIELDS, ...ENDING_FIELDS],
     readsPauses: ["video_url"],
+    askFirst: ["hook_2_url", "hook_3_url", "ending_2_url", "creator"],
     blanks: {
       video_url: url("The base cut, with its own hook at the start and ending at the end").meta({
         title: "Base cut",
@@ -435,6 +436,7 @@ export const variantRecipes: StepDefinition[] = [
     primaryInput: "video_url",
     readsFirst: ["video_url"],
     readsPauses: ["video_url"],
+    askFirst: ["lengths"],
     blanks: {
       video_url: url("The video"),
       lengths: z

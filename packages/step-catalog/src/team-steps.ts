@@ -70,7 +70,10 @@ function blankSchema(blank: TeamStepBlank): z.ZodType {
       return typeof blank.default === "number" ? described.default(blank.default) : described;
     }
     case "color": {
-      const color = z.string().regex(COLOR, "A colour name such as white, or a hex value such as #FFCC00").describe(blank.label);
+      const color = z
+        .string()
+        .regex(COLOR, "A colour name such as white, or a hex value such as #FFCC00")
+        .describe(blank.label);
       return typeof blank.default === "string" ? color.default(blank.default) : color;
     }
     case "choice": {
@@ -170,7 +173,8 @@ export function teamStepProblem(template: TeamStepTemplate): string | null {
         return `"${blank.name}" needs 2 to 20 choices.`;
       }
       const bad = options.find((option) => !SAFE_CHOICE.test(option));
-      if (bad !== undefined) return `The choice "${bad}" of "${blank.name}" has characters FFmpeg could misread.`;
+      if (bad !== undefined)
+        return `The choice "${bad}" of "${blank.name}" has characters FFmpeg could misread.`;
       if (blank.default !== undefined && !options.includes(String(blank.default))) {
         return `The default of "${blank.name}" is not one of its choices.`;
       }

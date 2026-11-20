@@ -56,7 +56,8 @@ test("UGC Ad Variants opens as variants, cuts, shapes and captions, with its tak
   await expect(steps).toHaveCount(8);
   await pause(2000);
 
-  // The first step takes the base cut from the run and asks for the other takes.
+  // The first step takes the base cut from the run and asks for the other takes and the
+  // creator up front.
   await expect(async () => {
     await steps.first().click();
     await expect(page.getByText("Hook take 2", { exact: true })).toBeVisible({ timeout: 2000 });
@@ -66,6 +67,9 @@ test("UGC Ad Variants opens as variants, cuts, shapes and captions, with its tak
   await page.getByLabel("Hook take 3: address of the file").fill(`${FILES}/hooks/hook_03.mp4`);
   await pause(600);
   await page.getByLabel("Ending take 2: address of the file").fill(`${FILES}/hooks/cta_02.mp4`);
+  await pause(600);
+  // The creator's files are kept in a folder of their own.
+  await page.getByRole("textbox", { name: "Creator optional" }).fill("Jane Doe");
   await pause(2000);
 
   // The length cuts keep the call to action on 6, 15, 30 and 60 second cuts.
