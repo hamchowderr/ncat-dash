@@ -83,9 +83,33 @@ describe("callStep", () => {
     expect(JSON.parse(calls[0].init.body as string)).toEqual({
       video_url: "https://x.test/a.mp4",
       start: "00:00:05",
+      // Saved with the quick setting unless the step picks another.
+      video_preset: "veryfast",
       webhook_url: "https://app.test/hook",
       id: "step-1",
     });
+  });
+
+  it("saves cut, trim and split video quickly unless the step picks a slower setting", async () => {
+    const span = [{ start: "00:00:01", end: "00:00:02" }];
+    const inputs: Record<string, Record<string, unknown>> = {
+      "video-trim": { video_url: "https://x.test/a.mp4" },
+      "video-cut": { video_url: "https://x.test/a.mp4", cuts: span },
+      "video-split": { video_url: "https://x.test/a.mp4", splits: span },
+    };
+    for (const [id, input] of Object.entries(inputs)) {
+      const quick = fakeFetch(202, { code: 202, job_id: "j" });
+      await callStep(connection, getStep(id)!, input, { fetch: quick.fn });
+      expect(JSON.parse(quick.calls[0].init.body as string).video_preset).toBe("veryfast");
+      const slow = fakeFetch(202, { code: 202, job_id: "j" });
+      await callStep(
+        connection,
+        getStep(id)!,
+        { ...input, video_preset: "slow" },
+        { fetch: slow.fn },
+      );
+      expect(JSON.parse(slow.calls[0].init.body as string).video_preset).toBe("slow");
+    }
   });
 
   it("rejects invalid input before any request", async () => {
@@ -104,7 +128,10 @@ describe("callStep", () => {
       { video_url: "https://x.test/a.mp4", webhook_url: "https://evil.test" },
       { fetch: fn },
     );
-    expect(JSON.parse(calls[0].init.body as string)).toEqual({ video_url: "https://x.test/a.mp4" });
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({
+      video_url: "https://x.test/a.mp4",
+      video_preset: "veryfast",
+    });
   });
 
   it("throws ToolkitError with status and body on a failure", async () => {

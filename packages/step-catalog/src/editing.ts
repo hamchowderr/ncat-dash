@@ -23,8 +23,8 @@ const opt = (option: string, argument?: string | number): Option =>
 
 const VIDEO_OUT: Option[] = [
   opt("-c:v", "libx264"),
-  opt("-preset", "medium"),
-  opt("-crf", 23),
+  opt("-preset", "veryfast"),
+  opt("-crf", 21),
   opt("-c:a", "aac"),
   opt("-b:a", "192k"),
   opt("-movflags", "+faststart"),
@@ -848,10 +848,23 @@ export const editingRecipes: StepDefinition[] = [
           : b.to === "WAV"
             ? [opt("-vn"), opt("-c:a", "pcm_s16le")]
             : b.to === "WebM"
-              ? [opt("-c:v", "libvpx-vp9"), opt("-crf", 32), opt("-b:v", 0), opt("-c:a", "libopus")]
+              ? [
+                  opt("-c:v", "libvpx-vp9"),
+                  opt("-crf", 32),
+                  opt("-b:v", 0),
+                  opt("-deadline", "good"),
+                  opt("-cpu-used", 4),
+                  opt("-row-mt", 1),
+                  opt("-c:a", "libopus"),
+                ]
               : b.quick
                 ? [opt("-c", "copy")]
-                : [opt("-c:v", "libx264"), opt("-crf", 23), opt("-c:a", "aac")];
+                : [
+                    opt("-c:v", "libx264"),
+                    opt("-preset", "veryfast"),
+                    opt("-crf", 21),
+                    opt("-c:a", "aac"),
+                  ];
       return {
         inputs: [{ file_url: b.media_url }],
         filters: [],

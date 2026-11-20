@@ -105,10 +105,13 @@ describe("a way for when a step fails", () => {
     const after = await look();
     expect(after.byNode.trim).toMatchObject({ status: "failed", outputs: [FILE] });
     expect(after.byNode.thumbnail.status).toBe("skipped");
-    const captionJob = after.jobs.find((job) => job?.stepId === "video-caption");
-    expect(captionJob?.input).toMatchObject({ video_url: FILE });
+    const wordsJob = after.jobs.find((job) => job?.stepId === "media-generate-ass");
+    expect(wordsJob?.input).toMatchObject({ media_url: FILE });
 
-    await finishJob(captionJob!._id, true);
+    // The timed words, then the quick save that burns them in.
+    await finishJob(wordsJob!._id, true);
+    const burn = (await look()).jobs.find((job) => job?.stepId === "ffmpeg-compose");
+    await finishJob(burn!._id, true);
     const end = await look();
     expect(end.run?.status).toBe("done");
     expect(end.alerts).toEqual([]);

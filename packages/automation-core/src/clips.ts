@@ -172,11 +172,16 @@ type Option = { option: string; argument?: string | number };
 const opt = (option: string, argument?: string | number): Option =>
   argument === undefined ? { option } : { option, argument };
 
+// A quarter of a size, kept even so FFmpeg's encoders take it.
+const quarter = (size: number) => Math.max(2, Math.round(size / 8) * 2);
+
 // A new shape: the whole picture, scaled to fit, over a blurred copy that fills the frame.
 function fillFilter({ width, height }: { width: number; height: number }): string {
   return (
     "[0:v]split=2[bg][fg];" +
-    `[bg]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=20:5[blurred];` +
+    // The blur is made on a quarter-size copy and scaled back up: it looks the same and
+    // takes a fraction of the work, so each clip saves faster.
+    `[bg]scale=${quarter(width)}:${quarter(height)}:force_original_aspect_ratio=increase,crop=${quarter(width)}:${quarter(height)},boxblur=5:5,scale=${width}:${height}[blurred];` +
     `[fg]scale=${width}:${height}:force_original_aspect_ratio=decrease[sharp];` +
     "[blurred][sharp]overlay=(W-w)/2:(H-h)/2,setsar=1[v]"
   );

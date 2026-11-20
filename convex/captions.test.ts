@@ -171,18 +171,36 @@ describe("a caption step in a run", () => {
 
     await finish(reading.jobs[0]._id, { width: 2160, height: 3840, duration: 30 });
     const captioning = await caption();
-    expect(captioning.step.stage).toBeUndefined();
+    // First the timed words, with the look and word fixes...
+    expect(captioning.step.stage).toBe("listen");
     expect(captioning.step.status).toBe("running");
     expect(captioning.jobs).toHaveLength(1);
-    expect(captioning.jobs[0].stepId).toBe("video-caption");
+    expect(captioning.jobs[0].stepId).toBe("media-generate-ass");
     expect(captioning.jobs[0].input).toEqual({
-      video_url: FILE,
+      media_url: FILE,
       // "Tall" for a vertical video, its text scaled for 4K.
       settings: { style: "highlight", font_size: 200, word_color: "#FF0000" },
       replace: CAPTIONS.fixes,
     });
 
-    await finish(captioning.jobs[0]._id, { file_url: "https://files.example/out/captioned.mp4" });
+    await finish(captioning.jobs[0]._id, "https://files.example/out/words.ass");
+    // ...then one quick save that burns them into the video.
+    const burning = await caption();
+    expect(burning.step.stage).toBe("render");
+    expect(burning.jobs).toHaveLength(1);
+    expect(burning.jobs[0].stepId).toBe("ffmpeg-compose");
+    const burn = burning.jobs[0].input as {
+      inputs: { file_url: string }[];
+      filters: { filter: string }[];
+      outputs: { options: { option: string; argument?: unknown }[] }[];
+    };
+    expect(burn.inputs).toEqual([{ file_url: FILE }]);
+    expect(burn.filters[0].filter).toBe(
+      "[0:v]ass='https://files.example/out/words.ass',setsar=1[v]",
+    );
+    expect(burn.outputs[0].options).toContainEqual({ option: "-preset", argument: "veryfast" });
+
+    await finish(burning.jobs[0]._id, { file_url: "https://files.example/out/captioned.mp4" });
     const done = await caption();
     expect(done.step.status).toBe("done");
     expect(done.step.outputs).toEqual(["https://files.example/out/captioned.mp4"]);
@@ -200,8 +218,8 @@ describe("a caption step in a run", () => {
       { file_url: FILE, details: { width: 1920, height: 1080 } },
     );
     const { step, jobs } = await caption();
-    expect(step.stage).toBeUndefined();
-    expect(jobs[0].stepId).toBe("video-caption");
+    expect(step.stage).toBe("listen");
+    expect(jobs[0].stepId).toBe("media-generate-ass");
     expect(jobs[0].input).toMatchObject({ settings: { style: "classic", font_size: 50 } });
   });
 
@@ -252,9 +270,9 @@ describe("a caption step in a run", () => {
     });
     const { caption } = await captionRun(setup, { settings: { style: "underline" } });
     const { step, jobs } = await caption();
-    expect(step.stage).toBeUndefined();
+    expect(step.stage).toBe("listen");
     expect(jobs[0].input).toEqual({
-      video_url: FILE,
+      media_url: FILE,
       settings: { style: "underline" },
       replace: CAPTIONS.fixes,
     });
@@ -271,9 +289,32 @@ describe("a caption step in a run", () => {
     await finish(reading.jobs[0]._id, null, false);
     const { step, jobs } = await caption();
     expect(step.status).toBe("running");
-    expect(jobs[0].stepId).toBe("video-caption");
+    expect(jobs[0].stepId).toBe("media-generate-ass");
     // Shapes get different styles, so with no shape the toolkit's own look is used.
-    expect(jobs[0].input).toEqual({ video_url: FILE, replace: CAPTIONS.fixes });
+    expect(jobs[0].input).toEqual({ media_url: FILE, replace: CAPTIONS.fixes });
+  });
+
+  test("captions the team typed itself still go to the caption route, the only one that takes text", async () => {
+    const setup = await setUp();
+    const { caption } = await captionRun(
+      setup,
+      { captions: "Hello there", settings: { style: "classic" } },
+      { file_url: FILE, details: { width: 1920, height: 1080 } },
+    );
+    const { step, jobs } = await caption();
+    expect(step.stage).toBeUndefined();
+    expect(jobs[0].stepId).toBe("video-caption");
+    expect(jobs[0].input).toMatchObject({ video_url: FILE, captions: "Hello there" });
+  });
+
+  test("when the words can't be found, the step fails with the toolkit's reason", async () => {
+    const setup = await setUp();
+    const { caption, finish } = await captionRun(setup, { settings: { style: "underline" } });
+    const words = await caption();
+    await finish(words.jobs[0]._id, null, false);
+    const after = await caption();
+    // A failed job gets its usual tries again first; it is never burned in without words.
+    expect(after.jobs.some((job) => job.stepId === "ffmpeg-compose")).toBe(false);
   });
 
   test("Generate caption file gets the same treatment", async () => {
