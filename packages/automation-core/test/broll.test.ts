@@ -213,6 +213,75 @@ describe("choosing cutaways", () => {
     );
     expect(cuts).toEqual([]);
   });
+
+  // The NASA interview's cuts, found by the toolkit: its helmet shot runs 20.3 s to 27.8 s,
+  // and the astronaut clip once landed at 22.5 s inside it, so the helmet showed twice.
+  const NASA_CUTS = [0.1, 5.3, 7.6, 10.8, 12.2, 15.1, 18.1, 20.3, 27.8, 31.1, 35.9, 39.5];
+  const said = (start: number) => [
+    { start, end: start + 2, said: "the space station", show: "space station" },
+  ];
+
+  it("covers a short shot of the video whole instead of cutting into it", () => {
+    const [cut] = chooseCutaways(
+      said(22.5),
+      [[footage("ASTRO", 0.28, { duration: 16.5 })]],
+      BROLL_DEFAULTS,
+      {
+        duration: 75,
+        cuts: NASA_CUTS,
+      },
+    );
+    expect([cut.start, cut.end]).toEqual([20.3, 27.8]);
+  });
+
+  it("leaves a short shot alone when the footage is too short to cover it", () => {
+    expect(
+      chooseCutaways(said(22.5), [[footage("ASTRO", 0.28, { duration: 4 })]], BROLL_DEFAULTS, {
+        duration: 75,
+        cuts: NASA_CUTS,
+      }),
+    ).toEqual([]);
+  });
+
+  it("moves an edge onto a cut close by, and ends where the video cuts", () => {
+    // Starts 0.6 s into the 31.1 s shot: it starts with the shot.
+    const [early] = chooseCutaways(said(31.7), [[footage("A", 0.3)]], BROLL_DEFAULTS, {
+      duration: 75,
+      cuts: NASA_CUTS,
+    });
+    expect([early.start, early.end]).toEqual([31.1, 34.1]);
+    // 3 s from 13.5 s would run past the cut at 15.1 s: it ends there.
+    const [cut] = chooseCutaways(
+      said(13.5),
+      [[footage("B", 0.3)]],
+      { ...BROLL_DEFAULTS, skipOpening: 0 },
+      {
+        duration: 75,
+        cuts: [0.1, 12.2, 15.1, 30],
+      },
+    );
+    expect([cut.start, cut.end]).toEqual([13.5, 15.1]);
+  });
+
+  it("cuts away inside a long take, where the speaker talks", () => {
+    const [cut] = chooseCutaways(said(50), [[footage("A", 0.3)]], BROLL_DEFAULTS, {
+      duration: 75,
+      cuts: [40, 70],
+    });
+    expect([cut.start, cut.end]).toEqual([50, 53]);
+  });
+
+  it("is placed as before when the cuts are not known", () => {
+    const [cut] = chooseCutaways(
+      said(22.5),
+      [[footage("ASTRO", 0.28, { duration: 16.5 })]],
+      BROLL_DEFAULTS,
+      {
+        duration: 75,
+      },
+    );
+    expect([cut.start, cut.end]).toEqual([22.5, 25.5]);
+  });
 });
 
 describe("what counts as B-Roll", () => {

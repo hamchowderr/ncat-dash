@@ -18,14 +18,19 @@ async function stepsOf(ctx: QueryCtx, run: Doc<"runs">) {
   return new Map(steps.map((other) => [other.nodeId, other]));
 }
 
-/** After "look": chooses the cutaways, unless the picture model could not look. */
+/**
+ * After "look": chooses the cutaways, unless the picture model could not look at the words
+ * and stock (the first job). A video whose camera cuts were not found (the jobs after) is
+ * covered as before, without them.
+ */
 export async function finishLooking(
   ctx: MutationCtx,
   run: Doc<"runs">,
   step: Doc<"runSteps">,
   jobs: Doc<"jobs">[],
 ) {
-  const failed = jobs.find((job) => job.status === "failed");
+  const first = step.jobIds[0];
+  const failed = jobs.find((job) => job.status === "failed" && job._id === first);
   if (failed) {
     await failStep(
       ctx,
