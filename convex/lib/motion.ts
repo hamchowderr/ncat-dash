@@ -18,9 +18,10 @@ import {
   type SoundLevel,
   soundStepSettings,
   TEAM_STYLE,
-  titleFromFileName,
   tidyMotionSetup,
 } from "@ncat-dash/automation-core";
+// The editing steps' reading of a file name: dashes and underscores become spaces.
+import { titleFromFileName } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
