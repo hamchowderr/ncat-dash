@@ -318,21 +318,45 @@ export const variantRecipes: StepDefinition[] = [
     readsFirst: ["video_url", ...HOOK_FIELDS, ...ENDING_FIELDS],
     readsPauses: ["video_url"],
     blanks: {
-      video_url: url("The base cut, with its own hook at the start and ending at the end"),
-      hook_2_url: z.string().url().optional().describe("Another hook take"),
-      hook_3_url: z.string().url().optional().describe("Another hook take"),
-      hook_4_url: z.string().url().optional().describe("Another hook take"),
-      hook_5_url: z.string().url().optional().describe("Another hook take"),
+      video_url: url("The base cut, with its own hook at the start and ending at the end").meta({
+        title: "Base cut",
+      }),
+      hook_2_url: z
+        .string()
+        .url()
+        .optional()
+        .describe("Another hook take")
+        .meta({ title: "Hook take 2" }),
+      hook_3_url: z
+        .string()
+        .url()
+        .optional()
+        .describe("Another hook take")
+        .meta({ title: "Hook take 3" }),
+      hook_4_url: z
+        .string()
+        .url()
+        .optional()
+        .describe("Another hook take")
+        .meta({ title: "Hook take 4" }),
+      hook_5_url: z
+        .string()
+        .url()
+        .optional()
+        .describe("Another hook take")
+        .meta({ title: "Hook take 5" }),
       ending_2_url: z
         .string()
         .url()
         .optional()
-        .describe("Another ending, such as a call to action"),
+        .describe("Another ending, such as a call to action")
+        .meta({ title: "Ending take 2" }),
       ending_3_url: z
         .string()
         .url()
         .optional()
-        .describe("Another ending, such as a call to action"),
+        .describe("Another ending, such as a call to action")
+        .meta({ title: "Ending take 3" }),
       opening_seconds: number(
         "About how long the base cut's own hook is, in seconds",
         0.5,
