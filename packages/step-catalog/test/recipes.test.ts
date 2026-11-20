@@ -30,6 +30,8 @@ const MEDIA: Record<string, string> = {
   "https://files.example.com/b.mp4": "b.mp4",
   "https://files.example.com/picture.png": "picture.png",
   "https://files.example.com/logo.png": "logo.png",
+  "https://files.example.com/dark.mp4": "dark.mp4",
+  "https://files.example.com/white-logo.png": "white-logo.png",
   "https://files.example.com/music.mp3": "music.mp3",
 };
 const urlFor = (file: string) => Object.keys(MEDIA).find((url) => MEDIA[url] === file)!;
@@ -80,6 +82,19 @@ function toRequest(step: StepDefinition, input: Record<string, unknown>): Compos
 const everyRecipe = [...recipes, ...moreRecipes];
 
 describe("recipes", () => {
+  it("puts the logo top right unless another corner is picked", () => {
+    const recipe = getStep("recipe-logo")!;
+    const filter = (input: Record<string, unknown>) =>
+      toRequest(recipe, { ...minimalInput(recipe), margin: 50, ...input }).filters[0].filter;
+    expect(filter({})).toContain("overlay=x=main_w-overlay_w-50:y=50");
+    expect(filter({ corner: "top left" })).toContain("overlay=x=50:y=50");
+    expect(filter({ corner: "bottom left" })).toContain("overlay=x=50:y=main_h-overlay_h-50");
+    expect(filter({ corner: "bottom right" })).toContain(
+      "overlay=x=main_w-overlay_w-50:y=main_h-overlay_h-50",
+    );
+    expect(() => toRequest(recipe, { ...minimalInput(recipe), corner: "middle" })).toThrow();
+  });
+
   it("has 22 recipes with unique ids that do not clash with the toolkit steps", () => {
     expect(recipes).toHaveLength(22);
     expect(new Set(allSteps.map((step) => step.id)).size).toBe(allSteps.length);
@@ -194,6 +209,15 @@ describe.skipIf(!hasFfmpeg)("recipes on a real FFmpeg", () => {
     still("logo.png", "300x300");
     still("wide-logo.png", "600x200");
     ffmpeg([
+      ...["-f", "lavfi", "-i", "color=c=black:size=1920x1080:rate=10:duration=1"],
+      ...["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"],
+      path.join(dir, "dark.mp4"),
+    ]);
+    ffmpeg([
+      ...["-f", "lavfi", "-i", "color=c=white:size=300x300", "-frames:v", "1"],
+      path.join(dir, "white-logo.png"),
+    ]);
+    ffmpeg([
       ...["-f", "lavfi", "-i", "sine=frequency=220:duration=1"],
       path.join(dir, "music.mp3"),
     ]);
@@ -252,6 +276,47 @@ describe.skipIf(!hasFfmpeg)("recipes on a real FFmpeg", () => {
       .trim();
     expect(size).toBe("150x50");
   }, 60_000);
+
+  it.each([
+    ["top right", [1920 - 125, 125]],
+    ["top left", [125, 125]],
+    ["bottom left", [125, 1080 - 125]],
+    ["bottom right", [1920 - 125, 1080 - 125]],
+  ] as const)(
+    "puts the logo in the %s corner",
+    (corner, [x, y]) => {
+      const recipe = getStep("recipe-logo")!;
+      const request = toRequest(recipe, {
+        video_url: urlFor("dark.mp4"),
+        logo_url: urlFor("white-logo.png"),
+        logo_size: 150,
+        margin: 50,
+        corner,
+      });
+      const output = run(request, `logo-${corner.replace(" ", "-")}`);
+      // The first frame in grey; a white logo on black shows up as bright pixels only where it sits.
+      const frame = execFileSync(
+        "ffmpeg",
+        [
+          ...["-hide_banner", "-loglevel", "error", "-i", output],
+          ...["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+        ],
+        { maxBuffer: 8 * 1024 * 1024 },
+      );
+      const at = (px: number, py: number) => frame[py * 1920 + px];
+      const corners = {
+        "top left": [125, 125],
+        "top right": [1795, 125],
+        "bottom left": [125, 955],
+        "bottom right": [1795, 955],
+      };
+      expect(at(x, y)).toBeGreaterThan(200);
+      for (const [other, [ox, oy]] of Object.entries(corners)) {
+        if (other !== corner) expect(at(ox, oy), other).toBeLessThan(50);
+      }
+    },
+    60_000,
+  );
 
   it("draws awkward text exactly as typed", () => {
     // FFmpeg reads a text file without any of the escaping, so it is the reference.
