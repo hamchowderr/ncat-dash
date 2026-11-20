@@ -84,7 +84,9 @@ describe("the tour of the dashboard", () => {
       how: "finished",
     });
     await act(async () => {});
-    expect(toastSuccess).toHaveBeenCalledWith("You can take the tour again from your menu.");
+    expect(toastSuccess).toHaveBeenCalledWith("You can take the tour again from your menu.", {
+      id: "tour-again",
+    });
   });
 
   test("closes part way with the cross or Escape, and notes that it was closed", async () => {
