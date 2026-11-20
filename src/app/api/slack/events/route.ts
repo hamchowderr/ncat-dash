@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { forwardSlack } from "@/lib/slack-forward";
 
 /**
@@ -6,5 +8,5 @@ import { forwardSlack } from "@/lib/slack-forward";
  * request on to it untouched; the agent server checks Slack's signature itself.
  */
 export async function POST(request: Request) {
-  return forwardSlack(request);
+  return forwardSlack(request, undefined, undefined, (work) => after(work));
 }
