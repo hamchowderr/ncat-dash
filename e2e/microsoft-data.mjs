@@ -9,6 +9,15 @@ export const MICROSOFT_USER = {
   displayName: "Harbour Organizer",
   mail: "organizer@harbour.test",
   userPrincipalName: "organizer@harbour.onmicrosoft.test",
+  // The Microsoft organization (Entra tenant) the account belongs to.
+  tid: "00000000-0000-4000-8000-0000000000aa",
+};
+
+/** A Microsoft Teams team the dashboard's bot is in, and where Teams says to post. */
+export const TEAMS_TEAM = {
+  id: "19:harbour-general@thread.tacv2",
+  name: "Harbour Video",
+  serviceUrl: `${MICROSOFT}/bot`,
 };
 
 /** A recording Teams saved to the Recordings folder, the way OneDrive lists it. */

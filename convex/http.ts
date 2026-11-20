@@ -10,6 +10,8 @@ import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { noStream, serve } from "./mcp";
 import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
 import { settingsUrl as microsoftSettingsUrl } from "./microsoft";
+import { settingsUrl as teamsSettingsUrl, TEAMS_STATE_PREFIX } from "./microsoftTeams";
+import { DEFAULT_BOT_NAME, teamsAppPackage } from "./lib/teamsApp";
 import { settingsUrl as dropboxSettingsUrl } from "./dropbox";
 import { settingsUrl as zoomSettingsUrl } from "./zoom";
 import {
@@ -352,13 +354,76 @@ http.route({
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
+    // A sign-in started from the Teams settings page comes back here too.
+    const forTeams = state?.startsWith(TEAMS_STATE_PREFIX) ?? false;
+    const failed = url.searchParams.get("error") === "access_denied" ? "cancelled" : "refused";
     const location =
       code && state
-        ? await ctx.runAction(internal.microsoft.finishLink, { code, state })
-        : microsoftSettingsUrl(
-            url.searchParams.get("error") === "access_denied" ? "cancelled" : "refused",
-          );
+        ? forTeams
+          ? await ctx.runAction(internal.microsoftTeams.finishLink, {
+              code,
+              nonce: state.slice(TEAMS_STATE_PREFIX.length),
+            })
+          : await ctx.runAction(internal.microsoft.finishLink, { code, state })
+        : forTeams
+          ? teamsSettingsUrl(failed)
+          : microsoftSettingsUrl(failed);
     return new Response(null, { status: 302, headers: { location } });
+  }),
+});
+
+// The agent server asks who wrote to the bot in Microsoft Teams. Teams' ids and addresses
+// are longer than Slack's, so this one reads its own body.
+http.route({
+  path: "/teams/person",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const text = (key: string) => {
+      const value = body[key];
+      return typeof value === "string" && value.length > 0 && value.length <= 512 ? value : "";
+    };
+    const tenantId = text("tenantId");
+    const aadObjectId = text("aadObjectId");
+    if (!tenantId || !aadObjectId) {
+      return new Response("Missing tenantId or aadObjectId", { status: 400 });
+    }
+    const teamId = text("teamId");
+    const serviceUrl = text("serviceUrl");
+    // Teams always names an https address to post to; the browser tests' stand-in is local.
+    const found = await ctx.runAction(internal.microsoftTeamsChat.person, {
+      tenantId,
+      aadObjectId,
+      ...(teamId &&
+      (serviceUrl.startsWith("https://") || serviceUrl.startsWith("http://127.0.0.1:"))
+        ? { team: { teamId, teamName: text("teamName") || "Team", serviceUrl } }
+        : {}),
+    });
+    return Response.json(found);
+  }),
+});
+
+// The Teams app a team uploads to its Teams: the dashboard's one bot, and its icons.
+http.route({
+  path: "/teams/app.zip",
+  method: "GET",
+  handler: httpAction(async () => {
+    const botId = process.env.TEAMS_APP_ID;
+    if (!botId) return new Response("Teams is not set up on this dashboard", { status: 404 });
+    const name = process.env.TEAMS_APP_NAME || DEFAULT_BOT_NAME;
+    const zip = teamsAppPackage({ botId, name, siteUrl: process.env.SITE_URL ?? "" });
+    return new Response(zip.buffer as ArrayBuffer, {
+      headers: {
+        "content-type": "application/zip",
+        "content-disposition": `attachment; filename="${name.replace(/[^\w .-]/g, "")} for Teams.zip"`,
+      },
+    });
   }),
 });
 
