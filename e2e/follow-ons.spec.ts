@@ -25,9 +25,9 @@ test("suggests what goes after an automation and builds it in one click", async 
 
   // The list has them in their own category, each saying what it runs after.
   await page.goto("/automations/new");
-  await page.getByRole("button", { name: /^After another automation 7$/ }).click();
+  await page.getByRole("button", { name: /^After another automation 9$/ }).click();
   await expect(page.getByText("Runs after Lyric video with highlighted words")).toBeVisible();
-  await page.getByRole("button", { name: /^All 71$/ }).click();
+  await page.getByRole("button", { name: /^All 73$/ }).click();
 
   await page.getByRole("button", { name: /Approval Lyric video with highlighted words/ }).click();
   await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });

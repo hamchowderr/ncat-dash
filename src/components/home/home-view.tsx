@@ -12,6 +12,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { RunStatusBadge } from "@/components/automations/run-status";
+import { TeamFollowOns } from "@/components/automations/follow-ons";
 import { TemplateCard } from "@/components/automations/template-gallery";
 import { FailureText } from "@/components/failure-text";
 import { Button } from "@/components/ui/button";
@@ -313,6 +314,8 @@ export function HomeView() {
               </Button>
             </Section>
           </div>
+
+          <TeamFollowOns organizationId={team.id} />
 
           {!readyFirst && ready}
         </div>

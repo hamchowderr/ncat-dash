@@ -20,7 +20,7 @@ describe("the ready-made automations", () => {
     for (const starter of STARTERS) {
       expect(screen.getAllByText(starter.name, { exact: true }).length).toBeGreaterThan(0);
     }
-    expect(screen.getByRole("button", { name: /^All 71$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^All 73$/ })).toBeTruthy();
   });
 
   test("narrows to one category", () => {
@@ -71,6 +71,7 @@ describe("the ready-made automations", () => {
       expect.stringContaining("Vertical that follows the speaker"),
       // Its backup is found too, under After another automation.
       expect.stringContaining("Backup When Following The Speaker Fails"),
+      expect.stringContaining("Backup When Clips Can't Follow The Speaker"),
     ]);
   });
 });

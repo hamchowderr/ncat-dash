@@ -7,7 +7,7 @@ import { describe, expect, test } from "vitest";
 import { answerQuery, mutationOf, pushed, toastInfo, toastSuccess } from "@/test/convex";
 import { renderInApp } from "@/test/render";
 
-import { FollowOnsAfterRun, FollowOnsPanel } from "./follow-ons";
+import { FollowOnsAfterRun, FollowOnsPanel, TeamFollowOns } from "./follow-ons";
 import { TemplateGallery } from "./template-gallery";
 
 const CLIPS = "auto_clips" as Id<"automations">;
@@ -115,9 +115,36 @@ describe("the ready-made list", () => {
     renderInApp(<TemplateGallery onPick={() => {}} />);
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: /^After another automation 7$/ }));
+      .click(screen.getByRole("button", { name: /^After another automation 9$/ }));
     expect(screen.getByText("Backup When Following The Speaker Fails")).toBeInTheDocument();
     expect(screen.getByText("Runs if Vertical that follows the speaker fails")).toBeInTheDocument();
     expect(screen.getByText("Runs after Lyric video with highlighted words")).toBeInTheDocument();
+  });
+});
+
+describe("on Home", () => {
+  test("suggests follow-ons for the team's automations, saying which each goes after", async () => {
+    answerQuery(api.automations.teamFollowOns, [
+      { automationId: "auto_clips", automationName: "Shorts clips", starterId: "brand-every-clip" },
+    ]);
+    mutationOf(api.automations.setUpFollowOn).mockResolvedValue({
+      automationId: "auto_brand",
+      on: true,
+      problem: null,
+    });
+    renderInApp(<TeamFollowOns organizationId="team_1" />);
+    const section = screen.getByRole("region", { name: "Goes well with what you have" });
+    expect(within(section).getByText("After Shorts clips")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Build Brand Every Clip" }));
+    expect(mutationOf(api.automations.setUpFollowOn)).toHaveBeenCalledWith({
+      automationId: "auto_clips",
+      starterId: "brand-every-clip",
+    });
+  });
+
+  test("shows nothing when there is nothing to suggest", () => {
+    answerQuery(api.automations.teamFollowOns, []);
+    renderInApp(<TeamFollowOns organizationId="team_1" />);
+    expect(screen.queryByRole("region", { name: "Goes well with what you have" })).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { startRun } from "./lib/runner";
 import { addPerson, addTeam, backend } from "./test.setup";
 
@@ -253,5 +253,135 @@ describe("a follow-on's run", () => {
       parentRunId: runId,
     });
     expect((await get(made.automationId))?.name).toBe("Every Shape After Captions");
+  });
+});
+
+describe("a follow-on that wants another kind of file", () => {
+  test("takes the nearest of that kind the first run made on its way", async () => {
+    const { t, team, owner } = await setUp();
+    type Shape = Pick<Doc<"automations">, "trigger" | "nodes"> &
+      Partial<Pick<Doc<"automations">, "edges">>;
+    const insert = (name: string, doc: Shape) =>
+      t.run((ctx) =>
+        ctx.db.insert("automations", {
+          organizationId: team,
+          name,
+          enabled: true,
+          hookToken: `token-${name}`,
+          nextRunAt: null,
+          createdBy: owner.id,
+          updatedAt: Date.now(),
+          edges: [],
+          ...doc,
+        }),
+      );
+    // The episode: trimmed, then an MP3 of it. It finishes with the MP3 only.
+    const episode = await insert("Episode", {
+      trigger: { kind: "manual" },
+      nodes: [
+        { id: "trim", kind: "step", stepId: "video-trim", input: {}, position: { x: 0, y: 0 } },
+        { id: "mp3", kind: "step", stepId: "media-to-mp3", input: {}, position: { x: 220, y: 0 } },
+      ],
+      edges: [{ id: "e", source: "trim", target: "mp3" }],
+    });
+    // After it, a step that wants a video.
+    const thumbs = await insert("Thumbs", {
+      trigger: { kind: "finished", automationId: episode, when: "done" },
+      nodes: [
+        {
+          id: "thumb",
+          kind: "step",
+          stepId: "video-thumbnail",
+          input: {},
+          position: { x: 0, y: 0 },
+        },
+      ],
+    });
+
+    const runId = await t.run(async (ctx) => {
+      const started = await startRun(
+        ctx,
+        (await ctx.db.get(episode))!,
+        "manual",
+        { file_url: FILE },
+        owner.id,
+      );
+      if (!started.ok) throw new Error(started.message);
+      return started.runId;
+    });
+    const jobOf = (id: Id<"runs">, nodeId: string) =>
+      t.run(async (ctx) => {
+        const steps = await ctx.db
+          .query("runSteps")
+          .withIndex("by_run", (q) => q.eq("runId", id))
+          .collect();
+        const jobId = steps.find((step) => step.nodeId === nodeId)!.jobIds[0];
+        return (await ctx.db.get(jobId))!;
+      });
+    await t.mutation(internal.jobs.finish, {
+      jobId: (await jobOf(runId, "trim"))._id,
+      ok: true,
+      result: TRIMMED,
+      permanent: true,
+    });
+    const MP3 = "https://files.example/out/episode.mp3";
+    await t.mutation(internal.jobs.finish, {
+      jobId: (await jobOf(runId, "mp3"))._id,
+      ok: true,
+      result: MP3,
+      permanent: true,
+    });
+
+    const [follower] = await t.run((ctx) =>
+      ctx.db
+        .query("runs")
+        .withIndex("by_automation", (q) => q.eq("automationId", thumbs))
+        .collect(),
+    );
+    expect(follower.trigger).toMatchObject({ files: [MP3], earlier: [[TRIMMED], [FILE]] });
+    expect((await jobOf(follower._id, "thumb")).input).toMatchObject({ video_url: TRIMMED });
+  });
+});
+
+describe("follow-ons for automations built from scratch, and on Home", () => {
+  test("suggests by what an automation ends with, and Home picks a few from those that are on", async () => {
+    const { t, team, owner, make } = await setUp();
+    const own = await t.run((ctx) =>
+      ctx.db.insert("automations", {
+        organizationId: team,
+        name: "My trims",
+        enabled: true,
+        trigger: { kind: "manual" },
+        nodes: [
+          { id: "t", kind: "step", stepId: "video-trim", input: {}, position: { x: 0, y: 0 } },
+        ],
+        edges: [],
+        hookToken: "token-own",
+        nextRunAt: null,
+        createdBy: owner.id,
+        updatedAt: Date.now(),
+      }),
+    );
+    expect(
+      (await owner.as.query(api.automations.followOns, { automationId: own })).suggestions,
+    ).toEqual(["ready-to-post", "every-shape-after-captions", "thumbnail-choices-after"]);
+
+    // Off automations are not suggested on Home; on ones get one each, never the same twice.
+    const clips = await make("social-clips");
+    expect(await owner.as.query(api.automations.teamFollowOns, { organizationId: team })).toEqual([
+      { automationId: own, automationName: "My trims", starterId: "ready-to-post" },
+    ]);
+    await t.run((ctx) => ctx.db.patch(clips, { enabled: true, updatedAt: Date.now() + 1000 }));
+    expect(await owner.as.query(api.automations.teamFollowOns, { organizationId: team })).toEqual([
+      { automationId: clips, automationName: "Clips for social", starterId: "brand-every-clip" },
+      { automationId: own, automationName: "My trims", starterId: "ready-to-post" },
+    ]);
+  });
+
+  test("Home's picks are only for the team's own members", async () => {
+    const { team, stranger } = await setUp();
+    await expect(
+      stranger.as.query(api.automations.teamFollowOns, { organizationId: team }),
+    ).rejects.toThrow();
   });
 });

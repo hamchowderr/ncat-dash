@@ -46,12 +46,16 @@ export function useFollowOns(automationId: Id<"automations">): FollowOns | undef
  * Makes a follow-on wired to start after `automationId`, and opens it so it can be looked
  * over and switched on.
  */
-function useSetUp(automationId: Id<"automations">, automationName: string) {
+function useSetUp() {
   const setUp = useMutation(api.automations.setUpFollowOn);
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
-  async function onSetUp(starter: Starter) {
-    setPending(starter.id);
+  async function onSetUp(
+    automationId: Id<"automations">,
+    automationName: string,
+    starter: Starter,
+  ) {
+    setPending(`${automationId}:${starter.id}`);
     try {
       const made = await setUp({ automationId, starterId: starter.id });
       if (made.on) {
@@ -72,11 +76,14 @@ function useSetUp(automationId: Id<"automations">, automationName: string) {
 
 function Suggestion({
   starter,
+  after,
   disabled,
   pending,
   onSetUp,
 }: {
   starter: Starter;
+  /** The automation it would follow, when that is not plain from where it is shown. */
+  after?: string;
   disabled: boolean;
   pending: boolean;
   onSetUp: () => void;
@@ -92,6 +99,7 @@ function Suggestion({
       />
       <span className="grid gap-0.5">
         <span className="text-sm font-medium">{starter.name}</span>
+        {after && <span className="text-muted-foreground text-xs">After {after}</span>}
         <span className="text-muted-foreground text-sm">{starter.description}</span>
       </span>
       <Button
@@ -122,7 +130,7 @@ export function FollowOnsPanel({
   automationName: string;
   followOns: FollowOns | undefined;
 }) {
-  const { pending, onSetUp } = useSetUp(automationId, automationName);
+  const { pending, onSetUp } = useSetUp();
   if (!followOns) return <p className="text-muted-foreground text-sm">Loading</p>;
   const suggested = suggestedStartersOf(followOns.suggestions);
   return (
@@ -181,8 +189,8 @@ export function FollowOnsPanel({
                 key={starter.id}
                 starter={starter}
                 disabled={pending !== null}
-                pending={pending === starter.id}
-                onSetUp={() => void onSetUp(starter)}
+                pending={pending === `${automationId}:${starter.id}`}
+                onSetUp={() => void onSetUp(automationId, automationName, starter)}
               />
             ))}
           </ul>
@@ -206,7 +214,7 @@ export function FollowOnsAfterRun({
   className?: string;
 }) {
   const followOns = useFollowOns(automationId);
-  const { pending, onSetUp } = useSetUp(automationId, automationName);
+  const { pending, onSetUp } = useSetUp();
   const suggested = suggestedStartersOf(followOns?.suggestions ?? []);
   if (suggested.length === 0) return null;
   return (
@@ -225,8 +233,46 @@ export function FollowOnsAfterRun({
             key={starter.id}
             starter={starter}
             disabled={pending !== null}
-            pending={pending === starter.id}
-            onSetUp={() => void onSetUp(starter)}
+            pending={pending === `${automationId}:${starter.id}`}
+            onSetUp={() => void onSetUp(automationId, automationName, starter)}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * On Home: a few follow-ons that would carry on from the team's automations that are on,
+ * each built in one click. Shows nothing when there are none.
+ */
+export function TeamFollowOns({ organizationId }: { organizationId: string }) {
+  const picks = useQuery(api.automations.teamFollowOns, { organizationId });
+  const { pending, onSetUp } = useSetUp();
+  const shown = (picks ?? []).flatMap((pick) => {
+    const starter = STARTERS.find((each) => each.id === pick.starterId);
+    return starter ? [{ ...pick, starter }] : [];
+  });
+  if (shown.length === 0) return null;
+  return (
+    <section className="grid content-start gap-3" aria-labelledby="home-goes-well">
+      <div className="grid gap-0.5">
+        <h2 id="home-goes-well" className="text-sm font-medium">
+          Goes well with what you have
+        </h2>
+        <p className="text-muted-foreground text-sm text-pretty">
+          Each one starts by itself when the automation it follows finishes.
+        </p>
+      </div>
+      <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        {shown.map((pick) => (
+          <Suggestion
+            key={`${pick.automationId}:${pick.starterId}`}
+            starter={pick.starter}
+            after={pick.automationName}
+            disabled={pending !== null}
+            pending={pending === `${pick.automationId}:${pick.starterId}`}
+            onSetUp={() => void onSetUp(pick.automationId, pick.automationName, pick.starter)}
           />
         ))}
       </ul>

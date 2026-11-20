@@ -10,6 +10,7 @@ import {
   type ChainMember,
   chainLoop,
   draftProblems,
+  followOnsByEnd,
   followOnsFor,
   followOnTrigger,
   followProblem,
@@ -326,6 +327,11 @@ async function followOnsOf(ctx: QueryCtx, automation: Doc<"automations">) {
     .query("automations")
     .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
     .take(500);
+  return followOnsAmong(team, automation);
+}
+
+/** What `followOns` says about `automation`, given all of its team's automations. */
+function followOnsAmong(team: Doc<"automations">[], automation: Doc<"automations">) {
   const following = team.flatMap((other) => {
     const { trigger } = workingCopy(other);
     return trigger.kind === "finished" && trigger.automationId === automation._id
@@ -338,11 +344,57 @@ async function followOnsOf(ctx: QueryCtx, automation: Doc<"automations">) {
       return other ? [starterOf(other)] : [];
     }),
   );
-  const suggestions = followOnsFor(starterOf(workingCopyWithStarter(automation)))
-    .map((starter) => starter.id)
-    .filter((id) => !setUp.has(id));
+  const working = workingCopyWithStarter(automation);
+  const starterId = starterOf(working);
+  // Made from a ready-made: the follow-ons made for it. Otherwise: those that suit its end.
+  const fitting = starterId
+    ? followOnsFor(starterId)
+    : working.trigger.kind === "finished"
+      ? []
+      : followOnsByEnd(working.nodes, working.edges);
+  const suggestions = fitting.map((starter) => starter.id).filter((id) => !setUp.has(id));
   return { following, suggestions };
 }
+
+/**
+ * For the home page: a few follow-ons that would carry on from the team's automations that
+ * are on, one per automation first and no ready-made twice.
+ */
+export const teamFollowOns = query({
+  args: { organizationId: v.string() },
+  returns: v.array(
+    v.object({
+      automationId: v.id("automations"),
+      automationName: v.string(),
+      starterId: v.string(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const team = await ctx.db
+      .query("automations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .take(500);
+    const on = team
+      .filter((automation) => automation.enabled)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    const picked: { automationId: Id<"automations">; automationName: string; starterId: string }[] =
+      [];
+    const used = new Set<string>();
+    for (const automation of on) {
+      const next = followOnsAmong(team, automation).suggestions.find((id) => !used.has(id));
+      if (!next) continue;
+      used.add(next);
+      picked.push({
+        automationId: automation._id,
+        automationName: automation.name,
+        starterId: next,
+      });
+      if (picked.length === 3) break;
+    }
+    return picked;
+  },
+});
 
 function workingCopyWithStarter(automation: Doc<"automations">) {
   return { ...workingCopy(automation), starterId: automation.starterId };

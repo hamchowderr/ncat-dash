@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   followedNames,
+  followOnsByEnd,
   followOnsFor,
   followOnTrigger,
   followsLine,
@@ -14,12 +15,14 @@ const followOns = STARTERS.filter(isFollowOn);
 const byId = (id: string) => STARTERS.find((starter) => starter.id === id)!;
 
 describe("ready-made follow-ons", () => {
-  it("are the seven that carry on from another automation, in their own category", () => {
+  it("are the nine that carry on from another automation, in their own category", () => {
     expect(followOns.map((starter) => starter.id)).toEqual([
       "brand-every-clip",
       "ready-to-post",
       "every-shape-after-captions",
       "backup-follow-speaker",
+      "backup-clips-follow-speaker",
+      "clips-from-episode",
       "episode-video-youtube",
       "lyric-video-vertical",
       "thumbnail-choices-after",
@@ -64,6 +67,16 @@ describe("ready-made follow-ons", () => {
     expect(followOnsFor("follow-speaker-vertical").map((starter) => starter.id)).toEqual([
       "backup-follow-speaker",
     ]);
+    expect(followOnsFor("clips-follow-speaker").map((starter) => starter.id)).toEqual([
+      "brand-every-clip",
+      "backup-clips-follow-speaker",
+    ]);
+    expect(followOnsFor("podcast-package").map((starter) => starter.id)).toEqual([
+      "clips-from-episode",
+    ]);
+    expect(followOnsFor("clips-from-episode").map((starter) => starter.id)).toEqual([
+      "brand-every-clip",
+    ]);
     expect(followOnsFor(null)).toEqual([]);
     expect(followOnsFor("recipe-logo")).toEqual([]);
   });
@@ -102,5 +115,47 @@ describe("ready-made follow-ons", () => {
       "Runs if Vertical that follows the speaker fails",
     );
     expect(followsLine(byId("caption-uploads"))).toBeNull();
+  });
+});
+
+describe("follow-ons for an automation built from scratch", () => {
+  const ids = (
+    nodes: Parameters<typeof followOnsByEnd>[0],
+    edges: Parameters<typeof followOnsByEnd>[1] = [],
+  ) => followOnsByEnd(nodes, edges).map((starter) => starter.id);
+
+  it("suggest branding for clips, and the video ones for any finished video", () => {
+    expect(
+      ids(
+        [
+          { id: "c", kind: "clips" },
+          { id: "cap", kind: "step", stepId: "video-caption" },
+          { id: "ok", kind: "approval" },
+        ],
+        [
+          { source: "c", target: "cap" },
+          { source: "cap", target: "ok" },
+        ],
+      ),
+    ).toEqual([
+      "brand-every-clip",
+      "ready-to-post",
+      "every-shape-after-captions",
+      "thumbnail-choices-after",
+    ]);
+    expect(ids([{ id: "t", kind: "step", stepId: "video-trim" }])).toEqual([
+      "ready-to-post",
+      "every-shape-after-captions",
+      "thumbnail-choices-after",
+    ]);
+  });
+
+  it("turn an MP3 into a video, and suggest nothing for pictures or text", () => {
+    expect(ids([{ id: "m", kind: "step", stepId: "media-to-mp3" }])).toEqual([
+      "episode-video-youtube",
+    ]);
+    expect(ids([{ id: "f", kind: "step", stepId: "recipe-frame" }])).toEqual([]);
+    expect(ids([{ id: "t", kind: "step", stepId: "media-transcribe" }])).toEqual([]);
+    expect(ids([])).toEqual([]);
   });
 });
