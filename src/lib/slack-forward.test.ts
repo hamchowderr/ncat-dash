@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   forwardSlack,
+  isAlertAction,
   isThreadReply,
   SLACK_WEBHOOK_PATH,
   urlCheckChallenge,
@@ -110,5 +111,69 @@ describe("passing Slack's requests to the agent server", () => {
     expect(isThreadReply(event({ thread_ts: "1.0", bot_id: "B1" }))).toBe(false);
     expect(isThreadReply(event({ thread_ts: "1.0", subtype: "message_changed" }))).toBe(false);
     expect(isThreadReply("payload=%7B%7D")).toBe(false);
+  });
+});
+
+describe("alert buttons pressed in Slack", () => {
+  const press = (actionId: string) =>
+    new URLSearchParams({
+      payload: JSON.stringify({
+        type: "block_actions",
+        team: { id: "T1" },
+        user: { id: "U1" },
+        actions: [{ action_id: actionId, value: "alert1" }],
+      }),
+    }).toString();
+
+  test("knows our Approve and Send back presses from the agent's own buttons", () => {
+    expect(isAlertAction(press("ncat_alert_approve"))).toBe(true);
+    expect(isAlertAction(press("ncat_alert_send_back"))).toBe(true);
+    expect(isAlertAction(press("tool_approve:call_1"))).toBe(false);
+    expect(isAlertAction('{"type":"event_callback"}')).toBe(false);
+    expect(isAlertAction("payload=not-json")).toBe(false);
+  });
+
+  test("go to the dashboard's backend only, with Slack's signature", async () => {
+    const seen: { url: string; headers: Headers; body: string }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      seen.push({ url, headers: new Headers(init.headers), body: String(init.body) });
+      return new Response(null, { status: 200 });
+    });
+    const body = press("ncat_alert_approve");
+    const answer = await forwardSlack(
+      new Request("https://dash.test/api/slack/events", {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "x-slack-signature": "v0=abc",
+          "x-slack-request-timestamp": "1700000000",
+        },
+        body,
+      }),
+      "http://agent.test",
+      "https://convex.test/",
+    );
+    expect(answer.status).toBe(200);
+    expect(seen.map((one) => one.url)).toEqual(["https://convex.test/slack/actions"]);
+    expect(seen[0].body).toBe(body);
+    expect(seen[0].headers.get("x-slack-signature")).toBe("v0=abc");
+  });
+
+  test("the agent's own buttons still go to the agent server", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      urls.push(url);
+      return new Response("", { status: 200 });
+    });
+    await forwardSlack(
+      new Request("https://dash.test/api/slack/events", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: press("tool_approve:call_1"),
+      }),
+      "http://agent.test",
+      "https://convex.test",
+    );
+    expect(urls).toEqual([`http://agent.test${SLACK_WEBHOOK_PATH}`]);
   });
 });

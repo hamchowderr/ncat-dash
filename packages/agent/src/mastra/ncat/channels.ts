@@ -1,4 +1,5 @@
 import type { AgentControllerChannelsConfig, ChannelHandler } from '@mastra/core/channels';
+import { onAlertButton } from './alert-buttons';
 import { asTheDiscordWriter, discordAdapter } from './discord';
 import { asTheWriter, slackChannels } from './slack';
 
@@ -25,6 +26,8 @@ export function chatChannels(): AgentControllerChannelsConfig | undefined {
       onMention: byPlatform,
       onDirectMessage: byPlatform,
       onSubscribedMessage: byPlatform,
+      // Approve and Send back on the dashboard's alerts; anything else as before.
+      onAction: onAlertButton,
     },
   };
 }

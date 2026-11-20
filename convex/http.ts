@@ -172,6 +172,44 @@ http.route({
   }),
 });
 
+// Approve or Send back pressed on an alert in Slack, passed on from /api/slack/events.
+// Checked with the workspace's own signing secret.
+http.route({
+  path: "/slack/actions",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const status = await ctx.runAction(internal.chatAlertPresses.takeSlackPress, {
+      body: await request.text(),
+      timestamp: request.headers.get("x-slack-request-timestamp") ?? "",
+      signature: request.headers.get("x-slack-signature") ?? "",
+      now: Date.now(),
+    });
+    return new Response(null, { status });
+  }),
+});
+
+// Approve or Send back pressed on an alert in Discord. Discord delivers presses to the
+// agent server's Gateway connection, which passes them on. Only a caller holding
+// MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/discord/alert-action",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    const decision = asked.decision;
+    if (!asked.alertId || !asked.discordUserId || (decision !== "approve" && decision !== "send_back")) {
+      return new Response("Missing alertId, discordUserId or decision", { status: 400 });
+    }
+    const answer = await ctx.runAction(internal.chatAlertPresses.discordPress, {
+      alertId: asked.alertId,
+      discordUserId: asked.discordUserId,
+      decision,
+    });
+    return Response.json(answer);
+  }),
+});
+
 // The agent server asks who a Discord user is on the team that owns the server they
 // wrote in. Only a caller holding MASTRA_JWT_SECRET is answered.
 http.route({

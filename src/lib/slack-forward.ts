@@ -50,6 +50,30 @@ export function isThreadReply(body: string): boolean {
   }
 }
 
+/** Our alert buttons' action ids start with this; the agent's own buttons do not. */
+const ALERT_ACTION_PREFIX = "ncat_alert_";
+
+/**
+ * Whether a Slack request is a press of an alert button (Approve, Send back) on a
+ * message the dashboard sent. Slack sends button presses form-encoded, as `payload`.
+ */
+export function isAlertAction(body: string): boolean {
+  try {
+    const payload = new URLSearchParams(body).get("payload");
+    if (!payload) return false;
+    const parsed = JSON.parse(payload) as { type?: string; actions?: { action_id?: unknown }[] };
+    return (
+      parsed.type === "block_actions" &&
+      (parsed.actions ?? []).some(
+        (action) =>
+          typeof action.action_id === "string" && action.action_id.startsWith(ALERT_ACTION_PREFIX),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Passes a Slack request on to the agent server, and a reply in a thread also to the
  * dashboard's backend, which writes it into the review that thread belongs to. Slack is
@@ -70,6 +94,21 @@ export async function forwardSlack(
   for (const name of PASSED) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
+  }
+  // An Approve or Send back press on an alert is the dashboard's, not the agent's.
+  if (isAlertAction(body)) {
+    if (!convexSiteUrl) return new Response("The dashboard is not set up.", { status: 503 });
+    try {
+      const answer = await fetch(`${convexSiteUrl.replace(/\/$/, "")}/slack/actions`, {
+        method: "POST",
+        headers,
+        body,
+        signal: AbortSignal.timeout(2_500),
+      });
+      return new Response(null, { status: answer.status });
+    } catch {
+      return new Response("The dashboard is not reachable.", { status: 503 });
+    }
   }
   const toReview =
     convexSiteUrl && isThreadReply(body)
