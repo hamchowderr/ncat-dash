@@ -161,6 +161,7 @@ export const turnOn = mutation({
       const automationId = await ctx.db.insert("automations", {
         organizationId: args.organizationId,
         ...content,
+        starterId: starter.id,
         enabled: problem === null,
         // A watched folder counts files from the moment it is switched on.
         ...(problem === null && content.trigger.kind === "folder" ? { watchFrom: Date.now() } : {}),

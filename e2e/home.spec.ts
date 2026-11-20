@@ -45,7 +45,7 @@ test("a new team's home leads with getting set up and ready-made automations", a
   await page.setViewportSize({ width: 1280, height: 900 });
 
   // Every ready-made automation is on one page, by category, and can be searched.
-  await ready.getByRole("link", { name: /See all 64/ }).click();
+  await ready.getByRole("link", { name: /See all 71/ }).click();
   await expect(page).toHaveURL(/\/automations\/new$/);
   await expect(page.getByRole("button", { name: /^All 64$/ })).toHaveAttribute(
     "aria-pressed",

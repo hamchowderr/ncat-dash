@@ -484,6 +484,8 @@ export default defineSchema({
     edges: v.array(edgeValidator),
     // Secret part of the webhook address that starts this automation.
     hookToken: v.string(),
+    // The ready-made automation it was made from, so follow-ons can be suggested for it.
+    starterId: v.optional(v.string()),
     // For a schedule trigger: when it next fires. Null otherwise.
     nextRunAt: v.union(v.null(), v.number()),
     // For a watched folder: only files added after this moment start a run, so

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  followsLine,
   type Starter,
   STARTER_CATEGORIES,
   type StarterCategory,
@@ -38,6 +39,9 @@ export function TemplateCard({
       <span className="grid gap-0.5">
         <span className="text-sm font-medium">{starter.name}</span>
         <span className="text-muted-foreground line-clamp-2 text-sm">{starter.description}</span>
+        {followsLine(starter) && (
+          <span className="text-muted-foreground mt-1 text-xs">{followsLine(starter)}</span>
+        )}
       </span>
     </button>
   );

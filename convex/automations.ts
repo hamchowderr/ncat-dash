@@ -10,7 +10,10 @@ import {
   type ChainMember,
   chainLoop,
   draftProblems,
+  followOnsFor,
+  followOnTrigger,
   followProblem,
+  isFollowOn,
   loopWords,
   targetOf,
   getNodeType,
@@ -30,6 +33,7 @@ import {
   outline,
   readAutomationFile,
   scheduleProblem,
+  starterOf,
   STARTERS,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
@@ -238,15 +242,23 @@ async function createAutomation(
   if (starterId && !starter) fail("not_found", "Unknown starter.");
   const name = (givenName.trim() || starter?.name || "").slice(0, 80);
   if (!name) fail("invalid_input", "Give the automation a name.");
+  // A follow-on is wired to the team's newest automation it is made to run after, if any.
+  const followed =
+    starter && isFollowOn(starter) ? await followedBy(ctx, organizationId, starter.follows!) : null;
   const content = {
     name,
-    trigger: starter?.trigger ?? ({ kind: "manual" } as const),
+    trigger: starter
+      ? followed
+        ? followOnTrigger(starter, followed)
+        : starter.trigger
+      : ({ kind: "manual" } as const),
     nodes: starter?.nodes ?? [],
     edges: starter?.edges ?? [],
   };
   const automationId = await ctx.db.insert("automations", {
     organizationId,
     ...content,
+    ...(starter ? { starterId: starter.id } : {}),
     enabled: false,
     hookToken: randomToken(),
     nextRunAt: null,
@@ -258,6 +270,152 @@ async function createAutomation(
     source: "created",
   });
   return automationId;
+}
+
+/**
+ * The team's most recently changed automation made from one of `starterIds`, earlier ones
+ * in the list first, or null when the team has none of them.
+ */
+async function followedBy(
+  ctx: QueryCtx,
+  organizationId: string,
+  starterIds: string[],
+): Promise<string | null> {
+  const team = await ctx.db
+    .query("automations")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .take(500);
+  for (const id of starterIds) {
+    const made = team
+      .filter((automation) => starterOf(automation) === id)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (made) return made._id;
+  }
+  return null;
+}
+
+const followOnsValidator = v.object({
+  // The team's automations that already start when this one finishes.
+  following: v.array(
+    v.object({
+      automationId: v.id("automations"),
+      name: v.string(),
+      enabled: v.boolean(),
+      when: v.union(v.literal("done"), v.literal("failed"), v.literal("either")),
+    }),
+  ),
+  // Ready-made automations made to run after this one that the team has not set up after it.
+  suggestions: v.array(v.string()),
+});
+
+/**
+ * What goes on after an automation: the team's automations that already start when it
+ * finishes, and the ready-made follow-ons that suit it and are not set up after it yet.
+ */
+export const followOns = query({
+  args: { automationId: v.id("automations") },
+  returns: followOnsValidator,
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    return await followOnsOf(ctx, automation);
+  },
+});
+
+async function followOnsOf(ctx: QueryCtx, automation: Doc<"automations">) {
+  const team = await ctx.db
+    .query("automations")
+    .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+    .take(500);
+  const following = team.flatMap((other) => {
+    const { trigger } = workingCopy(other);
+    return trigger.kind === "finished" && trigger.automationId === automation._id
+      ? [{ automationId: other._id, name: other.name, enabled: other.enabled, when: trigger.when }]
+      : [];
+  });
+  const setUp = new Set(
+    following.flatMap(({ automationId }) => {
+      const other = team.find((each) => each._id === automationId);
+      return other ? [starterOf(other)] : [];
+    }),
+  );
+  const suggestions = followOnsFor(starterOf(workingCopyWithStarter(automation)))
+    .map((starter) => starter.id)
+    .filter((id) => !setUp.has(id));
+  return { following, suggestions };
+}
+
+function workingCopyWithStarter(automation: Doc<"automations">) {
+  return { ...workingCopy(automation), starterId: automation.starterId };
+}
+
+/**
+ * Makes a ready-made follow-on that starts when `automationId` finishes, built and wired
+ * in one go. It is switched on unless something it needs, such as a logo, is missing.
+ */
+const madeFollowOnValidator = v.object({
+  automationId: v.id("automations"),
+  // Switched on straight away, unless something it needs is missing: then `problem` says what.
+  on: v.boolean(),
+  problem: v.union(v.null(), v.string()),
+});
+
+export const setUpFollowOn = mutation({
+  args: { automationId: v.id("automations"), starterId: v.string() },
+  returns: madeFollowOnValidator,
+  handler: async (ctx, args) => {
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
+    return await makeFollowOn(ctx, automation, userId, args.starterId);
+  },
+});
+
+async function makeFollowOn(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  userId: string,
+  starterId: string,
+) {
+  const starter = STARTERS.find((each) => each.id === starterId);
+  if (!starter) fail("not_found", "Unknown starter.");
+  if (!isFollowOn(starter)) {
+    fail("invalid_input", `${starter.name} starts by itself, not after another automation.`);
+  }
+  const team = await ctx.db
+    .query("automations")
+    .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+    .take(500);
+  // Two of the same follow-on, after different automations, are told apart by name.
+  const taken = team.some((other) => other.name === starter.name);
+  const name = (taken ? `${starter.name} after ${automation.name}` : starter.name).slice(0, 80);
+  const content = {
+    name,
+    trigger: followOnTrigger(starter, automation._id),
+    nodes: starter.nodes,
+    edges: starter.edges,
+  };
+  const brand = await brandOf(ctx, automation.organizationId, automation.clientId);
+  const problem = automationProblem(content.trigger, content.nodes, content.edges, brand);
+  const automationId = await ctx.db.insert("automations", {
+    organizationId: automation.organizationId,
+    ...content,
+    // Made for the same client, it uses that client's brand like the one it follows.
+    ...(automation.clientId ? { clientId: automation.clientId } : {}),
+    starterId: starter.id,
+    enabled: problem === null,
+    hookToken: randomToken(),
+    nextRunAt: null,
+    createdBy: userId,
+    updatedAt: Date.now(),
+  });
+  await recordVersion(
+    ctx,
+    { _id: automationId, organizationId: automation.organizationId },
+    content,
+    {
+      userId,
+      source: "created",
+    },
+  );
+  return { automationId, on: problem === null, problem };
 }
 
 const savedValidator = v.object({
@@ -537,6 +695,11 @@ const describedValidator = v.object({
   // The team, when the automation has an Approval step: put user ids in its `reviewers`
   // setting to name who decides. Owners and admins can always decide.
   team: v.optional(v.array(v.object({ userId: v.string(), name: v.string(), role: v.string() }))),
+  // Ready-made automations that go well after this one and are not set up after it yet.
+  // `automations.setUpFollowOn` makes one, wired to start when this one finishes.
+  followOns: v.optional(
+    v.array(v.object({ id: v.string(), name: v.string(), description: v.string() })),
+  ),
 });
 
 /**
@@ -566,6 +729,18 @@ async function describeAutomation(ctx: QueryCtx, automation: Doc<"automations">)
     draft: automation.draft !== undefined,
     music: music.map((track) => ({ name: track.name, value: track.file })),
     ...(await teamFor(ctx, automation.organizationId, draft)),
+    ...(await suggestedAfter(ctx, automation)),
+  };
+}
+
+async function suggestedAfter(ctx: QueryCtx, automation: Doc<"automations">) {
+  const { suggestions } = await followOnsOf(ctx, automation);
+  if (suggestions.length === 0) return {};
+  return {
+    followOns: suggestions.flatMap((id) => {
+      const starter = STARTERS.find((each) => each.id === id);
+      return starter ? [{ id, name: starter.name, description: starter.description }] : [];
+    }),
   };
 }
 
@@ -590,6 +765,19 @@ export const createAs = internalMutation({
   handler: async (ctx, args) => {
     await withTeamSteps(ctx, args.organizationId);
     return await createAutomation(ctx, args.organizationId, args.userId, args.name);
+  },
+});
+
+export const setUpFollowOnAs = internalMutation({
+  args: {
+    organizationId: v.string(),
+    userId: v.string(),
+    automationId: v.string(),
+    starterId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const automation = await teamAutomation(ctx, args.organizationId, args.automationId);
+    return await makeFollowOn(ctx, automation, args.userId, args.starterId);
   },
 });
 

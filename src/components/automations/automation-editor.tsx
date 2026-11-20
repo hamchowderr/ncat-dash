@@ -49,6 +49,7 @@ import { useMutation, useQuery } from "convex/react";
 import {
   ArrowLeft,
   Download,
+  GitFork,
   LayoutGrid,
   Play,
   Plus,
@@ -102,6 +103,7 @@ import { isNoteId, notePlace, useCanvasNotes } from "./canvas-notes";
 import { ClientPicker } from "./client-picker";
 import { DropboxSend } from "./dropbox-send";
 import { DraftBar } from "./draft-bar";
+import { FollowOnsPanel, useFollowOns } from "./follow-ons";
 import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 import { LiveRunBadge, useLiveRun } from "./live-run";
 import { NodePanel } from "./node-panel";
@@ -311,6 +313,12 @@ function Editor({ automation }: { automation: Loaded }) {
   // The last test of each step since the editor opened, so its result stays in the panel.
   const [tests, setTests] = useState<Record<string, Id<"runs">>>({});
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The side column for what runs after this automation, when no step's settings are in it.
+  const followOns = useFollowOns(automation._id);
+  const [afterOpen, setAfterOpen] = useState(false);
+  // Choosing a step puts its settings in the column instead.
+  const afterShown = afterOpen && !selected;
+  const suggestedCount = followOns?.suggestions.length ?? 0;
 
   // Keep the whole automation in view when it opens and whenever a step is added or removed.
   const { fitView, screenToFlowPosition } = useReactFlow();
@@ -321,7 +329,7 @@ function Editor({ automation }: { automation: Loaded }) {
     // Twice: once straight away, once after the settings panel has taken its space.
     const timers = [60, 350].map((delay) => setTimeout(() => void fitView(FIT), delay));
     return () => timers.forEach(clearTimeout);
-  }, [fitView, nodeCount, tab, panelShown, paletteOpen]);
+  }, [fitView, nodeCount, tab, panelShown, paletteOpen, afterShown]);
 
   // Each step nothing follows offers a "+" to carry on from it, and so does each way out
   // of an If that nothing hangs off yet.
@@ -775,7 +783,7 @@ function Editor({ automation }: { automation: Loaded }) {
             style={
               {
                 "--palette-width": paletteOpen ? "18rem" : "0rem",
-                "--panel-width": selected ? "22rem" : "0rem",
+                "--panel-width": selected || afterShown ? "22rem" : "0rem",
               } as CSSProperties
             }
           >
@@ -885,6 +893,30 @@ function Editor({ automation }: { automation: Loaded }) {
                   <StickyNote />
                   Add note
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-expanded={afterShown}
+                  data-tour-step-id="tour-editor-after"
+                  onClick={() => {
+                    if (afterShown) {
+                      setAfterOpen(false);
+                      return;
+                    }
+                    // The column shows one thing at a time: a step's settings or this.
+                    setNodes((current) => current.map((node) => ({ ...node, selected: false })));
+                    setAfterOpen(true);
+                  }}
+                >
+                  <GitFork />
+                  After this
+                  {suggestedCount > 0 && (
+                    <span className="text-muted-foreground font-normal">
+                      <span className="sr-only">, </span>
+                      {suggestedCount} suggested
+                    </span>
+                  )}
+                </Button>
                 <div className="flex min-w-0 flex-1 justify-center @max-xl:order-last @max-xl:basis-full">
                   <LiveRunBadge
                     automationId={automation._id}
@@ -975,6 +1007,28 @@ function Editor({ automation }: { automation: Loaded }) {
                 )}
               </div>
             </div>
+
+            {afterShown && (
+              <aside
+                aria-label="What runs after this automation"
+                className="min-h-0 overflow-hidden lg:col-start-3 lg:row-start-1 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+              >
+                <div className="h-full overflow-x-hidden overflow-y-auto overscroll-contain p-4 lg:w-[22rem]">
+                  <div className="mb-4 flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-semibold">After this automation</h2>
+                    <Button variant="ghost" size="icon-sm" onClick={() => setAfterOpen(false)}>
+                      <X />
+                      <span className="sr-only">Close what runs after this</span>
+                    </Button>
+                  </div>
+                  <FollowOnsPanel
+                    automationId={automation._id}
+                    automationName={automation.name}
+                    followOns={followOns}
+                  />
+                </div>
+              </aside>
+            )}
 
             {selected && (
               <aside
