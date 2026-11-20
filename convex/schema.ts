@@ -1174,6 +1174,9 @@ export default defineSchema({
     path: v.string(),
     pathLower: v.string(),
     cursor: v.optional(v.string()),
+    // false: only the files right in this folder (folders picked from the scan list).
+    // Missing: this folder and every folder inside it.
+    recursive: v.optional(v.boolean()),
     addedAt: v.number(),
   })
     .index("by_connection", ["connectionId"])
