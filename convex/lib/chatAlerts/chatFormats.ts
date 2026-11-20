@@ -1,13 +1,6 @@
 // How an alert looks in Slack and in Discord: pure functions, so the tests can check the
 // words and buttons without either app. The senders in slack.ts and discord.ts post them.
-
-/** The neutral alert every chat app gets (see chatAlerts/index.ts). */
-export type ChatAlertView = {
-  title: string;
-  lines: string[];
-  link: string;
-  actions?: { id: "approve" | "send_back"; label: string }[];
-};
+import type { ChatAlert } from "./index";
 
 /** The action ids on our buttons. Anything else is the agent's own (tool approvals). */
 export const ALERT_ACTION_PREFIX = "ncat_alert_";
@@ -23,22 +16,33 @@ export function decisionOf(actionId: string): "approve" | "send_back" | null {
   return null;
 }
 
+type Worded = Pick<ChatAlert, "title" | "lines" | "link" | "linkLabel" | "runStepId" | "actions">;
+
+/**
+ * What is kept of a sent message so it can be changed later: Slack's or Discord's own
+ * text, with the link already in it. Settling adds the outcome under it.
+ */
 function slackEscape(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-/** An alert as Slack Block Kit: the title, its lines, a link, and the buttons. */
-export function slackAlert(
-  alert: ChatAlertView,
-  alertId: string,
-): { text: string; blocks: unknown[] } {
-  const body = [
+function lines(alert: Worded): string[] {
+  return alert.lines.filter((line) => line.trim() !== "");
+}
+
+/** The words of an alert in Slack's markup: bold title, its lines, and the link. */
+export function slackText(alert: Worded): string {
+  return [
     `*${slackEscape(alert.title)}*`,
-    ...alert.lines.map(slackEscape),
-    `<${alert.link}|Open in the dashboard>`,
+    ...lines(alert).map(slackEscape),
+    `<${alert.link}|${slackEscape(alert.linkLabel)}>`,
   ].join("\n");
-  const blocks: unknown[] = [{ type: "section", text: { type: "mrkdwn", text: body } }];
-  if (alert.actions?.length) {
+}
+
+/** An alert as Slack Block Kit: its words, and Approve / Send back for an approval. */
+export function slackAlert(alert: Worded): { text: string; blocks: unknown[] } {
+  const blocks: unknown[] = [{ type: "section", text: { type: "mrkdwn", text: slackText(alert) } }];
+  if (alert.actions?.length && alert.runStepId) {
     blocks.push({
       type: "actions",
       block_id: "ncat_alert",
@@ -46,7 +50,7 @@ export function slackAlert(
         type: "button",
         action_id: actionIdFor(action.id),
         text: { type: "plain_text", text: action.label },
-        value: alertId,
+        value: alert.runStepId,
         ...(action.id === "approve" ? { style: "primary" } : {}),
       })),
     });
@@ -54,16 +58,12 @@ export function slackAlert(
   return { text: alert.title, blocks };
 }
 
-/** The same message once decided: the buttons give way to what happened. */
-export function slackSettled(
-  alert: ChatAlertView,
-  outcome: string,
-): { text: string; blocks: unknown[] } {
-  const settled = slackAlert({ ...alert, actions: undefined }, "");
+/** A sent message once decided: its words, and what happened instead of the buttons. */
+export function slackSettled(text: string, outcome: string): { text: string; blocks: unknown[] } {
   return {
-    text: `${alert.title}: ${outcome}`,
+    text: outcome,
     blocks: [
-      ...settled.blocks,
+      { type: "section", text: { type: "mrkdwn", text } },
       { type: "context", elements: [{ type: "mrkdwn", text: slackEscape(outcome) }] },
     ],
   };
@@ -79,31 +79,58 @@ function fit(text: string): string {
   return text.length > 2000 ? `${text.slice(0, 1997)}...` : text;
 }
 
-/**
- * An alert as a Discord message: the title in bold, its lines, and a row of buttons. The
- * custom id is "<action id>\n<alert id>", which the chat adapter on the agent server
- * reads back as the action and its value. A link button opens the dashboard.
- */
-export function discordAlert(
-  alert: ChatAlertView,
-  alertId: string,
-): { content: string; components: unknown[] } {
-  const content = fit([`**${discordEscape(alert.title)}**`, ...alert.lines.map(discordEscape)].join("\n"));
-  const buttons: unknown[] = (alert.actions ?? []).map((action) => ({
-    type: 2,
-    style: action.id === "approve" ? 3 : 2,
-    label: action.label,
-    custom_id: `${actionIdFor(action.id)}\n${alertId}`,
-  }));
-  buttons.push({ type: 2, style: 5, label: "Open in the dashboard", url: alert.link });
-  return { content, components: [{ type: 1, components: buttons }] };
+/** The words of an alert in Discord's markdown: bold title and its lines. */
+export function discordText(alert: Worded): string {
+  return fit([`**${discordEscape(alert.title)}**`, ...lines(alert).map(discordEscape)].join("\n"));
 }
 
-/** The same message once decided: only the link stays, and the outcome is added. */
+function linkButton(alert: Pick<Worded, "link" | "linkLabel">) {
+  return { type: 2, style: 5, label: alert.linkLabel, url: alert.link };
+}
+
+/**
+ * An alert as a Discord message: its words, and a row of buttons. The custom id is
+ * "<action id>\n<run step id>", which the chat adapter on the agent server reads back as
+ * the action and its value. A link button opens the dashboard.
+ */
+export function discordAlert(alert: Worded): { content: string; components: unknown[] } {
+  const buttons: unknown[] =
+    alert.runStepId && alert.actions
+      ? alert.actions.map((action) => ({
+          type: 2,
+          style: action.id === "approve" ? 3 : 2,
+          label: action.label,
+          custom_id: `${actionIdFor(action.id)}\n${alert.runStepId}`,
+        }))
+      : [];
+  buttons.push(linkButton(alert));
+  return { content: discordText(alert), components: [{ type: 1, components: buttons }] };
+}
+
+/** What is kept of a Discord alert: its words and the link, so it can be rebuilt. */
+export function discordKept(alert: Worded): string {
+  return JSON.stringify({
+    content: discordText(alert),
+    link: alert.link,
+    linkLabel: alert.linkLabel,
+  });
+}
+
+/** A sent message once decided: only the link stays, and the outcome is added. */
 export function discordSettled(
-  alert: ChatAlertView,
+  kept: string,
   outcome: string,
 ): { content: string; components: unknown[] } {
-  const settled = discordAlert({ ...alert, actions: undefined }, "");
-  return { ...settled, content: fit(`${settled.content}\n-# ${discordEscape(outcome)}`) };
+  let parsed: { content?: string; link?: string; linkLabel?: string } = {};
+  try {
+    parsed = JSON.parse(kept);
+  } catch {
+    parsed = { content: kept };
+  }
+  const content = fit(`${parsed.content ?? ""}\n-# ${discordEscape(outcome)}`);
+  const components =
+    parsed.link && parsed.linkLabel
+      ? [{ type: 1, components: [linkButton({ link: parsed.link, linkLabel: parsed.linkLabel })] }]
+      : [];
+  return { content, components };
 }

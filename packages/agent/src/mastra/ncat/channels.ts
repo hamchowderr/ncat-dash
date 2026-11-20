@@ -1,7 +1,7 @@
-import type { AgentControllerChannelsConfig, ChannelHandler } from '@mastra/core/channels';
-import { onAlertButton } from './alert-buttons';
-import { asTheDiscordWriter, discordAdapter } from './discord';
-import { asTheWriter, slackChannels } from './slack';
+import type { AgentControllerChannelsConfig, ChannelHandler } from "@mastra/core/channels";
+import { onAlertButton } from "./alert-buttons";
+import { asTheDiscordWriter, discordAdapter } from "./discord";
+import { asTheWriter, slackChannels } from "./slack";
 
 /**
  * The chat apps the agent answers in: Slack (each team's own app) and Discord (the
@@ -9,7 +9,7 @@ import { asTheWriter, slackChannels } from './slack';
  * message first finds who wrote it, the way that app allows.
  */
 export const byPlatform: ChannelHandler = async (thread, message, next, ctx) => {
-  if (thread.id.startsWith('discord:')) return await asTheDiscordWriter(thread, message, next, ctx);
+  if (thread.id.startsWith("discord:")) return await asTheDiscordWriter(thread, message, next, ctx);
   return await asTheWriter(thread, message, next, ctx);
 };
 

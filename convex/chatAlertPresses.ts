@@ -11,13 +11,13 @@ import { slackSigned } from "./lib/slackSignature";
 // pressed in its own way; that person is found on the alert's team, and the approval is
 // decided as them through the one path every chat app shares (chatAlerts.decideFromChat).
 
-/** The team an alert belongs to, or null when it is gone. */
-export const alertTeam = internalQuery({
-  args: { alertId: v.string() },
+/** The team an approval step belongs to, or null when it is gone. */
+export const stepTeam = internalQuery({
+  args: { runStepId: v.string() },
   handler: async (ctx, args) => {
-    const alertId = ctx.db.normalizeId("alerts", args.alertId);
-    const alert = alertId ? await ctx.db.get(alertId) : null;
-    return alert ? { alertId: alert._id, organizationId: alert.organizationId } : null;
+    const runStepId = ctx.db.normalizeId("runSteps", args.runStepId);
+    const step = runStepId ? await ctx.db.get(runStepId) : null;
+    return step ? { runStepId: step._id, organizationId: step.organizationId } : null;
   },
 });
 
@@ -60,13 +60,22 @@ export const takeSlackPress = internalAction({
     if (!decision || !action?.value || !slackUserId || !channel) return 200;
     await ctx.scheduler.runAfter(0, internal.chatAlertPresses.slackPress, {
       connectionId: connection._id,
-      alertId: action.value,
+      runStepId: action.value,
       decision,
       slackUserId,
       channel,
     });
     return 200;
   },
+});
+
+export const slackConnectionOf = internalQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) =>
+    await ctx.db
+      .query("slackConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .unique(),
 });
 
 export const connectionById = internalQuery({
@@ -77,7 +86,7 @@ export const connectionById = internalQuery({
 export const slackPress = internalAction({
   args: {
     connectionId: v.id("slackConnections"),
-    alertId: v.string(),
+    runStepId: v.string(),
     decision: v.union(v.literal("approve"), v.literal("send_back")),
     slackUserId: v.string(),
     channel: v.string(),
@@ -91,11 +100,11 @@ export const slackPress = internalAction({
     const token = await decryptSecret(connection.botTokenCipher);
     const tell = (text: string) =>
       postEphemeral(token, { channel: args.channel, user: args.slackUserId, text });
-    const alert = await ctx.runQuery(internal.chatAlertPresses.alertTeam, {
-      alertId: args.alertId,
+    const alert = await ctx.runQuery(internal.chatAlertPresses.stepTeam, {
+      runStepId: args.runStepId,
     });
     if (!alert || alert.organizationId !== connection.organizationId) {
-      await tell("That alert is no longer in the dashboard.");
+      await tell("That approval is no longer in the dashboard.");
       return;
     }
     const email = await emailOf(token, args.slackUserId);
@@ -112,10 +121,10 @@ export const slackPress = internalAction({
       return;
     }
     const answer = await ctx.runMutation(internal.chatAlerts.decideFromChat, {
-      alertId: alert.alertId,
+      runStepId: alert.runStepId,
       userId: member.userId,
       decision: args.decision,
-      channel: "slack",
+      app: "slack",
     });
     if (!answer.ok) await tell(answer.message);
   },
@@ -139,16 +148,16 @@ export const discordLink = internalQuery({
  */
 export const discordPress = internalAction({
   args: {
-    alertId: v.string(),
+    runStepId: v.string(),
     discordUserId: v.string(),
     decision: v.union(v.literal("approve"), v.literal("send_back")),
   },
   returns: v.object({ ok: v.boolean(), message: v.string() }),
   handler: async (ctx, args): Promise<{ ok: boolean; message: string }> => {
-    const alert = await ctx.runQuery(internal.chatAlertPresses.alertTeam, {
-      alertId: args.alertId,
+    const alert = await ctx.runQuery(internal.chatAlertPresses.stepTeam, {
+      runStepId: args.runStepId,
     });
-    if (!alert) return { ok: false, message: "That alert is no longer in the dashboard." };
+    if (!alert) return { ok: false, message: "That approval is no longer in the dashboard." };
     const link: Doc<"discordPeople"> | null = await ctx.runQuery(
       internal.chatAlertPresses.discordLink,
       { discordUserId: args.discordUserId, organizationId: alert.organizationId },
@@ -163,10 +172,10 @@ export const discordPress = internalAction({
     const answer: { ok: boolean; message: string } = await ctx.runMutation(
       internal.chatAlerts.decideFromChat,
       {
-        alertId: alert.alertId,
+        runStepId: alert.runStepId,
         userId: link.userId,
         decision: args.decision,
-        channel: "discord",
+        app: "discord",
       },
     );
     return answer;

@@ -210,7 +210,7 @@ describe("picking the channel review activity goes to", () => {
     ).toMatchObject({ ok: false, detail: expect.stringMatching(/did not list that channel/) });
   });
 
-  test("with no channel, nothing about reviews goes to Slack", async () => {
+  test("with no channel, nothing about reviews goes to a channel; the person mentioned still gets their own alert", async () => {
     const setup = await setUp();
     await setup.jordan.as.action(api.slackReview.setAlertChannel, {
       organizationId: setup.team,
@@ -224,7 +224,10 @@ describe("picking the channel review activity goes to", () => {
       version: 1,
     });
     await settled(setup.t);
-    expect(posted).toEqual([]);
+    // Dev's own mention alert comes as a direct message (Settings, Notifications).
+    expect(posted.map((one) => [one.channel, one.text])).toEqual([
+      ["U0DEV", "Jordan Lee mentioned you in Weekly clips"],
+    ]);
   });
 });
 
@@ -318,6 +321,8 @@ describe("what the channel hears", () => {
       version: 1,
     });
     await settled(t);
+    // Leave out Dev's own mention alert, a direct message (alerts in Slack).
+    posted = posted.filter((one) => one.channel !== "U0DEV");
     expect(posted).toHaveLength(1);
     expect(posted[0].text).toMatch(
       /^\*Jordan Lee\* mentioned <@U0DEV> on <.*\|Weekly clips>, Opening hello at 0:04:\n> @Dev Patel is the logo too small\?$/,

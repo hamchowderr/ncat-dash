@@ -117,6 +117,7 @@ function method(name, params, token) {
       if (found) {
         found.text = params.text ?? found.text;
         found.markdown_text = params.markdown_text ?? found.markdown_text;
+        found.blocks = params.blocks ?? found.blocks;
       }
       return { ok: true, channel: params.channel, ts: params.ts };
     }

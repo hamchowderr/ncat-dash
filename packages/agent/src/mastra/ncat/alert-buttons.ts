@@ -1,6 +1,6 @@
-import type { ActionChannelHandler } from '@mastra/core/channels';
-import { env } from '../../lib/env';
-import { convexSiteUrl, signForDashboard } from './dashboard-site';
+import type { ActionChannelHandler } from "@mastra/core/channels";
+import { env } from "../../lib/env";
+import { convexSiteUrl, signForDashboard } from "./dashboard-site";
 
 /**
  * Approve and Send back on an alert the dashboard sent someone in Discord. Discord only
@@ -12,7 +12,7 @@ import { convexSiteUrl, signForDashboard } from './dashboard-site';
  */
 
 /** Our alert buttons' action ids. Kept in step with convex/lib/chatAlerts/chatFormats.ts. */
-const PREFIX = 'ncat_alert_';
+const PREFIX = "ncat_alert_";
 
 export type PressAnswer = { ok: boolean; message: string };
 
@@ -24,10 +24,10 @@ const askDashboard: Ask = async (body) => {
   if (!site || !secret) return null;
   try {
     const response = await fetch(`${site}/discord/alert-action`, {
-      method: 'POST',
+      method: "POST",
       headers: {
         authorization: `Bearer ${signForDashboard(secret)}`,
-        'content-type': 'application/json',
+        "content-type": "application/json",
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),
@@ -35,7 +35,7 @@ const askDashboard: Ask = async (body) => {
     if (!response.ok) throw new Error(`The dashboard answered ${response.status}`);
     return (await response.json()) as PressAnswer;
   } catch (error) {
-    console.error('[alerts] could not reach the dashboard', error);
+    console.error("[alerts] could not reach the dashboard", error);
     return null;
   }
 };
@@ -49,13 +49,13 @@ export function useDashboardForTests(answer?: Ask): void {
 
 export const onAlertButton: ActionChannelHandler = async (event, defaultHandler) => {
   const decision = event.actionId.startsWith(PREFIX) ? event.actionId.slice(PREFIX.length) : null;
-  if (!decision || !event.threadId.startsWith('discord:')) {
+  if (!decision || !event.threadId.startsWith("discord:")) {
     await defaultHandler();
     return;
   }
   if (event.user.isBot || !event.value) return;
   const answer = await ask({
-    alertId: event.value,
+    runStepId: event.value,
     discordUserId: event.user.userId,
     decision,
   });

@@ -198,11 +198,15 @@ http.route({
     const asked = await slackQuestion(request);
     if (asked instanceof Response) return asked;
     const decision = asked.decision;
-    if (!asked.alertId || !asked.discordUserId || (decision !== "approve" && decision !== "send_back")) {
-      return new Response("Missing alertId, discordUserId or decision", { status: 400 });
+    if (
+      !asked.runStepId ||
+      !asked.discordUserId ||
+      (decision !== "approve" && decision !== "send_back")
+    ) {
+      return new Response("Missing runStepId, discordUserId or decision", { status: 400 });
     }
     const answer = await ctx.runAction(internal.chatAlertPresses.discordPress, {
-      alertId: asked.alertId,
+      runStepId: asked.runStepId,
       discordUserId: asked.discordUserId,
       decision,
     });
