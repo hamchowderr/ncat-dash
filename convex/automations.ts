@@ -36,6 +36,7 @@ import {
   scheduleProblem,
   starterOf,
   STARTERS,
+  chainGroup,
 } from "@ncat-dash/automation-core";
 import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
@@ -319,6 +320,97 @@ export const followOns = query({
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
     return await followOnsOf(ctx, automation);
+  },
+});
+
+const chainViewValidator = v.object({
+  // From the automations nothing starts to the last ones started.
+  columns: v.array(v.array(v.id("automations"))),
+  links: v.array(
+    v.object({
+      from: v.id("automations"),
+      to: v.id("automations"),
+      how: v.union(v.literal("done"), v.literal("failed"), v.literal("either"), v.literal("step")),
+    }),
+  ),
+  automations: v.array(
+    v.object({
+      automationId: v.id("automations"),
+      name: v.string(),
+      enabled: v.boolean(),
+      trigger: triggerValidator,
+      nodes: v.array(nodeValidator),
+      edges: v.array(edgeValidator),
+      lastRun: v.union(
+        v.object({
+          runId: v.id("runs"),
+          status: v.union(
+            v.literal("running"),
+            v.literal("waiting"),
+            v.literal("done"),
+            v.literal("failed"),
+            v.literal("cancelled"),
+          ),
+          at: v.number(),
+        }),
+        v.null(),
+      ),
+      // Ready-made follow-ons that would go well after it and are not set up yet.
+      suggestions: v.array(v.string()),
+    }),
+  ),
+});
+
+/**
+ * Every automation linked to this one, however far along, with how each starts the
+ * next, for showing them together on one page. Shows the saved versions, which are the
+ * ones that run.
+ */
+export const chainView = query({
+  args: { automationId: v.id("automations") },
+  returns: chainViewValidator,
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    const team = await ctx.db
+      .query("automations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+      .take(500);
+    const members: ChainMember[] = team.map((each) => ({
+      id: each._id,
+      name: each.name,
+      trigger: each.trigger as ChainMember["trigger"],
+      nodes: each.nodes,
+    }));
+    const { columns, links } = chainGroup(members, automation._id);
+    const byId = new Map(team.map((each) => [each._id as string, each]));
+    const automations = [];
+    for (const id of columns.flat()) {
+      const each = byId.get(id)!;
+      const last = await ctx.db
+        .query("runs")
+        .withIndex("by_automation", (q) => q.eq("automationId", each._id))
+        .order("desc")
+        .first();
+      automations.push({
+        automationId: each._id,
+        name: each.name,
+        enabled: each.enabled,
+        trigger: each.trigger,
+        nodes: each.nodes,
+        edges: each.edges,
+        lastRun: last ? { runId: last._id, status: last.status, at: last._creationTime } : null,
+        suggestions: followOnsAmong(team, each).suggestions,
+      });
+    }
+    return {
+      columns: columns.map((column) => column.map((id) => byId.get(id)!._id)),
+      links: links.map((link) => ({
+        from: byId.get(link.from)!._id,
+        to: byId.get(link.to)!._id,
+        how: link.how,
+      })),
+      automations,
+    };
   },
 });
 

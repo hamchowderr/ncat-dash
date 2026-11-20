@@ -450,13 +450,7 @@ function TriggerNode({ data, selected }: NodeProps<TriggerFlowNode>) {
   const Icon = data.runKind ? RUN_TRIGGER_ICONS[data.runKind] : TRIGGER_ICONS[data.trigger.kind];
   return (
     <div className="relative" data-node={TRIGGER_ID}>
-      <div
-        className={cn(
-          tile,
-          "rounded-l-[2.5rem] rounded-r-2xl",
-          selected && "picked-ring",
-        )}
-      >
+      <div className={cn(tile, "rounded-l-[2.5rem] rounded-r-2xl", selected && "picked-ring")}>
         <Icon className={cn("size-8", TRIGGER_TINT)} strokeWidth={1.6} aria-hidden="true" />
         <Handle type="source" position={Position.Right} className={handle} />
       </div>
