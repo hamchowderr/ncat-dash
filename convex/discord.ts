@@ -90,10 +90,18 @@ export const forTeam = query({
       .query("discordPeople")
       .withIndex("by_member", (q) => q.eq("organizationId", args.organizationId))
       .take(200);
+    const reviewServer = servers.find((server) => server.alertChannelId);
     return {
       ready: ready(),
       canEdit: MANAGER_ROLES.includes(role),
       servers: shown,
+      reviewChannel: reviewServer?.alertChannelId
+        ? {
+            id: reviewServer.alertChannelId,
+            name: reviewServer.alertChannelName ?? reviewServer.alertChannelId,
+            guildName: reviewServer.guildName,
+          }
+        : null,
       me: me ? { discordName: me.discordName, linkedAt: me.linkedAt } : null,
       linkedCount: linked.length,
     };

@@ -1,6 +1,7 @@
 import type { AgentControllerChannelsConfig, ChannelHandler } from "@mastra/core/channels";
 import { onAlertButton } from "./alert-buttons";
 import { asTheDiscordWriter, discordAdapter } from "./discord";
+import { onReviewReply } from "./review-replies";
 import { asTheWriter, slackChannels } from "./slack";
 
 /**
@@ -28,6 +29,8 @@ export function chatChannels(): AgentControllerChannelsConfig | undefined {
       onSubscribedMessage: byPlatform,
       // Approve and Send back on the dashboard's alerts; anything else as before.
       onAction: onAlertButton,
+      // Teammates' replies in a review's Discord thread go to the review; nothing else.
+      ...(discord ? { onMessage: onReviewReply } : {}),
     },
   };
 }

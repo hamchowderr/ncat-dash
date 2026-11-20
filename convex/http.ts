@@ -188,6 +188,40 @@ http.route({
   }),
 });
 
+// A message written in a Discord thread, handed over by the agent server's Gateway
+// connection: a teammate's reply in a review's thread comes into the review. Only a
+// caller holding MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/discord/review-reply",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const field = (name: string, max: number) =>
+      typeof body[name] === "string" && (body[name] as string).length <= max
+        ? (body[name] as string)
+        : "";
+    const args = {
+      guildId: field("guildId", 64),
+      threadId: field("threadId", 64),
+      messageId: field("messageId", 64),
+      discordUserId: field("discordUserId", 64),
+      text: field("text", 4000),
+    };
+    if (!args.guildId || !args.threadId || !args.messageId || !args.discordUserId) {
+      return new Response("Missing guildId, threadId, messageId or discordUserId", {
+        status: 400,
+      });
+    }
+    return Response.json(await ctx.runAction(internal.discordReview.takeReply, args));
+  }),
+});
+
 // Approve or Send back pressed on an alert in Discord. Discord delivers presses to the
 // agent server's Gateway connection, which passes them on. Only a caller holding
 // MASTRA_JWT_SECRET is answered.

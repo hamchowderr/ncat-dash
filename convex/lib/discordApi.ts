@@ -12,9 +12,9 @@ export function discordBotReady(): boolean {
 }
 
 async function call(
-  method: "POST" | "PATCH",
+  method: "GET" | "POST" | "PATCH",
   path: string,
-  body: unknown,
+  body?: unknown,
 ): Promise<Record<string, unknown> | null> {
   const token = process.env.DISCORD_BOT_TOKEN;
   if (!token) return null;
@@ -22,7 +22,7 @@ async function call(
     const response = await fetch(`${discordApi()}${path}`, {
       method,
       headers: { authorization: `Bot ${token}`, "content-type": "application/json" },
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) return null;
@@ -60,4 +60,49 @@ export async function editMessage(
 ): Promise<boolean> {
   const edited = await call("PATCH", `/channels/${ref.channel}/messages/${ref.message}`, message);
   return edited !== null;
+}
+
+/** A text channel in a Discord server, as Settings offers it. */
+export type DiscordChannel = { id: string; name: string };
+
+/** The text channels of a server the bot is in, or null when Discord did not list them. */
+export async function textChannelsOf(guildId: string): Promise<DiscordChannel[] | null> {
+  const listed = (await call("GET", `/guilds/${guildId}/channels`)) as unknown;
+  if (!Array.isArray(listed)) return null;
+  return (
+    (listed as { id?: unknown; name?: unknown; type?: unknown; position?: unknown }[])
+      // 0 is a text channel, 5 an announcement channel.
+      .filter((one) => (one.type === 0 || one.type === 5) && typeof one.id === "string")
+      .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))
+      .map((one) => ({ id: String(one.id), name: String(one.name ?? one.id) }))
+  );
+}
+
+/**
+ * Posts a message to a channel or thread. `mention` lists the Discord users it may ping
+ * (everyone else named stays a plain name). Returns the message id, or null.
+ */
+export async function postToChannel(
+  channelId: string,
+  content: string,
+  mention: string[] = [],
+): Promise<string | null> {
+  const sent = await call("POST", `/channels/${channelId}/messages`, {
+    content: content.length > 2000 ? `${content.slice(0, 1997)}...` : content,
+    allowed_mentions: { parse: [], users: mention },
+  });
+  return typeof sent?.id === "string" ? sent.id : null;
+}
+
+/** Starts a public thread from a message. Returns the thread's id, or null. */
+export async function startThread(
+  channelId: string,
+  messageId: string,
+  name: string,
+): Promise<string | null> {
+  const thread = await call("POST", `/channels/${channelId}/messages/${messageId}/threads`, {
+    name: name.slice(0, 100) || "Review comment",
+    auto_archive_duration: 10080,
+  });
+  return typeof thread?.id === "string" ? thread.id : null;
 }
