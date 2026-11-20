@@ -103,7 +103,7 @@ export const DASHBOARD_TOUR: Tour = {
       id: "tour-team",
       title: "Your Team Menu",
       content:
-        "Settings live here: your brand, set once for every automation, plus your team, notifications, Slack and Discord. You can take this tour again from your own menu at the bottom.",
+        "Settings live here: your brand, set once for every automation, plus your team, notifications, Slack, Discord and Telegram. You can take this tour again from your own menu at the bottom.",
       side: "right",
       align: "start",
     },

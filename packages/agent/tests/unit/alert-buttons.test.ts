@@ -8,7 +8,7 @@ import {
   type PressAnswer,
   useDashboardForTests,
 } from "../../src/mastra/ncat/alert-buttons";
-import { chatChannels, onChatAlertButton } from "../../src/mastra/ncat/channels";
+import { chatChannels } from "../../src/mastra/ncat/channels";
 
 // Approve and Send back on the dashboard's alerts in Discord: the press goes to the
 // dashboard as the Discord user who pressed it, and every other button is left alone.
@@ -77,7 +77,7 @@ describe("alert buttons in Discord", () => {
     expect(asked).not.toHaveBeenCalled();
   });
 
-  it("is what the chat channels use for button presses", () => {
+  it("is what the chat channels use for Discord button presses", async () => {
     Object.assign(env, {
       DISCORD_BOT_TOKEN: "bot",
       DISCORD_APPLICATION_ID: "1",
@@ -85,6 +85,16 @@ describe("alert buttons in Discord", () => {
       MASTRA_JWT_SECRET: "secret",
       CONVEX_SITE_URL: "https://convex.test",
     });
-    expect(chatChannels()?.handlers?.onAction).toBe(onChatAlertButton);
+    const asked: Record<string, string>[] = [];
+    useDashboardForTests(async (body) => {
+      asked.push(body);
+      return { ok: true, message: "Approved." } satisfies PressAnswer;
+    });
+    const onAction = chatChannels()?.handlers?.onAction as unknown as typeof onAlertButton;
+    const fallback = vi.fn(async () => undefined);
+    await onAction(press("ncat_alert_approve").event, fallback, {} as never);
+    expect(asked).toEqual([{ runStepId: "step1", discordUserId: "200", decision: "approve" }]);
+    await onAction(press("something_else").event, fallback, {} as never);
+    expect(fallback).toHaveBeenCalledTimes(1);
   });
 });
