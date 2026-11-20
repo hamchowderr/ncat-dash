@@ -25,6 +25,7 @@ import {
 import { advance, failStep } from "./lib/runner";
 import { finishPicking, heardFrom, MAX_WORDS, wordsFor } from "./lib/moments";
 import { motionPlanOf } from "./lib/motion";
+import { startingFileName } from "./lib/outputs";
 import { signAgentToken } from "./reviewAgent";
 
 /**
@@ -100,7 +101,7 @@ export const loadPick = internalQuery({
       .query("teamSettings")
       .withIndex("by_organization", (q) => q.eq("organizationId", run.organizationId))
       .first();
-    const fileName = (run.trigger as { file_name?: unknown } | null)?.file_name;
+    const fileName = startingFileName(run.trigger);
     return {
       organizationId: run.organizationId,
       kind: node.kind,
@@ -130,7 +131,7 @@ export const loadPick = internalQuery({
               run.edges as AutomationEdge[],
             )
           : null,
-      title: typeof fileName === "string" ? fileName : run.automationName,
+      title: fileName ?? run.automationName,
       askedBy: run.startedBy ?? "automation",
       unattended: run.startedBy === null && run.test === undefined,
       houseRules: settings?.agent?.houseRules ?? "",

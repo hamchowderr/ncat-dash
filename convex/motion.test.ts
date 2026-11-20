@@ -145,16 +145,12 @@ async function setUp(nodes: Node[], motion?: Record<string, unknown>) {
       updatedAt: Date.now(),
     });
   });
-  const start = () =>
+  const start = (
+    trigger: Record<string, unknown> = { file_url: FILE, file_name: "growth-talk.mp4" },
+  ) =>
     t.run(async (ctx) => {
       const automation = (await ctx.db.get(automationId))!;
-      const started = await startRun(
-        ctx,
-        automation,
-        "webhook",
-        { file_url: FILE, file_name: "growth-talk.mp4" },
-        maya.id,
-      );
+      const started = await startRun(ctx, automation, "webhook", trigger, maya.id);
       if (!started.ok) throw new Error(started.message);
       return started.runId;
     });
@@ -233,6 +229,21 @@ describe("Add Motion Graphics", () => {
     expect(render.body).toMatchObject({ sound_volume: 0, piece_sounds: false });
     const pieces = render.body.pieces as { type: string; title?: string }[];
     expect(pieces.find((piece) => piece.type === "title")?.title).toBe("Big Year");
+  });
+
+  test("titles a run started by hand, which only has the file's link, from that link", async () => {
+    const sent = fakeToolkit();
+    const { t, start, runOf } = await setUp(
+      [{ id: "motion", kind: "motion", input: {} }],
+      TEAM_MOTION,
+    );
+    const runId = await start({ file_url: FILE });
+    await settled(t);
+    expect((await runOf(runId))!.status).toBe("done");
+    const render = sent.find((one) => one.url.endsWith("/v1/video/motion"))!;
+    const pieces = render.body.pieces as { type: string; title?: string }[];
+    expect(pieces[0]).toMatchObject({ type: "title" });
+    expect(pieces[0].title).toBe("growth-talk");
   });
 
   test("works with no Motion settings saved, in the default style", async () => {
