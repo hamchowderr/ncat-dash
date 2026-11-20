@@ -161,13 +161,13 @@ export const setBrand = mutation({
   args: { organizationId: v.string(), brand: brandValidator, music: v.optional(musicValidator) },
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId, MANAGER_ROLES);
-    const brand = await checkedBrand(ctx, args.organizationId, args.brand);
     const existing = await ctx.db
       .query("teamSettings")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .first();
+    const brand = await checkedBrand(ctx, args.organizationId, args.brand, existing?.brand);
     const music = args.music
-      ? await checkedMusic(ctx, args.organizationId, args.music)
+      ? await checkedMusic(ctx, args.organizationId, args.music, existing?.music)
       : existing?.music;
     if (existing) await ctx.db.patch(existing._id, { brand, ...(music ? { music } : {}) });
     else {
