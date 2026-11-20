@@ -208,6 +208,9 @@ describe("the MCP server", () => {
       ["start_automation", false],
       ["check_run", true],
       ["list_runs", true],
+      ["list_workflows", true],
+      ["set_up_workflow", false],
+      ["switch_workflow", false],
     ]);
     expect(hello.body.result.capabilities.extensions).toEqual({
       "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] },
@@ -538,5 +541,51 @@ describe("the MCP server once nothing new can start", () => {
     let last = 0;
     for (let i = 0; i < 61; i++) last = (await rpc(t, key, "tools/list")).status;
     expect(last).toBe(429);
+  });
+});
+
+describe("workflows over the MCP server", () => {
+  test("sets one up from an automation, lists it and switches it, only for the team", async () => {
+    const { t, member, other, otherTeam, automationId, key } = await setUp();
+    const made = await call(t, key, "set_up_workflow", {
+      automation_id: automationId,
+      name: "Weekly drop",
+      kind: "quick",
+      review: { on: true, reviewers: [member.id], time_limit: 2, time_limit_unit: "days" },
+    });
+    expect(made.isError).toBe(false);
+    expect(made.data).toMatchObject({
+      made: true,
+      name: "Weekly drop",
+      kind: "Quick personal job",
+      review: { reviewers: [member.id], time_limit: "2 days, then reject" },
+      automations: [{ automation_id: automationId, reviewed_here: true }],
+    });
+    const listed = await call(t, key, "list_workflows");
+    expect(listed.data).toEqual([expect.objectContaining({ workflow_id: made.data.workflow_id })]);
+
+    const turnedOff = await call(t, key, "set_up_workflow", {
+      automation_id: automationId,
+      review: { on: false },
+    });
+    expect(turnedOff.data).toMatchObject({ made: false, review: null });
+
+    const switched = await call(t, key, "switch_workflow", {
+      workflow_id: made.data.workflow_id,
+      on: false,
+    });
+    expect(switched.data).toEqual({ workflow_id: made.data.workflow_id, on: false });
+
+    const { key: otherKey } = await other.as.mutation(api.mcpKeys.create, {
+      organizationId: otherTeam,
+      name: "Theirs",
+    });
+    expect((await call(t, otherKey, "list_workflows")).data).toEqual([]);
+    expect(
+      await call(t, otherKey, "switch_workflow", { workflow_id: made.data.workflow_id, on: true }),
+    ).toMatchObject({ isError: true, text: expect.stringMatching(/no workflow with that id/) });
+    expect(await call(t, key, "set_up_workflow", { automation_id: automationId, kind: "film" })).toMatchObject({
+      isError: true,
+    });
   });
 });

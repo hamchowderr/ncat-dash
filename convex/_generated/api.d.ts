@@ -93,6 +93,7 @@ import type * as lib_trial from "../lib/trial.js";
 import type * as lib_triggers from "../lib/triggers.js";
 import type * as lib_typing from "../lib/typing.js";
 import type * as lib_versions from "../lib/versions.js";
+import type * as lib_workflows from "../lib/workflows.js";
 import type * as lib_zoom from "../lib/zoom.js";
 import type * as library from "../library.js";
 import type * as mcp from "../mcp.js";
@@ -132,6 +133,7 @@ import type * as trial from "../trial.js";
 import type * as versions from "../versions.js";
 import type * as voiceNotes from "../voiceNotes.js";
 import type * as watch from "../watch.js";
+import type * as workflows from "../workflows.js";
 import type * as zoom from "../zoom.js";
 
 import type {
@@ -226,6 +228,7 @@ declare const fullApi: ApiFromModules<{
   "lib/triggers": typeof lib_triggers;
   "lib/typing": typeof lib_typing;
   "lib/versions": typeof lib_versions;
+  "lib/workflows": typeof lib_workflows;
   "lib/zoom": typeof lib_zoom;
   library: typeof library;
   mcp: typeof mcp;
@@ -265,6 +268,7 @@ declare const fullApi: ApiFromModules<{
   versions: typeof versions;
   voiceNotes: typeof voiceNotes;
   watch: typeof watch;
+  workflows: typeof workflows;
   zoom: typeof zoom;
 }>;
 

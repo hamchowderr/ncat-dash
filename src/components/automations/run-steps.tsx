@@ -6,9 +6,11 @@ import {
   type AutomationEdge,
   type AutomationNode,
   BRANCH_LABELS,
+  coveredByWorkflow,
   FAILURE_WAY,
   failsOver,
   IF_BRANCHES,
+  isWorkflowReview,
   waitsForRun,
 } from "@ncat-dash/automation-core";
 import { useQuery } from "convex/react";
@@ -105,10 +107,16 @@ function stepSentence(
   runStatus: string,
   failsOver = false,
 ): string {
+  if (step.status === "skipped" && isWorkflowReview(node) && runStatus === "failed") {
+    return "Not needed, since the run had already failed.";
+  }
   if (step.status === "skipped") {
     return runStatus === "cancelled" ? "The run was stopped first." : "No files came this way.";
   }
   if (step.status === "pending") return "Not reached yet.";
+  if (coveredByWorkflow(node)) {
+    return "Passed straight on: the workflow's one review at the end covers it.";
+  }
   if (node.off) return "Turned off, so its files went straight on.";
   if (node.kind === "if" && step.branches) return sortedSentence(step.branches);
   if (node.kind === "wait" && step.resumeAt) {
