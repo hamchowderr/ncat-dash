@@ -25,8 +25,22 @@ export function StartPageTour({ tourId, ready = true }: { tourId: TourId; ready?
   useEffect(() => {
     if (!ready || handled.current || ended === undefined || !tour) return;
     handled.current = true;
-    if (!ended && tour.activeTourId === null && !dialogOpen()) tour.start(tourId);
+    if (!ended && !tour.endedHere(tourId) && tour.activeTourId === null && !dialogOpen())
+      tour.start(tourId);
   }, [ready, ended, tour, tourId]);
+
+  // A page's tour belongs to its page: leaving the page (picking a ready-made, say)
+  // closes it, so it does not follow someone onto the next one.
+  const latest = useRef(tour);
+  useEffect(() => {
+    latest.current = tour;
+  }, [tour]);
+  useEffect(
+    () => () => {
+      if (latest.current?.activeTourId === tourId) latest.current.close();
+    },
+    [tourId],
+  );
 
   return null;
 }
