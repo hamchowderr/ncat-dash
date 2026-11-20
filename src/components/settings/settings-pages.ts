@@ -84,6 +84,12 @@ export const SETTINGS_GROUPS = [
         description: "Talk to the agent in your Discord server.",
       },
       {
+        slug: "telegram",
+        title: "Telegram",
+        description:
+          "Talk to the agent and get alerts in Telegram, with Approve right in the chat.",
+      },
+      {
         slug: "teams",
         title: "Microsoft Teams",
         description: "Talk to the agent in Teams, and get alerts in a channel.",
@@ -106,7 +112,8 @@ export const SETTINGS_GROUPS = [
       {
         slug: "dropbox",
         title: "Dropbox",
-        description: "Footage in the folders you pick comes into Uploads; finished clips can go back.",
+        description:
+          "Footage in the folders you pick comes into Uploads; finished clips can go back.",
       },
       {
         slug: "mcp",

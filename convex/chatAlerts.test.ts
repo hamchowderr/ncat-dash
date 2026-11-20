@@ -27,7 +27,7 @@ function standIn(linked: Set<string>) {
       settled.push({ ...message, outcome });
     },
   };
-  SENDERS.push(sender);
+  SENDERS.splice(0, SENDERS.length, sender);
   return { sent, settled };
 }
 
@@ -36,8 +36,10 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 
+const REAL_SENDERS = [...SENDERS];
+
 afterEach(() => {
-  SENDERS.length = 0;
+  SENDERS.splice(0, SENDERS.length, ...REAL_SENDERS);
   vi.useRealTimers();
 });
 

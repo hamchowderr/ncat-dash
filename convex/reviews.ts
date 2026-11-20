@@ -365,6 +365,40 @@ export const commentFromSlack = internalMutation({
 });
 
 /**
+ * A teammate's reply in the team's Telegram group, under one of the bot's posts about a
+ * comment thread (convex/telegramReview.ts), written as their reply in the review room.
+ */
+export const commentFromTelegram = internalMutation({
+  args: {
+    commentId: v.id("reviewComments"),
+    userId: v.string(),
+    authorName: v.string(),
+    body: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const root = await ctx.db.get(args.commentId);
+    const clip = root ? await ctx.db.get(root.clipId) : null;
+    if (!root || !clip) return null;
+    const team = await ctx.runQuery(components.betterAuth.members.people, {
+      organizationId: clip.organizationId,
+    });
+    if (!team.some((person) => person.id === args.userId)) return null;
+    return await writeTeamComment(
+      ctx,
+      clip,
+      { userId: args.userId, name: args.authorName },
+      {
+        body: args.body.slice(0, COMMENT_LIMIT),
+        time: root.time,
+        version: root.version,
+        parentId: root._id,
+      },
+      "telegram",
+    );
+  },
+});
+
+/**
  * Writes a teammate's comment or reply, wherever it was written: tells the people it
  * mentions, asks the agent when it says "@Agent", and keeps the team's Slack thread for
  * it up to date.
@@ -380,7 +414,7 @@ async function writeTeamComment(
     parentId?: Id<"reviewComments">;
     drawing?: Doc<"reviewComments">["drawing"];
   },
-  from: "room" | "slack",
+  from: "room" | "slack" | "telegram",
 ): Promise<Id<"reviewComments">> {
   const { userId } = author;
   const body = args.body.trim();
@@ -429,6 +463,7 @@ async function writeTeamComment(
     // A drawing belongs to the moment a thread is about, so a reply carries none.
     drawing: parentId ? undefined : (cleanDrawing(args.drawing) ?? undefined),
     slack: from === "slack" ? true : undefined,
+    telegram: from === "telegram" ? true : undefined,
   });
 
   // Teammates named after "@" hear about it, under the bell and by email as they chose.

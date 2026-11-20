@@ -1,6 +1,7 @@
 import { type Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { MutationCtx } from "../_generated/server";
+import { toTelegram } from "./telegramPosts";
 
 /**
  * What happened in a review that the team's Slack channel hears about. A comment's
@@ -46,6 +47,8 @@ export async function toSlack(
   organizationId: string,
   post: ReviewPost,
 ): Promise<void> {
+  // The team's Telegram group hears the same news.
+  await toTelegram(ctx, organizationId, post);
   const connection = await ctx.db
     .query("slackConnections")
     .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))

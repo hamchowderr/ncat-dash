@@ -13,6 +13,7 @@ const MAY_IMPORT_AUTH = new Set([
   "http.ts",
   "slack.ts",
   "discord.ts",
+  "telegram.ts",
   "microsoftTeamsChat.ts",
   "blocks.ts",
   "betterAuth/auth.ts",
