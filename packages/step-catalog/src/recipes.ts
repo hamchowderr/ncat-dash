@@ -16,8 +16,8 @@ const opt = (option: string, argument?: string | number): Option =>
 
 const X264: Option[] = [
   opt("-c:v", "libx264"),
-  opt("-crf", 23),
-  opt("-preset", "medium"),
+  opt("-crf", 21),
+  opt("-preset", "veryfast"),
   opt("-f", "mp4"),
 ];
 // The toolkit names an image2 output .png, so the picture is left as a PNG.
@@ -150,8 +150,8 @@ export const recipes: StepDefinition[] = [
           opt("-map", "[outv]"),
           opt("-map", "[outa]"),
           opt("-c:v", "libx264"),
-          opt("-crf", 23),
-          opt("-preset", "medium"),
+          opt("-crf", 21),
+          opt("-preset", "veryfast"),
           opt("-c:a", "aac"),
           opt("-b:a", "128k"),
         ],
@@ -174,7 +174,13 @@ export const recipes: StepDefinition[] = [
         [
           `[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[vout];[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[aout]`,
         ],
-        [opt("-map", "[vout]"), opt("-map", "[aout]"), opt("-c:v", "libx264"), opt("-c:a", "aac")],
+        [
+          opt("-map", "[vout]"),
+          opt("-map", "[aout]"),
+          opt("-c:v", "libx264"),
+          opt("-preset", "veryfast"),
+          opt("-c:a", "aac"),
+        ],
       ),
   }),
   recipe({
@@ -237,7 +243,7 @@ export const recipes: StepDefinition[] = [
           // is not squashed.
           `[1:v]scale=w=${b.logo_size}:h=${b.logo_size}:force_original_aspect_ratio=decrease[logo];[0:v][logo]overlay=x=${b.margin}:y=main_h-overlay_h-${b.margin}`,
         ],
-        [opt("-f", "mp4"), opt("-c:v", "libx264")],
+        [opt("-f", "mp4"), opt("-c:v", "libx264"), opt("-preset", "veryfast")],
       ),
   }),
   recipe({
@@ -281,6 +287,7 @@ export const recipes: StepDefinition[] = [
           opt("-map", "[outv]"),
           opt("-map", "0:a"),
           opt("-c:v", "libx264"),
+          opt("-preset", "veryfast"),
           opt("-c:a", "aac"),
           opt("-f", "mp4"),
         ],
@@ -315,6 +322,7 @@ export const recipes: StepDefinition[] = [
           opt("-map", "[videoOut]"),
           opt("-map", "[audioOut]"),
           opt("-c:v", "libx264"),
+          opt("-preset", "veryfast"),
           opt("-c:a", "aac"),
           opt("-b:a", "192k"),
         ],
@@ -565,9 +573,9 @@ export const moreRecipes: StepDefinition[] = [
               opt("-map", "[v]"),
               opt("-map", "1:a"),
               opt("-c:v", "libx264"),
-              opt("-preset", "medium"),
+              opt("-preset", "veryfast"),
               opt("-tune", "stillimage"),
-              opt("-crf", 23),
+              opt("-crf", 21),
               opt("-c:a", "aac"),
               opt("-b:a", "192k"),
               opt("-shortest"),
