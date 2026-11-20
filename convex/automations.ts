@@ -858,6 +858,7 @@ export const testStep = mutation({
       "chapters",
       "broll",
       "broll-plan",
+      "motion-plan",
       "motion",
       "sound-effects",
     ];

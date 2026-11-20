@@ -23,6 +23,8 @@ export const nodeValidator = v.object({
     // Draws motion graphics, or adds sound effects, onto each video.
     v.literal("motion"),
     v.literal("sound-effects"),
+    // Has the AI plan which motion graphics go where, for the Add Motion Graphics after it.
+    v.literal("motion-plan"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),

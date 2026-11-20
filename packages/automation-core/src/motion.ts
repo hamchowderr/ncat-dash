@@ -8,7 +8,7 @@
  * graphics" to an automation, the AI's plan is used instead of these rules (aiPlan on the
  * plan step's run step).
  */
-import type { Chapter, Word } from "./moments";
+import { type Chapter, findQuote, quoteKeys, type Word } from "./moments";
 
 // ---------------------------------------------------------------------------------------
 // What the toolkit can draw and play
@@ -677,6 +677,11 @@ export interface RulesInput {
   title?: string;
   /** The team's logo link, for the logo piece. */
   logo?: string;
+  /**
+   * What a Plan Motion Graphics step placed between the opening and the ending. Given,
+   * these take the place of the numbers found by rules.
+   */
+  beats?: PlacedPiece[];
 }
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
@@ -838,8 +843,13 @@ export function planMotionByRules(input: RulesInput): MotionPlan {
     }
   }
 
+  // What the AI plan placed, when there is one.
+  for (const beat of input.beats ?? []) {
+    if (on.has(beat.type)) add(beat);
+  }
+
   // Numbers that are said.
-  if (on.has("stat")) {
+  if (on.has("stat") && !input.beats) {
     let last = -Infinity;
     for (const number of spokenNumbers(words)) {
       if (number.at - last < gap) continue;
@@ -1002,4 +1012,153 @@ export function soundStepLevel(
 /** The level an Add Motion Graphics step's piece sounds play at. */
 export function motionStepLevel(setup: MotionSetup, settings: MotionStepSettings): SoundLevel {
   return settings.sounds === STYLE_SOUNDS ? setup.style.sound : settings.sounds;
+}
+
+// ---------------------------------------------------------------------------------------
+// The Plan Motion Graphics step (AI)
+
+/** The pieces the AI places between the opening and the ending. */
+export const PLANNED_PIECES = ["keyword", "stat", "quote", "chapter", "transition"] as const;
+export type PlannedPiece = (typeof PLANNED_PIECES)[number];
+
+/** Most beats the AI is asked for on one video. */
+export const MAX_BEATS = 40;
+
+/** What Plan Motion Graphics asks the model for, from the style the motion step uses. */
+export interface MotionPlanSettings {
+  /** At most this many beats. */
+  count: number;
+  /** Seconds kept between two beats. */
+  gap: number;
+  pieces: PlannedPiece[];
+  /** Whether a keyword may say what is not said word for word. */
+  showsUnsaid: boolean;
+  /** Whether each beat should pick its sound. */
+  sounds: boolean;
+  look: MotionLook;
+  /** The team's style notes from Settings > Motion. */
+  notes: string;
+  /** What the step's own setting asks the beats to favour. */
+  lookFor: string;
+}
+
+export function motionPlanSettings(
+  setup: MotionSetup,
+  duration: number,
+  input: Record<string, unknown>,
+  level: SoundLevel = setup.style.sound,
+): MotionPlanSettings {
+  const gap = BUSY_GAP[setup.style.busy];
+  return {
+    count: Math.max(1, Math.min(MAX_BEATS, Math.ceil(duration / gap))),
+    gap,
+    pieces: PLANNED_PIECES.filter((type) => setup.style.pieces.includes(type)),
+    showsUnsaid: setup.style.showsUnsaid,
+    sounds: level !== "off",
+    look: setup.style.look,
+    notes: setup.notes.slice(0, MAX_MOTION_NOTES),
+    lookFor: typeof input.lookFor === "string" ? input.lookFor.trim().slice(0, 1000) : "",
+  };
+}
+
+/** What the model hands back for one beat. */
+export interface MotionPick {
+  /** The words said as the piece comes in, quoted from the transcript. */
+  quote: string;
+  piece: string;
+  /** What the piece shows: the word, the figure, or the chapter's name. */
+  text: string;
+  /** The small line under it: what a figure counts. */
+  subtitle: string;
+  /** A sound from the list, "none", or empty for the piece's own. */
+  sound: string;
+}
+
+const str = (value: unknown, max: number) =>
+  typeof value === "string" ? value.trim().slice(0, max) : "";
+
+/** The beats in a model answer, keeping only well-formed ones. */
+export function motionPicksFrom(answer: unknown): MotionPick[] {
+  const list = (answer as { beats?: unknown } | null)?.beats;
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((item) => {
+      const one = (item ?? {}) as Record<string, unknown>;
+      return {
+        quote: str(one.quote, 2000),
+        piece: str(one.piece, 30),
+        text: str(one.text, 120),
+        subtitle: str(one.subtitle, 120),
+        sound: str(one.sound, 20),
+      };
+    })
+    .filter((pick) => pick.quote !== "")
+    .slice(0, MAX_BEATS * 2);
+}
+
+/**
+ * The plan's beats placed on the words: each quote found word for word (a beat whose
+ * quote is not there is dropped and counted), with the pieces the style does not use, and
+ * keywords that say what was not said when the style keeps to what is said, left out.
+ */
+export function motionBeatsFromPicks(
+  words: Word[],
+  picks: MotionPick[],
+  settings: Pick<MotionPlanSettings, "pieces" | "showsUnsaid">,
+): { beats: PlacedPiece[]; dropped: number } {
+  const beats: PlacedPiece[] = [];
+  let dropped = 0;
+  for (const pick of picks) {
+    const type = pick.piece as PlannedPiece;
+    if (!settings.pieces.includes(type)) continue;
+    const found = findQuote(words, pick.quote);
+    if (!found) {
+      dropped++;
+      continue;
+    }
+    const said = words
+      .slice(found.first, found.last + 1)
+      .map((word) => word.text)
+      .join(" ")
+      .trim();
+    const start = words[found.first].start;
+    const info = pieceInfo(type);
+    let duration = info.seconds;
+    let title = pick.text;
+    let subtitle: string | undefined = pick.subtitle || undefined;
+    if (type === "quote") {
+      // The quote card shows what was said, for as long as it is said.
+      title = said.slice(0, 160);
+      subtitle = undefined;
+      duration = Math.min(8, Math.max(info.seconds, words[found.last].end - start + 1));
+    } else if (type === "keyword") {
+      if (!title) continue;
+      if (!settings.showsUnsaid) {
+        const heard = new Set(quoteKeys(said));
+        if (!quoteKeys(title).every((key) => heard.has(key))) continue;
+      }
+      subtitle = undefined;
+    } else if (type === "transition") {
+      title = "";
+      subtitle = undefined;
+    } else if (!title) {
+      continue;
+    }
+    const sound =
+      pick.sound === "none"
+        ? null
+        : MOTION_SOUNDS.includes(pick.sound as MotionSound)
+          ? (pick.sound as MotionSound)
+          : undefined;
+    beats.push({
+      type,
+      start: round2(type === "transition" ? Math.max(0, start - 0.35) : start),
+      duration: round2(duration),
+      ...(title ? { title } : {}),
+      ...(subtitle ? { subtitle } : {}),
+      ...(sound !== undefined ? { sound } : {}),
+    });
+  }
+  beats.sort((a, b) => a.start - b.start);
+  return { beats, dropped };
 }

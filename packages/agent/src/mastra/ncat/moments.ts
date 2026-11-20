@@ -37,6 +37,23 @@ const brollSettings = z.object({
   lookFor: z.string().max(1000).default(""),
 });
 
+const motionSettings = z.object({
+  /** At most this many beats. */
+  count: z.number().int().min(1).max(40),
+  /** Seconds kept between two beats. */
+  gap: z.number().min(0).max(120),
+  pieces: z.array(z.enum(["keyword", "stat", "quote", "chapter", "transition"])).max(5),
+  /** Whether a keyword may say what is not said word for word. */
+  showsUnsaid: z.boolean(),
+  /** Whether each beat picks its sound. */
+  sounds: z.boolean(),
+  look: z.string().max(30).default(""),
+  notes: z.string().max(2000).default(""),
+  lookFor: z.string().max(1000).default(""),
+});
+
+const MOTION_SOUNDS = "whoosh, pop, impact, ding, tick, slide, thud, click, riser";
+
 const span = z.object({ start: z.number().finite(), end: z.number().finite() });
 
 export const momentsRequest = z.discriminatedUnion("kind", [
@@ -55,6 +72,14 @@ export const momentsRequest = z.discriminatedUnion("kind", [
     duration: z.number().finite().nonnegative(),
     transcript: z.string().min(1).max(MAX_TRANSCRIPT),
     settings: chapterSettings,
+    houseRules: z.string().max(2000).default(""),
+  }),
+  z.object({
+    kind: z.literal("motion"),
+    title: z.string().max(300).default(""),
+    duration: z.number().finite().nonnegative(),
+    transcript: z.string().min(1).max(MAX_TRANSCRIPT),
+    settings: motionSettings,
     houseRules: z.string().max(2000).default(""),
   }),
   z.object({
@@ -141,6 +166,41 @@ export function momentsPrompt(request: MomentsRequest): string {
     lines.push(
       "",
       'Answer as {"moments":[{"quote":"…","title":"…","why":"…"}]}: quote is the moment\'s words from its first word to its last; title is a short title for the clip, at most 8 words; why is one sentence on why it works.',
+    );
+  } else if (request.kind === "motion") {
+    const s = request.settings;
+    const pieces: Record<string, string> = {
+      keyword:
+        "keyword: one word or a short phrase slams onto the screen as it is said (text is the word or phrase, at most 4 words)",
+      stat: 'stat: a number that is said, shown big with what it counts (text is the figure as written, such as "40%" or "$12,000"; subtitle is what it counts, at most 5 words)',
+      quote:
+        "quote: a line worth repeating shown as a quote card (quote is the whole line; text is left empty)",
+      chapter:
+        "chapter: a band with a short name for the part that starts here (text is the name, at most 5 words)",
+      transition:
+        "transition: a quick wipe where the talk moves on to something new (text is left empty)",
+    };
+    lines.push(
+      "",
+      `Plan motion graphics for this video: up to ${s.count} beats, each a designed piece drawn over the video as the words are said. The opening title, the speaker's name and the ending are added for you; plan only what goes between them.`,
+      "Pieces you can use:",
+      ...s.pieces.map((piece) => `- ${pieces[piece]}`),
+      `Keep at least ${s.gap} seconds between two beats, and leave stretches clear: fewer, stronger beats beat many weak ones. Put beats where they help someone watching with the sound off follow the point, and never on filler.`,
+      s.showsUnsaid
+        ? "A keyword may sum up the point in your own words."
+        : "A keyword uses only words said in its quote.",
+    );
+    if (s.look) lines.push(`The look is ${s.look}.`);
+    if (s.sounds) {
+      lines.push(
+        `Give each beat the sound it comes in with, from: ${MOTION_SOUNDS}, or "none". Leave sound empty for the piece's usual sound. Use few loud ones (impact, riser).`,
+      );
+    }
+    if (s.notes.trim()) lines.push("The team's style notes:", s.notes.trim());
+    if (s.lookFor.trim()) lines.push(`What the graphics should bring out: ${s.lookFor.trim()}`);
+    lines.push(
+      "",
+      'For each beat, quote the words said just as it should come in (3 to 12 words; for a quote card, the whole line). Answer as {"beats":[{"quote":"…","piece":"…","text":"…","subtitle":"…","sound":"…"}]}, in the order they are said.',
     );
   } else if (request.kind === "broll") {
     const s = request.settings;
