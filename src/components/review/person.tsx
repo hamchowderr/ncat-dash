@@ -1,5 +1,5 @@
 import { AGENT, initialsOf } from "@ncat-dash/review-core";
-import { Sparkles } from "lucide-react";
+import { Bot } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -50,7 +50,7 @@ export function Face({
       )}
     >
       {agent ? (
-        <Sparkles className="size-[55%]" />
+        <Bot className="size-[55%]" />
       ) : image ? (
         // Profile pictures can sit on any address the person chose.
         // eslint-disable-next-line @next/next/no-img-element

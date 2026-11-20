@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { describeFileDetails, formatMoment } from "@ncat-dash/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ArrowLeft, AudioLines, Play, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, AudioLines, Bot, Play, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -490,7 +490,7 @@ export function LibraryItemView({
                         : "Make this file searchable to find any moment by what was said in it."}
                   </p>
                   <Button size="sm" variant="secondary" onClick={() => void sendToSearch()}>
-                    <Sparkles />
+                    <Bot />
                     {item.searchable === "failed"
                       ? "Try again"
                       : captions
