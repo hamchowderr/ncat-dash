@@ -35,6 +35,12 @@ const described = z.object({
     .describe(
       "The team, given when there is an Approval step. Put user ids in its reviewers setting to name who decides; leave it empty for anyone on the team.",
     ),
+  followOns: z
+    .array(z.object({ id: z.string(), name: z.string(), description: z.string() }))
+    .optional()
+    .describe(
+      "Ready-made automations that go well after this one and are not set up after it yet. Suggest them when it fits, and set one up with set_up_follow_on.",
+    ),
 });
 
 function need(id: string | undefined, open: string | null): string {
@@ -323,6 +329,36 @@ export const switchAutomation = createTool({
     try {
       await client.mutation(dash.automations.setEnabled, { automationId: id, enabled: input.on });
       return { automationId: id, on: input.on };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
+export const setUpFollowOn = createTool({
+  id: "set_up_follow_on",
+  description:
+    "Make one of the ready-made follow-ons describe_automation lists under followOns, wired to start by itself whenever that automation finishes. It comes back switched on unless something it needs is missing; then problem says what the person must add (for example a logo in Settings).",
+  inputSchema: z.object({
+    automationId,
+    followOn: z.string().min(1).describe("The id of a follow-on from describe_automation."),
+  }),
+  outputSchema: z.object({
+    automationId: z.string(),
+    address: z.string(),
+    on: z.boolean(),
+    problem: z.string().nullable(),
+  }),
+  execute: async (input, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    const id = need(input.automationId, workingAutomationOf(session));
+    try {
+      const made = (await client.mutation(dash.automations.setUpFollowOn, {
+        automationId: id,
+        starterId: input.followOn,
+      })) as { automationId: string; on: boolean; problem: string | null };
+      rememberMade(userOf(ctx) ?? "", made.automationId);
+      return { ...made, address: `/automations/${made.automationId}` };
     } catch (caught) {
       throw new Error(plainError(caught));
     }
@@ -636,6 +672,7 @@ export const ncatTools = {
   change_automation: changeAutomation,
   create_automation: createAutomation,
   switch_automation: switchAutomation,
+  set_up_follow_on: setUpFollowOn,
   list_uploads: listUploads,
   try_automation: tryAutomation,
   check_run: checkRun,
@@ -661,7 +698,12 @@ export const NCAT_READ_TOOLS = [
 ] as const;
 
 /** Tools that change an automation's design: one "Always allow" covers them together. */
-export const NCAT_EDIT_TOOLS = ["change_automation", "create_automation", "make_folder"] as const;
+export const NCAT_EDIT_TOOLS = [
+  "change_automation",
+  "create_automation",
+  "set_up_follow_on",
+  "make_folder",
+] as const;
 
 export const NCAT_INSTRUCTIONS = `You are the builder inside Kontifi, an app for the NCA Toolkit, a self-hosted server that edits video and audio with FFmpeg. People here make content: creators, editors, agencies. Your job is to build automations for them that run by themselves on a server: something starts one (a new upload, a watched folder, a schedule, a web address being called), then steps run in order with nobody at the keyboard.
 
@@ -678,6 +720,7 @@ How to work:
 - Once it has no problems, try it before calling it done: try_automation runs it on one of the team's uploads (the newest it would take, unless the person named one; list_uploads shows them), then check_run tells you how each step went. If a step failed, read its error, fix what you can with change_automation and try again; say plainly what you could not fix. If the run stops at an approval step, that is it working: tell the person it is waiting for them, with a link to the run. If there are no uploads, ask the person to upload a file on the Uploads page rather than skipping the try.
 - Report a try in plain words: which file it ran on, what each step made (how many clips, for example), and any step that failed and why. Link to the run with the address try_automation returned, like [See the run](/automations/.../runs/...).
 ${TEAM_STEP_INSTRUCTIONS}
+- Automations can start other automations: a Run an automation step, or a trigger that starts one when another finishes. When describe_automation lists followOns for an automation you built or the person is looking at, mention the one or two that fit what they make, in a sentence, and set one up with set_up_follow_on if they want it. Never set one up without being asked; it switches itself on.
 - Only switch an automation on when the person asked for it to run, and it has no problems.
 - Say what you built in plain words: what starts it and what each step does. No ids, no JSON, no jargon unless they ask. After making a new automation, link to it with the address create_automation returned, like [Open it](/automations/...).
 ${LIBRARY_INSTRUCTIONS}
