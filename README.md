@@ -263,7 +263,7 @@ pnpm build
 
 ### UI
 
-Everything is built on open-source [shadcn/ui](https://ui.shadcn.com) components and blocks, so the whole codebase can be passed on under the GPL.
+Everything is built on open-source [shadcn/ui](https://ui.shadcn.com) components and blocks, so the whole codebase can be passed on under the AGPL.
 
 ```bash
 npx shadcn add <component-or-block>
@@ -308,4 +308,8 @@ Dolt does not sign in with a DoltHub API token; it needs a credential key file i
 
 ## Licence
 
-GPL-2.0-or-later, the same licence as the NCA Toolkit. See [LICENSE](LICENSE).
+Kontifi is open source under the GNU Affero General Public License, version 3 or later (AGPL-3.0-or-later). See [LICENSE](LICENSE).
+
+In plain words: you may use, change and share it, including for paid work. If you run a changed copy as a service that other people use over a network, you must offer those people the source of your changed copy.
+
+Kontifi talks to the NCA Toolkit over its web API; it does not include the toolkit's code. The toolkit is a separate program under its own licence (GPL-2.0) and stays free. A few small pieces of toolkit material used here are listed in [NOTICE](NOTICE).
