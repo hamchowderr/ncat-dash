@@ -19,6 +19,7 @@ import { branchesOfKind, canFailOver, FAILURE_WAY } from "./logic";
 import { type AutomationDraft, tidyPositions } from "./operations";
 import { nodeTypeOf } from "./registry";
 import { scheduleProblem } from "./schedule";
+import { MAX_TRIGGERS, type MoreTrigger, tidyTriggers } from "./triggers";
 import type { StarterTrigger } from "./starters";
 
 export const AUTOMATION_FILE_FORMAT = "ncat-dash-automation";
@@ -33,6 +34,10 @@ export interface AutomationFile {
   version: number;
   name: string;
   trigger: StarterTrigger;
+  /** Triggers after the first, each with the steps it starts. Older files have none. */
+  moreTriggers?: MoreTrigger[];
+  /** Which first steps the first trigger starts, when it is not all the rest. */
+  triggerStarts?: string[];
   nodes: AutomationNode[];
   edges: AutomationEdge[];
   /** The team's sticky notes on the canvas. Files made before notes have none. */
@@ -107,6 +112,8 @@ export function exportAutomation(
       version: AUTOMATION_FILE_VERSION,
       name: draft.name,
       trigger: draft.trigger,
+      ...(draft.moreTriggers?.length ? { moreTriggers: draft.moreTriggers } : {}),
+      ...(draft.triggerStarts ? { triggerStarts: draft.triggerStarts } : {}),
       nodes,
       edges: draft.edges.map(({ id, source, target, branch }) => ({
         id,
@@ -406,7 +413,30 @@ export function readAutomationFile(value: unknown): ReadAutomationFile {
   const problem = nodes.length > 0 ? graphProblem(nodes, edges) : null;
   if (problem) return { ok: false, message: `The file cannot be used. ${problem}` };
   const canvasNotes = readCanvasNotes(value.notes, notes);
-  return { ok: true, draft: { name, trigger, nodes, edges }, notes, canvasNotes };
+  const ids = new Set(nodes.map((node) => node.id));
+  const starts = (list: unknown) =>
+    Array.isArray(list)
+      ? [...new Set(list.filter((id): id is string => typeof id === "string" && ids.has(id)))]
+      : [];
+  const moreTriggers: MoreTrigger[] = Array.isArray(value.moreTriggers)
+    ? value.moreTriggers
+        .filter(isObject)
+        .slice(0, MAX_TRIGGERS - 1)
+        .map((each, index) => ({
+          id: `__trigger_${index + 2}`,
+          trigger: readTrigger(each.trigger, notes),
+          starts: starts(each.starts),
+        }))
+    : [];
+  const draft = tidyTriggers({
+    name,
+    trigger,
+    ...(moreTriggers.length > 0 ? { moreTriggers } : {}),
+    ...(Array.isArray(value.triggerStarts) ? { triggerStarts: starts(value.triggerStarts) } : {}),
+    nodes,
+    edges,
+  });
+  return { ok: true, draft, notes, canvasNotes };
 }
 
 /** The file's sticky notes that can be used. Anything unreadable is left out, and said so. */

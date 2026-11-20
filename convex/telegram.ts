@@ -3,6 +3,7 @@ import { components, internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import type { ActionCtx } from "./_generated/server";
 import {
+  action,
   internalAction,
   internalMutation,
   internalQuery,
@@ -11,7 +12,7 @@ import {
 } from "./_generated/server";
 import { createAuth } from "./auth";
 import { isMember, MANAGER_ROLES, requireMember } from "./lib/authz";
-import { botUsername, telegramReady } from "./lib/chatAlerts/telegram";
+import { botHearsGroup, botUsername, telegramReady } from "./lib/chatAlerts/telegram";
 
 /**
  * The agent in Telegram. The dashboard has ONE Telegram bot, made once in BotFather by
@@ -71,6 +72,51 @@ export const forTeam = query({
         : null,
       linkedCount: linked.length,
     };
+  },
+});
+
+/** The team's groups, for checking whether the bot hears being tagged in each. */
+export const groupsToCheck = internalQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const groups = await ctx.db
+      .query("telegramGroups")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .take(20);
+    return groups.map((group) => ({
+      chatId: group.chatId,
+      privacyOffAtJoin: group.privacyOffAtJoin,
+    }));
+  },
+});
+
+/**
+ * Whether tagging the agent works in each of the team's groups, asked of Telegram. Settings
+ * shows how to fix a group where it doesn't: the bot's privacy mode in BotFather, or
+ * making the bot an admin there. Null for a group Telegram can't be asked about.
+ */
+export const groupHearing = action({
+  args: { organizationId: v.string() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ chatId: string; hears: boolean | null; privacyOff: boolean | null }[]> => {
+    const groups: { chatId: string; privacyOffAtJoin?: boolean }[] = await ctx.runQuery(
+      internal.telegram.groupsToCheck,
+      args,
+    );
+    if (!telegramReady()) return [];
+    const checked = [];
+    for (const group of groups) {
+      const heard = await botHearsGroup(group.chatId, group.privacyOffAtJoin);
+      checked.push({
+        chatId: group.chatId,
+        hears: heard?.hears ?? null,
+        privacyOff: heard?.privacyOff ?? null,
+      });
+    }
+    return checked;
   },
 });
 
@@ -186,6 +232,7 @@ export const link = internalMutation({
     chatTitle: v.optional(v.string()),
     telegramName: v.string(),
     username: v.optional(v.string()),
+    privacyOff: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{ result: LinkResult; teamName: string | null }> => {
     const start = await ctx.db
@@ -221,7 +268,9 @@ export const link = internalMutation({
         return { result: "taken", teamName };
       }
       const title = args.chatTitle || "Telegram group";
-      if (taken) await ctx.db.patch(taken._id, { title });
+      // Adding the bot again is how a group picks up privacy mode going off.
+      const privacy = args.privacyOff === undefined ? {} : { privacyOffAtJoin: args.privacyOff };
+      if (taken) await ctx.db.patch(taken._id, { title, ...privacy });
       else {
         await ctx.db.insert("telegramGroups", {
           organizationId: start.organizationId,
@@ -229,6 +278,7 @@ export const link = internalMutation({
           title,
           addedBy: start.userId,
           addedAt: Date.now(),
+          ...privacy,
         });
       }
       result = "added";

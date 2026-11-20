@@ -85,6 +85,7 @@ export const dashOverview = createTool({
         enabled: boolean;
         stepCount: number;
         trigger: { kind: string };
+        moreTriggers?: { kind: string }[];
         lastRun: { status: string } | null;
       }[];
       return {
@@ -94,7 +95,9 @@ export const dashOverview = createTool({
           name: row.name,
           on: row.enabled,
           steps: row.stepCount,
-          startsWith: row.trigger.kind,
+          startsWith: [row.trigger, ...(row.moreTriggers ?? [])]
+            .map((each) => each.kind)
+            .join(", "),
           lastRun: row.lastRun?.status ?? null,
         })),
       };
@@ -256,7 +259,29 @@ const operation = z.discriminatedUnion("op", [
       .describe(
         'What starts the automation: kind is the trigger type from list_step_types without "trigger:" (so "upload" for trigger:upload), plus that type\'s settings.',
       ),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        'Which trigger to change, when it has several ("__trigger_2" and up). The first when left out.',
+      ),
   }),
+  z
+    .object({
+      op: z.literal("addTrigger"),
+      trigger: z
+        .object({ kind: z.string() })
+        .passthrough()
+        .describe("Another thing that starts the same automation, like the trigger in op trigger."),
+      starts: z
+        .array(z.string())
+        .optional()
+        .describe("Ids of steps nothing else feeds that this trigger starts too."),
+    })
+    .describe(
+      'Adds another trigger, with the id "__trigger_2" (then 3 and up). Each run does only the steps its trigger starts: add steps with after set to its id for its own branch, or connect its id to a step nothing else feeds to share steps. All triggers share one on/off switch.',
+    ),
+  z.object({ op: z.literal("removeTrigger"), id: z.string() }),
   z.object({ op: z.literal("name"), name: z.string() }),
   z.object({ op: z.literal("tidy") }),
 ]);
@@ -266,7 +291,8 @@ const operation = z.discriminatedUnion("op", [
  * so on, and a model reasonably sends that name as the kind; the dashboard wants "upload".
  */
 export function asSent(op: z.infer<typeof operation>): z.infer<typeof operation> {
-  if (op.op !== "trigger" || !op.trigger.kind.startsWith("trigger:")) return op;
+  if (op.op !== "trigger" && op.op !== "addTrigger") return op;
+  if (!op.trigger.kind.startsWith("trigger:")) return op;
   return { ...op, trigger: { ...op.trigger, kind: op.trigger.kind.slice("trigger:".length) } };
 }
 
@@ -811,6 +837,7 @@ How to work:
 - Once it has no problems, try it before calling it done: try_automation runs it on one of the team's uploads (the newest it would take, unless the person named one; list_uploads shows them), then check_run tells you how each step went. If a step failed, read its error, fix what you can with change_automation and try again; say plainly what you could not fix. If the run stops at an approval step, that is it working: tell the person it is waiting for them, with a link to the run. If there are no uploads, ask the person to upload a file on the Uploads page rather than skipping the try.
 - Report a try in plain words: which file it ran on, what each step made (how many clips, for example), and any step that failed and why. Link to the run with the address try_automation returned, like [See the run](/automations/.../runs/...).
 ${TEAM_STEP_INSTRUCTIONS}
+- One automation can have several triggers (an upload and a schedule, say), all under its one on/off switch; each run does only the steps its trigger starts. Use addTrigger when the person wants the same automation started another way too; use a separate automation that starts when another finishes when the work happens one after another.
 - Automations can start other automations: a Run an automation step, or a trigger that starts one when another finishes. When describe_automation lists followOns for an automation you built or the person is looking at, mention the one or two that fit what they make, in a sentence, and set one up with set_up_follow_on if they want it. Never set one up without being asked; it switches itself on.
 - Workflows: automations linked into a chain can be one workflow with a single review just before the last files go out, instead of an Approval step in each piece. When the person asks for one review for the whole chain, wants to say who a chain is for, or asks to switch a whole chain on, use describe_workflow and set_up_workflow. Client work, UGC and their own content come with the review on; a quick personal job without. Ask which kind it is when you cannot tell. switch_workflow switches all of a chain's automations together.
 - Only switch an automation on when the person asked for it to run, and it has no problems.

@@ -1,7 +1,7 @@
 "use client";
 
 import { KINDS, STATUSES } from "@convex/lib/packages";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,18 @@ type Unit = keyof typeof UNITS;
 
 function unitOf(minutes: number): Unit {
   return minutes % 1440 === 0 ? "days" : minutes % 60 === 0 ? "hours" : "minutes";
+}
+
+/**
+ * What a newly added trigger starts as: the first of the usual ones the automation does not
+ * have yet. Its kind can be changed straight after.
+ */
+export function newTriggerKind(existing: { trigger: Trigger }[]): Trigger {
+  const used = new Set(existing.map((each) => each.trigger.kind));
+  const kind =
+    (["upload", "folder", "schedule", "webhook"] as const).find((each) => !used.has(each)) ??
+    "schedule";
+  return defaultFor(kind);
 }
 
 function defaultFor(kind: TriggerKind): Trigger {
@@ -84,11 +96,23 @@ export function TriggerPanel({
   onChange,
   automationId,
   hookToken,
+  taken = [],
+  starts,
+  onStopStarting,
+  onAddStep,
+  onRemove,
 }: {
   trigger: Trigger;
   onChange: (trigger: Trigger) => void;
   automationId: string;
   hookToken: string;
+  /** Kinds the automation's other triggers are; a webhook or Run now can only be there once. */
+  taken?: TriggerKind[];
+  /** With several triggers: the steps this one starts, by id and name. */
+  starts?: { id: string; title: string }[];
+  onStopStarting?: (stepId: string) => void;
+  onAddStep?: () => void;
+  onRemove?: () => void;
 }) {
   const address = hookUrl(automationId, hookToken);
 
@@ -106,19 +130,23 @@ export function TriggerPanel({
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {(Object.keys(TRIGGER_LABELS) as TriggerKind[]).map((kind) => {
-              const Icon = TRIGGER_ICONS[kind];
-              return (
-                <SelectItem
-                  key={kind}
-                  value={kind}
-                  description={TRIGGER_HINTS[kind]}
-                  icon={<Icon className={TRIGGER_TINT} aria-hidden="true" />}
-                >
-                  {TRIGGER_LABELS[kind]}
-                </SelectItem>
-              );
-            })}
+            {(Object.keys(TRIGGER_LABELS) as TriggerKind[])
+              .filter(
+                (kind) => !((kind === "webhook" || kind === "manual") && taken.includes(kind)),
+              )
+              .map((kind) => {
+                const Icon = TRIGGER_ICONS[kind];
+                return (
+                  <SelectItem
+                    key={kind}
+                    value={kind}
+                    description={TRIGGER_HINTS[kind]}
+                    icon={<Icon className={TRIGGER_TINT} aria-hidden="true" />}
+                  >
+                    {TRIGGER_LABELS[kind]}
+                  </SelectItem>
+                );
+              })}
           </SelectContent>
         </Select>
         {trigger.kind === "manual" && (
@@ -311,6 +339,55 @@ export function TriggerPanel({
           schedule={trigger.schedule}
           onChange={(schedule) => onChange({ kind: "schedule", schedule })}
         />
+      )}
+      {starts && (
+        <Field>
+          <FieldLabel>What it starts</FieldLabel>
+          {starts.length === 0 ? (
+            <FieldDescription>
+              Nothing yet. Add a step after it, or drag from its dot to a first step.
+            </FieldDescription>
+          ) : (
+            <ul className="grid gap-1">
+              {starts.map((step) => (
+                <li
+                  key={step.id}
+                  className="bg-background flex items-center gap-2 rounded-md py-1 pr-1 pl-3 text-sm"
+                >
+                  <span className="min-w-0 flex-1 truncate">{step.title}</span>
+                  {onStopStarting && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => onStopStarting(step.id)}
+                    >
+                      <X />
+                      <span className="sr-only">Stop starting {step.title}</span>
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <FieldDescription>
+            Each trigger runs only the steps it starts and what comes after them.
+          </FieldDescription>
+          <div className="flex flex-wrap gap-2">
+            {onAddStep && (
+              <Button type="button" variant="outline" size="sm" onClick={onAddStep}>
+                <Plus />
+                Add a step after it
+              </Button>
+            )}
+            {onRemove && (
+              <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+                <Trash2 />
+                Remove trigger
+              </Button>
+            )}
+          </div>
+        </Field>
       )}
     </FieldGroup>
   );

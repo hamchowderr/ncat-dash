@@ -90,10 +90,11 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  # The review room in a real browser, against a real local backend.
+  # The review room in a real browser, against a real local backend. The suite (83 tests, about
+  # 13 minutes) plus install and the backend start-up ran past a 20-minute cap with every test passing.
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

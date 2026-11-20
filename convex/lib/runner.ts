@@ -1,4 +1,6 @@
 import {
+  branchOf,
+  FIRST_TRIGGER,
   explainFailure,
   approvalLimitMs,
   approvalSettings,
@@ -90,6 +92,11 @@ export async function startRun(
   startedBy: string | null,
   options: {
     test?: string;
+    /**
+     * Which trigger started it, when the automation has more than one: the run only does
+     * the steps that trigger starts. The first trigger when left out.
+     */
+    triggerId?: string;
     /** The run that started this one, and the step that waits for it when one does. */
     parent?: { runId: Id<"runs">; runStepId?: Id<"runSteps">; chain: Id<"automations">[] };
     /** The project it works for: its finished files fill the project's empty slots. */
@@ -102,6 +109,14 @@ export async function startRun(
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
   if (problem) return { ok: false, message: problem };
+  // A test runs exactly the step it was given; any other run only its trigger's branch.
+  const triggerId = options.triggerId ?? FIRST_TRIGGER;
+  const { nodes, edges } = options.test
+    ? { nodes: automation.nodes, edges: automation.edges }
+    : branchOf(automation, triggerId);
+  if (nodes.length === 0) {
+    return { ok: false, message: "That trigger is not connected to any steps yet." };
+  }
   // A team whose free trial is over, or that the operator blocked, keeps everything, but
   // nothing new runs.
   const refusal = await refusalFor(ctx, automation.organizationId, startedBy);
@@ -113,8 +128,8 @@ export async function startRun(
   const graph = await workflowRunGraph(
     ctx,
     automation,
-    automation.nodes,
-    automation.edges,
+    nodes,
+    edges,
     options.test !== undefined,
   );
 
@@ -124,6 +139,7 @@ export async function startRun(
     automationName: automation.name,
     status: "running",
     triggerKind,
+    ...(triggerId !== FIRST_TRIGGER ? { triggerId } : {}),
     // A Drive or Dropbox share link the trigger handed over becomes its download link,
     // so every step, and the run page, works with the file itself.
     trigger: withDownloadLinks(trigger),

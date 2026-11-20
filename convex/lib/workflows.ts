@@ -23,6 +23,9 @@ export function chainMembersOf(team: Doc<"automations">[]): ChainMember[] {
     id: each._id,
     name: each.name,
     trigger: each.trigger as ChainMember["trigger"],
+    ...(each.moreTriggers?.length
+      ? { moreTriggers: each.moreTriggers as ChainMember["moreTriggers"] }
+      : {}),
     nodes: each.nodes,
   }));
 }

@@ -90,6 +90,7 @@ import type * as lib_telegramPosts from "../lib/telegramPosts.js";
 import type * as lib_toolkitMessage from "../lib/toolkitMessage.js";
 import type * as lib_tours from "../lib/tours.js";
 import type * as lib_trial from "../lib/trial.js";
+import type * as lib_triggers from "../lib/triggers.js";
 import type * as lib_typing from "../lib/typing.js";
 import type * as lib_versions from "../lib/versions.js";
 import type * as lib_workflows from "../lib/workflows.js";
@@ -224,6 +225,7 @@ declare const fullApi: ApiFromModules<{
   "lib/toolkitMessage": typeof lib_toolkitMessage;
   "lib/tours": typeof lib_tours;
   "lib/trial": typeof lib_trial;
+  "lib/triggers": typeof lib_triggers;
   "lib/typing": typeof lib_typing;
   "lib/versions": typeof lib_versions;
   "lib/workflows": typeof lib_workflows;

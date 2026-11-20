@@ -8,6 +8,14 @@ import { type DragEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { NeedsToolkit } from "@/components/uploads/needs-toolkit";
 import {
   Dialog,
@@ -34,6 +42,9 @@ export function RunDialog({
   title = "Try it on one file",
   description = "Starts one run straight away, the same way it will run by itself.",
   withoutFile = true,
+  triggers,
+  triggerId,
+  onTriggerChange,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -46,6 +57,10 @@ export function RunDialog({
   description?: string;
   /** Offers to run with no file at all. */
   withoutFile?: boolean;
+  /** With several triggers: which one's steps to run, as if it had started it. */
+  triggers?: { id: string; label: string }[];
+  triggerId?: string;
+  onTriggerChange?: (id: string) => void;
 }) {
   const team = useActiveTeam();
   const storage = useQuery(api.storage.get, open ? { organizationId: team.id } : "skip");
@@ -121,6 +136,26 @@ export function RunDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+
+        {triggers && triggers.length > 1 && onTriggerChange && (
+          <Field>
+            <FieldLabel htmlFor="run-trigger">Run the steps of</FieldLabel>
+            <Select value={triggerId ?? triggers[0].id} onValueChange={onTriggerChange}>
+              <SelectTrigger id="run-trigger" className="w-full">
+                <SelectValue>
+                  {triggers.find((each) => each.id === triggerId)?.label ?? triggers[0].label}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {triggers.map((each) => (
+                  <SelectItem key={each.id} value={each.id}>
+                    {each.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
 
         {storage === undefined ? (
           <div className="bg-muted h-36 animate-pulse rounded-xl" />

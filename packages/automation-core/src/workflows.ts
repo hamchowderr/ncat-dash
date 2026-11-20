@@ -123,8 +123,7 @@ export function workflowEnds(members: ChainMember[], ids: string[]): Set<string>
 
 /** Every trigger a member has: its first, and any more when it has several. */
 function triggersOf(member: ChainMember): ChainMember["trigger"][] {
-  const more = (member as { moreTriggers?: { trigger: ChainMember["trigger"] }[] }).moreTriggers;
-  return [member.trigger, ...(Array.isArray(more) ? more.map((each) => each.trigger) : [])];
+  return [member.trigger, ...(member.moreTriggers ?? []).map((each) => each.trigger)];
 }
 
 /** The automations in the chain that holds `startId`, in the order they run. */
