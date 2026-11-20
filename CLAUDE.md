@@ -3,6 +3,7 @@
 This file provides instructions and context for AI coding agents working on this project.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
+
 ## Beads Issue Tracker
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
@@ -52,26 +53,28 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 5. **Hand off** - Summarize changes, validation, issue status, and any blocked sync/commit/push step
 
 **Critical rules:**
+
 - Explicit user or orchestrator instructions override this Beads block.
 - Do not commit or push without clear authority from the active profile or the current user request.
 - If a required sync or push is blocked, stop and report the exact command and error.
-<!-- END BEADS INTEGRATION -->
 
+<!-- END BEADS INTEGRATION -->
 
 ## Build & Test
 
-_Add your build and test commands here_
-
 ```bash
-# Example:
-# npm install
-# npm test
+pnpm install
+pnpm typecheck
+pnpm lint
+pnpm test        # packages, Convex functions, screens, scripts and the docs checks
+pnpm build
+pnpm test:e2e    # Playwright, desktop and phone
 ```
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+Next.js web app (`src/`), Convex backend (`convex/`), the agent server (`packages/agent/`, Mastra), and shared packages (`packages/*`). It drives the NCA Toolkit fork over HTTP. Details: [README.md](README.md). Running a copy: [docs/self-hosting.md](docs/self-hosting.md). Notes for agents, including the self-hosting checklist: [AGENTS.md](AGENTS.md).
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+Every change ships with tests. A new setting read from `process.env` is documented in docs/self-hosting.md in the same change (the docs test checks it).
