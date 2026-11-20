@@ -67,4 +67,20 @@ describe("getCaller", () => {
     });
     expect(await person.as.run(async (ctx) => (await getCaller(ctx)) ?? null)).toBeNull();
   });
+
+  test("returns nothing when the session belongs to someone else", async () => {
+    const t = backend();
+    const team = await addTeam(t, "North");
+    const ada = await addPerson(t, "Ada", [team], "owner");
+    const bob = await addPerson(t, "Bob", [team], "member");
+    const sessionId = await t.run(async (ctx) => {
+      const session = await ctx.runQuery(components.betterAuth.adapter.findOne, {
+        model: "session",
+        where: [{ field: "userId", value: bob.id }],
+      });
+      return (session as { _id: string })._id;
+    });
+    const mixed = t.withIdentity({ subject: ada.id, sessionId });
+    expect(await mixed.run(async (ctx) => (await getCaller(ctx)) ?? null)).toBeNull();
+  });
 });
