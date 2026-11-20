@@ -346,10 +346,13 @@ test("the approval waiting comes to Jordan as a Slack message, and Approve there
   expect(pressed.status).toBe(200);
 
   // The message now says who approved, and its buttons are gone.
+  const same = async () =>
+    (await posted()).find((one) => one.ts === message.ts) as Posted & { blocks: string | null };
   await expect
-    .poll(async () => (await approval())?.blocks ?? "", { timeout: 30_000 })
+    .poll(async () => (await same()).blocks ?? "", { timeout: 30_000 })
     .toContain("Approved by Jordan Lee.");
-  expect((await approval())?.blocks).not.toContain("ncat_alert_");
+  expect((await same()).blocks).not.toContain("ncat_alert_");
+  expect((await same()).text).toBe("Approved by Jordan Lee.");
 });
 
 test("a request not signed with the team's secret is refused", async () => {
