@@ -1,6 +1,6 @@
 import { api } from "@convex/_generated/api";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -21,8 +21,18 @@ import { alertDetail, alertTitle } from "./alert-look";
 import { AlertNotices } from "./alert-notices";
 import { alertTime, dayGroup, InboxView } from "./inbox-view";
 
-const NOW = Date.now();
+// Midday, so "a few minutes ago" is always today whatever time the tests run.
+const NOW = new Date(2026, 10, 18, 12).getTime();
 const HOUR = 3_600_000;
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const alert = (over: Record<string, unknown>) => ({
   _id: "a1",
