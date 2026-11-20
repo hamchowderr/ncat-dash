@@ -165,9 +165,12 @@ export function NodePanel({
     ]),
   );
 
-  // Asked for up front: what is required and nothing else supplies.
+  // Asked for up front: what is required and nothing else supplies, and what the step
+  // names as worth asking first.
+  const askFirst = new Set(step?.askFirst ?? []);
   const needed = (fields ?? []).filter(
-    ({ name, required }) => required && name !== automaticField && !brandFields[name],
+    ({ name, required }) =>
+      (required || askFirst.has(name)) && name !== automaticField && !brandFields[name],
   );
   const rest = (fields ?? []).filter((field) => !needed.includes(field));
 

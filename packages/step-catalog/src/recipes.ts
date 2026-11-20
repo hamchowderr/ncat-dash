@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { shapeCode } from "./codes";
 import { defineStep, type StepDefinition } from "./define";
 
 /**
@@ -109,6 +110,8 @@ function recipe<Shape extends z.ZodRawShape>(args: {
   primaryInput: (keyof Shape & string) | null;
   listInput?: { field: string; itemKey: string };
   brandInputs?: StepDefinition["brandInputs"];
+  /** Codes for its files when the file it works on has one; see StepDefinition. */
+  followLabels?: (blanks: z.output<z.ZodObject<Shape>>) => string[];
   blanks: Shape;
   toRequest: (blanks: z.output<z.ZodObject<Shape>>) => Record<string, unknown>;
 }): StepDefinition {
@@ -123,6 +126,12 @@ function recipe<Shape extends z.ZodRawShape>(args: {
     primaryInput: args.primaryInput,
     listInput: args.listInput,
     brandInputs: args.brandInputs,
+    ...(args.followLabels
+      ? {
+          outputLabels: args.followLabels as unknown as StepDefinition["outputLabels"],
+          labelsFollow: true,
+        }
+      : {}),
     input: z.object(args.blanks),
     toRequest: args.toRequest,
   }) as unknown as StepDefinition;
@@ -529,6 +538,7 @@ export const moreRecipes: StepDefinition[] = [
       height: even("Height of the finished video", 2, 8000).default(1920),
       blur: whole("How blurred the background is", 1, 100).default(20),
     },
+    followLabels: (b) => [shapeCode(b.width, b.height)],
     toRequest: (b) => {
       const size = `${b.width}:${b.height}`;
       // The blur's reach cannot be more than half the shorter side.

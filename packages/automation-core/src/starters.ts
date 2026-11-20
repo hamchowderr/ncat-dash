@@ -1,4 +1,4 @@
-import { editingRecipes, moreRecipes, recipes } from "@ncat-dash/step-catalog";
+import { editingRecipes, moreRecipes, recipes, variantRecipes } from "@ncat-dash/step-catalog";
 
 import { type AutomationEdge, type AutomationNode, NODE_GAP } from "./graph";
 import type { Schedule } from "./schedule";
@@ -38,10 +38,11 @@ export type StarterTrigger =
 
 /** What a ready-made automation is for, so the whole list can be sorted and filtered. */
 export type StarterCategory =
-  "clips" | "captions" | "audio" | "music" | "delivery" | "pictures" | "after";
+  "clips" | "variants" | "captions" | "audio" | "music" | "delivery" | "pictures" | "after";
 
 export const STARTER_CATEGORIES: { id: StarterCategory; label: string }[] = [
   { id: "clips", label: "Clips and shapes" },
+  { id: "variants", label: "Hooks, lengths and ad variants" },
   { id: "captions", label: "Captions and text" },
   { id: "audio", label: "Audio and podcasts" },
   { id: "music", label: "Music" },
@@ -89,6 +90,15 @@ const approval = (column: number): AutomationNode => ({
 /** Connects the nodes in the order given. */
 const chain = (...ids: string[]): AutomationEdge[] =>
   ids.slice(1).map((id, index) => ({ id: `${ids[index]}>${id}`, source: ids[index], target: id }));
+
+/** The ad shapes: 9:16 for TikTok, Reels, Stories and Shorts; 4:5 for feeds; 16:9 for YouTube. */
+const AD_SHAPES: [number, number][] = [
+  [1080, 1920],
+  [1080, 1350],
+  [1920, 1080],
+];
+/** Captions in the middle, clear of the top 14% and bottom 35% that ad buttons cover. */
+const AD_CAPTIONS = { settings: { position: "middle_center" } };
 
 const WORKFLOWS: Starter[] = [
   {
@@ -443,6 +453,95 @@ const WORKFLOWS: Starter[] = [
     nodes: [step("caption_1", "video-caption", 0), step("card_1", "recipe-video-card", 1)],
     edges: chain("caption_1", "card_1"),
   },
+  {
+    id: "ugc-ad-variants",
+    category: "variants",
+    name: "UGC Ad Variants",
+    description:
+      "Start it with the creator's base cut and pick their other hook and ending takes on the first step. You get every hook and ending pairing at 6, 15, 30 and 60 seconds, in 9:16, 4:5 and 16:9, both clean and captioned, each named for what is in it, like h02_c01_15s_9x16, kept in a folder per creator and per shape, with an Ad files.csv list for your ads manager. Plain editing on real footage, no AI.",
+    group: "workflow",
+    trigger: { kind: "manual" },
+    nodes: [
+      step("variants_1", "recipe-hook-variants", 0),
+      step("lengths_1", "recipe-length-cuts", 1, 0, {
+        lengths: "6, 15, 30, 60",
+        ending_seconds: 4,
+      }),
+      ...AD_SHAPES.map(([width, height], row) =>
+        step(`shape_${row + 1}`, "recipe-blur-fill", 2, row, { width, height }),
+      ),
+      ...AD_SHAPES.map((_, row) =>
+        step(`caption_${row + 1}`, "video-caption", 3, row, AD_CAPTIONS),
+      ),
+    ],
+    edges: [
+      ...chain("variants_1", "lengths_1"),
+      ...AD_SHAPES.flatMap((_, row) =>
+        chain("lengths_1", `shape_${row + 1}`, `caption_${row + 1}`),
+      ),
+    ],
+  },
+  {
+    id: "ad-length-cuts",
+    category: "variants",
+    name: "Ad Length Cuts In Every Shape",
+    description:
+      "Each finished ad or promo you upload is cut to 6, 15, 30 and 60 seconds, keeping its call to action at the end, then made 9:16, 4:5 and 16:9. Every cut ends in a pause, never mid-word, and is named like 15s_9x16, in one folder per shape with an Ad files.csv list.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [
+      step("lengths_1", "recipe-length-cuts", 0, 0, {
+        lengths: "6, 15, 30, 60",
+        ending_seconds: 4,
+      }),
+      ...AD_SHAPES.map(([width, height], row) =>
+        step(`shape_${row + 1}`, "recipe-blur-fill", 1, row, { width, height }),
+      ),
+    ],
+    edges: AD_SHAPES.flatMap((_, row) => chain("lengths_1", `shape_${row + 1}`)),
+  },
+  {
+    id: "teaser-lengths",
+    category: "variants",
+    name: "Teasers In Three Lengths",
+    description:
+      "For coaches, podcasters and brands: each video you upload becomes a 15, 30 and 60 second teaser from its start, each ending in a pause, then captioned. Post the length each platform likes best.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [
+      step("lengths_1", "recipe-length-cuts", 0, 0, { lengths: "15, 30, 60" }),
+      step("caption_1", "video-caption", 1),
+    ],
+    edges: chain("lengths_1", "caption_1"),
+  },
+  {
+    id: "opening-line-tests",
+    category: "variants",
+    name: "Opening Line Tests",
+    description:
+      "Write up to five opening lines once. Each video you upload comes back as one copy per line, with that line big over the first three seconds, then captioned, so you can see which hook keeps people watching.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "video" },
+    nodes: [
+      step("lines_1", "recipe-opening-lines", 0),
+      step("caption_1", "video-caption", 1, 0, AD_CAPTIONS),
+    ],
+    edges: chain("lines_1", "caption_1"),
+  },
+  {
+    id: "song-teasers-vertical",
+    category: "music",
+    name: "Song Teasers For Reels And Shorts",
+    description:
+      "Upload a song. You get three 15 second teasers from different parts of it, so you can test which part grabs people, each made into a vertical video of your cover art with a moving sound wave.",
+    group: "workflow",
+    trigger: { kind: "upload", fileType: "audio" },
+    nodes: [
+      step("teasers_1", "recipe-song-teasers", 0),
+      step("cover_1", "recipe-cover-art-video", 1, 0, { width: 1080, height: 1920 }),
+    ],
+    edges: chain("teasers_1", "cover_1"),
+  },
 ];
 
 /** Starts once a run of the automation it is set up after ends; that one is picked later. */
@@ -627,35 +726,45 @@ const RECIPE_CATEGORY: Record<string, StarterCategory> = {
   "recipe-frame-choices": "pictures",
   "recipe-intro-outro": "delivery",
   "recipe-change-format": "delivery",
+  "recipe-hook-variants": "variants",
+  "recipe-length-cuts": "variants",
+  "recipe-opening-lines": "variants",
+  "recipe-song-teasers": "music",
 };
 
 /** One automation per ready-made FFmpeg step: the toolkit's examples and the dashboard's own. */
-const RECIPES: Starter[] = [...recipes, ...moreRecipes, ...editingRecipes].map((recipe) => {
-  // With no file to start from, or a list of them, the team starts it by hand.
-  const many = Boolean(recipe.listInput) || recipe.primaryInput === null;
-  return {
-    id: recipe.id,
-    name: recipe.title,
-    description: recipe.description,
-    group: "recipe" as const,
-    // Every other recipe writes text on a picture or video.
-    category: RECIPE_CATEGORY[recipe.id] ?? "captions",
-    trigger: many
-      ? { kind: "manual" as const }
-      : {
-          kind: "upload" as const,
-          fileType: IMAGE_FIRST.has(recipe.primaryInput ?? "")
-            ? ("image" as const)
-            : recipe.id === "recipe-voice-master" || recipe.primaryInput === "media_url"
-              ? ("any" as const)
-              : recipe.primaryInput === "audio_url"
-                ? ("audio" as const)
-                : ("video" as const),
-        },
-    nodes: [step(`${recipe.id.replace(/^recipe-/, "").replace(/-/g, "_")}_1`, recipe.id, 0)],
-    edges: [],
-  };
-});
+const RECIPES: Starter[] = [...recipes, ...moreRecipes, ...editingRecipes, ...variantRecipes].map(
+  (recipe) => {
+    // With no file to start from, or a list of them, the team starts it by hand.
+    // Hook And Ending Variants needs its other takes picked, so it is started by hand too.
+    const many =
+      Boolean(recipe.listInput) ||
+      recipe.primaryInput === null ||
+      recipe.id === "recipe-hook-variants";
+    return {
+      id: recipe.id,
+      name: recipe.title,
+      description: recipe.description,
+      group: "recipe" as const,
+      // Every other recipe writes text on a picture or video.
+      category: RECIPE_CATEGORY[recipe.id] ?? "captions",
+      trigger: many
+        ? { kind: "manual" as const }
+        : {
+            kind: "upload" as const,
+            fileType: IMAGE_FIRST.has(recipe.primaryInput ?? "")
+              ? ("image" as const)
+              : recipe.id === "recipe-voice-master" || recipe.primaryInput === "media_url"
+                ? ("any" as const)
+                : recipe.primaryInput === "audio_url"
+                  ? ("audio" as const)
+                  : ("video" as const),
+          },
+      nodes: [step(`${recipe.id.replace(/^recipe-/, "").replace(/-/g, "_")}_1`, recipe.id, 0)],
+      edges: [],
+    };
+  },
+);
 
 /** Ready-made automations a team can start from and then change. */
 export const STARTERS: Starter[] = [...WORKFLOWS, ...FOLLOW_ONS, ...RECIPES];

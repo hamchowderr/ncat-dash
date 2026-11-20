@@ -47,6 +47,7 @@ import {
   type Bucket,
   bucketOf as bucketFor,
   copyObject,
+  putText,
   deleteObject,
   keyExists,
   listFolder,
@@ -55,6 +56,7 @@ import {
   putFolder,
   storageConnection,
 } from "./lib/bucket";
+import { AD_FILES_NAME, type AdFile, adFilesCsv, adFolder } from "./lib/adFiles";
 import { finishedFiles } from "./lib/exports";
 import { deliveryFolderOf } from "./lib/clients";
 import { followLibraryKey } from "./lib/library";
@@ -954,12 +956,17 @@ export const keepFinished = internalAction({
       automationName: string;
       /** The client's folder when the automation was for a client, such as "Clients/Acme/". */
       deliveryFolder: string | null;
-      files: { link: string; name: string }[];
+      /** Who filmed it, when a step of the automation names a creator. */
+      creator: string | null;
+      files: { link: string; name: string; label: string | null }[];
     } | null = await ctx.runQuery(internal.files.finishedOfRun, { runId: args.runId });
     if (!found || found.files.length === 0) return [];
     // Where each file ended up inside the team's folder, for the content library.
     const placed: { link: string; key: string }[] = [];
     const kept: string[] = [];
+    const adFiles: AdFile[] = [];
+    // Kept files that no run links to, such as the ad files list.
+    const extra: string[] = [];
     const connection = await ctx.runQuery(internal.storage.load, {
       organizationId: found.organizationId,
     });
@@ -990,14 +997,37 @@ export const keepFinished = internalAction({
         const wanted = file.name.toLowerCase().endsWith(ending)
           ? file.name
           : `${file.name}${ending}`;
-        const name = freeName(wanted.replace(/[/\\]/g, "-"), (candidate) => taken.has(candidate));
-        taken.add(name);
+        // Ad files go in a folder per creator, then per shape, such as Jane/9x16/.
+        const sub = adFolder(file.label, found.creator);
+        const name = freeName(wanted.replace(/[/\\]/g, "-"), (candidate) =>
+          taken.has(`${sub}${candidate}`),
+        );
+        taken.add(`${sub}${name}`);
         try {
-          await copyObject(whole, from, `${config.root}${folder}${name}`);
-          kept.push(`${folder}${name}`);
-          placed.push({ link: file.link, key: `${folder}${name}` });
+          await copyObject(whole, from, `${config.root}${folder}${sub}${name}`);
+          kept.push(`${folder}${sub}${name}`);
+          placed.push({ link: file.link, key: `${folder}${sub}${name}` });
+          if (file.label) {
+            adFiles.push({ name, folder: sub, label: file.label, creator: found.creator });
+          }
         } catch {
           // Left where the toolkit put it; the run still links to it there.
+        }
+      }
+      // A list of the ad files beside them, ready to fill in and take to an ads manager.
+      if (adFiles.length > 0) {
+        const listName = freeName(AD_FILES_NAME, (candidate) => taken.has(candidate));
+        try {
+          await putText(
+            config,
+            `${folder}${listName}`,
+            adFilesCsv(adFiles),
+            "text/csv; charset=utf-8",
+          );
+          kept.push(`${folder}${listName}`);
+          extra.push(`${folder}${listName}`);
+        } catch {
+          // The files are kept all the same; only the list is missing.
         }
       }
     }
@@ -1009,11 +1039,20 @@ export const keepFinished = internalAction({
     // An automation switched to send its files to Dropbox: the kept copies go there too.
     await ctx.runMutation(internal.dropbox.queueSends, {
       runId: args.runId,
-      keys: placed.map((one) => one.key),
+      keys: [...placed.map((one) => one.key), ...extra],
     });
     return kept;
   },
 });
+
+/** The creator a step of the run names, such as on Hook And Ending Variants. */
+function creatorOf(run: Doc<"runs">): string | null {
+  for (const node of run.nodes) {
+    const creator = (node.input as Record<string, unknown> | undefined)?.creator;
+    if (typeof creator === "string" && creator.trim()) return creator.trim();
+  }
+  return null;
+}
 
 /** A finished run's last files with their readable names, for `keepFinished`. */
 export const finishedOfRun = internalQuery({
@@ -1026,15 +1065,20 @@ export const finishedOfRun = internalQuery({
       .withIndex("by_run", (q) => q.eq("runId", run._id))
       .take(200);
     const names = outputNamesOf(run, steps);
+    // The code each ad file carries, such as "h02_c01_15s_9x16"; a later step's code wins.
+    const labels = new Map<string, string>();
+    for (const step of steps) for (const one of step.labels ?? []) labels.set(one.url, one.label);
     const client = run.clientId ? await ctx.db.get(run.clientId) : null;
     return {
       organizationId: run.organizationId,
       automationName: run.automationName,
       deliveryFolder:
         client && client.organizationId === run.organizationId ? deliveryFolderOf(client) : null,
+      creator: creatorOf(run),
       files: finishedFiles(run, steps).map((link) => ({
         link,
         name: names[link] ?? fileNameOfLink(link),
+        label: labels.get(link) ?? null,
       })),
     };
   },
