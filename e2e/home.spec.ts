@@ -45,16 +45,16 @@ test("a new team's home leads with getting set up and ready-made automations", a
   await page.setViewportSize({ width: 1280, height: 900 });
 
   // Every ready-made automation is on one page, by category, and can be searched.
-  await ready.getByRole("link", { name: /See all 73/ }).click();
+  await ready.getByRole("link", { name: /See all 82/ }).click();
   await expect(page).toHaveURL(/\/automations\/new$/);
-  await expect(page.getByRole("button", { name: /^All 64$/ })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: /^All 82$/ })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await page.getByRole("button", { name: /^Music \d+$/ }).click();
   await expect(page.getByText("Lyric video with highlighted words")).toBeVisible();
   await expect(page.getByText("Clips for social")).toHaveCount(0);
-  await page.getByRole("button", { name: /^All 64$/ }).click();
+  await page.getByRole("button", { name: /^All 82$/ }).click();
   await page.getByLabel("Find a ready-made automation").fill("loudness");
   await expect(page.getByText("Even out loudness for platforms")).toBeVisible();
 

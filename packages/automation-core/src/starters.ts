@@ -38,7 +38,7 @@ export type StarterTrigger =
 
 /** What a ready-made automation is for, so the whole list can be sorted and filtered. */
 export type StarterCategory =
-  "clips" | "variants" | "captions" | "audio" | "music" | "delivery" | "pictures";
+  "clips" | "variants" | "captions" | "audio" | "music" | "delivery" | "pictures" | "after";
 
 export const STARTER_CATEGORIES: { id: StarterCategory; label: string }[] = [
   { id: "clips", label: "Clips and shapes" },
@@ -48,6 +48,7 @@ export const STARTER_CATEGORIES: { id: StarterCategory; label: string }[] = [
   { id: "music", label: "Music" },
   { id: "delivery", label: "Delivery" },
   { id: "pictures", label: "Pictures and logos" },
+  { id: "after", label: "After another automation" },
 ];
 
 export interface Starter {
@@ -60,6 +61,11 @@ export interface Starter {
   trigger: StarterTrigger;
   nodes: AutomationNode[];
   edges: AutomationEdge[];
+  /**
+   * For one that starts when another automation finishes: the ready-made automations it
+   * is made to follow, best fit first. Setting it up after one of them wires the two.
+   */
+  follows?: string[];
 }
 
 const step = (
@@ -538,6 +544,158 @@ const WORKFLOWS: Starter[] = [
   },
 ];
 
+/** Starts once a run of the automation it is set up after ends; that one is picked later. */
+const after = (when: "done" | "failed" = "done"): StarterTrigger => ({
+  kind: "finished",
+  automationId: "",
+  when,
+});
+
+/**
+ * Ready-made automations that carry on from another one: each starts by itself when a run
+ * of the one it follows ends, and works on that run's finished files.
+ */
+const FOLLOW_ONS: Starter[] = [
+  {
+    id: "brand-every-clip",
+    category: "after",
+    name: "Brand Every Clip",
+    description:
+      "Starts when your clips are made. Each clip gets your logo in the top right corner and finishes on your end card from Settings.",
+    group: "workflow",
+    trigger: after(),
+    follows: [
+      "social-clips",
+      "clips-follow-speaker",
+      "clips-with-broll",
+      "coaching-session-pack",
+      "clips-from-episode",
+      "backup-clips-follow-speaker",
+    ],
+    nodes: [step("logo_1", "recipe-logo", 0), step("card_1", "recipe-video-card", 1)],
+    edges: chain("logo_1", "card_1"),
+  },
+  {
+    id: "ready-to-post",
+    category: "after",
+    name: "Ready To Post",
+    description:
+      "Starts when a captioned or branded video is finished. It is made web-ready with its sound at the loudness YouTube, TikTok and Spotify expect, and you get a thumbnail beside it.",
+    group: "workflow",
+    trigger: after(),
+    follows: [
+      "brand-every-clip",
+      "caption-uploads",
+      "clip-with-end-card",
+      "talking-head-broll",
+      "vertical-blur-captions",
+      "folder-vertical-captions",
+    ],
+    nodes: [
+      step("web_1", "recipe-web-ready", 0, 0),
+      step("loudness_1", "recipe-loudness", 1, 0),
+      step("thumbnail_1", "video-thumbnail", 0, 1),
+    ],
+    edges: chain("web_1", "loudness_1"),
+  },
+  {
+    id: "every-shape-after-captions",
+    category: "after",
+    name: "Every Shape After Captions",
+    description:
+      "Starts when a captioned video is finished. It comes back as a vertical 9:16, a square 1:1 and a 4:5 for feeds, each over a blurred copy of itself so nothing is cut off.",
+    group: "workflow",
+    trigger: after(),
+    follows: ["caption-uploads", "talking-head-broll", "clip-with-end-card"],
+    nodes: [
+      step("vertical_1", "recipe-blur-fill", 0, 0, { width: 1080, height: 1920 }),
+      step("square_1", "recipe-blur-fill", 0, 1, { width: 1080, height: 1080 }),
+      step("feed_1", "recipe-blur-fill", 0, 2, { width: 1080, height: 1350 }),
+    ],
+    edges: [],
+  },
+  {
+    id: "backup-follow-speaker",
+    category: "after",
+    name: "Backup When Following The Speaker Fails",
+    description:
+      "Starts only when following the speaker fails. The same upload is fitted into a vertical frame over a blurred copy of itself, captioned and held for your approval, so you still get a video.",
+    group: "workflow",
+    trigger: after("failed"),
+    follows: ["follow-speaker-vertical"],
+    nodes: [
+      step("fill_1", "recipe-blur-fill", 0),
+      step("caption_1", "video-caption", 1),
+      approval(2),
+    ],
+    edges: chain("fill_1", "caption_1", "approval"),
+  },
+  {
+    id: "backup-clips-follow-speaker",
+    category: "after",
+    name: "Backup When Clips Can't Follow The Speaker",
+    description:
+      "Starts only when clips that follow the speaker fail. The same upload is cut into clips with a plain vertical crop, captioned and held for your approval, so you still get clips.",
+    group: "workflow",
+    trigger: after("failed"),
+    follows: ["clips-follow-speaker"],
+    ...clipsGraph({ platform: "Instagram Reels", captions: true, approve: true }),
+  },
+  {
+    id: "clips-from-episode",
+    category: "after",
+    name: "Clips From The Episode",
+    description:
+      "Starts when an episode or recording pack is finished. The cleaned-up video is cut at pauses in speech into captioned clips that fit the platform you pick.",
+    group: "workflow",
+    trigger: after(),
+    follows: ["podcast-package", "recording-pack"],
+    ...clipsGraph({ platform: "Instagram Reels", captions: true, approve: false }),
+  },
+  {
+    id: "episode-video-youtube",
+    category: "after",
+    name: "Episode Video For YouTube",
+    description:
+      "Starts when an episode's MP3 is made. It becomes a video of your logo as cover art with a moving sound wave in your brand colour, ready for YouTube.",
+    group: "workflow",
+    trigger: after(),
+    follows: ["episode-audio-and-transcript"],
+    nodes: [step("cover_1", "recipe-cover-art-video", 0)],
+    edges: [],
+  },
+  {
+    id: "lyric-video-vertical",
+    category: "after",
+    name: "Lyric Video For Reels And Shorts",
+    description:
+      "Starts once you approve a lyric video. You get a vertical version over a blurred background for Reels and Shorts, and a thumbnail.",
+    group: "workflow",
+    trigger: after(),
+    follows: ["lyric-video"],
+    nodes: [
+      step("vertical_1", "recipe-blur-fill", 0, 0),
+      step("thumbnail_1", "video-thumbnail", 0, 1),
+    ],
+    edges: [],
+  },
+  {
+    id: "thumbnail-choices-after",
+    category: "after",
+    name: "Thumbnail Choices For Finished Videos",
+    description:
+      "Starts when a finished video is made. You get frames from across it, each with the video's name in a band in your brand colour and font, to pick a thumbnail from.",
+    group: "workflow",
+    trigger: after(),
+    follows: ["talking-head-broll", "clip-with-end-card"],
+    nodes: [
+      step("frames_1", "recipe-frame-choices", 0),
+      step("title_1", "recipe-title-on-picture", 1),
+    ],
+    edges: chain("frames_1", "title_1"),
+  },
+];
+
 const IMAGE_FIRST = new Set(["image_url", "background_url"]);
 
 const RECIPE_CATEGORY: Record<string, StarterCategory> = {
@@ -609,4 +767,4 @@ const RECIPES: Starter[] = [...recipes, ...moreRecipes, ...editingRecipes, ...va
 );
 
 /** Ready-made automations a team can start from and then change. */
-export const STARTERS: Starter[] = [...WORKFLOWS, ...RECIPES];
+export const STARTERS: Starter[] = [...WORKFLOWS, ...FOLLOW_ONS, ...RECIPES];

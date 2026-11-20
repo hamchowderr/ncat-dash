@@ -20,7 +20,7 @@ describe("the ready-made automations", () => {
     for (const starter of STARTERS) {
       expect(screen.getAllByText(starter.name, { exact: true }).length).toBeGreaterThan(0);
     }
-    expect(screen.getByRole("button", { name: /^All 73$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^All 82$/ })).toBeTruthy();
   });
 
   test("narrows to one category", () => {
@@ -48,6 +48,17 @@ describe("the ready-made automations", () => {
     expect(cards()).toHaveLength(0);
   });
 
+  test("names each card by its own ready-made, with what it follows as its description", () => {
+    renderInApp(<TemplateGallery onPick={vi.fn()} />);
+    // Ready To Post runs after this one, but only the one card is named by it.
+    expect(
+      screen.getAllByRole("button", { name: /Vertical and captioned from a watched folder/ }),
+    ).toHaveLength(1);
+    const readyToPost = screen.getByRole("button", { name: /Ready To Post/ });
+    expect(readyToPost.getAttribute("aria-describedby")).toBeTruthy();
+    expect(readyToPost).toHaveAccessibleDescription(/^Runs after .*Brand Every Clip/);
+  });
+
   test("picks one, or an empty canvas", () => {
     const onPick = vi.fn();
     renderInApp(<TemplateGallery onPick={onPick} />);
@@ -69,6 +80,9 @@ describe("the ready-made automations", () => {
     expect(cards().map((card) => card.textContent)).toEqual([
       expect.stringContaining("Clips that follow the speaker"),
       expect.stringContaining("Vertical that follows the speaker"),
+      // Its backup is found too, under After another automation.
+      expect.stringContaining("Backup When Following The Speaker Fails"),
+      expect.stringContaining("Backup When Clips Can't Follow The Speaker"),
     ]);
   });
 

@@ -140,7 +140,14 @@ export function DropboxLogo(props: SVGProps<SVGSVGElement>) {
 }
 
 export type ConnectedApp =
-  "slack" | "discord" | "zoom" | "google-meet" | "microsoft" | "teams" | "dropbox";
+  | "slack"
+  | "discord"
+  | "telegram"
+  | "zoom"
+  | "google-meet"
+  | "microsoft"
+  | "teams"
+  | "dropbox";
 
 const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactNode }> = {
   slack: { name: "Slack", tile: "bg-muted", mark: <SlackColorLogo className="size-6" /> },
@@ -148,6 +155,11 @@ const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactN
     name: "Discord",
     tile: "bg-[#5865F2] text-white",
     mark: <DiscordLogo className="size-6" />,
+  },
+  telegram: {
+    name: "Telegram",
+    tile: "bg-[#26A5E4] text-white",
+    mark: <TelegramLogo className="size-6" />,
   },
   zoom: { name: "Zoom", tile: "bg-[#0B5CFF] text-white", mark: <ZoomLogo className="size-8" /> },
   "google-meet": {

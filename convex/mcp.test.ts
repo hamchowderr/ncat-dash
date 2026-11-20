@@ -202,6 +202,7 @@ describe("the MCP server", () => {
       ["describe_automation", true],
       ["list_step_types", true],
       ["create_automation", false],
+      ["set_up_follow_on", false],
       ["change_automation", false],
       ["list_uploads", true],
       ["start_automation", false],
@@ -407,6 +408,28 @@ describe("the 2026-07-28 protocol", () => {
 });
 
 describe("building automations through MCP", () => {
+  test("suggests follow-ons when describing one, and builds one wired after it", async () => {
+    const { t, team, owner, key } = await setUp();
+    const lyric = await owner.as.mutation(api.automations.create, {
+      organizationId: team,
+      name: "",
+      starterId: "lyric-video",
+    });
+    const described = await call(t, key, "describe_automation", { automation_id: lyric });
+    expect(described.data.followOns).toEqual([
+      expect.objectContaining({ id: "lyric-video-vertical" }),
+    ]);
+    const made = await call(t, key, "set_up_follow_on", {
+      automation_id: lyric,
+      follow_on: "lyric-video-vertical",
+    });
+    expect(made.data).toMatchObject({ on: true, problem: null });
+    const follower = await t.run((ctx) => ctx.db.get(made.data.automation_id as Id<"automations">));
+    expect(follower?.trigger).toMatchObject({ kind: "finished", automationId: lyric });
+    const missing = await call(t, key, "set_up_follow_on", { automation_id: lyric });
+    expect(missing.isError).toBe(true);
+  });
+
   test("creates one and builds it, always as a draft, and describes it back", async () => {
     const { t, team, owner, key } = await setUp();
     const made = await call(t, key, "create_automation", { name: "From Claude" });

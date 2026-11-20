@@ -24,6 +24,7 @@ export * from "./agent-settings";
 export * from "./platform-guide";
 export * from "./failure-text";
 export * from "./chain";
+export * from "./follow-ons";
 export * from "./output-names";
 export * from "./captions";
 export * from "./share-links";

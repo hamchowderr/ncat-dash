@@ -6,6 +6,7 @@ import {
   type AutomationNode,
   chainProblem,
   followsEnd,
+  stepsBefore,
   targetOf,
   waitsForRun,
 } from "@ncat-dash/automation-core";
@@ -18,9 +19,17 @@ export function chainOf(run: Doc<"runs">): Id<"automations">[] {
   return run.chain ?? [run.automationId];
 }
 
-/** The files a run hands to whatever it started. */
-export function runFiles(files: string[]): Record<string, unknown> {
-  return files.length > 0 ? { file_url: files[0], files } : {};
+/**
+ * The files a run hands to whatever it started, with the name of the file that started it
+ * (`from` is that run's trigger), so a title left empty there still reads as that video's.
+ */
+export function runFiles(files: string[], from?: unknown): Record<string, unknown> {
+  const name = (from ?? {}) as { file_name?: unknown };
+  const fileName =
+    typeof name.file_name === "string" && name.file_name !== ""
+      ? { file_name: name.file_name }
+      : {};
+  return files.length > 0 ? { file_url: files[0], files, ...fileName } : fileName;
 }
 
 /**
@@ -41,6 +50,53 @@ export function finishedFilesOf(run: Doc<"runs">, steps: Doc<"runSteps">[]): str
     for (const url of step.outputs) if (!found.includes(url)) found.push(url);
   }
   return found;
+}
+
+/**
+ * The files a finished run made on its way to its finished files, nearest first: those of
+ * the steps straight before the last ones, then theirs, and last the files it started with.
+ * A follower that wants another kind of file than the run finished with, such as the video
+ * behind an episode's MP3, takes the nearest of that kind from here.
+ */
+export function earlierFilesOf(
+  run: Doc<"runs">,
+  steps: Doc<"runSteps">[],
+  finished: string[],
+): string[][] {
+  const edges = run.edges as AutomationEdge[];
+  const byNode = new Map(steps.map((step) => [step.nodeId, step]));
+  const leads = new Set(edges.map((edge) => edge.source));
+  const levels: string[][] = [];
+  const seen = new Set(finished);
+  for (const node of run.nodes as AutomationNode[]) {
+    if (leads.has(node.id)) continue;
+    stepsBefore(node.id, edges).forEach((ids, depth) => {
+      for (const id of ids) {
+        const step = byNode.get(id);
+        if (step?.status !== "done") continue;
+        for (const url of step.outputs) {
+          if (seen.has(url)) continue;
+          seen.add(url);
+          (levels[depth] ??= []).push(url);
+        }
+      }
+    });
+  }
+  const started = startingFiles(run.trigger).filter((url) => !seen.has(url));
+  return [
+    ...levels.filter((level) => level && level.length > 0),
+    ...(started.length ? [started] : []),
+  ];
+}
+
+/** What a follower's run was handed besides its own files: see `earlierFilesOf`. */
+export function earlierFiles(trigger: unknown): string[][] {
+  const { earlier } = (trigger ?? {}) as { earlier?: unknown };
+  if (!Array.isArray(earlier)) return [];
+  return earlier
+    .filter((level): level is unknown[] => Array.isArray(level))
+    .map((level) => level.filter((url): url is string => typeof url === "string" && url !== ""))
+    .filter((level) => level.length > 0);
 }
 
 /**
@@ -79,9 +135,16 @@ export async function startAutomationStep(
   }
 
   const wait = waitsForRun(node);
-  const started = await startRun(ctx, target, "automation", runFiles(files), run.startedBy, {
-    parent: { runId: run._id, ...(wait ? { runStepId: step._id } : {}), chain },
-  });
+  const started = await startRun(
+    ctx,
+    target,
+    "automation",
+    runFiles(files, run.trigger),
+    run.startedBy,
+    {
+      parent: { runId: run._id, ...(wait ? { runStepId: step._id } : {}), chain },
+    },
+  );
   if (!started.ok) {
     await failStep(ctx, run, step, byNode, `${target.name} could not start: ${started.message}`);
     return;
@@ -144,7 +207,9 @@ export async function runEnded(
       "finished",
       // After a failure there are no finished files, so the follower gets the ones the
       // run started with and can try something else with them.
-      runFiles(status === "done" ? files : startingFiles(run.trigger)),
+      status === "done"
+        ? { ...runFiles(files, run.trigger), earlier: earlierFilesOf(run, steps, files) }
+        : runFiles(startingFiles(run.trigger), run.trigger),
       null,
       { parent: { runId: run._id, chain } },
     );

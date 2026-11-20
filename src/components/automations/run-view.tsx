@@ -35,6 +35,7 @@ import {
   triggerEdges,
   triggerPosition,
 } from "./flow-nodes";
+import { FollowOnsAfterRun } from "./follow-ons";
 import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 import { ClipsRun } from "./clips-run";
 import { PicksPanel } from "./picks-panel";
@@ -302,6 +303,10 @@ export function RunView({
             }
           />
         </div>
+      )}
+
+      {run.status === "done" && !run.testOf && (
+        <FollowOnsAfterRun automationId={automationId} automationName={run.automationName} />
       )}
     </div>
   );

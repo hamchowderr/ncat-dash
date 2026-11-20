@@ -1,13 +1,14 @@
 "use client";
 
 import {
+  followsLine,
   type Starter,
   STARTER_CATEGORIES,
   type StarterCategory,
   STARTERS,
 } from "@ncat-dash/automation-core";
 import { Plus, Search } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,8 +28,18 @@ export function TemplateCard({
   disabled: boolean;
   onPick: () => void;
 }) {
+  const followsId = useId();
+  const follows = followsLine(starter);
   return (
-    <button type="button" className={card} disabled={disabled} onClick={onPick}>
+    // The "Runs after" line names other ready-mades, so it describes the card rather than
+    // naming it: otherwise a search for one ready-made would also find its follow-ons.
+    <button
+      type="button"
+      className={card}
+      disabled={disabled}
+      onClick={onPick}
+      aria-describedby={follows ? followsId : undefined}
+    >
       <FlowStrip
         trigger={starter.trigger}
         nodes={starter.nodes}
@@ -38,6 +49,11 @@ export function TemplateCard({
       <span className="grid gap-0.5">
         <span className="text-sm font-medium">{starter.name}</span>
         <span className="text-muted-foreground line-clamp-2 text-sm">{starter.description}</span>
+        {follows && (
+          <span id={followsId} aria-hidden="true" className="text-muted-foreground mt-1 text-xs">
+            {follows}
+          </span>
+        )}
       </span>
     </button>
   );

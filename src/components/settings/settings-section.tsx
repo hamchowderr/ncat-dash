@@ -19,6 +19,7 @@ import {
 import { DropboxCard } from "./dropbox-card";
 import { GoogleMeetCard } from "./google-meet-card";
 import { MicrosoftCard } from "./microsoft-card";
+import { TelegramCard } from "./telegram-card";
 import { TeamsCard } from "./teams-card";
 import { ZoomCard } from "./zoom-card";
 
@@ -34,6 +35,7 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   email: EmailSettings,
   slack: SlackSettings,
   discord: DiscordSettings,
+  telegram: TelegramCard,
   zoom: ZoomCard,
   "google-meet": GoogleMeetCard,
   microsoft: MicrosoftCard,

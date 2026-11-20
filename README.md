@@ -150,6 +150,15 @@ Review activity: once the bot is in a server, an owner picks a channel under "Re
 
 Alerts: a member who linked their Discord can pick Discord for each kind of news in Settings, Notifications, and gets them as direct messages from the bot. For that the Convex deployment also needs `DISCORD_BOT_TOKEN` (the same bot token as the agent server). Approve and Send back presses arrive over the agent server's live connection (`packages/agent/src/mastra/ncat/alert-buttons.ts`), which hands them to Convex `POST /discord/alert-action` (signed with `MASTRA_JWT_SECRET`); the presser is whoever linked that Discord account on the alert's team. Code: `convex/lib/chatAlerts/discord.ts`, `convex/chatAlertPresses.ts`.
 
+### Telegram
+
+People can write to the agent in a private chat with the dashboard's Telegram bot or tag it in a Telegram group, and get their alerts there, with Approve and Send back buttons on approvals. One group can also hear the team's review activity. The dashboard has ONE Telegram bot that every team uses; whoever runs the dashboard sets it up once:
+
+1. In Telegram, open [@BotFather](https://t.me/BotFather), send `/newbot`, and copy the token and the bot's @name. Leave privacy mode on: in groups the bot then only sees messages that tag it or reply to it.
+2. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME` (without the @) on the agent server AND on the Convex deployment (it sends alerts and review posts itself), and push the functions. The agent server asks Telegram for new messages itself, so the bot needs no public address and no webhook.
+
+Then, in Settings, Telegram, each person presses "Link my Telegram": Telegram opens a chat with the bot holding a one-time code (15 minutes, used once), and pressing Start links their Telegram to them on the team (`POST /telegram/link` on the Convex site, signed with `MASTRA_JWT_SECRET`). Telegram gives bots no email address, so this is how the agent knows who wrote (`POST /telegram/person`) and works as them, with their rights and nothing more. Alerts they switched on for Telegram in Notifications arrive in that chat; a press of Approve or Send back is decided on the dashboard under the same rules as the run page (`POST /telegram/decide`), and every message about the approval then says how it ended. A team owner or admin presses "Add to a group" to add the bot to the team's group the same way, and can pick that group under "Post reviews here": new reviews, client feedback and mentions are posted there as plain text, and a linked teammate's Telegram reply to one of those posts becomes their reply in the review (`POST /telegram/review-reply`). The code is in `convex/telegram.ts`, `convex/telegramReview.ts`, `convex/lib/chatAlerts/telegram.ts` and `packages/agent/src/mastra/ncat/telegram.ts`.
+
 ### Zoom
 
 Cloud recordings of Zoom meetings come into Uploads by themselves. The dashboard has ONE Zoom app that every team uses; whoever runs the dashboard sets it up once:
