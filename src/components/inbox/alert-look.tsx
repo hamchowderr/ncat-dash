@@ -3,6 +3,7 @@ import {
   AtSign,
   Bell,
   CircleAlert,
+  CircleCheck,
   Clock,
   MessageSquareQuote,
   PackageCheck,
@@ -21,7 +22,8 @@ export type Kind =
   | "approval_timed_out"
   | "mention"
   | "client_feedback"
-  | "ready_for_review";
+  | "ready_for_review"
+  | "clip_finished";
 type Shown = {
   kind: Kind;
   automationName: string;
@@ -43,6 +45,8 @@ export function alertTitle(alert: Shown): string {
       return `${alert.from ?? "A client"} left feedback on ${alert.automationName}`;
     case "ready_for_review":
       return `${alert.stepName ?? "A deliverable"} in ${alert.automationName} is ready for review`;
+    case "clip_finished":
+      return `${alert.automationName} finished`;
     default:
       return `${alert.automationName} failed${tries(alert.retries)}`;
   }
@@ -91,6 +95,12 @@ export const LOOK: Record<Kind, { icon: typeof Bell; tint: string; wash: string;
       tint: "text-primary",
       wash: "bg-primary/5",
       action: "Open review",
+    },
+    clip_finished: {
+      icon: CircleCheck,
+      tint: "text-emerald-600",
+      wash: "bg-emerald-500/10",
+      action: "View run",
     },
   };
 

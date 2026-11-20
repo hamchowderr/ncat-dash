@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
-import { isFor } from "./lib/alerts";
+import { internalMutation, mutation, query } from "./_generated/server";
+import { isFor, notify } from "./lib/alerts";
 import { requireMember } from "./lib/authz";
 import { alertHref, preferenceOf, wants } from "./lib/notifications";
 
@@ -59,5 +59,31 @@ export const markSeen = mutation({
       if (alert.seenBy.includes(userId)) continue;
       await ctx.db.patch(alert._id, { seenBy: [...alert.seenBy, userId] });
     }
+  },
+});
+
+/**
+ * Tells the team a run finished and its files were kept in Files. Raised once the
+ * finished files are copied over, so the link opens a run whose files are already there.
+ * Test runs from the canvas say nothing.
+ */
+export const runFinished = internalMutation({
+  args: { runId: v.id("runs"), count: v.number() },
+  handler: async (ctx, args) => {
+    if (args.count <= 0) return;
+    const run = await ctx.db.get(args.runId);
+    if (!run || run.status !== "done" || run.test) return;
+    await notify(ctx, {
+      organizationId: run.organizationId,
+      kind: "clip_finished",
+      runId: run._id,
+      automationId: run.automationId,
+      automationName: run.automationName,
+      message:
+        args.count === 1
+          ? "1 new file is ready in Files."
+          : `${args.count} new files are ready in Files.`,
+      retries: 0,
+    });
   },
 });
