@@ -15,7 +15,6 @@ const MAY_IMPORT_AUTH = new Set([
   "discord.ts",
   "blocks.ts",
   "betterAuth/auth.ts",
-  "betterAuth/adapter.ts",
 ]);
 
 function sourceFiles(dir: string): string[] {
