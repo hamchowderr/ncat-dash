@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { PanelRightClose } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { ChatPanel } from "@/components/chat-panel/chat-panel";
@@ -22,7 +22,7 @@ export function AgentPanel({
     <ChatPanel
       title="Agent"
       plan={false}
-      className="[--chat-panel-header-height:4rem]"
+      className="bg-sidebar [--chat-panel-header-height:4rem]"
       greeting={{
         title: "What should run by itself?",
         description:
@@ -58,8 +58,14 @@ export function AgentPanel({
       errorWords={errorWords}
       onNavigate={(href) => router.push(href)}
       actions={
-        <Button variant="ghost" size="icon" className="size-8" onClick={onClose}>
-          <X />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-keyshortcuts="Meta+J Control+J"
+          onClick={onClose}
+        >
+          <PanelRightClose />
           <span className="sr-only">Close the agent</span>
         </Button>
       }

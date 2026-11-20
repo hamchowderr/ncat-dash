@@ -328,6 +328,12 @@
     --notice-left: 16rem;
   }
 }
+/* The agent's strip, folded, is 3rem wide on a screen with room for it. */
+@media (min-width: 48rem) {
+  :root {
+    --notice-right: 3rem;
+  }
+}
 @media (min-width: 64rem) {
   :root[data-agent-open] {
     --notice-right: 26rem;

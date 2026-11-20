@@ -125,6 +125,31 @@ test("posts are planned on the calendar, fill repeating slots, and move by dragg
     days.nth(19).getByRole("button", { name: "Full episode for Episode 7, due" }),
   ).toBeVisible();
 
+  // Videos are picked from the library, not typed in by their ID.
+  await page.goto("/uploads");
+  await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.webm");
+  await expect(page.getByRole("button", { name: "Open clip.webm" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.goto("/calendar");
+  await side.getByRole("button", { name: "Add Post" }).click();
+  await expect(side.getByLabel("Library File")).toHaveCount(0);
+  await side.getByRole("button", { name: "Choose Videos" }).click();
+  const picker = page.getByRole("dialog", { name: "Choose From Your Library" });
+  await picker.getByRole("button", { name: "V1 clip" }).click();
+  await expect(picker.getByRole("button", { name: "V1 clip" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  if (recording) await page.waitForTimeout(800);
+  await picker.getByRole("button", { name: "Use 1 File" }).click();
+  await expect(side.getByRole("list", { name: "Picked files" })).toContainText("clip");
+  await side.getByLabel("Not Scheduled Yet").check();
+  await side.getByRole("button", { name: "Add Post" }).click();
+  await expect(side.getByRole("heading", { name: "Post", exact: true })).toBeVisible();
+  await expect(side.getByRole("link", { name: "V1 · clip" })).toBeVisible();
+  await side.getByRole("button", { name: "Back" }).click();
+
   // The week view, with hours.
   await page.getByRole("button", { name: "Week", exact: true }).click();
   await expect(page.locator("[data-hour]").first()).toBeVisible();

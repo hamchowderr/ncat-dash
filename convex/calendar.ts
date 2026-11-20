@@ -348,27 +348,83 @@ export const addPost = mutation({
         .unique();
       if (!item) fail("not_found", `There is no ${shortId} in the library.`);
     }
-    const title = cleanTitle(args.title.trim() || item?.title || "");
-    const clientId = await requireClient(ctx, args.organizationId, args.clientId ?? item?.clientId);
-    const now = Date.now();
-    const at = args.at ?? null;
-    const postId = await ctx.db.insert("calendarPosts", {
-      organizationId: args.organizationId,
-      title,
-      platform: args.platform,
-      at,
-      queued: at === null && args.queue === true,
-      queuedAt: now,
-      status: "planned",
-      ...(item ? { libraryItemId: item._id } : {}),
-      ...(clientId ? { clientId } : {}),
-      createdBy: userId,
-      updatedAt: now,
-    });
-    if (at === null && args.queue) await fillSlots(ctx, args.organizationId);
+    const postId = await insertPost(ctx, userId, args, item);
+    if ((args.at ?? null) === null && args.queue) await fillSlots(ctx, args.organizationId);
     return postId;
   },
 });
+
+/** The most files one Add Post makes posts for at once. */
+const MAX_FILES_AT_ONCE = 25;
+
+/**
+ * Plans one post for each file picked from the library, in the order picked, all for the
+ * same place and time. Each post takes its file's name unless a title is given, and its
+ * file's client unless a client is given. Queued ones take the next free slots in turn.
+ */
+export const addPosts = mutation({
+  args: {
+    organizationId: v.string(),
+    title: v.optional(v.string()),
+    platform: v.string(),
+    at: v.optional(v.union(v.number(), v.null())),
+    queue: v.optional(v.boolean()),
+    itemIds: v.array(v.id("libraryItems")),
+    clientId: v.optional(v.id("clients")),
+  },
+  returns: v.array(v.id("calendarPosts")),
+  handler: async (ctx, args) => {
+    const { userId } = await requireMember(ctx, args.organizationId);
+    checkPlatform(args.platform);
+    const itemIds = [...new Set(args.itemIds)];
+    if (itemIds.length === 0) fail("invalid", "Pick at least one file.");
+    if (itemIds.length > MAX_FILES_AT_ONCE) {
+      fail("too_many", `Pick up to ${MAX_FILES_AT_ONCE} files at a time.`);
+    }
+    const postIds: Id<"calendarPosts">[] = [];
+    for (const itemId of itemIds) {
+      const item = await ctx.db.get(itemId);
+      if (!item || item.organizationId !== args.organizationId) {
+        fail("not_found", "One of those files is no longer in the library.");
+      }
+      postIds.push(await insertPost(ctx, userId, { ...args, title: args.title ?? "" }, item));
+    }
+    if ((args.at ?? null) === null && args.queue) await fillSlots(ctx, args.organizationId);
+    return postIds;
+  },
+});
+
+async function insertPost(
+  ctx: MutationCtx,
+  userId: string,
+  args: {
+    organizationId: string;
+    title: string;
+    platform: string;
+    at?: number | null;
+    queue?: boolean;
+    clientId?: Id<"clients">;
+  },
+  item: Doc<"libraryItems"> | null,
+) {
+  const title = cleanTitle(args.title.trim() || item?.title || "");
+  const clientId = await requireClient(ctx, args.organizationId, args.clientId ?? item?.clientId);
+  const now = Date.now();
+  const at = args.at ?? null;
+  return await ctx.db.insert("calendarPosts", {
+    organizationId: args.organizationId,
+    title,
+    platform: args.platform,
+    at,
+    queued: at === null && args.queue === true,
+    queuedAt: now,
+    status: "planned",
+    ...(item ? { libraryItemId: item._id } : {}),
+    ...(clientId ? { clientId } : {}),
+    createdBy: userId,
+    updatedAt: now,
+  });
+}
 
 /** Moves a post to another time, as dragging does, or back to the side list with null. */
 export const movePost = mutation({
