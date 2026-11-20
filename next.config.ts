@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // The Docker image (Dockerfile) builds a self-contained server that needs no pnpm
+  // install where it runs. Vercel and `pnpm start` keep the usual output.
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
   cacheComponents: true,
   transpilePackages: [
     "@ncat-dash/step-catalog",

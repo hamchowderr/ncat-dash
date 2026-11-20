@@ -1,15 +1,16 @@
 # Kontifi on one machine: the toolkit (with its queue), the Convex backend and its
-# admin page, and the agent server. The web app is not in here: deploy it to Vercel or
-# run it with `pnpm build && pnpm start` (see docs/self-hosting.md).
+# admin page, the agent server and the web app.
 #
 #   cp deploy/.env.example deploy/.env    # fill it in
 #   docker compose -f deploy/compose.yml --env-file deploy/.env up -d
 #
-# Every image is pulled ready-made; nothing is built on the machine. Pin the two
-# hamchowderr images to a `sha-<commit>` tag in .env for a server you rely on.
+# Every image is pulled ready-made; nothing is built on the machine. Each is published
+# for Intel/AMD and for ARM (Apple-chip Macs), and Docker picks the right one. Pin the
+# hamchowderr images to a `sha-<commit>` tag in .env for a machine you rely on.
 #
 # Each service listens on 127.0.0.1 only. Put a reverse proxy with HTTPS in front
 # (Coolify, Caddy, Traefik or nginx) and give each public port its own address:
+#   SITE_URL           -> 127.0.0.1:3000  (the dashboard people sign in to)
 #   TOOLKIT_URL        -> 127.0.0.1:8080
 #   CONVEX_URL         -> 127.0.0.1:3210  (the API)
 #   CONVEX_SITE_URL    -> 127.0.0.1:3211  (HTTP actions: webhooks, sign-in, MCP)
@@ -117,6 +118,20 @@ services:
       TEAMS_APP_NAME: ${TEAMS_APP_NAME:-}
     volumes:
       - agent-data:/data
+
+  web:
+    image: ${WEB_IMAGE:-ghcr.io/hamchowderr/ncat-dash-web:latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      # Written into the pages when the container starts, so changing them only needs a
+      # restart, not a new image.
+      NEXT_PUBLIC_CONVEX_URL: ${CONVEX_URL:?set CONVEX_URL}
+      NEXT_PUBLIC_CONVEX_SITE_URL: ${CONVEX_SITE_URL:?set CONVEX_SITE_URL}
+      # The web app talks to the agent server from its own side, over Docker's network.
+      MASTRA_SERVER_URL: ${MASTRA_SERVER_URL:-http://agent:4111}
+      MASTRA_JWT_SECRET: ${MASTRA_JWT_SECRET:?set MASTRA_JWT_SECRET}
 
 volumes:
   toolkit-work:

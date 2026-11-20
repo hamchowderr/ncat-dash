@@ -134,7 +134,10 @@ export function requireEmailVerification(
   return getEdition() === "hosted" && Boolean(env.TOSEND_API_KEY?.trim() && env.EMAIL_FROM?.trim());
 }
 
-type Runner = Pick<Extract<GenericCtx<DataModel>, { runMutation: unknown }>, "runMutation" | "runQuery">;
+type Runner = Pick<
+  Extract<GenericCtx<DataModel>, { runMutation: unknown }>,
+  "runMutation" | "runQuery"
+>;
 
 /** The Convex functions a sign-in hook can call, or null where it has none (a query). */
 function runner(ctx: GenericCtx<DataModel>): Runner | null {
@@ -172,7 +175,12 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
           // network or from everywhere at once.
           before: async (user, endpoint) => {
             const run = runner(ctx);
-            if (!run || getEdition() !== "hosted") return;
+            if (!run) return;
+            // An invite-only copy (SIGN_UPS=invite-only) takes only its owner and the
+            // people invited to a team.
+            const closed = await run.runQuery(internal.access.signUpRefusal, { email: user.email });
+            if (closed) throw new APIError("FORBIDDEN", { message: closed });
+            if (getEdition() !== "hosted") return;
             if (isThrowawayEmail(user.email)) {
               throw new APIError("BAD_REQUEST", {
                 message: "Use your own email address. Throwaway email services can't be used here.",

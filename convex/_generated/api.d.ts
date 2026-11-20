@@ -80,6 +80,7 @@ import type * as lib_reviewChannels from "../lib/reviewChannels.js";
 import type * as lib_reviewSpeaker from "../lib/reviewSpeaker.js";
 import type * as lib_reviews from "../lib/reviews.js";
 import type * as lib_runner from "../lib/runner.js";
+import type * as lib_signUps from "../lib/signUps.js";
 import type * as lib_slackApi from "../lib/slackApi.js";
 import type * as lib_slackPosts from "../lib/slackPosts.js";
 import type * as lib_slackSignature from "../lib/slackSignature.js";
@@ -215,6 +216,7 @@ declare const fullApi: ApiFromModules<{
   "lib/reviewSpeaker": typeof lib_reviewSpeaker;
   "lib/reviews": typeof lib_reviews;
   "lib/runner": typeof lib_runner;
+  "lib/signUps": typeof lib_signUps;
   "lib/slackApi": typeof lib_slackApi;
   "lib/slackPosts": typeof lib_slackPosts;
   "lib/slackSignature": typeof lib_slackSignature;

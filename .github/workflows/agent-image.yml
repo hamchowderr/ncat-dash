@@ -1,9 +1,10 @@
 name: Agent image
 
 # Builds the agent server's Docker image (packages/agent/Dockerfile) here instead of on
-# the server that runs it. Pull requests only build and start it; main also publishes it
-# to GHCR and moves the `agent-release` branch, which is what the test copy deploys from
-# (packages/agent/Dockerfile.release).
+# the server that runs it, once for Intel/AMD (amd64) and once for ARM such as Apple-chip
+# Macs (arm64), each on its own kind of runner. Pull requests only build and start them;
+# main also publishes both under one tag and moves the `agent-release` branch, which is
+# what the test copy deploys from (packages/agent/Dockerfile.release).
 on:
   pull_request:
     paths:
@@ -34,13 +35,26 @@ permissions:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}-agent
+  PUBLISH: ${{ github.event_name != 'pull_request' }}
 
 jobs:
   image:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            # The cache the single-processor build used.
+            cache: agent
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            cache: agent-arm64
+    name: image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
-      contents: write
+      contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
@@ -51,8 +65,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: pnpm-store
-          key: agent-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: agent-pnpm-store-
+          key: agent-pnpm-store-${{ matrix.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: agent-pnpm-store-${{ matrix.arch }}-
       - uses: reproducible-containers/buildkit-cache-dance@v3
         with:
           cache-map: |
@@ -62,10 +76,11 @@ jobs:
         with:
           context: .
           file: packages/agent/Dockerfile
+          platforms: linux/${{ matrix.arch }}
           load: true
           tags: ncat-dash-agent:check
-          cache-from: type=gha,scope=agent
-          cache-to: type=gha,scope=agent,mode=max
+          cache-from: type=gha,scope=${{ matrix.cache }}
+          cache-to: type=gha,scope=${{ matrix.cache }},mode=max
       - name: Start it and wait for /health
         run: |
           docker run -d --name agent -p 4111:4111 \
@@ -75,6 +90,7 @@ jobs:
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:4111/health; then
               echo
+              docker exec agent uname -m
               docker exec agent wget -q -O- http://127.0.0.1:4111/health && echo
               exit 0
             fi
@@ -84,26 +100,63 @@ jobs:
           exit 1
       - name: Image size
         run: docker image inspect ncat-dash-agent:check --format '{{.Size}}' | awk '{ printf "%.0f MB\n", $1 / 1000000 }'
-      - if: github.event_name != 'pull_request'
+      - if: env.PUBLISH == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish
-        if: github.event_name != 'pull_request'
+      # Each machine publishes its half without a tag; the next job joins them.
+      - name: Publish this half
+        id: push
+        if: env.PUBLISH == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: packages/agent/Dockerfile
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:sha-${{ github.sha }}
-            ${{ env.IMAGE }}:latest
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
-          cache-from: type=gha,scope=agent
+          cache-from: type=gha,scope=${{ matrix.cache }}
+      - if: env.PUBLISH == 'true'
+        run: |
+          mkdir -p digests
+          echo "${{ steps.push.outputs.digest }}" > "digests/${{ matrix.arch }}"
+      - if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-digest-${{ matrix.arch }}
+          path: digests/${{ matrix.arch }}
+          retention-days: 1
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: agent-digest-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Join the two halves under one name
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:sha-$GITHUB_SHA" -t "$IMAGE:latest" \
+            "$IMAGE@$(cat digests/amd64)" "$IMAGE@$(cat digests/arm64)"
+          docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA"
       # The test copy's server deploys from this branch (Dockerfile.release), so it
       # only ever picks up a commit whose image is already published.
       - name: Release to the test copy
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         run: git push --force origin HEAD:refs/heads/agent-release
