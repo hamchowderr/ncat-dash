@@ -325,6 +325,26 @@ export const listUploads = query({
   },
 });
 
+/**
+ * The names of some of the team's uploads, for showing the files settings point at. An
+ * upload that was removed, or never finished, comes back with no name.
+ */
+export const uploadNames = query({
+  args: { organizationId: v.string(), ids: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const names: { id: string; fileName: string | null }[] = [];
+    for (const raw of args.ids.slice(0, 100)) {
+      const id = ctx.db.normalizeId("uploads", raw);
+      const upload = id ? await ctx.db.get(id) : null;
+      const there =
+        upload && upload.organizationId === args.organizationId && upload.status === "ready";
+      names.push({ id: raw, fileName: there ? upload.fileName : null });
+    }
+    return names;
+  },
+});
+
 /** A link the toolkit can fetch the file from, good for seven days. */
 export const linkFor = action({
   args: { uploadId: v.id("uploads") },

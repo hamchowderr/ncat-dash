@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Brand } from "@ncat-dash/automation-core";
 import { readUploadRef } from "@ncat-dash/automation-core";
 import { useMutation, useQuery } from "convex/react";
-import { Music, Upload, X } from "lucide-react";
+import { FileX, Music, Upload, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -88,10 +88,25 @@ export function BrandForm({
   const orientation = rows ? "responsive" : "vertical";
   const hex = /^#[0-9A-Fa-f]{6}$/.test(shown.brand.color ?? "") ? shown.brand.color : "#000000";
 
+  const trackUploads = shown.music.flatMap((track) => readUploadRef(track.file) ?? []);
+  const trackNames = useQuery(
+    api.storage.uploadNames,
+    trackUploads.length > 0 ? { organizationId: team.id, ids: trackUploads } : "skip",
+  );
+  /** A track whose upload was removed: kept and marked, so the rest still saves. */
+  const isGone = (file: string) => {
+    const uploadId = readUploadRef(file);
+    const named = uploadId ? trackNames?.find((name) => name.id === uploadId) : undefined;
+    return named !== undefined && named.fileName === null;
+  };
   const fileNameOf = (file: string) => {
     const uploadId = readUploadRef(file);
     if (!uploadId) return file;
-    return uploads?.find((upload) => upload._id === uploadId)?.fileName ?? "Your upload";
+    return (
+      trackNames?.find((name) => name.id === uploadId)?.fileName ??
+      uploads?.find((upload) => upload._id === uploadId)?.fileName ??
+      "Your upload"
+    );
   };
   const addTracks = (current: Typed, files: { file: string; fileName: string }[]) => {
     const tracks = [...current.music];
@@ -290,9 +305,19 @@ export function BrandForm({
                         disabled={!canEdit}
                         className="w-44 shrink-0 sm:w-56"
                       />
-                      <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-                        {fileNameOf(track.file)}
-                      </span>
+                      {isGone(track.file) ? (
+                        <span className="text-destructive flex min-w-0 flex-1 items-center gap-1.5 text-xs">
+                          <FileX className="size-3.5 shrink-0" aria-hidden="true" />
+                          <span className="truncate">
+                            Removed from your uploads.{" "}
+                            {canEdit ? "Upload it again, or remove the track." : ""}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+                          {fileNameOf(track.file)}
+                        </span>
+                      )}
                       {canEdit && (
                         <Button
                           type="button"
