@@ -140,6 +140,7 @@ describe("alert buttons pressed in Slack", () => {
       return new Response(null, { status: 200 });
     });
     const body = press("ncat_alert_approve");
+    const handedOn: Promise<unknown>[] = [];
     const answer = await forwardSlack(
       new Request("https://dash.test/api/slack/events", {
         method: "POST",
@@ -152,11 +153,33 @@ describe("alert buttons pressed in Slack", () => {
       }),
       "http://agent.test",
       "https://convex.test/",
+      (work) => handedOn.push(work),
     );
     expect(answer.status).toBe(200);
+    await Promise.all(handedOn);
     expect(seen.map((one) => one.url)).toEqual(["https://convex.test/slack/actions"]);
     expect(seen[0].body).toBe(body);
     expect(seen[0].headers.get("x-slack-signature")).toBe("v0=abc");
+  });
+
+  test("Slack hears back at once, even while the backend is slow to answer", async () => {
+    let answerBackend: (response: Response) => void = () => {};
+    vi.stubGlobal("fetch", () => new Promise<Response>((resolve) => (answerBackend = resolve)));
+    const handedOn: Promise<unknown>[] = [];
+    const answer = await forwardSlack(
+      new Request("https://dash.test/api/slack/events", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: press("ncat_alert_send_back"),
+      }),
+      "http://agent.test",
+      "https://convex.test",
+      (work) => handedOn.push(work),
+    );
+    expect(answer.status).toBe(200);
+    expect(handedOn).toHaveLength(1);
+    answerBackend(new Response(null, { status: 500 }));
+    await expect(handedOn[0]).resolves.toBeDefined();
   });
 
   test("the agent's own buttons still go to the agent server", async () => {
