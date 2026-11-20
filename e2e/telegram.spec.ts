@@ -120,7 +120,9 @@ test("links a Telegram from Settings, then a group for review activity", async (
 
   // Notifications now offers Telegram for each kind of news.
   await page.goto("/settings/notifications");
-  await expect(page.getByRole("img", { name: "Telegram logo" }).first()).toBeVisible();
+  const telegramColumn = page.getByRole("columnheader", { name: "Telegram" });
+  await expect(telegramColumn).toBeVisible();
+  await expect(telegramColumn.locator("svg")).toBeVisible();
   await expect(
     page.getByRole("switch", { name: /An approval is waiting.*: in Telegram/ }),
   ).toBeChecked();
