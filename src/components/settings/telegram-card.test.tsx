@@ -52,7 +52,7 @@ describe("the Telegram card", () => {
     const note = await screen.findByRole("note");
     expect(note).toHaveTextContent(/Tagging the agent here doesn.t reach it yet/);
     expect(note).toHaveTextContent(/send \/setprivacy to @BotFather/);
-    expect(note).toHaveTextContent(/add it to this group again/);
+    expect(note).toHaveTextContent(/choose Disable/);
     expect(actionOf(api.telegram.groupHearing)).toHaveBeenCalledWith({ organizationId: TEAM.id });
   });
 

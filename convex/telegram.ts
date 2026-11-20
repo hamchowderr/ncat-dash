@@ -84,10 +84,7 @@ export const groupsToCheck = internalQuery({
       .query("telegramGroups")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .take(20);
-    return groups.map((group) => ({
-      chatId: group.chatId,
-      privacyOffAtJoin: group.privacyOffAtJoin,
-    }));
+    return groups.map((group) => group.chatId);
   },
 });
 
@@ -102,16 +99,13 @@ export const groupHearing = action({
     ctx,
     args,
   ): Promise<{ chatId: string; hears: boolean | null; privacyOff: boolean | null }[]> => {
-    const groups: { chatId: string; privacyOffAtJoin?: boolean }[] = await ctx.runQuery(
-      internal.telegram.groupsToCheck,
-      args,
-    );
+    const groups: string[] = await ctx.runQuery(internal.telegram.groupsToCheck, args);
     if (!telegramReady()) return [];
     const checked = [];
-    for (const group of groups) {
-      const heard = await botHearsGroup(group.chatId, group.privacyOffAtJoin);
+    for (const chatId of groups) {
+      const heard = await botHearsGroup(chatId);
       checked.push({
-        chatId: group.chatId,
+        chatId,
         hears: heard?.hears ?? null,
         privacyOff: heard?.privacyOff ?? null,
       });
@@ -232,7 +226,6 @@ export const link = internalMutation({
     chatTitle: v.optional(v.string()),
     telegramName: v.string(),
     username: v.optional(v.string()),
-    privacyOff: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{ result: LinkResult; teamName: string | null }> => {
     const start = await ctx.db
@@ -268,9 +261,7 @@ export const link = internalMutation({
         return { result: "taken", teamName };
       }
       const title = args.chatTitle || "Telegram group";
-      // Adding the bot again is how a group picks up privacy mode going off.
-      const privacy = args.privacyOff === undefined ? {} : { privacyOffAtJoin: args.privacyOff };
-      if (taken) await ctx.db.patch(taken._id, { title, ...privacy });
+      if (taken) await ctx.db.patch(taken._id, { title });
       else {
         await ctx.db.insert("telegramGroups", {
           organizationId: start.organizationId,
@@ -278,7 +269,6 @@ export const link = internalMutation({
           title,
           addedBy: start.userId,
           addedAt: Date.now(),
-          ...privacy,
         });
       }
       result = "added";

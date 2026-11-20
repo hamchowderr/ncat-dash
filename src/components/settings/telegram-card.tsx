@@ -173,8 +173,7 @@ export function TelegramCard() {
                     <span className="text-amber-700" role="note">
                       Tagging the agent here doesn&apos;t reach it yet, only replies to its messages
                       do. In Telegram, send /setprivacy to @BotFather, pick the bot and choose
-                      Disable, then add it to this group again. Making the bot an admin of the group
-                      works too.
+                      Disable. Making the bot an admin of the group works too.
                     </span>
                   )}
                 </span>
