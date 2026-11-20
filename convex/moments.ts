@@ -7,6 +7,7 @@ import {
   MAX_CUTAWAYS,
   nearestUpstreamOfKind,
   momentSettings,
+  motionPlanSettings,
   sourceKey,
   transcriptText,
   type Word,
@@ -23,6 +24,7 @@ import {
 } from "./_generated/server";
 import { advance, failStep } from "./lib/runner";
 import { finishPicking, heardFrom, MAX_WORDS, wordsFor } from "./lib/moments";
+import { motionPlanOf } from "./lib/motion";
 import { signAgentToken } from "./reviewAgent";
 
 /**
@@ -63,7 +65,10 @@ export const loadPick = internalQuery({
     const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
     if (
       !node ||
-      (node.kind !== "moments" && node.kind !== "chapters" && node.kind !== "broll-plan")
+      (node.kind !== "moments" &&
+        node.kind !== "chapters" &&
+        node.kind !== "broll-plan" &&
+        node.kind !== "motion-plan")
     ) {
       return null;
     }
@@ -114,6 +119,17 @@ export const loadPick = internalQuery({
                 )?.id === node.id,
             )?.input ?? {})
           : {},
+      // For Plan Motion Graphics: the style of the Add Motion Graphics that will draw the plan.
+      motion:
+        node.kind === "motion-plan"
+          ? await motionPlanOf(
+              ctx,
+              run.organizationId,
+              node.id,
+              run.nodes as AutomationNode[],
+              run.edges as AutomationEdge[],
+            )
+          : null,
       title: typeof fileName === "string" ? fileName : run.automationName,
       askedBy: run.startedBy ?? "automation",
       unattended: run.startedBy === null && run.test === undefined,
@@ -483,21 +499,28 @@ export const pick = internalAction({
         const settings =
           loaded.kind === "broll-plan"
             ? brollPlanSettings(loaded.input, loaded.carriedOutBy, duration)
-            : loaded.kind === "moments"
-              ? (() => {
-                  const s = momentSettings(loaded.input);
-                  return {
-                    count: s.count,
-                    minSeconds: s.minSeconds,
-                    maxSeconds: s.maxSeconds,
-                    platform: s.platform,
-                    topics: s.topics,
-                    lookFor: s.lookFor,
-                  };
-                })()
-              : chapterSettings(loaded.input);
+            : loaded.kind === "motion-plan" && loaded.motion
+              ? motionPlanSettings(loaded.motion.setup, duration, loaded.input, loaded.motion.level)
+              : loaded.kind === "moments"
+                ? (() => {
+                    const s = momentSettings(loaded.input);
+                    return {
+                      count: s.count,
+                      minSeconds: s.minSeconds,
+                      maxSeconds: s.maxSeconds,
+                      platform: s.platform,
+                      topics: s.topics,
+                      lookFor: s.lookFor,
+                    };
+                  })()
+                : chapterSettings(loaded.input);
         const body = {
-          kind: loaded.kind === "broll-plan" ? ("broll" as const) : loaded.kind,
+          kind:
+            loaded.kind === "broll-plan"
+              ? ("broll" as const)
+              : loaded.kind === "motion-plan"
+                ? ("motion" as const)
+                : loaded.kind,
           title: loaded.title.slice(0, 300),
           duration,
           transcript: transcriptText(words),

@@ -160,6 +160,7 @@ const KINDS = [
   "broll",
   "broll-plan",
   "motion",
+  "motion-plan",
   "sound-effects",
 ];
 const MAX_DEPTH = 12;

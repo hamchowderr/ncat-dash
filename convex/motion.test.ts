@@ -8,6 +8,7 @@ import { addPerson, addTeam, backend } from "./test.setup";
 const TOOLKIT = "https://toolkit.example";
 const FILE = "https://files.example/uploads/growth-talk.mp4";
 const WORDS_FILE = "https://files.example/out/growth-words.json";
+const AGENT_URL = "https://agent.example";
 
 /** "Hi I'm Ana. We grew 40 percent faster than last year. ..." said from 1 s, 0.5 s a word. */
 function segmentsOf(sentences: string[]) {
@@ -32,7 +33,7 @@ const SEGMENTS = segmentsOf([
 
 type Sent = { url: string; body: Record<string, unknown> };
 
-function fakeToolkit(duration = 30) {
+function fakeToolkit(duration = 30, agentAnswer?: unknown) {
   const sent: Sent[] = [];
   vi.stubGlobal(
     "fetch",
@@ -48,6 +49,11 @@ function fakeToolkit(duration = 30) {
       }
       if (url.endsWith("/v1/media/transcribe")) {
         return done({ text: null, srt: null, segments: null, segments_url: WORDS_FILE });
+      }
+      if (url === `${AGENT_URL}/ncat/moments`) {
+        return new Response(JSON.stringify({ answer: JSON.stringify(agentAnswer ?? {}) }), {
+          status: 200,
+        });
       }
       if (url.endsWith("/v1/video/motion")) {
         return done({
@@ -70,6 +76,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  delete process.env.AGENT_URL;
+  delete process.env.MASTRA_JWT_SECRET;
 });
 
 async function settled(t: ReturnType<typeof backend>) {
@@ -84,6 +92,8 @@ type Node = { id: string; kind: string; input: Record<string, unknown> };
 async function setUp(nodes: Node[], motion?: Record<string, unknown>) {
   process.env.CONNECTIONS_SECRET ??= "a-test-secret-that-is-long-enough-1234";
   process.env.CONVEX_SITE_URL = "https://dash.example";
+  process.env.AGENT_URL = AGENT_URL;
+  process.env.MASTRA_JWT_SECRET = "a-shared-secret-for-the-agent-server";
   const apiKeyCipher = await encryptSecret("toolkit-key");
   const t = backend();
   const team = await addTeam(t, "Salt House");
@@ -232,6 +242,69 @@ describe("Add Motion Graphics", () => {
     await settled(t);
     expect((await runOf(runId))!.status).toBe("done");
     expect(sent.some((one) => one.url.endsWith("/v1/video/motion"))).toBe(true);
+  });
+});
+
+describe("Plan Motion Graphics", () => {
+  test("the AI's beats are drawn by the motion step after it, in its style", async () => {
+    const sent = fakeToolkit(30, {
+      beats: [
+        { quote: "We made 900 sales", piece: "stat", text: "900", subtitle: "sales in one week" },
+        { quote: "grew 40 percent faster", piece: "keyword", text: "grew", subtitle: "" },
+        { quote: "words that were never said", piece: "keyword", text: "never" },
+        { quote: "Thanks for watching", piece: "quote", text: "" },
+      ],
+    });
+    const { t, start, runOf } = await setUp(
+      [
+        { id: "plan", kind: "motion-plan", input: { lookFor: "the numbers" } },
+        { id: "motion", kind: "motion", input: {} },
+      ],
+      {
+        ...TEAM_MOTION,
+        notes: "Never use red.",
+        style: { ...TEAM_MOTION.style, pieces: [...TEAM_MOTION.style.pieces, "keyword"] },
+      },
+    );
+    const runId = await start();
+    await settled(t);
+
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    const plan = run.steps.find((one) => one.nodeId === "plan")!;
+    expect(plan.status).toBe("done");
+    expect(plan.pickNote).toMatch(/^1 piece was left out/);
+
+    // The agent was asked for motion beats with the style's pieces, gap and notes.
+    const question = sent.find((one) => one.url === `${AGENT_URL}/ncat/moments`)!;
+    expect(question.body.kind).toBe("motion");
+    expect(question.body.settings).toMatchObject({
+      gap: 12,
+      pieces: ["keyword", "stat"],
+      showsUnsaid: false,
+      sounds: true,
+      look: "clean",
+      notes: "Never use red.",
+      lookFor: "the numbers",
+    });
+
+    // The motion step draws the planned beats in place of its own stat rule; the quote card
+    // is not one of the style's pieces, so it is left out.
+    const render = sent.find((one) => one.url.endsWith("/v1/video/motion"))!;
+    const pieces = render.body.pieces as { type: string; title?: string; subtitle?: string }[];
+    expect(pieces.map((piece) => piece.type)).toEqual([
+      "title",
+      "lower_third",
+      "keyword",
+      "stat",
+      "follow",
+    ]);
+    expect(pieces.find((piece) => piece.type === "stat")).toMatchObject({
+      title: "900",
+      subtitle: "sales in one week",
+    });
+    // Both steps share one transcription.
+    expect(sent.filter((one) => one.url.endsWith("/v1/media/transcribe"))).toHaveLength(1);
   });
 });
 

@@ -68,6 +68,11 @@ describe("node registry", () => {
       gives: "file",
     });
     expect(getNodeType("broll-plan")).toMatchObject({ title: "Plan B-Roll", group: "video" });
+    expect(getNodeType("motion-plan")).toMatchObject({
+      title: "Plan Motion Graphics",
+      group: "video",
+    });
+    expect(savedKind("motion-plan")).toEqual({ kind: "motion-plan" });
     expect(getNodeType("motion")).toMatchObject({ takes: "file", gives: "files", group: "video" });
     expect(getNodeType("sound-effects")).toMatchObject({ takes: "file", gives: "files" });
     // The motion graphics render is only sent by those two, never listed as a step.
@@ -75,7 +80,7 @@ describe("node registry", () => {
     expect(names).not.toContain("step:video-motion");
     expect(savedKind("step:video-motion")).toBeNull();
     expect(savedKind("motion")).toEqual({ kind: "motion" });
-    expect(names.length).toBe(6 + allSteps.length + 12);
+    expect(names.length).toBe(6 + allSteps.length + 13);
   });
 
   it("gives every type a title, a description and an object schema for its settings", () => {
@@ -92,7 +97,7 @@ describe("node registry", () => {
   it("lists only steps that can be added, with no trigger among them", () => {
     const listed = actionTypesByGroup().flatMap((group) => group.types);
     expect(listed.every((nodeType) => nodeType.role === "action")).toBe(true);
-    expect(listed.length).toBe(allSteps.length + 12);
+    expect(listed.length).toBe(allSteps.length + 13);
   });
 
   it("knows the type of every node in every template", () => {

@@ -13,6 +13,10 @@ import {
   getPlatform,
   momentPicksFrom,
   momentSettings,
+  motionBeatsFromPicks,
+  motionPicksFrom,
+  motionPlanSettings,
+  type PlacedPiece,
   planChapters,
   planMoments,
   readFileDetails,
@@ -24,6 +28,7 @@ import {
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { motionPlanOf } from "./motion";
 import { advance, enqueueAll, failStep, incomingFiles } from "./runner";
 
 /**
@@ -236,6 +241,38 @@ export async function finishPicking(
       ...(dropped > 0
         ? {
             pickNote: `${dropped} ${dropped === 1 ? "cutaway was" : "cutaways were"} left out: ${dropped === 1 ? "its words were" : "their words were"} not in the transcript word for word.`,
+          }
+        : {}),
+      outputs: incomingFiles(node, run, byNode),
+      finishedAt: Date.now(),
+    });
+    await advance(ctx, run._id);
+    return;
+  }
+
+  if (node.kind === "motion-plan") {
+    const { setup } = await motionPlanOf(ctx, run.organizationId, node.id, nodes, edges);
+    const allowed = motionPlanSettings(setup, 0, node.input);
+    const plan: { source: string; beats: PlacedPiece[] }[] = [];
+    let dropped = 0;
+    for (const { url, answer } of answers) {
+      const spoken = await wordsFor(ctx, run.organizationId, url);
+      if (!spoken) continue;
+      const placed = motionBeatsFromPicks(
+        spoken.words,
+        motionPicksFrom(readModelJson(answer)),
+        allowed,
+      );
+      dropped += placed.dropped;
+      plan.push({ source: url, beats: placed.beats });
+    }
+    await ctx.db.patch(step._id, {
+      status: "done",
+      stage: undefined,
+      aiPlan: plan,
+      ...(dropped > 0
+        ? {
+            pickNote: `${dropped} ${dropped === 1 ? "piece was" : "pieces were"} left out: ${dropped === 1 ? "its words were" : "their words were"} not in the transcript word for word.`,
           }
         : {}),
       outputs: incomingFiles(node, run, byNode),

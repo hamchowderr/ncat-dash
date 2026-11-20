@@ -57,6 +57,7 @@ import {
   Star,
   ListOrdered,
   AudioLines,
+  ClipboardList,
   PanelsTopLeft,
   Terminal,
   TriangleAlert,
@@ -196,6 +197,13 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
       icon: ListOrdered,
       tint: "text-orange-600 dark:text-orange-400",
       kind: "From the transcript",
+    };
+  }
+  if (node.kind === "motion-plan") {
+    return {
+      icon: ClipboardList,
+      tint: CATEGORY_TINTS.video,
+      kind: "AI plans the pieces",
     };
   }
   if (node.kind === "motion") {
