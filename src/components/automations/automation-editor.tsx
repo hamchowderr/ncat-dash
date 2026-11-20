@@ -100,6 +100,7 @@ import {
   triggerPosition,
 } from "./flow-nodes";
 import { isNoteId, notePlace, useCanvasNotes } from "./canvas-notes";
+import { ChainView, useChainView } from "./chain-view";
 import { ClientPicker } from "./client-picker";
 import { DropboxSend } from "./dropbox-send";
 import { DraftBar } from "./draft-bar";
@@ -315,6 +316,7 @@ function Editor({ automation }: { automation: Loaded }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The side column for what runs after this automation, when no step's settings are in it.
   const followOns = useFollowOns(automation._id);
+  const chainSize = useChainView(automation._id)?.automations.length ?? 1;
   const [afterOpen, setAfterOpen] = useState(false);
   // Choosing a step puts its settings in the column instead.
   const afterShown = afterOpen && !selected;
@@ -768,6 +770,15 @@ function Editor({ automation }: { automation: Loaded }) {
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="runs">Runs</TabsTrigger>
           <TabsTrigger value="versions">Versions</TabsTrigger>
+          <TabsTrigger value="chain">
+            Chain
+            {chainSize > 1 && (
+              <span className="text-muted-foreground font-normal">
+                <span className="sr-only">, </span>
+                {chainSize}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="editor" className="flex min-h-0 flex-col">
@@ -1025,6 +1036,7 @@ function Editor({ automation }: { automation: Loaded }) {
                     automationId={automation._id}
                     automationName={automation.name}
                     followOns={followOns}
+                    onShowChain={chainSize > 1 ? () => setTab("chain") : undefined}
                   />
                 </div>
               </aside>
@@ -1142,6 +1154,10 @@ function Editor({ automation }: { automation: Loaded }) {
               </aside>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="chain" className="flex min-h-0 flex-col">
+          <ChainView automationId={automation._id} />
         </TabsContent>
 
         <TabsContent value="runs">

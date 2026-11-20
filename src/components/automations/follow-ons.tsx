@@ -44,9 +44,10 @@ export function useFollowOns(automationId: Id<"automations">): FollowOns | undef
 
 /**
  * Makes a follow-on wired to start after `automationId`, and opens it so it can be looked
- * over and switched on.
+ * over and switched on. With `open` false it stays where it is, for a page that shows the
+ * new one by itself.
  */
-function useSetUp() {
+export function useSetUp({ open = true }: { open?: boolean } = {}) {
   const setUp = useMutation(api.automations.setUpFollowOn);
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
@@ -65,7 +66,11 @@ function useSetUp() {
       } else {
         toast.info(`${starter.name} is built but off for now. ${made.problem ?? ""}`.trim());
       }
-      router.push(`/automations/${made.automationId}`, { transitionTypes: ["nav-forward"] });
+      if (open) {
+        router.push(`/automations/${made.automationId}`, { transitionTypes: ["nav-forward"] });
+      } else {
+        setPending(null);
+      }
     } catch (caught) {
       toast.error(errorMessage(caught, "It could not be set up. Try again."));
       setPending(null);
@@ -125,10 +130,13 @@ export function FollowOnsPanel({
   automationId,
   automationName,
   followOns,
+  onShowChain,
 }: {
   automationId: Id<"automations">;
   automationName: string;
   followOns: FollowOns | undefined;
+  /** Opens the chain tab, when this automation is linked to others. */
+  onShowChain?: () => void;
 }) {
   const { pending, onSetUp } = useSetUp();
   if (!followOns) return <p className="text-muted-foreground text-sm">Loading</p>;
@@ -164,6 +172,16 @@ export function FollowOnsPanel({
               </li>
             ))}
           </ul>
+        )}
+        {onShowChain && (
+          <Button
+            variant="link"
+            size="sm"
+            className="justify-self-start px-0"
+            onClick={onShowChain}
+          >
+            See the whole chain
+          </Button>
         )}
       </section>
 
