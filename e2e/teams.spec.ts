@@ -10,6 +10,8 @@ import { MICROSOFT, MICROSOFT_USER, TEAMS_TEAM } from "./microsoft-data.mjs";
 // Teams app can be downloaded, the agent server asks who wrote in a Teams team, and the
 // owner then picks one of that team's channels for alerts. An approval posted there as a
 // card is approved by pressing Approve in Teams, and the card then says who decided.
+// Review activity goes there too: a client's comment becomes a Teams thread, a reply in
+// that thread lands in the review, and a reply in the review goes back to the thread.
 
 const CONVEX_SITE = "http://127.0.0.1:3211";
 const FILES = "http://127.0.0.1:8766";
@@ -29,9 +31,11 @@ function agentToken() {
   return `${body}.${createHmac("sha256", AGENT_SECRET).update(body).digest("base64url")}`;
 }
 
-test("links the Microsoft organization, offers the Teams app, and alerts with Approve land in a channel", async ({
+test("links the organization; alerts with Approve and review activity go both ways in a channel", async ({
   page,
+  browser,
 }) => {
+  test.setTimeout(240_000);
   await page.goto("/sign-up");
   await page.locator("#name").fill("Harbour Organizer");
   await page.locator("#email").fill(`organizer.teams.${stamp}@example.test`);
@@ -129,7 +133,11 @@ test("links the Microsoft organization, offers the Teams app, and alerts with Ap
   });
   expect(started.status).toBe(202);
 
-  type Post = { path: string; method: string; body: { attachments?: { content: Card }[] } };
+  type Post = {
+    path: string;
+    method: string;
+    body: { text?: string; attachments?: { content: Card }[] };
+  };
   type Card = {
     body: { text: string }[];
     actions: { type: string; data?: { actionId: string; value: string } }[];
@@ -180,4 +188,87 @@ test("links the Microsoft organization, offers the Teams app, and alerts with Ap
     .toContain("Approved by Harbour Organizer.");
   const edit = (await posts()).find((post) => post.method === "PUT")!;
   expect(cardOf(edit)!.actions.map((action) => action.type)).toEqual(["Action.OpenUrl"]);
+
+  // The waiting automation opened a review, and the channel heard about it.
+  const texts = async () => (await posts()).map((post) => String(post.body.text ?? ""));
+  expect((await texts()).join("\n")).toMatch(
+    /New review: \[Weekly clips\]\(http:\/\/localhost:3000\/review\/[^)]+\) \(2 clips\)\. The automation is waiting for someone to approve it\./,
+  );
+
+  // A client comments through a share link; the comment starts its own Teams thread.
+  await page.goto("/review");
+  await page.getByRole("link", { name: /Weekly clips/ }).click();
+  await expect(page).toHaveURL(/\/review\/.+/);
+  await page.getByRole("button", { name: "Share" }).click();
+  const dialog = page.getByRole("dialog", { name: "Share with a client" });
+  await dialog.getByRole("button", { name: "Create link" }).click();
+  const link = dialog.getByRole("textbox", { name: "Share link" });
+  await expect(link).toHaveValue(/\/share\/[a-f0-9]{64}$/);
+  const shareUrl = await link.inputValue();
+  await page.keyboard.press("Escape");
+
+  const client = await (await browser.newContext()).newPage();
+  await client.goto(shareUrl);
+  await client.getByLabel("Your name").fill("Riley Client");
+  await client.getByRole("button", { name: "Continue" }).click();
+  const box = client.getByRole("textbox", { name: /^Comment at this moment/ });
+  await box.fill("Can the end card stay up a little longer?");
+  await box.press("Enter");
+
+  const channelPath = `/bot/v3/conversations/${encodeURIComponent("19:edits@thread.tacv2")}/activities`;
+  let root = -1;
+  await expect
+    .poll(
+      async () => {
+        const all = await posts();
+        root = all.findIndex(
+          (post) =>
+            post.path === channelPath &&
+            String(post.body.text ?? "").startsWith("**Riley Client** (client) commented on"),
+        );
+        return root >= 0 ? String(all[root].body.text) : "";
+      },
+      { timeout: 30_000 },
+    )
+    .toMatch(/> Can the end card stay up a little longer\?$/);
+  const rootActivityId = String(root + 1);
+
+  // The owner answers in Teams, in that thread, without tagging the bot. The agent server
+  // passes the message on, and it becomes their reply in the review room.
+  const replied = await fetch(`${CONVEX_SITE}/teams/review-reply`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${agentToken()}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      tenantId: tenant,
+      aadObjectId: userId,
+      conversationId: "19:edits@thread.tacv2",
+      rootActivityId,
+      activityId: `teams-reply-${stamp}`,
+      text: "<p>Sure, two more seconds.</p>",
+    }),
+  });
+  expect(await replied.json()).toEqual({ handled: true, added: true, message: null });
+  const comments = (on: typeof page) => on.locator('section[aria-label="Comments"]');
+  const thread = comments(page).getByRole("listitem").filter({ hasText: "Can the end card" });
+  await expect(thread.getByText("Sure, two more seconds.")).toBeVisible({ timeout: 30_000 });
+  await expect(thread).toContainText("Harbour Organizer");
+  await expect(comments(client).getByText("Sure, two more seconds.")).toBeVisible();
+
+  // A reply written in the room goes the other way, into the Teams thread.
+  await thread.getByRole("button", { name: "Reply" }).click();
+  await page.getByRole("textbox", { name: "Reply" }).fill("Done, version 2 is up.");
+  await page.getByRole("textbox", { name: "Reply" }).press("Enter");
+  const threadPath = `/bot/v3/conversations/${encodeURIComponent(
+    `19:edits@thread.tacv2;messageid=${rootActivityId}`,
+  )}/activities`;
+  const inThread = async () =>
+    (await posts())
+      .filter((post) => post.path === threadPath)
+      .map((post) => String(post.body.text ?? ""));
+  await expect
+    .poll(async () => (await inThread()).join("\n"), { timeout: 30_000 })
+    .toContain("**Harbour Organizer**: Done, version 2 is up.");
+  // What came from Teams is not posted back to it.
+  expect((await inThread()).join("\n")).not.toContain("Sure, two more seconds.");
+  await client.context().close();
 });
