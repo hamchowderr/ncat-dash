@@ -58,7 +58,8 @@ import { PickError, wordsOfVideo } from "./moments";
  * The run side, for an Add B-Roll step after "listen" (convex/lib/moments.ts):
  * - "match": the moments to cover come from Plan B-Roll's plan, or else every sentence
  *   that names something to show. Free stock is searched for the strongest of them.
- * - "look": one toolkit job turns the words and the stock stills into vectors.
+ * - "look": one toolkit job turns the words and the stock stills into vectors, and one per
+ *   video finds its camera cuts.
  * - choose (here): the library is searched with each moment's vector, stock is scored by
  *   its still, the cutaways are chosen, and one compose job per video lays them over
  *   ("lay", which the runner finishes like any job).
@@ -694,8 +695,14 @@ export const startLooking = internalMutation({
       await advance(ctx, run._id);
       return;
     }
+    // The first job looks at the words and stills; one more per video finds its camera
+    // cuts, so cutaways line up with its shots.
     const queued = await enqueueAll(ctx, run, step, [
       { stepId: "media-look", input: { texts, ...(stills.length ? { image_urls: stills } : {}) } },
+      ...work.map((video) => ({
+        stepId: "media-look",
+        input: { media_url: video.url, cuts: true, frames: false },
+      })),
     ]);
     if (!queued.ok) {
       await failStep(ctx, run, step, await stepsMap(ctx, run), queued.message);
@@ -715,12 +722,18 @@ export const loadChoose = internalQuery({
   handler: async (ctx, args) => {
     const loaded = await loadStep(ctx, args.runStepId, "look");
     if (!loaded) return null;
-    const job = loaded.step.jobIds.length ? await ctx.db.get(loaded.step.jobIds[0]) : null;
+    const [first, ...rest] = await Promise.all(loaded.step.jobIds.map((id) => ctx.db.get(id)));
+    const work = (loaded.step.brollWork ?? []) as WorkVideo[];
     return {
       organizationId: loaded.run.organizationId,
       input: loaded.node.input,
-      work: (loaded.step.brollWork ?? []) as WorkVideo[],
-      result: job?.status === "done" ? job.result : null,
+      work,
+      result: first?.status === "done" ? first.result : null,
+      // A video whose cuts could not be found is laid over as before, without them.
+      cuts: work.map((_, index) => {
+        const job = rest[index];
+        return job?.status === "done" ? cutsOf(job.result) : [];
+      }),
     };
   },
 });
@@ -752,6 +765,15 @@ export const framesFound = internalQuery({
     return found;
   },
 });
+
+/** The camera cuts in a look job's answer, in seconds. */
+export function cutsOf(result: unknown): number[] {
+  const media = (result as { media?: { cuts?: unknown } } | null)?.media;
+  if (!media || !Array.isArray(media.cuts)) return [];
+  return media.cuts
+    .filter((cut): cut is number => typeof cut === "number" && Number.isFinite(cut) && cut > 0)
+    .sort((a, b) => a - b);
+}
 
 function vectorsOf(result: unknown) {
   const texts = new Map<string, number[]>();
@@ -802,7 +824,7 @@ export const choose = internalAction({
       };
 
       const results: { video: WorkVideo; cutaways: Cutaway[] }[] = [];
-      for (const video of loaded.work) {
+      for (const [videoIndex, video] of loaded.work.entries()) {
         const options: Footage[][] = [];
         for (const [index, moment] of video.moments.entries()) {
           const vector = texts.get(lookWords(moment.show));
@@ -856,7 +878,10 @@ export const choose = internalAction({
         }
         results.push({
           video,
-          cutaways: chooseCutaways(video.moments, options, settings, { duration: video.duration }),
+          cutaways: chooseCutaways(video.moments, options, settings, {
+            duration: video.duration,
+            cuts: loaded.cuts[videoIndex] ?? [],
+          }),
         });
       }
       await ctx.runMutation(internal.broll.lay, { runStepId: args.runStepId, results });
