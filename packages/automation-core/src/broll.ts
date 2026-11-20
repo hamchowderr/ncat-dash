@@ -50,6 +50,12 @@ export const BROLL_DEFAULTS: BrollSettings = {
 };
 
 export const MIN_BROLL_SECONDS = 1.5;
+/**
+ * Added to a library file's score when choosing, so the team's own footage wins over stock
+ * that matches about as well. It never lets a weak match in: the threshold is checked
+ * against the real score.
+ */
+export const LIBRARY_PREFERENCE = 0.01;
 export const MAX_BROLL_SECONDS = 8;
 export const MAX_SKIP_OPENING = 60;
 /** The most cutaways laid over one video. */
@@ -123,7 +129,8 @@ const NOT_SHOWN = new Set(
     "times to today too try trying um uh under until up us use used using very want wanted wants " +
     "was way we well went were what whats when where which while who why will with within " +
     "without wont would yeah yes yet you youre your yours yourself yourselves year years week " +
-    "weeks thing guys guy everyone somebody someone"
+    "weeks thing guys guy everyone somebody someone didnt doesnt isnt wasnt arent werent " +
+    "cant couldnt wouldnt shouldnt hasnt havent hadnt youve weve theyve ill youll part bit"
   ).split(" "),
 );
 
@@ -257,6 +264,9 @@ export interface Cutaway {
   from: number;
 }
 
+/** A footage's score when choosing: the library a little ahead of stock. */
+const rankOf = (one: Footage) => one.score + (one.kind === "library" ? LIBRARY_PREFERENCE : 0);
+
 /**
  * Chooses the cutaways: the best match for each moment, if it is good enough, then the
  * strongest first, kept only where it fits (after the opening, not over another cutaway
@@ -276,7 +286,7 @@ export function chooseCutaways(
   moments.forEach((moment, index) => {
     const ranked = (footage[index] ?? [])
       .filter((one) => one.score >= threshold && one.duration >= MIN_BROLL_SECONDS)
-      .sort((a, b) => b.score - a.score);
+      .sort((a, b) => rankOf(b) - rankOf(a));
     for (const one of ranked) {
       const start = Math.max(moment.start, settings.skipOpening);
       const length = Math.min(settings.seconds, one.duration);
@@ -295,7 +305,7 @@ export function chooseCutaways(
       });
     }
   });
-  candidates.sort((a, b) => b.footage.score - a.footage.score);
+  candidates.sort((a, b) => rankOf(b.footage) - rankOf(a.footage));
 
   const kept: Cutaway[] = [];
   const used = new Set<string>();
@@ -414,8 +424,18 @@ export function cutawaySummary(cutaways: Cutaway[]): string {
 }
 
 /**
+ * How much of the frame a face covers, at least, to count as someone on camera. A person
+ * in a medium shot (waist up, 720p) covers about 2.5%; faces in a crowd or a wide shot
+ * stay under 1%.
+ */
+export const ON_CAMERA_FACE = 0.012;
+/** Share of a file's frames with someone on camera that makes it a talking head. */
+export const ON_CAMERA_SHARE = 0.4;
+
+/**
  * Whether a library file looks like B-Roll rather than a talking head: a short video in
- * which faces stay small and little is said. A person can say otherwise on the file.
+ * which nobody is on camera most of the time, faces stay small and little is said. A
+ * person can say otherwise on the file.
  */
 export function looksLikeBroll(file: {
   duration: number;
@@ -428,6 +448,8 @@ export function looksLikeBroll(file: {
   const faces = [...file.faces].sort((a, b) => a - b);
   const middle = faces.length ? faces[Math.floor(faces.length / 2)] : 0;
   if (middle > 0.06) return false;
+  const onCamera = faces.filter((face) => face >= ON_CAMERA_FACE).length;
+  if (faces.length && onCamera / faces.length >= ON_CAMERA_SHARE) return false;
   const perMinute = ((file.spokenWords ?? 0) / file.duration) * 60;
   return perMinute < 40;
 }

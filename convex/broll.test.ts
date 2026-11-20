@@ -442,6 +442,44 @@ describe("The library and B-Roll", () => {
     expect((await maya.as.query(api.broll.status, { organizationId: team })).broll).toBe(0);
   });
 
+  test("files already looked at are judged again when the rules change", async () => {
+    const { t, team } = await setUp([brollNode()]);
+    const insert = (title: string, faces: number[], brollLike: boolean) =>
+      t.run(async (ctx) => {
+        const itemId = await ctx.db.insert("libraryItems", {
+          organizationId: team,
+          shortId: title === "Interview" ? "V1" : "V2",
+          kind: "video",
+          source: "upload",
+          title,
+          url: `https://files.example/library/${title}.mp4`,
+          tags: [],
+          searchText: title,
+          createdBy: null,
+          details: { duration: 75 },
+          look: { status: "ready", brollLike, at: 0 },
+        });
+        for (const [index, face] of faces.entries()) {
+          await ctx.db.insert("libraryFrames", {
+            organizationId: team,
+            itemId,
+            time: index * 2 + 1,
+            face,
+            vector: Array(512).fill(0),
+          });
+        }
+        return itemId;
+      });
+    // Judged under the old rule: someone in a medium shot (about 2.5% of the frame) passed.
+    const interview = await insert("Interview", [0.025, 0.024, 0.03, 0, 0.026, 0.02], true);
+    const launch = await insert("Launch", [0, 0, 0, 0], true);
+
+    expect(await t.mutation(internal.broll.judgeAgain, {})).toEqual({ judged: 2, done: true });
+    const [a, b] = await t.run((ctx) => Promise.all([ctx.db.get(interview), ctx.db.get(launch)]));
+    expect(a!.look?.brollLike).toBe(false);
+    expect(b!.look?.brollLike).toBe(true);
+  });
+
   test("a team key is checked before it is saved, and only owners and admins can save one", async () => {
     const { team, maya, sam } = await setUp([brollNode()]);
     vi.stubGlobal(
