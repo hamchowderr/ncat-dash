@@ -520,6 +520,43 @@ http.route({
   }),
 });
 
+// A message in a Teams reply thread: when the thread is a review thread, it becomes the
+// writer's reply in the review room, and the agent server does not answer it.
+http.route({
+  path: "/teams/review-reply",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const text = (key: string, limit = 512) => {
+      const value = body[key];
+      return typeof value === "string" && value.length > 0 && value.length <= limit ? value : "";
+    };
+    const fields = {
+      tenantId: text("tenantId"),
+      aadObjectId: text("aadObjectId"),
+      conversationId: text("conversationId"),
+      rootActivityId: text("rootActivityId"),
+      activityId: text("activityId"),
+      text: text("text", 20_000),
+    };
+    if (Object.values(fields).some((value) => !value)) {
+      return Response.json({ handled: false });
+    }
+    const botName = text("botName", 100);
+    const answer = await ctx.runAction(internal.microsoftTeamsReview.reply, {
+      ...fields,
+      ...(botName ? { botName } : {}),
+    });
+    return Response.json(answer);
+  }),
+});
+
 // The Teams app a team uploads to its Teams: the dashboard's one bot, and its icons.
 http.route({
   path: "/teams/app.zip",

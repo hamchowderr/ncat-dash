@@ -44,6 +44,14 @@ export function teamsManifest(options: { botId: string; name: string; siteUrl: s
       },
     ],
     permissions: ["identity", "messageTeamMembers"],
+    // Lets the bot read replies in a review thread without being tagged, so a teammate's
+    // reply in Teams goes into the review the way it does from Slack.
+    webApplicationInfo: { id: options.botId, resource: "https://RscBasedStoreApp" },
+    authorization: {
+      permissions: {
+        resourceSpecific: [{ name: "ChannelMessage.Read.Group", type: "Application" }],
+      },
+    },
     validDomains: site ? [new URL(site).host] : [],
   };
 }

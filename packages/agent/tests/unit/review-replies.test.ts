@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const env = vi.hoisted(() => ({}) as Record<string, string | undefined>);
 vi.mock("../../src/lib/env", () => ({ env }));
 
-import { chatChannels } from "../../src/mastra/ncat/channels";
+import { chatChannels, onReviewMessage } from "../../src/mastra/ncat/channels";
 import {
   discordThreadOf,
   onReviewReply,
@@ -86,6 +86,6 @@ describe("review replies from Discord", () => {
       MASTRA_JWT_SECRET: "secret",
       CONVEX_SITE_URL: "https://convex.test",
     });
-    expect(chatChannels()?.handlers?.onMessage).toBe(onReviewReply);
+    expect(chatChannels()?.handlers?.onMessage).toBe(onReviewMessage);
   });
 });

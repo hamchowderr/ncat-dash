@@ -12,21 +12,30 @@ const env = vi.hoisted(() => ({
   TEAMS_APP_ID: undefined as string | undefined,
   TEAMS_APP_PASSWORD: undefined as string | undefined,
   TEAMS_APP_TENANT_ID: undefined as string | undefined,
+  TEAMS_APP_NAME: undefined as string | undefined,
 }));
 vi.mock("../../src/lib/env", () => ({ env }));
 
 import { TURN_USER_KEY } from "../../src/mastra/lib/turn-user";
-import { byPlatform, chatChannels, onChatAlertButton } from "../../src/mastra/ncat/channels";
+import {
+  byPlatform,
+  chatChannels,
+  onChatAlertButton,
+  onReviewMessage,
+} from "../../src/mastra/ncat/channels";
 import { forgetSessions, sessionOf } from "../../src/mastra/ncat/session-store";
 import {
   asTheTeamsWriter,
   onTeamsAlertButton,
   questionFor,
   refusalText,
+  reviewQuestionFor,
   type TeamsPerson,
   teamsReady,
+  teamsReviewRepliesOnly,
   useDashboardForTests,
   usePressDashboardForTests,
+  useReviewDashboardForTests,
 } from "../../src/mastra/ncat/teams";
 
 // The agent in Microsoft Teams, on the dashboard's one bot: who wrote (their Microsoft
@@ -35,6 +44,7 @@ import {
 afterEach(() => {
   useDashboardForTests();
   usePressDashboardForTests();
+  useReviewDashboardForTests();
   forgetSessions();
   for (const key of Object.keys(env) as (keyof typeof env)[]) env[key] = undefined;
 });
@@ -150,7 +160,8 @@ describe("which chat app a message goes through", () => {
     expect(t.post).toHaveBeenCalledWith(expect.stringContaining("not linked to a team"));
   });
 
-  it("is in Teams only with a bot, the shared secret and the dashboard address", () => {
+  usePressDashboardForTests();
+  useReviewDashboardForTests();
     expect(teamsReady()).toBe(false);
     expect(chatChannels()).toBeUndefined();
     env.TEAMS_APP_ID = "c4d4ec4e-0000-0000-0000-000000000001";
@@ -234,5 +245,90 @@ describe("Approve and Send back pressed on a Teams alert card", () => {
     await onChatAlertButton(pressed('ncat_alert_approve').event, next, {} as never);
     expect(asked).toHaveBeenCalledOnce();
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+const IN_A_THREAD = {
+  ...IN_A_CHANNEL,
+  id: 'activity-7',
+  text: '<at>Kontifi</at> looks good',
+  conversation: { id: '19:edits@thread.tacv2;messageid=root-1', tenantId: 'tenant-1' },
+};
+
+function said(raw: object, text: string, isBot = false) {
+  return { raw, text, author: { userId: '29:abc', isBot, isMe: false } } as never;
+}
+
+describe('replies in a Teams review thread', () => {
+  it('names the channel, the thread, the message and the words', () => {
+    expect(reviewQuestionFor(IN_A_THREAD, 'looks good')).toEqual({
+      tenantId: 'tenant-1',
+      aadObjectId: 'aad-ada',
+      conversationId: '19:edits@thread.tacv2',
+      rootActivityId: 'root-1',
+      activityId: 'activity-7',
+      text: 'looks good',
+      botName: 'Kontifi',
+    });
+    // A message straight in the channel, not in a thread, is no reply.
+    expect(reviewQuestionFor(IN_A_CHANNEL, 'hi')).toBeNull();
+  });
+
+  it('goes into the review and the agent does not answer', async () => {
+    const asked: Record<string, string>[] = [];
+    useReviewDashboardForTests(async (body) => {
+      asked.push(body);
+      return { handled: true, added: true, message: null };
+    });
+    const person = vi.fn(async () => ADA);
+    useDashboardForTests(person);
+    const t = thread();
+    const next = vi.fn();
+    await asTheTeamsWriter(t as never, said(IN_A_THREAD, 'looks good'), next, context() as never);
+    expect(asked[0]).toMatchObject({ rootActivityId: 'root-1', activityId: 'activity-7' });
+    expect(next).not.toHaveBeenCalled();
+    expect(person).not.toHaveBeenCalled();
+    expect(t.post).not.toHaveBeenCalled();
+  });
+
+  it('passes on what to tell someone whose reply stays in Teams', async () => {
+    useReviewDashboardForTests(async () => ({
+      handled: true,
+      added: false,
+      message: 'Your reply stays in Teams: link your Microsoft account.',
+    }));
+    const t = thread();
+    await teamsReviewRepliesOnly(t as never, said(IN_A_THREAD, 'hi'), vi.fn(), context() as never);
+    expect(t.post).toHaveBeenCalledWith(expect.stringContaining('stays in Teams'));
+  });
+
+  it('a thread that is not a review is left alone untagged, and answered when tagged', async () => {
+    useReviewDashboardForTests(async () => ({ handled: false }));
+    useDashboardForTests(async () => ADA);
+    const t = thread();
+    const next = vi.fn(async () => undefined);
+    await teamsReviewRepliesOnly(t as never, said(IN_A_THREAD, 'hi'), next, context() as never);
+    expect(next).not.toHaveBeenCalled();
+    expect(t.post).not.toHaveBeenCalled();
+    await asTheTeamsWriter(t as never, said(IN_A_THREAD, 'hi'), next, context() as never);
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('untagged messages in other apps, and from bots, are never read', async () => {
+    const asked = vi.fn(async () => ({ handled: true as const, added: true, message: null }));
+    useReviewDashboardForTests(asked);
+    await teamsReviewRepliesOnly(
+      thread('slack:C1:1') as never,
+      said(IN_A_THREAD, 'hi'),
+      vi.fn(),
+      context() as never,
+    );
+    await teamsReviewRepliesOnly(
+      thread() as never,
+      said(IN_A_THREAD, 'hi', true),
+      vi.fn(),
+      context() as never,
+    );
+    expect(asked).not.toHaveBeenCalled();
   });
 });

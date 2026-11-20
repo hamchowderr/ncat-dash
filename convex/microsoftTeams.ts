@@ -211,6 +211,11 @@ export const removeOrganization = mutation({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .take(50);
     for (const one of seen) await ctx.db.delete(one._id);
+    const threads = await ctx.db
+      .query("teamsReviewThreads")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .take(500);
+    for (const one of threads) await ctx.db.delete(one._id);
   },
 });
 

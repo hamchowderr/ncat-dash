@@ -94,12 +94,104 @@ export function refusalText(person: TeamsPerson | null): string {
   }
 }
 
+type ReviewAnswer = { handled: false } | { handled: true; added: boolean; message: string | null };
+
+type AskReview = (body: Record<string, string>) => Promise<ReviewAnswer | null>;
+
+const askReviewOfDashboard: AskReview = async (body) => {
+  const site = convexSiteUrl();
+  const secret = env.MASTRA_JWT_SECRET;
+  if (!site || !secret) return null;
+  try {
+    const response = await fetch(`${site}/teams/review-reply`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${signForDashboard(secret)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`The dashboard answered ${response.status}`);
+    return (await response.json()) as ReviewAnswer;
+  } catch (error) {
+    console.error('[teams] could not reach the dashboard', error);
+    return null;
+  }
+};
+
+let askReview: AskReview = askReviewOfDashboard;
+
+/** For tests: answer the dashboard's review side without a deployment. */
+export function useReviewDashboardForTests(answer?: AskReview): void {
+  askReview = answer ?? askReviewOfDashboard;
+}
+
+type ThreadActivity = Activity & {
+  id?: string;
+  text?: string;
+  conversation?: { id?: string; tenantId?: string };
+};
+
+/**
+ * A reply in a Teams channel thread: the channel's conversation, the thread's first
+ * message, and this message. Teams names a thread as "<channel>;messageid=<first>".
+ */
+export function reviewQuestionFor(raw: unknown, text: string): Record<string, string> | null {
+  const activity = (raw ?? {}) as ThreadActivity;
+  const conversation = activity.conversation?.id ?? '';
+  const at = conversation.indexOf(';messageid=');
+  if (at < 0) return null;
+  const rootActivityId = conversation.slice(at + ';messageid='.length);
+  const tenantId = activity.conversation?.tenantId ?? activity.channelData?.tenant?.id;
+  const aadObjectId = activity.from?.aadObjectId;
+  if (!rootActivityId || !activity.id || !tenantId || !aadObjectId) return null;
+  return {
+    tenantId,
+    aadObjectId,
+    conversationId: conversation.slice(0, at),
+    rootActivityId,
+    activityId: activity.id,
+    text: text || activity.text || '',
+    botName: env.TEAMS_APP_NAME || 'Kontifi',
+  };
+}
+
+/**
+ * A message in a review thread goes into the review, not to the agent. True when it was
+ * taken care of that way.
+ */
+async function asReviewReply(
+  thread: { post: (text: string) => Promise<unknown> },
+  message: Message,
+) {
+  const question = reviewQuestionFor(message.raw, message.text);
+  if (!question) return false;
+  const answer = await askReview(question);
+  if (!answer?.handled) return false;
+  if (answer.message) await thread.post(answer.message);
+  return true;
+}
+
+/**
+ * Messages in a channel that do not tag the bot. Teams sends them because the app may
+ * read its channels' messages; only replies in a review thread are kept, the rest are
+ * left alone, so the agent still answers only when it is tagged.
+ */
+export const teamsReviewRepliesOnly: ChannelHandler = async (thread, message) => {
+  if (!thread.id.startsWith('teams:')) return;
+  if (message.author.isBot || message.author.isMe) return;
+  await asReviewReply(thread, message);
+};
+
 /**
  * Before the agent answers a Teams message: find who wrote it on the team, and let the
  * run act as them. Like Slack, the Mastra thread belongs to `channel:<thread id>`.
  */
 export const asTheTeamsWriter: ChannelHandler = async (thread, message: Message, next, ctx) => {
   if (message.author.isBot || message.author.isMe) return;
+  // Tagging the bot in a review thread still adds the reply to the review.
+  if (await asReviewReply(thread, message)) return;
   const question = questionFor(message.raw);
   const person = question ? await ask(question) : null;
   if (!person?.ok) {

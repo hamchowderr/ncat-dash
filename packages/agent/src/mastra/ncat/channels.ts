@@ -7,7 +7,12 @@ import { onAlertButton } from "./alert-buttons";
 import { asTheDiscordWriter, discordAdapter } from "./discord";
 import { onReviewReply } from "./review-replies";
 import { asTheWriter, slackChannels } from "./slack";
-import { asTheTeamsWriter, onTeamsAlertButton, teamsAdapter } from "./teams";
+import {
+  asTheTeamsWriter,
+  onTeamsAlertButton,
+  teamsAdapter,
+  teamsReviewRepliesOnly,
+} from "./teams";
 
 /**
  * The chat apps the agent answers in: Slack (each team's own app), and Discord and
@@ -23,6 +28,12 @@ export const byPlatform: ChannelHandler = async (thread, message, next, ctx) => 
 /** Approve and Send back on the dashboard's alerts: Discord's presses, then Teams'. */
 export const onChatAlertButton: ActionChannelHandler = (event, next, ctx) =>
   onAlertButton(event, () => onTeamsAlertButton(event, next, ctx), ctx);
+
+/** Untagged messages: a reply in a review's thread, in Discord or Teams. */
+export const onReviewMessage: ChannelHandler = async (thread, message, next, ctx) => {
+  if (thread.id.startsWith("teams:")) return await teamsReviewRepliesOnly(thread, message, next, ctx);
+  return await onReviewReply(thread, message, next, ctx);
+};
 
 export function chatChannels(): AgentControllerChannelsConfig | undefined {
   const slack = slackChannels();
@@ -42,8 +53,9 @@ export function chatChannels(): AgentControllerChannelsConfig | undefined {
       // Approve and Send back on the dashboard's alerts: Discord presses, then Teams
       // presses; anything else as before.
       onAction: onChatAlertButton,
-      // Teammates' replies in a review's Discord thread go to the review; nothing else.
-      ...(discord ? { onMessage: onReviewReply } : {}),
+      // Untagged messages: only teammates' replies in a review's Discord or Teams thread
+      // are used, and they go to the review; nothing else.
+      ...(discord || teams ? { onMessage: onReviewMessage } : {}),
     },
   };
 }
