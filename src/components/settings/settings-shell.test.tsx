@@ -54,6 +54,7 @@ describe("a settings page", () => {
     for (const [slug, name] of [
       ["slack", "Slack"],
       ["discord", "Discord"],
+      ["telegram", "Telegram"],
       ["zoom", "Zoom"],
       ["google-meet", "Google Meet"],
       ["teams", "Microsoft Teams"],
@@ -118,6 +119,7 @@ describe("the settings pages", () => {
     expect(settingsPageFor("#failures")).toBe("runs");
     expect(settingsPageFor("#slack")).toBe("slack");
     expect(settingsPageFor("#discord")).toBe("discord");
+    expect(settingsPageFor("#telegram")).toBe("telegram");
     expect(settingsPageFor("chat")).toBe("slack");
     expect(settingsPageFor("members")).toBe("team");
     expect(settingsPageFor("")).toBe("brand");

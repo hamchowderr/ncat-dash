@@ -20,6 +20,7 @@ import { TURN_USER_KEY } from "../../src/mastra/lib/turn-user";
 import {
   byPlatform,
   chatChannels,
+  actionByPlatform,
   onChatAlertButton,
   onReviewMessage,
 } from "../../src/mastra/ncat/channels";
@@ -242,14 +243,15 @@ describe("Approve and Send back pressed on a Teams alert card", () => {
     env.TEAMS_APP_PASSWORD = "a-bot-password";
     env.MASTRA_JWT_SECRET = "the-agent-shared-secret-of-at-least-32-chars";
     env.CONVEX_SITE_URL = "https://site.test";
-    expect(chatChannels()?.handlers?.onAction).toBe(onChatAlertButton);
+    // Telegram presses are taken first; Teams and Discord ones go on to onChatAlertButton.
+    expect(chatChannels()?.handlers?.onAction).toBe(actionByPlatform);
   });
 
   it('a Teams press goes through the shared button handler to the dashboard', async () => {
     const asked = vi.fn(async () => ({ ok: true, message: 'Approved.' }));
     usePressDashboardForTests(asked);
     const next = vi.fn(async () => undefined);
-    await onChatAlertButton(pressed('ncat_alert_approve').event, next, {} as never);
+    await actionByPlatform(pressed('ncat_alert_approve').event, next, {} as never);
     expect(asked).toHaveBeenCalledOnce();
     expect(next).not.toHaveBeenCalled();
   });
