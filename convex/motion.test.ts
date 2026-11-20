@@ -196,7 +196,7 @@ describe("Add Motion Graphics", () => {
     const pieces = render.body.pieces as { type: string; title?: string; subtitle?: string }[];
     // The second number is said within the style's gap of the first, so it gets no card.
     expect(pieces.map((piece) => piece.type)).toEqual(["title", "lower_third", "stat", "follow"]);
-    expect(pieces[0].title).toBe("growth-talk");
+    expect(pieces[0].title).toBe("growth talk");
     expect(pieces[1]).toMatchObject({ title: "Ana", subtitle: "Host" });
     expect(pieces[2]).toMatchObject({ title: "40%", subtitle: "faster than last year" });
     expect(pieces.at(-1)).toMatchObject({ title: "@saltstudio" });
@@ -237,13 +237,13 @@ describe("Add Motion Graphics", () => {
       [{ id: "motion", kind: "motion", input: {} }],
       TEAM_MOTION,
     );
-    const runId = await start({ file_url: FILE });
+    const runId = await start({ file_url: "https://files.example/uploads/Meet-Zena_Cardman.mp4" });
     await settled(t);
     expect((await runOf(runId))!.status).toBe("done");
     const render = sent.find((one) => one.url.endsWith("/v1/video/motion"))!;
     const pieces = render.body.pieces as { type: string; title?: string }[];
-    expect(pieces[0]).toMatchObject({ type: "title" });
-    expect(pieces[0].title).toBe("growth-talk");
+    // Uploads keep a tidied name with dashes; the title reads as words.
+    expect(pieces[0]).toMatchObject({ type: "title", title: "Meet Zena Cardman" });
   });
 
   test("works with no Motion settings saved, in the default style", async () => {

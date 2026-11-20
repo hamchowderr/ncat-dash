@@ -82,7 +82,7 @@ describe("clips made to fit each platform", () => {
     expect(step.plan).toHaveLength(3);
     for (const job of jobs) {
       expect(job.stepId).toBe("ffmpeg-compose");
-      expect((job.input as Compose).filters?.[0]?.filter).toContain("crop=1080:1350");
+      expect((job.input as Compose).filters?.[0]?.filter).toContain("scale=1080:1350[blurred]");
     }
   });
 
@@ -90,7 +90,7 @@ describe("clips made to fit each platform", () => {
     const { look } = await clipsFor("YouTube", 1500);
     const { step, jobs } = await look();
     expect(step.plan?.map((clip) => clip.seconds).every((seconds) => seconds <= 900)).toBe(true);
-    expect((jobs[0]?.input as Compose).filters?.[0]?.filter).toContain("crop=1920:1080");
+    expect((jobs[0]?.input as Compose).filters?.[0]?.filter).toContain("scale=1920:1080[blurred]");
   });
 
   test("X keeps the video's shape but scales it down to what X takes", async () => {

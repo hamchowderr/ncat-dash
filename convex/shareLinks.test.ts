@@ -95,7 +95,7 @@ describe("share links that just work", () => {
     });
     const fixed = "https://www.dropbox.com/scl/fi/abc123/episode.mp4?rlkey=k9x&dl=1";
     expect(run?.trigger.file_url).toBe(fixed);
-    expect(job?.input.video_url).toBe(fixed);
+    expect(job?.input.media_url).toBe(fixed);
   });
 
   test("a folder link in an automation fails the step and says why", async () => {
