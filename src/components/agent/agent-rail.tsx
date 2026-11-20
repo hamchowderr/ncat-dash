@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, PanelRightOpen } from "lucide-react";
+import { Bot } from "lucide-react";
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ export function AgentRail() {
               aria-keyshortcuts="Meta+J Control+J"
               onClick={() => showAgent(true)}
             >
-              <PanelRightOpen />
+              <Bot />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="left">
@@ -62,12 +62,8 @@ export function AgentRail() {
         aria-hidden="true"
         data-agent-rail
         onClick={() => showAgent(true)}
-        className="group text-muted-foreground hover:text-foreground flex w-full flex-1 cursor-pointer flex-col items-center pt-1 transition-colors"
-      >
-        <span className="group-hover:bg-sidebar-accent flex size-8 items-center justify-center rounded-lg transition-colors">
-          <Bot className="size-4" />
-        </span>
-      </button>
+        className="w-full flex-1 cursor-pointer"
+      />
     </div>
   );
 }
@@ -86,7 +82,7 @@ export function AgentTrigger({ className }: { className?: string }) {
       aria-label="Open the agent"
       onClick={() => showAgent(true)}
     >
-      <PanelRightOpen />
+      <Bot />
     </Button>
   );
 }
