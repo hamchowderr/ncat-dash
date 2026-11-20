@@ -56,7 +56,7 @@ import {
   putFolder,
   storageConnection,
 } from "./lib/bucket";
-import { AD_FILES_NAME, type AdFile, adFilesCsv, shapeFolder } from "./lib/adFiles";
+import { AD_FILES_NAME, type AdFile, adFilesCsv, adFolder } from "./lib/adFiles";
 import { finishedFiles } from "./lib/exports";
 import { deliveryFolderOf } from "./lib/clients";
 import { followLibraryKey } from "./lib/library";
@@ -943,6 +943,8 @@ export const keepFinished = internalAction({
       automationName: string;
       /** The client's folder when the automation was for a client, such as "Clients/Acme/". */
       deliveryFolder: string | null;
+      /** Who filmed it, when a step of the automation names a creator. */
+      creator: string | null;
       files: { link: string; name: string; label: string | null }[];
     } | null = await ctx.runQuery(internal.files.finishedOfRun, { runId: args.runId });
     if (!found || found.files.length === 0) return [];
@@ -982,8 +984,8 @@ export const keepFinished = internalAction({
         const wanted = file.name.toLowerCase().endsWith(ending)
           ? file.name
           : `${file.name}${ending}`;
-        // Ad files in several shapes go in one folder per shape, such as 9x16/.
-        const sub = shapeFolder(file.label);
+        // Ad files go in a folder per creator, then per shape, such as Jane/9x16/.
+        const sub = adFolder(file.label, found.creator);
         const name = freeName(wanted.replace(/[/\\]/g, "-"), (candidate) =>
           taken.has(`${sub}${candidate}`),
         );
@@ -992,7 +994,9 @@ export const keepFinished = internalAction({
           await copyObject(whole, from, `${config.root}${folder}${sub}${name}`);
           kept.push(`${folder}${sub}${name}`);
           placed.push({ link: file.link, key: `${folder}${sub}${name}` });
-          if (file.label) adFiles.push({ name, folder: sub, label: file.label });
+          if (file.label) {
+            adFiles.push({ name, folder: sub, label: file.label, creator: found.creator });
+          }
         } catch {
           // Left where the toolkit put it; the run still links to it there.
         }
@@ -1028,6 +1032,15 @@ export const keepFinished = internalAction({
   },
 });
 
+/** The creator a step of the run names, such as on Hook And Ending Variants. */
+function creatorOf(run: Doc<"runs">): string | null {
+  for (const node of run.nodes) {
+    const creator = (node.input as Record<string, unknown> | undefined)?.creator;
+    if (typeof creator === "string" && creator.trim()) return creator.trim();
+  }
+  return null;
+}
+
 /** A finished run's last files with their readable names, for `keepFinished`. */
 export const finishedOfRun = internalQuery({
   args: { runId: v.id("runs") },
@@ -1048,6 +1061,7 @@ export const finishedOfRun = internalQuery({
       automationName: run.automationName,
       deliveryFolder:
         client && client.organizationId === run.organizationId ? deliveryFolderOf(client) : null,
+      creator: creatorOf(run),
       files: finishedFiles(run, steps).map((link) => ({
         link,
         name: names[link] ?? fileNameOfLink(link),

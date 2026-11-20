@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 
 import { internal } from "./_generated/api";
-import { adFilesCsv, readAdCode, shapeFolder, stemOf } from "./lib/adFiles";
+import { adFilesCsv, adFolder, readAdCode, shapeFolder, stemOf } from "./lib/adFiles";
 import { addPerson, addTeam, backend } from "./test.setup";
 import { connectToolkit, fakeToolkitStorage } from "./test.toolkit";
 
@@ -46,6 +46,7 @@ describe("reading an ad file's code", () => {
       "file_name",
       "folder",
       "creative_id",
+      "creator",
       "hook",
       "ending",
       "length",
@@ -53,6 +54,10 @@ describe("reading an ad file's code", () => {
       "captioned",
       "primary_text",
       "headline",
+      "script_type",
+      "creator_role",
+      "visual_format",
+      "visual_hook",
     ]);
     expect(rows.slice(1).map((row) => row[2])).toEqual([
       "boots_ad_h02_c01",
@@ -63,6 +68,7 @@ describe("reading an ad file's code", () => {
       "Boots ad h02_c01_30s_4x5.mp4",
       "4x5/",
       "boots_ad_h02_c01",
+      "",
       "h02",
       "c01",
       "30s",
@@ -70,7 +76,29 @@ describe("reading an ad file's code", () => {
       "no",
       "",
       "",
+      "",
+      "",
+      "",
+      "",
     ]);
+  });
+
+  test("a creator gets a folder of their own and is in the creative ID", () => {
+    expect(adFolder("h01_c01_15s_9x16", "Jane Doe")).toBe("Jane Doe/9x16/");
+    expect(adFolder("h01_c01_15s_9x16", "  ")).toBe("9x16/");
+    expect(adFolder("h01_c01_15s_9x16", "a/b")).toBe("a-b/9x16/");
+    expect(adFolder("h01_c01_15s_9x16", "..")).toBe("9x16/");
+    expect(adFolder(null, "Jane Doe")).toBe("");
+    const csv = adFilesCsv([
+      {
+        name: "Boots ad h02_c01_15s_9x16.mp4",
+        folder: "Jane Doe/9x16/",
+        label: "h02_c01_15s_9x16",
+        creator: "Jane Doe",
+      },
+    ]);
+    const row = csv.split("\r\n")[1]!.split(",");
+    expect(row.slice(1, 4)).toEqual(["Jane Doe/9x16/", "boots_ad_h02_c01_jane_doe", "Jane Doe"]);
   });
 
   test("names with commas or quotes stay in one cell", () => {
@@ -80,7 +108,7 @@ describe("reading an ad file's code", () => {
 });
 
 describe("a finished run of ad files", () => {
-  async function adRun(labelled: boolean) {
+  async function adRun(labelled: boolean, creator?: string) {
     process.env.CONNECTIONS_SECRET = "a-test-secret-that-is-long-enough-1234";
     toolkit = fakeToolkitStorage();
     const t = backend();
@@ -114,7 +142,7 @@ describe("a finished run of ad files", () => {
             id: "shape",
             kind: "step",
             stepId: "recipe-blur-fill",
-            input: {},
+            input: creator ? { creator } : {},
             position: { x: 0, y: 0 },
           },
         ],
@@ -158,6 +186,22 @@ describe("a finished run of ad files", () => {
       const [name, sub] = row.split(",");
       expect(kept).toContain(`${folder}${sub}${name}`);
     }
+  });
+
+  test("a creator's files go in their own folder, then one per shape", async () => {
+    const { t, salt, runId, toolkit } = await adRun(true, "Jane Doe");
+    const kept = await t.action(internal.files.keepFinished, { runId });
+    const folder = "Finished/Boots Ads/";
+    expect(kept.filter((key) => key.startsWith(`${folder}Jane Doe/9x16/`))).toHaveLength(2);
+    expect(kept.filter((key) => key.startsWith(`${folder}Jane Doe/4x5/`))).toHaveLength(1);
+    const csv = toolkit.texts.get(`teams/${salt}/${folder}Ad files.csv`) ?? "";
+    const rows = csv
+      .trim()
+      .split("\r\n")
+      .slice(1)
+      .map((row) => row.split(","));
+    expect(rows.map((row) => row[3])).toEqual(["Jane Doe", "Jane Doe", "Jane Doe"]);
+    for (const row of rows) expect(kept).toContain(`${folder}${row[1]}${row[0]}`);
   });
 
   test("a second run does not overwrite the first's files or list", async () => {

@@ -67,12 +67,28 @@ export function stemOf(name: string, label: string): string {
   return bare.endsWith(` ${label}`) ? bare.slice(0, -label.length - 1) : bare;
 }
 
+/**
+ * The folder a creator's ad files go in, such as "Jane Doe/"; "" without a creator. UGC
+ * teams compare results creator by creator, so each one's files stay together.
+ */
+export function creatorFolder(creator: string | null | undefined): string {
+  const name = (creator ?? "").replace(/[/\\]/g, "-").replace(/\s+/g, " ").trim();
+  return name && !/^\.+$/.test(name) ? `${name}/` : "";
+}
+
+/** Where a coded file goes inside the automation's folder: creator first, then shape. */
+export function adFolder(label: string | null | undefined, creator: string | null | undefined) {
+  return label ? `${creatorFolder(creator)}${shapeFolder(label)}` : "";
+}
+
 export interface AdFile {
   /** The file's name as kept, such as "Boots ad h02_c01_15s.mp4". */
   name: string;
   /** Where it was kept, inside the automation's folder, such as "9x16/". */
   folder: string;
   label: string;
+  /** Who filmed it, when the automation names a creator. */
+  creator?: string | null;
 }
 
 export const AD_FILES_NAME = "Ad files.csv";
@@ -81,6 +97,7 @@ const COLUMNS = [
   "file_name",
   "folder",
   "creative_id",
+  "creator",
   "hook",
   "ending",
   "length",
@@ -88,6 +105,13 @@ const COLUMNS = [
   "captioned",
   "primary_text",
   "headline",
+  // Left for the team, so winners can be grouped by what kind of ad they are: the script
+  // (problem-solution, skeptic, case study…), the creator's role, the visual format and
+  // the visual hook in the first seconds.
+  "script_type",
+  "creator_role",
+  "visual_format",
+  "visual_hook",
 ];
 
 function cell(value: string): string {
@@ -97,21 +121,31 @@ function cell(value: string): string {
 /**
  * One row per file. The creative ID names the idea (the video and its hook and ending), so
  * the 15 s and 30 s cuts and every shape of one pairing share it, which is how ads
- * managers group results. Primary text and headline are left for the team to write.
+ * managers group results. Primary text, headline and the kind of ad are left for the team.
  */
 export function adFilesCsv(files: AdFile[]): string {
   const rows = files.map((file) => {
     const code = readAdCode(file.label);
-    const creative = [slug(stemOf(file.name, file.label)), ...code.concept].join("_");
+    const creator = file.creator?.trim() ?? "";
+    const creative = [
+      slug(stemOf(file.name, file.label)),
+      ...code.concept,
+      ...(creator ? [slug(creator)] : []),
+    ].join("_");
     return [
       file.name,
       file.folder,
       creative,
+      creator,
       code.hook ?? "",
       code.ending ?? "",
       code.length ?? "",
       code.shape ? code.shape.replace("x", ":") : "",
       code.captioned ? "yes" : "no",
+      "",
+      "",
+      "",
+      "",
       "",
       "",
     ];

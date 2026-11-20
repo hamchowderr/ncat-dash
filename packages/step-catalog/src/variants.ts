@@ -357,6 +357,14 @@ export const variantRecipes: StepDefinition[] = [
         .optional()
         .describe("Another ending, such as a call to action")
         .meta({ title: "Ending take 3" }),
+      creator: z
+        .string()
+        .max(80)
+        .optional()
+        .describe(
+          "Who filmed it. Their files are kept in a folder of their own and named in the ad files list",
+        )
+        .meta({ title: "Creator" }),
       opening_seconds: number(
         "About how long the base cut's own hook is, in seconds",
         0.5,
@@ -434,6 +442,14 @@ export const variantRecipes: StepDefinition[] = [
         .regex(/^\s*\d{1,3}(\s*,\s*\d{1,3}){0,5}\s*$/)
         .default("15, 30, 60")
         .describe("The lengths to cut, in seconds, separated by commas (up to six)"),
+      creator: z
+        .string()
+        .max(80)
+        .optional()
+        .describe(
+          "Who filmed it. Their files are kept in a folder of their own and named in the ad files list",
+        )
+        .meta({ title: "Creator" }),
       ending_seconds: number(
         "Seconds of the ending to keep on every cut, such as a call to action. 0 keeps only the start.",
         0,
