@@ -86,7 +86,8 @@ test("links the Microsoft organization, offers the Teams app, and alerts with Ap
     body: JSON.stringify({
       tenantId: tenant,
       aadObjectId: userId,
-      teamId: TEAMS_TEAM.id,
+      // A Teams team belongs to the first dashboard team that saw it, so each run is its own.
+      teamId: `${TEAMS_TEAM.id}-${stamp}`,
       teamName: TEAMS_TEAM.name,
       serviceUrl: TEAMS_TEAM.serviceUrl,
     }),
@@ -144,9 +145,11 @@ test("links the Microsoft organization, offers the Teams app, and alerts with Ap
       { timeout: 60_000 },
     )
     .toBe(true);
-  const approval = (await posts()).find((post) =>
+  const all = await posts();
+  const index = all.findIndex((post) =>
     cardOf(post)?.actions.some((action) => action.data?.actionId === "ncat_alert_approve"),
-  )!;
+  );
+  const approval = all[index];
   expect(approval.path).toContain(encodeURIComponent("19:edits@thread.tacv2"));
   expect(cardOf(approval)!.body[0].text).toBe(
     "Weekly clips is waiting for your approval (Approval)",
@@ -162,7 +165,8 @@ test("links the Microsoft organization, offers the Teams app, and alerts with Ap
   expect(await pressed.json()).toEqual({ ok: true, message: "Approved." });
 
   // The card changes to say who approved, with no buttons left.
-  const activityId = approval.path.split("/").pop();
+  // The stand-in numbers what it was sent, so this card is message number index + 1.
+  const activityId = String(index + 1);
   await expect
     .poll(
       async () => {
