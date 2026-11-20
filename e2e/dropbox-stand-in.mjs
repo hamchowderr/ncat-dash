@@ -36,6 +36,7 @@ function startingTree() {
     dropboxFile("/Raw footage/Day 1/Interview.mov", 48_000_000, 3),
     dropboxFile("/Raw footage/Voiceover.wav", 9_000_000, 5),
     dropboxFile("/Raw footage/Brief.pdf", 90_000, 5),
+    dropboxFile("/Marketing/Logo.png", 40_000, 2),
   ];
 }
 
@@ -132,11 +133,15 @@ const server = createServer(async (request, response) => {
     }
     if (call === "files/list_folder/get_latest_cursor") {
       pending = pending.filter((one) => !under(body.path, one));
-      return send(response, 200, { cursor: `watch:${body.path}` });
+      // A folder watched on its own (not the folders inside it) gets a "flat" cursor.
+      return send(response, 200, { cursor: `watch${body.recursive ? "" : "flat"}:${body.path}` });
     }
     if (call === "files/list_folder/continue") {
-      const at = String(body.cursor).replace(/^watch:/, "");
-      const mine = pending.filter((one) => under(at, one));
+      const flat = String(body.cursor).startsWith("watchflat:");
+      const at = String(body.cursor).replace(/^watch(flat)?:/, "");
+      const mine = pending.filter(
+        (one) => under(at, one) && (!flat || !one.path_lower.slice(at.length + 1).includes("/")),
+      );
       pending = pending.filter((one) => !mine.includes(one));
       return send(response, 200, { entries: mine, cursor: body.cursor, has_more: false });
     }

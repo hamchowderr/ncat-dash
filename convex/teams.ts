@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { query } from "./_generated/server";
-import { authComponent } from "./auth";
+import { getCaller } from "./lib/caller";
 import { requireMember } from "./lib/authz";
 
 /** The signed-in user's teams. Null when nobody is signed in. */
@@ -12,7 +12,7 @@ export const mine = query({
     v.array(v.object({ id: v.string(), name: v.string(), role: v.string() })),
   ),
   handler: async (ctx) => {
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     if (!user) return null;
     return await ctx.runQuery(components.betterAuth.members.teamsFor, { userId: user._id });
   },

@@ -150,3 +150,21 @@ export const people = query({
     return people;
   },
 });
+
+/**
+ * The person behind a signed-in session, or null when the session is missing, has
+ * expired or belongs to someone else. Same checks as Better Auth's safeGetAuthUser.
+ * It lives here rather than going through adapter.findOne because adapter.ts loads
+ * all of Better Auth on every call; this file stays small so each call stays fast.
+ */
+export const caller = query({
+  args: { sessionId: v.string(), userId: v.string() },
+  returns: v.union(v.null(), v.any()),
+  handler: async (ctx, args) => {
+    const sessionId = ctx.db.normalizeId("session", args.sessionId);
+    const session = sessionId ? await ctx.db.get(sessionId) : null;
+    if (!session || session.expiresAt <= Date.now() || session.userId !== args.userId) return null;
+    const userId = ctx.db.normalizeId("user", args.userId);
+    return userId ? await ctx.db.get(userId) : null;
+  },
+});
