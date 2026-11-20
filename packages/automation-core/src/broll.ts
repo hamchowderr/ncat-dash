@@ -264,6 +264,69 @@ export interface Cutaway {
   from: number;
 }
 
+/** A camera cut this close to a cutaway's edge: the edge moves onto it. */
+export const SNAP_SECONDS = 1;
+/**
+ * A shot of the video no longer than this (a montage shot, a title) is covered whole or
+ * left alone, never cut into: cutting away and back would show the same short shot twice.
+ * A longer shot is a take where the speaker talks, and cutting away from it is the point.
+ */
+export const SHORT_SHOT_SECONDS = MAX_BROLL_SECONDS;
+
+/**
+ * Lines a cutaway up with the video's own camera cuts: an edge near a cut moves onto it,
+ * a cut inside it ends it there, and a short shot is covered whole or not at all. Null
+ * when it does not fit. Without cuts, the span as it was.
+ */
+export function fitToShots(
+  span: Span,
+  cuts: number[],
+  limits: { earliest: number; latest: number; duration: number; longest: number },
+): Span | null {
+  if (cuts.length === 0) return span;
+  const edges = [0, ...cuts.filter((cut) => cut > 0 && cut < limits.duration), limits.duration];
+  const shotAt = (time: number) => {
+    const end = edges.find((edge) => edge > time + 0.05) ?? limits.duration;
+    const start = [...edges].reverse().find((edge) => edge <= time + 0.05) ?? 0;
+    return { start, end };
+  };
+  let { start, end } = span;
+  const length = end - start;
+  let shot = shotAt(start);
+  if (start - shot.start <= SNAP_SECONDS && shot.start >= limits.earliest) {
+    end -= start - shot.start;
+    start = shot.start;
+  }
+  if (shot.end < end - 0.05) {
+    // The video cuts during the cutaway: end with it, or begin with it when too little
+    // would be left before it.
+    if (shot.end - start >= MIN_BROLL_SECONDS) end = shot.end;
+    else {
+      start = shot.end;
+      shot = shotAt(start);
+      end = Math.min(start + length, shot.end, limits.latest);
+    }
+  }
+  if (shot.end - end <= SNAP_SECONDS && shot.end - start <= limits.longest) {
+    end = Math.min(shot.end, limits.latest);
+  }
+  const before = start > shot.start + 0.05;
+  const after = end < shot.end - 0.05;
+  if (before && after && shot.end - shot.start <= SHORT_SHOT_SECONDS) {
+    // Inside a short shot: cover all of it, or leave it be.
+    if (
+      shot.end - shot.start > limits.longest ||
+      shot.start < limits.earliest ||
+      shot.end > limits.latest + 0.5
+    )
+      return null;
+    start = shot.start;
+    end = Math.min(shot.end, limits.latest);
+  }
+  if (end - start < MIN_BROLL_SECONDS) return null;
+  return { start, end };
+}
+
 /** A footage's score when choosing: the library a little ahead of stock. */
 const rankOf = (one: Footage) => one.score + (one.kind === "library" ? LIBRARY_PREFERENCE : 0);
 
@@ -271,13 +334,14 @@ const rankOf = (one: Footage) => one.score + (one.kind === "library" ? LIBRARY_P
  * Chooses the cutaways: the best match for each moment, if it is good enough, then the
  * strongest first, kept only where it fits (after the opening, not over another cutaway
  * or anything in `avoid`, with the gap the settings ask for), and no piece of footage
- * twice. Returned in time order.
+ * twice. With the video's camera `cuts`, each is lined up with its shots (`fitToShots`).
+ * Returned in time order.
  */
 export function chooseCutaways(
   moments: BrollMoment[],
   footage: Footage[][],
   settings: BrollSettings,
-  options: { duration: number; avoid?: Span[]; threshold?: number },
+  options: { duration: number; avoid?: Span[]; threshold?: number; cuts?: number[] },
 ): Cutaway[] {
   const threshold = options.threshold ?? BROLL_THRESHOLDS[settings.match];
   const gap = BROLL_GAPS[settings.often];
@@ -288,9 +352,20 @@ export function chooseCutaways(
       .filter((one) => one.score >= threshold && one.duration >= MIN_BROLL_SECONDS)
       .sort((a, b) => rankOf(b) - rankOf(a));
     for (const one of ranked) {
-      const start = Math.max(moment.start, settings.skipOpening);
+      const first = Math.max(moment.start, settings.skipOpening);
       const length = Math.min(settings.seconds, one.duration);
-      const end = Math.min(start + length, latest);
+      const fitted = fitToShots(
+        { start: first, end: Math.min(first + length, latest) },
+        options.cuts ?? [],
+        {
+          earliest: settings.skipOpening,
+          latest,
+          duration: options.duration,
+          longest: Math.min(one.duration, MAX_BROLL_SECONDS),
+        },
+      );
+      if (!fitted) continue;
+      const { start, end } = fitted;
       if (end - start < MIN_BROLL_SECONDS) continue;
       // Centre the footage on its best moment, inside the footage.
       const span = end - start;

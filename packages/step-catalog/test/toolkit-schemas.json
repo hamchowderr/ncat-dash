@@ -1385,6 +1385,12 @@
         "minimum": 0.5,
         "type": "number"
       },
+      "cuts": {
+        "type": "boolean"
+      },
+      "frames": {
+        "type": "boolean"
+      },
       "id": {
         "type": "string"
       },
