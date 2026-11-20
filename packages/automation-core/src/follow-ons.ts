@@ -132,3 +132,24 @@ export function followOnsByEnd(
   }
   return ids.flatMap((id) => STARTERS.find((starter) => starter.id === id) ?? []);
 }
+
+/**
+ * The ready-made follow-ons for a set of picked ready-mades, each with the pick it would
+ * run after: the first pick it follows. One already picked, or already offered after an
+ * earlier pick, is left out.
+ */
+export function followOnsOfPicks(
+  picks: readonly Starter[],
+): { starter: Starter; after: Starter }[] {
+  const picked = new Set(picks.map((pick) => pick.id));
+  const offered = new Set<string>();
+  const found = [];
+  for (const pick of picks) {
+    for (const starter of followOnsFor(pick.id)) {
+      if (picked.has(starter.id) || offered.has(starter.id)) continue;
+      offered.add(starter.id);
+      found.push({ starter, after: pick });
+    }
+  }
+  return found;
+}

@@ -2,6 +2,7 @@ import {
   appsForPlacements,
   CONTENT_KINDS,
   contentGoalsProblem,
+  followOnTrigger,
   NO_AGENT_SETTINGS,
   nodesForPlatform,
   placementsFor,
@@ -10,7 +11,7 @@ import {
 } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { automationProblem, randomToken, storageProblem } from "./automations";
+import { automationProblem, followedBy, randomToken, storageProblem } from "./automations";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { librarySettingsOf } from "./lib/library";
 import { brandOf, DEFAULT_PARALLEL_JOBS } from "./lib/queue";
@@ -111,6 +112,7 @@ const turnedOnValidator = v.object({
  * Makes the picked ready-made automations, for the first platform the team posts on, and
  * switches each one on. One that still needs something, such as a logo, is made but left
  * off, with the reason. One the team already has under the same name is not made again.
+ * A follow-on is wired to start after the team's automation made from what it follows.
  */
 export const turnOn = mutation({
   args: { organizationId: v.string(), starterIds: v.array(v.string()) },
@@ -136,8 +138,13 @@ export const turnOn = mutation({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .take(500);
 
+    // A follow-on is made after what it follows, so it can be wired to start after it.
+    const ordered = [
+      ...starters.filter((starter) => starter.trigger.kind !== "finished"),
+      ...starters.filter((starter) => starter.trigger.kind === "finished"),
+    ];
     const made = [];
-    for (const starter of starters) {
+    for (const starter of ordered) {
       const already = existing.find((automation) => automation.name === starter.name);
       if (already) {
         made.push({
@@ -149,9 +156,13 @@ export const turnOn = mutation({
         });
         continue;
       }
+      const followed =
+        starter.trigger.kind === "finished"
+          ? await followedBy(ctx, args.organizationId, starter.follows ?? [])
+          : null;
       const content = {
         name: starter.name,
-        trigger: starter.trigger,
+        trigger: followed ? followOnTrigger(starter, followed) : starter.trigger,
         nodes: nodesForPlatform(starter.nodes, platform),
         edges: starter.edges,
       };

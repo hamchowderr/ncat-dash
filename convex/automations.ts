@@ -277,7 +277,7 @@ async function createAutomation(
  * The team's most recently changed automation made from one of `starterIds`, earlier ones
  * in the list first, or null when the team has none of them.
  */
-async function followedBy(
+export async function followedBy(
   ctx: QueryCtx,
   organizationId: string,
   starterIds: string[],

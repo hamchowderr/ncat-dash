@@ -4,6 +4,7 @@ import {
   followedNames,
   followOnsByEnd,
   followOnsFor,
+  followOnsOfPicks,
   followOnTrigger,
   followsLine,
   isFollowOn,
@@ -157,5 +158,23 @@ describe("follow-ons for an automation built from scratch", () => {
     expect(ids([{ id: "f", kind: "step", stepId: "recipe-frame" }])).toEqual([]);
     expect(ids([{ id: "t", kind: "step", stepId: "media-transcribe" }])).toEqual([]);
     expect(ids([])).toEqual([]);
+  });
+});
+
+describe("follow-ons of picked ready-mades", () => {
+  const byId = (id: string) => STARTERS.find((starter) => starter.id === id)!;
+  it("offers each once, after the first pick it follows, leaving out ones already picked", () => {
+    const found = followOnsOfPicks([
+      byId("coaching-session-pack"),
+      byId("social-clips"),
+      byId("recording-pack"),
+      byId("clips-from-episode"),
+    ]);
+    expect(found.map(({ starter, after }) => [starter.id, after.id])).toEqual([
+      ["brand-every-clip", "coaching-session-pack"],
+    ]);
+  });
+  it("offers nothing after a pick nothing follows", () => {
+    expect(followOnsOfPicks([byId("podcast-master")])).toEqual([]);
   });
 });
