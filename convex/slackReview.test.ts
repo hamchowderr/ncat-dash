@@ -328,6 +328,9 @@ describe("what the channel hears", () => {
     const setup = await setUp();
     const { t, jordan } = setup;
     const { reviewId, clipId } = await openRoom(setup);
+    // Only what the client's comment posts is looked at, whatever order posts land in.
+    await settled(t);
+    posted = [];
     const token = await jordan.as.mutation(api.reviewShares.set, {
       reviewId,
       allowVerdict: false,
@@ -343,7 +346,8 @@ describe("what the channel hears", () => {
       version: 1,
     });
     await settled(t);
-    const text = posted.at(-1)?.text ?? "";
+    expect(posted).toHaveLength(1);
+    const text = posted[0]?.text ?? "";
     expect(text).not.toContain("<!");
     expect(text).not.toContain("<https://evil");
     expect(text).toContain("&lt;!here&gt;");

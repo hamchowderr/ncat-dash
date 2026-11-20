@@ -11,6 +11,7 @@ import {
   digestEmail,
   mentionEmail,
   readyForReviewEmail,
+  clipFinishedEmail,
   runFailedEmail,
   sendEmail,
   senderProblem,
@@ -234,6 +235,23 @@ describe("messages", () => {
     expect(ready.text).toContain("Dev Patel added a new version");
     expect(ready.text).toContain("https://dash.example.com/review/r?clip=c");
     expect(ready.html).toContain("Episode &lt;12&gt;");
+  });
+
+  it("says a run finished, how many files it made, and links to the run", () => {
+    const done = clipFinishedEmail(
+      {
+        teamName: "Salt House",
+        automationName: "Shorts <daily>",
+        summary: "3 new files are ready in Files.",
+        runUrl: "https://dash.example.com/automations/a/runs/r",
+        settingsUrl: "https://dash.example.com/settings/notifications",
+      },
+      branding,
+    );
+    expect(done.subject).toBe("New files from Shorts <daily>");
+    expect(done.text).toContain("3 new files are ready in Files. In Salt House.");
+    expect(done.text).toContain("https://dash.example.com/automations/a/runs/r");
+    expect(done.html).toContain("Shorts &lt;daily&gt;");
   });
 
   it("tells a person they were mentioned, quoting the comment, escaped", () => {
