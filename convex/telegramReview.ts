@@ -93,9 +93,27 @@ export function postLink(post: ReviewPost, context: Pick<PostContext, "clipId">)
 }
 
 /**
+ * Who a post speaks for: the teammate or client who wrote it, shown first and in bold the
+ * way a chat app shows a person's name over their message. A new review is the
+ * dashboard's own post, so it has none. Exported for the tests.
+ */
+export function postSpeaker(post: ReviewPost): string | null {
+  switch (post.kind) {
+    case "review_opened":
+      return null;
+    case "client_feedback":
+      return `${post.from} (client)`;
+    case "mention":
+    case "team_reply":
+      return post.from;
+  }
+}
+
+/**
  * The words of a post. Telegram gets plain text (no parse mode), so a client's or a
  * teammate's words are shown exactly as written and can never add formatting or links.
- * Exported for the tests.
+ * Anything someone wrote starts with their name (`postSpeaker`), which `post` makes bold
+ * by itself. Exported for the tests.
  */
 export function postText(post: ReviewPost, context: PostContext): string {
   const title = `"${context.reviewTitle}"`;
@@ -103,6 +121,7 @@ export function postText(post: ReviewPost, context: PostContext): string {
     context.time === null
       ? title
       : `${title}, ${context.clipTitle ?? "a clip"} at ${formatMoment(context.time)}`;
+  const speaker = postSpeaker(post);
   switch (post.kind) {
     case "review_opened": {
       const clips = context.clipCount === 1 ? "1 clip" : `${context.clipCount} clips`;
@@ -112,18 +131,25 @@ export function postText(post: ReviewPost, context: PostContext): string {
       return `New review: ${title} (${clips})${context.openedBy ? `, opened by ${context.openedBy}` : ""}.`;
     }
     case "client_feedback":
-      if (context.replyTo !== null) return `${post.from} (client): ${post.body}`;
+      if (context.replyTo !== null) return `${speaker}\n${post.body}`;
       return post.commentId
-        ? `${post.from} (client) commented on ${where}:\n\n${post.body}`
-        : `${post.from} (client) on ${title}: ${post.body}`;
+        ? `${speaker} commented on ${where}:\n\n${post.body}`
+        : `${speaker} on ${title}:\n\n${post.body}`;
     case "mention": {
       const tagged = context.tags.length > 0 ? context.tags.join(" ") : "someone";
-      if (context.replyTo !== null) return `${post.from} to ${tagged}: ${post.body}`;
-      return `${post.from} mentioned ${tagged} on ${where}:\n\n${post.body}`;
+      if (context.replyTo !== null) return `${speaker}\nto ${tagged}: ${post.body}`;
+      return `${speaker} mentioned ${tagged} on ${where}:\n\n${post.body}`;
     }
     case "team_reply":
-      return `${post.from}: ${post.body}`;
+      return `${speaker}\n${post.body}`;
   }
+}
+
+/** The bold name a post starts with, as a Telegram message entity (offsets in UTF-16). */
+export function speakerEntities(post: ReviewPost, text: string) {
+  const speaker = postSpeaker(post);
+  if (!speaker || !text.startsWith(speaker)) return [];
+  return [{ type: "bold", offset: 0, length: speaker.length }];
 }
 
 /** Posts one piece of review activity to the team's Telegram group. */
@@ -142,6 +168,7 @@ export const post = internalAction({
       sent = (await call("sendMessage", {
         chat_id: context.chatId,
         text: text.slice(0, 4000),
+        entities: speakerEntities(args.post, text.slice(0, 4000)),
         link_preview_options: { is_disabled: true },
         ...(context.replyTo !== null
           ? { reply_parameters: { message_id: context.replyTo, allow_sending_without_reply: true } }
