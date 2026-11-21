@@ -1,4 +1,5 @@
 import {
+  type Beats,
   type FileFacts,
   type MediaFacts,
   type Pause,
@@ -101,8 +102,27 @@ export async function readFacts(
     } catch {
       // Left out: the step works without it or says what it needs.
     }
-    if (!step.readsPauses?.includes(field)) continue;
     const length = facts[field]?.duration;
+    if (step.readsBeats?.includes(field) && facts[field]?.hasAudio !== false) {
+      if (length && length <= PAUSE_READ_LIMIT) {
+        try {
+          const res = await doFetch(joinUrl(connection.baseUrl, "/v1/audio/beats"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-API-Key": connection.apiKey },
+            body: JSON.stringify({ media_url: url }),
+            signal: options.signal,
+          });
+          if (res.ok) {
+            const envelope = (await res.json()) as { response?: unknown } | null;
+            const beats = readBeats(envelope?.response);
+            if (beats) facts[field] = { ...facts[field], beats };
+          }
+        } catch {
+          // Left out: the step says the beat could not be read.
+        }
+      }
+    }
+    if (!step.readsPauses?.includes(field)) continue;
     if (!length || length > PAUSE_READ_LIMIT || facts[field]?.hasAudio === false) continue;
     try {
       const res = await doFetch(joinUrl(connection.baseUrl, "/v1/media/silence"), {
@@ -123,6 +143,26 @@ export async function readFacts(
     if (words) facts[field] = { ...facts[field], words };
   }
   return facts;
+}
+
+/** The toolkit's /v1/audio/beats answer, with bad times dropped. Undefined when it has no beat. */
+export function readBeats(raw: unknown): Beats | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const answer = raw as Record<string, unknown>;
+  const times = (list: unknown) =>
+    (Array.isArray(list) ? list : [])
+      .filter((t): t is number => typeof t === "number" && Number.isFinite(t) && t >= 0)
+      .sort((a, b) => a - b);
+  const tempo = number(answer.tempo);
+  const beats = times(answer.beats);
+  if (!tempo || beats.length < 2) return undefined;
+  const steadiness = number(answer.steadiness);
+  return {
+    tempo,
+    steadiness: steadiness === undefined ? 1 : Math.min(1, steadiness),
+    beats,
+    downbeats: times(answer.downbeats),
+  };
 }
 
 /** Pauses are read only for files up to this long, in seconds, so a read stays quick. */

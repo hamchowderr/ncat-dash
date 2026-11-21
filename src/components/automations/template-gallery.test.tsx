@@ -20,7 +20,7 @@ describe("the ready-made automations", () => {
     for (const starter of STARTERS) {
       expect(screen.getAllByText(starter.name, { exact: true }).length).toBeGreaterThan(0);
     }
-    expect(screen.getByRole("button", { name: /^All 87$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^All 88$/ })).toBeTruthy();
   });
 
   test("narrows to one category", () => {

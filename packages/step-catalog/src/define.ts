@@ -76,6 +76,11 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    */
   readsPauses?: string[];
   /**
+   * File settings among `readsFirst` whose music's beats are read too (/v1/audio/beats),
+   * so cuts can land on them. Only read for files up to 20 minutes long.
+   */
+  readsBeats?: string[];
+  /**
    * File settings whose spoken words the step needs, from the team's transcripts. In a run
    * the runner transcribes any not heard before, then hands them over as `facts[field]
    * .words`. Depends on the step's settings, so a step only asks when it will use them.
@@ -116,6 +121,8 @@ export interface MediaFacts {
   hasAudio?: boolean;
   /** Pauses in speech, in seconds, for settings named in `readsPauses`. */
   pauses?: Pause[];
+  /** Where the music's beats fall, for settings named in `readsBeats`. */
+  beats?: Beats;
   /** Each word heard, in order, for settings named by `readsWords`. */
   words?: SpokenWord[];
 }
@@ -125,6 +132,17 @@ export interface SpokenWord {
   text: string;
   start: number;
   end: number;
+}
+
+/** A song's tempo and where its beats and bars fall, in seconds, as the toolkit found them. */
+export interface Beats {
+  /** Beats a minute. */
+  tempo: number;
+  /** How evenly the sound repeats at that tempo, 0 to 1. Speech is below about 0.3. */
+  steadiness: number;
+  beats: number[];
+  /** The first beat of each bar. */
+  downbeats: number[];
 }
 
 /** A stretch of silence, from and to, in seconds. */
