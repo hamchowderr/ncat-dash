@@ -317,13 +317,19 @@ async function cancelRun(ctx: MutationCtx, run: Doc<"runs">): Promise<void> {
     if (step.status === "done" || step.status === "failed" || step.status === "skipped") continue;
     for (const jobId of step.jobIds) {
       const job = await ctx.db.get(jobId);
-      if (job && job.status === "queued" && job.dispatchedAt === undefined) {
-        await ctx.db.patch(jobId, {
-          status: "failed",
-          error: "The run was cancelled before this job was sent.",
-          finishedAt: now,
-        });
-      }
+      if (!job || job.status === "done" || job.status === "failed") continue;
+      // A job the toolkit already has ends here too, so it stops counting toward the
+      // team's jobs at once. Otherwise a job that hangs on the toolkit would hold its slot,
+      // and the team's next runs would wait, until the dashboard gives up on it hours later.
+      // Its result, if one ever comes, is not used.
+      const sent = job.status === "running" || job.dispatchedAt !== undefined;
+      await ctx.db.patch(jobId, {
+        status: "failed",
+        error: sent
+          ? "The run was stopped while the toolkit worked on this job, so its result is not used."
+          : "The run was cancelled before this job was sent.",
+        finishedAt: now,
+      });
     }
     await ctx.db.patch(step._id, { status: "skipped", finishedAt: now });
   }

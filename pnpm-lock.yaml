@@ -357,6 +357,31 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@edge-runtime/vm@5.0.0)(@types/debug@4.1.13)(@types/node@25.9.9)(jiti@2.7.0)(jsdom@31.0.1(@noble/hashes@2.4.0))(lightningcss@1.33.0)(tsx@4.23.15)(yaml@2.9.1)
 
+  packages/speed-test:
+    dependencies:
+      '@ncat-dash/automation-core':
+        specifier: workspace:*
+        version: link:../automation-core
+      '@ncat-dash/step-catalog':
+        specifier: workspace:*
+        version: link:../step-catalog
+      convex:
+        specifier: ^1.50.0
+        version: 1.50.0(react@19.3.0)
+    devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.43
+      tsx:
+        specifier: ^4.21.0
+        version: 4.23.15
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@edge-runtime/vm@5.0.0)(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@2.7.0)(jsdom@31.0.1(@noble/hashes@2.4.0))(lightningcss@1.33.0)(tsx@4.23.15)(yaml@2.9.1)
+
   packages/step-catalog:
     dependencies:
       zod:
