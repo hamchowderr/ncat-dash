@@ -27,9 +27,9 @@ import { withTeamSteps } from "./lib/teamSteps";
  */
 
 const INSTRUCTIONS =
-  "This is Kontifi, a content automation dashboard. Each automation is a set of plain steps (cut clips, add captions, reframe, and so on) that runs by itself on the team's own toolkit, with no AI per video. Read the content-automations skill before building. list_automations and describe_automation show what the team has; create_automation and change_automation build (changes are kept as a draft that someone publishes in the dashboard); start_automation runs one on an upload or a file link; check_run shows how a run is going and the files it made. A chain of linked automations can be one workflow (set_up_workflow) with a single review before its files go out.";
+  "This is Takewon, a content automation dashboard. Each automation is a set of plain steps (cut clips, add captions, reframe, and so on) that runs by itself on the team's own toolkit, with no AI per video. Read the content-automations skill before building. list_automations and describe_automation show what the team has; create_automation and change_automation build (changes are kept as a draft that someone publishes in the dashboard); start_automation runs one on an upload or a file link; check_run shows how a run is going and the files it made. A chain of linked automations can be one workflow (set_up_workflow) with a single review before its files go out.";
 
-const SERVER_INFO = { name: "kontifi", title: PRODUCT_NAME, version: "2.0.0" };
+const SERVER_INFO = { name: "takewon", title: PRODUCT_NAME, version: "2.0.0" };
 
 const automationId = { type: "string", description: "From list_automations or create_automation." };
 

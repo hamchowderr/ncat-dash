@@ -40,6 +40,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { errorMessage, stepTitle } from "@/lib/catalog";
+import { useNarrow } from "@/hooks/use-narrow";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
@@ -115,6 +116,24 @@ export function HereNow({ here, me }: { here: Here[]; me: string }) {
         {here.length === 1 ? "Only you here" : `${here.length} here now`}
       </span>
     </div>
+  );
+}
+
+/** What the client answered through their share link. It never decides the review. */
+function ClientVerdict({ verdict }: { verdict: { name: string; approved: boolean } }) {
+  return (
+    <Badge
+      variant="outline"
+      data-client-verdict={verdict.approved ? "approved" : "changes"}
+      className={
+        verdict.approved
+          ? "border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
+          : "border-amber-600/40 text-amber-700 dark:text-amber-400"
+      }
+    >
+      {verdict.approved ? <Check /> : <Undo2 />}
+      {verdict.name} {verdict.approved ? "approved" : "wants changes"}
+    </Badge>
   );
 }
 
@@ -572,6 +591,7 @@ function OpenRoom({
   // The version on screen for each clip; the newest until someone picks another.
   const [versions, setVersions] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const narrow = useNarrow();
 
   if (review === undefined) return <Skeleton className="h-[70svh] rounded-xl" />;
   if (review === null || review.clips.length === 0) return <GoneRoom />;
@@ -605,152 +625,172 @@ function OpenRoom({
     }
   }
 
-  return (
-    // Exactly the page's height on a wide screen (the top bar is 4rem, the page's frame and
-    // bottom padding 2rem), so nothing scrolls and the clip gets every bit of height.
-    <div className="flex min-h-[36rem] flex-col gap-3 lg:h-[calc(100svh-6rem)]">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <nav
-          aria-label="Breadcrumb"
-          className="flex min-w-0 basis-full items-center gap-1.5 text-sm sm:flex-1 sm:basis-auto"
+  const decision =
+    review.status === "open" ? (
+      <div
+        className={cn("flex items-center gap-2", narrow && "grid grid-cols-2")}
+        data-tour-step-id="tour-review-decide"
+      >
+        <Button
+          variant="outline"
+          size={narrow ? "lg" : "sm"}
+          className={cn(narrow && "h-11")}
+          disabled={busy}
+          onClick={() =>
+            act(() => decide({ reviewId, approved: false }), "The decision could not be saved.")
+          }
         >
-          <Link
-            href="/review"
-            transitionTypes={["nav-back"]}
-            className="text-muted-foreground hover:text-foreground"
+          <Undo2 />
+          Ask for changes
+        </Button>
+        <Button
+          size={narrow ? "lg" : "sm"}
+          className={cn(narrow && "h-11")}
+          disabled={busy}
+          onClick={() =>
+            act(() => decide({ reviewId, approved: true }), "The approval could not be saved.")
+          }
+        >
+          <Check />
+          Approve
+        </Button>
+      </div>
+    ) : null;
+
+  const runNote = review.holdsRun && (
+    <p
+      className={cn(
+        "text-muted-foreground",
+        narrow ? "text-xs" : "bg-muted/60 rounded-lg px-3 py-2 text-sm",
+      )}
+    >
+      An automation is paused on this review. Approving sends these files on to its next step;
+      asking for changes stops the run.
+    </p>
+  );
+
+  return (
+    // Exactly the height that is left under the top bar (4rem, plus the page's 1rem bottom
+    // padding; 2rem with the frame on a wide screen), so the page itself never scrolls. On a
+    // wide screen the clip gets every bit of that height. On a narrow one, a phone, the room
+    // scrolls inside and the decision stays at the bottom, under the thumb, taking its own
+    // room rather than covering the clips.
+    <div className="flex h-[calc(100dvh-5rem)] flex-col gap-3 lg:h-[calc(100svh-6rem)] lg:min-h-[36rem]">
+      <div
+        data-room-scroll
+        className="-mx-4 min-h-0 flex-1 overflow-y-auto px-4 max-lg:space-y-3 lg:contents"
+      >
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <nav
+            aria-label="Breadcrumb"
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-sm max-lg:basis-0 lg:basis-auto"
           >
-            Review
-          </Link>
-          <ChevronRight className="text-muted-foreground size-3.5 shrink-0" aria-hidden="true" />
-          <h1 className="truncate font-medium">{review.title}</h1>
-        </nav>
-
-        {roster && <HereNow here={here} me={roster.me} />}
-
-        <div className="flex flex-wrap items-center gap-2">
-          <StartPageTour tourId="review-room" />
-          <PageTourButton tourId="review-room" />
-          {review.clientVerdict && (
-            <Badge
-              variant="outline"
-              data-client-verdict={review.clientVerdict.approved ? "approved" : "changes"}
-              className={
-                review.clientVerdict.approved
-                  ? "border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
-                  : "border-amber-600/40 text-amber-700 dark:text-amber-400"
-              }
+            <Link
+              href="/review"
+              transitionTypes={["nav-back"]}
+              className="text-muted-foreground hover:text-foreground"
             >
-              {review.clientVerdict.approved ? <Check /> : <Undo2 />}
-              {review.clientVerdict.name}{" "}
-              {review.clientVerdict.approved ? "approved" : "wants changes"}
-            </Badge>
-          )}
-          <ShareDialog reviewId={reviewId} />
-          {review.status === "open" ? (
-            <div className="flex items-center gap-2" data-tour-step-id="tour-review-decide">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={() =>
-                  act(
-                    () => decide({ reviewId, approved: false }),
-                    "The decision could not be saved.",
-                  )
-                }
-              >
-                <Undo2 />
-                Ask for changes
-              </Button>
-              <Button
-                size="sm"
-                disabled={busy}
-                onClick={() =>
-                  act(
-                    () => decide({ reviewId, approved: true }),
-                    "The approval could not be saved.",
-                  )
-                }
-              >
-                <Check />
-                Approve
-              </Button>
-            </div>
-          ) : (
-            <Badge variant={review.status === "approved" ? "default" : "destructive"}>
-              {review.status === "approved" && <Check />}
-              {statusLabel(review.status)}
-              {decider ? ` by ${decider.name}` : ""}
-            </Badge>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="More">
-                <EllipsisVertical />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {review.status !== "open" && (
+              Review
+            </Link>
+            <ChevronRight className="text-muted-foreground size-3.5 shrink-0" aria-hidden="true" />
+            <h1 className="truncate font-medium">{review.title}</h1>
+          </nav>
+
+          {roster && !narrow && <HereNow here={here} me={roster.me} />}
+
+          <div className={cn("flex items-center gap-2", narrow ? "-mr-2 gap-0" : "flex-wrap")}>
+            <StartPageTour tourId="review-room" />
+            <PageTourButton tourId="review-room" compact={narrow} />
+            {review.clientVerdict && !narrow && <ClientVerdict verdict={review.clientVerdict} />}
+            <ShareDialog reviewId={reviewId} compact={narrow} />
+            {review.status === "open" ? (
+              !narrow && decision
+            ) : (
+              <Badge variant={review.status === "approved" ? "default" : "destructive"}>
+                {review.status === "approved" && <Check />}
+                {statusLabel(review.status)}
+                {decider ? ` by ${decider.name}` : ""}
+              </Badge>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size={narrow ? "icon" : "icon-sm"} aria-label="More">
+                  <EllipsisVertical />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {review.status !== "open" && (
+                  <DropdownMenuItem
+                    onSelect={() => act(() => reopen({ reviewId }), "That could not be saved.")}
+                  >
+                    <RotateCcw />
+                    Put back in review
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
-                  onSelect={() => act(() => reopen({ reviewId }), "That could not be saved.")}
+                  variant="destructive"
+                  onSelect={() =>
+                    act(async () => {
+                      await remove({ reviewId });
+                      router.push("/review", { transitionTypes: ["nav-back"] });
+                    }, "The review could not be deleted.")
+                  }
                 >
-                  <RotateCcw />
-                  Put back in review
+                  <Trash2 />
+                  Delete review
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={() =>
-                  act(async () => {
-                    await remove({ reviewId });
-                    router.push("/review", { transitionTypes: ["nav-back"] });
-                  }, "The review could not be deleted.")
-                }
-              >
-                <Trash2 />
-                Delete review
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Second line on a narrow screen: who is here, and what the client said. */}
+          {narrow && (roster || review.clientVerdict) && (
+            <div className="flex basis-full flex-wrap items-center gap-2">
+              {roster && <HereNow here={here} me={roster.me} />}
+              {review.clientVerdict && <ClientVerdict verdict={review.clientVerdict} />}
+            </div>
+          )}
+        </div>
+
+        {!narrow && runNote}
+
+        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+          {review.clips.length > 1 && (
+            <ClipList
+              clips={review.clips}
+              selected={clip._id}
+              onSelect={(id) => {
+                setFocusComment(null);
+                setHighlight(null);
+                setClipId(id);
+              }}
+            />
+          )}
+          <ClipWorkspace
+            key={`${clip._id}:${version}`}
+            review={review}
+            clip={clip}
+            index={index}
+            version={version}
+            people={[AGENT_PERSON, ...people]}
+            onVersion={(next) => setVersions((current) => ({ ...current, [clip._id]: next }))}
+            focus={focusComment}
+            highlight={highlight}
+            typing={typists}
+            onFocused={(threadId) => {
+              setFocusComment(null);
+              setHighlight(threadId);
+            }}
+          />
         </div>
       </div>
 
-      {review.holdsRun && (
-        <p className="bg-muted/60 text-muted-foreground rounded-lg px-3 py-2 text-sm">
-          An automation is paused on this review. Approving sends these files on to its next step;
-          asking for changes stops the run.
-        </p>
+      {narrow && decision && (
+        <div data-decision-bar className="flex flex-col gap-2 pb-[env(safe-area-inset-bottom)]">
+          {runNote}
+          {decision}
+        </div>
       )}
-
-      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        {review.clips.length > 1 && (
-          <ClipList
-            clips={review.clips}
-            selected={clip._id}
-            onSelect={(id) => {
-              setFocusComment(null);
-              setHighlight(null);
-              setClipId(id);
-            }}
-          />
-        )}
-        <ClipWorkspace
-          key={`${clip._id}:${version}`}
-          review={review}
-          clip={clip}
-          index={index}
-          version={version}
-          people={[AGENT_PERSON, ...people]}
-          onVersion={(next) => setVersions((current) => ({ ...current, [clip._id]: next }))}
-          focus={focusComment}
-          highlight={highlight}
-          typing={typists}
-          onFocused={(threadId) => {
-            setFocusComment(null);
-            setHighlight(threadId);
-          }}
-        />
-      </div>
     </div>
   );
 }

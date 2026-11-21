@@ -121,8 +121,9 @@ function Entry({
               type="button"
               onClick={() => onDelete(comment.id)}
               aria-label={agent ? "Delete this answer" : "Delete your comment"}
-              className="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 ml-auto rounded opacity-0 outline-none group-hover/entry:opacity-100 focus-visible:opacity-100 focus-visible:ring-3"
+              className="text-muted-foreground hover:text-destructive focus-visible:ring-ring/50 ml-auto rounded opacity-0 outline-none group-hover/entry:opacity-100 focus-visible:opacity-100 focus-visible:ring-3 pointer-coarse:-m-2 pointer-coarse:p-2 pointer-coarse:opacity-100"
             >
+              {/* A touch screen has no hover to reveal it, so there it always shows. */}
               <Trash2 className="size-3.5" />
             </button>
           )}
@@ -201,7 +202,7 @@ export function CommentPanel({
     <section
       aria-label="Comments"
       data-tour-step-id="tour-review-comments"
-      className="flex min-h-96 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface"
+      className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface lg:min-h-96"
     >
       <header className="flex items-baseline gap-2 px-4 py-3">
         <h2 className="text-sm font-semibold">Comments</h2>
@@ -214,16 +215,18 @@ export function CommentPanel({
         </span>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* Stacked under the clip on a narrow screen, the box to write in comes straight after
+        the clip and the conversation follows, so a note is a pause and a tap away. */}
+      <div className="min-h-0 flex-1 overflow-y-auto max-lg:order-2">
         {loading ? null : threads.length === 0 ? (
           <p className="text-muted-foreground px-4 py-6 text-sm">
             {guest
               ? timed
-                ? "Pause where something needs a change and write it below. Your note stays pinned to that moment for the team."
-                : "Write a note below. The team sees it straight away."
+                ? "Pause where something needs a change and write it in the box. Your note stays pinned to that moment for the team."
+                : "Write a note in the box. The team sees it straight away."
               : timed
-                ? "Pause where something needs a note and write it below. It stays pinned to that moment for the whole team. Tag @Agent to ask the agent about that moment."
-                : "Write a note below. The whole team sees it here. Tag @Agent to ask the agent."}
+                ? "Pause where something needs a note and write it in the box. It stays pinned to that moment for the whole team. Tag @Agent to ask the agent about that moment."
+                : "Write a note in the box. The whole team sees it here. Tag @Agent to ask the agent."}
           </p>
         ) : (
           <ol className="divide-y">
@@ -279,7 +282,12 @@ export function CommentPanel({
                   </div>
                 ) : (
                   <div className="ml-9 flex items-center gap-1">
-                    <Button variant="ghost" size="xs" onClick={() => setReplyTo(root.id)}>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="pointer-coarse:h-9 pointer-coarse:px-2.5"
+                      onClick={() => setReplyTo(root.id)}
+                    >
                       <CornerDownRight />
                       Reply
                     </Button>
@@ -287,6 +295,7 @@ export function CommentPanel({
                       <Button
                         variant="ghost"
                         size="xs"
+                        className="pointer-coarse:h-9 pointer-coarse:px-2.5"
                         aria-pressed={root.resolved}
                         onClick={() => onResolve(root.id, !root.resolved)}
                       >
@@ -309,7 +318,7 @@ export function CommentPanel({
         )}
       </div>
 
-      <div className="flex flex-col gap-1.5 p-3">
+      <div className="flex flex-col gap-1.5 p-3 max-lg:order-1 max-lg:pt-0">
         <TypingLine names={typingIn(null)} className="px-1" />
         <Composer
           people={people}

@@ -13,8 +13,6 @@ import { Copy, LayoutGrid, List, Trash2, UploadCloud } from "lucide-react";
 import { useMemo, useRef, useSyncExternalStore, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
-import { cn } from "cn";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,7 +32,10 @@ import {
 } from "@/components/ui/table";
 import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
+import { cn } from "@/lib/utils";
 import { useSendFile } from "@/lib/send-file";
+import { usePhone } from "@/hooks/use-narrow";
+import { useWakeLock } from "@/hooks/use-wake-lock";
 
 import { CopyLookFromUpload } from "@/components/looks/look-study";
 
@@ -114,7 +115,8 @@ function UploadActions({
   onRemove: () => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center">
+    // On a phone the opened file carries these, as big buttons; the tile stays a picture.
+    <div className="flex shrink-0 items-center max-sm:hidden">
       <Button
         variant="ghost"
         size="icon-sm"
@@ -150,8 +152,13 @@ export function UploadsView() {
   const [dragging, setDragging] = useState(false);
   const [opened, setOpened] = useState<Id<"uploads"> | null>(null);
   const [hovered, setHovered] = useState<Id<"uploads"> | null>(null);
-  // The server always draws tiles; the browser then uses the viewer's own choice.
-  const layout = useSyncExternalStore(watchLayout, readLayout, () => "tiles" as const);
+  // The server always draws tiles; the browser then uses the viewer's own choice. A phone
+  // always gets tiles: the list's nine columns do not fit across one.
+  const phone = usePhone();
+  const chosen = useSyncExternalStore(watchLayout, readLayout, () => "tiles" as const);
+  const layout = phone ? "tiles" : chosen;
+  const sending = Object.keys(inFlight).length > 0;
+  useWakeLock(sending);
   const ready = useMemo(
     () =>
       uploads
@@ -301,10 +308,17 @@ export function UploadsView() {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         data-dragging={dragging}
-        className="data-[dragging=true]:border-primary data-[dragging=true]:bg-accent/50 flex flex-col items-center gap-3 rounded-xl bg-surface p-8 text-center transition-colors"
+        data-upload-area
+        className="data-[dragging=true]:border-primary data-[dragging=true]:bg-accent/50 flex flex-col items-center gap-3 rounded-xl bg-surface p-5 text-center transition-colors sm:p-8"
       >
-        <UploadCloud className="text-muted-foreground size-8" aria-hidden="true" />
-        <p className="text-sm">Drop files here, or choose them from your computer.</p>
+        <UploadCloud className="text-muted-foreground size-8 max-sm:size-7" aria-hidden="true" />
+        {/* A phone has nothing to drag from: its picker opens the camera roll and the camera. */}
+        <p className="text-sm pointer-coarse:hidden">
+          Drop files here, or choose them from your computer.
+        </p>
+        <p className="hidden text-sm pointer-coarse:block">
+          Choose videos and photos from your phone.
+        </p>
         <input
           ref={input}
           type="file"
@@ -316,13 +330,23 @@ export function UploadsView() {
             event.target.value = "";
           }}
         />
-        <Button size="sm" onClick={() => input.current?.click()}>
+        <Button
+          size="sm"
+          className="pointer-coarse:h-11 pointer-coarse:w-full pointer-coarse:max-w-xs pointer-coarse:text-base"
+          onClick={() => input.current?.click()}
+        >
           Choose files
         </Button>
         <p className="text-muted-foreground text-xs">
           Going to your toolkit&apos;s storage, bucket {storage.bucket}.
         </p>
       </div>
+
+      {sending && (
+        <p role="status" className="text-muted-foreground text-sm" data-keep-open>
+          Keep this page open until your files finish sending. The screen stays on meanwhile.
+        </p>
+      )}
 
       {fromZoom.length > 0 && (
         <p className="text-muted-foreground text-sm" data-zoom-coming>
@@ -360,7 +384,7 @@ export function UploadsView() {
             <p className="text-muted-foreground text-sm tabular-nums">
               {shown.length === 1 ? "1 file" : `${shown.length} files`}
             </p>
-            <SegmentedGroup aria-label="Show as">
+            <SegmentedGroup aria-label="Show as" className="max-sm:hidden">
               {(
                 [
                   ["tiles", LayoutGrid, "Tiles"],
@@ -380,7 +404,7 @@ export function UploadsView() {
           </div>
 
           {layout === "tiles" ? (
-            <ul className="reveal grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-x-5 gap-y-6">
+            <ul className="reveal grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] sm:gap-x-5 sm:gap-y-6">
               {shown.map((entry) => {
                 if (entry.going)
                   return (
@@ -535,6 +559,9 @@ export function UploadsView() {
           className={cn(
             "max-h-[calc(100dvh-2rem)] overflow-y-auto",
             openedUpload?.kind === "other" ? "sm:max-w-md" : "sm:max-w-5xl",
+            // A phone gets the whole screen: the player at the top, the details under it and
+            // the buttons in reach of a thumb.
+            "max-sm:inset-0 max-sm:h-dvh max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:content-start max-sm:overflow-y-auto max-sm:rounded-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
           )}
         >
           <DialogHeader>
@@ -569,14 +596,20 @@ export function UploadsView() {
                     </div>
                   ))}
                 </dl>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => copyLink(openedUpload._id)}>
+                <div className="flex flex-wrap gap-2 max-sm:grid max-sm:grid-cols-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="max-sm:h-11"
+                    onClick={() => copyLink(openedUpload._id)}
+                  >
                     <Copy />
                     Copy link
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="max-sm:h-11"
                     onClick={() => {
                       const id = openedUpload._id;
                       setOpened(null);

@@ -2,6 +2,7 @@ import {
   BODY_ONLY,
   KEEP_DISCLOSURE,
   VARIANT_MUSIC_STEP,
+  beatRecipes,
   editingRecipes,
   moreRecipes,
   recipes,
@@ -834,41 +835,46 @@ const RECIPE_CATEGORY: Record<string, StarterCategory> = {
   "recipe-opening-lines": "variants",
   "recipe-variant-music": "variants",
   "recipe-song-teasers": "music",
+  "recipe-beat-cut": "music",
 };
 
 /** One automation per ready-made FFmpeg step: the toolkit's examples and the dashboard's own. */
-const RECIPES: Starter[] = [...recipes, ...moreRecipes, ...editingRecipes, ...variantRecipes].map(
-  (recipe) => {
-    // With no file to start from, or a list of them, the team starts it by hand.
-    // Hook And Ending Variants needs its other takes picked, so it is started by hand too.
-    const many =
-      Boolean(recipe.listInput) ||
-      recipe.primaryInput === null ||
-      recipe.id === "recipe-hook-variants";
-    return {
-      id: recipe.id,
-      name: recipe.title,
-      description: recipe.description,
-      group: "recipe" as const,
-      // Every other recipe writes text on a picture or video.
-      category: RECIPE_CATEGORY[recipe.id] ?? "captions",
-      trigger: many
-        ? { kind: "manual" as const }
-        : {
-            kind: "upload" as const,
-            fileType: IMAGE_FIRST.has(recipe.primaryInput ?? "")
-              ? ("image" as const)
-              : recipe.id === "recipe-voice-master" || recipe.primaryInput === "media_url"
-                ? ("any" as const)
-                : recipe.primaryInput === "audio_url"
-                  ? ("audio" as const)
-                  : ("video" as const),
-          },
-      nodes: [step(`${recipe.id.replace(/^recipe-/, "").replace(/-/g, "_")}_1`, recipe.id, 0)],
-      edges: [],
-    };
-  },
-);
+const RECIPES: Starter[] = [
+  ...recipes,
+  ...moreRecipes,
+  ...editingRecipes,
+  ...variantRecipes,
+  ...beatRecipes,
+].map((recipe) => {
+  // With no file to start from, or a list of them, the team starts it by hand.
+  // Hook And Ending Variants needs its other takes picked, so it is started by hand too.
+  const many =
+    Boolean(recipe.listInput) ||
+    recipe.primaryInput === null ||
+    recipe.id === "recipe-hook-variants";
+  return {
+    id: recipe.id,
+    name: recipe.title,
+    description: recipe.description,
+    group: "recipe" as const,
+    // Every other recipe writes text on a picture or video.
+    category: RECIPE_CATEGORY[recipe.id] ?? "captions",
+    trigger: many
+      ? { kind: "manual" as const }
+      : {
+          kind: "upload" as const,
+          fileType: IMAGE_FIRST.has(recipe.primaryInput ?? "")
+            ? ("image" as const)
+            : recipe.id === "recipe-voice-master" || recipe.primaryInput === "media_url"
+              ? ("any" as const)
+              : recipe.primaryInput === "audio_url"
+                ? ("audio" as const)
+                : ("video" as const),
+        },
+    nodes: [step(`${recipe.id.replace(/^recipe-/, "").replace(/-/g, "_")}_1`, recipe.id, 0)],
+    edges: [],
+  };
+});
 
 /** Ready-made automations a team can start from and then change. */
 export const STARTERS: Starter[] = [...WORKFLOWS, ...FOLLOW_ONS, ...RECIPES];

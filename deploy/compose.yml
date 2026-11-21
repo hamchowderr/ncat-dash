@@ -1,4 +1,4 @@
-# Kontifi on one machine: the toolkit (with its queue), the Convex backend and its
+# Takewon on one machine: the toolkit (with its queue), the Convex backend and its
 # admin page, the agent server and the web app.
 #
 #   cp deploy/.env.example deploy/.env    # fill it in
@@ -17,7 +17,7 @@
 #   AGENT_URL          -> 127.0.0.1:4111
 #   CONVEX_ADMIN_URL   -> 127.0.0.1:6791  (optional; keep it private)
 
-name: kontifi
+name: takewon
 
 services:
   toolkit:
@@ -61,7 +61,7 @@ services:
       - "127.0.0.1:3210:3210"
       - "127.0.0.1:3211:3211"
     environment:
-      INSTANCE_NAME: ${CONVEX_INSTANCE_NAME:-kontifi}
+      INSTANCE_NAME: ${CONVEX_INSTANCE_NAME:-takewon}
       INSTANCE_SECRET: ${CONVEX_INSTANCE_SECRET:?set CONVEX_INSTANCE_SECRET}
       # The public addresses. Write them out in full: the sign-in setup is built from
       # them when the functions are pushed.

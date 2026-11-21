@@ -62,7 +62,7 @@ export default async function globalSetup() {
     // The dashboard's Telegram bot, as the Telegram stand-in (e2e/telegram-stand-in.mjs)
     // plays it. The agent server in these tests has no Telegram, so nothing polls it.
     ["TELEGRAM_BOT_TOKEN", "123456:stand-in-telegram"],
-    ["TELEGRAM_BOT_USERNAME", "KontifiStandInBot"],
+    ["TELEGRAM_BOT_USERNAME", "TakewonStandInBot"],
     ["TELEGRAM_API_URL", "http://127.0.0.1:8774"],
     // Dropbox, as the Dropbox stand-in (e2e/dropbox-stand-in.mjs) plays it.
     ["DROPBOX_APP_KEY", "stand-in-dropbox-key"],
