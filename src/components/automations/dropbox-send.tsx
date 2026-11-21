@@ -61,7 +61,7 @@ export function DropboxSend({ automationId }: { automationId: Id<"automations"> 
               onBlur={() => setEditing(null)}
               onKeyDown={(event) => event.key === "Escape" && setEditing(null)}
               aria-label="Dropbox folder for finished files"
-              placeholder="/Kontifi/Your automation"
+              placeholder="/Kontentifi/Your automation"
               className="h-8 w-56"
             />
           </form>

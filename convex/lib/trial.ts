@@ -49,7 +49,7 @@ export async function trialOf(
 
 /** Said wherever something would have started for a team whose trial is over. */
 export const TRIAL_ENDED_MESSAGE =
-  "Your free trial has ended, so nothing new starts. Everything you made is kept and starts again once you have Kontifi.";
+  "Your free trial has ended, so nothing new starts. Everything you made is kept and starts again once you have Kontentifi.";
 
 /** The end of a trial that starts at `startedAt` and lasts `days` days. */
 export function trialEnd(startedAt: number, days: number): number {

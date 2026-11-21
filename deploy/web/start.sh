@@ -29,8 +29,8 @@ check NEXT_PUBLIC_CONVEX_SITE_URL "$site_url"
 while read -r file; do
   cp -p "/app/.pristine$file" "$file"
   sed -i \
-    -e "s|https://convex-url\.kontifi\.invalid|$convex_url|g" \
-    -e "s|https://convex-site-url\.kontifi\.invalid|$site_url|g" \
+    -e "s|https://convex-url\.kontentifi\.invalid|$convex_url|g" \
+    -e "s|https://convex-site-url\.kontentifi\.invalid|$site_url|g" \
     "$file"
 done < /app/.stand-ins
 

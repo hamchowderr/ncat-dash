@@ -185,7 +185,7 @@ describe("the MCP server", () => {
     expect(hello.body.result).toMatchObject({
       protocolVersion: "2025-03-26",
       capabilities: { tools: {} },
-      serverInfo: { name: "kontifi", title: "Kontifi" },
+      serverInfo: { name: "kontentifi", title: "Kontentifi" },
     });
     const notified = await t.fetch("/mcp", {
       method: "POST",
@@ -338,7 +338,7 @@ describe("the 2026-07-28 protocol", () => {
         },
       },
       instructions: expect.stringContaining("content-automations skill"),
-      _meta: { "io.modelcontextprotocol/serverInfo": { name: "kontifi" } },
+      _meta: { "io.modelcontextprotocol/serverInfo": { name: "kontentifi" } },
     });
   });
 
@@ -584,7 +584,9 @@ describe("workflows over the MCP server", () => {
     expect(
       await call(t, otherKey, "switch_workflow", { workflow_id: made.data.workflow_id, on: true }),
     ).toMatchObject({ isError: true, text: expect.stringMatching(/no workflow with that id/) });
-    expect(await call(t, key, "set_up_workflow", { automation_id: automationId, kind: "film" })).toMatchObject({
+    expect(
+      await call(t, key, "set_up_workflow", { automation_id: automationId, kind: "film" }),
+    ).toMatchObject({
       isError: true,
     });
   });

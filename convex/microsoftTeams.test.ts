@@ -669,7 +669,7 @@ describe("the Teams app a team uploads", () => {
   });
 
   test("is a zip with the manifest and both icons, served to anyone", async () => {
-    const bytes = teamsAppPackage({ botId: "b", name: "Kontifi", siteUrl: "https://dash.test" });
+    const bytes = teamsAppPackage({ botId: "b", name: "Kontentifi", siteUrl: "https://dash.test" });
     const text = Buffer.from(bytes).toString("latin1");
     expect(text.startsWith("PK\u0003\u0004")).toBe(true);
     for (const name of ["manifest.json", "color.png", "outline.png"]) expect(text).toContain(name);
@@ -679,7 +679,7 @@ describe("the Teams app a team uploads", () => {
     const served = await t.fetch("/teams/app.zip", { method: "GET" });
     expect(served.status).toBe(200);
     expect(served.headers.get("content-type")).toBe("application/zip");
-    expect(served.headers.get("content-disposition")).toContain("Kontifi for Teams.zip");
+    expect(served.headers.get("content-disposition")).toContain("Kontentifi for Teams.zip");
   });
 });
 

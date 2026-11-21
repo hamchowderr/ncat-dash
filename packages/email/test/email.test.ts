@@ -18,7 +18,7 @@ import {
   verificationEmail,
 } from "../src";
 
-const branding = { appName: "Kontifi" };
+const branding = { appName: "Kontentifi" };
 
 function answer(status: number, body: unknown) {
   const calls: { url: string; init: RequestInit }[] = [];

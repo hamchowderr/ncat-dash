@@ -27,7 +27,7 @@ WEB_IMAGE=${WEB_IMAGE:-ghcr.io/hamchowderr/ncat-dash-web:latest}
 ENV
 
 compose() {
-  docker compose -p kontifi-check -f "$root/deploy/compose.yml" -f "$here/compose.check.yml" \
+  docker compose -p kontentifi-check -f "$root/deploy/compose.yml" -f "$here/compose.check.yml" \
     --env-file "$env_file" "$@"
 }
 finish() {
@@ -70,7 +70,7 @@ convex deploy -y > "$work/deploy.log" 2>&1 || { cat "$work/deploy.log"; exit 1; 
 wait_for http://127.0.0.1:3000/sign-up
 
 page=$(curl -fsS http://127.0.0.1:3000/sign-up)
-if grep -q "kontifi.invalid" <<<"$page"; then
+if grep -q "kontentifi.invalid" <<<"$page"; then
   echo "The sign-up page still holds a stand-in address" >&2
   exit 1
 fi
@@ -78,7 +78,7 @@ fi
 found=0
 for chunk in $(grep -oE '/_next/static/[^"]+\.js' <<<"$page" | sort -u); do
   body=$(curl -fsS "http://127.0.0.1:3000$chunk")
-  if grep -q "kontifi.invalid" <<<"$body"; then
+  if grep -q "kontentifi.invalid" <<<"$body"; then
     echo "$chunk still holds a stand-in address" >&2
     exit 1
   fi

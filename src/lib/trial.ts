@@ -1,6 +1,6 @@
 /** What the agent says instead of answering once a team's free trial is over. */
 export const TRIAL_ENDED_REPLY =
-  "Your free trial has ended, so the agent is resting. Everything you made is kept and the agent is back once you have Kontifi.";
+  "Your free trial has ended, so the agent is resting. Everything you made is kept and the agent is back once you have Kontentifi.";
 
 /** "3 days left in your trial", "1 day left in your trial", "Last day of your trial". */
 export function daysLeftLabel(days: number): string {

@@ -1,8 +1,8 @@
-Kontifi
+Kontentifi
 Copyright (c) 2026 Otaku Solutions
 Licensed under the GNU Affero General Public License, version 3 or later. See LICENSE.
 
-Kontifi is a separate program that talks to the No-Code Architects Toolkit
+Kontentifi is a separate program that talks to the No-Code Architects Toolkit
 (https://github.com/stephengpope/no-code-architects-toolkit, Copyright (c) 2025
 Stephen G. Pope, GPL-2.0) over its web API. It does not include or link the
 toolkit's code. Two pieces of this repository are taken from toolkit material:
