@@ -367,7 +367,7 @@ describe("Zoom's events", () => {
       createdBy: setup.owner.id,
     });
     expect(uploads[0].key).toMatch(
-      /^uploads\/[0-9a-f-]+\/Weekly-Sync-Launch-Plan-2026-11-18\.mp4$/,
+      /^uploads\/Zoom\/[0-9a-f-]+\/Weekly-Sync-Launch-Plan-2026-11-18\.mp4$/,
     );
 
     const jobs = await setup.t.run((ctx) => ctx.db.query("jobs").collect());
