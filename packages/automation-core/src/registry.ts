@@ -83,6 +83,11 @@ export interface NodeType {
   /** Settings filled from the team's brand in Settings when left empty. */
   brand?: Record<string, BrandKey>;
   /**
+   * A setting the step is passed over without, such as the music it lays under a video:
+   * left empty and not in the team's brand, the run makes nothing there.
+   */
+  skipsWithout?: string;
+  /**
    * Settings filled from the file that started the run when left empty, such as its name.
    * Nobody fills these in; they are not shown as settings.
    */
@@ -822,6 +827,7 @@ function stepType(step: StepDefinition): NodeType {
     automatic: step.primaryInput ?? step.listInput?.field ?? null,
     ...(step.values ? { makes: Object.keys(step.values) } : {}),
     ...(step.brandInputs ? { brand: step.brandInputs } : {}),
+    ...(step.skipsWithout ? { skipsWithout: step.skipsWithout } : {}),
     ...(step.startInputs ? { fromStart: step.startInputs } : {}),
     ...(step.valueInputs
       ? {
@@ -964,6 +970,25 @@ export function missingBrandOf(
   brand: Brand,
 ): BrandKey[] {
   return missingSettingsOf(nodeType, input, brand).flatMap((name) => nodeType.brand?.[name] ?? []);
+}
+
+/**
+ * The brand item a node is passed over without, when the node leaves it empty and the
+ * team has not set it: "music" for Music Under Each Variant before any music is added.
+ * Null when the node will run.
+ */
+export function passedOverWithout(
+  nodeType: NodeType,
+  input: Record<string, unknown>,
+  brand: Brand,
+): BrandKey | null {
+  const name = nodeType.skipsWithout;
+  if (!name) return null;
+  const value = input[name];
+  if (!(value === undefined || value === null || value === "")) return null;
+  const key = nodeType.brand?.[name];
+  if (key && brand[key]) return null;
+  return key ?? null;
 }
 
 /** A node's settings with every blank brand setting filled from the team's brand. */
