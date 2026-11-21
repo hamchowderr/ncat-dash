@@ -76,6 +76,8 @@ function editStep<Shape extends z.ZodRawShape>(args: {
   readsPauses?: (keyof Shape & string)[];
   askFirst?: (keyof Shape & string)[];
   outputLabels?: (blanks: z.output<z.ZodObject<Shape>>, count: number) => string[];
+  labelsFollow?: boolean;
+  skipsWithout?: keyof Shape & string;
   blanks: Shape;
   toRequest: (blanks: z.output<z.ZodObject<Shape>>, facts: FileFacts) => Record<string, unknown>;
 }): StepDefinition {
@@ -95,6 +97,8 @@ function editStep<Shape extends z.ZodRawShape>(args: {
     readsPauses: args.readsPauses,
     askFirst: args.askFirst,
     outputLabels: args.outputLabels as StepDefinition["outputLabels"],
+    ...(args.labelsFollow ? { labelsFollow: true } : {}),
+    ...(args.skipsWithout ? { skipsWithout: args.skipsWithout } : {}),
     input: z.object(args.blanks),
     toRequest: args.toRequest,
   }) as unknown as StepDefinition;

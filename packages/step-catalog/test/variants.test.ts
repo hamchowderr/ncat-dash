@@ -21,6 +21,8 @@ import {
   startCode,
   StepSetupError,
   takesOf,
+  MUSIC_CODE,
+  VARIANT_MUSIC_STEP,
   BODY_ONLY,
   variantCodes,
   variantCuts,
@@ -74,6 +76,7 @@ const SAMPLE: Record<string, Record<string, unknown>> = {
     line_2: "I wish I knew this at 20",
   },
   "recipe-song-teasers": { media_url: at("song.mp3"), length: 8 },
+  "recipe-variant-music": { video_url: at("base.mp4"), music_url: at("loop.mp3") },
 };
 
 function factsFor(id: string, input: Record<string, unknown>): FileFacts {
@@ -307,6 +310,53 @@ describe("reading pauses", () => {
   });
 });
 
+describe("music under each variant", () => {
+  it("adds a music code after the file's own, and only to coded files", () => {
+    const step = getStep(VARIANT_MUSIC_STEP)!;
+    expect(build(VARIANT_MUSIC_STEP).labels).toEqual([MUSIC_CODE]);
+    expect(step.labelsFollow).toBe(true);
+    // Filled from the team's music in Settings, and passed over when there is none.
+    expect(step.brandInputs).toEqual({ music_url: "music" });
+    expect(step.skipsWithout).toBe("music_url");
+    expect(step.input.safeParse({ video_url: at("base.mp4") }).success).toBe(true);
+  });
+
+  it("loops the track to the video's length and keeps the picture as it is", () => {
+    const { request } = build(VARIANT_MUSIC_STEP);
+    expect(request.inputs[1]).toEqual({
+      file_url: at("loop.mp3"),
+      options: [{ option: "-stream_loop", argument: -1 }],
+    });
+    const graph = request.filters.map((item) => item.filter).join(";");
+    expect(graph).toContain("atrim=duration=12");
+    expect(graph).toContain("volume=0.15");
+    expect(graph).toContain("amix=inputs=2:duration=first:dropout_transition=0:normalize=0");
+    expect(request.outputs[0].options).toContainEqual({ option: "-c:v", argument: "copy" });
+    expect(request.outputs[0].options).toContainEqual({ option: "-map", argument: "[mixed]" });
+  });
+
+  it("gives a silent video the music on its own", () => {
+    const step = getStep(VARIANT_MUSIC_STEP)!;
+    const input = step.input.parse(SAMPLE[VARIANT_MUSIC_STEP]);
+    const request = step.toRequest!(input, {
+      video_url: { ...FACTS["base.mp4"], hasAudio: false },
+    }) as ComposeRequest;
+    expect(request.filters).toHaveLength(1);
+    expect(request.filters[0].filter).toContain("volume=1,");
+    expect(request.outputs[0].options).toContainEqual({ option: "-map", argument: "[music]" });
+  });
+
+  it("says plainly when there is no music or no length to fit it to", () => {
+    const step = getStep(VARIANT_MUSIC_STEP)!;
+    const noMusic = step.input.parse({ video_url: at("base.mp4") });
+    expect(() => step.toRequest!(noMusic, { video_url: FACTS["base.mp4"] })).toThrow(
+      StepSetupError,
+    );
+    const input = step.input.parse(SAMPLE[VARIANT_MUSIC_STEP]);
+    expect(() => step.toRequest!(input, {})).toThrow("The video's length could not be read.");
+  });
+});
+
 const runFile = promisify(execFile);
 const hasFfmpeg = spawnSync("ffmpeg", ["-version"]).status === 0;
 
@@ -353,6 +403,11 @@ describe.skipIf(!hasFfmpeg)("variant steps on a real FFmpeg", () => {
     await ffmpeg([
       ...["-f", "lavfi", "-i", "sine=frequency=220:duration=40"],
       path.join(dir, "song.mp3"),
+    ]);
+    // A short music track, shorter than the video, so it has to loop.
+    await ffmpeg([
+      ...["-f", "lavfi", "-i", "sine=frequency=880:duration=4"],
+      path.join(dir, "loop.mp3"),
     ]);
   }, 120_000);
 
@@ -464,5 +519,22 @@ describe.skipIf(!hasFfmpeg)("variant steps on a real FFmpeg", () => {
       expect(file.endsWith(".mp3")).toBe(true);
       expect(length(file)).toBeCloseTo(8, 0);
     }
+  }, 180_000);
+
+  it("lays the music under the whole video, looped, without making it longer", async () => {
+    const [file] = await run(build(VARIANT_MUSIC_STEP).request, "music");
+    // The 4 s track loops under all 12 s, and the copy ends where the video does.
+    expect(length(file)).toBeCloseTo(12, 0);
+    expect(probe(file, "stream=width,height")).toBe("1080x1920");
+    // Where the video itself is quiet (2.8 to 3.4 s), the music is heard.
+    const loudness = (source: string) => {
+      const out = spawnSync("ffmpeg", [
+        ...["-hide_banner", "-ss", "2.9", "-t", "0.4", "-i", source],
+        ...["-af", "volumedetect", "-f", "null", "-"],
+      ]).stderr.toString();
+      return Number(/mean_volume: (-?[\d.]+|-inf) dB/.exec(out)?.[1] ?? -91);
+    };
+    expect(loudness(path.join(dir, "base.mp4"))).toBeLessThan(-80);
+    expect(loudness(file)).toBeGreaterThan(-60);
   }, 180_000);
 });

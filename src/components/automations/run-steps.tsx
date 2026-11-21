@@ -6,11 +6,13 @@ import {
   type AutomationEdge,
   type AutomationNode,
   BRANCH_LABELS,
+  BRAND_WORDS,
   coveredByWorkflow,
   FAILURE_WAY,
   failsOver,
   IF_BRANCHES,
   isWorkflowReview,
+  nodeTypeOf,
   waitsForRun,
 } from "@ncat-dash/automation-core";
 import { useQuery } from "convex/react";
@@ -111,7 +113,14 @@ function stepSentence(
     return "Not needed, since the run had already failed.";
   }
   if (step.status === "skipped") {
-    return runStatus === "cancelled" ? "The run was stopped first." : "No files came this way.";
+    if (runStatus === "cancelled") return "The run was stopped first.";
+    // Passed over itself, with files waiting for it, for want of a brand item such as music.
+    const nodeType = step.startedAt ? nodeTypeOf(node) : undefined;
+    const wanted = nodeType?.skipsWithout ? nodeType.brand?.[nodeType.skipsWithout] : undefined;
+    if (wanted) {
+      return `Passed over until your team adds its ${BRAND_WORDS[wanted]} in Settings, under Brand.`;
+    }
+    return "No files came this way.";
   }
   if (step.status === "pending") return "Not reached yet.";
   if (coveredByWorkflow(node)) {
