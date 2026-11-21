@@ -194,9 +194,13 @@ export function NodePanel({
     });
   }
   if (automaticField && isBlank(node.input[automaticField])) {
+    const word = KIND_WORDS[wantedKind(automaticField)];
+    // A list takes every file that reaches it, such as the clips of Cut To The Beat.
+    const many = step?.listInput?.field === automaticField;
+    const label = fieldLabel(automaticField).replace(/ URLs?$/i, "");
     handled.push({
-      label: fieldLabel(automaticField).replace(/ URLs?$/, ""),
-      text: `the nearest ${KIND_WORDS[wantedKind(automaticField)]} before this step`,
+      label: many && !label.endsWith("s") ? `${label}s` : label,
+      text: many ? `every ${word} that reaches this step` : `the nearest ${word} before this step`,
     });
   }
   for (const [name, note] of Object.entries(filled)) {

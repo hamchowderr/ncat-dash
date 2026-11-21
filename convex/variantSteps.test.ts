@@ -10,12 +10,18 @@ const VIDEO = "https://files.example/uploads/boots_ad.mp4";
 const made = (job: string, n: number) =>
   `https://files.example/teams/x/${job}-5b1f-4c3e-9a77-0d2f1b6e8a10_output_${n}.mp4`;
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 type Node = { id: string; stepId: string; input?: Record<string, unknown> };
 
 /** A team with a toolkit, a manager, and an automation of `nodes` in a row. */
 async function setUp(nodes: Node[]) {
+  // Scheduled dispatches stay put, so each test sends its job once, itself, however
+  // slow the machine: otherwise the scheduler can send the same job a second time.
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
   process.env.CONNECTIONS_SECRET ??= "a-test-secret-that-is-long-enough-1234";
   process.env.CONVEX_SITE_URL = "https://dash.example";
   const apiKeyCipher = await encryptSecret("toolkit-key");
