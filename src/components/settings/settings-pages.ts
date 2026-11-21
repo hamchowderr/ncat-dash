@@ -33,6 +33,12 @@ export const SETTINGS_GROUPS = [
         description: "How motion graphics and sound effects look. Every motion step uses these.",
       },
       {
+        slug: "creators",
+        title: "Creators",
+        description:
+          "How long you may use each creator's footage. You hear about it a week before it ends.",
+      },
+      {
         slug: "team",
         title: "Members",
         description: "Who is on the team and what they can do.",

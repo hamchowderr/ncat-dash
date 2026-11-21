@@ -127,6 +127,13 @@ export function wordAlert(alert: Doc<"alerts">, link: string): ChatAlert {
         lines: [alert.message],
         linkLabel: "Open the run",
       };
+    case "rights_ending":
+      return {
+        ...base,
+        title: `Usage rights for ${alert.automationName} end soon`,
+        lines: [alert.message],
+        linkLabel: "Open Creators",
+      };
     default:
       return {
         ...base,
