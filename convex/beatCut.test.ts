@@ -9,12 +9,18 @@ const TOOLKIT = "https://toolkit.example";
 const VIDEO = "https://files.example/uploads/skate_park.mp4";
 const SONG = "https://files.example/uploads/upbeat.mp3";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 type Node = { id: string; stepId: string; input?: Record<string, unknown> };
 
 /** A team with a toolkit, a manager, and an automation of `nodes` in a row. */
 async function setUp(nodes: Node[]) {
+  // Scheduled dispatches stay put, so each test sends its job once, itself, however
+  // slow the machine: otherwise the scheduler can send the same job a second time.
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
   process.env.CONNECTIONS_SECRET ??= "a-test-secret-that-is-long-enough-1234";
   process.env.CONVEX_SITE_URL = "https://dash.example";
   const apiKeyCipher = await encryptSecret("toolkit-key");
