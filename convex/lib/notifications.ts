@@ -69,6 +69,15 @@ export const NOTIFICATION_KINDS = [
     email: false,
     chat: true,
   },
+  {
+    kind: "rights_ending",
+    title: "A creator's usage rights are about to end",
+    description:
+      "A week before the last day you may use a creator's footage, as set in Settings > Creators. Goes to everyone on the team.",
+    bell: true,
+    email: true,
+    chat: true,
+  },
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];
@@ -173,6 +182,7 @@ export function alertHref(
     const tail = query.toString();
     return `/review/${alert.reviewId}${tail ? `?${tail}` : ""}`;
   }
+  if (alert.kind === "rights_ending") return "/settings/creators";
   if (alert.automationId && alert.runId)
     return `/automations/${alert.automationId}/runs/${alert.runId}`;
   return "/";

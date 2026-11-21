@@ -12,6 +12,7 @@ import {
   mentionEmail,
   readyForReviewEmail,
   clipFinishedEmail,
+  rightsEndingEmail,
   runFailedEmail,
   sendEmail,
   senderProblem,
@@ -252,6 +253,23 @@ describe("messages", () => {
     expect(done.text).toContain("3 new files are ready in Files. In Salt House.");
     expect(done.text).toContain("https://dash.example.com/automations/a/runs/r");
     expect(done.html).toContain("Shorts &lt;daily&gt;");
+  });
+
+  it("warns that a creator's usage rights end soon, and links to Creators", () => {
+    const ending = rightsEndingEmail(
+      {
+        teamName: "Salt House",
+        creator: "Ana <Ruiz>",
+        summary: "The last day you may use their footage is in 7 days, on Saturday, November 28.",
+        creatorsUrl: "https://dash.example.com/settings/creators",
+        settingsUrl: "https://dash.example.com/settings/notifications",
+      },
+      branding,
+    );
+    expect(ending.subject).toBe("Usage rights for Ana <Ruiz> end soon");
+    expect(ending.text).toContain("in 7 days, on Saturday, November 28. In Salt House.");
+    expect(ending.text).toContain("https://dash.example.com/settings/creators");
+    expect(ending.html).toContain("Ana &lt;Ruiz&gt;");
   });
 
   it("tells a person they were mentioned, quoting the comment, escaped", () => {

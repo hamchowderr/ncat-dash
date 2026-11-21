@@ -884,6 +884,24 @@ export default defineSchema({
   // approval waiting or run out of time, a mention in a review. Shown under the bell to
   // the members it is for until each has seen it, unless they switched that kind off in
   // their notification settings.
+  // How long a team may use each creator's footage, as agreed with them. A week before the
+  // last day, everyone on the team hears about it (convex/creatorRights.ts).
+  creatorRights: defineTable({
+    organizationId: v.string(),
+    // As the creator's folder is named, so their runs can be matched to it.
+    creator: v.string(),
+    // The last day the footage may be used, "YYYY-MM-DD".
+    endsOn: v.string(),
+    // Anything else worth keeping: the brand, the platforms, paid or organic.
+    note: v.optional(v.string()),
+    // The end date a week-before alert has gone out for, so it goes once per date.
+    alertedFor: v.optional(v.string()),
+    updatedBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_ends", ["endsOn"]),
+
   alerts: defineTable({
     organizationId: v.string(),
     // "run_failed": a run ended with a failed step. "approval_waiting": a run reached an
@@ -901,6 +919,9 @@ export default defineSchema({
       v.literal("ready_for_review"),
       // "clip_finished": a run is done and its finished files were kept in Files.
       v.literal("clip_finished"),
+      // "rights_ending": a creator's usage rights end within a week. `automationName`
+      // holds the creator's name and `message` says when.
+      v.literal("rights_ending"),
     ),
     // The members it is for. Left out: everyone on the team.
     recipients: v.optional(v.array(v.string())),
@@ -1564,6 +1585,7 @@ export default defineSchema({
         client_feedback: v.optional(kindChannels),
         ready_for_review: v.optional(kindChannels),
         clip_finished: v.optional(kindChannels),
+        rights_ending: v.optional(kindChannels),
       }),
     ),
     // "now": each email as it happens. "daily": one summary a day at `digestHour` in

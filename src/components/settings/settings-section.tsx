@@ -1,6 +1,7 @@
 "use client";
 
 import { BrollCard } from "./broll-card";
+import { CreatorsCard } from "./creators-card";
 import { McpSettings } from "./mcp-settings";
 import type { SettingsSlug } from "./settings-pages";
 import {
@@ -42,6 +43,7 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   teams: TeamsCard,
   dropbox: DropboxCard,
   mcp: McpSettings,
+  creators: () => <CreatorsCard />,
   team: TeamSettings,
 };
 
