@@ -20,7 +20,7 @@ export const CUT_EVERY = ["every beat", "every 2 beats", "every bar", "every 2 b
 export type CutEvery = (typeof CUT_EVERY)[number];
 
 /** Below this the sound does not keep a beat (speech, free-time music), so cuts would wander. */
-export const STEADY_ENOUGH = 0.3;
+export const STEADY_ENOUGH = 0.25;
 
 /** Frame rate of the finished video. */
 const RATE = 30;

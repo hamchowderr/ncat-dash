@@ -162,7 +162,7 @@ describe("Cut To The Beat", () => {
     expect(() => build({}, { music_url: { duration: 20 } })).toThrow(StepSetupError);
     expect(() => build({}, { music_url: { duration: 20 } })).toThrow(/Update your toolkit/);
     expect(() =>
-      build({}, { music_url: { duration: 20, beats: { ...song(), steadiness: 0.1 } } }),
+      build({}, { music_url: { duration: 20, beats: { ...song(), steadiness: 0.2 } } }),
     ).toThrow(/no steady beat/);
     expect(() => build({ start_at: 30 })).toThrow(/Start earlier/);
     expect(() => build({ cut_every: "every 2 bars", length: 3 })).toThrow(/before the second cut/);
