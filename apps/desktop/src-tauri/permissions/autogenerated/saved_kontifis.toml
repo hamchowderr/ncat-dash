@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-saved-kontifis"
+description = "Enables the saved_kontifis command without any pre-configured scope."
+commands.allow = ["saved_kontifis"]
+
+[[permission]]
+identifier = "deny-saved-kontifis"
+description = "Denies the saved_kontifis command without any pre-configured scope."
+commands.deny = ["saved_kontifis"]
