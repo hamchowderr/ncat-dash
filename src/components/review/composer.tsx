@@ -144,7 +144,7 @@ export function Composer({
             void send();
           }
         }}
-        className="placeholder:text-muted-foreground block max-h-40 min-h-14 w-full resize-none bg-transparent px-3 pt-2.5 text-sm outline-none"
+        className="placeholder:text-muted-foreground block max-h-40 min-h-14 w-full resize-none bg-transparent px-3 pt-2.5 text-sm outline-none pointer-coarse:text-base"
       />
       <div className="flex items-center gap-1 px-2 pb-2">
         {moment !== undefined && (

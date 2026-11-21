@@ -140,7 +140,7 @@ describe("the conversation about a clip", () => {
   test("an empty clip explains what to do, and a still picture has no moments", () => {
     setup([], false);
     expect(screen.getByText("None on this clip yet")).toBeInTheDocument();
-    expect(screen.getByText(/Write a note below/)).toBeInTheDocument();
+    expect(screen.getByText(/Write a note in the box/)).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /^Comment\. Type @/ })).toBeInTheDocument();
     expect(screen.queryByText("0:07")).not.toBeInTheDocument();
   });
