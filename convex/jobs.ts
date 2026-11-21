@@ -368,7 +368,7 @@ export const finish = internalMutation({
       args.ok,
       args.ok ? null : (args.error ?? "The step failed."),
     );
-    // A sample being studied for its look (Settings → Looks).
+    // A sample being studied for its look.
     await onLookJobFinished(ctx, job);
     // A library file being made searchable: keep what was said in it.
     if (job.libraryItemId) {

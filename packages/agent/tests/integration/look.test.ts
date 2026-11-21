@@ -4,7 +4,7 @@ import { createNcatRoutes } from "../../src/mastra/ncat/routes";
 import { ctx, find } from "../helpers/route-harness";
 
 /**
- * POST /ncat/look: Settings → Looks sends a sheet of frames from a sample video, once,
+ * POST /ncat/look: The dashboard sends a sheet of frames from a sample video, once,
  * and gets back what the model saw as text. The model is the stand-in (AIMock); its answer
  * is at the top of fixtures/chat.json.
  */

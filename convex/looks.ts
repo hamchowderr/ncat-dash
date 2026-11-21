@@ -33,7 +33,7 @@ import { DEFAULT_PARALLEL_JOBS, enqueueJob, pump } from "./lib/queue";
 import { signAgentToken } from "./reviewAgent";
 
 /**
- * # Looks (Settings → Looks)
+ * # Looks
  *
  * A team copies the look of a video it likes, once. The toolkit takes a sheet of six
  * frames from the sample and finds its camera cuts (plain FFmpeg and the toolkit's cut
@@ -88,6 +88,7 @@ export const list = query({
       study: study
         ? {
             _id: study._id,
+            uploadId: study.uploadId,
             status: study.status,
             sourceName: study.sourceName,
             sheetUrl: study.sheetUrl ?? null,

@@ -40,7 +40,7 @@ writes. Each match was cut down to the question, because Slack shows the bot's t
 "@Agent" and each run gets its own message id.
 
 One look study, recorded 2026-11-21 by the browser tests (`RECORD_AGENT=1 pnpm test:e2e
-e2e/looks.spec.ts`): Settings → Looks sends the sheet of six frames FFmpeg took from the
+e2e/looks.spec.ts`): The dashboard sends the sheet of six frames FFmpeg took from the
 stand-in clip, uploaded as "Crew interview reel.webm". The model saw a colour-bar test
 pattern filling the frame, no grade and no captions, and said so. Its match was cut down to
 the sample's name line.

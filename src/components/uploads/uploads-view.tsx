@@ -13,6 +13,8 @@ import { Copy, LayoutGrid, List, Trash2, UploadCloud } from "lucide-react";
 import { useMemo, useRef, useSyncExternalStore, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
+import { cn } from "cn";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,6 +35,8 @@ import {
 import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { useSendFile } from "@/lib/send-file";
+
+import { CopyLookFromUpload } from "@/components/looks/look-study";
 
 import { NeedsToolkit } from "./needs-toolkit";
 import {
@@ -527,7 +531,12 @@ export function UploadsView() {
         </section>
       )}
       <Dialog open={openedUpload !== undefined} onOpenChange={(open) => !open && setOpened(null)}>
-        <DialogContent className={openedUpload?.kind === "other" ? "sm:max-w-md" : "sm:max-w-5xl"}>
+        <DialogContent
+          className={cn(
+            "max-h-[calc(100dvh-2rem)] overflow-y-auto",
+            openedUpload?.kind === "other" ? "sm:max-w-md" : "sm:max-w-5xl",
+          )}
+        >
           <DialogHeader>
             <DialogTitle className="truncate pr-6">{openedUpload?.fileName}</DialogTitle>
             <DialogDescription>
@@ -580,6 +589,9 @@ export function UploadsView() {
                 </div>
               </div>
             </div>
+          )}
+          {openedUpload?.kind === "video" && openedUpload.details?.hasVideo !== false && (
+            <CopyLookFromUpload upload={openedUpload} />
           )}
         </DialogContent>
       </Dialog>

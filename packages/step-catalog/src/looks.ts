@@ -4,7 +4,7 @@ import { defineStep, type StepDefinition, StepSetupError } from "./define";
 /**
  * # Match A Saved Look
  *
- * A team can copy the look of a video it likes, once (Settings → Looks): the agent reads
+ * A team can copy the look of a video it likes, once (from the video on the Uploads page, or inside this step): the agent reads
  * a sheet of frames from it and the dashboard keeps what it saw as a saved look. This step
  * puts any video into that look with plain FFmpeg, every time, with no AI: the same
  * shape, the same way of filling it, and the same colour.
@@ -192,8 +192,8 @@ export const savedLookStep: StepDefinition = defineStep({
     if (!spec || typeof spec !== "object") {
       throw new StepSetupError(
         filled.look
-          ? `There is no saved look called "${filled.look}". Pick one in the step, or save one in Settings → Looks.`
-          : "Save a look in Settings → Looks first: copy it from a video you like.",
+          ? `There is no saved look called "${filled.look}". Pick one in the step, or copy one from a video.`
+          : "Copy a look from a video you like first, in this step or on the Uploads page.",
       );
     }
     return lookRequest(filled.video_url, frameLookOf(spec));

@@ -2,7 +2,7 @@ import fs from "node:fs";
 
 import { expect, test } from "./test";
 
-// Copying a look in a real browser: a video goes up, Settings → Looks studies it (a real
+// Copying a look in a real browser: a video goes up, its look is copied right on it (a real
 // FFmpeg sheet of frames, and the agent's answer played back from a real model), the look
 // is saved, and the Match A Saved Look step puts another video into it with plain FFmpeg.
 //
@@ -55,38 +55,38 @@ test("a look is copied from a video once, then any video is put into it", async 
   });
   await pause(1500);
 
-  await page.goto("/settings/looks");
-  await expect(page.getByRole("heading", { name: "Copy a look" })).toBeVisible();
+  // The look is copied right on the video.
+  await page.getByRole("button", { name: `Open ${SAMPLE_NAME}` }).click();
+  const dialog = page.getByRole("dialog");
   await pause(2000);
-  await page.getByLabel("Video to copy").click();
-  await page.getByRole("option", { name: SAMPLE_NAME }).click();
-  await pause(800);
   // The video's size is read just after it goes up; until then the study says to wait.
   await expect(async () => {
-    await page.getByRole("button", { name: "Copy its look" }).click();
-    await expect(page.locator("[data-look-study]")).toBeVisible({ timeout: 3000 });
+    await dialog.getByRole("button", { name: "Copy its look" }).click();
+    await expect(dialog.locator("[data-look-study]")).toBeVisible({ timeout: 3000 });
   }).toPass({ timeout: 60_000 });
   await pause(1500);
-  await expect(page.locator("[data-look-study='ready']")).toBeVisible({ timeout: 180_000 });
-  await expect(page.getByRole("img", { name: `Six frames from ${SAMPLE_NAME}` })).toBeVisible();
-  await expect(page.getByText(/^Vertical, /)).toBeVisible();
+  await expect(dialog.locator("[data-look-study='ready']")).toBeVisible({ timeout: 180_000 });
+  const sheet = dialog.getByRole("img", { name: `Six frames from ${SAMPLE_NAME}` });
+  await expect(sheet).toBeVisible();
+  await sheet.scrollIntoViewIfNeeded();
+  await expect(dialog.getByText(/^Vertical, /)).toBeVisible();
   await pause(5000);
 
-  await page.getByLabel("Name").fill("Crew Interview");
-  const forShape = page.getByLabel(/Use its captions for every/);
+  await dialog.getByLabel("Name").fill("Crew Interview");
+  const forShape = dialog.getByLabel(/Use its captions for every/);
   if (await forShape.count()) await forShape.click();
   await pause(1200);
-  await page.getByRole("button", { name: "Save look" }).click();
-  const saved = page.locator("[data-saved-look='Crew Interview']");
-  await expect(saved).toBeVisible();
-  await expect(saved).toContainText(`Copied from ${SAMPLE_NAME}.`);
-  await pause(3000);
+  await dialog.getByRole("button", { name: "Save look" }).click();
+  await expect(page.getByText('Saved "Crew Interview"')).toBeVisible();
+  await pause(2500);
+  await page.keyboard.press("Escape");
 
   // Any video, into the saved look, with plain FFmpeg.
   await page.goto("/steps/recipe-saved-look");
   await page.locator("#field-video_url").fill(`${FILES}/plain-interview.mp4`);
   await pause(800);
   await expect(page.getByLabel("Look")).toContainText("Your first look (Crew Interview)");
+  await expect(page.getByText(`Copied from ${SAMPLE_NAME}.`)).toBeVisible();
   await page.getByLabel("Look").click();
   await page.getByRole("option", { name: "Crew Interview", exact: true }).click();
   await pause(800);

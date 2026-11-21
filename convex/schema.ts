@@ -346,7 +346,7 @@ export default defineSchema({
     libraryItemId: v.optional(v.id("libraryItems")),
     // Set when the job brings a Zoom recording into the team's folder.
     zoomImportId: v.optional(v.id("zoomImports")),
-    // A sample being studied for its look (Settings → Looks): its sheet of frames or cuts.
+    // A sample being studied for its look: its sheet of frames or cuts.
     lookStudyId: v.optional(v.id("lookStudies")),
     // Set when the job brings a Google Meet recording into the team's folder.
     googleMeetImportId: v.optional(v.id("googleMeetImports")),
@@ -2074,7 +2074,7 @@ export default defineSchema({
     filledAt: v.optional(v.number()),
   }).index("by_organization", ["organizationId"]),
 
-  // A sample video being studied for its look, once (Settings → Looks): the toolkit takes
+  // A sample video being studied for its look, once: the toolkit takes
   // a sheet of frames and finds its cuts, then the model looks at the sheet one time and
   // its answer waits here as a proposal until someone names and saves it.
   lookStudies: defineTable({

@@ -51,22 +51,13 @@ describe("the Match A Saved Look step", () => {
     });
     const onChange = panel();
     expect(
-      screen.getByText(/Cafe Reels summary\. Its captions are the caption style "Cafe Reels"/),
+      screen.getByText(/Cafe Reels summary\. Copied from x\.mp4\. Its captions are the caption style "Cafe Reels"/),
     ).toBeInTheDocument();
     expect(screen.queryByText("Nothing to set. This step works as it is.")).toBeNull();
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("Look"));
     await user.click(await screen.findByRole("option", { name: "Square Bars" }));
     expect(onChange).toHaveBeenCalledWith({ input: { look: "Square Bars" } });
-  });
-
-  test("says where to make one when the team has none", () => {
-    answerQuery(api.looks.list, { canEdit: true, study: null, looks: [] });
-    panel();
-    expect(screen.getByRole("link", { name: "Copy one from a video you like" })).toHaveAttribute(
-      "href",
-      "/settings/looks",
-    );
   });
 
   test("says plainly when the picked look was removed", () => {

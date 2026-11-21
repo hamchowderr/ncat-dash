@@ -4,7 +4,7 @@ import { env } from "../../lib/env";
 import { onTeamKey, TEAM_KEY } from "./team-key";
 
 /**
- * Copying the look of a sample video once, for the dashboard's Settings → Looks
+ * Copying the look of a sample video once, for the dashboard's saved looks
  * (convex/looks.ts there). The toolkit takes a sheet of six frames from the sample and the
  * dashboard already knows its size, length and camera cuts; the model looks at the sheet
  * one time and says how the picture is filled, graded and captioned. The dashboard reads
