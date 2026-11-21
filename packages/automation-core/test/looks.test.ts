@@ -6,6 +6,7 @@ import {
   lookShapeOf,
   lookSummary,
   readLookAnswer,
+  savedLooksText,
   shotSecondsFrom,
 } from "../src";
 
@@ -128,5 +129,28 @@ describe("plain facts about a look", () => {
       'There is already a look called "cafe reels".',
     );
     expect(lookNameProblem("Cafe Reels", [])).toBeNull();
+  });
+});
+
+describe("saved looks for the agent", () => {
+  it("lists each by name with what it does, and says nothing when there are none", () => {
+    expect(savedLooksText([])).toBeNull();
+    expect(
+      savedLooksText([
+        {
+          name: "Square Bars",
+          frame: {
+            shape: "square",
+            fill: "bars",
+            brightness: 0,
+            contrast: 1,
+            saturation: 1,
+            warmth: 0,
+          },
+        },
+      ]),
+    ).toBe(
+      'Saved looks (the Match A Saved Look step\'s "look" setting takes one of these names; blank uses the first):\n- Square Bars: Square, black bars, colour left as it is',
+    );
   });
 });

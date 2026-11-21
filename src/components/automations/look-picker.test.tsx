@@ -3,8 +3,10 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { answerQuery, resetConvex } from "@/test/convex";
-import { renderInApp } from "@/test/render";
+import { answerQuery, mutationOf, resetConvex } from "@/test/convex";
+import { renderInApp, TEAM } from "@/test/render";
+
+import { StepForm } from "@/components/steps/step-form";
 
 import { NodePanel } from "./node-panel";
 
@@ -75,5 +77,33 @@ describe("the Match A Saved Look step", () => {
         'There is no look called "Gone" any more, so this step will stop. Pick another.',
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("trying Match A Saved Look on the Steps page", () => {
+  beforeEach(() => resetConvex());
+
+  test("picks the look from the team's looks and runs the step with it", async () => {
+    answerQuery(api.looks.list, {
+      canEdit: true,
+      study: null,
+      looks: [look("Cafe Reels"), look("Square Bars")],
+    });
+    const run = mutationOf(api.jobs.run);
+    const user = userEvent.setup();
+    renderInApp(<StepForm stepId="recipe-saved-look" />);
+    expect(screen.queryByRole("textbox", { name: /Which saved look/ })).toBeNull();
+    await user.type(document.getElementById("field-video_url")!, "https://files.example/in.mp4");
+    await user.click(screen.getByLabelText("Look"));
+    await user.click(await screen.findByRole("option", { name: "Square Bars" }));
+    await user.click(screen.getByRole("button", { name: "Run step" }));
+    expect(run).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      stepId: "recipe-saved-look",
+      input: expect.objectContaining({
+        video_url: "https://files.example/in.mp4",
+        look: "Square Bars",
+      }),
+    });
   });
 });

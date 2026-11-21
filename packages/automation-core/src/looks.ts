@@ -174,3 +174,17 @@ export function lookNameProblem(name: string, taken: string[]): string | null {
   }
   return null;
 }
+
+/** The team's saved looks, for the agent's brief, so it names one in the step. */
+export function savedLooksText(
+  looks: { name: string; frame: FrameLook; shotSeconds?: number | null }[],
+): string | null {
+  if (looks.length === 0) return null;
+  return [
+    'Saved looks (the Match A Saved Look step\'s "look" setting takes one of these names; blank uses the first):',
+    ...looks.map(
+      (look) =>
+        `- ${look.name}: ${lookSummary({ frame: look.frame, shotSeconds: look.shotSeconds ?? null })}`,
+    ),
+  ].join("\n");
+}

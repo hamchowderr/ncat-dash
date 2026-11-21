@@ -369,3 +369,68 @@ describe("Match A Saved Look in a run", () => {
     expect(JSON.stringify(run)).toContain('There is no saved look called \\"Gone\\".');
   });
 });
+
+describe("Match A Saved Look on the Steps page", () => {
+  test("a job run by hand gets the team's first look when none is named", async () => {
+    const sent = fakeServers();
+    const { t, team, ines } = await setUp();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("teamLooks", {
+        organizationId: team,
+        name: "Wide Warm",
+        frame: {
+          shape: "wide",
+          fill: "crop",
+          brightness: 0,
+          contrast: 1,
+          saturation: 1,
+          warmth: 1,
+        },
+        notes: "",
+        sourceName: "x.mp4",
+        createdBy: ines.id,
+        at: 0,
+      });
+    });
+    await ines.as.mutation(api.jobs.run, {
+      organizationId: team,
+      stepId: "recipe-saved-look",
+      input: { video_url: "https://files.example/in.mp4", look: "" },
+    });
+    await settled(t);
+    const compose = sent.find((one) => one.url.endsWith("/v1/ffmpeg/compose"))!;
+    expect((compose.body.filters as { filter: string }[])[0].filter).toBe(
+      "[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,colorbalance=rm=0.15:bm=-0.15,setsar=1,format=yuv420p[v]",
+    );
+  });
+});
+
+describe("the agent's brief", () => {
+  test("names the team's saved looks, so the agent can pick one in the step", async () => {
+    fakeServers();
+    const { t, team, ines, maya } = await setUp();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("teamLooks", {
+        organizationId: team,
+        name: "Cafe Reels",
+        frame: {
+          shape: "vertical",
+          fill: "blur",
+          brightness: 0,
+          contrast: 1.2,
+          saturation: 1,
+          warmth: 0,
+        },
+        shotSeconds: 2.5,
+        notes: "",
+        sourceName: "x.mp4",
+        createdBy: ines.id,
+        at: 0,
+      });
+    });
+    const brief = await maya.as.query(api.teamSettings.agentBrief, { organizationId: team });
+    expect(brief.text).toContain(
+      "- Cafe Reels: Vertical, a blurred copy behind, punchier, a new shot every 2.5 seconds",
+    );
+  });
+});

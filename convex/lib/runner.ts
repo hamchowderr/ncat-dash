@@ -56,7 +56,7 @@ import {
   withStart,
   stepFileLabels,
 } from "@ncat-dash/automation-core";
-import { getStep, SAVED_LOOK_STEP } from "@ncat-dash/step-catalog";
+import { getStep } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
 import { components, internal } from "../_generated/api";
@@ -67,7 +67,6 @@ import { earlierFiles, runEnded, startAutomationStep, startingFiles } from "./ch
 import { cutListOf } from "./exports";
 import { collectUrls } from "./outputs";
 import { captionSetupOf } from "./captions";
-import { lookSettingFor, teamLooksOf } from "./looks";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { finishListening, startListening } from "./moments";
 import { type DisclosureNote, hearFirst } from "./disclosure";
@@ -469,13 +468,6 @@ async function startToolkitStep(
       `${planned.length} files reached this step; the most it takes at once is ${MAX_JOBS_PER_STEP}.`,
     );
     return;
-  }
-
-  if (definition.id === SAVED_LOOK_STEP) {
-    // The saved look's name is swapped for the look itself, so a look changed in Settings
-    // is the one used from the next run on.
-    const looks = await teamLooksOf(ctx, run.organizationId);
-    planned = planned.map((input) => ({ ...input, look: lookSettingFor(looks, input.look) }));
   }
 
   if (isCaptionStep(definition.id)) {

@@ -18,6 +18,7 @@ import {
   type MotionSetup,
   motionSetupText,
   retryLimit,
+  savedLooksText,
   tidyMotionSetup,
 } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
@@ -31,6 +32,7 @@ import {
   pump,
 } from "./lib/queue";
 import { captionSetupOf } from "./lib/captions";
+import { teamLooksOf } from "./lib/looks";
 import { motionSetupOf } from "./lib/motion";
 import { checkedBrand, checkedMusic } from "./lib/brand";
 import { editorsOf } from "./lib/exports";
@@ -320,7 +322,9 @@ export const agentBrief = query({
     const motion = settings?.motion
       ? motionSetupText(await motionSetupOf(ctx, args.organizationId))
       : null;
-    const text = [agentSettingsText(agent), captions, motion].filter(Boolean).join("\n\n");
+    // The team's saved looks, so the agent can put a video into one by name.
+    const looks = savedLooksText(await teamLooksOf(ctx, args.organizationId));
+    const text = [agentSettingsText(agent), captions, motion, looks].filter(Boolean).join("\n\n");
     return { model: agent.model, text: text || null };
   },
 });
