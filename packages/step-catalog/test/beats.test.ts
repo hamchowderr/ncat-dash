@@ -144,6 +144,8 @@ describe("Cut To The Beat", () => {
     expect(sound).toContain("[3:a]atrim=start=0.25:duration=6,");
     expect(sound).toContain("afade=t=out:st=5.4:d=0.6");
     expect(request.outputs[0].options).toContainEqual({ option: "-t", argument: "6" });
+    // Without a set rate the toolkit's FFmpeg 7 writes 25 frames a second, off the cuts.
+    expect(request.outputs[0].options).toContainEqual({ option: "-r", argument: 30 });
   });
 
   it("fills the chosen shape", () => {
