@@ -94,6 +94,12 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
   outputLabels?: (input: Record<string, unknown>, count: number) => string[];
   /** Only label files whose input already carries a code, such as a shape or captions. */
   labelsFollow?: boolean;
+  /**
+   * An optional setting the step is no use without, such as the music it lays under a
+   * video. When it is still empty once the team's brand is filled in, the run passes the
+   * step over and makes nothing there, instead of failing or stopping the automation.
+   */
+  skipsWithout?: string;
   /** Builds the toolkit request from the filled-in blanks. Only recipes have one. */
   toRequest?: (input: z.output<TInput>, facts: FileFacts) => Record<string, unknown>;
 }

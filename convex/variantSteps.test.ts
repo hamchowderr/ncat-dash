@@ -261,3 +261,71 @@ describe("keeping the paid-ad disclosure in a run", () => {
     expect(jobs.map((job) => job.stepId)).toEqual(["recipe-length-cuts"]);
   });
 });
+
+describe("music under each variant in a run", () => {
+  const SONG = "https://files.example/uploads/upbeat.mp3";
+  const NODES: Node[] = [
+    { id: "lengths_1", stepId: "recipe-length-cuts", input: { lengths: "15, 6" } },
+    { id: "music_1", stepId: "recipe-variant-music" },
+  ];
+
+  async function cutsFinished(setUpRun: Awaited<ReturnType<typeof setUp>>) {
+    const { t, start, jobsOf } = setUpRun;
+    const runId = await start({ file_url: VIDEO, file_name: "Boots ad.mp4" });
+    const [cuts] = await jobsOf(runId, "lengths_1");
+    const cutFiles = [made("aaaaaaa1", 0), made("aaaaaaa1", 1)];
+    await t.mutation(internal.jobs.finish, { jobId: cuts._id, ok: true, result: cutFiles });
+    return { runId, cutFiles };
+  }
+
+  const stepOf = (t: Awaited<ReturnType<typeof setUp>>["t"], runId: Id<"runs">, nodeId: string) =>
+    t.run(
+      async (ctx) =>
+        (await ctx.db
+          .query("runSteps")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .filter((q) => q.eq(q.field("nodeId"), nodeId))
+          .first())!,
+    );
+
+  test("without music in Settings it is passed over and the run still finishes", async () => {
+    const ready = await setUp(NODES);
+    toolkit(FACTS);
+    const { runId } = await cutsFinished(ready);
+    const music = await stepOf(ready.t, runId, "music_1");
+    expect(music.status).toBe("skipped");
+    expect(music.jobIds).toEqual([]);
+    // Passed over itself (it was reached), not for want of files.
+    expect(music.startedAt).toBeDefined();
+    const run = await ready.maya.as.query(api.runs.get, { runId });
+    expect(run?.status).toBe("done");
+  });
+
+  test("with music in Settings each cut also comes back with it, named _music", async () => {
+    const ready = await setUp(NODES);
+    await ready.t.run((ctx) =>
+      ctx.db.insert("teamSettings", {
+        organizationId: ready.team,
+        maxParallelJobs: 4,
+        music: [{ name: "Upbeat", file: SONG }],
+      }),
+    );
+    toolkit(FACTS);
+    const { runId, cutFiles } = await cutsFinished(ready);
+    const jobs = await ready.jobsOf(runId, "music_1");
+    expect(jobs).toHaveLength(2);
+    expect(jobs.map((job) => (job.input as { music_url: string }).music_url)).toEqual([SONG, SONG]);
+    const withMusic: Record<string, string> = {};
+    for (const [index, job] of jobs.entries()) {
+      const file = made(`ddddddd${index}`, 0);
+      withMusic[(job.input as { video_url: string }).video_url] = file;
+      await ready.t.mutation(internal.jobs.finish, { jobId: job._id, ok: true, result: file });
+    }
+    const run = await ready.maya.as.query(api.runs.get, { runId });
+    expect(run?.status).toBe("done");
+    // Both copies are kept: the cut without music and the one with it.
+    expect(run?.outputNames[cutFiles[1]]).toBe("Boots ad 15s");
+    expect(run?.outputNames[withMusic[cutFiles[1]]]).toBe("Boots ad 15s_music");
+    expect(run?.outputNames[withMusic[cutFiles[0]]]).toBe("Boots ad 6s_music");
+  });
+});

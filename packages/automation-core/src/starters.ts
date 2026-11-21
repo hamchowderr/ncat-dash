@@ -1,6 +1,7 @@
 import {
   BODY_ONLY,
   KEEP_DISCLOSURE,
+  VARIANT_MUSIC_STEP,
   editingRecipes,
   moreRecipes,
   recipes,
@@ -123,6 +124,38 @@ const AD_SHAPES: [number, number][] = [
 ];
 /** Captions in the middle, clear of the top 14% and bottom 35% that ad buttons cover. */
 const AD_CAPTIONS = { settings: { position: "middle_center" } };
+
+/**
+ * What every ad variant becomes after its length cuts: each shape clean and captioned,
+ * and each of those again with the team's background music under it. The copy without
+ * music is for TikTok and Reels ads, which want their own cleared sounds added there; the
+ * one with music is for everywhere else. Without music in Settings only the copies
+ * without it are made.
+ */
+function adFinishes(after: string, column: number) {
+  const id = (name: string, row: number) => `${name}_${row + 1}`;
+  const nodes: AutomationNode[] = [
+    ...AD_SHAPES.map(([width, height], row) =>
+      step(id("shape", row), "recipe-blur-fill", column, row * 2 + 0.5, { width, height }),
+    ),
+    ...AD_SHAPES.map((_, row) =>
+      step(id("caption", row), "video-caption", column + 1, row * 2, AD_CAPTIONS),
+    ),
+    ...AD_SHAPES.map((_, row) =>
+      step(id("music", row), VARIANT_MUSIC_STEP, column + 1, row * 2 + 1),
+    ),
+    ...AD_SHAPES.map((_, row) =>
+      step(id("caption_music", row), VARIANT_MUSIC_STEP, column + 2, row * 2),
+    ),
+  ];
+  const edges = AD_SHAPES.flatMap((_, row) => [
+    ...chain(after, id("shape", row), id("caption", row), id("caption_music", row)),
+    ...chain(id("shape", row), id("music", row)),
+  ]);
+  return { nodes, edges };
+}
+/** The middle of the rows adFinishes uses, where the steps before it sit. */
+const AD_MIDDLE = AD_SHAPES.length - 0.5;
 
 const WORKFLOWS: Starter[] = [
   {
@@ -493,29 +526,19 @@ const WORKFLOWS: Starter[] = [
     category: "variants",
     name: "UGC Ad Variants",
     description:
-      "Start it with the creator's base cut and pick their other hook and ending takes on the first step. You get every hook and ending pairing at 6, 15, 30 and 60 seconds, in 9:16, 4:5 and 16:9, both clean and captioned, each named for what is in it, like h02_c01_15s_9x16, kept in a folder per creator and per shape, with an Ad files.csv list for your ads manager. Plain editing on real footage, no AI.",
+      "Start it with the creator's base cut and pick their other hook and ending takes on the first step. You get every hook and ending pairing at 6, 15, 30 and 60 seconds, in 9:16, 4:5 and 16:9, both clean and captioned, each with your background music under it and without, named for what is in it, like h02_c01_15s_9x16 and h02_c01_15s_9x16_music, kept in a folder per creator and per shape, with an Ad files.csv list for your ads manager. Plain editing on real footage, no AI.",
     group: "workflow",
     trigger: { kind: "manual" },
     nodes: [
-      step("variants_1", "recipe-hook-variants", 0),
-      step("lengths_1", "recipe-length-cuts", 1, 0, {
+      step("variants_1", "recipe-hook-variants", 0, AD_MIDDLE),
+      step("lengths_1", "recipe-length-cuts", 1, AD_MIDDLE, {
         lengths: "6, 15, 30, 60",
         ending_seconds: 4,
         disclosure: KEEP_DISCLOSURE,
       }),
-      ...AD_SHAPES.map(([width, height], row) =>
-        step(`shape_${row + 1}`, "recipe-blur-fill", 2, row, { width, height }),
-      ),
-      ...AD_SHAPES.map((_, row) =>
-        step(`caption_${row + 1}`, "video-caption", 3, row, AD_CAPTIONS),
-      ),
+      ...adFinishes("lengths_1", 2).nodes,
     ],
-    edges: [
-      ...chain("variants_1", "lengths_1"),
-      ...AD_SHAPES.flatMap((_, row) =>
-        chain("lengths_1", `shape_${row + 1}`, `caption_${row + 1}`),
-      ),
-    ],
+    edges: [...chain("variants_1", "lengths_1"), ...adFinishes("lengths_1", 2).edges],
   },
   {
     id: "ugc-clean-takes",
@@ -533,29 +556,19 @@ const WORKFLOWS: Starter[] = [
     category: "variants",
     name: "UGC Ad Variants From Creator Folders",
     description:
-      "Starts by itself: each creator drops their takes in ugc/<creator>/hooks/, ugc/<creator>/body/ and, if they have other calls to action, ugc/<creator>/endings/. A few minutes after the last one lands, every hook goes in front of the body with each ending, then each pairing is cut to 6, 15, 30 and 60 seconds in 9:16, 4:5 and 16:9, clean and captioned, named like h02_c01_15s_9x16, in the creator's own folder with an Ad files.csv list. Nobody presses start or picks takes. Plain editing on real footage, no AI.",
+      "Starts by itself: each creator drops their takes in ugc/<creator>/hooks/, ugc/<creator>/body/ and, if they have other calls to action, ugc/<creator>/endings/. A few minutes after the last one lands, every hook goes in front of the body with each ending, then each pairing is cut to 6, 15, 30 and 60 seconds in 9:16, 4:5 and 16:9, clean and captioned, each with your background music under it and without, named like h02_c01_15s_9x16 and h02_c01_15s_9x16_music, in the creator's own folder with an Ad files.csv list. Nobody presses start or picks takes. Plain editing on real footage, no AI.",
     group: "workflow",
     trigger: { kind: "folder", prefix: "ugc/", fileType: "video", layout: "creators" },
     nodes: [
-      step("variants_1", "recipe-hook-variants", 0, 0, { base_cut: BODY_ONLY }),
-      step("lengths_1", "recipe-length-cuts", 1, 0, {
+      step("variants_1", "recipe-hook-variants", 0, AD_MIDDLE, { base_cut: BODY_ONLY }),
+      step("lengths_1", "recipe-length-cuts", 1, AD_MIDDLE, {
         lengths: "6, 15, 30, 60",
         ending_seconds: 4,
         disclosure: KEEP_DISCLOSURE,
       }),
-      ...AD_SHAPES.map(([width, height], row) =>
-        step(`shape_${row + 1}`, "recipe-blur-fill", 2, row, { width, height }),
-      ),
-      ...AD_SHAPES.map((_, row) =>
-        step(`caption_${row + 1}`, "video-caption", 3, row, AD_CAPTIONS),
-      ),
+      ...adFinishes("lengths_1", 2).nodes,
     ],
-    edges: [
-      ...chain("variants_1", "lengths_1"),
-      ...AD_SHAPES.flatMap((_, row) =>
-        chain("lengths_1", `shape_${row + 1}`, `caption_${row + 1}`),
-      ),
-    ],
+    edges: [...chain("variants_1", "lengths_1"), ...adFinishes("lengths_1", 2).edges],
   },
   {
     id: "ad-length-cuts",
@@ -819,6 +832,7 @@ const RECIPE_CATEGORY: Record<string, StarterCategory> = {
   "recipe-hook-variants": "variants",
   "recipe-length-cuts": "variants",
   "recipe-opening-lines": "variants",
+  "recipe-variant-music": "variants",
   "recipe-song-teasers": "music",
 };
 
