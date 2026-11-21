@@ -154,3 +154,35 @@ describe("runSpeedTest", () => {
     expect(result.seconds).toBeGreaterThanOrEqual(15 * 60 + 40 * 8);
   });
 });
+
+describe("runSpeedTest when a run can't start", () => {
+  it("records it as failed and goes on with the rest", async () => {
+    const fake = standIn();
+    const realFor = fake.backend.automationFor;
+    fake.backend.automationFor = async (id, name) => {
+      if (id === "caption-uploads") {
+        throw new Error(
+          '[Request ID: x] Server Error\nUncaught ConvexError: {"code":"not_found","message":"Unknown starter."}',
+        );
+      }
+      return realFor(id, name);
+    };
+    const realStart = fake.backend.start;
+    let starts = 0;
+    fake.backend.start = async (id, url) => {
+      starts += 1;
+      if (starts === 1) throw new Error("trial over");
+      return realStart(id, url);
+    };
+    const results = await runSpeedTest({
+      ...fake,
+      plan: [plan[0], plan[1], plan[1]],
+      dashboard: "d",
+    });
+    expect(results.map((r) => [r.status, r.error])).toEqual([
+      ["failed", "couldn't start: Unknown starter."],
+      ["failed", "couldn't start: trial over"],
+      ["done", null],
+    ]);
+  });
+});

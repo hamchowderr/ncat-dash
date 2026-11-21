@@ -54,11 +54,45 @@ export async function runSpeedTest(options: RunOptions): Promise<SpeedResult[]> 
   for (const [index, item] of plan.entries()) {
     const label = `${index + 1}/${plan.length} ${item.readyMadeName} on the ${item.clip.name}`;
     let automationId = automations.get(item.readyMadeId);
+    const at = () => new Date(now()).toISOString();
+    // A run that can't start (the copy doesn't have that ready-made yet, say) is recorded
+    // as failed, and the rest still run.
+    const couldNotStart = async (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      const reason = /"message":"([^"]+)"/.exec(message)?.[1] ?? message.split("\n")[0];
+      const result: SpeedResult = {
+        at: at(),
+        batch,
+        clipId: item.clip.id,
+        clipName: item.clip.name,
+        clipSeconds: item.clip.seconds,
+        readyMadeId: item.readyMadeId,
+        readyMadeName: item.readyMadeName,
+        status: "failed",
+        seconds: null,
+        firstStepAfter: null,
+        steps: [],
+        retries: 0,
+        error: `couldn't start: ${reason}`,
+        toolkit: null,
+        runId: "",
+        dashboard: options.dashboard,
+        ...(options.note ? { note: options.note } : {}),
+      };
+      results.push(result);
+      await options.onResult?.(result);
+      log(`${label}: couldn't start (${reason})`);
+    };
     if (!automationId) {
-      automationId = await backend.automationFor(
-        item.readyMadeId,
-        automationName(item.readyMadeName),
-      );
+      try {
+        automationId = await backend.automationFor(
+          item.readyMadeId,
+          automationName(item.readyMadeName),
+        );
+      } catch (error) {
+        await couldNotStart(error);
+        continue;
+      }
       automations.set(item.readyMadeId, automationId);
     }
 
@@ -75,8 +109,14 @@ export async function runSpeedTest(options: RunOptions): Promise<SpeedResult[]> 
       ? "The toolkit was still busy when this run started, so it is slower than it should be."
       : undefined;
 
-    const at = new Date(now()).toISOString();
-    const runId = await backend.start(automationId, item.clip.url);
+    const startedAt = at();
+    let runId: string;
+    try {
+      runId = await backend.start(automationId, item.clip.url);
+    } catch (error) {
+      await couldNotStart(error);
+      continue;
+    }
     log(`${label}: started`);
     const giveUpAt = now() + timeLimitMs(item.clip);
     let view = await backend.run(runId);
@@ -93,7 +133,7 @@ export async function runSpeedTest(options: RunOptions): Promise<SpeedResult[]> 
     }
     const time = view ? timeRun(view) : null;
     const result: SpeedResult = {
-      at,
+      at: startedAt,
       batch,
       clipId: item.clip.id,
       clipName: item.clip.name,
@@ -103,7 +143,9 @@ export async function runSpeedTest(options: RunOptions): Promise<SpeedResult[]> 
       status: tooSlow
         ? "too-slow"
         : ((time?.status === "running" ? "cancelled" : time?.status) ?? "failed"),
-      seconds: tooSlow ? Math.round((now() - Date.parse(at)) / 1000) : (time?.seconds ?? null),
+      seconds: tooSlow
+        ? Math.round((now() - Date.parse(startedAt)) / 1000)
+        : (time?.seconds ?? null),
       firstStepAfter: time?.firstStepAfter ?? null,
       steps: time?.steps ?? [],
       retries: time?.retries ?? 0,
