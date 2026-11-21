@@ -8,6 +8,12 @@ import {
   clockSeconds,
   endBefore,
   type FileFacts,
+  findDisclosure,
+  keepDisclosures,
+  KEEP_DISCLOSURE,
+  lengthCutKeeping,
+  type SpokenWord,
+  withDisclosure,
   getStep,
   lengthCut,
   type MediaFacts,
@@ -264,6 +270,195 @@ describe("variant steps", () => {
   });
 });
 
+/** Words of `sentence` spread evenly from `from` to `to` seconds, as a transcript has them. */
+function said(sentence: string, from: number, to: number): SpokenWord[] {
+  const parts = sentence.split(" ");
+  const step = (to - from) / parts.length;
+  return parts.map((text, index) => ({
+    text,
+    start: Math.round((from + index * step) * 1000) / 1000,
+    end: Math.round((from + (index + 1) * step - 0.05) * 1000) / 1000,
+  }));
+}
+
+// What the creator says in base.mp4: the hook, the middle, the disclosure, the call to action.
+const BASE_WORDS = [
+  ...said("Stop scrolling right now.", 0.2, 2.7),
+  ...said("I tried this serum for thirty days and my skin has never looked this good.", 3.5, 8.5),
+  ...said("This is a paid partnership with Boots.", 9.3, 10.9),
+  ...said("Link below.", 11, 11.8),
+];
+
+describe("keeping the paid-ad disclosure", () => {
+  it("finds the sentence a paid creator says it in, with a breath either side", () => {
+    const found = findDisclosure(BASE_WORDS);
+    expect(found?.text).toBe("This is a paid partnership with Boots.");
+    // From just before "This" (but after "good." ends) to "Link" starting.
+    expect(found?.start).toBeCloseTo(9.15, 2);
+    expect(found?.end).toBeCloseTo(11, 2);
+  });
+
+  it("knows the usual ways of saying it, and none in a video that is not an ad", () => {
+    for (const line of [
+      "Thanks to Boots for sponsoring this video.",
+      "Hashtag ad, but I really do love it.",
+      "#ad I really do love it.",
+      "Boots gifted me this one.",
+      "I partnered with Boots on this.",
+      "Just so you know this is an ad for Boots.",
+    ]) {
+      expect(findDisclosure(said(line, 0, 3))?.text, line).toBe(line);
+    }
+    expect(findDisclosure(said("I added this to my routine and loved it.", 0, 3))).toBeNull();
+    expect(findDisclosure([])).toBeNull();
+  });
+
+  it("finds it worded the creator's own way when the team writes how it is said", () => {
+    const words = [
+      ...said("Okay so quick thing.", 0, 1.5),
+      ...said("Boots sent me this and paid for the video.", 1.7, 4),
+    ];
+    expect(findDisclosure(words, "Boots sent me this")?.text).toBe(
+      "Boots sent me this and paid for the video.",
+    );
+    expect(findDisclosure(said("I love this serum.", 0, 2), "Boots sent me this")).toBeNull();
+  });
+
+  it("never keeps more than eight seconds of a long sentence", () => {
+    const long = said(
+      "So this is a paid partnership with Boots and honestly I have been using it every single morning and every single night for weeks now",
+      0,
+      14,
+    );
+    const found = findDisclosure(long)!;
+    expect(found.end - found.start).toBeLessThanOrEqual(8.5);
+    expect(found.text).toContain("paid partnership");
+  });
+
+  it("puts the line back into a short cut, in the order it is said, without going over", () => {
+    const disclosure = findDisclosure(BASE_WORDS)!;
+    const cut = lengthCutKeeping({
+      duration: 12,
+      target: 6,
+      keepEnding: 0,
+      pauses: BASE_PAUSES,
+      disclosure,
+    });
+    expect(cut).toEqual([
+      { start: 0, end: 3.05 },
+      { start: disclosure.start, end: disclosure.end },
+    ]);
+    const total = cut.reduce((sum, part) => sum + part.end - part.start, 0);
+    expect(total).toBeLessThanOrEqual(6);
+    // A cut that already holds it is the plain cut.
+    expect(lengthCutKeeping({ duration: 12, target: 30, keepEnding: 0, disclosure })).toEqual([
+      { start: 0, end: 12 },
+    ]);
+    // Keeping the call to action too: start, disclosure, then the ending.
+    const withEnding = lengthCutKeeping({
+      duration: 12,
+      target: 8,
+      keepEnding: 1,
+      pauses: BASE_PAUSES,
+      disclosure,
+    });
+    expect(withEnding[withEnding.length - 1].end).toBe(12);
+    expect(withEnding.some((part) => part.start <= 9.2 && part.end >= 10.9)).toBe(true);
+  });
+
+  it("says plainly when the disclosure is too long for a cut", () => {
+    expect(() =>
+      lengthCutKeeping({
+        duration: 12,
+        target: 3,
+        keepEnding: 0,
+        disclosure: { start: 9, end: 11.5, text: "This is a paid partnership with Boots." },
+      }),
+    ).toThrow(/too long to keep in a 3 second cut/);
+  });
+
+  it("puts the base cut's line after a swapped hook, and leaves videos that hold it", () => {
+    const line = { start: 0.5, end: 2, text: "Paid partnership with Boots." };
+    const outputs = keepDisclosures(
+      [
+        [
+          { input: 0, start: 0, end: 3 },
+          { input: 0, start: 3, end: 9 },
+        ],
+        [{ input: 1 }, { input: 0, start: 3, end: 9 }],
+      ],
+      [line, null],
+    );
+    // The base's own hook holds it, so it is left as it was.
+    expect(outputs[0]).toEqual([
+      { input: 0, start: 0, end: 3 },
+      { input: 0, start: 3, end: 9 },
+    ]);
+    // Hook take 2 has none, so the line follows it, then the middle.
+    expect(outputs[1]).toEqual([
+      { input: 1 },
+      { input: 0, start: 0.5, end: 2 },
+      { input: 0, start: 3, end: 9 },
+    ]);
+    // Nothing found anywhere: nothing changes.
+    expect(keepDisclosures(outputs, [null, null])).toBe(outputs);
+  });
+
+  it("gives up only the overlap when a piece already holds part of the line", () => {
+    expect(
+      withDisclosure(
+        [{ input: 1 }, { input: 0, start: 3, end: 9 }],
+        { input: 0, start: 2.5, end: 4 },
+        1,
+      ),
+    ).toEqual([{ input: 1 }, { input: 0, start: 2.5, end: 4 }, { input: 0, start: 4, end: 9 }]);
+  });
+
+  it("makes Length Cuts keep it when switched on, and leaves it when off", () => {
+    const step = getStep("recipe-length-cuts")!;
+    const off = step.input.parse({ video_url: at("base.mp4"), lengths: "6" });
+    expect(step.readsWords!(off)).toEqual([]);
+    const on = step.input.parse({
+      video_url: at("base.mp4"),
+      lengths: "6",
+      disclosure: KEEP_DISCLOSURE,
+    }) as Record<string, unknown>;
+    expect(step.readsWords!(on)).toEqual(["video_url"]);
+    const facts = { video_url: { ...FACTS["base.mp4"], words: BASE_WORDS } };
+    const request = step.toRequest!(on, facts) as ComposeRequest;
+    const filters = request.filters.map((item) => item.filter).join(";");
+    expect(filters).toContain("trim=start=9.15:end=11");
+    // The video is read as far as the disclosure, not only its first seconds.
+    const readTo = (request: ComposeRequest) =>
+      request.inputs[0].options?.find((item) => item.option === "-t")?.argument;
+    expect(readTo(request)).toBeUndefined();
+    const plain = step.toRequest!(off, facts) as ComposeRequest;
+    expect(readTo(plain)).toBe("7");
+    expect(plain.filters.map((item) => item.filter).join(";")).not.toContain("9.15");
+  });
+
+  it("makes Hook And Ending Variants keep it by default, in every pairing", () => {
+    const step = getStep("recipe-hook-variants")!;
+    const input = step.input.parse(SAMPLE["recipe-hook-variants"]) as Record<string, unknown>;
+    expect(input.disclosure).toBe(KEEP_DISCLOSURE);
+    expect(step.readsWords!(input)).toEqual([
+      "video_url",
+      "hook_2_url",
+      "hook_3_url",
+      "ending_2_url",
+    ]);
+    // Said in the base cut's ending, which ending take 2 replaces.
+    const facts = {
+      ...factsFor("recipe-hook-variants", input),
+      video_url: { ...FACTS["base.mp4"], words: BASE_WORDS },
+    };
+    const request = step.toRequest!(input, facts) as ComposeRequest;
+    const filters = request.filters.map((item) => item.filter).join(";");
+    // Three videos end on cta2.mp4 instead of the base's ending: each gets the line.
+    expect(filters.match(/\[v0x\d+\]trim=start=9\.15:end=11,/g)).toHaveLength(3);
+  });
+});
+
 describe("reading pauses", () => {
   it("turns the toolkit's silence answer into seconds", () => {
     expect(clockSeconds("00:01:02.500")).toBe(62.5);
@@ -440,6 +635,30 @@ describe.skipIf(!hasFfmpeg)("variant steps on a real FFmpeg", () => {
     await ffmpeg(args);
     return outputs;
   }
+
+  it("keeps the paid-ad disclosure in a 6 second cut, picture and sound together", async () => {
+    const step = getStep("recipe-length-cuts")!;
+    const input = step.input.parse({
+      video_url: at("base.mp4"),
+      lengths: "6",
+      disclosure: KEEP_DISCLOSURE,
+    }) as Record<string, unknown>;
+    const request = step.toRequest!(input, {
+      video_url: { ...FACTS["base.mp4"], words: BASE_WORDS },
+    }) as ComposeRequest;
+    const [file] = await run(request, "disclosure");
+    // The start to the first pause (3.05 s) and the disclosure (9.15 to 11 s).
+    expect(length(file)).toBeCloseTo(3.05 + 1.85, 0);
+    expect(length(file)).toBeLessThanOrEqual(6);
+    expect(
+      Number(
+        execFileSync("ffprobe", [
+          ...["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration"],
+          ...["-of", "csv=p=0", file],
+        ]).toString(),
+      ),
+    ).toBeCloseTo(4.9, 0);
+  }, 180_000);
 
   it("makes every hook and ending pairing at the base cut's size", async () => {
     const files = await run(build("recipe-hook-variants").request, "variants");

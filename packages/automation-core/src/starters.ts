@@ -1,5 +1,6 @@
 import {
   BODY_ONLY,
+  KEEP_DISCLOSURE,
   VARIANT_MUSIC_STEP,
   editingRecipes,
   moreRecipes,
@@ -533,6 +534,7 @@ const WORKFLOWS: Starter[] = [
       step("lengths_1", "recipe-length-cuts", 1, AD_MIDDLE, {
         lengths: "6, 15, 30, 60",
         ending_seconds: 4,
+        disclosure: KEEP_DISCLOSURE,
       }),
       ...adFinishes("lengths_1", 2).nodes,
     ],
@@ -562,6 +564,7 @@ const WORKFLOWS: Starter[] = [
       step("lengths_1", "recipe-length-cuts", 1, AD_MIDDLE, {
         lengths: "6, 15, 30, 60",
         ending_seconds: 4,
+        disclosure: KEEP_DISCLOSURE,
       }),
       ...adFinishes("lengths_1", 2).nodes,
     ],
@@ -579,6 +582,7 @@ const WORKFLOWS: Starter[] = [
       step("lengths_1", "recipe-length-cuts", 0, 0, {
         lengths: "6, 15, 30, 60",
         ending_seconds: 4,
+        disclosure: KEEP_DISCLOSURE,
       }),
       ...AD_SHAPES.map(([width, height], row) =>
         step(`shape_${row + 1}`, "recipe-blur-fill", 1, row, { width, height }),

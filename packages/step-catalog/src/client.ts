@@ -3,6 +3,7 @@ import {
   type MediaFacts,
   type Pause,
   RUNNER_FIELDS,
+  type SpokenWord,
   type StepDefinition,
   userInputSchema,
 } from "./define";
@@ -20,6 +21,11 @@ export interface CallOptions {
   id?: string;
   signal?: AbortSignal;
   fetch?: typeof fetch;
+  /**
+   * The words heard in the files a step names in `readsWords`, by setting name. The runner
+   * reads them from the team's transcripts; a file without any is cut as if nothing was said.
+   */
+  words?: Record<string, SpokenWord[]>;
 }
 
 export class ToolkitError extends Error {
@@ -75,7 +81,7 @@ export async function readFacts(
   connection: ToolkitConnection,
   step: StepDefinition,
   input: Record<string, unknown>,
-  options: Pick<CallOptions, "signal" | "fetch"> = {},
+  options: Pick<CallOptions, "signal" | "fetch" | "words"> = {},
 ): Promise<FileFacts> {
   const facts: FileFacts = {};
   const doFetch = options.fetch ?? fetch;
@@ -111,6 +117,10 @@ export async function readFacts(
     } catch {
       // Without pauses the cuts land on the exact second instead.
     }
+  }
+  for (const field of step.readsWords?.(input) ?? []) {
+    const words = options.words?.[field];
+    if (words) facts[field] = { ...facts[field], words };
   }
   return facts;
 }
@@ -157,9 +167,10 @@ export async function callStep(
   options: CallOptions = {},
 ): Promise<unknown> {
   const parsed = userInputSchema(step).parse(input);
-  const facts = step.readsFirst
-    ? await readFacts(connection, step, parsed as Record<string, unknown>, options)
-    : {};
+  const facts =
+    step.readsFirst || step.readsWords
+      ? await readFacts(connection, step, parsed as Record<string, unknown>, options)
+      : {};
   const body = compact(
     step.toRequest ? step.toRequest(parsed, facts) : (parsed as Record<string, unknown>),
   );

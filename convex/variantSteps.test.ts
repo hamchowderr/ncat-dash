@@ -176,6 +176,92 @@ describe("length cuts in a run", () => {
   });
 });
 
+describe("keeping the paid-ad disclosure in a run", () => {
+  /** "word" timings as the toolkit's transcript has them, spread from `from` to `to`. */
+  const said = (sentence: string, from: number, to: number) => {
+    const parts = sentence.split(" ");
+    const step = (to - from) / parts.length;
+    return parts.map((word, index) => ({
+      word: ` ${word}`,
+      start: from + index * step,
+      end: from + (index + 1) * step - 0.05,
+    }));
+  };
+  const SEGMENTS = [
+    { words: said("Stop scrolling right now.", 0.2, 2.7) },
+    { words: said("I tried this serum for thirty days and loved it.", 3.5, 8.5) },
+    { words: said("This is a paid partnership with Boots.", 9.3, 10.9) },
+    { words: said("Link below.", 11, 11.8) },
+  ];
+  const AD = { ...FACTS, duration: 12 };
+  const STEPS: Node[] = [
+    {
+      id: "lengths_1",
+      stepId: "recipe-length-cuts",
+      input: { lengths: "6", disclosure: "Keep it in every cut" },
+    },
+  ];
+
+  test("hears the video first, then every cut keeps the line, shown on the run page", async () => {
+    const { t, maya, start, jobsOf } = await setUp(STEPS);
+    const calls = toolkit(AD);
+    const runId = await start({ file_url: VIDEO });
+    const [hearing] = await jobsOf(runId, "lengths_1");
+    expect(hearing.stepId).toBe("media-transcribe");
+    expect(hearing.input).toMatchObject({ media_url: VIDEO, word_timestamps: true });
+
+    await t.mutation(internal.jobs.finish, {
+      jobId: hearing._id,
+      ok: true,
+      result: { segments: SEGMENTS },
+    });
+    await t.action(internal.disclosure.hear, { runStepId: hearing.runStepId! });
+
+    const [cut] = await jobsOf(runId, "lengths_1");
+    expect(cut.stepId).toBe("recipe-length-cuts");
+    await t.action(internal.jobs.dispatch, { jobId: cut._id });
+    const compose = calls.find((call) => call.path === "/v1/ffmpeg/compose")!;
+    // The 6 s cut is the start, then the disclosure from 9.15 to 11 s.
+    expect(JSON.stringify(compose.body)).toContain("trim=start=9.15:end=11");
+
+    const run = await maya.as.query(api.runs.get, { runId });
+    expect(run?.steps[0].disclosures).toEqual([
+      { source: VIDEO, text: "This is a paid partnership with Boots." },
+    ]);
+  });
+
+  test("a video heard before is not transcribed again, and one with no disclosure says so", async () => {
+    const { t, team, maya, start, jobsOf } = await setUp(STEPS);
+    toolkit(AD);
+    await t.mutation(internal.moments.saveWords, {
+      organizationId: team,
+      source: VIDEO,
+      duration: 12,
+      words: [
+        { t: "I", s: 0.2, e: 0.4 },
+        { t: "added", s: 0.5, e: 0.9 },
+        { t: "this", s: 1, e: 1.3 },
+        { t: "daily.", s: 1.4, e: 2 },
+      ],
+    });
+    const runId = await start({ file_url: VIDEO });
+    const [cut] = await jobsOf(runId, "lengths_1");
+    expect(cut.stepId).toBe("recipe-length-cuts");
+    const run = await maya.as.query(api.runs.get, { runId });
+    expect(run?.steps[0].disclosures).toEqual([{ source: VIDEO, text: null }]);
+  });
+
+  test("with it off, nothing is transcribed and the run is as before", async () => {
+    const { start, jobsOf } = await setUp([
+      { id: "lengths_1", stepId: "recipe-length-cuts", input: { lengths: "6" } },
+    ]);
+    toolkit(AD);
+    const runId = await start({ file_url: VIDEO });
+    const jobs = await jobsOf(runId, "lengths_1");
+    expect(jobs.map((job) => job.stepId)).toEqual(["recipe-length-cuts"]);
+  });
+});
+
 describe("music under each variant in a run", () => {
   const SONG = "https://files.example/uploads/upbeat.mp3";
   const NODES: Node[] = [
