@@ -658,7 +658,7 @@ describe.skipIf(!hasFfmpeg)("variant steps on a real FFmpeg", () => {
         ]).toString(),
       ),
     ).toBeCloseTo(4.9, 0);
-  });
+  }, 180_000);
 
   it("makes every hook and ending pairing at the base cut's size", async () => {
     const files = await run(build("recipe-hook-variants").request, "variants");
