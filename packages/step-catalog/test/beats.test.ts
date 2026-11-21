@@ -15,7 +15,10 @@ import {
   getStep,
   isPicture,
   readBeats,
+  readCuts,
   readFacts,
+  SPLIT_SHOTS_STEP,
+  shotPieces,
   StepSetupError,
 } from "../src";
 
@@ -249,6 +252,157 @@ describe("reading the beat from the toolkit", () => {
   });
 });
 
+describe("Split Into Shots", () => {
+  const pieces = (cuts: number[], length = 12, extra = {}) =>
+    shotPieces({ cuts, length, shortest: 1, longest: 4, most: 30, ...extra }).map((shot) => [
+      Math.round(shot.from * 100) / 100,
+      Math.round(shot.to * 100) / 100,
+    ]);
+
+  it("cuts where the camera cuts", () => {
+    expect(pieces([3, 5.5, 9])).toEqual([
+      [0, 3],
+      [3, 5.5],
+      [5.5, 9],
+      [9, 12],
+    ]);
+  });
+
+  it("joins a short shot to the next one, and a short last shot to the one before", () => {
+    expect(pieces([3, 3.4, 8, 11.6], 12, { longest: 10 })).toEqual([
+      [0, 3],
+      [3, 8],
+      [8, 12],
+    ]);
+  });
+
+  it("splits long shots evenly, so a video with no cuts is split evenly", () => {
+    expect(pieces([], 10)).toEqual([
+      [0, 3.33],
+      [3.33, 6.67],
+      [6.67, 10],
+    ]);
+    expect(pieces([2], 10)).toEqual([
+      [0, 2],
+      [2, 6],
+      [6, 10],
+    ]);
+  });
+
+  it("keeps only the first pieces when there are more than asked for", () => {
+    expect(pieces([2, 4, 6, 8, 10], 12, { most: 2 })).toEqual([
+      [0, 2],
+      [2, 4],
+    ]);
+  });
+
+  it("ignores cuts at the very start or end, and repeated ones", () => {
+    expect(pieces([0, 0.02, 4, 4, 12], 12)).toEqual([
+      [0, 4],
+      [4, 8],
+      [8, 12],
+    ]);
+  });
+
+  function split(extra: Record<string, unknown> = {}, facts?: FileFacts) {
+    const step = getStep(SPLIT_SHOTS_STEP)!;
+    const input = step.input.parse({ video_url: at("talk.mp4"), ...extra });
+    return step.toRequest!(
+      input,
+      facts ?? { video_url: { duration: 12, hasVideo: true, cuts: [3, 5.5, 9] } },
+    ) as ComposeRequest;
+  }
+
+  it("makes one file per shot, cut from the video's own picture and sound", () => {
+    const request = split();
+    expect(request.inputs).toEqual([{ file_url: at("talk.mp4") }]);
+    expect(request.outputs).toHaveLength(4);
+    const times = request.outputs.map((output) =>
+      output.options.filter((o) => o.option === "-ss" || o.option === "-to").map((o) => o.argument),
+    );
+    expect(times).toEqual([
+      ["0", "3"],
+      ["3", "5.5"],
+      ["5.5", "9"],
+      ["9", "12"],
+    ]);
+    expect(request.outputs[0].options).toContainEqual({ option: "-map", argument: "0:a:0?" });
+    const step = getStep(SPLIT_SHOTS_STEP)!;
+    expect(step.outputLabels?.(step.input.parse({ video_url: at("talk.mp4") }), 2)).toEqual([
+      "shot01",
+      "shot02",
+    ]);
+  });
+
+  it("says so when the video's length cannot be read", () => {
+    expect(() => split({}, {})).toThrow(StepSetupError);
+  });
+
+  it("is a ready-made that starts from one video", () => {
+    const step = getStep(SPLIT_SHOTS_STEP)!;
+    expect(beatRecipes).toContain(step);
+    expect(step.primaryInput).toBe("video_url");
+    expect(step.readsCuts).toEqual(["video_url"]);
+    expect(step.title).toBe("Split Into Shots");
+  });
+
+  it("reads the toolkit's camera cuts in order, bad times dropped", () => {
+    expect(readCuts({ media: { cuts: [5, "x", 2.5, -1, Number.NaN] } })).toEqual([2.5, 5]);
+    expect(readCuts({ media: {} })).toBeUndefined();
+    expect(readCuts(null)).toBeUndefined();
+  });
+
+  it("asks the toolkit for the camera cuts after the length, only for steps that split on them", async () => {
+    const asked: { path: string; body: unknown }[] = [];
+    const fetch = (async (address: string, init: RequestInit) => {
+      const where = new URL(address).pathname;
+      asked.push({ path: where, body: JSON.parse(String(init.body)) });
+      const response =
+        where === "/v1/media/metadata"
+          ? { duration: 12, has_audio: true, has_video: true }
+          : where === "/v1/media/look"
+            ? { media: { cuts: [9, 3] } }
+            : { outputs: [{ file_url: "https://files.example.com/out.mp4" }] };
+      return new Response(JSON.stringify({ code: 200, response }));
+    }) as typeof globalThis.fetch;
+    const connection = { baseUrl: "https://toolkit.example.com", apiKey: "k" };
+    const step = getStep(SPLIT_SHOTS_STEP)!;
+    const facts = await readFacts(connection, step, { video_url: at("talk.mp4") }, { fetch });
+    expect(asked.map((one) => one.path)).toEqual(["/v1/media/metadata", "/v1/media/look"]);
+    expect(asked[1].body).toEqual({ media_url: at("talk.mp4"), cuts: true, frames: false });
+    expect(facts.video_url?.cuts).toEqual([3, 9]);
+
+    asked.length = 0;
+    await readFacts(
+      connection,
+      getStep("recipe-frame-choices")!,
+      { video_url: at("talk.mp4") },
+      {
+        fetch,
+      },
+    );
+    expect(asked.map((one) => one.path)).toEqual(["/v1/media/metadata"]);
+  });
+
+  it("splits evenly when the toolkit cannot find cuts", async () => {
+    const fetch = (async (address: string) =>
+      address.endsWith("/v1/media/look")
+        ? new Response("Not found", { status: 404 })
+        : new Response(
+            JSON.stringify({ response: { duration: 8, has_video: true } }),
+          )) as typeof globalThis.fetch;
+    const step = getStep(SPLIT_SHOTS_STEP)!;
+    const facts = await readFacts(
+      { baseUrl: "https://toolkit.example.com", apiKey: "k" },
+      step,
+      { video_url: at("talk.mp4") },
+      { fetch },
+    );
+    expect(facts.video_url?.cuts).toBeUndefined();
+    expect(split({}, facts).outputs).toHaveLength(2);
+  });
+});
+
 const runFile = promisify(execFile);
 const hasFfmpeg = spawnSync("ffmpeg", ["-version"]).status === 0;
 
@@ -356,5 +510,46 @@ describe.skipIf(!hasFfmpeg)("Cut To The Beat on a real FFmpeg", () => {
     for (const cut of [1, 2, 3]) {
       expect(colourAt(file, cut - 0.05)).not.toBe(colourAt(file, cut + 0.05));
     }
+  }, 120_000);
+
+  it("splits a video into its shots on the exact frame of each camera cut", async () => {
+    // Red for 2 s, green for 3 s, blue for 2 s: cuts at 2 and 5.
+    const shots = path.join(dir, "shots.mp4");
+    await ffmpeg([
+      ...["-f", "lavfi", "-i", "color=red:size=320x240:rate=30:duration=2"],
+      ...["-f", "lavfi", "-i", "color=green:size=320x240:rate=30:duration=3"],
+      ...["-f", "lavfi", "-i", "color=blue:size=320x240:rate=30:duration=2"],
+      ...["-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]", "-map", "[v]"],
+      ...["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"],
+      shots,
+    ]);
+    const step = getStep(SPLIT_SHOTS_STEP)!;
+    const request = step.toRequest!(step.input.parse({ video_url: at("shots.mp4") }), {
+      video_url: { duration: 7, hasVideo: true, cuts: [2, 5] },
+    }) as ComposeRequest;
+    const args = ["-i", shots];
+    const files = request.outputs.map((output, index) => {
+      for (const item of output.options) {
+        args.push(item.option);
+        if (item.argument !== undefined) args.push(String(item.argument));
+      }
+      const file = path.join(dir, `shot${index}.mp4`);
+      args.push(file);
+      return file;
+    });
+    await ffmpeg(args);
+    const length = (file: string) =>
+      Number(
+        execFileSync("ffprobe", [
+          ...["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file],
+        ]).toString(),
+      );
+    expect(files.map(length).map((n) => Math.round(n * 10) / 10)).toEqual([2, 3, 2]);
+    // Each shot is one colour from its first frame to its last.
+    expect(files.map((file) => [colourAt(file, 0), colourAt(file, length(file) - 0.05)])).toEqual([
+      ["red", "red"],
+      ["green", "green"],
+      ["blue", "blue"],
+    ]);
   }, 120_000);
 });

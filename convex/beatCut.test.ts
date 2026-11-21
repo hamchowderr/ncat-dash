@@ -89,8 +89,10 @@ function toolkit({ noBeats = false } = {}) {
     const answer = (response: unknown) =>
       new Response(JSON.stringify({ code: 200, response }), { status: 200 });
     if (path === "/v1/media/metadata") {
-      return answer({ duration: 30, has_video: false, has_audio: true });
+      const video = String(calls[calls.length - 1].body.media_url) === VIDEO;
+      return answer({ duration: video ? 12 : 30, has_video: video, has_audio: true });
     }
+    if (path === "/v1/media/look") return answer({ media: { cuts: [3, 5.5, 9] } });
     if (path === "/v1/audio/beats") {
       if (noBeats) return new Response("Not Found", { status: 404 });
       const beats = Array.from({ length: 59 }, (_, i) => 0.25 + i * 0.5);
@@ -155,5 +157,42 @@ describe("Cut To The Beat in a run", () => {
     expect(after?.error).toMatch(/beat could not be read\. Update your toolkit/);
     const run = await ready.maya.as.query(api.runs.get, { runId });
     expect(run?.status).toBe("failed");
+  });
+});
+
+describe("the Cut To The Beat ready-made, from an upload", () => {
+  const SHOT = (n: number) =>
+    `https://files.example/teams/x/aaaaaaa1-5b1f-4c3e-9a77-0d2f1b6e8a10_output_${n}.mp4`;
+
+  test("splits the upload at its camera cuts, then cuts those shots to the beat", async () => {
+    const ready = await setUp([
+      { id: "split_shots_1", stepId: "recipe-split-shots" },
+      { id: "beat_cut_1", stepId: "recipe-beat-cut", input: { length: 8 } },
+    ]);
+    await withMusic(ready);
+    const calls = toolkit();
+    const runId = await ready.start({ file_url: VIDEO, file_name: "Skate park.mp4" });
+    const [split] = await ready.jobsOf(runId, "split_shots_1");
+    expect(split.input).toMatchObject({ video_url: VIDEO });
+    await ready.t.action(internal.jobs.dispatch, { jobId: split._id });
+    expect(calls.map((call) => call.path)).toEqual([
+      "/v1/media/metadata",
+      "/v1/media/look",
+      "/v1/ffmpeg/compose",
+    ]);
+    expect(calls[1].body).toEqual({ media_url: VIDEO, cuts: true, frames: false });
+    // A file for each of the four shots.
+    expect((calls[2].body.outputs as unknown[]).length).toBe(4);
+
+    const shots = [0, 1, 2, 3].map(SHOT);
+    await ready.t.mutation(internal.jobs.finish, { jobId: split._id, ok: true, result: shots });
+    const beat = await ready.jobsOf(runId, "beat_cut_1");
+    expect(beat).toHaveLength(1);
+    expect(beat[0].input).toMatchObject({
+      music_url: SONG,
+      video_urls: shots.map((video_url) => ({ video_url })),
+    });
+    const run = await ready.maya.as.query(api.runs.get, { runId });
+    expect(run?.outputNames[shots[0]]).toBe("Skate park shot01");
   });
 });
