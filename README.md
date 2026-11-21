@@ -21,7 +21,7 @@ Takewon works with [the toolkit fork](https://github.com/hamchowderr/no-code-arc
 - `packages/email/` holds the emails the app sends (as plain data) and a small client for toSend, the service that delivers them.
 - `packages/step-catalog/` describes every toolkit endpoint once (inputs, outputs, how to call it). The app, the automation runner and the agent all read from it. Its tests compare every step with `test/toolkit-schemas.json`, the request schemas read out of the toolkit's own routes, because the toolkit rejects fields it does not know.
 - `packages/agent/` is the agent server: a Mastra server that chats with a signed-in person and builds automations for them. See The agent.
-- `apps/desktop/` is the desktop app: Kontifi in its own window (Tauri). See [docs/desktop-app.md](docs/desktop-app.md).
+- `apps/desktop/` is the desktop app: Takewon in its own window (Tauri). See [docs/desktop-app.md](docs/desktop-app.md).
 - `.agents/skills/` holds the official agent skills for Convex, Better Auth, Mastra, Vercel and shadcn.
 
 ## Run it locally

@@ -23,9 +23,26 @@ const application = path.resolve(
 const DRIVER_PORT = 4444;
 const driverUrl = `http://127.0.0.1:${DRIVER_PORT}`;
 
+// The stand-in dashboard's page. Like the real one (src/lib/desktop.ts), it asks the app
+// to show the unseen count and a notification, and writes down whether the app allowed it.
+const STAND_IN_PAGE = `<!doctype html><title>Stand-in dashboard</title>
+<h1 id=signed-in>Your automations</h1><p id=bridge>waiting</p>
+<script>
+  const say = (text) => (document.getElementById("bridge").textContent = text);
+  const invoke = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+  if (!invoke) say("no bridge");
+  else
+    invoke("set_unseen", { count: 3 })
+      .then(() => invoke("notify", { title: "Weekly clips failed", body: "Captions: the toolkit is offline" }))
+      .then((shown) => say("allowed, notification " + (shown ? "shown" : "skipped")))
+      .catch((error) => say("refused: " + error));
+</script>`;
+
 let driver: ChildProcess;
 let server: Server;
 let otherSite: Server;
+let elsewhere: Server;
+let elsewhereAddress: string;
 let serverAddress: string;
 let otherSiteAddress: string;
 
@@ -57,19 +74,21 @@ beforeAll(async () => {
     if (req.url === "/api/desktop") {
       res.writeHead(200, { "content-type": "application/json" }).end('{"app":"ncat-dash"}');
     } else {
-      res
-        .writeHead(200, { "content-type": "text/html" })
-        .end(
-          "<!doctype html><title>Stand-in dashboard</title><h1 id=signed-in>Your automations</h1>",
-        );
+      res.writeHead(200, { "content-type": "text/html" }).end(STAND_IN_PAGE);
     }
+  });
+  // Another site with the same page, to check it gets nothing from the app.
+  [elsewhere, elsewhereAddress] = await listen((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html" }).end(STAND_IN_PAGE);
   });
   [otherSite, otherSiteAddress] = await listen((_req, res) => {
     res.writeHead(404).end("not found");
   });
   // A fresh settings folder, so the app starts as if newly installed.
   const home = mkdtempSync(path.join(tmpdir(), "ncat-dash-desktop-"));
-  driver = spawn("tauri-driver", ["--port", String(DRIVER_PORT)], {
+  // On Windows tauri-driver drives Edge's WebView2 through msedgedriver (see the workflow).
+  const native = process.env.NATIVE_DRIVER ? ["--native-driver", process.env.NATIVE_DRIVER] : [];
+  driver = spawn("tauri-driver", ["--port", String(DRIVER_PORT), ...native], {
     stdio: "inherit",
     env: { ...process.env, XDG_CONFIG_HOME: home, APPDATA: home, HOME: home },
   });
@@ -80,6 +99,7 @@ afterAll(() => {
   driver?.kill();
   server?.close();
   otherSite?.close();
+  elsewhere?.close();
 });
 
 describe("connecting the desktop app to a dashboard", () => {
@@ -98,6 +118,8 @@ describe("connecting the desktop app to a dashboard", () => {
       await app.waitFor("#signed-in", (text) => text === "Your automations");
       expect(await app.title()).toBe("Stand-in dashboard");
       expect(await app.url()).toBe(`http://${serverAddress}/`);
+      // The dashboard may ask for the unseen count and notifications, and nothing else.
+      await app.waitFor("#bridge", (text) => text.startsWith("allowed"));
     } finally {
       await app.end();
     }
@@ -107,6 +129,10 @@ describe("connecting the desktop app to a dashboard", () => {
     const app = await Session.start(driverUrl, application);
     try {
       await app.waitFor("#signed-in", (text) => text === "Your automations");
+
+      // A site the dashboard links to gets none of the app's commands.
+      await app.navigate(`http://${elsewhereAddress}/`);
+      await app.waitFor("#bridge", (text) => text !== "waiting" && !text.startsWith("allowed"));
     } finally {
       await app.end();
     }

@@ -9,13 +9,16 @@ fn main() {
         .expect("product.json has a name");
     println!("cargo:rustc-env=PRODUCT_NAME={name}");
 
-    // The app's own commands need a permission in capabilities/default.json, so nothing
-    // can call them unless it is listed there.
+    // The app's own commands need a permission (in capabilities/default.json, or the
+    // dashboard's capability added on connect in lib.rs), so nothing
+    // can call them unless it is listed.
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "saved_servers",
             "forget_server",
             "open_server",
+            "notify",
+            "set_unseen",
         ]),
     ))
     .expect("failed to build the desktop app");

@@ -46,7 +46,7 @@ jobs:
       - name: Install the system libraries and the WebKit driver
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES webkit2gtk-driver xvfb
+          sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES webkit2gtk-driver xvfb dbus
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -66,7 +66,39 @@ jobs:
       - name: Install tauri-driver
         run: command -v tauri-driver || cargo install tauri-driver --locked --version 2.1.0
       - run: pnpm tauri build --debug --no-bundle
-      - run: xvfb-run -a pnpm test:e2e
+      - run: dbus-run-session -- xvfb-run -a pnpm test:e2e
+
+  # The same browser tests on Windows, through Edge's WebView2 driver. (Apple has no
+  # driver for app web views, so the Mac builds are checked by hand.)
+  test-windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/desktop
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          cache-bin: true
+          key: windows-e2e
+      - run: pnpm install --frozen-lockfile
+      - name: Install tauri-driver and the matching Edge driver
+        run: |
+          command -v tauri-driver || cargo install tauri-driver --locked --version 2.1.0
+          command -v msedgedriver-tool || cargo install --git https://github.com/chippers/msedgedriver-tool --locked
+          msedgedriver-tool
+          echo "NATIVE_DRIVER=$(pwd -W)/msedgedriver.exe" >> "$GITHUB_ENV"
+      - run: pnpm tauri build --debug --no-bundle
+      - run: pnpm test:e2e
 
   build:
     strategy:

@@ -56,6 +56,10 @@ export class Session {
     return (await this.send(`/element/${id}/text`)).value;
   }
 
+  async navigate(url: string) {
+    await this.send("/url", "POST", { url });
+  }
+
   async title(): Promise<string> {
     return (await this.send("/title")).value;
   }
