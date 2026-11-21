@@ -16,7 +16,7 @@ const followOns = STARTERS.filter(isFollowOn);
 const byId = (id: string) => STARTERS.find((starter) => starter.id === id)!;
 
 describe("ready-made follow-ons", () => {
-  it("are the nine that carry on from another automation, in their own category", () => {
+  it("are the ten that carry on from another automation, in their own category", () => {
     expect(followOns.map((starter) => starter.id)).toEqual([
       "brand-every-clip",
       "ready-to-post",
@@ -24,6 +24,7 @@ describe("ready-made follow-ons", () => {
       "backup-follow-speaker",
       "backup-clips-follow-speaker",
       "clips-from-episode",
+      "caption-cleaned-recording",
       "episode-video-youtube",
       "lyric-video-vertical",
       "thumbnail-choices-after",

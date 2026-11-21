@@ -78,7 +78,7 @@ describe("asking what the team makes", () => {
     expect(list.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ })).toBeTruthy();
     expect(list.getAllByText("AI picks the moments")).toHaveLength(1);
     expect(
-      screen.getByRole("link", { name: /See all 83 ready-made automations/ }).getAttribute("href"),
+      screen.getByRole("link", { name: /See all 86 ready-made automations/ }).getAttribute("href"),
     ).toBe("/automations/new");
     // What goes well after each pick is offered under it, ticked.
     const after = within(

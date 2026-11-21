@@ -15,6 +15,7 @@ import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
 import { CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
+import { CLEANUP_DEFAULTS, HOOK_MODES, MAX_HOOKS } from "./cleanup";
 import { FINISH_CHOICES } from "./chain";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
@@ -57,7 +58,7 @@ export interface JsonSchema {
 export interface NodeType {
   /**
    * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "broll",
-   * "broll-plan", "motion", "sound-effects", "export",
+   * "broll-plan", "motion", "sound-effects", "cleanup", "export",
    * "if", "wait", "automation", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
@@ -651,6 +652,62 @@ const SOUND_EFFECTS: NodeType = {
   automatic: null,
 };
 
+const CLEANUP: NodeType = {
+  type: "cleanup",
+  role: "action",
+  group: "video",
+  title: "Clean Up Pauses And Retakes",
+  description:
+    'Gets a raw recording ready to edit, by plain rules with no AI: long pauses heard by the toolkit\'s silence detection are taken down to a short breath, and a line said more than once is kept only as its last take. When the creator says "hook one", "hook two"… before each opening and "body" before the main part, each hook take comes back as a file of its own with the body as another, kept in hooks and body folders (per creator when one is named), ready for UGC Ad Variants. Put it first, before any editing.',
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      cutPausesOver: {
+        type: "number",
+        minimum: 0.3,
+        maximum: 5,
+        default: CLEANUP_DEFAULTS.cutPausesOver,
+        description: "Pauses longer than this, in seconds, are taken down.",
+      },
+      leavePause: {
+        type: "number",
+        minimum: 0,
+        maximum: 1,
+        default: CLEANUP_DEFAULTS.leavePause,
+        description: "How much of each long pause is left, in seconds, so speech still breathes.",
+      },
+      retakes: {
+        type: "boolean",
+        default: CLEANUP_DEFAULTS.retakes,
+        description: "Keep only the last take of a line said more than once.",
+      },
+      hooks: {
+        type: "string",
+        enum: [...HOOK_MODES],
+        default: CLEANUP_DEFAULTS.hooks,
+        description:
+          "How hook takes are found. said: the creator says hook one, hook two… and body. count: the first hookCount takes, split at pauses of a second or more, are hooks. none: always one video.",
+      },
+      hookCount: {
+        type: "integer",
+        minimum: 1,
+        maximum: MAX_HOOKS,
+        default: CLEANUP_DEFAULTS.hookCount,
+        description: "For hooks: count, how many takes at the start are hooks.",
+      },
+      creator: {
+        type: "string",
+        default: "",
+        description:
+          "Who filmed it. Their hook and body files are kept in a folder of their own, such as Jane/hooks.",
+      },
+    },
+  },
+  automatic: null,
+};
+
 const IF: NodeType = {
   type: "if",
   role: "action",
@@ -787,6 +844,7 @@ export const NODE_TYPES: NodeType[] = [
   MOTION_PLAN,
   MOTION,
   SOUND_EFFECTS,
+  CLEANUP,
   EXPORT,
   IF,
   WAIT,
@@ -854,6 +912,7 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
     type === "motion" ||
     type === "motion-plan" ||
     type === "sound-effects" ||
+    type === "cleanup" ||
     type === "export" ||
     type === "if" ||
     type === "wait" ||

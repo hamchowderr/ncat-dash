@@ -25,6 +25,8 @@ export const nodeValidator = v.object({
     v.literal("sound-effects"),
     // Has the AI plan which motion graphics go where, for the Add Motion Graphics after it.
     v.literal("motion-plan"),
+    // Takes long pauses and retakes out of each recording; can split out its hook takes.
+    v.literal("cleanup"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -684,7 +686,8 @@ export default defineSchema({
     // An Add B-Roll step listens too, then finds footage ("match"), has the picture model
     // look at the words and the stock found ("look"), and lays the cutaways over ("lay").
     // A "motion" or "sound-effects" step transcribes each video ("listen"), reads its words
-    // and places what goes on it ("place"), then draws on it ("render").
+    // and places what goes on it ("place"), then draws on it ("render"). A "cleanup" step
+    // does the same, also hearing each video's pauses, and "render" cuts the cleaned files.
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -768,6 +771,25 @@ export default defineSchema({
         v.object({
           source: v.string(),
           items: v.array(v.object({ start: v.number(), end: v.number(), kind: v.string() })),
+        }),
+      ),
+    ),
+    // For a "cleanup" step: what it took out of each video, and the file code of each file
+    // it made for it, in the order of its jobs ("hook01", "body", or null).
+    cleaned: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          before: v.number(),
+          after: v.number(),
+          pauses: v.number(),
+          pauseSeconds: v.number(),
+          retakes: v.number(),
+          retakeSeconds: v.number(),
+          hooks: v.number(),
+          labels: v.array(v.union(v.string(), v.null())),
+          // Who filmed it: from the step, or the creator's folder the file was dropped in.
+          creator: v.optional(v.string()),
         }),
       ),
     ),

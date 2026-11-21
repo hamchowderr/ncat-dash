@@ -1,5 +1,7 @@
 import { getStep, userInputSchema } from "@ncat-dash/step-catalog";
 
+import { isTakeLabel } from "./cleanup";
+
 // Readable names for the files a run makes. The toolkit names what it makes after its own
 // job ids ("ca4934e3-…_output_0.mp4", "…_captioned.mp4"), which tell a person nothing. A
 // run's files are shown under the name of the file that started it instead, with what
@@ -140,7 +142,10 @@ export function stepFileLabels(
     if (!step?.outputLabels || job.outputs.length === 0) continue;
     const input = (job.input ?? {}) as Record<string, unknown>;
     const from = step.primaryInput ? input[step.primaryInput] : undefined;
-    const base = typeof from === "string" ? known.get(from) : undefined;
+    // A cleaned recording's take ("hook02", "body") names where it is kept, not what a
+    // later step makes of it, so it is not carried on.
+    const found = typeof from === "string" ? known.get(from) : undefined;
+    const base = isTakeLabel(found) ? undefined : found;
     if (step.labelsFollow && !base) continue;
     let own: string[] = [];
     try {

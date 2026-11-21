@@ -48,6 +48,7 @@ import type * as lib_chatAlerts_index from "../lib/chatAlerts/index.js";
 import type * as lib_chatAlerts_slack from "../lib/chatAlerts/slack.js";
 import type * as lib_chatAlerts_teams from "../lib/chatAlerts/teams.js";
 import type * as lib_chatAlerts_telegram from "../lib/chatAlerts/telegram.js";
+import type * as lib_cleanup from "../lib/cleanup.js";
 import type * as lib_clientIp from "../lib/clientIp.js";
 import type * as lib_clients from "../lib/clients.js";
 import type * as lib_crypto from "../lib/crypto.js";
@@ -185,6 +186,7 @@ declare const fullApi: ApiFromModules<{
   "lib/chatAlerts/slack": typeof lib_chatAlerts_slack;
   "lib/chatAlerts/teams": typeof lib_chatAlerts_teams;
   "lib/chatAlerts/telegram": typeof lib_chatAlerts_telegram;
+  "lib/cleanup": typeof lib_cleanup;
   "lib/clientIp": typeof lib_clientIp;
   "lib/clients": typeof lib_clients;
   "lib/crypto": typeof lib_crypto;

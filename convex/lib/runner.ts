@@ -70,7 +70,7 @@ import { captionSetupOf } from "./captions";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { finishListening, startListening } from "./moments";
 import { finishLaying, finishLooking } from "./broll";
-import { finishMotionListening, isMotionKind } from "./motion";
+import { finishMotionListening, isPlaceKind } from "./motion";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
@@ -127,13 +127,7 @@ export async function startRun(
   // A project's client wins over the automation's own, so the run is for the right client.
   const clientId = project ? project.clientId : automation.clientId;
   // A workflow's review, when the automation is part of one, is added to the run's steps.
-  const graph = await workflowRunGraph(
-    ctx,
-    automation,
-    nodes,
-    edges,
-    options.test !== undefined,
-  );
+  const graph = await workflowRunGraph(ctx, automation, nodes, edges, options.test !== undefined);
 
   const runId = await ctx.db.insert("runs", {
     organizationId: automation.organizationId,
@@ -322,7 +316,7 @@ async function startNode(
     return;
   }
 
-  if (isMotionKind(node.kind)) {
+  if (isPlaceKind(node.kind)) {
     await startListening(ctx, run, node, step, byNode, filesFor("video", node, run, byNode));
     return;
   }
@@ -1043,7 +1037,7 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
       await advance(ctx, run._id);
       return;
     }
-    if (node && isMotionKind(node.kind)) {
+    if (node && isPlaceKind(node.kind)) {
       const steps = await ctx.db
         .query("runSteps")
         .withIndex("by_run", (q) => q.eq("runId", run._id))
@@ -1121,6 +1115,14 @@ async function variantLabels(
   jobs: Doc<"jobs">[],
 ): Promise<FileLabel[]> {
   const node = (run.nodes as AutomationNode[]).find((other) => other.id === step.nodeId);
+  if (node?.kind === "cleanup") {
+    // Each job made one file; its code was decided with the plan.
+    const codes = (step.cleaned ?? []).flatMap((one) => one.labels);
+    return jobs.flatMap((job, at) => {
+      const label = codes[at];
+      return label ? job.outputs.map((url) => ({ url, label })) : [];
+    });
+  }
   const definition = node?.stepId ? getStep(node.stepId) : undefined;
   if (!node?.stepId || !definition?.outputLabels) return [];
   const earlier = (
