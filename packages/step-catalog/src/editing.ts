@@ -74,6 +74,7 @@ function editStep<Shape extends z.ZodRawShape>(args: {
   startInputs?: StepDefinition["startInputs"];
   readsFirst?: (keyof Shape & string)[];
   readsPauses?: (keyof Shape & string)[];
+  readsBeats?: (keyof Shape & string)[];
   readsWords?: (blanks: z.output<z.ZodObject<Shape>>) => string[];
   askFirst?: (keyof Shape & string)[];
   outputLabels?: (blanks: z.output<z.ZodObject<Shape>>, count: number) => string[];
@@ -96,6 +97,7 @@ function editStep<Shape extends z.ZodRawShape>(args: {
     startInputs: args.startInputs,
     readsFirst: args.readsFirst,
     readsPauses: args.readsPauses,
+    ...(args.readsBeats ? { readsBeats: args.readsBeats } : {}),
     readsWords: args.readsWords as StepDefinition["readsWords"],
     askFirst: args.askFirst,
     outputLabels: args.outputLabels as StepDefinition["outputLabels"],
@@ -314,6 +316,8 @@ export const composeParts = {
   silent,
   editStep,
   textBlock,
+  SHAPES,
+  SHAPE_NAMES,
 };
 
 export const editingRecipes: StepDefinition[] = [
