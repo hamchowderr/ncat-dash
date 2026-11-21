@@ -313,6 +313,9 @@ describe("reading links and cookies", () => {
   test("failures", () => {
     expect(failureWords("This video is private", false)).toMatch(/Add your browser's cookies/);
     expect(failureWords("Unsupported URL: https://x.example", true)).toMatch(/no video at this/);
+    expect(
+      failureWords("Unable to download webpage: HTTP Error 429: Too Many Requests", false),
+    ).toMatch(/turning away downloads/);
   });
 
   test("cookie files", () => {

@@ -77,6 +77,9 @@ export function failureWords(error: string, hasCookies: boolean): string {
   if (/no video or sound/i.test(said)) {
     return "There is no video or sound at this link. It may be a post of photos.";
   }
+  if (/too many requests|\b429\b/i.test(said)) {
+    return "The site is turning away downloads from your toolkit for now. Try again later, or add your browser's cookies in Settings, Video Links.";
+  }
   if (/sign in|log ?in|login|cookies|confirm you.?re not a bot|private|rate.?limit/i.test(said)) {
     return hasCookies
       ? "The site asked for a sign-in, even with your cookies. They may have run out: export them again in Settings, Video Links."
