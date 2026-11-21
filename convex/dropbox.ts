@@ -1400,7 +1400,7 @@ export const forAutomation = query({
 
 /**
  * Switches an automation's finished files going to Dropbox on or off. On, they go to the
- * caller's own Dropbox, into the folder they picked or "/Kontentifi/<automation>".
+ * caller's own Dropbox, into the folder they picked or "/Takewon/<automation>".
  */
 export const setSend = mutation({
   args: {

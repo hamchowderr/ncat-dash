@@ -260,7 +260,7 @@ describe("Approve and Send back pressed on a Teams alert card", () => {
 const IN_A_THREAD = {
   ...IN_A_CHANNEL,
   id: 'activity-7',
-  text: '<at>Kontentifi</at> looks good',
+  text: '<at>Takewon</at> looks good',
   conversation: { id: '19:edits@thread.tacv2;messageid=root-1', tenantId: 'tenant-1' },
 };
 
@@ -277,7 +277,7 @@ describe('replies in a Teams review thread', () => {
       rootActivityId: 'root-1',
       activityId: 'activity-7',
       text: 'looks good',
-      botName: 'Kontentifi',
+      botName: 'Takewon',
     });
     // A message straight in the channel, not in a thread, is no reply.
     expect(reviewQuestionFor(IN_A_CHANNEL, 'hi')).toBeNull();

@@ -153,7 +153,7 @@ export function reviewQuestionFor(raw: unknown, text: string): Record<string, st
     rootActivityId,
     activityId: activity.id,
     text: text || activity.text || '',
-    botName: env.TEAMS_APP_NAME || 'Kontentifi',
+    botName: env.TEAMS_APP_NAME || 'Takewon',
   };
 }
 

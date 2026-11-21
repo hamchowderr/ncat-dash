@@ -156,14 +156,14 @@ test("the docs keep to the product's wording", () => {
     assert.doesNotMatch(
       text,
       /no server (is )?(required|needed)/i,
-      `${file}: Kontentifi always runs on a server`,
+      `${file}: Takewon always runs on a server`,
     );
     assert.doesNotMatch(
       text,
       /\bzapier\b|\bmake\.com\b|\bintegromat\b/i,
       `${file}: these cannot be used with the toolkit`,
     );
-    assert.doesNotMatch(text, /\bNCA Dashboard\b/, `${file}: the product is Kontentifi`);
+    assert.doesNotMatch(text, /\bNCA Dashboard\b/, `${file}: the product is Takewon`);
     for (const m of text.matchAll(/[^.\n]*social media ready[^\n]*/gi)) {
       assert.ok(
         m[0].includes("Your content, social media ready."),

@@ -1,6 +1,6 @@
-# Self-Hosting Kontentifi
+# Self-Hosting Takewon
 
-Kontentifi is a finished shell around the NCA Toolkit, the free and open-source media engine. The toolkit does the work (FFmpeg, transcription, captions, clips); Kontentifi is where a team builds, runs and reviews the automations that drive it, with an agent that sets them up. n8n is not needed: automations run inside Kontentifi. The toolkit can still be used from n8n or any HTTP client next to it.
+Takewon is a finished shell around the NCA Toolkit, the free and open-source media engine. The toolkit does the work (FFmpeg, transcription, captions, clips); Takewon is where a team builds, runs and reviews the automations that drive it, with an agent that sets them up. n8n is not needed: automations run inside Takewon. The toolkit can still be used from n8n or any HTTP client next to it.
 
 This guide is for whoever runs a copy. It covers what to run, what machine to run it on, every setting, and how to update it. AI agents doing the same job should read the checklist in [AGENTS.md](../AGENTS.md) as well.
 
@@ -8,7 +8,7 @@ This guide is for whoever runs a copy. It covers what to run, what machine to ru
 
 | Piece        | What it is                                                                                                                                                                                                                 | How it ships                                     |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Toolkit      | [The NCA Toolkit fork](https://github.com/hamchowderr/no-code-architects-toolkit), with Redis for its job queue. Kontentifi needs this fork; the original toolkit lacks the storage, health and look endpoints Kontentifi calls. | `ghcr.io/hamchowderr/no-code-architects-toolkit` |
+| Toolkit      | [The NCA Toolkit fork](https://github.com/hamchowderr/no-code-architects-toolkit), with Redis for its job queue. Takewon needs this fork; the original toolkit lacks the storage, health and look endpoints Takewon calls. | `ghcr.io/hamchowderr/no-code-architects-toolkit` |
 | Bucket       | Where every file lives: Cloudflare R2, AWS S3, DigitalOcean Spaces, Backblaze B2 or MinIO. Only the toolkit holds its keys.                                                                                                | Your storage account                             |
 | Convex       | The backend: database, sign-in, the automation runner, webhooks, the MCP server. Self-host it, or use a Convex Cloud project.                                                                                              | `ghcr.io/convex/convex-backend`                  |
 | Agent server | The Mastra server behind the agent, in the dashboard and in Slack, Discord, Telegram and Microsoft Teams.                                                                                                                  | `ghcr.io/hamchowderr/ncat-dash-agent`            |
@@ -18,7 +18,7 @@ Every image is built by GitHub Actions and pulled ready-made, for both kinds of 
 
 ## The Machine
 
-Kontentifi runs on a rented server, or on a machine of your own that stays on around the clock, such as a Mac Mini. Automations run while nobody is signed in, so a laptop that is closed at night is not a good home for it. A server is required either way: something has to be on for the automations to run.
+Takewon runs on a rented server, or on a machine of your own that stays on around the clock, such as a Mac Mini. Automations run while nobody is signed in, so a laptop that is closed at night is not a good home for it. A server is required either way: something has to be on for the automations to run.
 
 What the pieces use, measured on the published images:
 
@@ -115,7 +115,7 @@ From a clone of this repository, with no `.env.local` in it (that file points th
 ```bash
 pnpm install
 export CONVEX_SELF_HOSTED_URL=https://api.example.com
-export CONVEX_SELF_HOSTED_ADMIN_KEY='kontentifi|...'
+export CONVEX_SELF_HOSTED_ADMIN_KEY='takewon|...'
 
 npx convex env set SITE_URL https://app.example.com
 npx convex env set BETTER_AUTH_SECRET "$(openssl rand -base64 32)"
@@ -263,7 +263,7 @@ The agent server takes many more optional settings from the chat kit it is built
 
 ## Updating
 
-1. Pull the new images. On a server you rely on, pin the Kontentifi images to a `sha-<commit>` tag in `deploy/.env` (`TOOLKIT_IMAGE`, `AGENT_IMAGE`, `WEB_IMAGE`) and move the tags on purpose. A commit's image appears once its GitHub Actions run has finished.
+1. Pull the new images. On a server you rely on, pin the Takewon images to a `sha-<commit>` tag in `deploy/.env` (`TOOLKIT_IMAGE`, `AGENT_IMAGE`, `WEB_IMAGE`) and move the tags on purpose. A commit's image appears once its GitHub Actions run has finished.
 2. `docker compose -f deploy/compose.yml --env-file deploy/.env up -d` restarts only what changed.
 3. Push the Convex functions from the same commit (`npx convex deploy -y`). If the web app is on Vercel instead, deploy it from that commit too.
 

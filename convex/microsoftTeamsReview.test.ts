@@ -286,8 +286,8 @@ describe("replies written in Teams", () => {
       aadObjectId: "aad-dev",
       rootActivityId: posted[1].id,
       activityId: "reply-2",
-      text: "<at>Kontentifi</at> looks good to me",
-      botName: "Kontentifi",
+      text: "<at>Takewon</at> looks good to me",
+      botName: "Takewon",
     });
     const [reply] = await setup.t.run((ctx) =>
       ctx.db

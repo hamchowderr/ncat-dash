@@ -1,7 +1,7 @@
 // Keeps the self-hosted images working on any machine. Run with `node --test` (part of
 // `pnpm test`).
 //
-// - Every image Kontentifi publishes is built for Intel/AMD and for ARM (Apple-chip Macs),
+// - Every image Takewon publishes is built for Intel/AMD and for ARM (Apple-chip Macs),
 //   each on its own kind of GitHub runner, and joined under one tag.
 // - The web app's image and its start script agree on the stand-in addresses, and the
 //   start script swaps them for the real ones.
@@ -46,13 +46,13 @@ test("the web image's stand-in addresses are the ones its start script replaces"
 });
 
 test("the start script writes the real addresses into a clean copy each time", () => {
-  const app = mkdtempSync(join(tmpdir(), "kontentifi-web-"));
+  const app = mkdtempSync(join(tmpdir(), "takewon-web-"));
   const chunk = join(app, ".next/static/chunk.js");
   const pristine = join(app, ".pristine", chunk);
   mkdirSync(dirname(chunk), { recursive: true });
   mkdirSync(dirname(pristine), { recursive: true });
   const built =
-    'new C("https://convex-url.kontentifi.invalid");fetch("https://convex-site-url.kontentifi.invalid/mcp")';
+    'new C("https://convex-url.takewon.invalid");fetch("https://convex-site-url.takewon.invalid/mcp")';
   writeFileSync(chunk, built);
   writeFileSync(pristine, built);
   writeFileSync(join(app, ".stand-ins"), `${chunk}\n`);

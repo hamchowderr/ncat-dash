@@ -18,7 +18,7 @@ export function TrialDays({ organizationId }: { organizationId: string }) {
           className="text-foreground font-medium underline-offset-4 hover:underline"
           href={trial.buyUrl}
         >
-          Get Kontentifi
+          Get Takewon
         </a>
       )}
     </span>
@@ -51,7 +51,7 @@ export function TrialEnded({ organizationId }: { organizationId: string }) {
       </div>
       {trial.buyUrl && (
         <Button asChild size="sm">
-          <a href={trial.buyUrl}>Get Kontentifi</a>
+          <a href={trial.buyUrl}>Get Takewon</a>
         </Button>
       )}
     </section>

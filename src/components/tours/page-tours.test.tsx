@@ -167,7 +167,7 @@ describe("a page's tour", () => {
     answerQuery(api.tours.ended, true);
     const view = renderPage({ ready: false });
     fireEvent.click(screen.getByRole("button", { name: "Dashboard tour" }));
-    expect(card()).toHaveTextContent("Welcome to Kontentifi");
+    expect(card()).toHaveTextContent("Welcome to Takewon");
     answerQuery(api.tours.ended, false);
     view.rerender(
       <TooltipProvider>
@@ -179,7 +179,7 @@ describe("a page's tour", () => {
       </TooltipProvider>,
     );
     await act(async () => {});
-    expect(card()).toHaveTextContent("Welcome to Kontentifi");
+    expect(card()).toHaveTextContent("Welcome to Takewon");
   });
 });
 

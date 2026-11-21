@@ -20,7 +20,7 @@ describe("the free trial on screen", () => {
     });
     render(<TrialDays organizationId="team_1" />);
     expect(screen.getByText("2 days left in your trial")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Get Kontentifi" }).getAttribute("href")).toBe(BUY);
+    expect(screen.getByRole("link", { name: "Get Takewon" }).getAttribute("href")).toBe(BUY);
   });
 
   test("says nothing for a team without a trial, or one that has bought", () => {
@@ -57,7 +57,7 @@ describe("the free trial on screen", () => {
     const band = screen.getByRole("region", { name: "Free trial" });
     expect(band.textContent).toContain("Your free trial has ended");
     expect(band.textContent).toContain("Everything you made is kept");
-    expect(screen.getByRole("link", { name: "Get Kontentifi" }).getAttribute("href")).toBe(BUY);
+    expect(screen.getByRole("link", { name: "Get Takewon" }).getAttribute("href")).toBe(BUY);
     // Part of the page, never laid over it.
     expect(band.className).not.toMatch(/\b(fixed|absolute|sticky)\b/);
   });

@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { PRODUCT_NAME } from "../src";
 
-// The product is called Kontentifi. The engine underneath is still the NCA Toolkit, but the
+// The product is called Takewon. The engine underneath is still the NCA Toolkit, but the
 // old working names for the product itself must not show up anywhere people read.
 const ROOT = path.resolve(__dirname, "../../..");
 const PLACES = ["src", "convex", "e2e", "packages/agent/src", "packages/email/src"];
@@ -12,6 +12,7 @@ const OLD_NAMES = [
   /NCA Dashboard/,
   /Welcome to Your Dashboard/,
   /\bKontifi\b/i,
+  /\bKontentifi\b/i,
 ];
 const SKIP = new Set(["node_modules", "_generated", ".next", ".mastra"]);
 
@@ -27,8 +28,8 @@ function filesUnder(dir: string): string[] {
 }
 
 describe("product name", () => {
-  it("is Kontentifi", () => {
-    expect(PRODUCT_NAME).toBe("Kontentifi");
+  it("is Takewon", () => {
+    expect(PRODUCT_NAME).toBe("Takewon");
   });
 
   it("leaves no old product name in the app, the agent or the emails", () => {

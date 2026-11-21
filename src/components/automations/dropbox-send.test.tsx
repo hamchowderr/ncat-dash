@@ -15,7 +15,7 @@ const off = {
   canSwitch: true,
   account: "Jordan Lee",
   mine: true,
-  folder: "/Kontentifi/Weekly shorts",
+  folder: "/Takewon/Weekly shorts",
 };
 
 describe("Send to Dropbox on an automation", () => {
@@ -35,7 +35,7 @@ describe("Send to Dropbox on an automation", () => {
 
     answerQuery(api.dropbox.forAutomation, { ...off, on: true });
     rerender(<DropboxSend automationId={AUTOMATION} />);
-    await user.click(screen.getByRole("button", { name: "/Kontentifi/Weekly shorts" }));
+    await user.click(screen.getByRole("button", { name: "/Takewon/Weekly shorts" }));
     const input = screen.getByRole("textbox", { name: "Dropbox folder for finished files" });
     await user.clear(input);
     await user.type(input, "/Clients/Acme{Enter}");
@@ -52,6 +52,6 @@ describe("Send to Dropbox on an automation", () => {
     answerQuery(api.dropbox.forAutomation, { ...off, on: true, mine: false, canSwitch: false });
     renderInApp(<DropboxSend automationId={AUTOMATION} />);
     expect(screen.getByRole("switch")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "/Kontentifi/Weekly shorts" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "/Takewon/Weekly shorts" })).toBeDisabled();
   });
 });

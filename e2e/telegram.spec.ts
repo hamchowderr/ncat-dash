@@ -42,7 +42,7 @@ async function codeFrom(page: Page, button: string, param: "start" | "startgroup
   ]);
   await tab.waitForURL(/^https:\/\/t\.me\//);
   const url = new URL(tab.url());
-  expect(url.pathname).toBe("/KontentifiStandInBot");
+  expect(url.pathname).toBe("/TakewonStandInBot");
   const code = url.searchParams.get(param);
   expect(code).toMatch(/^[0-9a-f]{32}$/);
   await tab.close();
@@ -73,7 +73,7 @@ test("links a Telegram from Settings, then a group for review activity", async (
   await page.goto("/settings/telegram");
   await expect(page.getByRole("heading", { level: 1, name: "Telegram" })).toBeVisible();
   await expect(page.getByRole("img", { name: "Telegram logo" })).toBeVisible();
-  await expect(page.getByText(/@KontentifiStandInBot/)).toBeVisible();
+  await expect(page.getByText(/@TakewonStandInBot/)).toBeVisible();
 
   // Before linking, the agent does not know this Telegram account.
   expect(

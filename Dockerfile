@@ -28,8 +28,8 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter "ncat-dash..."
 COPY . .
 ENV NEXT_OUTPUT=standalone \
-    NEXT_PUBLIC_CONVEX_URL=https://convex-url.kontentifi.invalid \
-    NEXT_PUBLIC_CONVEX_SITE_URL=https://convex-site-url.kontentifi.invalid
+    NEXT_PUBLIC_CONVEX_URL=https://convex-url.takewon.invalid \
+    NEXT_PUBLIC_CONVEX_SITE_URL=https://convex-site-url.takewon.invalid
 RUN pnpm build
 
 FROM node:22-bookworm-slim
@@ -39,11 +39,11 @@ WORKDIR /app
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
-COPY --chown=node:node deploy/web/start.sh /usr/local/bin/kontentifi-web
+COPY --chown=node:node deploy/web/start.sh /usr/local/bin/takewon-web
 # Keep an untouched copy of every file that holds a stand-in address, so each start
 # writes the addresses into a clean copy (and changing them only needs a restart).
-RUN chmod +x /usr/local/bin/kontentifi-web \
- && grep -rlE 'convex(-site)?-url\.kontentifi\.invalid' /app --include='*' > /app/.stand-ins \
+RUN chmod +x /usr/local/bin/takewon-web \
+ && grep -rlE 'convex(-site)?-url\.takewon\.invalid' /app --include='*' > /app/.stand-ins \
  && mkdir -p /app/.pristine \
  && while read -r f; do mkdir -p "/app/.pristine$(dirname "$f")"; cp -p "$f" "/app/.pristine$f"; done < /app/.stand-ins \
  && chown -R node:node /app/.pristine /app/.stand-ins
@@ -54,4 +54,4 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s CMD curl -fsS -o /dev/null http://127.0.0.1:3000/ || exit 1
-CMD ["kontentifi-web"]
+CMD ["takewon-web"]

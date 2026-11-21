@@ -8,7 +8,7 @@ export type Branding = {
   appName: string;
 };
 
-export const DEFAULT_APP_NAME = "Kontentifi";
+export const DEFAULT_APP_NAME = "Takewon";
 
 export function escapeHtml(value: string): string {
   return value

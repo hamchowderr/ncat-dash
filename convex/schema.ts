@@ -542,7 +542,7 @@ export default defineSchema({
     // team's, and keep their finished files in the client's folder. Not part of versions.
     clientId: v.optional(v.id("clients")),
     // Switched on: each finished run's files are also sent to this Dropbox account, into
-    // `folder` (or "/Kontentifi/<automation>"). Not part of versions.
+    // `folder` (or "/Takewon/<automation>"). Not part of versions.
     dropboxSend: v.optional(
       v.object({
         connectionId: v.id("dropboxConnections"),
