@@ -343,6 +343,11 @@ function sizeOf(facts: MediaFacts | undefined, what: string): [number, number] {
 
 const PLACES = { top: 0.24, middle: 0.5 } as const;
 
+/** The step that lays the team's music under each variant, next to the copy without. */
+export const VARIANT_MUSIC_STEP = "recipe-variant-music";
+/** The code a variant with music carries, as in "h02_c01_15s_9x16_music". */
+export const MUSIC_CODE = "music";
+
 export const variantRecipes: StepDefinition[] = [
   editStep({
     id: "recipe-hook-variants",
@@ -693,6 +698,72 @@ export const variantRecipes: StepDefinition[] = [
             ? [opt("-map", `[o${index}]`), opt("-map", `[s${index}]`), ...VIDEO_OUT]
             : [opt("-map", `[s${index}]`), ...MP3_OUT],
         })),
+      };
+    },
+  }),
+  editStep({
+    id: VARIANT_MUSIC_STEP,
+    title: "Music Under Each Variant",
+    description:
+      "Lays your team's background music from Settings quietly under each video, looped to its length and faded out at the end, so every ad variant comes as a copy with music next to the one without. Upload the copy without music where the platform wants its own cleared sounds, such as TikTok's Commercial Music Library or Meta's Sound Collection. Until your team adds background music in Settings it is passed over and only the copies without music are made.",
+    primaryInput: "video_url",
+    brandInputs: { music_url: "music" },
+    readsFirst: ["video_url"],
+    skipsWithout: "music_url",
+    labelsFollow: true,
+    blanks: {
+      video_url: url("The video"),
+      music_url: z
+        .string()
+        .url()
+        .optional()
+        .describe("The music track. Left empty, your team's background music from Settings"),
+      music_volume: number(
+        "Loudness of the music under the voice (1 is the track as it is)",
+        0,
+        2,
+      ).default(0.15),
+    },
+    outputLabels: () => [MUSIC_CODE],
+    toRequest: (b, facts) => {
+      if (!b.music_url) {
+        throw new StepSetupError("Add background music in Settings, under Brand.");
+      }
+      const main = facts.video_url;
+      const duration = main?.duration;
+      if (!duration) throw new StepSetupError("The video's length could not be read.");
+      const fade = Math.min(1.5, duration / 4);
+      // Looped to the video's length, so a short track never stops halfway through an ad.
+      const music = `[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=${silent(main) ? 1 : b.music_volume},atrim=duration=${seconds(duration)},asetpts=PTS-STARTPTS,afade=t=in:d=${seconds(Math.min(0.5, duration / 4))},afade=t=out:st=${seconds(duration - fade)}:d=${seconds(fade)}[music]`;
+      const filters = silent(main)
+        ? [music]
+        : [
+            music,
+            "[0:a]aresample=48000,aformat=channel_layouts=stereo[voice]",
+            // The video's own length, and the voice left as loud as it was.
+            "[voice][music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]",
+          ];
+      return {
+        inputs: [
+          { file_url: b.video_url },
+          { file_url: b.music_url, options: [opt("-stream_loop", -1)] },
+        ],
+        filters: filters.map((filter) => ({ filter })),
+        outputs: [
+          {
+            options: [
+              opt("-map", "0:v"),
+              opt("-map", silent(main) ? "[music]" : "[mixed]"),
+              // The picture is left as it is; only the sound is made again.
+              opt("-c:v", "copy"),
+              opt("-c:a", "aac"),
+              opt("-b:a", "192k"),
+              opt("-t", seconds(duration)),
+              opt("-movflags", "+faststart"),
+              opt("-f", "mp4"),
+            ],
+          },
+        ],
       };
     },
   }),

@@ -260,6 +260,23 @@ export async function failStep(
   }
 }
 
+/** Marks a step passed over, with nothing made, and every step after it with it. */
+async function passOver(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  byNode: Map<string, Doc<"runSteps">>,
+) {
+  const now = Date.now();
+  await ctx.db.patch(step._id, { status: "skipped", startedAt: now, finishedAt: now });
+  for (const nodeId of downstreamOf(step.nodeId, run.edges as AutomationEdge[])) {
+    const below = byNode.get(nodeId);
+    if (below && below.status === "pending") {
+      await ctx.db.patch(below._id, { status: "skipped", finishedAt: now });
+    }
+  }
+}
+
 async function startNode(
   ctx: MutationCtx,
   run: Doc<"runs">,
@@ -414,6 +431,12 @@ async function startToolkitStep(
       : node.input),
     ...settingsForLaterSteps(node, nodes, edges),
   };
+  // A step that is no use without a setting nobody has given yet, such as the music it lays
+  // under each video, is passed over: the run carries on without what it would have made.
+  if (definition.skipsWithout && isEmptySetting(settings[definition.skipsWithout])) {
+    await passOver(ctx, run, step, byNode);
+    return;
+  }
   // Follow the speaker straight after Clips makes the platform's shape unless one was picked.
   const followShape = isEmptySetting(settings.aspect) ? followShapeFrom(node, nodes, edges) : null;
   if (followShape) settings.aspect = followShape;
