@@ -169,6 +169,7 @@ const KINDS = [
   "motion",
   "motion-plan",
   "sound-effects",
+  "cleanup",
 ];
 const MAX_DEPTH = 12;
 // Names the database accepts for a setting: plain text that does not start with $ or _.

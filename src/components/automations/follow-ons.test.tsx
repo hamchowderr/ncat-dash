@@ -115,8 +115,10 @@ describe("the ready-made list", () => {
     renderInApp(<TemplateGallery onPick={() => {}} />);
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: /^After another automation 9$/ }));
+      .click(screen.getByRole("button", { name: /^After another automation 10$/ }));
     expect(screen.getByText("Backup When Following The Speaker Fails")).toBeInTheDocument();
+    expect(screen.getByText("Caption The Cleaned-Up Recording")).toBeInTheDocument();
+    expect(screen.getByText("Runs after Clean Up Pauses And Retakes")).toBeInTheDocument();
     expect(screen.getByText("Runs if Vertical that follows the speaker fails")).toBeInTheDocument();
     expect(screen.getByText("Runs after Lyric video with highlighted words")).toBeInTheDocument();
   });

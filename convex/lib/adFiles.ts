@@ -76,9 +76,24 @@ export function creatorFolder(creator: string | null | undefined): string {
   return name && !/^\.+$/.test(name) ? `${name}/` : "";
 }
 
-/** Where a coded file goes inside the automation's folder: creator first, then shape. */
+/**
+ * A cleaned recording's takes: "hook01".."hook09" go in hooks/ and "body" in body/, the
+ * layout a creator-folders trigger reads to start UGC Ad Variants.
+ */
+export function takeFolder(label: string | null | undefined): string | null {
+  if (!label) return null;
+  if (/^hook0[1-9]$/.test(label)) return "hooks/";
+  if (label === "body") return "body/";
+  return null;
+}
+
+/**
+ * Where a coded file goes inside the automation's folder: creator first, then shape, or
+ * for a cleaned recording's takes, creator then hooks/ or body/.
+ */
 export function adFolder(label: string | null | undefined, creator: string | null | undefined) {
-  return label ? `${creatorFolder(creator)}${shapeFolder(label)}` : "";
+  if (!label) return "";
+  return `${creatorFolder(creator)}${takeFolder(label) ?? shapeFolder(label)}`;
 }
 
 export interface AdFile {

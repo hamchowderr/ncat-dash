@@ -56,7 +56,7 @@ import {
   putFolder,
   storageConnection,
 } from "./lib/bucket";
-import { AD_FILES_NAME, type AdFile, adFilesCsv, adFolder } from "./lib/adFiles";
+import { AD_FILES_NAME, type AdFile, adFilesCsv, adFolder, takeFolder } from "./lib/adFiles";
 import { finishedFiles } from "./lib/exports";
 import { deliveryFolderOf } from "./lib/clients";
 import { followLibraryKey } from "./lib/library";
@@ -1007,7 +1007,8 @@ export const keepFinished = internalAction({
           await copyObject(whole, from, `${config.root}${folder}${sub}${name}`);
           kept.push(`${folder}${sub}${name}`);
           placed.push({ link: file.link, key: `${folder}${sub}${name}` });
-          if (file.label) {
+          // Hook and body takes are raw footage for ads, not ads, so they are not listed.
+          if (file.label && !takeFolder(file.label)) {
             adFiles.push({ name, folder: sub, label: file.label, creator: found.creator });
           }
         } catch {
@@ -1074,7 +1075,10 @@ export const finishedOfRun = internalQuery({
       automationName: run.automationName,
       deliveryFolder:
         client && client.organizationId === run.organizationId ? deliveryFolderOf(client) : null,
-      creator: creatorOf(run),
+      creator:
+        creatorOf(run) ??
+        steps.flatMap((step) => step.cleaned ?? []).find((one) => one.creator)?.creator ??
+        null,
       files: finishedFiles(run, steps).map((link) => ({
         link,
         name: names[link] ?? fileNameOfLink(link),

@@ -55,6 +55,7 @@ import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
 import { BrollMain, BrollMore, BrollPlanMain } from "./broll-settings";
+import { CleanupMain } from "./cleanup-settings";
 import { MotionMain, MotionPlanMain, SoundEffectsMain } from "./motion-settings";
 import { PlatformPicker } from "./platform-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
@@ -213,12 +214,16 @@ export function NodePanel({
     node.kind === "broll-plan" ||
     node.kind === "motion-plan" ||
     node.kind === "motion" ||
-    node.kind === "sound-effects"
+    node.kind === "sound-effects" ||
+    node.kind === "cleanup"
   ) {
     handled.push({
       label: "Video",
       text: "the nearest video before this step, transcribed with each word's timing",
     });
+  }
+  if (node.kind === "cleanup") {
+    handled.push({ label: "Pauses", text: "where the toolkit hears silence in the video" });
   }
   for (const name of Object.keys(nodeType?.fromStart ?? {})) {
     if (isBlank(node.input[name])) {
@@ -405,6 +410,10 @@ export function NodePanel({
 
       {node.kind === "sound-effects" && (
         <SoundEffectsMain node={node} onChange={(input) => onChange({ input })} />
+      )}
+
+      {node.kind === "cleanup" && (
+        <CleanupMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
       )}
 
       {captionStep && (
