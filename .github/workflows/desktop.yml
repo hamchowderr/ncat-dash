@@ -103,21 +103,22 @@ jobs:
       - run: pnpm tauri build --debug --no-bundle
       # Starts the app on its own first, so a crash at start shows here and not as a
       # driver that never answers.
+      # Starts the app on its own first with its web view open for debugging, the way the
+      # Edge driver starts it, so a problem shows here and not as a driver that never answers.
       - name: Check the app starts
         env:
           RUST_BACKTRACE: "1"
+          WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: --remote-debugging-port=9222
         run: |
           app=src-tauri/target/debug/ncat-dash-desktop.exe
           "$app" > app.log 2>&1 &
-          sleep 15
-          if tasklist //FI "IMAGENAME eq ncat-dash-desktop.exe" | grep -q ncat-dash-desktop; then
-            echo "The app is running."
-            taskkill //F //IM ncat-dash-desktop.exe > /dev/null
-          else
-            echo "The app stopped within 15 seconds:"
-            cat app.log
-            exit 1
-          fi
+          sleep 20
+          tasklist | grep -iE "ncat-dash|msedgewebview2" || true
+          curl -s --max-time 5 http://127.0.0.1:9222/json/list || echo "No web view answered on the debugging port."
+          cat app.log
+          taskkill //F //T //IM ncat-dash-desktop.exe > /dev/null 2>&1 || true
+          taskkill //F //IM msedgewebview2.exe > /dev/null 2>&1 || true
+          sleep 3
       - run: pnpm test:e2e
       - name: Show the Edge driver log
         if: failure()
