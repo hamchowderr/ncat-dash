@@ -76,6 +76,12 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    */
   readsPauses?: string[];
   /**
+   * File settings whose spoken words the step needs, from the team's transcripts. In a run
+   * the runner transcribes any not heard before, then hands them over as `facts[field]
+   * .words`. Depends on the step's settings, so a step only asks when it will use them.
+   */
+  readsWords?: (input: Record<string, unknown>) => string[];
+  /**
    * Settings asked for up front although they are optional, because the step is only
    * useful with some of them set (such as the other hook takes of hook variants).
    */
@@ -104,6 +110,15 @@ export interface MediaFacts {
   hasAudio?: boolean;
   /** Pauses in speech, in seconds, for settings named in `readsPauses`. */
   pauses?: Pause[];
+  /** Each word heard, in order, for settings named by `readsWords`. */
+  words?: SpokenWord[];
+}
+
+/** One word heard in a file, with when it is said, in seconds. */
+export interface SpokenWord {
+  text: string;
+  start: number;
+  end: number;
 }
 
 /** A stretch of silence, from and to, in seconds. */

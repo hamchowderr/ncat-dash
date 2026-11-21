@@ -1,5 +1,6 @@
 import {
   BODY_ONLY,
+  KEEP_DISCLOSURE,
   editingRecipes,
   moreRecipes,
   recipes,
@@ -500,6 +501,7 @@ const WORKFLOWS: Starter[] = [
       step("lengths_1", "recipe-length-cuts", 1, 0, {
         lengths: "6, 15, 30, 60",
         ending_seconds: 4,
+        disclosure: KEEP_DISCLOSURE,
       }),
       ...AD_SHAPES.map(([width, height], row) =>
         step(`shape_${row + 1}`, "recipe-blur-fill", 2, row, { width, height }),
@@ -539,6 +541,7 @@ const WORKFLOWS: Starter[] = [
       step("lengths_1", "recipe-length-cuts", 1, 0, {
         lengths: "6, 15, 30, 60",
         ending_seconds: 4,
+        disclosure: KEEP_DISCLOSURE,
       }),
       ...AD_SHAPES.map(([width, height], row) =>
         step(`shape_${row + 1}`, "recipe-blur-fill", 2, row, { width, height }),
@@ -566,6 +569,7 @@ const WORKFLOWS: Starter[] = [
       step("lengths_1", "recipe-length-cuts", 0, 0, {
         lengths: "6, 15, 30, 60",
         ending_seconds: 4,
+        disclosure: KEEP_DISCLOSURE,
       }),
       ...AD_SHAPES.map(([width, height], row) =>
         step(`shape_${row + 1}`, "recipe-blur-fill", 1, row, { width, height }),

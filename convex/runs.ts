@@ -180,6 +180,8 @@ export const get = query({
             placed: step.placed ?? null,
             // For Clean Up Pauses And Retakes: what it took out of each video.
             cleaned: step.cleaned ?? null,
+            // For Length Cuts and Hook And Ending Variants: the paid-ad disclosure kept.
+            disclosures: step.disclosures ?? null,
             pickNote: step.pickNote ?? null,
             // For an If: the files that left by each way. For a Wait: when it carries on.
             branches: step.branches,

@@ -19,7 +19,7 @@ import {
   wantedKind,
   writeSource,
 } from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep, userInputSchema } from "@ncat-dash/step-catalog";
 import { ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -224,6 +224,17 @@ export function NodePanel({
   }
   if (node.kind === "cleanup") {
     handled.push({ label: "Pauses", text: "where the toolkit hears silence in the video" });
+  }
+  // Length Cuts and Hook And Ending Variants keeping a paid creator's ad disclosure.
+  if (step?.readsWords) {
+    const parsed = userInputSchema(step).safeParse(node.input);
+    const settings = (parsed.success ? parsed.data : node.input) as Record<string, unknown>;
+    if (step.readsWords(settings).length > 0) {
+      handled.push({
+        label: "Paid-ad disclosure",
+        text: "found in what the creator says, and kept in every cut",
+      });
+    }
   }
   for (const name of Object.keys(nodeType?.fromStart ?? {})) {
     if (isBlank(node.input[name])) {

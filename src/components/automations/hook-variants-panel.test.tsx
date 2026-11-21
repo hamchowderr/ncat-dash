@@ -5,10 +5,10 @@ import { renderInApp } from "@/test/render";
 
 import { NodePanel } from "./node-panel";
 
-function panel(stepId: string) {
+function panel(stepId: string, input: Record<string, unknown> = {}) {
   renderInApp(
     <NodePanel
-      node={{ id: "step_1", kind: "step", stepId, input: {} }}
+      node={{ id: "step_1", kind: "step", stepId, input }}
       before={[]}
       startGivesFile
       filled={{}}
@@ -37,5 +37,29 @@ describe("the Hook And Ending Variants step", () => {
     panel("recipe-length-cuts");
     expect(screen.getByPlaceholderText(/15, 30, 60/)).toBeTruthy();
     expect(screen.queryByText("Creator", { exact: true })).toBeNull();
+  });
+});
+
+describe("keeping the paid-ad disclosure", () => {
+  const handled = () => screen.queryByText(/found in what the creator says, and kept in every cut/);
+
+  test("Hook And Ending Variants keeps it unless it is turned off", () => {
+    panel("recipe-hook-variants");
+    expect(handled()).toBeTruthy();
+  });
+
+  test("Hook And Ending Variants with it off says nothing about it", () => {
+    panel("recipe-hook-variants", { disclosure: "Off" });
+    expect(handled()).toBeNull();
+  });
+
+  test("Length Cuts keeps it once it is switched on, as the ad ready-mades do", () => {
+    panel("recipe-length-cuts");
+    expect(handled()).toBeNull();
+  });
+
+  test("Length Cuts switched on says the disclosure is handled", () => {
+    panel("recipe-length-cuts", { disclosure: "Keep it in every cut" });
+    expect(handled()).toBeTruthy();
   });
 });

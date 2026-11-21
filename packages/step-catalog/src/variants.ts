@@ -1,5 +1,19 @@
 import { z } from "zod";
-import { type MediaFacts, type Pause, type StepDefinition, StepSetupError } from "./define";
+import {
+  type FileFacts,
+  type MediaFacts,
+  type Pause,
+  type StepDefinition,
+  StepSetupError,
+} from "./define";
+import {
+  DISCLOSURE_CHOICES,
+  type Disclosure,
+  findDisclosure,
+  holdsDisclosure,
+  KEEP_DISCLOSURE,
+  withDisclosure,
+} from "./disclosure";
 import { composeParts, wrapLines } from "./editing";
 
 /**
@@ -301,6 +315,92 @@ export function lengthCut(args: {
   return [{ start: 0, end: endBefore(target, pauses) }];
 }
 
+/**
+ * A length cut that keeps the paid-ad disclosure: the plain cut when it already holds the
+ * whole line, else a cut that much shorter with the line put back where it is said.
+ */
+export function lengthCutKeeping(args: {
+  duration: number;
+  target: number;
+  keepEnding: number;
+  pauses?: Pause[];
+  disclosure: Disclosure | null;
+}): { start: number; end: number }[] {
+  const plain = lengthCut(args);
+  const { disclosure } = args;
+  if (!disclosure) return plain;
+  const keep = { input: 0, start: disclosure.start, end: disclosure.end };
+  const pieces = plain.map((part) => ({ input: 0, ...part }));
+  if (holdsDisclosure(pieces, keep)) return plain;
+  const said = disclosure.end - disclosure.start;
+  if (said > args.target - 1) {
+    throw new StepSetupError(
+      `The paid-ad disclosure takes ${Math.ceil(said)} seconds, too long to keep in a ${args.target} second cut. Take ${args.target} out of the lengths, or turn off keeping the disclosure.`,
+    );
+  }
+  const shorter = lengthCut({ ...args, target: args.target - said });
+  return mergePieces(
+    withDisclosure(
+      shorter.map((part) => ({ input: 0, ...part })),
+      keep,
+      "in order",
+    ),
+  ).map((piece) => ({ start: piece.start ?? 0, end: piece.end ?? args.duration }));
+}
+
+/**
+ * Each video with the paid-ad disclosure kept: one that holds none of the lines found in
+ * its inputs gets the base cut's line (or the first found) straight after its hook.
+ * `found` is the line found in each input, in input order.
+ */
+export function keepDisclosures(outputs: Piece[][], found: (Disclosure | null)[]): Piece[][] {
+  const first = found[0] ? 0 : found.findIndex(Boolean);
+  if (first === -1) return outputs;
+  const line = found[first]!;
+  return outputs.map((pieces) => {
+    const holds = found.some(
+      (one, input) =>
+        one !== null &&
+        pieces.some((piece) => piece.input === input) &&
+        holdsDisclosure(pieces, { input, start: one.start, end: one.end }),
+    );
+    if (holds) return pieces;
+    return mergePieces(
+      withDisclosure(pieces, { input: first, start: line.start, end: line.end }, 1),
+    );
+  });
+}
+
+/** The settings that say whether a step keeps the disclosure, and how it is worded. */
+const disclosureBlanks = (keep: boolean) => ({
+  disclosure: choice(
+    DISCLOSURE_CHOICES,
+    "Whether every cut keeps the line where a paid creator says it is an ad, such as \u201cpaid partnership with\u2026\u201d or \u201c#ad\u201d. It is found in what they say, so each video is transcribed first.",
+  )
+    .default(keep ? KEEP_DISCLOSURE : DISCLOSURE_CHOICES[1])
+    .meta({ title: "Paid-ad disclosure" }),
+  disclosure_words: z
+    .string()
+    .max(200)
+    .optional()
+    .describe(
+      "How the creator says it, when they word it their own way, such as \u201cBoots sent me this\u201d",
+    )
+    .meta({ title: "Disclosure as said" }),
+});
+
+/** The disclosure heard in each file setting, in the order given. */
+function disclosuresIn(
+  facts: FileFacts,
+  fields: string[],
+  said: string | undefined,
+): (Disclosure | null)[] {
+  return fields.map((field) => {
+    const words = facts[field]?.words;
+    return words ? findDisclosure(words, said) : null;
+  });
+}
+
 // Song teasers -------------------------------------------------------------------------
 
 /** "0:45, 1:30" or "45, 90" as seconds, in the order given. */
@@ -343,15 +443,30 @@ function sizeOf(facts: MediaFacts | undefined, what: string): [number, number] {
 
 const PLACES = { top: 0.24, middle: 0.5 } as const;
 
+/** The file settings Hook And Ending Variants joins, in input order: base, hooks, endings. */
+function inputFields(blanks: Record<string, unknown>): string[] {
+  const { hooks, endings } = takesOf(blanks);
+  return ["video_url", ...hooks, ...endings];
+}
+
+/** Hook And Ending Variants' videos, each keeping the disclosure when the step is set to. */
+function keepIn(blanks: Record<string, unknown>, facts: FileFacts, outputs: Piece[][]) {
+  if (blanks.disclosure !== KEEP_DISCLOSURE) return outputs;
+  const said = typeof blanks.disclosure_words === "string" ? blanks.disclosure_words : undefined;
+  return keepDisclosures(outputs, disclosuresIn(facts, inputFields(blanks), said));
+}
+
 export const variantRecipes: StepDefinition[] = [
   editStep({
     id: "recipe-hook-variants",
     title: "Hook And Ending Variants",
     description:
-      "Makes every pairing of openings and endings from one base cut: its own hook, or another hook take in its place, then the same middle, then its own ending, or another call to action. Two other hooks and one other ending give six videos to test, named h01_c01 to h03_c02. Swaps land in a pause, so no word is cut. When the base cut is only the body, each hook take goes in front of it and each ending take after it.",
+      "Makes every pairing of openings and endings from one base cut: its own hook, or another hook take in its place, then the same middle, then its own ending, or another call to action. Two other hooks and one other ending give six videos to test, named h01_c01 to h03_c02. Swaps land in a pause, so no word is cut. When the base cut is only the body, each hook take goes in front of it and each ending take after it. A paid creator's disclosure, like \u201cpaid partnership with\u2026\u201d, is found in what they say and kept in every video, even when its hook or ending is swapped out.",
     primaryInput: "video_url",
     readsFirst: ["video_url", ...ALL_HOOK_FIELDS, ...ALL_ENDING_FIELDS],
     readsPauses: ["video_url"],
+    // On unless turned off, so a step not yet saved with its defaults keeps it too.
+    readsWords: (b) => (b.disclosure === DISCLOSURE_CHOICES[1] ? [] : inputFields(b)),
     askFirst: ["hook_2_url", "hook_3_url", "ending_2_url", "creator"],
     blanks: {
       video_url: url(
@@ -431,6 +546,7 @@ export const variantRecipes: StepDefinition[] = [
         0.5,
         30,
       ).default(5),
+      ...disclosureBlanks(true),
     },
     outputLabels: (b) => variantCodes(...pairCounts(b)),
     toRequest: (b, facts) => {
@@ -464,7 +580,13 @@ export const variantRecipes: StepDefinition[] = [
             ]);
           }
         }
-        return joinRequest({ urls, facts: factsList, size, rate: rateOf(base), outputs });
+        return joinRequest({
+          urls,
+          facts: factsList,
+          size,
+          rate: rateOf(base),
+          outputs: keepIn(b, facts, outputs),
+        });
       }
       if (hooks.length === 0 && endings.length === 0) {
         throw new StepSetupError(
@@ -508,17 +630,24 @@ export const variantRecipes: StepDefinition[] = [
           ]);
         }
       }
-      return joinRequest({ urls, facts: factsList, size, rate: rateOf(base), outputs });
+      return joinRequest({
+        urls,
+        facts: factsList,
+        size,
+        rate: rateOf(base),
+        outputs: keepIn(b, facts, outputs),
+      });
     },
   }),
   editStep({
     id: "recipe-length-cuts",
     title: "Length Cuts",
     description:
-      "Cuts one video down to each length you list, such as 6, 15, 30 and 60 seconds for ad slots, teasers and Shorts. Each cut keeps the start and can keep your last few seconds too, like a call to action, and ends in a pause rather than mid-word. A video already that short is kept whole.",
+      "Cuts one video down to each length you list, such as 6, 15, 30 and 60 seconds for ad slots, teasers and Shorts. Each cut keeps the start and can keep your last few seconds too, like a call to action, and ends in a pause rather than mid-word. A video already that short is kept whole. For ads from paid creators, switch on keeping the disclosure, and every cut keeps the line where they say it is an ad.",
     primaryInput: "video_url",
     readsFirst: ["video_url"],
     readsPauses: ["video_url"],
+    readsWords: (b) => (b.disclosure === KEEP_DISCLOSURE ? ["video_url"] : []),
     askFirst: ["lengths"],
     blanks: {
       video_url: url("The video"),
@@ -540,6 +669,7 @@ export const variantRecipes: StepDefinition[] = [
         0,
         30,
       ).default(0),
+      ...disclosureBlanks(false),
     },
     outputLabels: (b) => parseLengths(b.lengths).map((length) => `${length}s`),
     toRequest: (b, facts) => {
@@ -550,14 +680,25 @@ export const variantRecipes: StepDefinition[] = [
       const main = facts.video_url;
       const duration = main?.duration;
       if (!duration) throw new StepSetupError("The video's length could not be read.");
+      const [disclosure] =
+        b.disclosure === KEEP_DISCLOSURE
+          ? disclosuresIn(facts, ["video_url"], b.disclosure_words)
+          : [null];
       const outputs = lengths.map((target) =>
-        lengthCut({ duration, target, keepEnding: b.ending_seconds, pauses: main?.pauses }).map(
-          (part) => ({ input: 0, start: part.start, end: part.end }),
-        ),
+        lengthCutKeeping({
+          duration,
+          target,
+          keepEnding: b.ending_seconds,
+          pauses: main?.pauses,
+          disclosure,
+        }).map((part) => ({ input: 0, start: part.start, end: part.end })),
       );
-      // Without an ending to keep, only the start of the video needs reading.
+      // Without an ending to keep, only the start of the video needs reading, as far as
+      // the disclosure when it is said later.
       const reach =
-        b.ending_seconds > 0 ? null : Math.min(duration, lengths[lengths.length - 1] + 1);
+        b.ending_seconds > 0
+          ? null
+          : Math.min(duration, Math.max(lengths[lengths.length - 1], disclosure?.end ?? 0) + 1);
       return joinRequest({
         urls: [b.video_url],
         facts: [main],

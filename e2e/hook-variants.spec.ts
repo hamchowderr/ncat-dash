@@ -71,10 +71,19 @@ test("UGC Ad Variants opens as variants, cuts, shapes and captions, with its tak
   // The creator's files are kept in a folder of their own.
   await page.getByRole("textbox", { name: "Creator optional" }).fill("Jane Doe");
   await pause(2000);
+  // A paid creator's disclosure is found in what they say and kept in every pairing.
+  await expect(
+    page.getByText("found in what the creator says, and kept in every cut"),
+  ).toBeVisible();
+  await pause(1500);
 
   // The length cuts keep the call to action on 6, 15, 30 and 60 second cuts.
   await steps.nth(1).click();
   await expect(page.locator("input[value='6, 15, 30, 60']")).toBeVisible();
+  // And in every length: a 6 second cut keeps the line too.
+  await expect(
+    page.getByText("found in what the creator says, and kept in every cut"),
+  ).toBeVisible();
   await pause(2500);
 });
 

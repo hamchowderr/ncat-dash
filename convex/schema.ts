@@ -688,6 +688,7 @@ export default defineSchema({
     // A "motion" or "sound-effects" step transcribes each video ("listen"), reads its words
     // and places what goes on it ("place"), then draws on it ("render"). A "cleanup" step
     // does the same, also hearing each video's pauses, and "render" cuts the cleaned files.
+    // A step keeping a paid-ad disclosure in every cut first transcribes its videos ("hear").
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -702,6 +703,7 @@ export default defineSchema({
         v.literal("lay"),
         v.literal("place"),
         v.literal("render"),
+        v.literal("hear"),
       ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
@@ -792,6 +794,11 @@ export default defineSchema({
           creator: v.optional(v.string()),
         }),
       ),
+    ),
+    // For a step keeping a paid creator's ad disclosure in every cut (Length Cuts, Hook And
+    // Ending Variants): per video, the disclosure heard and kept, or null when none was.
+    disclosures: v.optional(
+      v.array(v.object({ source: v.string(), text: v.union(v.string(), v.null()) })),
     ),
     // What a "moments" or "chapters" step left out, said plainly ("2 picks were left out…").
     pickNote: v.optional(v.string()),

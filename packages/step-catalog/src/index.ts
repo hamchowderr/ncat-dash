@@ -12,6 +12,7 @@ export * from "./recipes";
 export * from "./steps";
 export * from "./team-steps";
 export * from "./variants";
+export * from "./disclosure";
 export * from "./codes";
 
 /** Every step a person can run: the toolkit's endpoints, then the ready-made recipes. */
