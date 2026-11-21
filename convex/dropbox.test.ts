@@ -311,7 +311,7 @@ describe("reading Dropbox", () => {
 
   test("settings for Dropbox are sent as plain ASCII, and folders get sensible names", () => {
     expect(apiArg({ path: "/Café/clip.mp4" })).toBe('{"path":"/Caf\\u00e9/clip.mp4"}');
-    expect(sendFolderOf(undefined, "Weekly / shorts")).toBe("/Kontifi/Weekly - shorts");
+    expect(sendFolderOf(undefined, "Weekly / shorts")).toBe("/Takewon/Weekly - shorts");
     expect(sendFolderOf("/Clients/Acme/", "Weekly shorts")).toBe("/Clients/Acme");
   });
 });
@@ -763,7 +763,7 @@ describe("sending finished files to Dropbox", () => {
       canSwitch: true,
       account: "Jordan Lee",
       mine: true,
-      folder: "/Kontifi/Weekly shorts",
+      folder: "/Takewon/Weekly shorts",
     });
     await expect(
       setup.member.as.mutation(api.dropbox.setSend, { automationId, on: true }),
@@ -788,7 +788,7 @@ describe("sending finished files to Dropbox", () => {
     expect(contentCalls).toHaveLength(1);
     expect(contentCalls[0]).toMatchObject({ path: "files/upload", bytes: 1000, root: null });
     expect(contentCalls[0].arg).toMatchObject({ mode: "add", autorename: true });
-    expect(String(contentCalls[0].arg.path)).toMatch(/^\/Kontifi\/Weekly shorts\/.+\.mp4$/);
+    expect(String(contentCalls[0].arg.path)).toMatch(/^\/Takewon\/Weekly shorts\/.+\.mp4$/);
     const sent = await setup.t.run((ctx) => ctx.db.query("dropboxSends").collect());
     expect(sent[0]).toMatchObject({ status: "done", size: 1000 });
     // Keeping the run's files again does not send them twice.
