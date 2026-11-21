@@ -217,6 +217,17 @@ export const remove = mutation({
       .withIndex("by_client", (q) => q.eq("clientId", client._id))
       .take(2000);
     for (const file of files) await ctx.db.patch(file._id, { clientId: undefined });
+    // Creators' deals with it stay, since the rights still run out; the note keeps its name.
+    const deals = await ctx.db
+      .query("creatorRights")
+      .withIndex("by_client", (q) => q.eq("clientId", client._id))
+      .take(2000);
+    for (const deal of deals) {
+      await ctx.db.patch(deal._id, {
+        clientId: undefined,
+        note: [`For ${client.name}.`, deal.note].filter(Boolean).join(" "),
+      });
+    }
     // Its calendar posts and slots stay, as the team's own.
     for (const table of ["calendarPosts", "calendarSlots"] as const) {
       const rows = await ctx.db

@@ -84,6 +84,7 @@ describe("notification settings", () => {
       "client_feedback",
       "ready_for_review",
       "clip_finished",
+      "rights_ending",
     ]);
     // Finished runs start off for the bell and email; every other kind starts on.
     expect(

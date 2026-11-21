@@ -320,6 +320,35 @@ export function clipFinishedEmail(
   );
 }
 
+export function rightsEndingEmail(
+  args: {
+    teamName?: string;
+    creator: string;
+    client?: string;
+    summary: string;
+    creatorsUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const creator = oneLine(args.creator, 80);
+  const title = args.client
+    ? `${creator}'s rights for ${oneLine(args.client, 80)} end soon`
+    : `Usage rights for ${creator} end soon`;
+  return compose(
+    title,
+    {
+      heading: title,
+      paragraphs: [
+        `${oneLine(args.summary, 300)}${args.teamName ? ` In ${oneLine(args.teamName, 60)}.` : ""}`,
+      ],
+      button: { label: "Open the creator", url: args.creatorsUrl },
+      footnote: `To stop these emails, change your notification settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
 /** One line in a daily summary. */
 export type DigestItem = { title: string; detail?: string; url: string };
 

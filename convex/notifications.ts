@@ -24,6 +24,7 @@ const kind = v.union(
   v.literal("client_feedback"),
   v.literal("ready_for_review"),
   v.literal("clip_finished"),
+  v.literal("rights_ending"),
 );
 
 /** The person asking's notification settings on a team, with every kind spelled out. */

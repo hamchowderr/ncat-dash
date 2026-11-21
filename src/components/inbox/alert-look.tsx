@@ -2,6 +2,7 @@ import { explainFailure } from "@ncat-dash/automation-core";
 import {
   AtSign,
   Bell,
+  CalendarClock,
   CircleAlert,
   CircleCheck,
   Clock,
@@ -23,7 +24,8 @@ export type Kind =
   | "mention"
   | "client_feedback"
   | "ready_for_review"
-  | "clip_finished";
+  | "clip_finished"
+  | "rights_ending";
 type Shown = {
   kind: Kind;
   automationName: string;
@@ -47,6 +49,10 @@ export function alertTitle(alert: Shown): string {
       return `${alert.stepName ?? "A deliverable"} in ${alert.automationName} is ready for review`;
     case "clip_finished":
       return `${alert.automationName} finished`;
+    case "rights_ending":
+      return alert.stepName
+        ? `${alert.automationName}'s rights for ${alert.stepName} end soon`
+        : `Usage rights for ${alert.automationName} end soon`;
     default:
       return `${alert.automationName} failed${tries(alert.retries)}`;
   }
@@ -101,6 +107,12 @@ export const LOOK: Record<Kind, { icon: typeof Bell; tint: string; wash: string;
       tint: "text-emerald-600",
       wash: "bg-emerald-500/10",
       action: "View run",
+    },
+    rights_ending: {
+      icon: CalendarClock,
+      tint: "text-amber-600",
+      wash: "bg-amber-500/10",
+      action: "Open the creator",
     },
   };
 
