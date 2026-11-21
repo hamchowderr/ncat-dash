@@ -392,7 +392,9 @@ describe("checking for finished recordings", () => {
       createdBy: setup.owner.id,
     });
     expect(uploads[0].fileName).toMatch(/^Weekly Sync Launch Plan \d{4}-\d{2}-\d{2}\.mp4$/);
-    expect(uploads[0].key).toMatch(/^uploads\/[0-9a-f-]+\/Weekly-Sync-Launch-Plan-[\d-]+\.mp4$/);
+    expect(uploads[0].key).toMatch(
+      /^uploads\/Google Meet\/[0-9a-f-]+\/Weekly-Sync-Launch-Plan-[\d-]+\.mp4$/,
+    );
 
     const jobs = await setup.t.run((ctx) => ctx.db.query("jobs").collect());
     expect(jobs).toHaveLength(1);

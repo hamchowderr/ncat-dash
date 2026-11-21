@@ -1123,7 +1123,7 @@ export const startImport = internalMutation({
       }
     }
 
-    const key = `uploads/${crypto.randomUUID()}/${safeName(file.name)}`;
+    const key = `uploads/Dropbox/${crypto.randomUUID()}/${safeName(file.name)}`;
     const importId =
       before?._id ??
       (await ctx.db.insert("dropboxImports", {

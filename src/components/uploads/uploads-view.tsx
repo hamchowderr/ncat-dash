@@ -9,7 +9,8 @@ import {
 } from "@ncat-dash/automation-core";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Copy, LayoutGrid, List, Trash2, UploadCloud } from "lucide-react";
+import { Copy, FileText, LayoutGrid, List, Trash2, UploadCloud } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useRef, useSyncExternalStore, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
@@ -606,6 +607,17 @@ export function UploadsView() {
                     <Copy />
                     Copy link
                   </Button>
+                  {openedUpload.libraryItemId &&
+                    (openedUpload.kind === "video" || openedUpload.kind === "audio") && (
+                      <Button asChild variant="secondary" size="sm" className="max-sm:h-11">
+                        <Link href={`/library/${openedUpload.libraryItemId}`}>
+                          <FileText />
+                          {openedUpload.transcript === "working"
+                            ? "Transcript on its way"
+                            : "Transcript and SRT"}
+                        </Link>
+                      </Button>
+                    )}
                   <Button
                     variant="ghost"
                     size="sm"

@@ -2,6 +2,7 @@
  * The content library: every file a team has, each with a short ID people (and the agent)
  * can say out loud, where it came from, its tags, and what was said in it.
  */
+import { wordsFromSegments } from "./moments";
 
 export type LibraryKind = "video" | "audio" | "image" | "other";
 
@@ -73,7 +74,10 @@ export function titleFromFileName(name: string): string {
 
 export type TranscriptSegment = { start: number; end: number; text: string };
 
-export type TranscriptPiece = { start: number; end: number; text: string };
+/** One spoken word of a piece, short names to keep a long transcript small: text, start, end. */
+export type PieceWord = { t: string; s: number; e: number };
+
+export type TranscriptPiece = { start: number; end: number; text: string; words?: PieceWord[] };
 
 // A piece of a transcript is one of Whisper's segments, about a sentence, so a search lands
 // on the sentence it was said in. Fragments of a word or two ("Okay.", "So,") join the
@@ -90,7 +94,7 @@ const MAX_PIECES = 3000;
  */
 export function transcriptPieces(segments: unknown): TranscriptPiece[] {
   if (!Array.isArray(segments)) return [];
-  const clean: TranscriptSegment[] = [];
+  const clean: (TranscriptSegment & { words?: PieceWord[] })[] = [];
   for (const raw of segments) {
     if (!raw || typeof raw !== "object") continue;
     const { start, end, text } = raw as Record<string, unknown>;
@@ -98,7 +102,13 @@ export function transcriptPieces(segments: unknown): TranscriptPiece[] {
     const words = text.replace(/\s+/g, " ").trim();
     if (!words) continue;
     const finish = typeof end === "number" && Number.isFinite(end) && end >= start ? end : start;
-    clean.push({ start, end: finish, text: words });
+    // A transcript made with word timestamps keeps each word's timing, for captions.
+    const timed = wordsFromSegments([raw]).map((word) => ({
+      t: word.text,
+      s: word.start,
+      e: word.end,
+    }));
+    clean.push({ start, end: finish, text: words, ...(timed.length > 0 ? { words: timed } : {}) });
   }
   clean.sort((a, b) => a.start - b.start);
 
@@ -113,9 +123,10 @@ export function transcriptPieces(segments: unknown): TranscriptPiece[] {
     if (current && fits) {
       current.text = `${current.text} ${segment.text}`;
       current.end = Math.max(current.end, segment.end);
+      if (segment.words) current.words = [...(current.words ?? []), ...segment.words];
     } else {
       if (current) pieces.push(current);
-      if (pieces.length >= MAX_PIECES) return pieces;
+      if (pieces.length >= MAX_PIECES) break;
       current = { ...segment, text: segment.text.slice(0, MAX_PIECE_CHARS) };
     }
   }
@@ -124,6 +135,7 @@ export function transcriptPieces(segments: unknown): TranscriptPiece[] {
     start: Math.round(piece.start * 100) / 100,
     end: Math.round(piece.end * 100) / 100,
     text: piece.text,
+    ...(piece.words ? { words: piece.words } : {}),
   }));
 }
 
