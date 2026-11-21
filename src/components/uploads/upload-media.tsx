@@ -152,7 +152,7 @@ export function UploadPlayer({ kind, url }: { kind: UploadKind; url: string | un
         autoPlay
         playsInline
         preload="metadata"
-        className="max-h-[70vh] w-full rounded-lg bg-black"
+        className="max-h-[70vh] w-full rounded-lg bg-black max-sm:max-h-[55dvh]"
         data-testid="upload-player"
       />
     );
@@ -176,7 +176,7 @@ export function UploadPlayer({ kind, url }: { kind: UploadKind; url: string | un
     <img
       src={url}
       alt=""
-      className="bg-muted max-h-[70vh] w-full rounded-lg object-contain"
+      className="bg-muted max-h-[70vh] w-full rounded-lg object-contain max-sm:max-h-[55dvh]"
       data-testid="upload-player"
     />
   );
