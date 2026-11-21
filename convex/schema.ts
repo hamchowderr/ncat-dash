@@ -904,6 +904,34 @@ export default defineSchema({
   // approval waiting or run out of time, a mention in a review. Shown under the bell to
   // the members it is for until each has seen it, unless they switched that kind off in
   // their notification settings.
+  // The creators who film for the team, named as their folders are, so their runs match.
+  creators: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    note: v.optional(v.string()),
+    createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
+  // Usage rights, one per deal: how long footage a creator filmed may be used, for which
+  // client and how. A week before the last day the team hears about it (convex/creators.ts).
+  creatorRights: defineTable({
+    organizationId: v.string(),
+    creatorId: v.id("creators"),
+    // The brand the deal is with. Left out: the team's own content.
+    clientId: v.optional(v.id("clients")),
+    // The last day the footage may be used, "YYYY-MM-DD".
+    endsOn: v.string(),
+    usage: v.union(v.literal("organic"), v.literal("paid"), v.literal("both")),
+    note: v.optional(v.string()),
+    // The end date a week-before alert has gone out for, so it goes once per date.
+    alertedFor: v.optional(v.string()),
+    updatedBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_creator", ["creatorId"])
+    .index("by_client", ["clientId"])
+    .index("by_ends", ["endsOn"]),
+
   alerts: defineTable({
     organizationId: v.string(),
     // "run_failed": a run ended with a failed step. "approval_waiting": a run reached an
@@ -921,6 +949,9 @@ export default defineSchema({
       v.literal("ready_for_review"),
       // "clip_finished": a run is done and its finished files were kept in Files.
       v.literal("clip_finished"),
+      // "rights_ending": a deal's usage rights end within a week. `automationName` holds
+      // the creator's name, `stepName` the client's, and `message` says when.
+      v.literal("rights_ending"),
     ),
     // The members it is for. Left out: everyone on the team.
     recipients: v.optional(v.array(v.string())),
@@ -941,6 +972,8 @@ export default defineSchema({
     clipId: v.optional(v.id("reviewClips")),
     commentId: v.optional(v.id("reviewComments")),
     from: v.optional(v.string()),
+    // For "rights_ending": the creator it is about.
+    creatorId: v.optional(v.id("creators")),
     // The members who have seen it.
     seenBy: v.array(v.string()),
   })
@@ -1584,6 +1617,7 @@ export default defineSchema({
         client_feedback: v.optional(kindChannels),
         ready_for_review: v.optional(kindChannels),
         clip_finished: v.optional(kindChannels),
+        rights_ending: v.optional(kindChannels),
       }),
     ),
     // "now": each email as it happens. "daily": one summary a day at `digestHour` in

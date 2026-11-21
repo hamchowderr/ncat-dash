@@ -69,6 +69,15 @@ export const NOTIFICATION_KINDS = [
     email: false,
     chat: true,
   },
+  {
+    kind: "rights_ending",
+    title: "A creator's usage rights are about to end",
+    description:
+      "A week before the last day of a creator's deal, as kept on their page under Creators. Goes to everyone on the team.",
+    bell: true,
+    email: true,
+    chat: true,
+  },
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];
@@ -158,7 +167,7 @@ export async function preferenceOf(
 export function alertHref(
   alert: Pick<
     Doc<"alerts">,
-    "kind" | "runId" | "automationId" | "reviewId" | "clipId" | "commentId"
+    "kind" | "runId" | "automationId" | "reviewId" | "clipId" | "commentId" | "creatorId"
   >,
 ): string {
   if (
@@ -173,6 +182,8 @@ export function alertHref(
     const tail = query.toString();
     return `/review/${alert.reviewId}${tail ? `?${tail}` : ""}`;
   }
+  if (alert.kind === "rights_ending")
+    return alert.creatorId ? `/creators/${alert.creatorId}` : "/creators";
   if (alert.automationId && alert.runId)
     return `/automations/${alert.automationId}/runs/${alert.runId}`;
   return "/";
