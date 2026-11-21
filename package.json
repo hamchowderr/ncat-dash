@@ -12,7 +12,8 @@
     "test": "pnpm -r test && vitest run --config vitest.convex.config.ts && vitest run --config vitest.screens.config.ts && node --test scripts/setup-agent.test.mjs scripts/setup-beads.test.mjs scripts/licence.test.mjs scripts/docs.test.mjs scripts/images.test.mjs",
     "test:e2e": "playwright test",
     "setup:agent": "node scripts/setup-agent.mjs",
-    "setup:beads": "node scripts/setup-beads.mjs"
+    "setup:beads": "node scripts/setup-beads.mjs",
+    "speed-test": "pnpm --filter @ncat-dash/speed-test start"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

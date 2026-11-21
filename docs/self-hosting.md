@@ -269,6 +269,8 @@ The agent server takes many more optional settings from the chat kit it is built
 
 Never set a service to build its image on the machine that serves people. The toolkit's build takes 20 to 40 minutes of full CPU; if a restart falls back to building, the toolkit stays down that long.
 
+To see how long videos take on your machine, before and after an update or a change of hardware, run the [speed test](speed-test.md).
+
 ## Backups
 
 - **Convex** holds everything except files. `npx convex export --path backup.zip` (with the two `CONVEX_SELF_HOSTED_*` values set) saves it; `npx convex import` brings one back. Or back up the `convex-data` volume while Convex is stopped.
