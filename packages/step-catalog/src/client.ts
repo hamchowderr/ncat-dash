@@ -122,6 +122,25 @@ export async function readFacts(
         }
       }
     }
+    if (step.readsCuts?.includes(field) && facts[field]?.hasVideo !== false) {
+      if (length && length <= PAUSE_READ_LIMIT) {
+        try {
+          const res = await doFetch(joinUrl(connection.baseUrl, "/v1/media/look"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-API-Key": connection.apiKey },
+            body: JSON.stringify({ media_url: url, cuts: true, frames: false }),
+            signal: options.signal,
+          });
+          if (res.ok) {
+            const envelope = (await res.json()) as { response?: unknown } | null;
+            const cuts = readCuts(envelope?.response);
+            if (cuts) facts[field] = { ...facts[field], cuts };
+          }
+        } catch {
+          // Left out: the step says the shots could not be found.
+        }
+      }
+    }
     if (!step.readsPauses?.includes(field)) continue;
     if (!length || length > PAUSE_READ_LIMIT || facts[field]?.hasAudio === false) continue;
     try {
@@ -163,6 +182,16 @@ export function readBeats(raw: unknown): Beats | undefined {
     beats,
     downbeats: times(answer.downbeats),
   };
+}
+
+/** The camera cuts in a /v1/media/look answer, in order. Undefined when cuts were not found. */
+export function readCuts(raw: unknown): number[] | undefined {
+  const media = raw && typeof raw === "object" ? (raw as Record<string, unknown>).media : null;
+  const cuts = media && typeof media === "object" ? (media as Record<string, unknown>).cuts : null;
+  if (!Array.isArray(cuts)) return undefined;
+  return cuts
+    .filter((t): t is number => typeof t === "number" && Number.isFinite(t) && t > 0)
+    .sort((a, b) => a - b);
 }
 
 /** Pauses are read only for files up to this long, in seconds, so a read stays quick. */

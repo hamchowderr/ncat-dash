@@ -45,6 +45,7 @@ import {
   ScissorsLineDashed,
   Smartphone,
   Split,
+  SquareSplitHorizontal,
   SquareScissors,
   SquareTerminal,
   Stamp,
@@ -117,6 +118,7 @@ export const STEP_ICONS: Record<string, LucideIcon> = {
   "recipe-fit-to-voiceover": AudioWaveform,
   "recipe-slideshow": Presentation,
   "recipe-beat-cut": Drum,
+  "recipe-split-shots": SquareSplitHorizontal,
   "recipe-intro-outro": Film,
   "recipe-change-format": FileCog,
 };

@@ -836,6 +836,7 @@ const RECIPE_CATEGORY: Record<string, StarterCategory> = {
   "recipe-variant-music": "variants",
   "recipe-song-teasers": "music",
   "recipe-beat-cut": "music",
+  "recipe-split-shots": "clips",
 };
 
 /** One automation per ready-made FFmpeg step: the toolkit's examples and the dashboard's own. */
@@ -846,6 +847,21 @@ const RECIPES: Starter[] = [
   ...variantRecipes,
   ...beatRecipes,
 ].map((recipe) => {
+  // Cut To The Beat runs on an upload: the video is split at its own camera cuts first,
+  // and those shots are what it cuts to the music.
+  if (recipe.id === "recipe-beat-cut") {
+    return {
+      id: recipe.id,
+      name: recipe.title,
+      description:
+        "Upload a video and it comes back cut to your music: split into its shots where the camera cuts, then the shots cut together so the picture changes on the beat. Uses your team's first music track from Settings unless you pick another on the Cut To The Beat step.",
+      group: "recipe" as const,
+      category: RECIPE_CATEGORY[recipe.id],
+      trigger: { kind: "upload" as const, fileType: "video" as const },
+      nodes: [step("split_shots_1", "recipe-split-shots", 0), step("beat_cut_1", recipe.id, 1)],
+      edges: chain("split_shots_1", "beat_cut_1"),
+    };
+  }
   // With no file to start from, or a list of them, the team starts it by hand.
   // Hook And Ending Variants needs its other takes picked, so it is started by hand too.
   const many =

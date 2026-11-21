@@ -81,6 +81,11 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    */
   readsBeats?: string[];
   /**
+   * File settings among `readsFirst` whose camera cuts are read too (/v1/media/look with
+   * `cuts`), so a step can split footage into its own shots. Videos up to 20 minutes long.
+   */
+  readsCuts?: string[];
+  /**
    * File settings whose spoken words the step needs, from the team's transcripts. In a run
    * the runner transcribes any not heard before, then hands them over as `facts[field]
    * .words`. Depends on the step's settings, so a step only asks when it will use them.
@@ -123,6 +128,8 @@ export interface MediaFacts {
   pauses?: Pause[];
   /** Where the music's beats fall, for settings named in `readsBeats`. */
   beats?: Beats;
+  /** Where the camera cuts fall, in seconds, for settings named in `readsCuts`. */
+  cuts?: number[];
   /** Each word heard, in order, for settings named by `readsWords`. */
   words?: SpokenWord[];
 }
