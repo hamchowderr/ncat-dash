@@ -99,6 +99,29 @@ function RunsForms({ settings }: { settings: Loaded }) {
   const setRetries = useMutation(api.teamSettings.setStepRetries);
   const [typedRetries, setTypedRetries] = useState<string | null>(null);
   const [savingRetries, setSavingRetries] = useState(false);
+  const setAiLimit = useMutation(api.teamSettings.setAiLimit);
+  const [typedLimit, setTypedLimit] = useState<string | null>(null);
+  const [savingLimit, setSavingLimit] = useState(false);
+  const savedLimit = settings.aiLimit === null ? "" : settings.aiLimit.toFixed(2);
+
+  async function onSubmitLimit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (typedLimit === null) return;
+    const trimmed = typedLimit.trim().replace(/^\$/, "");
+    setSavingLimit(true);
+    try {
+      await setAiLimit({
+        organizationId: team.id,
+        dollars: trimmed === "" ? null : Number(trimmed),
+      });
+      setTypedLimit(null);
+      toast.success(trimmed === "" ? "No limit for AI" : "Saved");
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The limit could not be saved. Try again."));
+    } finally {
+      setSavingLimit(false);
+    }
+  }
 
   async function onSubmitRetries(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -180,6 +203,33 @@ function RunsForms({ settings }: { settings: Loaded }) {
           {settings.canEdit && typedRetries !== null && (
             <Button type="submit" disabled={savingRetries}>
               {savingRetries ? "Saving" : "Save"}
+            </Button>
+          )}
+        </SettingRow>
+      </form>
+      <form onSubmit={onSubmitLimit}>
+        <SettingRow
+          label="Limit for AI per run"
+          htmlFor="ai-limit"
+          description={`Best moments, Chapters, B-Roll plans and AI motion plans ask the AI once for each video. A step that could take a run past this stops before asking. Blank for no limit, or $${settings.aiLimitRange.min.toFixed(2)} to $${settings.aiLimitRange.max}.`}
+        >
+          <div className="relative">
+            <span className="text-muted-foreground pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm">
+              $
+            </span>
+            <Input
+              id="ai-limit"
+              inputMode="decimal"
+              className="w-28 pl-6 tabular-nums"
+              placeholder="No limit"
+              value={typedLimit ?? savedLimit}
+              onChange={(event) => setTypedLimit(event.target.value)}
+              disabled={!settings.canEdit}
+            />
+          </div>
+          {settings.canEdit && typedLimit !== null && typedLimit.trim() !== savedLimit && (
+            <Button type="submit" disabled={savingLimit}>
+              {savingLimit ? "Saving" : "Save"}
             </Button>
           )}
         </SettingRow>

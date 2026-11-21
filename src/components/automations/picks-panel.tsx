@@ -55,6 +55,7 @@ export function PicksPanel({
     if (node.kind === "chapters" && step.chapters?.length) return [{ node, step }];
     if (node.kind === "broll" && step.cutaways?.length) return [{ node, step }];
     if (node.kind === "cleanup" && step.cleaned?.length) return [{ node, step }];
+    if (step.disclosures?.length) return [{ node, step }];
     return [];
   });
   if (shown.length === 0) return null;
@@ -75,6 +76,8 @@ export function PicksPanel({
           <CutawaysSection key={step._id} title={nodeTitle(node)} step={step} />
         ) : node.kind === "cleanup" ? (
           <CleanupSection key={step._id} title={nodeTitle(node)} step={step} />
+        ) : step.disclosures?.length ? (
+          <DisclosureSection key={step._id} title={nodeTitle(node)} step={step} />
         ) : (
           <ChaptersSection key={step._id} title={nodeTitle(node)} step={step} />
         ),
@@ -139,6 +142,55 @@ function CleanupSection({ title, step }: { title: string; step: RunStep }) {
             </li>
           );
         })}
+      </ul>
+    </section>
+  );
+}
+
+/** A file's name from its address: "Boots ad.mp4" from ".../Boots%20ad.mp4?x=1". */
+function fileName(url: string): string {
+  const last = url.split(/[?#]/)[0].split("/").pop() ?? url;
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return last;
+  }
+}
+
+/**
+ * The paid-ad disclosure a Length Cuts or Hook And Ending Variants step kept in every cut
+ * of each video, as it was said, or that none was heard, so the team can have the creator
+ * add one before the ads go out.
+ */
+function DisclosureSection({ title, step }: { title: string; step: RunStep }) {
+  const notes = step.disclosures ?? [];
+  return (
+    <section aria-label={`${title}: paid-ad disclosure`} className="bg-surface rounded-xl">
+      <header className="grid px-4 py-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="text-muted-foreground text-xs">
+          Paid-ad disclosure, found in what was said. No AI.
+        </p>
+      </header>
+      <ul className="grid gap-1 px-4 pb-4">
+        {notes.map((note, index) => (
+          <li
+            key={`${note.source}-${index}`}
+            className="bg-background grid gap-1 rounded-lg px-3 py-2"
+          >
+            <p className="text-muted-foreground truncate text-xs">{fileName(note.source)}</p>
+            {note.text ? (
+              <p className="text-sm">
+                Kept in every cut: <q className="font-medium">{note.text}</q>
+              </p>
+            ) : (
+              <p className="text-sm">
+                No disclosure was heard, so the cuts have none. A paid creator&apos;s ad should say
+                it is one, like &ldquo;paid partnership with&hellip;&rdquo;.
+              </p>
+            )}
+          </li>
+        ))}
       </ul>
     </section>
   );

@@ -369,6 +369,9 @@ export default defineSchema({
     music: v.optional(musicValidator),
     // How many times a failed step in a run tries again before the run fails.
     stepRetries: v.optional(v.number()),
+    // The most one run may spend on AI steps, in millionths of a dollar. Left out: no
+    // limit (automation-core ai-spend.ts).
+    aiLimit: v.optional(v.number()),
     // The video editors the team uses, which decides the files an export makes.
     editors: v.optional(v.array(editorValidator)),
     // How the agent works for this team: its model, house rules and default platforms.
@@ -542,7 +545,7 @@ export default defineSchema({
     // team's, and keep their finished files in the client's folder. Not part of versions.
     clientId: v.optional(v.id("clients")),
     // Switched on: each finished run's files are also sent to this Dropbox account, into
-    // `folder` (or "/Kontifi/<automation>"). Not part of versions.
+    // `folder` (or "/Takewon/<automation>"). Not part of versions.
     dropboxSend: v.optional(
       v.object({
         connectionId: v.id("dropboxConnections"),
@@ -649,6 +652,10 @@ export default defineSchema({
     // fill the project's empty slots.
     projectId: v.optional(v.id("projects")),
     deliverableId: v.optional(v.id("deliverables")),
+    // What the run's AI steps have spent, and what steps waiting on an answer hold
+    // against the team's limit, in millionths of a dollar (convex/lib/aiSpend.ts).
+    aiSpent: v.optional(v.number()),
+    aiHeld: v.optional(v.number()),
   })
     .index("by_automation", ["automationId"])
     .index("by_parentRun", ["parentRunId"])
@@ -688,6 +695,7 @@ export default defineSchema({
     // A "motion" or "sound-effects" step transcribes each video ("listen"), reads its words
     // and places what goes on it ("place"), then draws on it ("render"). A "cleanup" step
     // does the same, also hearing each video's pauses, and "render" cuts the cleaned files.
+    // A step keeping a paid-ad disclosure in every cut first transcribes its videos ("hear").
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -702,6 +710,7 @@ export default defineSchema({
         v.literal("lay"),
         v.literal("place"),
         v.literal("render"),
+        v.literal("hear"),
       ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
@@ -793,6 +802,11 @@ export default defineSchema({
         }),
       ),
     ),
+    // For a step keeping a paid creator's ad disclosure in every cut (Length Cuts, Hook And
+    // Ending Variants): per video, the disclosure heard and kept, or null when none was.
+    disclosures: v.optional(
+      v.array(v.object({ source: v.string(), text: v.union(v.string(), v.null()) })),
+    ),
     // What a "moments" or "chapters" step left out, said plainly ("2 picks were left out…").
     pickNote: v.optional(v.string()),
     // What a Plan step decided, for the step that carries it out (automation-core plans.ts).
@@ -833,6 +847,10 @@ export default defineSchema({
     retryError: v.optional(v.string()),
     startedAt: v.union(v.null(), v.number()),
     finishedAt: v.union(v.null(), v.number()),
+    // An AI step: what it spent, and what it holds against the run's limit while it waits
+    // for an answer, in millionths of a dollar.
+    aiSpent: v.optional(v.number()),
+    aiHeld: v.optional(v.number()),
   })
     .index("by_run", ["runId"])
     .index("by_organization_and_status", ["organizationId", "status"]),

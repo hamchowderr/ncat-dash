@@ -14,6 +14,8 @@ export interface AdCode {
   /** "9x16". */
   shape: string | null;
   captioned: boolean;
+  /** With the team's background music under it ("music"); the copy without has none. */
+  music: boolean;
   /** The parts that name the idea itself, which stay the same across lengths and shapes. */
   concept: string[];
 }
@@ -25,6 +27,7 @@ export function readAdCode(label: string): AdCode {
     length: null,
     shape: null,
     captioned: false,
+    music: false,
     concept: [],
   };
   for (const part of label.split("_").filter(Boolean)) {
@@ -37,6 +40,7 @@ export function readAdCode(label: string): AdCode {
     } else if (/^\d+s$/.test(part)) code.length = part;
     else if (/^\d+x\d+$/.test(part)) code.shape = part;
     else if (part === "captioned") code.captioned = true;
+    else if (part === "music") code.music = true;
     else code.concept.push(part);
   }
   return code;
@@ -118,6 +122,7 @@ const COLUMNS = [
   "length",
   "shape",
   "captioned",
+  "music",
   "primary_text",
   "headline",
   // Left for the team, so winners can be grouped by what kind of ad they are: the script
@@ -157,6 +162,7 @@ export function adFilesCsv(files: AdFile[]): string {
       code.length ?? "",
       code.shape ? code.shape.replace("x", ":") : "",
       code.captioned ? "yes" : "no",
+      code.music ? "yes" : "no",
       "",
       "",
       "",

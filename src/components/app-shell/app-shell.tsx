@@ -77,6 +77,7 @@ function Shell({
     <SidebarProvider className="md:h-svh md:overflow-hidden">
       <DashboardTour>
         <RoomForAgent agentOpen={agentOpen} />
+        <CloseMenuOnNavigate pathname={pathname} />
         <AlertNotices />
         <AppSidebar teamName={state.team.name} edition={edition} user={state.user} />
         {/* The page scrolls inside its own frame, so the bar along the top always stays put
@@ -185,6 +186,16 @@ function RoomForAgent({ agentOpen }: { agentOpen: boolean }) {
       root.removeAttribute("data-sidebar-open");
     };
   }, [agentOpen, open, isMobile]);
+  return null;
+}
+
+/**
+ * On a phone the menu slides over the page, so picking a page in it must also put it away;
+ * otherwise the page opens underneath and the menu stays in front of it.
+ */
+function CloseMenuOnNavigate({ pathname }: { pathname: string }) {
+  const { setOpenMobile } = useSidebar();
+  useEffect(() => setOpenMobile(false), [pathname, setOpenMobile]);
   return null;
 }
 

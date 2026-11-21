@@ -21,6 +21,8 @@ const SETTINGS = {
   mostAllowed: 20,
   stepRetries: 3,
   mostRetries: 10,
+  aiLimit: null,
+  aiLimitRange: { min: 0.05, max: 100 },
   brand: {},
 };
 
@@ -64,10 +66,35 @@ describe("Runs", () => {
     expect(setLimit).toHaveBeenCalledWith({ organizationId: TEAM.id, maxParallelJobs: 4 });
   });
 
+  test("the limit for AI reads No limit when blank, and saves dollars as typed", () => {
+    answerQuery(api.teamSettings.get, SETTINGS);
+    const save = mutationOf(api.teamSettings.setAiLimit);
+    renderInApp(<RunsSettings />);
+    const limit = screen.getByLabelText("Limit for AI per run");
+    expect(limit).toHaveValue("");
+    expect(limit).toHaveAttribute("placeholder", "No limit");
+    expect(screen.getByText(/ask the AI once for each video/)).toBeInTheDocument();
+    fireEvent.change(limit, { target: { value: "0.75" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(save).toHaveBeenCalledWith({ organizationId: TEAM.id, dollars: 0.75 });
+  });
+
+  test("clearing a saved limit saves no limit", () => {
+    answerQuery(api.teamSettings.get, { ...SETTINGS, aiLimit: 2 });
+    const save = mutationOf(api.teamSettings.setAiLimit);
+    renderInApp(<RunsSettings />);
+    const limit = screen.getByLabelText("Limit for AI per run");
+    expect(limit).toHaveValue("2.00");
+    fireEvent.change(limit, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(save).toHaveBeenCalledWith({ organizationId: TEAM.id, dollars: null });
+  });
+
   test("someone who cannot change them gets no Save and is told why", () => {
     answerQuery(api.teamSettings.get, { ...SETTINGS, canEdit: false });
     renderInApp(<RunsSettings />);
     expect(screen.getByLabelText("Jobs at once")).toBeDisabled();
+    expect(screen.getByLabelText("Limit for AI per run")).toBeDisabled();
     expect(screen.getByText("Only a team owner or admin can change these.")).toBeInTheDocument();
   });
 });

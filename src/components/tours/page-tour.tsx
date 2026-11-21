@@ -54,9 +54,30 @@ function dialogOpen() {
 }
 
 /** Takes a page's tour again, from the top of the page. */
-export function PageTourButton({ tourId, className }: { tourId: TourId; className?: string }) {
+export function PageTourButton({
+  tourId,
+  className,
+  compact = false,
+}: {
+  tourId: TourId;
+  className?: string;
+  /** Just the compass, named for screen readers, where a narrow screen has no room for words. */
+  compact?: boolean;
+}) {
   const tour = useTour();
   if (!tour) return null;
+  if (compact)
+    return (
+      <Button
+        size="icon"
+        variant="ghost"
+        aria-label="Take the Tour"
+        className={className}
+        onClick={() => tour.start(tourId)}
+      >
+        <Compass />
+      </Button>
+    );
   return (
     <Button size="sm" variant="ghost" className={className} onClick={() => tour.start(tourId)}>
       <Compass />

@@ -161,7 +161,17 @@ describe("Clean Up Pauses And Retakes", () => {
     // The silence check was asked for, beside the words.
     const silence = sent.find((one) => one.url.endsWith("/v1/media/silence"))!;
     expect(silence.body).toMatchObject({ media_url: FILE, duration: 0.3 });
-    const cuts = sent.filter((one) => one.url.endsWith("/v1/ffmpeg/compose"));
+    // The three cuts are sent at once, so they arrive in any order: take them in the order
+    // they start in the recording (hook one, hook two, the body).
+    const seekOf = (body: Record<string, unknown>) =>
+      Number(
+        (body.inputs as { options: { option: string; argument?: number }[] }[])[0].options.find(
+          (one) => one.option === "-ss",
+        )?.argument ?? 0,
+      );
+    const cuts = sent
+      .filter((one) => one.url.endsWith("/v1/ffmpeg/compose"))
+      .sort((a, b) => seekOf(a.body) - seekOf(b.body));
     expect(cuts).toHaveLength(3);
     expect(step.outputs).toHaveLength(3);
     expect(step.cleaned).toHaveLength(1);

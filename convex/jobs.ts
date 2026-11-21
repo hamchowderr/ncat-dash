@@ -23,6 +23,7 @@ import { decryptSecret } from "./lib/crypto";
 import { collectUrls, handOutputNames, outputNamesOf } from "./lib/outputs";
 import { enqueueJob, pump } from "./lib/queue";
 import { onJobFinished } from "./lib/runner";
+import { wordsForJob } from "./lib/disclosure";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { UploadLinkError, withUploadLinks } from "./storage";
 import {
@@ -164,7 +165,12 @@ export const loadForDispatch = internalQuery({
     if (!job || job.status !== "queued") return null;
     const connection = await ctx.db.get(job.connectionId);
     if (!connection) return null;
-    return { job, connection };
+    // A step keeping a paid creator's disclosure gets the words heard in its videos.
+    const step = getStep(job.stepId);
+    const words = step?.readsWords
+      ? await wordsForJob(ctx, job.organizationId, step, job.input)
+      : undefined;
+    return { job, connection, words };
   },
 });
 
@@ -213,7 +219,7 @@ export const dispatch = internalAction({
   handler: async (ctx, args) => {
     const loaded = await ctx.runQuery(internal.jobs.loadForDispatch, { jobId: args.jobId });
     if (!loaded) return;
-    const { job, connection } = loaded;
+    const { job, connection, words } = loaded;
     const step = getStep(job.stepId);
     if (!step) {
       await ctx.runMutation(internal.jobs.finish, {
@@ -238,7 +244,12 @@ export const dispatch = internalAction({
           job,
           await withZoomSignIn(ctx, job, await withUploadLinks(ctx, job.organizationId, job.input)),
         ),
-        { webhookUrl: webhookUrl.toString(), id: job._id, signal: AbortSignal.timeout(120_000) },
+        {
+          webhookUrl: webhookUrl.toString(),
+          id: job._id,
+          signal: AbortSignal.timeout(120_000),
+          words,
+        },
       )) as { code?: number; job_id?: string; response?: unknown; message?: string } | null;
 
       if (answer?.code === 200 && answer.response !== undefined) {
@@ -443,7 +454,12 @@ export const loadForAsking = internalQuery({
     if (!job || job.status !== "running" || !job.toolkitJobId) return null;
     const connection = await ctx.db.get(job.connectionId);
     if (!connection) return null;
-    return { job, connection };
+    // A step keeping a paid creator's disclosure gets the words heard in its videos.
+    const step = getStep(job.stepId);
+    const words = step?.readsWords
+      ? await wordsForJob(ctx, job.organizationId, step, job.input)
+      : undefined;
+    return { job, connection, words };
   },
 });
 

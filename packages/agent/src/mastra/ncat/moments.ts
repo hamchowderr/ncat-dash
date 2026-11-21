@@ -234,3 +234,38 @@ export function momentsPrompt(request: MomentsRequest): string {
   lines.push("", "The transcript:", request.transcript);
   return lines.join("\n");
 }
+
+/** What one answer used, in the names the dashboard reads (convex/moments.ts there). */
+export interface DashboardUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+/**
+ * The AI SDK's usage for one answer, as the dashboard reads it. Newer AI SDK versions
+ * count cached input inside inputTokens and split it in inputTokenDetails; older ones
+ * count only uncached input there and put cache reads in cachedInputTokens.
+ */
+export function dashboardUsage(usage: unknown, providerMetadata?: unknown): DashboardUsage {
+  const u = (usage ?? {}) as Record<string, unknown>;
+  const details = (u.inputTokenDetails ?? {}) as Record<string, unknown>;
+  const anthropic = ((providerMetadata ?? {}) as Record<string, unknown>).anthropic as
+    Record<string, unknown> | undefined;
+  const n = (value: unknown) => (typeof value === "number" && value > 0 ? value : 0);
+  const cacheRead = n(details.cacheReadTokens ?? u.cachedInputTokens);
+  const cacheWrite = n(details.cacheWriteTokens ?? anthropic?.cacheCreationInputTokens);
+  const uncached =
+    typeof details.noCacheTokens === "number"
+      ? n(details.noCacheTokens)
+      : typeof details.cacheReadTokens === "number"
+        ? Math.max(0, n(u.inputTokens) - cacheRead - cacheWrite)
+        : n(u.inputTokens);
+  return {
+    inputTokens: uncached,
+    outputTokens: n(u.outputTokens),
+    cacheReadTokens: cacheRead,
+    cacheWriteTokens: cacheWrite,
+  };
+}

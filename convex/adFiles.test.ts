@@ -23,6 +23,13 @@ describe("reading an ad file's code", () => {
       length: "15s",
       shape: "9x16",
       captioned: true,
+      music: false,
+      concept: ["h02", "c01"],
+    });
+    // The copy with the team's music under it says so; it is the same idea as without.
+    expect(readAdCode("h02_c01_15s_9x16_captioned_music")).toMatchObject({
+      captioned: true,
+      music: true,
       concept: ["h02", "c01"],
     });
     expect(readAdCode("t03").concept).toEqual(["t03"]);
@@ -52,6 +59,7 @@ describe("reading an ad file's code", () => {
       "length",
       "shape",
       "captioned",
+      "music",
       "primary_text",
       "headline",
       "script_type",
@@ -73,6 +81,7 @@ describe("reading an ad file's code", () => {
       "c01",
       "30s",
       "4:5",
+      "no",
       "no",
       "",
       "",
@@ -99,6 +108,26 @@ describe("reading an ad file's code", () => {
     ]);
     const row = csv.split("\r\n")[1]!.split(",");
     expect(row.slice(1, 4)).toEqual(["Jane Doe/9x16/", "boots_ad_h02_c01_jane_doe", "Jane Doe"]);
+  });
+
+  test("the copies with and without music share a creative ID and say which is which", () => {
+    const csv = adFilesCsv([
+      { name: "Boots ad h02_c01_15s_9x16.mp4", folder: "9x16/", label: "h02_c01_15s_9x16" },
+      {
+        name: "Boots ad h02_c01_15s_9x16_music.mp4",
+        folder: "9x16/",
+        label: "h02_c01_15s_9x16_music",
+      },
+    ]);
+    const rows = csv
+      .trim()
+      .split("\r\n")
+      .map((row) => row.split(","));
+    const music = rows[0].indexOf("music");
+    expect(rows.slice(1).map((row) => [row[2], row[music]])).toEqual([
+      ["boots_ad_h02_c01", "no"],
+      ["boots_ad_h02_c01", "yes"],
+    ]);
   });
 
   test("names with commas or quotes stay in one cell", () => {

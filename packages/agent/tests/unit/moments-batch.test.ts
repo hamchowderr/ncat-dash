@@ -98,7 +98,7 @@ describe("moments batches", () => {
     expect(await batchAnswers("msgbatch_abc")).toBeNull();
   });
 
-  it("returns each answer, and an error for a failed or empty one", async () => {
+  it("returns each answer with what it used, and an error for a failed or empty one", async () => {
     stand({
       status: "ended",
       results: [
@@ -107,6 +107,13 @@ describe("moments batches", () => {
           result: {
             type: "succeeded",
             message: {
+              model: "claude-sonnet-5-5",
+              usage: {
+                input_tokens: 12_000,
+                output_tokens: 900,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+              },
               stop_reason: "end_turn",
               content: [
                 { type: "thinking", thinking: "…" },
@@ -124,7 +131,12 @@ describe("moments batches", () => {
       ],
     });
     expect(await batchAnswers("msgbatch_abc")).toEqual([
-      { id: "a", answer: '{"moments":[]}' },
+      {
+        id: "a",
+        answer: '{"moments":[]}',
+        model: "claude-sonnet-5-5",
+        usage: { inputTokens: 12_000, outputTokens: 900, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      },
       { id: "b", error: "errored" },
       { id: "c", error: "expired" },
       { id: "d", error: "empty" },
