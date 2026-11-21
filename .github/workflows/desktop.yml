@@ -98,6 +98,23 @@ jobs:
           msedgedriver-tool
           echo "NATIVE_DRIVER=$(pwd -W)/msedgedriver.exe" >> "$GITHUB_ENV"
       - run: pnpm tauri build --debug --no-bundle
+      # Starts the app on its own first, so a crash at start shows here and not as a
+      # driver that never answers.
+      - name: Check the app starts
+        env:
+          RUST_BACKTRACE: "1"
+        run: |
+          app=src-tauri/target/debug/ncat-dash-desktop.exe
+          "$app" > app.log 2>&1 &
+          sleep 15
+          if tasklist //FI "IMAGENAME eq ncat-dash-desktop.exe" | grep -q ncat-dash-desktop; then
+            echo "The app is running."
+            taskkill //F //IM ncat-dash-desktop.exe > /dev/null
+          else
+            echo "The app stopped within 15 seconds:"
+            cat app.log
+            exit 1
+          fi
       - run: pnpm test:e2e
 
   build:
@@ -147,7 +164,7 @@ jobs:
       - run: pnpm tauri build --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: Kontifi ${{ matrix.name }}
+          name: Desktop app ${{ matrix.name }}
           path: |
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi

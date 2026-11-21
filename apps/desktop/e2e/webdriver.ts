@@ -10,9 +10,13 @@ export class Session {
   ) {}
 
   static async start(driver: string, application: string): Promise<Session> {
-    const reply = await call(`${driver}/session`, "POST", {
-      capabilities: { alwaysMatch: { browserName: "wry", "tauri:options": { application } } },
-    });
+    const reply = await call(
+      `${driver}/session`,
+      "POST",
+      { capabilities: { alwaysMatch: { browserName: "wry", "tauri:options": { application } } } },
+      // Fail with a clear message, not a test time-out, when the app never comes up.
+      40000,
+    );
     return new Session(driver, reply.sessionId);
   }
 
@@ -73,9 +77,10 @@ export class Session {
   }
 }
 
-async function call(url: string, method: string, body?: unknown) {
+async function call(url: string, method: string, body?: unknown, ms = 30000) {
   const reply = await fetch(url, {
     method,
+    signal: AbortSignal.timeout(ms),
     headers: { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
