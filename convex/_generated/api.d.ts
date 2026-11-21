@@ -9,6 +9,7 @@
  */
 
 import type * as access from "../access.js";
+import type * as aiSpend from "../aiSpend.js";
 import type * as alerts from "../alerts.js";
 import type * as anthropicKey from "../anthropicKey.js";
 import type * as auth from "../auth.js";
@@ -21,6 +22,7 @@ import type * as chatAlerts from "../chatAlerts.js";
 import type * as clients from "../clients.js";
 import type * as contentGoals from "../contentGoals.js";
 import type * as crons from "../crons.js";
+import type * as disclosure from "../disclosure.js";
 import type * as discord from "../discord.js";
 import type * as discordReview from "../discordReview.js";
 import type * as dropbox from "../dropbox.js";
@@ -52,6 +54,7 @@ import type * as lib_cleanup from "../lib/cleanup.js";
 import type * as lib_clientIp from "../lib/clientIp.js";
 import type * as lib_clients from "../lib/clients.js";
 import type * as lib_crypto from "../lib/crypto.js";
+import type * as lib_disclosure from "../lib/disclosure.js";
 import type * as lib_discordApi from "../lib/discordApi.js";
 import type * as lib_discordPosts from "../lib/discordPosts.js";
 import type * as lib_disposableDomains from "../lib/disposableDomains.js";
@@ -150,6 +153,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  aiSpend: typeof aiSpend;
   alerts: typeof alerts;
   anthropicKey: typeof anthropicKey;
   auth: typeof auth;
@@ -162,6 +166,7 @@ declare const fullApi: ApiFromModules<{
   clients: typeof clients;
   contentGoals: typeof contentGoals;
   crons: typeof crons;
+  disclosure: typeof disclosure;
   discord: typeof discord;
   discordReview: typeof discordReview;
   dropbox: typeof dropbox;
@@ -193,6 +198,7 @@ declare const fullApi: ApiFromModules<{
   "lib/clientIp": typeof lib_clientIp;
   "lib/clients": typeof lib_clients;
   "lib/crypto": typeof lib_crypto;
+  "lib/disclosure": typeof lib_disclosure;
   "lib/discordApi": typeof lib_discordApi;
   "lib/discordPosts": typeof lib_discordPosts;
   "lib/disposableDomains": typeof lib_disposableDomains;

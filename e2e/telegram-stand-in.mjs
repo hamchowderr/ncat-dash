@@ -40,7 +40,7 @@ createServer((request, response) => {
         result: {
           id: 777,
           is_bot: true,
-          username: "KontifiStandInBot",
+          username: "TakewonStandInBot",
           can_read_all_group_messages: false,
         },
       });

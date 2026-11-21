@@ -159,7 +159,7 @@ export function ClipStage({
             ref={picture}
             src={url}
             alt=""
-            className="max-h-full max-w-full rounded-md object-contain lg:h-full lg:w-auto"
+            className="max-h-full max-w-full rounded-md object-contain max-lg:max-h-[50dvh] lg:h-full lg:w-auto"
           />
         ) : (
           <video
@@ -174,7 +174,7 @@ export function ClipStage({
             onDurationChange={(event) => onDuration(event.currentTarget.duration)}
             onPlay={() => onPlaying(true)}
             onPause={() => onPlaying(false)}
-            className="max-h-full max-w-full cursor-pointer rounded-md bg-black object-contain lg:h-full lg:w-auto"
+            className="max-h-full max-w-full cursor-pointer rounded-md bg-black object-contain max-lg:max-h-[50dvh] lg:h-full lg:w-auto"
           />
         )}
         {drawing && (
@@ -210,7 +210,7 @@ export function ClipStage({
               type="button"
               onClick={toggle}
               aria-label={playing ? "Pause" : "Play"}
-              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-zinc-950 outline-none transition-transform hover:scale-105 focus-visible:ring-3 focus-visible:ring-white/50 active:scale-95"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white pointer-coarse:size-11 text-zinc-950 outline-none transition-transform hover:scale-105 focus-visible:ring-3 focus-visible:ring-white/50 active:scale-95"
             >
               {playing ? (
                 <Pause className="size-4 fill-current" />
@@ -219,7 +219,8 @@ export function ClipStage({
               )}
             </button>
 
-            <div className="relative h-5 min-w-0 flex-1">
+            {/* A finger needs a taller strip to land on than a pointer does. */}
+            <div className="relative h-5 min-w-0 flex-1 pointer-coarse:h-10">
               <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-white/20">
                 <div
                   className="h-full rounded-full bg-white"

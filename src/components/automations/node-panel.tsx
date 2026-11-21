@@ -19,7 +19,7 @@ import {
   wantedKind,
   writeSource,
 } from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep, userInputSchema } from "@ncat-dash/step-catalog";
 import { ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -194,9 +194,13 @@ export function NodePanel({
     });
   }
   if (automaticField && isBlank(node.input[automaticField])) {
+    const word = KIND_WORDS[wantedKind(automaticField)];
+    // A list takes every file that reaches it, such as the clips of Cut To The Beat.
+    const many = step?.listInput?.field === automaticField;
+    const label = fieldLabel(automaticField).replace(/ URLs?$/i, "");
     handled.push({
-      label: fieldLabel(automaticField).replace(/ URLs?$/, ""),
-      text: `the nearest ${KIND_WORDS[wantedKind(automaticField)]} before this step`,
+      label: many && !label.endsWith("s") ? `${label}s` : label,
+      text: many ? `every ${word} that reaches this step` : `the nearest ${word} before this step`,
     });
   }
   for (const [name, note] of Object.entries(filled)) {
@@ -224,6 +228,17 @@ export function NodePanel({
   }
   if (node.kind === "cleanup") {
     handled.push({ label: "Pauses", text: "where the toolkit hears silence in the video" });
+  }
+  // Length Cuts and Hook And Ending Variants keeping a paid creator's ad disclosure.
+  if (step?.readsWords) {
+    const parsed = userInputSchema(step).safeParse(node.input);
+    const settings = (parsed.success ? parsed.data : node.input) as Record<string, unknown>;
+    if (step.readsWords(settings).length > 0) {
+      handled.push({
+        label: "Paid-ad disclosure",
+        text: "found in what the creator says, and kept in every cut",
+      });
+    }
   }
   for (const name of Object.keys(nodeType?.fromStart ?? {})) {
     if (isBlank(node.input[name])) {

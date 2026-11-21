@@ -1,12 +1,12 @@
-# Kontifi (ncat-dash): Notes for AI Agents
+# Takewon (ncat-dash): Notes for AI Agents
 
-Kontifi is a finished shell around the free, open-source NCA Toolkit: the toolkit processes media, Kontifi builds, runs and reviews the automations that drive it. Product name Kontifi; motto exactly "Your content, social media ready." Read [README.md](README.md) for how the code works and [docs/self-hosting.md](docs/self-hosting.md) for running a copy.
+Takewon is a finished shell around the free, open-source NCA Toolkit: the toolkit processes media, Takewon builds, runs and reviews the automations that drive it. Product name Takewon; motto exactly "Your content, social media ready." Read [README.md](README.md) for how the code works and [docs/self-hosting.md](docs/self-hosting.md) for running a copy.
 
 ## Facts to keep straight
 
-- Kontifi needs the toolkit fork `hamchowderr/no-code-architects-toolkit`, not the original toolkit.
+- Takewon needs the toolkit fork `hamchowderr/no-code-architects-toolkit`, not the original toolkit.
 - It runs on a server: a rented one, or the owner's own always-on machine that meets the specs (a Mac Mini is the example). Never write that no server is needed.
-- n8n is optional; automations run inside Kontifi. Do not list Zapier or Make as integrations.
+- n8n is optional; automations run inside Takewon. Do not list Zapier or Make as integrations.
 - The MCP server (`<Convex site URL>/mcp`) works with any MCP client, not one vendor's.
 - The published images (toolkit, agent, web app) are multi-arch: amd64 (Intel/AMD, Windows PCs) and arm64 (Apple-chip Macs). Docker picks the right one.
 

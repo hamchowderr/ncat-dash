@@ -6,11 +6,14 @@ import {
   type AutomationEdge,
   type AutomationNode,
   BRANCH_LABELS,
+  BRAND_WORDS,
   coveredByWorkflow,
+  dollarsText,
   FAILURE_WAY,
   failsOver,
   IF_BRANCHES,
   isWorkflowReview,
+  nodeTypeOf,
   waitsForRun,
 } from "@ncat-dash/automation-core";
 import { useQuery } from "convex/react";
@@ -111,7 +114,14 @@ function stepSentence(
     return "Not needed, since the run had already failed.";
   }
   if (step.status === "skipped") {
-    return runStatus === "cancelled" ? "The run was stopped first." : "No files came this way.";
+    if (runStatus === "cancelled") return "The run was stopped first.";
+    // Passed over itself, with files waiting for it, for want of a brand item such as music.
+    const nodeType = step.startedAt ? nodeTypeOf(node) : undefined;
+    const wanted = nodeType?.skipsWithout ? nodeType.brand?.[nodeType.skipsWithout] : undefined;
+    if (wanted) {
+      return `Passed over until your team adds its ${BRAND_WORDS[wanted]} in Settings, under Brand.`;
+    }
+    return "No files came this way.";
   }
   if (step.status === "pending") return "Not reached yet.";
   if (coveredByWorkflow(node)) {
@@ -400,7 +410,17 @@ export function RunSteps({
           <h2 id="run-steps-title" className="text-sm font-semibold">
             What happened
           </h2>
-          <p className="text-muted-foreground text-xs">{tally(run.steps)}</p>
+          <p className="text-muted-foreground text-xs">
+            {tally(run.steps)}
+            {aiLine(run) && (
+              <>
+                {" · "}
+                <span data-ai-spent="run" className="tabular-nums">
+                  {aiLine(run)}
+                </span>
+              </>
+            )}
+          </p>
         </header>
 
         <ol className="py-2">
@@ -476,6 +496,15 @@ export function RunSteps({
                 got={quiet ? undefined : receivedBy(node.id, passed)}
                 aside={
                   <>
+                    {step.aiSpent ? (
+                      <span
+                        data-ai-spent="step"
+                        className="tabular-nums"
+                        title="What this step spent asking the AI"
+                      >
+                        AI {dollarsText(step.aiSpent)}
+                      </span>
+                    ) : null}
                     {took && <span className="tabular-nums">{took}</span>}
                     <RunStatusBadge status={shownStatus(step)} />
                   </>
@@ -556,6 +585,19 @@ export function RunSteps({
       </section>
     </OutputNamesProvider>
   );
+}
+
+/**
+ * What the run spent asking the AI, beside its limit when the team set one: "AI $0.12 of
+ * $1.00". Nothing for a run that asked nothing and has no limit.
+ */
+export function aiLine(run: { aiSpent?: number; aiLimit?: number | null }): string | null {
+  const spent = run.aiSpent ?? 0;
+  const limit = run.aiLimit ?? null;
+  if (spent === 0 && limit === null) return null;
+  return limit === null
+    ? `AI ${dollarsText(spent)}`
+    : `AI ${dollarsText(spent)} of ${dollarsText(limit)}`;
 }
 
 /** A link to a run another run started, or was started by. */

@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
+import { useNarrow } from "@/hooks/use-narrow";
 import { cn } from "@/lib/utils";
 
 import { ClipStage, isStill, type Mark } from "./clip-stage";
@@ -346,7 +347,18 @@ function Workspace({
   );
 }
 
-function Verdict({ token, guest, room }: { token: string; guest: Guest; room: Room }) {
+function Verdict({
+  token,
+  guest,
+  room,
+  narrow = false,
+}: {
+  token: string;
+  guest: Guest;
+  room: Room;
+  /** On a phone: two big buttons side by side along the bottom. */
+  narrow?: boolean;
+}) {
   const give = useMutation(api.sharedReview.verdict);
   const [busy, setBusy] = useState(false);
   if (room.status !== "open") {
@@ -372,15 +384,19 @@ function Verdict({ token, guest, room }: { token: string; guest: Guest; room: Ro
 
   const verdict = room.verdict;
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className={cn("flex flex-wrap items-center gap-2", narrow && "grid grid-cols-2")}>
       {verdict && (
-        <span role="status" className="text-muted-foreground text-sm">
+        <span
+          role="status"
+          className={cn("text-muted-foreground text-sm", narrow && "col-span-2 text-xs")}
+        >
           {verdict.name} {verdict.approved ? "approved" : "asked for changes"}
         </span>
       )}
       <Button
         variant={verdict && !verdict.approved ? "secondary" : "outline"}
-        size="sm"
+        size={narrow ? "lg" : "sm"}
+        className={cn(narrow && "h-11")}
         disabled={busy}
         aria-pressed={verdict ? !verdict.approved : false}
         onClick={() => void say(false)}
@@ -389,7 +405,8 @@ function Verdict({ token, guest, room }: { token: string; guest: Guest; room: Ro
         Ask for changes
       </Button>
       <Button
-        size="sm"
+        size={narrow ? "lg" : "sm"}
+        className={cn(narrow && "h-11")}
         variant={verdict?.approved ? "secondary" : "default"}
         disabled={busy}
         aria-pressed={verdict ? verdict.approved : false}
@@ -409,6 +426,7 @@ export function SharedReview({ token, backHref }: { token: string; backHref?: st
   const here = useGuestPresence(token, guest);
   const [clipId, setClipId] = useState<Id<"reviewClips"> | null>(null);
   const [versions, setVersions] = useState<Record<string, number>>({});
+  const narrow = useNarrow();
 
   if (room === undefined) return <Skeleton className="m-4 h-[70svh] rounded-xl" />;
   if (room === null || room.clips.length === 0) {
@@ -431,54 +449,71 @@ export function SharedReview({ token, backHref }: { token: string; backHref?: st
   const clip = room.clips[index];
   const version = Math.min(versions[clip._id] ?? clip.versions.length, clip.versions.length);
 
+  // A deciding client on a phone gets the buttons along the bottom, in their own room.
+  const bottomVerdict = narrow && room.status === "open" && room.allowVerdict;
+
   return (
-    <div className="flex min-h-[36rem] flex-col gap-3 p-3 sm:p-4 lg:h-svh">
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {backHref && (
-          <Button asChild variant="ghost" size="icon" className="-mr-2">
-            <Link href={backHref}>
-              <ArrowLeft />
-              <span className="sr-only">Back to the project</span>
-            </Link>
-          </Button>
-        )}
-        <div className="min-w-0 flex-1">
-          {room.teamName && (
-            <p className="text-muted-foreground truncate text-xs">From {room.teamName}</p>
+    // The whole window, so on a phone the room scrolls inside it and the decision stays put
+    // under the thumb, without covering anything.
+    <div className="flex h-dvh flex-col gap-3 p-3 sm:p-4 lg:h-svh lg:min-h-[36rem]">
+      <div
+        data-room-scroll
+        className="-mx-3 min-h-0 flex-1 overflow-y-auto px-3 max-lg:space-y-3 sm:-mx-4 sm:px-4 lg:contents"
+      >
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {backHref && (
+            <Button asChild variant="ghost" size="icon" className="-mr-2">
+              <Link href={backHref}>
+                <ArrowLeft />
+                <span className="sr-only">Back to the project</span>
+              </Link>
+            </Button>
           )}
-          <h1 className="truncate font-medium">{room.title}</h1>
+          <div className="min-w-0 flex-1">
+            {room.teamName && (
+              <p className="text-muted-foreground truncate text-xs">From {room.teamName}</p>
+            )}
+            <h1 className="truncate font-medium">{room.title}</h1>
+          </div>
+          <div className={cn("flex items-center gap-x-4 gap-y-2", narrow && "basis-full")}>
+            <HereNow here={here} me={`guest:${guest.id}`} />
+            <span className="text-muted-foreground text-sm">Reviewing as {guest.name}</span>
+          </div>
+          {!bottomVerdict && <Verdict token={token} guest={guest} room={room} />}
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+          {room.clips.length > 1 && (
+            <ClipList clips={room.clips} selected={clip._id} onSelect={setClipId} />
+          )}
+          <Workspace
+            key={`${clip._id}:${version}`}
+            token={token}
+            guest={guest}
+            clip={clip}
+            index={index}
+            count={room.clips.length}
+            version={version}
+            onVersion={(next) => setVersions((current) => ({ ...current, [clip._id]: next }))}
+            typing={here
+              .filter(
+                (person) =>
+                  person.id !== `guest:${guest.id}` &&
+                  person.typing?.clipId === clip._id &&
+                  person.typing.version === version,
+              )
+              .map((person) => ({
+                id: person.id,
+                name: person.name,
+                threadId: person.typing!.threadId,
+              }))}
+          />
         </div>
-        <HereNow here={here} me={`guest:${guest.id}`} />
-        <span className="text-muted-foreground text-sm">Reviewing as {guest.name}</span>
-        <Verdict token={token} guest={guest} room={room} />
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        {room.clips.length > 1 && (
-          <ClipList clips={room.clips} selected={clip._id} onSelect={setClipId} />
-        )}
-        <Workspace
-          key={`${clip._id}:${version}`}
-          token={token}
-          guest={guest}
-          clip={clip}
-          index={index}
-          count={room.clips.length}
-          version={version}
-          onVersion={(next) => setVersions((current) => ({ ...current, [clip._id]: next }))}
-          typing={here
-            .filter(
-              (person) =>
-                person.id !== `guest:${guest.id}` &&
-                person.typing?.clipId === clip._id &&
-                person.typing.version === version,
-            )
-            .map((person) => ({
-              id: person.id,
-              name: person.name,
-              threadId: person.typing!.threadId,
-            }))}
-        />
       </div>
+      {bottomVerdict && (
+        <div data-decision-bar className="pb-[env(safe-area-inset-bottom)]">
+          <Verdict token={token} guest={guest} room={room} narrow />
+        </div>
+      )}
     </div>
   );
 }

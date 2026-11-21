@@ -12,6 +12,7 @@ import { pump } from "./lib/queue";
 import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
 import { outputNamesOf, startingFileName } from "./lib/outputs";
+import { aiLimitOf } from "./aiSpend";
 import {
   approvalTimeUp as decideWhenTimeIsUp,
   decideApproval,
@@ -150,6 +151,9 @@ export const get = query({
       startedByRun: parent ? linkTo(parent) : null,
       // Runs this one started: by a Run an automation step, or by being followed.
       startedRuns: started.map(linkTo),
+      // What the run's AI steps spent, in millionths of a dollar, and the team's limit.
+      aiSpent: run.aiSpent ?? 0,
+      aiLimit: (await aiLimitOf(ctx, run.organizationId)) ?? null,
       nodes: run.nodes,
       edges: run.edges,
       steps: await Promise.all(
@@ -180,7 +184,11 @@ export const get = query({
             placed: step.placed ?? null,
             // For Clean Up Pauses And Retakes: what it took out of each video.
             cleaned: step.cleaned ?? null,
+            // For Length Cuts and Hook And Ending Variants: the paid-ad disclosure kept.
+            disclosures: step.disclosures ?? null,
             pickNote: step.pickNote ?? null,
+            // For a step that asks the AI: what it spent, in millionths of a dollar.
+            aiSpent: step.aiSpent ?? null,
             // For an If: the files that left by each way. For a Wait: when it carries on.
             branches: step.branches,
             resumeAt: step.resumeAt,

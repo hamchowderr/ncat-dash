@@ -1,4 +1,4 @@
-// Kontifi is AGPL-3.0-or-later. Keeps the licence file and every package's
+// Takewon is AGPL-3.0-or-later. Keeps the licence file and every package's
 // licence field in step, so a package never says something the LICENSE doesn't.
 import { test } from "node:test";
 import assert from "node:assert/strict";

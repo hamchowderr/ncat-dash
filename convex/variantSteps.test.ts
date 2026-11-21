@@ -10,12 +10,18 @@ const VIDEO = "https://files.example/uploads/boots_ad.mp4";
 const made = (job: string, n: number) =>
   `https://files.example/teams/x/${job}-5b1f-4c3e-9a77-0d2f1b6e8a10_output_${n}.mp4`;
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 type Node = { id: string; stepId: string; input?: Record<string, unknown> };
 
 /** A team with a toolkit, a manager, and an automation of `nodes` in a row. */
 async function setUp(nodes: Node[]) {
+  // Scheduled dispatches stay put, so each test sends its job once, itself, however
+  // slow the machine: otherwise the scheduler can send the same job a second time.
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
   process.env.CONNECTIONS_SECRET ??= "a-test-secret-that-is-long-enough-1234";
   process.env.CONVEX_SITE_URL = "https://dash.example";
   const apiKeyCipher = await encryptSecret("toolkit-key");
@@ -173,5 +179,159 @@ describe("length cuts in a run", () => {
         )?.labels,
     );
     expect(labels ?? null).toBeNull();
+  });
+});
+
+describe("keeping the paid-ad disclosure in a run", () => {
+  /** "word" timings as the toolkit's transcript has them, spread from `from` to `to`. */
+  const said = (sentence: string, from: number, to: number) => {
+    const parts = sentence.split(" ");
+    const step = (to - from) / parts.length;
+    return parts.map((word, index) => ({
+      word: ` ${word}`,
+      start: from + index * step,
+      end: from + (index + 1) * step - 0.05,
+    }));
+  };
+  const SEGMENTS = [
+    { words: said("Stop scrolling right now.", 0.2, 2.7) },
+    { words: said("I tried this serum for thirty days and loved it.", 3.5, 8.5) },
+    { words: said("This is a paid partnership with Boots.", 9.3, 10.9) },
+    { words: said("Link below.", 11, 11.8) },
+  ];
+  const AD = { ...FACTS, duration: 12 };
+  const STEPS: Node[] = [
+    {
+      id: "lengths_1",
+      stepId: "recipe-length-cuts",
+      input: { lengths: "6", disclosure: "Keep it in every cut" },
+    },
+  ];
+
+  test("hears the video first, then every cut keeps the line, shown on the run page", async () => {
+    const { t, maya, start, jobsOf } = await setUp(STEPS);
+    const calls = toolkit(AD);
+    const runId = await start({ file_url: VIDEO });
+    const [hearing] = await jobsOf(runId, "lengths_1");
+    expect(hearing.stepId).toBe("media-transcribe");
+    expect(hearing.input).toMatchObject({ media_url: VIDEO, word_timestamps: true });
+
+    await t.mutation(internal.jobs.finish, {
+      jobId: hearing._id,
+      ok: true,
+      result: { segments: SEGMENTS },
+    });
+    await t.action(internal.disclosure.hear, { runStepId: hearing.runStepId! });
+
+    const [cut] = await jobsOf(runId, "lengths_1");
+    expect(cut.stepId).toBe("recipe-length-cuts");
+    await t.action(internal.jobs.dispatch, { jobId: cut._id });
+    const compose = calls.find((call) => call.path === "/v1/ffmpeg/compose")!;
+    // The 6 s cut is the start, then the disclosure from 9.15 to 11 s.
+    expect(JSON.stringify(compose.body)).toContain("trim=start=9.15:end=11");
+
+    const run = await maya.as.query(api.runs.get, { runId });
+    expect(run?.steps[0].disclosures).toEqual([
+      { source: VIDEO, text: "This is a paid partnership with Boots." },
+    ]);
+  });
+
+  test("a video heard before is not transcribed again, and one with no disclosure says so", async () => {
+    const { t, team, maya, start, jobsOf } = await setUp(STEPS);
+    toolkit(AD);
+    await t.mutation(internal.moments.saveWords, {
+      organizationId: team,
+      source: VIDEO,
+      duration: 12,
+      words: [
+        { t: "I", s: 0.2, e: 0.4 },
+        { t: "added", s: 0.5, e: 0.9 },
+        { t: "this", s: 1, e: 1.3 },
+        { t: "daily.", s: 1.4, e: 2 },
+      ],
+    });
+    const runId = await start({ file_url: VIDEO });
+    const [cut] = await jobsOf(runId, "lengths_1");
+    expect(cut.stepId).toBe("recipe-length-cuts");
+    const run = await maya.as.query(api.runs.get, { runId });
+    expect(run?.steps[0].disclosures).toEqual([{ source: VIDEO, text: null }]);
+  });
+
+  test("with it off, nothing is transcribed and the run is as before", async () => {
+    const { start, jobsOf } = await setUp([
+      { id: "lengths_1", stepId: "recipe-length-cuts", input: { lengths: "6" } },
+    ]);
+    toolkit(AD);
+    const runId = await start({ file_url: VIDEO });
+    const jobs = await jobsOf(runId, "lengths_1");
+    expect(jobs.map((job) => job.stepId)).toEqual(["recipe-length-cuts"]);
+  });
+});
+
+describe("music under each variant in a run", () => {
+  const SONG = "https://files.example/uploads/upbeat.mp3";
+  const NODES: Node[] = [
+    { id: "lengths_1", stepId: "recipe-length-cuts", input: { lengths: "15, 6" } },
+    { id: "music_1", stepId: "recipe-variant-music" },
+  ];
+
+  async function cutsFinished(setUpRun: Awaited<ReturnType<typeof setUp>>) {
+    const { t, start, jobsOf } = setUpRun;
+    const runId = await start({ file_url: VIDEO, file_name: "Boots ad.mp4" });
+    const [cuts] = await jobsOf(runId, "lengths_1");
+    const cutFiles = [made("aaaaaaa1", 0), made("aaaaaaa1", 1)];
+    await t.mutation(internal.jobs.finish, { jobId: cuts._id, ok: true, result: cutFiles });
+    return { runId, cutFiles };
+  }
+
+  const stepOf = (t: Awaited<ReturnType<typeof setUp>>["t"], runId: Id<"runs">, nodeId: string) =>
+    t.run(
+      async (ctx) =>
+        (await ctx.db
+          .query("runSteps")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .filter((q) => q.eq(q.field("nodeId"), nodeId))
+          .first())!,
+    );
+
+  test("without music in Settings it is passed over and the run still finishes", async () => {
+    const ready = await setUp(NODES);
+    toolkit(FACTS);
+    const { runId } = await cutsFinished(ready);
+    const music = await stepOf(ready.t, runId, "music_1");
+    expect(music.status).toBe("skipped");
+    expect(music.jobIds).toEqual([]);
+    // Passed over itself (it was reached), not for want of files.
+    expect(music.startedAt).toBeDefined();
+    const run = await ready.maya.as.query(api.runs.get, { runId });
+    expect(run?.status).toBe("done");
+  });
+
+  test("with music in Settings each cut also comes back with it, named _music", async () => {
+    const ready = await setUp(NODES);
+    await ready.t.run((ctx) =>
+      ctx.db.insert("teamSettings", {
+        organizationId: ready.team,
+        maxParallelJobs: 4,
+        music: [{ name: "Upbeat", file: SONG }],
+      }),
+    );
+    toolkit(FACTS);
+    const { runId, cutFiles } = await cutsFinished(ready);
+    const jobs = await ready.jobsOf(runId, "music_1");
+    expect(jobs).toHaveLength(2);
+    expect(jobs.map((job) => (job.input as { music_url: string }).music_url)).toEqual([SONG, SONG]);
+    const withMusic: Record<string, string> = {};
+    for (const [index, job] of jobs.entries()) {
+      const file = made(`ddddddd${index}`, 0);
+      withMusic[(job.input as { video_url: string }).video_url] = file;
+      await ready.t.mutation(internal.jobs.finish, { jobId: job._id, ok: true, result: file });
+    }
+    const run = await ready.maya.as.query(api.runs.get, { runId });
+    expect(run?.status).toBe("done");
+    // Both copies are kept: the cut without music and the one with it.
+    expect(run?.outputNames[cutFiles[1]]).toBe("Boots ad 15s");
+    expect(run?.outputNames[withMusic[cutFiles[1]]]).toBe("Boots ad 15s_music");
+    expect(run?.outputNames[withMusic[cutFiles[0]]]).toBe("Boots ad 6s_music");
   });
 });

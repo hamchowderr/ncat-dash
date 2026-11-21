@@ -85,7 +85,7 @@ test("connects Dropbox, ticks folders to bring in, and sends clips back", async 
   await expect(send).not.toBeChecked();
   await send.click();
   await expect(send).toBeChecked();
-  await page.getByRole("button", { name: /^\/Kontifi\// }).click();
+  await page.getByRole("button", { name: /^\/Takewon\// }).click();
   const folder = page.getByRole("textbox", { name: "Dropbox folder for finished files" });
   await folder.fill("/Marketing/Shorts");
   await folder.press("Enter");
