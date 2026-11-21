@@ -1,17 +1,19 @@
-//! Turning what someone types into the address of a Kontifi, and checking that a
-//! Kontifi really answers there.
+//! Turning what someone types into the address of the person's dashboard, and checking
+//! that the dashboard really answers there.
 
 use std::net::IpAddr;
 use std::time::Duration;
 
 use url::{Host, Url};
 
-/// The path every Kontifi web app answers on, so the desktop app can tell a Kontifi
-/// from any other site. Served by `src/app/api/kontifi/route.ts` in the web app.
-pub const CHECK_PATH: &str = "/api/kontifi";
+use crate::NAME;
+
+/// The path every dashboard web app answers on, so the desktop app can tell it
+/// from any other site. Served by `src/app/api/desktop/route.ts` in the web app.
+pub const CHECK_PATH: &str = "/api/desktop";
 
 /// Reads an address the way people type it ("app.example.com", "https://app.example.com/home",
-/// "192.168.1.20:3000") and gives back just the origin Kontifi lives at.
+/// "192.168.1.20:3000") and gives back just the origin the dashboard lives at.
 ///
 /// Plain `http` is only allowed on this computer and on a home or office network, where a
 /// Mac Mini often has no certificate. Anywhere else the address must use HTTPS, because the
@@ -19,7 +21,7 @@ pub const CHECK_PATH: &str = "/api/kontifi";
 pub fn normalize(input: &str) -> Result<Url, String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
-        return Err("Enter the address of your Kontifi.".into());
+        return Err(format!("Enter the address of your {NAME}."));
     }
     let with_scheme = if trimmed.contains("://") {
         trimmed.to_string()
@@ -87,19 +89,19 @@ fn is_private(ip: &IpAddr) -> bool {
     }
 }
 
-/// What a Kontifi answers on [`CHECK_PATH`].
+/// What the dashboard answers on [`CHECK_PATH`].
 #[derive(Debug, serde::Deserialize)]
 struct CheckReply {
     app: String,
 }
 
-/// Asks the address whether it is a Kontifi. The error is written for the person, not for logs.
+/// Asks the address whether it is the dashboard. The error is written for the person, not for logs.
 pub async fn check(url: &Url) -> Result<(), String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::limited(3))
         .build()
-        .map_err(|_| "Kontifi couldn't start a connection on this computer.".to_string())?;
+        .map_err(|_| format!("{NAME} couldn't start a connection on this computer."))?;
     let check_url = url
         .join(CHECK_PATH.trim_start_matches('/'))
         .map_err(|_| "That doesn't look like a web address.".to_string())?;
@@ -116,18 +118,18 @@ pub async fn check(url: &Url) -> Result<(), String> {
             )
         }
     })?;
-    let not_kontifi = || {
+    let not_ours = || {
         format!(
-            "{} answered, but it isn't a Kontifi. Use the address you sign in to Kontifi at.",
+            "{} answered, but it isn't {NAME}. Use the address you sign in to {NAME} at.",
             display(url)
         )
     };
     if !reply.status().is_success() {
-        return Err(not_kontifi());
+        return Err(not_ours());
     }
     match reply.json::<CheckReply>().await {
-        Ok(body) if body.app == "kontifi" => Ok(()),
-        _ => Err(not_kontifi()),
+        Ok(body) if body.app == "ncat-dash" => Ok(()),
+        _ => Err(not_ours()),
     }
 }
 
@@ -220,22 +222,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accepts_a_kontifi_reply() {
+    async fn accepts_our_reply() {
         let url = serve_once(
-            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 17\r\nconnection: close\r\n\r\n{\"app\":\"kontifi\"}",
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 19\r\nconnection: close\r\n\r\n{\"app\":\"ncat-dash\"}",
         )
         .await;
         assert_eq!(check(&url).await, Ok(()));
     }
 
     #[tokio::test]
-    async fn turns_away_a_site_that_isnt_kontifi() {
+    async fn turns_away_another_site() {
         let url = serve_once(
             "HTTP/1.1 404 Not Found\r\ncontent-length: 9\r\nconnection: close\r\n\r\nnot found",
         )
         .await;
         let error = check(&url).await.unwrap_err();
-        assert!(error.contains("isn't a Kontifi"), "{error}");
+        assert!(error.contains(&format!("isn't {NAME}")), "{error}");
     }
 
     #[tokio::test]
@@ -244,7 +246,10 @@ mod tests {
             "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: 13\r\nconnection: close\r\n\r\n<html></html>",
         )
         .await;
-        assert!(check(&url).await.unwrap_err().contains("isn't a Kontifi"));
+        assert!(check(&url)
+            .await
+            .unwrap_err()
+            .contains(&format!("isn't {NAME}")));
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@ Kontifi in its own window on Mac, Windows and Linux. The app opens your Kontifi,
 ## What it does today
 
 - **Connect.** The first start asks for the address you sign in to Kontifi at. The app checks that a Kontifi answers there before opening it, and says plainly when the address is wrong, unreachable or another site.
-- **Comes back to it.** The next start opens the same Kontifi straight away. **Kontifi, Switch Kontifi…** (Cmd or Ctrl + Shift + K) goes back to the list, which remembers up to ten addresses for people who use more than one.
+- **Comes back to it.** The next start opens the same Kontifi straight away. **Switch** in the app's menu (Cmd or Ctrl + Shift + K) goes back to the list, which remembers up to ten addresses for people who use more than one.
 - **Links.** Kontifi's own pages stay in the window. Other sites open in your browser.
 
 Addresses use HTTPS. Plain `http://` is allowed only for this computer, a home or office network address (such as `192.168.1.20:3000`) and `.local` names (such as `mac-mini.local:3000`).
@@ -24,11 +24,13 @@ The builds are not signed yet, so the first open needs one extra step:
 
 ## How it works
 
+- The product's name is in one place, `apps/desktop/product.json`. The app's window, menu and Connect screen read it, and a test keeps `productName` in `src-tauri/tauri.conf.json` the same. A rename is a change to those two lines.
+
 - `apps/desktop/src-tauri/` is the app (Rust, [Tauri 2](https://v2.tauri.app)). It uses each system's own web view, so the download is small.
 - `apps/desktop/src/` is the Connect screen, the app's only page of its own.
-- The web app answers `GET /api/kontifi` with `{"app":"kontifi"}` (`src/app/api/kontifi/route.ts`). That is how the app tells a Kontifi from another site. A self-hosted copy needs a web image from this change or later.
+- The web app answers `GET /api/desktop` with `{"app":"ncat-dash"}` (`src/app/api/desktop/route.ts`). That is how the app tells the dashboard from another site; it names the codebase, not the product, so a rename doesn't break it. A self-hosted copy needs a web image from this change or later.
 - Kontifi's pages are a remote site inside the window, so they get no access to the app's commands. `capabilities/default.json` covers only the Connect screen; a test keeps it that way.
-- The saved addresses are in `kontifis.json` in the app's settings folder (for example `~/Library/Application Support/io.otakusolutions.kontifi/` on a Mac).
+- The saved addresses are in `servers.json` in the app's settings folder (for example `~/Library/Application Support/io.otakusolutions.desktop/` on a Mac).
 
 ## Working on it
 

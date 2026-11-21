@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { startConnect, type Api, type Saved } from "./connect";
+import { NAME } from "./product";
 
 const hosted: Saved = {
-  address: "https://app.kontifi.example/",
-  label: "app.kontifi.example",
+  address: "https://app.example.com/",
+  label: "app.example.com",
   lastOpened: 2,
 };
 const home: Saved = {
@@ -37,9 +38,16 @@ afterEach(() => {
 });
 
 describe("the Connect screen", () => {
+  test("uses the product name from product.json, not a fixed one", async () => {
+    const root = await render(fakeApi());
+    expect(NAME).toBeTruthy();
+    expect(document.title).toBe(NAME);
+    expect(root.textContent).not.toContain("Kontifi");
+  });
+
   test("asks for the address on the first start", async () => {
     const root = await render(fakeApi());
-    expect($(root, "h1").textContent).toBe("Connect to your Kontifi");
+    expect($(root, "h1").textContent).toBe(`Connect to your ${NAME}`);
     expect($(root, ".recent").hasAttribute("hidden")).toBe(true);
     expect(document.activeElement).toBe($(root, "#address"));
   });
@@ -47,11 +55,11 @@ describe("the Connect screen", () => {
   test("opens the address someone types", async () => {
     const api = fakeApi();
     const root = await render(api);
-    $<HTMLInputElement>(root, "#address").value = "  app.kontifi.example ";
+    $<HTMLInputElement>(root, "#address").value = "  app.example.com ";
     $<HTMLFormElement>(root, "form").requestSubmit();
     await flush();
-    expect(api.open).toHaveBeenCalledWith("app.kontifi.example");
-    expect($(root, ".opening-text").textContent).toBe("Opening app.kontifi.example…");
+    expect(api.open).toHaveBeenCalledWith("app.example.com");
+    expect($(root, ".opening-text").textContent).toBe("Opening app.example.com…");
     expect($(root, ".choose").hasAttribute("hidden")).toBe(true);
   });
 
@@ -61,19 +69,19 @@ describe("the Connect screen", () => {
     $<HTMLFormElement>(root, "form").requestSubmit();
     await flush();
     expect(api.open).not.toHaveBeenCalled();
-    expect($(root, ".error").textContent).toBe("Enter the address of your Kontifi.");
+    expect($(root, ".error").textContent).toBe(`Enter the address of your ${NAME}.`);
   });
 
   test("shows the app's reason when an address doesn't work, and keeps what was typed", async () => {
     const api = fakeApi([], async () => {
-      throw "example.com answered, but it isn't a Kontifi. Use the address you sign in to Kontifi at.";
+      throw `example.com answered, but it isn't ${NAME}. Use the address you sign in to ${NAME} at.`;
     });
     const root = await render(api);
     const input = $<HTMLInputElement>(root, "#address");
     input.value = "example.com";
     $<HTMLFormElement>(root, "form").requestSubmit();
     await flush();
-    expect($(root, ".error").textContent).toContain("isn't a Kontifi");
+    expect($(root, ".error").textContent).toContain(`isn't ${NAME}`);
     expect($(root, ".error").hasAttribute("hidden")).toBe(false);
     expect(input.value).toBe("example.com");
     expect(input.getAttribute("aria-invalid")).toBe("true");
@@ -81,30 +89,30 @@ describe("the Connect screen", () => {
     expect($(root, ".choose").hasAttribute("hidden")).toBe(false);
   });
 
-  test("opens the last Kontifi straight away on a normal start", async () => {
+  test("opens the last dashboard straight away on a normal start", async () => {
     const api = fakeApi([hosted, home]);
     await render(api, true);
     expect(api.open).toHaveBeenCalledWith(hosted.address);
   });
 
-  test("waits for a choice after Switch Kontifi", async () => {
+  test("waits for a choice after Switch in the menu", async () => {
     const api = fakeApi([hosted, home]);
     const root = await render(api, false);
     expect(api.open).not.toHaveBeenCalled();
     const rows = [...root.querySelectorAll(".recent-open")].map((b) => b.textContent);
-    expect(rows).toEqual(["app.kontifi.example", "http://mac-mini.local:3000"]);
+    expect(rows).toEqual(["app.example.com", "http://mac-mini.local:3000"]);
   });
 
-  test("falls back to the form when the last Kontifi can't be reached", async () => {
+  test("falls back to the form when the last dashboard can't be reached", async () => {
     const api = fakeApi([hosted], async () => {
-      throw "Couldn't reach app.kontifi.example. Check the address and your connection.";
+      throw "Couldn't reach app.example.com. Check the address and your connection.";
     });
     const root = await render(api, true);
     expect($(root, ".error").textContent).toContain("Couldn't reach");
-    expect($<HTMLInputElement>(root, "#address").value).toBe("app.kontifi.example");
+    expect($<HTMLInputElement>(root, "#address").value).toBe("app.example.com");
   });
 
-  test("opens a recent Kontifi and forgets one", async () => {
+  test("opens a recent dashboard and forgets one", async () => {
     const api = fakeApi([hosted, home]);
     const root = await render(api);
     root.querySelectorAll<HTMLButtonElement>(".recent-forget")[1].click();
@@ -122,6 +130,6 @@ describe("the Connect screen", () => {
       throw new Error("no settings folder");
     });
     const root = await render(api, true);
-    expect($(root, "h1").textContent).toBe("Connect to your Kontifi");
+    expect($(root, "h1").textContent).toBe(`Connect to your ${NAME}`);
   });
 });

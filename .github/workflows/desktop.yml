@@ -8,14 +8,14 @@ on:
   pull_request:
     paths:
       - "apps/desktop/**"
-      - "src/app/api/kontifi/**"
+      - "src/app/api/desktop/**"
       - ".github/workflows/desktop.yml"
       - "pnpm-lock.yaml"
   push:
     branches: [main]
     paths:
       - "apps/desktop/**"
-      - "src/app/api/kontifi/**"
+      - "src/app/api/desktop/**"
       - ".github/workflows/desktop.yml"
       - "pnpm-lock.yaml"
 

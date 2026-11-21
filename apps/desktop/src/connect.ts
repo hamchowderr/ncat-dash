@@ -1,12 +1,13 @@
 import mark from "./mark.svg?raw";
+import { NAME } from "./product";
 
-/** A Kontifi this computer has opened before (from the app's saved list). */
+/** A dashboard address this computer has opened before (from the app's saved list). */
 export type Saved = { address: string; label: string; lastOpened: number };
 
 /** What the Connect screen asks of the app. The app checks and opens; this page only asks. */
 export type Api = {
   saved: () => Promise<Saved[]>;
-  /** Resolves once the window is on its way to that Kontifi; rejects with a sentence for the person. */
+  /** Resolves once the window is on its way to that address; rejects with a sentence for the person. */
   open: (address: string) => Promise<void>;
   forget: (address: string) => Promise<Saved[]>;
 };
@@ -20,28 +21,29 @@ function message(error: unknown): string {
 }
 
 /**
- * The first screen of the desktop app: pick which Kontifi to open. On a normal start it
- * opens the last one straight away; after "Switch Kontifi…" it waits for a choice.
+ * The first screen of the desktop app: pick which dashboard to open. On a normal start it
+ * opens the last one straight away; after "Switch …" in the menu it waits for a choice.
  */
 export async function startConnect(
   root: HTMLElement,
   api: Api,
   { reopenLast }: { reopenLast: boolean },
 ): Promise<void> {
+  document.title = NAME;
   root.innerHTML = html`
     <div class="connect">
-      <div class="brand">${mark}<span>Kontifi</span></div>
+      <div class="brand">${mark}<span>${NAME}</span></div>
       <section class="opening" hidden aria-live="polite">
         <p class="opening-text"></p>
       </section>
       <section class="choose">
-        <h1>Connect to your Kontifi</h1>
+        <h1>Connect to your ${NAME}</h1>
         <p class="lead">
-          Enter the address you sign in to Kontifi at. It can be our hosted Kontifi or one on your
+          Enter the address you sign in to ${NAME} at. It can be our hosted ${NAME} or one on your
           own server.
         </p>
         <form class="address-form" novalidate>
-          <label for="address" class="sr-only">Kontifi address</label>
+          <label for="address" class="sr-only">${NAME} address</label>
           <input
             id="address"
             name="address"
@@ -133,7 +135,7 @@ export async function startConnect(
     event.preventDefault();
     const typed = input.value.trim();
     if (!typed) {
-      showError("Enter the address of your Kontifi.");
+      showError(`Enter the address of your ${NAME}.`);
       input.focus();
       return;
     }

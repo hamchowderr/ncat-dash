@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Kontifi",
+  "productName": "Kontentifi",
   "version": "0.1.0",
-  "identifier": "io.otakusolutions.kontifi",
+  "identifier": "io.otakusolutions.desktop",
   "build": {
     "beforeDevCommand": "pnpm vite",
     "devUrl": "http://localhost:1420",
@@ -20,7 +20,7 @@
     "targets": "all",
     "category": "Productivity",
     "shortDescription": "Your content, social media ready.",
-    "longDescription": "Kontifi in its own window. Sign in to your Kontifi, hosted or on your own server.",
+    "longDescription": "Kontentifi in its own window. Sign in to your Kontentifi, hosted or on your own server.",
     "copyright": "Otaku Solutions. Licensed AGPL-3.0-or-later.",
     "license": "AGPL-3.0-or-later",
     "icon": [

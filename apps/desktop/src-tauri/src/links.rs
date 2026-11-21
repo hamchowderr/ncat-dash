@@ -1,8 +1,8 @@
-//! Which pages may load in the Kontifi window, and where links that open a new tab go.
+//! Which pages may load in the app's window, and where links that open a new tab go.
 
 use tauri::Url;
 
-/// The window loads web pages (Kontifi, and sign-in or payment pages it sends people to)
+/// The window loads web pages (the dashboard, and sign-in or payment pages it sends people to)
 /// and the app's own pages. Files and other schemes never load in it.
 pub fn may_load(url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https" | "tauri" | "about")
@@ -10,7 +10,7 @@ pub fn may_load(url: &Url) -> bool {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum NewWindow {
-    /// A Kontifi page: open it in the Kontifi window.
+    /// One of the dashboard's pages: open it in the app's window.
     Here,
     /// Anything else on the web, or an email link: the person's own browser or mail app.
     Browser,
@@ -25,7 +25,7 @@ pub fn new_window(url: &Url, current: Option<&Url>) -> NewWindow {
     }
     match url.scheme() {
         "http" | "https" => {
-            if current.is_some_and(|kontifi| kontifi.origin() == url.origin()) {
+            if current.is_some_and(|ours| ours.origin() == url.origin()) {
                 NewWindow::Here
             } else {
                 NewWindow::Browser
@@ -56,23 +56,23 @@ mod tests {
     }
 
     #[test]
-    fn keeps_kontifi_pages_in_the_window() {
-        let kontifi = url("https://app.example.com/");
+    fn keeps_its_own_pages_in_the_window() {
+        let ours = url("https://app.example.com/");
         assert_eq!(
-            new_window(&url("https://app.example.com/runs/1"), Some(&kontifi)),
+            new_window(&url("https://app.example.com/runs/1"), Some(&ours)),
             NewWindow::Here
         );
     }
 
     #[test]
     fn sends_other_sites_to_the_browser() {
-        let kontifi = url("https://app.example.com/");
+        let ours = url("https://app.example.com/");
         assert_eq!(
-            new_window(&url("https://docs.example.org/"), Some(&kontifi)),
+            new_window(&url("https://docs.example.org/"), Some(&ours)),
             NewWindow::Browser
         );
         assert_eq!(
-            new_window(&url("http://app.example.com/"), Some(&kontifi)),
+            new_window(&url("http://app.example.com/"), Some(&ours)),
             NewWindow::Browser
         );
         assert_eq!(
@@ -80,7 +80,7 @@ mod tests {
             NewWindow::Browser
         );
         assert_eq!(
-            new_window(&url("mailto:hi@example.com"), Some(&kontifi)),
+            new_window(&url("mailto:hi@example.com"), Some(&ours)),
             NewWindow::Browser
         );
     }

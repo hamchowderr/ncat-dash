@@ -1,5 +1,5 @@
-// Drives the built desktop app through tauri-driver: connect to a Kontifi, get turned
-// away by a site that isn't one, and come straight back to the Kontifi on the next start.
+// Drives the built desktop app through tauri-driver: connect to a dashboard, get turned
+// away by a site that isn't one, and come straight back to the dashboard on the next start.
 //
 //   pnpm tauri build --debug --no-bundle
 //   pnpm test:e2e            (Linux needs webkit2gtk-driver and a display, e.g. xvfb-run)
@@ -12,21 +12,22 @@ import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
+import { NAME } from "../src/product";
 import { Session } from "./webdriver";
 
 const application = path.resolve(
   __dirname,
   "../src-tauri/target/debug",
-  process.platform === "win32" ? "kontifi-desktop.exe" : "kontifi-desktop",
+  process.platform === "win32" ? "ncat-dash-desktop.exe" : "ncat-dash-desktop",
 );
 const DRIVER_PORT = 4444;
 const driverUrl = `http://127.0.0.1:${DRIVER_PORT}`;
 
 let driver: ChildProcess;
-let kontifi: Server;
-let notKontifi: Server;
-let kontifiAddress: string;
-let notKontifiAddress: string;
+let server: Server;
+let otherSite: Server;
+let serverAddress: string;
+let otherSiteAddress: string;
 
 function listen(handler: Parameters<typeof createServer>[1]): Promise<[Server, string]> {
   return new Promise((resolve) => {
@@ -51,23 +52,23 @@ async function waitForDriver() {
 }
 
 beforeAll(async () => {
-  // A stand-in Kontifi: answers the address check and serves a page.
-  [kontifi, kontifiAddress] = await listen((req, res) => {
-    if (req.url === "/api/kontifi") {
-      res.writeHead(200, { "content-type": "application/json" }).end('{"app":"kontifi"}');
+  // A stand-in dashboard: answers the address check and serves a page.
+  [server, serverAddress] = await listen((req, res) => {
+    if (req.url === "/api/desktop") {
+      res.writeHead(200, { "content-type": "application/json" }).end('{"app":"ncat-dash"}');
     } else {
       res
         .writeHead(200, { "content-type": "text/html" })
         .end(
-          "<!doctype html><title>Stand-in Kontifi</title><h1 id=signed-in>Your automations</h1>",
+          "<!doctype html><title>Stand-in dashboard</title><h1 id=signed-in>Your automations</h1>",
         );
     }
   });
-  [notKontifi, notKontifiAddress] = await listen((_req, res) => {
+  [otherSite, otherSiteAddress] = await listen((_req, res) => {
     res.writeHead(404).end("not found");
   });
   // A fresh settings folder, so the app starts as if newly installed.
-  const home = mkdtempSync(path.join(tmpdir(), "kontifi-desktop-"));
+  const home = mkdtempSync(path.join(tmpdir(), "ncat-dash-desktop-"));
   driver = spawn("tauri-driver", ["--port", String(DRIVER_PORT)], {
     stdio: "inherit",
     env: { ...process.env, XDG_CONFIG_HOME: home, APPDATA: home, HOME: home },
@@ -77,32 +78,32 @@ beforeAll(async () => {
 
 afterAll(() => {
   driver?.kill();
-  kontifi?.close();
-  notKontifi?.close();
+  server?.close();
+  otherSite?.close();
 });
 
-describe("connecting the desktop app to a Kontifi", () => {
-  test("turns away a site that isn't a Kontifi, then opens the real one", async () => {
+describe("connecting the desktop app to a dashboard", () => {
+  test("turns away a site that isn't the dashboard, then opens the real one", async () => {
     const app = await Session.start(driverUrl, application);
     try {
-      await app.waitFor("h1", (text) => text === "Connect to your Kontifi");
+      await app.waitFor("h1", (text) => text === `Connect to your ${NAME}`);
       const input = await app.find("#address");
 
-      await app.type(input, notKontifiAddress);
+      await app.type(input, otherSiteAddress);
       await app.click(await app.find(".address-form button"));
-      await app.waitFor(".error", (text) => text.includes("isn't a Kontifi"));
+      await app.waitFor(".error", (text) => text.includes(`isn't ${NAME}`));
 
-      await app.type(input, kontifiAddress);
+      await app.type(input, serverAddress);
       await app.click(await app.find(".address-form button"));
       await app.waitFor("#signed-in", (text) => text === "Your automations");
-      expect(await app.title()).toBe("Stand-in Kontifi");
-      expect(await app.url()).toBe(`http://${kontifiAddress}/`);
+      expect(await app.title()).toBe("Stand-in dashboard");
+      expect(await app.url()).toBe(`http://${serverAddress}/`);
     } finally {
       await app.end();
     }
   }, 60000);
 
-  test("opens the same Kontifi straight away on the next start", async () => {
+  test("opens the same dashboard straight away on the next start", async () => {
     const app = await Session.start(driverUrl, application);
     try {
       await app.waitFor("#signed-in", (text) => text === "Your automations");

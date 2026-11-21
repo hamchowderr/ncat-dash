@@ -1,4 +1,4 @@
-/* The Connect screen, in the same quiet look as the Kontifi web app (light only). */
+/* The Connect screen, in the same quiet look as the web app (light only). */
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

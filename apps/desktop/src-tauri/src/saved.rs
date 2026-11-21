@@ -1,4 +1,4 @@
-//! The Kontifis this computer has opened, most recent first, kept in a small JSON file in
+//! The dashboard addresses this computer has opened, most recent first, kept in a small JSON file in
 //! the app's settings folder.
 
 use std::fs;
@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+
+use crate::NAME;
 
 /// How many addresses are remembered. Most people have one; agencies may have a few.
 pub const LIMIT: usize = 10;
@@ -28,7 +30,7 @@ pub struct Store {
 impl Store {
     pub fn new(folder: &Path) -> Self {
         Self {
-            path: folder.join("kontifis.json"),
+            path: folder.join("servers.json"),
         }
     }
 
@@ -74,15 +76,14 @@ impl Store {
     fn write(&self, saved: &[Saved]) -> Result<(), String> {
         if let Some(folder) = self.path.parent() {
             fs::create_dir_all(folder)
-                .map_err(|_| "Kontifi couldn't save its settings.".to_string())?;
+                .map_err(|_| format!("{NAME} couldn't save its settings."))?;
         }
         let bytes = serde_json::to_vec_pretty(saved).expect("saved addresses always serialize");
         // Write beside the file, then swap, so a crash never leaves half a file.
         let temporary = self.path.with_extension("json.tmp");
-        fs::write(&temporary, bytes)
-            .map_err(|_| "Kontifi couldn't save its settings.".to_string())?;
+        fs::write(&temporary, bytes).map_err(|_| format!("{NAME} couldn't save its settings."))?;
         fs::rename(&temporary, &self.path)
-            .map_err(|_| "Kontifi couldn't save its settings.".to_string())
+            .map_err(|_| format!("{NAME} couldn't save its settings."))
     }
 }
 
@@ -157,7 +158,7 @@ mod tests {
     #[test]
     fn reads_a_damaged_file_as_empty() {
         let (folder, store) = store();
-        fs::write(folder.path().join("kontifis.json"), b"{not json").unwrap();
+        fs::write(folder.path().join("servers.json"), b"{not json").unwrap();
         assert!(store.list().is_empty());
         store.opened_at("https://a.example.com/", "a", 1).unwrap();
         assert_eq!(store.list().len(), 1);
