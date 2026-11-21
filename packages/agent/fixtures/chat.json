@@ -2,6 +2,15 @@
   "fixtures": [
     {
       "match": {
+        "userMessage": "Sample: Cafe sample reel"
+      },
+      "response": {
+        "content": "{\"fill\": \"blur\", \"brightness\": 0, \"contrast\": 1.15, \"saturation\": 1.2, \"warmth\": 0.3, \"captions\": {\"effect\": \"highlight\", \"position\": \"middle\", \"size\": \"large\", \"bold\": true, \"all_caps\": true, \"words_per_line\": 3, \"text_color\": \"#FFFFFF\", \"word_color\": \"#22DD88\", \"outline_color\": \"#000000\", \"outline\": true}, \"notes\": \"A warm, punchy talking head over a blurred copy of itself, with big centred captions.\"}"
+      },
+      "_comment": "NCAT COPY A LOOK (src/mastra/ncat/look.ts). The dashboard sends a sheet of frames from a sample video, once, for Settings -> Looks."
+    },
+    {
+      "match": {
         "userMessage": "@Agent is the logo too small here?"
       },
       "response": {

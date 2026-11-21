@@ -346,6 +346,8 @@ export default defineSchema({
     libraryItemId: v.optional(v.id("libraryItems")),
     // Set when the job brings a Zoom recording into the team's folder.
     zoomImportId: v.optional(v.id("zoomImports")),
+    // A sample being studied for its look: its sheet of frames or cuts.
+    lookStudyId: v.optional(v.id("lookStudies")),
     // Set when the job brings a Google Meet recording into the team's folder.
     googleMeetImportId: v.optional(v.id("googleMeetImports")),
     microsoftImportId: v.optional(v.id("microsoftImports")),
@@ -2070,5 +2072,55 @@ export default defineSchema({
     searchNewFiles: v.boolean(),
     // When the files a team had before the library were added to it.
     filledAt: v.optional(v.number()),
+  }).index("by_organization", ["organizationId"]),
+
+  // A sample video being studied for its look, once: the toolkit takes
+  // a sheet of frames and finds its cuts, then the model looks at the sheet one time and
+  // its answer waits here as a proposal until someone names and saves it.
+  lookStudies: defineTable({
+    organizationId: v.string(),
+    uploadId: v.id("uploads"),
+    sourceName: v.string(),
+    status: v.union(
+      v.literal("working"),
+      v.literal("ready"),
+      v.literal("failed"),
+      // Saved as a look, or put away: no longer shown.
+      v.literal("closed"),
+    ),
+    sheetJobId: v.id("jobs"),
+    cutsJobId: v.optional(v.id("jobs")),
+    width: v.number(),
+    height: v.number(),
+    duration: v.number(),
+    sheetUrl: v.optional(v.string()),
+    shotSeconds: v.optional(v.number()),
+    proposal: v.optional(v.any()),
+    error: v.optional(v.string()),
+    createdBy: v.string(),
+    at: v.number(),
+  }).index("by_organization", ["organizationId"]),
+
+  // A team's saved looks, which the Match A Saved Look step puts videos into with plain
+  // FFmpeg. `frame` is a FrameLook (step-catalog looks.ts); its captions are a team
+  // caption style of the same name, kept with the team's other caption styles.
+  teamLooks: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    frame: v.object({
+      shape: v.union(v.literal("vertical"), v.literal("wide"), v.literal("square")),
+      fill: v.union(v.literal("crop"), v.literal("blur"), v.literal("bars")),
+      brightness: v.number(),
+      contrast: v.number(),
+      saturation: v.number(),
+      warmth: v.number(),
+    }),
+    captionStyle: v.optional(v.string()),
+    shotSeconds: v.optional(v.number()),
+    notes: v.string(),
+    sourceName: v.string(),
+    sheetUrl: v.optional(v.string()),
+    createdBy: v.string(),
+    at: v.number(),
   }).index("by_organization", ["organizationId"]),
 });

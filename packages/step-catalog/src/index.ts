@@ -3,6 +3,7 @@ import type { StepDefinition } from "./define";
 import { editingRecipes } from "./editing";
 import { moreRecipes, recipes } from "./recipes";
 import { hiddenSteps, steps } from "./steps";
+import { savedLookStep } from "./looks";
 import { variantRecipes } from "./variants";
 import { type SavedTeamStep, teamStepDefinition } from "./team-steps";
 
@@ -15,6 +16,7 @@ export * from "./team-steps";
 export * from "./variants";
 export * from "./disclosure";
 export * from "./codes";
+export * from "./looks";
 export * from "./beats";
 
 /** Every step a person can run: the toolkit's endpoints, then the ready-made recipes. */
@@ -24,6 +26,7 @@ export const allSteps: StepDefinition[] = [
   ...moreRecipes,
   ...editingRecipes,
   ...variantRecipes,
+  savedLookStep,
   ...beatRecipes,
 ];
 

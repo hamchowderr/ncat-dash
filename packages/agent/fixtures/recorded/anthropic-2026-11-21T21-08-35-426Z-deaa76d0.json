@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Sample: Crew interview reel.webm",
+        "model": "claude-sonnet-5-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "usage": {
+          "input_tokens": 2686,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 148
+        },
+        "content": "{\"fill\":\"crop\",\"brightness\":0,\"contrast\":1,\"saturation\":1,\"warmth\":0,\"captions\":null,\"notes\":\"This looks like a synthetic color-bar test pattern, not interview footage. Vertical bars fill the whole frame edge to edge, with a moving rainbow diagonal line and a small timecode and frame counter at the top left. The colors are fully saturated primaries and secondaries.\",\"fill_detail\":null}"
+      },
+      "metadata": {
+        "systemHash": "3166fc29"
+      }
+    }
+  ]
+}

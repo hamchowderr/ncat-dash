@@ -19,7 +19,7 @@ import {
   wantedKind,
   writeSource,
 } from "@ncat-dash/automation-core";
-import { getStep, userInputSchema } from "@ncat-dash/step-catalog";
+import { getStep, SAVED_LOOK_STEP, userInputSchema } from "@ncat-dash/step-catalog";
 import { ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -53,6 +53,7 @@ import { TeamApprovalSettings } from "./approval-panel";
 import { AutomationPicker } from "./automation-picker";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
+import { LOOK_SETTING, LookPicker } from "./look-picker";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
 import { BrollMain, BrollMore, BrollPlanMain } from "./broll-settings";
 import { CleanupMain } from "./cleanup-settings";
@@ -129,7 +130,11 @@ export function NodePanel({
   const nodeType = nodeTypeOf(node);
   const allFields = useStepFields(node.stepId ?? "");
   // Settings taken from the file that started the run are never filled in by hand.
-  const fields = allFields?.filter(({ name }) => !nodeType?.fromStart?.[name]);
+  // The saved look is picked by name from the team's looks, never typed.
+  const picksLook = node.kind === "step" && node.stepId === SAVED_LOOK_STEP;
+  const fields = allFields?.filter(
+    ({ name }) => !nodeType?.fromStart?.[name] && !(picksLook && name === LOOK_SETTING),
+  );
   const [values, setValues] = useState(() => fromInput(node.input));
   const [problem, setProblem] = useState<string | null>(null);
   const look = nodeLook(node);
@@ -431,6 +436,17 @@ export function NodePanel({
         <CleanupMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
       )}
 
+      {picksLook && (
+        <LookPicker
+          nodeId={node.id}
+          input={node.input}
+          onChange={(input) => {
+            setValues(fromInput(input));
+            onChange({ input });
+          }}
+        />
+      )}
+
       {captionStep && (
         <CaptionStylePicker
           node={node}
@@ -524,7 +540,7 @@ export function NodePanel({
         </div>
       )}
 
-      {node.kind === "step" && needed.length === 0 && unset.length === 0 && (
+      {node.kind === "step" && !picksLook && needed.length === 0 && unset.length === 0 && (
         <p className="text-muted-foreground text-sm">Nothing to set. This step works as it is.</p>
       )}
 

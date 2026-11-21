@@ -37,6 +37,8 @@ import { useSendFile } from "@/lib/send-file";
 import { usePhone } from "@/hooks/use-narrow";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 
+import { CopyLookFromUpload } from "@/components/looks/look-study";
+
 import { NeedsToolkit } from "./needs-toolkit";
 import {
   UploadFrame,
@@ -555,10 +557,11 @@ export function UploadsView() {
       <Dialog open={openedUpload !== undefined} onOpenChange={(open) => !open && setOpened(null)}>
         <DialogContent
           className={cn(
+            "max-h-[calc(100dvh-2rem)] overflow-y-auto",
             openedUpload?.kind === "other" ? "sm:max-w-md" : "sm:max-w-5xl",
             // A phone gets the whole screen: the player at the top, the details under it and
             // the buttons in reach of a thumb.
-            "max-sm:inset-0 max-sm:h-dvh max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:content-start max-sm:overflow-y-auto max-sm:rounded-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
+            "max-sm:inset-0 max-sm:h-dvh max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:content-start max-sm:overflow-y-auto max-sm:rounded-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
           )}
         >
           <DialogHeader>
@@ -619,6 +622,9 @@ export function UploadsView() {
                 </div>
               </div>
             </div>
+          )}
+          {openedUpload?.kind === "video" && openedUpload.details?.hasVideo !== false && (
+            <CopyLookFromUpload upload={openedUpload} />
           )}
         </DialogContent>
       </Dialog>
