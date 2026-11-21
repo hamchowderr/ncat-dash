@@ -319,6 +319,7 @@ export const listUploads = query({
       status: upload.status,
       purpose: upload.purpose ?? null,
       source: upload.source ?? null,
+      sourceUrl: upload.sourceUrl ?? null,
       sharedBy: upload.sharedBy ?? null,
       details: upload.details ?? null,
     }));
@@ -460,7 +461,11 @@ export const saveDetails = internalMutation({
   handler: async (ctx, args) => {
     const upload = await ctx.db.get(args.uploadId);
     if (!upload) return;
-    await ctx.db.patch(args.uploadId, { details: args.details });
+    await ctx.db.patch(args.uploadId, {
+      details: args.details,
+      // A video from a link comes in before its size is known.
+      ...(upload.size === 0 && args.details.filesize ? { size: args.details.filesize } : {}),
+    });
     // The library's copy goes with it, and the details may say better what kind it is.
     const item = await ctx.db
       .query("libraryItems")
@@ -501,6 +506,10 @@ export const readDetails = internalAction({
       }
     } catch {
       // Details are a help, not a need: the upload is fine without them.
+    }
+    // A video brought in from a link to copy its look is studied now.
+    if (upload.source === "link") {
+      await ctx.runMutation(internal.links.detailsRead, { uploadId: upload._id });
     }
     // A logo or music track is kept for steps to use and never starts an automation.
     if (upload.purpose !== "brand") {

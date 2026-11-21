@@ -129,7 +129,8 @@ export const byHand = query({
             !job.zoomImportId &&
             !job.googleMeetImportId &&
             !job.microsoftImportId &&
-            !job.dropboxImportId,
+            !job.dropboxImportId &&
+            !job.linkImportId,
         )
         .map((job) => ({
           jobId: job._id,
