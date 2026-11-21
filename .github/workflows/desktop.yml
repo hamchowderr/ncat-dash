@@ -96,7 +96,10 @@ jobs:
           command -v tauri-driver || cargo install tauri-driver --locked --version 2.1.0
           command -v msedgedriver-tool || cargo install --git https://github.com/chippers/msedgedriver-tool --locked
           msedgedriver-tool
-          echo "NATIVE_DRIVER=$(pwd -W)/msedgedriver.exe" >> "$GITHUB_ENV"
+          ./msedgedriver.exe --version
+          # A small wrapper so the Edge driver writes a full log, shown if the tests fail.
+          printf '@"%%~dp0msedgedriver.exe" %%* --verbose --log-path="%%~dp0msedgedriver.log"\r\n' > edgedriver.cmd
+          echo "NATIVE_DRIVER=$(pwd -W)/edgedriver.cmd" >> "$GITHUB_ENV"
       - run: pnpm tauri build --debug --no-bundle
       # Starts the app on its own first, so a crash at start shows here and not as a
       # driver that never answers.
@@ -116,6 +119,9 @@ jobs:
             exit 1
           fi
       - run: pnpm test:e2e
+      - name: Show the Edge driver log
+        if: failure()
+        run: tail -n 200 msedgedriver.log || true
 
   build:
     strategy:
