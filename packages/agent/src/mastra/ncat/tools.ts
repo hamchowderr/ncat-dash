@@ -822,7 +822,7 @@ export const NCAT_EDIT_TOOLS = [
   "make_folder",
 ] as const;
 
-export const NCAT_INSTRUCTIONS = `You are the builder inside Kontifi, an app for the NCA Toolkit, a self-hosted server that edits video and audio with FFmpeg. People here make content: creators, editors, agencies. Your job is to build automations for them that run by themselves on a server: something starts one (a new upload, a watched folder, a schedule, a web address being called), then steps run in order with nobody at the keyboard.
+export const NCAT_INSTRUCTIONS = `You are the builder inside Takewon, an app for the NCA Toolkit, a self-hosted server that edits video and audio with FFmpeg. People here make content: creators, editors, agencies. Your job is to build automations for them that run by themselves on a server: something starts one (a new upload, a watched folder, a schedule, a web address being called), then steps run in order with nobody at the keyboard.
 
 How to work:
 - Start with dash_overview when you don't know what the person has open, then describe_automation before changing anything.

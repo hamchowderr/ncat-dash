@@ -11,10 +11,16 @@ const BUY = "https://ncat-site.vercel.app/#early";
 
 describe("the free trial on screen", () => {
   test("counts the days left along the top, with where to buy", () => {
-    answerQuery(api.trial.status, { kind: "trial", endsAt: 1, daysLeft: 2, buyUrl: BUY, repeat: false });
+    answerQuery(api.trial.status, {
+      kind: "trial",
+      endsAt: 1,
+      daysLeft: 2,
+      buyUrl: BUY,
+      repeat: false,
+    });
     render(<TrialDays organizationId="team_1" />);
     expect(screen.getByText("2 days left in your trial")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Get Kontifi" }).getAttribute("href")).toBe(BUY);
+    expect(screen.getByRole("link", { name: "Get Takewon" }).getAttribute("href")).toBe(BUY);
   });
 
   test("says nothing for a team without a trial, or one that has bought", () => {
@@ -27,19 +33,31 @@ describe("the free trial on screen", () => {
   });
 
   test("leaves out the link when there is nowhere to buy yet", () => {
-    answerQuery(api.trial.status, { kind: "trial", endsAt: 1, daysLeft: 1, buyUrl: null, repeat: false });
+    answerQuery(api.trial.status, {
+      kind: "trial",
+      endsAt: 1,
+      daysLeft: 1,
+      buyUrl: null,
+      repeat: false,
+    });
     render(<TrialDays organizationId="team_1" />);
     expect(screen.getByText("1 day left in your trial")).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
   });
 
   test("once it is over, says the work is kept and where to get the dashboard", () => {
-    answerQuery(api.trial.status, { kind: "ended", endsAt: 1, daysLeft: 0, buyUrl: BUY, repeat: false });
+    answerQuery(api.trial.status, {
+      kind: "ended",
+      endsAt: 1,
+      daysLeft: 0,
+      buyUrl: BUY,
+      repeat: false,
+    });
     render(<TrialEnded organizationId="team_1" />);
     const band = screen.getByRole("region", { name: "Free trial" });
     expect(band.textContent).toContain("Your free trial has ended");
     expect(band.textContent).toContain("Everything you made is kept");
-    expect(screen.getByRole("link", { name: "Get Kontifi" }).getAttribute("href")).toBe(BUY);
+    expect(screen.getByRole("link", { name: "Get Takewon" }).getAttribute("href")).toBe(BUY);
     // Part of the page, never laid over it.
     expect(band.className).not.toMatch(/\b(fixed|absolute|sticky)\b/);
   });
@@ -65,7 +83,13 @@ describe("the free trial on screen", () => {
   });
 
   test("a team whose owner had a trial already is told why it has none", () => {
-    answerQuery(api.trial.status, { kind: "ended", endsAt: 1, daysLeft: 0, buyUrl: BUY, repeat: true });
+    answerQuery(api.trial.status, {
+      kind: "ended",
+      endsAt: 1,
+      daysLeft: 0,
+      buyUrl: BUY,
+      repeat: true,
+    });
     render(<TrialEnded organizationId="team_1" />);
     const band = screen.getByRole("region", { name: "Free trial" });
     expect(band.textContent).toContain("You've had your free trial");
