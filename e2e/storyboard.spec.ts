@@ -55,7 +55,7 @@ test("a lesson is planned line by line and its takes come in", async ({ page }) 
   await expect(progress).toContainText("Takes from you");
   await expect(progress).toContainText("0 of 59");
   const takes = page.getByRole("list", { name: "Takes" });
-  await expect(takes.getByRole("listitem")).toHaveCount(2);
+  await expect(takes.locator("[data-take]")).toHaveCount(2);
   await expect(takes.getByRole("img", { name: "Full Screen layout" })).toBeVisible();
   await expect(takes.getByRole("img", { name: "Panel layout" })).toBeVisible();
   await pause(2500);
@@ -100,7 +100,7 @@ test("a lesson is planned line by line and its takes come in", async ({ page }) 
   // A take added at the end of the chapter, then the whole script edited as text.
   await page.getByLabel("New take's line", { exact: true }).fill("Here is what you will see.");
   await page.getByRole("button", { name: "Add take" }).click();
-  await expect(takes.getByRole("listitem")).toHaveCount(3);
+  await expect(takes.locator("[data-take]")).toHaveCount(3);
   await expect(page.getByText(/15 chapters · 60 takes/)).toBeVisible();
   await pause(1500);
 

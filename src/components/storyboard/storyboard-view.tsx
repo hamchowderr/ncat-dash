@@ -350,15 +350,19 @@ function ChapterHeader({
 function AddTake({ chapterId }: { chapterId: Id<"storyboardChapters"> }) {
   const add = useMutation(api.storyboards.addTake);
   const [line, setLine] = useState("");
+  const [pending, setPending] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!line.trim()) return;
+    if (!line.trim() || pending) return;
+    setPending(true);
     try {
       await add({ chapterId, line });
       setLine("");
     } catch (caught) {
       toast.error(errorMessage(caught, "The take could not be added."));
+    } finally {
+      setPending(false);
     }
   }
 
@@ -370,7 +374,7 @@ function AddTake({ chapterId }: { chapterId: Id<"storyboardChapters"> }) {
         value={line}
         onChange={(event) => setLine(event.target.value)}
       />
-      <Button type="submit" variant="outline" disabled={!line.trim()}>
+      <Button type="submit" variant="outline" disabled={pending || !line.trim()}>
         <Plus />
         Add take
       </Button>
