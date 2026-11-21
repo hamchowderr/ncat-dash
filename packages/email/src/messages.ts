@@ -324,6 +324,7 @@ export function rightsEndingEmail(
   args: {
     teamName?: string;
     creator: string;
+    client?: string;
     summary: string;
     creatorsUrl: string;
     settingsUrl: string;
@@ -331,14 +332,17 @@ export function rightsEndingEmail(
   branding: Branding,
 ) {
   const creator = oneLine(args.creator, 80);
+  const title = args.client
+    ? `${creator}'s rights for ${oneLine(args.client, 80)} end soon`
+    : `Usage rights for ${creator} end soon`;
   return compose(
-    `Usage rights for ${creator} end soon`,
+    title,
     {
-      heading: `Usage rights for ${creator} end soon`,
+      heading: title,
       paragraphs: [
         `${oneLine(args.summary, 300)}${args.teamName ? ` In ${oneLine(args.teamName, 60)}.` : ""}`,
       ],
-      button: { label: "Open Creators", url: args.creatorsUrl },
+      button: { label: "Open the creator", url: args.creatorsUrl },
       footnote: `To stop these emails, change your notification settings: ${args.settingsUrl}`,
     },
     branding,

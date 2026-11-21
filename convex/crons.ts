@@ -36,11 +36,11 @@ crons.daily(
   {},
 );
 
-// Tells each team a week before a creator's usage rights end (Settings > Creators).
+// Tells each team a week before a creator's deal runs out (Creators).
 crons.daily(
   "warn before creator usage rights end",
   { hourUTC: 15, minuteUTC: 0 },
-  internal.creatorRights.checkEnding,
+  internal.creators.checkEnding,
   {},
 );
 

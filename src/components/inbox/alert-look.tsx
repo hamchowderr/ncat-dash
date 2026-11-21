@@ -50,7 +50,9 @@ export function alertTitle(alert: Shown): string {
     case "clip_finished":
       return `${alert.automationName} finished`;
     case "rights_ending":
-      return `Usage rights for ${alert.automationName} end soon`;
+      return alert.stepName
+        ? `${alert.automationName}'s rights for ${alert.stepName} end soon`
+        : `Usage rights for ${alert.automationName} end soon`;
     default:
       return `${alert.automationName} failed${tries(alert.retries)}`;
   }
@@ -110,7 +112,7 @@ export const LOOK: Record<Kind, { icon: typeof Bell; tint: string; wash: string;
       icon: CalendarClock,
       tint: "text-amber-600",
       wash: "bg-amber-500/10",
-      action: "Open Creators",
+      action: "Open the creator",
     },
   };
 

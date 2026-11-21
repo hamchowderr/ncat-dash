@@ -48,12 +48,21 @@ export function sayHowSoon(daysLeft: number): string {
   return `in ${daysLeft} days`;
 }
 
-/** What the alert says, for a creator whose rights end on `endsOn`, seen on `today`. */
-export function rightsMessage(endsOn: string, today: string): string {
+export type RightsUsage = "organic" | "paid" | "both";
+
+/** What a deal covers, in words. */
+export function sayUsage(usage: RightsUsage): string {
+  return usage === "organic" ? "Organic posts" : usage === "paid" ? "Paid ads" : "Organic and paid";
+}
+
+/** What the alert says, for a deal whose rights end on `endsOn`, seen on `today`. */
+export function rightsMessage(endsOn: string, today: string, usage: RightsUsage = "both"): string {
   const left = daysBetween(today, endsOn);
+  const what = usage === "organic" ? "posts" : "ads and posts";
+  const covers = `${sayUsage(usage)}.`;
   if (left <= 0)
-    return "The last day you may use their footage is today. Take down ads with their clips, or agree new dates with them.";
-  return `The last day you may use their footage is ${sayHowSoon(left)}, on ${sayDay(endsOn)}. Take down ads with their clips by then, or agree new dates with them.`;
+    return `The last day you may use their footage is today. Take down ${what} with their clips, or agree new dates with them. ${covers}`;
+  return `The last day you may use their footage is ${sayHowSoon(left)}, on ${sayDay(endsOn)}. Take down ${what} with their clips by then, or agree new dates with them. ${covers}`;
 }
 
 /** A creator's name as it is kept: trimmed, single spaces. */

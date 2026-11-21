@@ -303,6 +303,7 @@ export const sendAlert = internalAction({
                     {
                       teamName,
                       creator: alert.automationName,
+                      client: alert.stepName,
                       summary: alert.message,
                       creatorsUrl: link,
                       settingsUrl,
@@ -485,7 +486,12 @@ function digestLine(alert: Doc<"alerts">): Omit<DigestItem, "url"> {
     case "clip_finished":
       return { title: `${alert.automationName} finished`, detail: alert.message };
     case "rights_ending":
-      return { title: `Usage rights for ${alert.automationName} end soon`, detail: alert.message };
+      return {
+        title: alert.stepName
+          ? `${alert.automationName}'s rights for ${alert.stepName} end soon`
+          : `Usage rights for ${alert.automationName} end soon`,
+        detail: alert.message,
+      };
     case "approval_waiting":
       return {
         title: `${alert.automationName} is waiting for your approval`,

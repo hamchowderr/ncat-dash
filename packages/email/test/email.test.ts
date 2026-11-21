@@ -255,20 +255,21 @@ describe("messages", () => {
     expect(done.html).toContain("Shorts &lt;daily&gt;");
   });
 
-  it("warns that a creator's usage rights end soon, and links to Creators", () => {
+  it("warns that a creator's rights for a client end soon, and links to the creator", () => {
     const ending = rightsEndingEmail(
       {
         teamName: "Salt House",
         creator: "Ana <Ruiz>",
+        client: "Acme",
         summary: "The last day you may use their footage is in 7 days, on Saturday, November 28.",
-        creatorsUrl: "https://dash.example.com/settings/creators",
+        creatorsUrl: "https://dash.example.com/creators/c1",
         settingsUrl: "https://dash.example.com/settings/notifications",
       },
       branding,
     );
-    expect(ending.subject).toBe("Usage rights for Ana <Ruiz> end soon");
+    expect(ending.subject).toBe("Ana <Ruiz>'s rights for Acme end soon");
     expect(ending.text).toContain("in 7 days, on Saturday, November 28. In Salt House.");
-    expect(ending.text).toContain("https://dash.example.com/settings/creators");
+    expect(ending.text).toContain("https://dash.example.com/creators/c1");
     expect(ending.html).toContain("Ana &lt;Ruiz&gt;");
   });
 

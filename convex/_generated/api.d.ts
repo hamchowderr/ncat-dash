@@ -20,7 +20,7 @@ import type * as chatAlertPresses from "../chatAlertPresses.js";
 import type * as chatAlerts from "../chatAlerts.js";
 import type * as clients from "../clients.js";
 import type * as contentGoals from "../contentGoals.js";
-import type * as creatorRights from "../creatorRights.js";
+import type * as creators from "../creators.js";
 import type * as crons from "../crons.js";
 import type * as discord from "../discord.js";
 import type * as discordReview from "../discordReview.js";
@@ -160,7 +160,7 @@ declare const fullApi: ApiFromModules<{
   chatAlerts: typeof chatAlerts;
   clients: typeof clients;
   contentGoals: typeof contentGoals;
-  creatorRights: typeof creatorRights;
+  creators: typeof creators;
   crons: typeof crons;
   discord: typeof discord;
   discordReview: typeof discordReview;
