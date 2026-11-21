@@ -1,5 +1,9 @@
 import {
   AGENT_MODELS,
+  aiLimitProblem,
+  MAX_AI_LIMIT_DOLLARS,
+  MICROS_PER_DOLLAR,
+  MIN_AI_LIMIT_DOLLARS,
   agentSettingsProblem,
   agentSettingsText,
   BUILT_IN_BY_SHAPE,
@@ -50,6 +54,9 @@ export const get = query({
     return {
       stepRetries: retryLimit(settings?.stepRetries),
       mostRetries: MAX_STEP_RETRIES,
+      // The most one run may spend on AI steps, in dollars; null for no limit.
+      aiLimit: settings?.aiLimit === undefined ? null : settings.aiLimit / MICROS_PER_DOLLAR,
+      aiLimitRange: { min: MIN_AI_LIMIT_DOLLARS, max: MAX_AI_LIMIT_DOLLARS },
       maxParallelJobs: await parallelLimit(ctx, args.organizationId),
       ...(await brandAndMusicOf(ctx, args.organizationId)),
       editors: await editorsOf(ctx, args.organizationId),
@@ -148,6 +155,33 @@ export const setStepRetries = mutation({
         organizationId: args.organizationId,
         maxParallelJobs: DEFAULT_PARALLEL_JOBS,
         stepRetries: retries,
+      });
+    }
+  },
+});
+
+/**
+ * Sets the most one run may spend on AI steps, in dollars, or null for no limit. Owners
+ * and admins only.
+ */
+export const setAiLimit = mutation({
+  args: { organizationId: v.string(), dollars: v.union(v.null(), v.number()) },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId, MANAGER_ROLES);
+    const problem = aiLimitProblem(args.dollars);
+    if (problem) throw new ConvexError({ code: "invalid_input", message: problem });
+    const aiLimit =
+      args.dollars === null ? undefined : Math.round(args.dollars * MICROS_PER_DOLLAR);
+    const existing = await ctx.db
+      .query("teamSettings")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, { aiLimit });
+    else {
+      await ctx.db.insert("teamSettings", {
+        organizationId: args.organizationId,
+        maxParallelJobs: DEFAULT_PARALLEL_JOBS,
+        ...(aiLimit === undefined ? {} : { aiLimit }),
       });
     }
   },

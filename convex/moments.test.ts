@@ -469,3 +469,125 @@ describe("what a pick costs", () => {
     expect(live(sent)).toHaveLength(1);
   });
 });
+
+describe("the run's limit for AI", () => {
+  const chaptersAnswer = JSON.stringify({
+    chapters: [{ title: "Welcome", opening: "Welcome back to the show", bullets: [] }],
+  });
+  const chaptersNode: Node = { id: "chapters", kind: "chapters", input: { bullets: 0 } };
+  const live = (sent: Sent[]) => sent.filter((one) => one.url === `${AGENT_URL}/ncat/moments`);
+  // 100,000 tokens in and 10,000 out on Sonnet 5.5: $0.20 + $0.10.
+  const used = {
+    model: "anthropic/claude-sonnet-5-5",
+    usage: { inputTokens: 100_000, outputTokens: 10_000, cacheReadTokens: 0, cacheWriteTokens: 0 },
+  };
+
+  async function limitTo(t: ReturnType<typeof backend>, dollars: number) {
+    await t.run(async (ctx) => {
+      const settings = (await ctx.db.query("teamSettings").first())!;
+      await ctx.db.patch(settings._id, { aiLimit: dollars * 1_000_000 });
+    });
+  }
+
+  test("keeps what each answer really cost, on the step and the run", async () => {
+    fakeServers([{ answer: chaptersAnswer, ...used }]);
+    const { t, start, runOf } = await setUp([chaptersNode]);
+    await limitTo(t, 5);
+    const runId = await start();
+    await settled(t);
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    expect(run.aiSpent).toBe(300_000);
+    expect(run.aiLimit).toBe(5_000_000);
+    expect(run.steps[0].aiSpent).toBe(300_000);
+    // Nothing is held once the answer is in.
+    const held = await t.run(async (ctx) => (await ctx.db.get(runId))!.aiHeld);
+    expect(held).toBe(0);
+  });
+
+  test("stops before asking when the question could take the run past its limit", async () => {
+    const sent = fakeServers([{ answer: chaptersAnswer, ...used }]);
+    const { t, start, runOf } = await setUp([chaptersNode]);
+    await limitTo(t, 0.05);
+    const runId = await start();
+    await settled(t);
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("failed");
+    expect(run.steps[0].error).toMatch(
+      /^This run's limit for AI is \$0\.05, and this step could take up to \$\d+\.\d\d, so it stopped before asking\. Raise the limit in Settings → Runs/,
+    );
+    expect(live(sent)).toHaveLength(0);
+    expect(run.aiSpent).toBe(0);
+  });
+
+  test("an answer saved from before costs nothing and needs no room under the limit", async () => {
+    const sent = fakeServers([{ answer: chaptersAnswer, ...used }]);
+    const { t, start, runOf } = await setUp([chaptersNode]);
+    await start();
+    await settled(t);
+    await limitTo(t, 0.05);
+    const again = await start();
+    await settled(t);
+    const run = (await runOf(again))!;
+    expect(run.status).toBe("done");
+    expect(run.aiSpent).toBe(0);
+    expect(live(sent)).toHaveLength(1);
+  });
+
+  test("with no limit set, runs ask as before and still keep what they spent", async () => {
+    fakeServers([{ answer: chaptersAnswer, ...used }]);
+    const { t, start, runOf } = await setUp([chaptersNode]);
+    const runId = await start();
+    await settled(t);
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    expect(run.aiLimit).toBeNull();
+    expect(run.aiSpent).toBe(300_000);
+  });
+
+  test("a batch answer is kept at half price", async () => {
+    let submitted: { id: string }[] = [];
+    fakeServers([], (path, body) => {
+      if (path === "/ncat/moments/batch") {
+        submitted = body.requests as { id: string }[];
+        return new Response(JSON.stringify({ batchId: "msgbatch_9" }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          answers: submitted.map(({ id }) => ({ id, answer: chaptersAnswer, ...used })),
+        }),
+        { status: 200 },
+      );
+    });
+    const { t, start, runOf } = await setUp([chaptersNode]);
+    await limitTo(t, 5);
+    const runId = await start(FILE, true);
+    await settled(t, 240);
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    expect(run.aiSpent).toBe(150_000);
+  });
+});
+
+describe("setting the limit", () => {
+  test("owners set it in dollars, see it back, and can clear it", async () => {
+    const { t, team } = await setUp([], false);
+    const owner = await addPerson(t, "Ines Duarte", [team], "owner");
+    await owner.as.mutation(api.teamSettings.setAiLimit, { organizationId: team, dollars: 0.75 });
+    const get = () => owner.as.query(api.teamSettings.get, { organizationId: team });
+    expect((await get()).aiLimit).toBe(0.75);
+    await owner.as.mutation(api.teamSettings.setAiLimit, { organizationId: team, dollars: null });
+    expect((await get()).aiLimit).toBeNull();
+  });
+
+  test("refuses an amount out of range, and anyone but an owner or admin", async () => {
+    const { t, team, maya } = await setUp([], false);
+    const owner = await addPerson(t, "Ines Duarte", [team], "owner");
+    await expect(
+      owner.as.mutation(api.teamSettings.setAiLimit, { organizationId: team, dollars: 0.001 }),
+    ).rejects.toThrow(/from \$0\.05 to \$100/);
+    await expect(
+      maya.as.mutation(api.teamSettings.setAiLimit, { organizationId: team, dollars: 1 }),
+    ).rejects.toThrow();
+  });
+});

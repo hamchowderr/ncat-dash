@@ -369,6 +369,9 @@ export default defineSchema({
     music: v.optional(musicValidator),
     // How many times a failed step in a run tries again before the run fails.
     stepRetries: v.optional(v.number()),
+    // The most one run may spend on AI steps, in millionths of a dollar. Left out: no
+    // limit (automation-core ai-spend.ts).
+    aiLimit: v.optional(v.number()),
     // The video editors the team uses, which decides the files an export makes.
     editors: v.optional(v.array(editorValidator)),
     // How the agent works for this team: its model, house rules and default platforms.
@@ -649,6 +652,10 @@ export default defineSchema({
     // fill the project's empty slots.
     projectId: v.optional(v.id("projects")),
     deliverableId: v.optional(v.id("deliverables")),
+    // What the run's AI steps have spent, and what steps waiting on an answer hold
+    // against the team's limit, in millionths of a dollar (convex/lib/aiSpend.ts).
+    aiSpent: v.optional(v.number()),
+    aiHeld: v.optional(v.number()),
   })
     .index("by_automation", ["automationId"])
     .index("by_parentRun", ["parentRunId"])
@@ -840,6 +847,10 @@ export default defineSchema({
     retryError: v.optional(v.string()),
     startedAt: v.union(v.null(), v.number()),
     finishedAt: v.union(v.null(), v.number()),
+    // An AI step: what it spent, and what it holds against the run's limit while it waits
+    // for an answer, in millionths of a dollar.
+    aiSpent: v.optional(v.number()),
+    aiHeld: v.optional(v.number()),
   })
     .index("by_run", ["runId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
