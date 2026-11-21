@@ -13,6 +13,7 @@ import {
 } from "./lib/packages";
 import { projectOf, putInSlot, slotMoved } from "./lib/projects";
 import { startRun } from "./lib/runner";
+import { removeStoryboard } from "./lib/storyboards";
 import { deliverableKindValidator, deliverableStatusValidator } from "./schema";
 
 /** The most projects a team's list shows, and the longest name one can have. */
@@ -218,6 +219,7 @@ export const remove = mutation({
     if (!project) return;
     await requireMember(ctx, project.organizationId, MANAGER_ROLES);
     for (const slot of await slotsOf(ctx, project._id)) await ctx.db.delete(slot._id);
+    await removeStoryboard(ctx, project._id);
     await ctx.db.delete(project._id);
   },
 });
