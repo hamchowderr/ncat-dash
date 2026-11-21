@@ -12,6 +12,7 @@
 pub const NAME: &str = env!("PRODUCT_NAME");
 
 pub mod address;
+pub mod browser;
 pub mod dashboard;
 pub mod links;
 pub mod saved;
@@ -241,7 +242,18 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 fn main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let handle = app.clone();
-    let window = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()));
+    #[cfg(windows)]
+    let builder = {
+        let extra = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").ok();
+        let builder = builder.additional_browser_args(&browser::args(extra.as_deref()));
+        // The Edge driver gives the web view its own folder and looks there for it.
+        match std::env::var_os("WEBVIEW2_USER_DATA_FOLDER") {
+            Some(folder) => builder.data_directory(folder.into()),
+            None => builder,
+        }
+    };
+    let window = builder
         .title(NAME)
         .inner_size(1440.0, 900.0)
         .min_inner_size(1024.0, 680.0)

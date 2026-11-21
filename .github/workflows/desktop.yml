@@ -114,11 +114,16 @@ jobs:
           "$app" > app.log 2>&1 &
           sleep 20
           tasklist | grep -iE "ncat-dash|msedgewebview2" || true
-          curl -s --max-time 5 http://127.0.0.1:9222/json/list || echo "No web view answered on the debugging port."
+          answered=0
+          curl -s --max-time 5 http://127.0.0.1:9222/json/list && answered=1
           cat app.log
           taskkill //F //T //IM ncat-dash-desktop.exe > /dev/null 2>&1 || true
           taskkill //F //IM msedgewebview2.exe > /dev/null 2>&1 || true
           sleep 3
+          if [ "$answered" = 0 ]; then
+            echo "The web view did not open for debugging, so the Edge driver could not attach."
+            exit 1
+          fi
       - run: pnpm test:e2e
       - name: Show the Edge driver log
         if: failure()
