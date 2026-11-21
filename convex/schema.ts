@@ -2061,6 +2061,9 @@ export default defineSchema({
     start: v.number(),
     end: v.number(),
     text: v.string(),
+    // Each word with when it is said (text, start, end), for subtitles. Missing on a
+    // transcript made before words were kept, and on a caption file.
+    words: v.optional(v.array(v.object({ t: v.string(), s: v.number(), e: v.number() }))),
   })
     .index("by_item_and_start", ["itemId", "start"])
     .searchIndex("search_speech", { searchField: "text", filterFields: ["organizationId"] }),

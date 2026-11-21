@@ -486,7 +486,8 @@ describe("watching folders", () => {
     expect(links).toContain(
       `https://dl.dropbox.test/${encodeURIComponent("id:/Raw footage/Day 1/Interview.mov")}`,
     );
-    expect(String(toolkitCalls[0].body.filename)).toMatch(new RegExp(`^teams/.+/uploads/`));
+    expect(String(toolkitCalls[0].body.filename)).toMatch(new RegExp(`^teams/.+/uploads/Dropbox/`));
+    for (const one of came) expect(one.key).toMatch(/^uploads\/Dropbox\//);
     // Nothing new: nothing more comes in.
     await notify(setup.t, [JORDAN.account_id]);
     await runScheduled(setup.t);

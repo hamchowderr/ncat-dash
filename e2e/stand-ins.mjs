@@ -20,9 +20,34 @@ export const CLIPS = ["opening-hello", "why-the-station-matters"];
 export const CAPTIONS =
   "1\n00:00:01,000 --> 00:00:02,500\nWelcome back to the station.\n\n2\n00:00:03,000 --> 00:00:05,000\nToday we talk about pricing your edits.\n";
 
+/** Each word with its timing, as Whisper gives them with word timestamps. */
+const timedWords = (text, start, step) =>
+  text
+    .trim()
+    .split(" ")
+    .map((word, index) => ({
+      word: ` ${word}`,
+      start: start + index * step,
+      end: start + index * step + step * 0.8,
+    }));
+
 export const SEGMENTS = [
-  { id: 0, start: 0, end: 2.5, text: " Welcome back to the station.", tokens: [1] },
-  { id: 1, start: 2.5, end: 6, text: " Today we talk about pricing your edits.", tokens: [2] },
+  {
+    id: 0,
+    start: 0,
+    end: 2.5,
+    text: " Welcome back to the station.",
+    tokens: [1],
+    words: timedWords("Welcome back to the station.", 0, 0.5),
+  },
+  {
+    id: 1,
+    start: 2.5,
+    end: 6,
+    text: " Today we talk about pricing your edits.",
+    tokens: [2],
+    words: timedWords("Today we talk about pricing your edits.", 2.5, 0.5),
+  },
 ];
 
 const clip = fileURLToPath(new URL("./fixtures/clip.webm", import.meta.url));

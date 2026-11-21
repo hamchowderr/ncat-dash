@@ -30,6 +30,7 @@ export * from "./captions";
 export * from "./share-links";
 export * from "./library";
 export * from "./moments";
+export * from "./subtitles";
 export * from "./plans";
 export * from "./content-goals";
 export * from "./calendar";

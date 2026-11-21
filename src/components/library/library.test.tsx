@@ -230,6 +230,88 @@ describe("a library file", () => {
     expect(within(screen.getByTestId("transcript")).getAllByRole("button")).toHaveLength(2);
   });
 
+  test("shows the words as SRT or VTT, ready to copy", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      pieces: [
+        {
+          start: 0,
+          end: 1.6,
+          text: "Welcome back everyone.",
+          words: [
+            { t: "Welcome", s: 0, e: 0.5 },
+            { t: "back", s: 0.6, e: 0.9 },
+            { t: "everyone.", s: 1, e: 1.6 },
+          ],
+        },
+        { start: 751, end: 754, text: "Let's talk about pricing." },
+      ],
+    });
+    const user = userEvent.setup();
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    await user.click(screen.getByRole("radio", { name: "SRT" }));
+    const srt = screen.getByTestId("subtitle-text");
+    expect(srt.textContent).toBe(
+      "1\n00:00:00,000 --> 00:00:01,600\nWelcome back everyone.\n\n" +
+        "2\n00:12:31,000 --> 00:12:34,000\nLet's talk about pricing.\n",
+    );
+    // Finding words is for reading the transcript, not the file.
+    expect(screen.queryByLabelText("Find in what was said")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "VTT" }));
+    expect(screen.getByTestId("subtitle-text").textContent).toMatch(
+      /^WEBVTT\n\n00:00:00\.000 --> 00:00:01\.600\nWelcome back everyone\./,
+    );
+    expect(screen.getByRole("button", { name: "Copy WebVTT" })).toBeTruthy();
+    await user.click(screen.getByRole("radio", { name: "Transcript" }));
+    expect(screen.getByTestId("transcript")).toBeTruthy();
+  });
+
+  test("downloads the words as SRT, WebVTT or plain text, named after the file", async () => {
+    const saved: { name: string; type: string; text: string }[] = [];
+    const created = URL.createObjectURL;
+    const revoked = URL.revokeObjectURL;
+    let last: Blob | null = null;
+    URL.createObjectURL = (blob: Blob) => {
+      last = blob;
+      return "blob:transcript";
+    };
+    URL.revokeObjectURL = () => {};
+    const click = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      const blob = last!;
+      saved.push({ name: this.download, type: blob.type, text: "" });
+    };
+    try {
+      const user = userEvent.setup();
+      renderInApp(<LibraryItemView itemId={"i1" as never} />);
+      for (const label of [
+        "SRT subtitles (.srt)",
+        "WebVTT subtitles (.vtt)",
+        "Plain text (.txt)",
+      ]) {
+        await user.click(screen.getByRole("button", { name: "Download" }));
+        await user.click(await screen.findByRole("menuitem", { name: label }));
+      }
+    } finally {
+      URL.createObjectURL = created;
+      URL.revokeObjectURL = revoked;
+      HTMLAnchorElement.prototype.click = click;
+    }
+    expect(saved.map((one) => [one.name, one.type])).toEqual([
+      ["Episode 4.srt", "application/x-subrip;charset=utf-8"],
+      ["Episode 4.vtt", "text/vtt;charset=utf-8"],
+      ["Episode 4.txt", "text/plain;charset=utf-8"],
+    ]);
+  });
+
+  test("no SRT or download until there are words", () => {
+    answerQuery(api.library.get, { ...DETAIL, searchable: "working", pieces: [] });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.queryByRole("radio", { name: "SRT" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+    expect(screen.getByText(/The words, SRT and VTT show here when it is done/)).toBeTruthy();
+  });
+
   test("a moment in what was said plays the file from there", async () => {
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
     const player = (await screen.findByTestId("library-player")) as HTMLVideoElement;
