@@ -27,6 +27,8 @@ export const nodeValidator = v.object({
     v.literal("motion-plan"),
     // Takes long pauses and retakes out of each recording; can split out its hook takes.
     v.literal("cleanup"),
+    // Measures each video before editing and stops or warns when one has a problem.
+    v.literal("footage-check"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -702,6 +704,8 @@ export default defineSchema({
         v.literal("lay"),
         v.literal("place"),
         v.literal("render"),
+        // A "footage-check" step waiting for the toolkit to measure each file.
+        v.literal("footage"),
       ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
@@ -776,6 +780,32 @@ export default defineSchema({
     ),
     // For a "cleanup" step: what it took out of each video, and the file code of each file
     // it made for it, in the order of its jobs ("hook01", "body", or null).
+    // For a "footage-check" step: each file it checked and what is wrong with it, whether
+    // it stopped the run, and the note it left in the creator's folder.
+    footage: v.optional(
+      v.object({
+        files: v.array(
+          v.object({
+            url: v.string(),
+            name: v.string(),
+            role: v.union(
+              v.literal("file"),
+              v.literal("body"),
+              v.literal("hook"),
+              v.literal("ending"),
+            ),
+            problems: v.array(v.object({ kind: v.string(), says: v.string() })),
+            width: v.optional(v.number()),
+            height: v.optional(v.number()),
+            duration: v.optional(v.number()),
+            loudness: v.optional(v.number()),
+          }),
+        ),
+        stopped: v.boolean(),
+        creator: v.optional(v.string()),
+        note: v.optional(v.string()),
+      }),
+    ),
     cleaned: v.optional(
       v.array(
         v.object({
@@ -901,6 +931,8 @@ export default defineSchema({
       v.literal("ready_for_review"),
       // "clip_finished": a run is done and its finished files were kept in Files.
       v.literal("clip_finished"),
+      // "footage_problem": a Check Footage step found footage that needs another look.
+      v.literal("footage_problem"),
     ),
     // The members it is for. Left out: everyone on the team.
     recipients: v.optional(v.array(v.string())),
@@ -1564,6 +1596,7 @@ export default defineSchema({
         client_feedback: v.optional(kindChannels),
         ready_for_review: v.optional(kindChannels),
         clip_finished: v.optional(kindChannels),
+        footage_problem: v.optional(kindChannels),
       }),
     ),
     // "now": each email as it happens. "daily": one summary a day at `digestHour` in

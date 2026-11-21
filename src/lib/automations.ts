@@ -94,6 +94,7 @@ export function nodeTitle(node: Pick<AutomationNode, "kind" | "stepId" | "label"
   if (node.kind === "motion") return "Add Motion Graphics";
   if (node.kind === "sound-effects") return "Add Sound Effects";
   if (node.kind === "cleanup") return "Clean Up Pauses And Retakes";
+  if (node.kind === "footage-check") return "Check Footage";
   if (node.kind === "if") return "If";
   if (node.kind === "wait") return "Wait";
   if (node.kind === "export") return "Export for editors";

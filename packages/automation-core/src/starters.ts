@@ -110,6 +110,13 @@ const cleanup = (input: Record<string, unknown> = {}): AutomationNode => ({
   input,
   position: { x: 0, y: 0 },
 });
+/** Check Footage, first in an automation, before any editing. */
+const footageCheck = (input: Record<string, unknown> = {}): AutomationNode => ({
+  id: "check_1",
+  kind: "footage-check",
+  input,
+  position: { x: 0, y: 0 },
+});
 /** Connects the nodes in the order given. */
 const chain = (...ids: string[]): AutomationEdge[] =>
   ids.slice(1).map((id, index) => ({ id: `${ids[index]}>${id}`, source: ids[index], target: id }));
@@ -520,35 +527,36 @@ const WORKFLOWS: Starter[] = [
     category: "variants",
     name: "Clean Up Takes For UGC Ads",
     description:
-      "For raw UGC recordings, dropped in a folder per creator inside raw-takes. The creator says \u201chook one\u201d, \u201chook two\u201d\u2026 before each opening and \u201cbody\u201d before the main part. Each recording comes back with its long pauses taken down and its retakes gone, every hook take as a file of its own and the body as another, in hooks and body folders per creator, ready for UGC Ad Variants. Plain rules on the transcript and the pauses, no AI.",
+      "For raw UGC recordings, dropped in a folder per creator inside raw-takes. The creator says \u201chook one\u201d, \u201chook two\u201d\u2026 before each opening and \u201cbody\u201d before the main part. Each recording is checked first (vertical, sharp enough, sound clear, no black or frozen picture) and the team is told about any problem before editing starts. It comes back with its long pauses taken down and its retakes gone, every hook take as a file of its own and the body as another, in hooks and body folders per creator, ready for UGC Ad Variants. Plain rules on the transcript and the pauses, no AI.",
     group: "workflow",
     trigger: { kind: "folder", prefix: "raw-takes/", fileType: "video" },
-    nodes: [cleanup({ hooks: "said" })],
-    edges: [],
+    nodes: [footageCheck(), { ...cleanup({ hooks: "said" }), position: { x: NODE_GAP, y: 0 } }],
+    edges: chain("check_1", "cleanup_1"),
   },
   {
     id: "ugc-ad-variants-from-creator-folders",
     category: "variants",
     name: "UGC Ad Variants From Creator Folders",
     description:
-      "Starts by itself: each creator drops their takes in ugc/<creator>/hooks/, ugc/<creator>/body/ and, if they have other calls to action, ugc/<creator>/endings/. A few minutes after the last one lands, every hook goes in front of the body with each ending, then each pairing is cut to 6, 15, 30 and 60 seconds in 9:16, 4:5 and 16:9, clean and captioned, named like h02_c01_15s_9x16, in the creator's own folder with an Ad files.csv list. Nobody presses start or picks takes. Plain editing on real footage, no AI.",
+      "Starts by itself: each creator drops their takes in ugc/<creator>/hooks/, ugc/<creator>/body/ and, if they have other calls to action, ugc/<creator>/endings/. A few minutes after the last one lands, every take is checked (vertical, sharp enough, sound clear, no black or frozen picture, long enough) and the team is told about any problem before editing starts. Then every hook goes in front of the body with each ending, then each pairing is cut to 6, 15, 30 and 60 seconds in 9:16, 4:5 and 16:9, clean and captioned, named like h02_c01_15s_9x16, in the creator's own folder with an Ad files.csv list. Nobody presses start or picks takes. Plain editing on real footage, no AI.",
     group: "workflow",
     trigger: { kind: "folder", prefix: "ugc/", fileType: "video", layout: "creators" },
     nodes: [
-      step("variants_1", "recipe-hook-variants", 0, 0, { base_cut: BODY_ONLY }),
-      step("lengths_1", "recipe-length-cuts", 1, 0, {
+      footageCheck(),
+      step("variants_1", "recipe-hook-variants", 1, 0, { base_cut: BODY_ONLY }),
+      step("lengths_1", "recipe-length-cuts", 2, 0, {
         lengths: "6, 15, 30, 60",
         ending_seconds: 4,
       }),
       ...AD_SHAPES.map(([width, height], row) =>
-        step(`shape_${row + 1}`, "recipe-blur-fill", 2, row, { width, height }),
+        step(`shape_${row + 1}`, "recipe-blur-fill", 3, row, { width, height }),
       ),
       ...AD_SHAPES.map((_, row) =>
-        step(`caption_${row + 1}`, "video-caption", 3, row, AD_CAPTIONS),
+        step(`caption_${row + 1}`, "video-caption", 4, row, AD_CAPTIONS),
       ),
     ],
     edges: [
-      ...chain("variants_1", "lengths_1"),
+      ...chain("check_1", "variants_1", "lengths_1"),
       ...AD_SHAPES.flatMap((_, row) =>
         chain("lengths_1", `shape_${row + 1}`, `caption_${row + 1}`),
       ),

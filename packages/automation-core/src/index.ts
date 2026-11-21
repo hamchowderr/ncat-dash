@@ -41,3 +41,4 @@ export * from "./triggers";
 export * from "./workflows";
 export * from "./cleanup";
 export * from "./creator-folders";
+export * from "./footage";

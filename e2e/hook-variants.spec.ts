@@ -100,7 +100,7 @@ test("UGC Ad Variants From Creator Folders starts by itself from each creator's 
   const variants = page.getByRole("region", { name: /^Hooks, lengths and ad variants/ });
   await variants.getByText("UGC Ad Variants From Creator Folders", { exact: true }).click();
   await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
-  await expect(page.locator(".react-flow__node-step")).toHaveCount(8);
+  await expect(page.locator(".react-flow__node-step")).toHaveCount(9);
   await pause(1500);
 
   // The watched folder waits for each creator's takes, not single files.

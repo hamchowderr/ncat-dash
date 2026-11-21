@@ -1366,6 +1366,29 @@
     "required": ["video_url"],
     "type": "object"
   },
+  "/v1/media/check": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "max_seconds": {
+        "maximum": 7200,
+        "minimum": 1,
+        "type": "number"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["media_url"],
+    "type": "object"
+  },
   "/v1/media/look": {
     "additionalProperties": false,
     "anyOf": [

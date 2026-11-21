@@ -10,6 +10,7 @@ import {
   canFailOver,
   FAILURE_WAY,
   conditionSentence,
+  footageCheckSentence,
   getPreset,
   missingBrandOf,
   missingSettings,
@@ -51,6 +52,7 @@ import {
   Plus,
   Scissors,
   ScissorsLineDashed,
+  ScanSearch,
   Shapes,
   Signpost,
   Bot,
@@ -225,6 +227,13 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
           : hooks === "count"
             ? "First takes are hooks"
             : "Splits hook takes you name",
+    };
+  }
+  if (node.kind === "footage-check") {
+    return {
+      icon: ScanSearch,
+      tint: CATEGORY_TINTS.video,
+      kind: footageCheckSentence(node.input),
     };
   }
   if (node.kind === "sound-effects") {
