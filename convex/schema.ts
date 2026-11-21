@@ -70,6 +70,23 @@ export const deliverableKindValidator = v.union(
 );
 
 /** Where a deliverable is, as a column on the project's board. */
+export const sceneValidator = v.union(
+  v.literal("full"),
+  v.literal("panel"),
+  v.literal("centre"),
+  v.literal("graphic"),
+  v.literal("circle"),
+);
+
+export const takePartValidator = v.union(
+  v.literal("you"),
+  v.literal("graphic"),
+  v.literal("recording"),
+  v.literal("screen"),
+);
+
+export const cutValidator = v.object({ what: v.string(), where: v.string() });
+
 export const deliverableStatusValidator = v.union(
   v.literal("todo"),
   v.literal("in_progress"),
@@ -1883,6 +1900,47 @@ export default defineSchema({
     .index("by_organization_and_dueAt", ["organizationId", "dueAt"])
     .index("by_clip", ["clipId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
+
+  // A project's storyboard: the video planned line by line before it is made. A project
+  // has at most one. Its chapters and takes are kept in their own tables below.
+  storyboards: defineTable({
+    organizationId: v.string(),
+    projectId: v.id("projects"),
+    aspect: v.union(v.literal("16:9"), v.literal("9:16"), v.literal("1:1"), v.literal("4:5")),
+    // Where its lines came from, such as "From the page AI-Assisted Development, Part 1".
+    source: v.optional(v.string()),
+    // The videos the storyboard is cut into, such as "Short lessons" on "YouTube · 16:9".
+    cuts: v.array(cutValidator),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  storyboardChapters: defineTable({
+    storyboardId: v.id("storyboards"),
+    organizationId: v.string(),
+    title: v.string(),
+    order: v.number(),
+  }).index("by_storyboard", ["storyboardId"]),
+
+  // One line of the video: what is said, the scene it is shown in, what goes into it
+  // (you on camera, a graphic, a page recording, your screen) and the file for each part
+  // once it is in. A file is a link or a pointer to one of the team's uploads.
+  storyboardTakes: defineTable({
+    storyboardId: v.id("storyboards"),
+    chapterId: v.id("storyboardChapters"),
+    organizationId: v.string(),
+    order: v.number(),
+    line: v.string(),
+    scene: sceneValidator,
+    parts: v.array(takePartValidator),
+    files: v.object({
+      you: v.optional(v.string()),
+      graphic: v.optional(v.string()),
+      recording: v.optional(v.string()),
+      screen: v.optional(v.string()),
+    }),
+  })
+    .index("by_storyboard", ["storyboardId"])
+    .index("by_chapter", ["chapterId"]),
 
   // A post planned on the content calendar: what goes out, where, and when. With no time
   // it waits in the calendar's side list; queued ones fill the team's repeating slots.
