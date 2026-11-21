@@ -104,6 +104,22 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      # The stand-in toolkit runs a real FFmpeg for the steps a test checks the picture of,
+      # such as the sheet of frames a look is copied from. The check job keeps the packages.
+      - name: Restore the FFmpeg packages
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/apt-archives
+          key: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-v1
+          restore-keys: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-
+      - name: Install FFmpeg
+        run: |
+          mkdir -p ~/apt-archives/partial
+          sudo apt-get install -y --no-install-recommends \
+            -o Dir::Cache::Archives="$HOME/apt-archives" \
+            -o Acquire::Retries=3 \
+            ffmpeg || (sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+            -o Dir::Cache::Archives="$HOME/apt-archives" -o Acquire::Retries=3 ffmpeg)
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()
