@@ -1,9 +1,10 @@
 import { registerApiRoute } from "@mastra/core/server";
 import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
+import { env } from "../../lib/env";
 import { resourceIdOf } from "../routes/resource";
 import { reviewAgent } from "../agents/review";
-import { momentsAgent, momentsPrompt, momentsRequest } from "./moments";
+import { dashboardUsage, momentsAgent, momentsPrompt, momentsRequest } from "./moments";
 import {
   batchAnswers,
   batchCheck,
@@ -127,7 +128,12 @@ export const createNcatRoutes = () => [
         );
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);
-        return c.json({ answer });
+        // What it used, so the dashboard can keep the run under its AI limit.
+        return c.json({
+          answer,
+          model: env.CHAT_MODEL,
+          usage: dashboardUsage(result.usage, result.providerMetadata),
+        });
       } catch {
         return c.json({ error: "The model did not answer." }, 502);
       }

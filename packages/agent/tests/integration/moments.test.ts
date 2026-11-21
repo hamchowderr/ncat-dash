@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createNcatRoutes } from "../../src/mastra/ncat/routes";
-import { clockTime, momentsPrompt, momentsRequest } from "../../src/mastra/ncat/moments";
+import {
+  clockTime,
+  dashboardUsage,
+  momentsPrompt,
+  momentsRequest,
+} from "../../src/mastra/ncat/moments";
 import { useTeamKeysForTests } from "../../src/mastra/ncat/team-key";
 import { ctx, find } from "../helpers/route-harness";
 
@@ -48,6 +53,20 @@ describe("the agent picking moments for the dashboard", () => {
     expect(answer.moments[0].quote).toBe("The one rule I keep for every client call.");
   });
 
+  it("says which model answered and what it used, for the run's AI limit", async () => {
+    const { c, captured } = ctx({ resourceId: "u1", body: MOMENTS });
+    await route.handler(c);
+    const body = captured.body as { model: string; usage: Record<string, number> };
+    expect(typeof body.model).toBe("string");
+    expect(Object.keys(body.usage).sort()).toEqual([
+      "cacheReadTokens",
+      "cacheWriteTokens",
+      "inputTokens",
+      "outputTokens",
+    ]);
+    for (const value of Object.values(body.usage)) expect(value).toBeGreaterThanOrEqual(0);
+  });
+
   it("answers for chapters too, as the model wrote it", async () => {
     const { c, captured } = ctx({ resourceId: "u1", body: CHAPTERS });
     await route.handler(c);
@@ -93,6 +112,42 @@ describe("the agent picking moments for the dashboard", () => {
     const { c, captured } = ctx({ resourceId: "u1", body: { ...MOMENTS, transcript: "" } });
     await route.handler(c);
     expect(captured.status).toBe(400);
+  });
+});
+
+describe("what an answer used, as the dashboard reads it", () => {
+  it("reads older AI SDK usage, with cache reads beside the input", () => {
+    expect(dashboardUsage({ inputTokens: 900, outputTokens: 40, cachedInputTokens: 100 })).toEqual({
+      inputTokens: 900,
+      outputTokens: 40,
+      cacheReadTokens: 100,
+      cacheWriteTokens: 0,
+    });
+  });
+
+  it("reads newer AI SDK usage, where input includes the cache", () => {
+    expect(
+      dashboardUsage({
+        inputTokens: 1000,
+        outputTokens: 40,
+        inputTokenDetails: { noCacheTokens: 700, cacheReadTokens: 200, cacheWriteTokens: 100 },
+      }),
+    ).toEqual({ inputTokens: 700, outputTokens: 40, cacheReadTokens: 200, cacheWriteTokens: 100 });
+  });
+
+  it("takes the cache write from Anthropic's own numbers when the SDK leaves it out", () => {
+    expect(
+      dashboardUsage({ inputTokens: 500 }, { anthropic: { cacheCreationInputTokens: 300 } }),
+    ).toEqual({ inputTokens: 500, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 300 });
+  });
+
+  it("counts nothing for missing usage", () => {
+    expect(dashboardUsage(undefined)).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
   });
 });
 

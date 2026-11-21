@@ -1,7 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { env } from "../../lib/env";
-import { MOMENTS_EFFORT, MOMENTS_INSTRUCTIONS, momentsPrompt, momentsRequest } from "./moments";
+import {
+  type DashboardUsage,
+  MOMENTS_EFFORT,
+  MOMENTS_INSTRUCTIONS,
+  momentsPrompt,
+  momentsRequest,
+} from "./moments";
 
 /**
  * Best moments and Chapters for automations that run with nobody watching, through
@@ -70,7 +76,11 @@ export async function submitBatch(
   return batch.id;
 }
 
-export type BatchAnswer = { id: string; answer: string } | { id: string; error: string };
+/** One question's answer, or why there is none, with what it used (at full price). */
+export type BatchAnswer = ({ id: string; answer: string } | { id: string; error: string }) & {
+  model?: string;
+  usage?: DashboardUsage;
+};
 
 /** The batch's answers once it has ended, or null while it is still working. */
 export async function batchAnswers(
@@ -87,14 +97,26 @@ export async function batchAnswers(
       continue;
     }
     const message = result.result.message;
+    // What it used, so the dashboard can keep the run under its AI limit.
+    const used = message.usage
+      ? {
+          model: message.model,
+          usage: {
+            inputTokens: message.usage.input_tokens ?? 0,
+            outputTokens: message.usage.output_tokens ?? 0,
+            cacheReadTokens: message.usage.cache_read_input_tokens ?? 0,
+            cacheWriteTokens: message.usage.cache_creation_input_tokens ?? 0,
+          },
+        }
+      : {};
     const text = message.content
       .map((block) => (block.type === "text" ? block.text : ""))
       .join("")
       .trim();
     answers.push(
       message.stop_reason === "refusal" || !text
-        ? { id: result.custom_id, error: "empty" }
-        : { id: result.custom_id, answer: text },
+        ? { id: result.custom_id, error: "empty", ...used }
+        : { id: result.custom_id, answer: text, ...used },
     );
   }
   return answers;
