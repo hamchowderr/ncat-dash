@@ -69,6 +69,15 @@ export const NOTIFICATION_KINDS = [
     email: false,
     chat: true,
   },
+  {
+    kind: "footage_problem",
+    title: "Footage needs another look",
+    description:
+      "A Check Footage step found a video that is the wrong shape, too small, too quiet or clipped, black, frozen or too short, before editing. Goes to everyone on the team.",
+    bell: true,
+    email: true,
+    chat: true,
+  },
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];

@@ -29,7 +29,8 @@ type Kind =
   | "mention"
   | "client_feedback"
   | "ready_for_review"
-  | "clip_finished";
+  | "clip_finished"
+  | "footage_problem";
 type ChatApp = "telegram" | "slack" | "discord" | "teams";
 type Channel = "bell" | "email" | ChatApp;
 

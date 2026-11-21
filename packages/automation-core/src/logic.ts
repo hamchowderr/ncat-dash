@@ -43,6 +43,7 @@ export function canFailOver(kind: string | undefined): boolean {
     kind === "motion-plan" ||
     kind === "sound-effects" ||
     kind === "cleanup" ||
+    kind === "footage-check" ||
     kind === "export" ||
     kind === "automation"
   );

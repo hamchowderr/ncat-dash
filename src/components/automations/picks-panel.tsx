@@ -4,7 +4,9 @@ import {
   type AutomationEdge,
   type AutomationNode,
   type Chapter,
+  checkedName,
   cleanupSentence,
+  footageSummary,
   clipsKeepShape,
   clock,
   frameSize,
@@ -12,7 +14,7 @@ import {
   showNotes,
   youtubeChapters,
 } from "@ncat-dash/automation-core";
-import { Check, Copy, Download, ListPlus } from "lucide-react";
+import { Check, CircleAlert, CircleCheck, Copy, Download, ListPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -55,6 +57,7 @@ export function PicksPanel({
     if (node.kind === "chapters" && step.chapters?.length) return [{ node, step }];
     if (node.kind === "broll" && step.cutaways?.length) return [{ node, step }];
     if (node.kind === "cleanup" && step.cleaned?.length) return [{ node, step }];
+    if (node.kind === "footage-check" && step.footage?.files.length) return [{ node, step }];
     return [];
   });
   if (shown.length === 0) return null;
@@ -75,6 +78,8 @@ export function PicksPanel({
           <CutawaysSection key={step._id} title={nodeTitle(node)} step={step} />
         ) : node.kind === "cleanup" ? (
           <CleanupSection key={step._id} title={nodeTitle(node)} step={step} />
+        ) : node.kind === "footage-check" ? (
+          <FootageSection key={step._id} title={nodeTitle(node)} step={step} />
         ) : (
           <ChaptersSection key={step._id} title={nodeTitle(node)} step={step} />
         ),
@@ -134,6 +139,71 @@ function CleanupSection({ title, step }: { title: string; step: RunStep }) {
                       {takeName(label)}
                     </span>
                   ),
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * What Check Footage found in each file before editing: its size and length, and every
+ * problem in plain words, or that it is fine. Says whether the run stopped, and where the
+ * note for the creator was left.
+ */
+function FootageSection({ title, step }: { title: string; step: RunStep }) {
+  const footage = step.footage!;
+  const bad = footage.files.filter((file) => file.problems.length > 0).length;
+  return (
+    <section aria-label={title} className="bg-surface rounded-xl">
+      <header className="grid px-4 py-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="text-muted-foreground text-xs text-pretty">
+          {footageSummary(footage.files)}{" "}
+          {bad > 0 && (footage.stopped ? "Editing did not start. " : "Editing went ahead. ")}
+          No AI: measured by FFmpeg, judged by rules.
+          {footage.note ? ` A note for the creator is in ${footage.note}.` : ""}
+        </p>
+      </header>
+      <ul className="grid gap-1 px-4 pb-4">
+        {footage.files.map((file) => {
+          const fine = file.problems.length === 0;
+          const facts = [
+            file.width && file.height ? `${file.width}×${file.height}` : null,
+            typeof file.duration === "number" ? length(file.duration) : null,
+            typeof file.loudness === "number" ? `${Math.round(file.loudness)} LUFS` : null,
+          ].filter(Boolean);
+          return (
+            <li
+              key={file.url}
+              className="bg-background grid grid-cols-[auto_1fr] gap-x-3 rounded-lg px-3 py-2"
+            >
+              {fine ? (
+                <CircleCheck className="mt-0.5 size-4 text-emerald-600" aria-label="Fine" />
+              ) : (
+                <CircleAlert className="mt-0.5 size-4 text-amber-600" aria-label="Needs a look" />
+              )}
+              <div className="grid gap-1">
+                <p className="text-sm font-medium break-all">
+                  {checkedName(file)}
+                  {facts.length > 0 && (
+                    <span className="text-muted-foreground font-normal tabular-nums">
+                      {" "}
+                      · {facts.join(" · ")}
+                    </span>
+                  )}
+                </p>
+                {fine ? (
+                  <p className="text-muted-foreground text-xs">Fine to edit.</p>
+                ) : (
+                  <ul className="grid gap-0.5 text-xs text-pretty">
+                    {file.problems.map((problem) => (
+                      <li key={problem.kind}>{problem.says}</li>
+                    ))}
+                  </ul>
                 )}
               </div>
             </li>
