@@ -4,6 +4,7 @@ import { z } from "zod";
 import { env } from "../../lib/env";
 import { resourceIdOf } from "../routes/resource";
 import { reviewAgent } from "../agents/review";
+import { lookAgent, lookPrompt, lookRequest } from "./look";
 import { dashboardUsage, momentsAgent, momentsPrompt, momentsRequest } from "./moments";
 import {
   batchAnswers,
@@ -134,6 +135,47 @@ export const createNcatRoutes = () => [
           model: env.CHAT_MODEL,
           usage: dashboardUsage(result.usage, result.providerMetadata),
         });
+      } catch {
+        return c.json({ error: "The model did not answer." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/look: Convex asks, once, what a sample video looks like, for Settings →
+  // Looks. The sheet of frames is fetched here and sent as bytes, like a review still.
+  // Without it there is nothing to see, so the route says so rather than guess.
+  registerApiRoute("/ncat/look", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const body = await c.req.json().catch(() => undefined);
+      const parsed = lookRequest.safeParse(body);
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      const sheet = await fetchStill(parsed.data.sheet);
+      if (!sheet) return c.json({ error: "The frames could not be fetched." }, 502);
+      try {
+        const requestContext = new RequestContext();
+        const key = await teamKey(organizationOf(body));
+        if (key) requestContext.set(TEAM_KEY, key);
+        const result = await lookAgent.generate(
+          [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: lookPrompt(parsed.data) },
+                { type: "image" as const, image: sheet.bytes, mediaType: sheet.mediaType },
+              ],
+            },
+          ],
+          { requestContext },
+        );
+        const answer = result.text.trim();
+        if (!answer) return c.json({ error: "empty answer" }, 502);
+        return c.json({ answer });
       } catch {
         return c.json({ error: "The model did not answer." }, 502);
       }

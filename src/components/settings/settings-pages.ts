@@ -28,6 +28,12 @@ export const SETTINGS_GROUPS = [
           "How captions read and look. Every caption step uses these unless it is told otherwise.",
       },
       {
+        slug: "looks",
+        title: "Looks",
+        description:
+          "Copy the look of a video you like once, then put any video into it, with no AI per video.",
+      },
+      {
         slug: "motion",
         title: "Motion",
         description: "How motion graphics and sound effects look. Every motion step uses these.",

@@ -23,6 +23,7 @@ import { decryptSecret } from "./lib/crypto";
 import { collectUrls, handOutputNames, outputNamesOf } from "./lib/outputs";
 import { enqueueJob, pump } from "./lib/queue";
 import { onJobFinished } from "./lib/runner";
+import { onLookJobFinished } from "./looks";
 import { wordsForJob } from "./lib/disclosure";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { UploadLinkError, withUploadLinks } from "./storage";
@@ -367,6 +368,8 @@ export const finish = internalMutation({
       args.ok,
       args.ok ? null : (args.error ?? "The step failed."),
     );
+    // A sample being studied for its look (Settings → Looks).
+    await onLookJobFinished(ctx, job);
     // A library file being made searchable: keep what was said in it.
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
@@ -406,6 +409,7 @@ export const giveUp = internalMutation({
       false,
       "The toolkit never reported a result for this job.",
     );
+    await onLookJobFinished(ctx, job);
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
     }

@@ -102,6 +102,8 @@ import type * as lib_versions from "../lib/versions.js";
 import type * as lib_workflows from "../lib/workflows.js";
 import type * as lib_zoom from "../lib/zoom.js";
 import type * as library from "../library.js";
+import type * as lib_looks from "../lib/looks.js";
+import type * as looks from "../looks.js";
 import type * as mcp from "../mcp.js";
 import type * as mcpKeys from "../mcpKeys.js";
 import type * as microsoft from "../microsoft.js";
@@ -243,6 +245,8 @@ declare const fullApi: ApiFromModules<{
   "lib/workflows": typeof lib_workflows;
   "lib/zoom": typeof lib_zoom;
   library: typeof library;
+  "lib/looks": typeof lib_looks;
+  looks: typeof looks;
   mcp: typeof mcp;
   mcpKeys: typeof mcpKeys;
   microsoft: typeof microsoft;
