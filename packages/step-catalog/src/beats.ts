@@ -205,6 +205,9 @@ export const beatRecipes: StepDefinition[] = [
               opt("-map", "[v]"),
               opt("-map", "[a]"),
               opt("-t", seconds(total)),
+              // FFmpeg 7 (the toolkit's) writes 25 frames a second unless told, which moves
+              // every cut off the frame it was counted on.
+              opt("-r", RATE),
               ...VIDEO_OUT,
             ],
           },
