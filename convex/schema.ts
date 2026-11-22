@@ -176,6 +176,11 @@ export const operationValidator = v.union(
   v.object({ op: v.literal("set"), id: v.string(), settings: v.record(v.string(), v.any()) }),
   v.object({ op: v.literal("use"), id: v.string(), field: v.string(), from: v.string() }),
   v.object({ op: v.literal("rename"), id: v.string(), label: v.string() }),
+  v.object({
+    op: v.literal("meet"),
+    id: v.string(),
+    mode: v.union(v.literal("all"), v.literal("source"), v.literal("position"), v.literal("first")),
+  }),
   v.object({ op: v.literal("switch"), id: v.string(), on: v.boolean() }),
   v.object({ op: v.literal("duplicate"), ids: v.array(v.string()) }),
   v.object({ op: v.literal("trigger"), trigger: triggerValidator, id: v.optional(v.string()) }),

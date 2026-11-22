@@ -10,7 +10,7 @@ import { APP_MIME_TYPE, type McpResource, type McpSkill } from "./mcpServer";
 export const OPERATION_SCHEMA = {
   type: "object",
   description:
-    'One change. op is one of: add (type, optional id, after, before, branch, settings, label, join), remove (ids), connect (source, target, optional branch "yes"/"no"/"failed"), disconnect (source, target), set (id, settings merged; null clears one), use (id, field, from: "auto", "trigger" or a step id), rename (id, label), switch (id, on), duplicate (ids), trigger (trigger: {kind, ...settings}, kind as in list_step_types without "trigger:"; optional id to change a trigger other than the first), addTrigger (trigger, optional starts: ids of steps nothing else feeds) adds another trigger with the id "__trigger_2" and up, removeTrigger (id), name (name), tidy. With several triggers, each run does only the steps its trigger starts: add a step with after set to a trigger id to start a branch from it, or connect a trigger id to a step nothing else feeds.',
+    'One change. op is one of: add (type, optional id, after, before, branch, settings, label, join), remove (ids), connect (source, target, optional branch "yes"/"no"/"failed"), disconnect (source, target), set (id, settings merged; null clears one), use (id, field, from: "auto", "trigger" or a step id), rename (id, label), meet (id, mode: "all" waits for every line and uses every file, "source" pairs files from the same upload, "position" pairs them in order, "first" uses whichever line finishes first; for a step two or more lines lead into), switch (id, on), duplicate (ids), trigger (trigger: {kind, ...settings}, kind as in list_step_types without "trigger:"; optional id to change a trigger other than the first), addTrigger (trigger, optional starts: ids of steps nothing else feeds) adds another trigger with the id "__trigger_2" and up, removeTrigger (id), name (name), tidy. With several triggers, each run does only the steps its trigger starts: add a step with after set to a trigger id to start a branch from it, or connect a trigger id to a step nothing else feeds.',
   properties: {
     op: {
       type: "string",
@@ -22,6 +22,7 @@ export const OPERATION_SCHEMA = {
         "set",
         "use",
         "rename",
+        "meet",
         "switch",
         "duplicate",
         "trigger",
