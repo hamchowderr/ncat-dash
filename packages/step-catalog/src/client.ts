@@ -230,10 +230,12 @@ export function readPauses(raw: unknown): Pause[] {
  * Validates the input against the step's schema, then sends it to the toolkit.
  * Returns the toolkit's response envelope as parsed JSON.
  */
-/** Steps that can never work on a picture, and what to say when given one. */
-const NEEDS_VIDEO = new Map([["video-caption", "Captions need a video. This file is a picture."]]);
-
 const PICTURE = /\.(png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif|svg)$/i;
+
+/** Whether a step can only work on a video: the video steps that take one file. */
+export function needsVideo(step: Pick<StepDefinition, "category" | "primaryInput">): boolean {
+  return step.category === "video" && step.primaryInput === "video_url";
+}
 
 /**
  * A step that works on a video, handed a picture: said before anything is sent, since the
@@ -241,10 +243,10 @@ const PICTURE = /\.(png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif|svg)$/i;
  * Judged by the file's name, so a link without one is sent as it is.
  */
 export function pictureGivenForVideo(
-  step: Pick<StepDefinition, "id">,
+  step: Pick<StepDefinition, "id" | "category" | "primaryInput">,
   input: Record<string, unknown>,
 ): string | null {
-  if (!NEEDS_VIDEO.has(step.id)) return null;
+  if (!needsVideo(step)) return null;
   const value = input.video_url;
   if (typeof value !== "string") return null;
   let path: string;
@@ -254,7 +256,10 @@ export function pictureGivenForVideo(
     return null;
   }
   if (!PICTURE.test(path)) return null;
-  return NEEDS_VIDEO.get(step.id)!;
+  const name = path.split("/").filter(Boolean).pop() ?? "this file";
+  return step.id === "video-caption"
+    ? `Captions need a video, and ${name} is a picture.`
+    : `This step needs a video, and ${name} is a picture.`;
 }
 
 export async function callStep(

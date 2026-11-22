@@ -62,7 +62,7 @@ import {
   withStart,
   stepFileLabels,
 } from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep, pictureGivenForVideo } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
 import { components, internal } from "../_generated/api";
@@ -486,6 +486,16 @@ async function startToolkitStep(
       byNode,
       `${planned.length} files reached this step; the most it takes at once is ${MAX_JOBS_PER_STEP}.`,
     );
+    return;
+  }
+
+  // A video step handed a picture can only fail, after a while and in programmers' words,
+  // so it stops at once in plain ones and is not tried again.
+  const picture = planned
+    .map((input) => pictureGivenForVideo(definition, input))
+    .find((said) => said !== null);
+  if (picture) {
+    await failStep(ctx, run, step, byNode, picture);
     return;
   }
 

@@ -250,7 +250,7 @@ describe("Caption video given a picture", () => {
       { fetch: fn },
     );
     await expect(sent).rejects.toBeInstanceOf(StepSetupError);
-    await expect(sent).rejects.toThrow("Captions need a video. This file is a picture.");
+    await expect(sent).rejects.toThrow("Captions need a video, and Poster Final.PNG is a picture.");
     expect(calls).toHaveLength(0);
   });
 
@@ -262,9 +262,20 @@ describe("Caption video given a picture", () => {
     }
   });
 
-  it("other steps are not judged by the file's name", () => {
+  it("other video steps refuse a picture the same way", () => {
     expect(
-      pictureGivenForVideo(getStep("video-trim")!, { video_url: "https://files.example/a.png" }),
+      pictureGivenForVideo(getStep("video-trim")!, {
+        video_url: "https://files.example/uploads/Harbor-Lane-logo.png",
+      }),
+    ).toBe("This step needs a video, and Harbor-Lane-logo.png is a picture.");
+  });
+
+  it("steps that take any file are not judged by the file's name", () => {
+    expect(
+      pictureGivenForVideo(getStep("media-convert-mp3") ?? getStep("media-transcribe")!, {
+        video_url: "https://files.example/a.png",
+        media_url: "https://files.example/a.png",
+      }),
     ).toBeNull();
   });
 });
