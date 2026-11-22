@@ -486,6 +486,54 @@ describe("who is here and new versions", () => {
     expect(dialog.textContent).not.toContain("ca4934e3");
   });
 
+  test("New version names each file's step as the automation does, and offers only videos", async () => {
+    const clip = "https://files.example/0b1c2d3e_output_0.mp4";
+    const edit = "https://files.example/9f8e7d6c_output_0.mp4";
+    answerQuery(api.jobs.outputs, [
+      {
+        jobId: "j5",
+        stepId: "ffmpeg-compose",
+        stepName: "Caption TikTok clips",
+        finishedAt: 1_700_000_300_000,
+        urls: [clip],
+        names: { [clip]: "Crew interview clip" },
+      },
+      {
+        jobId: "j4",
+        stepId: "generate-ass",
+        stepName: null,
+        finishedAt: 1_700_000_200_000,
+        urls: ["https://files.example/0b1c2d3e_captions.ass"],
+        names: {},
+      },
+      {
+        jobId: "j6",
+        stepId: "video-thumbnail",
+        stepName: "Cover image",
+        finishedAt: 1_700_000_100_000,
+        urls: ["https://files.example/cover.png"],
+      },
+      {
+        jobId: "j7",
+        stepId: "ffmpeg-compose",
+        stepName: null,
+        finishedAt: 1_700_000_000_000,
+        urls: [edit],
+        names: { [edit]: "Custom edit 1" },
+      },
+    ]);
+    const { user } = open();
+    await user.click(screen.getByRole("button", { name: "New version" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a new version" });
+    const files = within(dialog).getAllByRole("button");
+    const picks = files.filter((button) => /clip|edit/i.test(button.textContent ?? ""));
+    expect(picks.map((button) => button.textContent)).toEqual([
+      expect.stringMatching(/^Crew interview clipCaption TikTok clips · /),
+      expect.stringMatching(/^Custom edit 1Custom edit · /),
+    ]);
+    expect(dialog.textContent).not.toMatch(/ffmpeg|caption file|\.ass|cover/i);
+  });
+
   test("New version says so when there is nothing to pick", async () => {
     answerQuery(api.jobs.outputs, []);
     const { user } = open();
