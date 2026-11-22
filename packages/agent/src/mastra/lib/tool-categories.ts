@@ -97,6 +97,10 @@ const CATEGORIES: Record<string, ToolCategory> = {
   knowledge_search: 'read',
   knowledge_read: 'read',
   knowledge_list: 'read',
+  // Skills (lib/agent-skills.ts): loading and reading the agent's own skill files.
+  skill: 'read',
+  skill_search: 'read',
+  skill_read: 'read',
   list_schedules: 'read',
   doltQuery: 'read',
   doltHistory: 'read',
@@ -174,6 +178,8 @@ export const PLAN_MODE_TOOLS: readonly string[] = [
  *  - firecrawl_search / firecrawl_scrape — web lookups that change nothing. They spend
  *    Firecrawl credits, but the key's owner turned them on by setting the key, and a
  *    card before every search would make web search unusable.
+ *  - knowledge_search/read/list and skill/skill_search/skill_read — reading Knowledge
+ *    pages and the agent's own skill files changes nothing.
  *  - BROWSER_AUTO_ALLOWED_TOOLS — the Firecrawl browser's look-only tools (snapshot,
  *    screenshot, scroll, wait, back) and browser_close. Opening a new site
  *    (browser_goto) and every page action (click, type, …) stay GATED.
@@ -199,6 +205,13 @@ export const AUTO_ALLOWED_TOOLS = [
   ...BROWSER_AUTO_ALLOWED_TOOLS,
   // Looking at the dashboard changes nothing, so it never needs a card.
   ...NCAT_READ_TOOLS,
+  // Nor does looking in Knowledge or loading one of the agent's skills.
+  'knowledge_search',
+  'knowledge_read',
+  'knowledge_list',
+  'skill',
+  'skill_search',
+  'skill_read',
 ] as const;
 
 /**

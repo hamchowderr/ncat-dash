@@ -15,6 +15,7 @@ export * from "./brand";
 export * from "./broll";
 export * from "./details";
 export * from "./logic";
+export * from "./send";
 export * from "./transfer";
 export * from "./history";
 export * from "./structured";

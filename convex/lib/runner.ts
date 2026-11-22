@@ -62,6 +62,7 @@ import {
   withStart,
   stepFileLabels,
 } from "@ncat-dash/automation-core";
+import { startSend } from "./send";
 import { getStep, pictureGivenForVideo } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
@@ -117,6 +118,8 @@ export async function startRun(
       deliverableId?: Id<"deliverables">;
       clientId?: Id<"clients">;
     };
+    /** Where the run's end is reported, for a webhook call that asked. */
+    callbackUrl?: string;
   } = {},
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
@@ -157,6 +160,7 @@ export async function startRun(
     ...(options.test ? { test: options.test } : {}),
     ...(clientId ? { clientId } : {}),
     ...(graph.workflowId ? { workflowId: graph.workflowId } : {}),
+    ...(options.callbackUrl ? { callbackUrl: options.callbackUrl } : {}),
     ...(project
       ? {
           projectId: project.projectId,
@@ -368,6 +372,11 @@ async function startNode(
     return;
   }
 
+  if (node.kind === "send") {
+    await startSend(ctx, run, node, step, byNode);
+    return;
+  }
+
   if (node.kind === "automation") {
     await startAutomationStep(ctx, run, node, step, byNode, incomingFiles(node, run, byNode));
     return;
@@ -396,6 +405,28 @@ async function startNode(
   }
 
   await startToolkitStep(ctx, run, node, step, byNode);
+}
+
+/**
+ * A named value an earlier step made, by the file each of its jobs worked on: for a
+ * transcript step, each file's captions.
+ */
+async function valuesByFile(
+  ctx: MutationCtx,
+  step: Doc<"runSteps"> | undefined,
+  source: { value: string; from: AutomationNode },
+): Promise<Map<string, unknown>> {
+  const found = new Map<string, unknown>();
+  const field = getStep(source.from.stepId ?? "")?.primaryInput;
+  if (!step || step.status !== "done" || !field) return found;
+  for (const jobId of step.jobIds) {
+    const job = await ctx.db.get(jobId);
+    if (job?.status !== "done") continue;
+    const file = (job.input as Record<string, unknown>)[field];
+    const value = valueFrom(source.from.stepId ?? "", source.value, job.result);
+    if (typeof file === "string" && value !== undefined) found.set(file, value);
+  }
+  return found;
 }
 
 /**
@@ -462,10 +493,6 @@ async function startToolkitStep(
   // Follow the speaker straight after Clips makes the platform's shape unless one was picked.
   const followShape = isEmptySetting(settings.aspect) ? followShapeFrom(node, nodes, edges) : null;
   if (followShape) settings.aspect = followShape;
-  for (const source of valueSources(node, nodes, edges)) {
-    const found = valueFrom(source.from.stepId ?? "", source.value, steps[source.from.id]?.result);
-    if (found !== undefined) settings[source.field] = found;
-  }
   let planned: Record<string, unknown>[];
   try {
     planned = planJobs(
@@ -477,6 +504,21 @@ async function startToolkitStep(
     if (!(error instanceof TemplateError)) throw error;
     await failStep(ctx, run, step, byNode, error.message);
     return;
+  }
+  // A value an earlier step made, such as a transcript's captions, belongs to the file it
+  // worked on: each job gets the one made for its own file, and none for a file cut or
+  // changed since, which then works it out for itself.
+  const primary = definition.primaryInput;
+  if (primary) {
+    for (const source of valueSources(node, nodes, edges)) {
+      const values = await valuesByFile(ctx, byNode.get(source.from.id), source);
+      planned = planned.map((input) => {
+        const found = values.get(String(input[primary] ?? ""));
+        return found === undefined || !isEmptySetting(input[source.field])
+          ? input
+          : { ...input, [source.field]: found };
+      });
+    }
   }
   if (planned.length > MAX_JOBS_PER_STEP) {
     await failStep(
@@ -1033,6 +1075,14 @@ export async function retriesFor(ctx: QueryCtx, organizationId: string): Promise
   return retryLimit(settings?.stepRetries);
 }
 
+/** The most failed tries a step keeps in its log. */
+const MAX_TRIES_KEPT = 20;
+
+/** A step's log of failed tries with one more on the end. */
+function withTry(step: Doc<"runSteps">, error: string): { at: number; error: string }[] {
+  return [...(step.tries ?? []), { at: Date.now(), error }].slice(-MAX_TRIES_KEPT);
+}
+
 /**
  * Books another try for a step whose jobs failed, after a wait that grows with each
  * try. Returns false when the step has no tries left or the failure is one another try
@@ -1048,10 +1098,12 @@ async function bookRetry(
   if (!shouldRetry(used, await retriesFor(ctx, run.organizationId), failures)) return false;
   const retry = used + 1;
   const delay = retryDelayMs(retry);
+  const error = failures[0].error ?? "The step failed.";
   await ctx.db.patch(step._id, {
     retries: retry,
     retryAt: Date.now() + delay,
-    retryError: failures[0].error ?? "The step failed.",
+    retryError: error,
+    tries: withTry(step, error),
   });
   await ctx.db.patch(run._id, { retries: (run.retries ?? 0) + 1 });
   await ctx.scheduler.runAfter(delay, internal.runs.retryStep, { runStepId: step._id, retry });
@@ -1079,6 +1131,7 @@ export async function bookAgentRetry(
     retries: retry,
     retryAt: Date.now() + delay,
     retryError: error,
+    tries: withTry(step, error),
   });
   await ctx.db.patch(run._id, { retries: (run.retries ?? 0) + 1 });
   await ctx.scheduler.runAfter(delay, internal.runs.retryAgentStep, {

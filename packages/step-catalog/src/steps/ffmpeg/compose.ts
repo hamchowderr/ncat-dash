@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defineStep } from "../../define";
 
 export const ffmpegOption = z.object({
-  option: z.string().describe("An FFmpeg flag such as -c:v"),
+  option: z.string().describe("A setting such as -c:v"),
   argument: z.union([z.string(), z.number(), z.null()]).optional().describe("Its value"),
 });
 
@@ -20,15 +20,15 @@ export const ffmpegCompose = defineStep({
     inputs: z
       .array(z.object({ file_url: z.string().url(), options: z.array(ffmpegOption).optional() }))
       .min(1)
-      .describe("Input files, each with optional FFmpeg flags"),
+      .describe("Input files, each with its own settings if needed"),
     filters: z
       .array(z.object({ filter: z.string() }))
       .optional()
-      .describe("FFmpeg filter graphs"),
+      .describe("Filters to apply"),
     outputs: z
       .array(z.object({ options: z.array(ffmpegOption) }))
       .min(1)
-      .describe("One entry per output file, each with its FFmpeg flags"),
+      .describe("One entry per output file, each with its settings"),
     global_options: z.array(ffmpegOption).optional().describe("Flags for the whole command"),
     metadata: z
       .object({

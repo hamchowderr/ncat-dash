@@ -62,7 +62,7 @@ export interface NodeType {
   /**
    * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "broll",
    * "broll-plan", "motion", "sound-effects", "cleanup", "footage-check", "subtitles", "export",
-   * "if", "wait", "automation", or "step:<catalog id>".
+   * "if", "wait", "send", "automation", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
   type: string;
@@ -866,6 +866,30 @@ const WAIT: NodeType = {
   automatic: null,
 };
 
+const SEND: NodeType = {
+  type: "send",
+  role: "action",
+  group: "logic",
+  title: "Send to a URL",
+  description:
+    "Posts the files that reach it, with the run's details, to an address as JSON, such as an n8n webhook, then hands the same files to the next step. The post is signed with the automation's token. If the address does not answer, it is tried three more times.",
+  takes: "files",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      url: {
+        type: "string",
+        format: "uri",
+        description: "The http or https address to post to.",
+      },
+    },
+    required: ["url"],
+  },
+  automatic: null,
+  ask: ["url"],
+};
+
 const EXPORT: NodeType = {
   type: "export",
   role: "action",
@@ -953,6 +977,7 @@ export const NODE_TYPES: NodeType[] = [
   EXPORT,
   IF,
   WAIT,
+  SEND,
   RUN_AUTOMATION,
   ...allSteps.map(stepType),
   APPROVAL,
@@ -1023,6 +1048,7 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
     type === "export" ||
     type === "if" ||
     type === "wait" ||
+    type === "send" ||
     type === "automation"
   ) {
     return { kind: type };

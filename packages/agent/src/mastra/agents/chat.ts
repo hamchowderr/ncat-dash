@@ -4,6 +4,7 @@ import { TaskSignalProvider } from '@mastra/core/signals';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { env } from '../../lib/env';
+import { chatSkillPaths } from '../lib/agent-skills';
 import { chatKnowledge, chatKnowledgeScopes } from '../lib/chat-knowledge';
 import { type ChatFeatures, features as defaultFeatures } from '../lib/features';
 import { putImage } from '../lib/image-store';
@@ -357,6 +358,9 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
     // dashboard session, which pages a run may see: the Takewon guide, the person's team,
     // and the client whose item is on screen (lib/chat-knowledge.ts).
     ...(f.knowledge ? { knowledge: chatKnowledge, scopes: chatKnowledgeScopes } : {}),
+    // The FFmpeg skills (lib/agent-skills.ts): the skill, skill_search and skill_read tools
+    // load one only when a turn needs it.
+    skills: chatSkillPaths(),
     // Default execution options applied to EVERY run. Adaptive thinking, so the model
     // emits real `reasoning` parts (→ the <Reasoning> element): Claude Sonnet 5.5 and the
     // other current models refuse a fixed thinking budget, and `effort` (CHAT_EFFORT, set

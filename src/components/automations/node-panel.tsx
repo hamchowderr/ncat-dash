@@ -495,7 +495,7 @@ export function NodePanel({
 
       {node.kind === "approval" && <TeamApprovalSettings node={node} onChange={onChange} />}
 
-      {(node.kind === "if" || node.kind === "wait") && (
+      {(node.kind === "if" || node.kind === "wait" || node.kind === "send") && (
         <LogicSettings node={node} onChange={onChange} />
       )}
 
