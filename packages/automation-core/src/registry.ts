@@ -807,7 +807,7 @@ const IF: NodeType = {
   group: "logic",
   title: "If",
   description:
-    "Sends each file one of two ways. A file leaves by Yes when it passes a check on its length, type, shape, picture size or sound, and by No when it does not.",
+    "Sends each file one of two ways. A file leaves by Yes when it passes a check on its length, type, shape, picture size, sound or what is said in it, and by No when it does not.",
   takes: "files",
   gives: "files",
   settings: {
@@ -833,6 +833,11 @@ const IF: NodeType = {
         exclusiveMinimum: 0,
         default: DEFAULT_CONDITION.value,
         description: `The number to compare against. For length: seconds. For size: pixels on the shorter side (${PICTURE_SIZES.map((size) => size.value).join(", ")}). Not used by the other checks.`,
+      },
+      text: {
+        type: "string",
+        description:
+          "For words: the words to look for in what is said, matched without regard to capitals. The words come from a Transcribe step before the If; a file nothing transcribed leaves by No. Not used by the other checks.",
       },
     },
     required: ["check", "is"],
