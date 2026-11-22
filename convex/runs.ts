@@ -22,6 +22,7 @@ import {
   approvalTimeUp as decideWhenTimeIsUp,
   decideApproval,
   retriesFor,
+  retryAgentStepNow,
   retryStepNow,
   startRun,
 } from "./lib/runner";
@@ -378,6 +379,18 @@ export const retryStep = internalMutation({
   args: { runStepId: v.id("runSteps"), retry: v.number() },
   handler: async (ctx, args) => {
     await retryStepNow(ctx, args.runStepId, args.retry);
+  },
+});
+
+/** Asks the agent again for a step whose asking failed. Scheduled by the runner. */
+export const retryAgentStep = internalMutation({
+  args: {
+    runStepId: v.id("runSteps"),
+    retry: v.number(),
+    ask: v.union(v.literal("pick"), v.literal("match"), v.literal("choose")),
+  },
+  handler: async (ctx, args) => {
+    await retryAgentStepNow(ctx, args.runStepId, args.retry, args.ask);
   },
 });
 

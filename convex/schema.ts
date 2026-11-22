@@ -377,7 +377,9 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    // Jobs handed to be sent, by when: finds a send that broke without reading the queue.
+    .index("by_status_and_dispatchedAt", ["status", "dispatchedAt"]),
 
   // Per-team settings. A team without a row uses the defaults.
   teamSettings: defineTable({
@@ -591,7 +593,19 @@ export default defineSchema({
     .index("by_client", ["clientId"])
     .index("by_enabled_and_nextRunAt", ["enabled", "nextRunAt"])
     .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"])
-    .index("by_enabled_and_multiTrigger", ["enabled", "multiTrigger"]),
+    .index("by_enabled_and_multiTrigger", ["enabled", "multiTrigger"])
+    // One team's switched-on automations with a trigger of a kind, so a trigger that only
+    // starts the team's own automations never reads other teams'.
+    .index("by_organization_and_enabled_and_trigger_kind", [
+      "organizationId",
+      "enabled",
+      "trigger.kind",
+    ])
+    .index("by_organization_and_enabled_and_multiTrigger", [
+      "organizationId",
+      "enabled",
+      "multiTrigger",
+    ]),
 
   // Files a watched folder has already started a run for, so each starts only one.
   // Every version an automation has had as its live version, numbered from 1, so an
@@ -914,7 +928,9 @@ export default defineSchema({
     aiHeld: v.optional(v.number()),
   })
     .index("by_run", ["runId"])
-    .index("by_organization_and_status", ["organizationId", "status"]),
+    .index("by_organization_and_status", ["organizationId", "status"])
+    // Steps that have been going a long time, for the check that ends a stuck one.
+    .index("by_status_and_startedAt", ["status", "startedAt"]),
 
   // A video's words with when each is said, from a transcript made with word timestamps,
   // kept so the same video is not transcribed again (Find more moments, Chapters after

@@ -13,7 +13,7 @@ import {
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { advance, failStep, startRun } from "./runner";
-import { enabledWithTrigger, triggersOfKind } from "./triggers";
+import { teamEnabledWithTrigger, triggersOfKind } from "./triggers";
 
 /** The automations that led to a run, itself last. Older runs only know themselves. */
 export function chainOf(run: Doc<"runs">): Id<"automations">[] {
@@ -183,7 +183,7 @@ export async function runEnded(
   if (run.parentRunStepId) await finishWaitingStep(ctx, run, status, error, files);
 
   if (status === "cancelled" || run.test) return;
-  const followers = await enabledWithTrigger(ctx, "finished", 500);
+  const followers = await teamEnabledWithTrigger(ctx, run.organizationId, "finished");
   const chain = chainOf(run);
   for (const follower of followers) {
     if (follower.organizationId !== run.organizationId) continue;

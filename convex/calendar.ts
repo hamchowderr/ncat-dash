@@ -10,7 +10,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
 import { requireMember } from "./lib/authz";
-import { enabledWithTrigger, triggersOfKind } from "./lib/triggers";
+import { teamEnabledWithTrigger, triggersOfKind } from "./lib/triggers";
 
 // The content calendar: posts planned for a day and time, repeating slots that queued
 // posts fill, project slots that are due, and the times scheduled automations run.
@@ -223,7 +223,7 @@ export const range = query({
     }
 
     // When the team's switched-on scheduled automations run, from now on.
-    const automations = (await enabledWithTrigger(ctx, "schedule", 1000)).filter(
+    const automations = (await teamEnabledWithTrigger(ctx, args.organizationId, "schedule")).filter(
       (automation) => automation.organizationId === args.organizationId && forClient(automation),
     );
     const runs: { automationId: Id<"automations">; name: string; at: number }[] = [];

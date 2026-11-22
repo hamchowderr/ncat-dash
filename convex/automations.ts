@@ -76,6 +76,7 @@ import {
   dueSchedules,
   multiTriggerOf,
   scheduleTimesOf,
+  teamEnabledWithTrigger,
   triggersOfKind,
   watchStartOf,
 } from "./lib/triggers";
@@ -1435,10 +1436,7 @@ export const loadUploadForTrigger = internalQuery({
   handler: async (ctx, args) => {
     const upload = await ctx.db.get(args.uploadId);
     if (!upload || upload.status !== "ready") return null;
-    const automations = await ctx.db
-      .query("automations")
-      .withIndex("by_organization", (q) => q.eq("organizationId", upload.organizationId))
-      .take(200);
+    const automations = await teamEnabledWithTrigger(ctx, upload.organizationId, "upload");
     const family = upload.contentType.split("/")[0];
     // One run for each upload trigger that wants the file; an automation with two that
     // both want it runs both branches.

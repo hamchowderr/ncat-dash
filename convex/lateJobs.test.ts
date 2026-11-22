@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { ASK_AFTER_MS, LOST_AFTER_MS, LOST_JOB_ERROR } from "./jobs";
+import {
+  ASK_AFTER_MS,
+  LOST_AFTER_MS,
+  LOST_JOB_ERROR,
+  NOT_SENT_AFTER_MS,
+  NOT_SENT_ERROR,
+} from "./jobs";
 import { encryptSecret } from "./lib/crypto";
 import { startRun } from "./lib/runner";
 import { addPerson, addTeam, backend } from "./test.setup";
@@ -130,7 +136,15 @@ async function setUp() {
         (call) => call.name.includes("askToolkit") && call.state.kind === "pending",
       ),
     );
-  return { t, splitJob, handedOver, look, asks };
+  // The job was handed to be sent `ago` milliseconds back, and the send never got anywhere.
+  const sendBroke = async (ago: number) => {
+    const job = await splitJob();
+    await t.run((ctx) =>
+      ctx.db.patch(job._id, { status: "queued", dispatchedAt: Date.now() - ago }),
+    );
+    return job._id;
+  };
+  return { t, splitJob, handedOver, sendBroke, look, asks };
 }
 
 describe("a job whose result is late", () => {
@@ -249,5 +263,29 @@ describe("a job whose result is late", () => {
     });
     expect(outcome).toBe("ignored");
     expect((await splitJob()).status).toBe("done");
+  });
+});
+
+describe("a job whose sending broke", () => {
+  test("is failed, so the step tries it again and the team gets its place back", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const { t, sendBroke, splitJob, look } = await setUp();
+    await sendBroke(NOT_SENT_AFTER_MS + 1000);
+    await t.mutation(internal.jobs.checkLate, {});
+    // Only the failing runs now; the try booked for later is left booked.
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
+    const job = await splitJob();
+    expect(job).toMatchObject({ status: "failed", error: NOT_SENT_ERROR });
+    expect(job.permanent).toBeUndefined();
+    expect((await look()).byNode.split).toMatchObject({ retries: 1, retryError: NOT_SENT_ERROR });
+  });
+
+  test("is left alone while it may still be on its way", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const { t, sendBroke, splitJob } = await setUp();
+    await sendBroke(NOT_SENT_AFTER_MS / 2);
+    await t.mutation(internal.jobs.checkLate, {});
+    expect((await splitJob()).status).toBe("queued");
   });
 });

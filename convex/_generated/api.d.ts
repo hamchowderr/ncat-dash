@@ -137,6 +137,7 @@ import type * as slack from "../slack.js";
 import type * as slackReview from "../slackReview.js";
 import type * as storage from "../storage.js";
 import type * as storyboards from "../storyboards.js";
+import type * as stuck from "../stuck.js";
 import type * as teamSettings from "../teamSettings.js";
 import type * as teamSteps from "../teamSteps.js";
 import type * as teams from "../teams.js";
@@ -290,6 +291,7 @@ declare const fullApi: ApiFromModules<{
   slackReview: typeof slackReview;
   storage: typeof storage;
   storyboards: typeof storyboards;
+  stuck: typeof stuck;
   teamSettings: typeof teamSettings;
   teamSteps: typeof teamSteps;
   teams: typeof teams;
