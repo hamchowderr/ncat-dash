@@ -684,12 +684,15 @@ fn main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 /// to ask for (it also isn't in the dashboard's capability).
 fn from_home(window: &WebviewWindow, places: &Places) -> Result<(), String> {
     let caller = window.url().map_err(|_| "Unknown page.".to_string())?;
-    // Compared by parts: the app's own scheme (tauri://localhost) has an opaque origin,
-    // which never equals another.
+    // Or the page the window started on (the dev server while working on the app), compared
+    // by parts: tauri://localhost has an opaque origin, which never equals another. On
+    // Windows the window can start on about:blank, which never counts.
     let home = &places.home;
-    if caller.scheme() == home.scheme()
-        && caller.host_str() == home.host_str()
-        && caller.port_or_known_default() == home.port_or_known_default()
+    if links::is_app_page(&caller)
+        || home.scheme() != "about"
+            && caller.scheme() == home.scheme()
+            && caller.host_str() == home.host_str()
+            && caller.port_or_known_default() == home.port_or_known_default()
     {
         Ok(())
     } else {
