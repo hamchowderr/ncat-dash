@@ -202,6 +202,6 @@ describe("the dashboard's tools through the stand-in model", () => {
     forgetSessions();
     const { events } = await runFlow('List my automations and say which are switched on.');
     expect(calls).toEqual([]);
-    expect(JSON.stringify(events)).toContain('The dashboard has not said who is asking yet');
+    expect(JSON.stringify(events)).toContain('Takewon has not said who is asking yet');
   });
 });

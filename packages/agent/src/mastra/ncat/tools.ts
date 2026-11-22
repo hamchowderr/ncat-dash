@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { dash, dashFor, plainError } from "./convex";
 import { LIBRARY_INSTRUCTIONS, libraryTools } from "./library";
+import { triggerAsSent } from "./trigger-shape";
 import { rememberMade, workingAutomationOf } from "./session-store";
 import { TEAM_STEP_INSTRUCTIONS, teamStepTools } from "./team-steps";
 
@@ -287,13 +288,14 @@ const operation = z.discriminatedUnion("op", [
 ]);
 
 /**
- * A change as the dashboard takes it. The step list names triggers "trigger:upload" and
- * so on, and a model reasonably sends that name as the kind; the dashboard wants "upload".
+ * A change as Takewon takes it. A trigger is checked and filled in here (trigger-shape.ts):
+ * the step list names triggers "trigger:upload" and so on, and a model reasonably sends
+ * that name as the kind; an upload trigger with no file type takes any file; and a wrong
+ * one comes back with what is wrong, where Convex would only say "Server Error".
  */
 export function asSent(op: z.infer<typeof operation>): z.infer<typeof operation> {
   if (op.op !== "trigger" && op.op !== "addTrigger") return op;
-  if (!op.trigger.kind.startsWith("trigger:")) return op;
-  return { ...op, trigger: { ...op.trigger, kind: op.trigger.kind.slice("trigger:".length) } };
+  return { ...op, trigger: triggerAsSent(op.trigger) };
 }
 
 export const changeAutomation = createTool({
@@ -327,7 +329,7 @@ export const createAutomation = createTool({
     const { client, session } = dashFor(userOf(ctx));
     if (!session.organizationId) {
       throw new Error(
-        "The dashboard has not said which team is open. Ask the person to open the dashboard.",
+        "Takewon has not said which team is open. Ask the person to open Takewon.",
       );
     }
     try {
