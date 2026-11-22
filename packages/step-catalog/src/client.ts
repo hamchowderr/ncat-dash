@@ -1,3 +1,4 @@
+import { composeProblem } from "./compose-guard";
 import {
   type Beats,
   type FileFacts,
@@ -282,6 +283,8 @@ export function pictureGivenForVideo(
     : `This step needs a video, and ${name} is a picture.`;
 }
 
+const COMPOSE_ENDPOINT = "/v1/ffmpeg/compose";
+
 export async function callStep(
   connection: ToolkitConnection,
   step: StepDefinition,
@@ -298,6 +301,11 @@ export async function callStep(
   const body = compact(
     step.toRequest ? step.toRequest(parsed, facts) : (parsed as Record<string, unknown>),
   );
+  // Nothing sent to compose may read, write or load a file on the toolkit (compose-guard.ts).
+  if (step.endpoint === COMPOSE_ENDPOINT) {
+    const problem = composeProblem(body);
+    if (problem) throw new StepSetupError(problem);
+  }
   if (options.webhookUrl) body[RUNNER_FIELDS[0]] = options.webhookUrl;
   if (options.id) body[RUNNER_FIELDS[1]] = options.id;
 
