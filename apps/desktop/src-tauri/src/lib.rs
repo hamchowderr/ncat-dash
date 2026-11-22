@@ -3,8 +3,8 @@
 //! back to it, and alerts as system notifications with the unseen count on the tray.
 //!
 //! Security: the dashboard's pages are a remote site. capabilities/default.json covers
-//! only the app's own pages; once someone connects, the dashboard's origin is given two
-//! commands and nothing else (see `dashboard.rs`), and each checks the caller is the
+//! only the app's own pages; once someone connects, the dashboard's origin is given the
+//! commands in `dashboard.rs` and nothing else, and each checks the caller is the
 //! dashboard open now.
 
 /// The product's name, from apps/desktop/product.json (set in build.rs), so a rename
@@ -17,6 +17,7 @@ pub mod dashboard;
 pub mod exports;
 pub mod links;
 pub mod saved;
+pub mod uploads;
 
 use std::sync::Mutex;
 
@@ -28,6 +29,7 @@ use tauri::{
     AppHandle, Manager, State, Url, UserAttentionType, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder, WindowEvent,
 };
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -212,6 +214,186 @@ fn show_export(
         .map_err(|error| error.to_string())
 }
 
+fn uploads_store(app: &AppHandle) -> Result<uploads::Store, String> {
+    let folder = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| format!("{NAME} couldn't find its settings folder."))?;
+    Ok(uploads::Store::new(&folder))
+}
+
+/// The origin of the dashboard open now, which an upload is written down under.
+fn current_dashboard(places: &Places) -> Result<String, String> {
+    places
+        .current
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|url| url.origin().ascii_serialization() + "/")
+        .ok_or_else(|| "No dashboard is open.".to_string())
+}
+
+/// Opens the computer's own file picker and says what was chosen. Only files chosen here
+/// can be read and sent.
+#[tauri::command]
+async fn choose_files(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    allowed: State<'_, uploads::Allowed>,
+) -> Result<Vec<uploads::Chosen>, String> {
+    from_dashboard(&window, &places)?;
+    let picked = app
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .blocking_pick_files()
+        .unwrap_or_default();
+    Ok(picked
+        .into_iter()
+        .filter_map(|picked| picked.into_path().ok())
+        .filter_map(|path| {
+            let chosen = uploads::describe(&path)?;
+            allowed.allow(&path);
+            Some(chosen)
+        })
+        .collect())
+}
+
+/// Sends a small chosen file whole to the link the dashboard signed.
+#[tauri::command]
+async fn send_file(
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    allowed: State<'_, uploads::Allowed>,
+    path: String,
+    url: String,
+    content_type: String,
+) -> Result<(), String> {
+    from_dashboard(&window, &places)?;
+    let path = std::path::PathBuf::from(path);
+    if !allowed.contains(&path) {
+        return Err("Only files chosen in the app can be sent.".into());
+    }
+    let size = std::fs::metadata(&path)
+        .map_err(|error| error.to_string())?
+        .len();
+    uploads::put_range(
+        &uploads::client()?,
+        &path,
+        0,
+        size,
+        &url,
+        Some(&content_type),
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Writes down an upload going up in parts (or finds it again, to carry on) and says
+/// which parts the bucket already has.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn begin_upload(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    allowed: State<'_, uploads::Allowed>,
+    upload_id: String,
+    path: String,
+    plan: uploads::Plan,
+) -> Result<uploads::Pending, String> {
+    from_dashboard(&window, &places)?;
+    let store = uploads_store(&app)?;
+    let dashboard = current_dashboard(&places)?;
+    if let Some(pending) = store.get(&upload_id) {
+        if pending.dashboard != dashboard || pending.path != path {
+            return Err("That upload belongs elsewhere.".into());
+        }
+        return Ok(pending);
+    }
+    let file = std::path::PathBuf::from(&path);
+    if !allowed.contains(&file) {
+        return Err("Only files chosen in the app can be sent.".into());
+    }
+    let chosen = uploads::describe(&file).ok_or("That file is no longer there.")?;
+    let pending = uploads::Pending {
+        upload_id,
+        dashboard,
+        path,
+        name: chosen.name,
+        size: chosen.size,
+        content_type: chosen.content_type,
+        plan,
+        parts: vec![],
+    };
+    store.begin(pending.clone())?;
+    Ok(pending)
+}
+
+/// Sends one part of an upload written down by `begin_upload`, read from its file, and
+/// writes down the ETag the bucket answered with.
+#[tauri::command]
+async fn send_part(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    upload_id: String,
+    part_number: u32,
+    url: String,
+) -> Result<Option<String>, String> {
+    from_dashboard(&window, &places)?;
+    let store = uploads_store(&app)?;
+    let pending = store
+        .get(&upload_id)
+        .filter(|pending| Ok(&pending.dashboard) == current_dashboard(&places).as_ref())
+        .ok_or("That upload isn't going up from this computer.")?;
+    let (start, end) = uploads::part_range(pending.plan, pending.size, part_number)
+        .ok_or("That part is outside the file.")?;
+    let path = std::path::PathBuf::from(&pending.path);
+    let etag = uploads::put_range(&uploads::client()?, &path, start, end, &url, None).await?;
+    if let Some(etag) = &etag {
+        store.sent(
+            &upload_id,
+            uploads::SentPart {
+                part_number,
+                etag: etag.clone(),
+            },
+        )?;
+    }
+    Ok(etag)
+}
+
+/// The open dashboard's uploads that stopped part way, to carry on from.
+#[tauri::command]
+fn stopped_uploads(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+) -> Result<Vec<uploads::Pending>, String> {
+    from_dashboard(&window, &places)?;
+    Ok(uploads_store(&app)?.stopped(&current_dashboard(&places)?))
+}
+
+/// Forgets an upload: it finished, or the person dropped it.
+#[tauri::command]
+fn forget_upload(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    upload_id: String,
+) -> Result<(), String> {
+    from_dashboard(&window, &places)?;
+    let store = uploads_store(&app)?;
+    let dashboard = current_dashboard(&places)?;
+    match store.get(&upload_id) {
+        Some(pending) if pending.dashboard != dashboard => {
+            Err("That upload belongs elsewhere.".into())
+        }
+        _ => store.forget(&upload_id),
+    }
+}
+
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN) {
         let _ = window.show();
@@ -357,6 +539,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
+        .manage(uploads::Allowed::default())
         .invoke_handler(tauri::generate_handler![
             saved_servers,
             forget_server,
@@ -365,7 +549,13 @@ pub fn run() {
             set_unseen,
             save_export,
             open_export,
-            show_export
+            show_export,
+            choose_files,
+            send_file,
+            begin_upload,
+            send_part,
+            stopped_uploads,
+            forget_upload
         ])
         .setup(|app| {
             let handle = app.handle().clone();
