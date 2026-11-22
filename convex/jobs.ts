@@ -374,8 +374,22 @@ export const finish = internalMutation({
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
     }
-    await pump(ctx, job.organizationId);
+    // The next waiting jobs are sent on separately. Reading the team's whole queue here
+    // made this mutation clash with every job being added or finished at the same moment
+    // (several recordings coming in, each then sent to be transcribed), and a result lost
+    // that way left an upload "on its way" until the late check.
+    await ctx.scheduler.runAfter(0, internal.jobs.pumpTeam, {
+      organizationId: job.organizationId,
+    });
     return "recorded";
+  },
+});
+
+/** Sends a team's waiting jobs to its toolkit, as many as its limit allows. */
+export const pumpTeam = internalMutation({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    await pump(ctx, args.organizationId);
   },
 });
 
@@ -413,7 +427,9 @@ export const giveUp = internalMutation({
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
     }
-    await pump(ctx, job.organizationId);
+    await ctx.scheduler.runAfter(0, internal.jobs.pumpTeam, {
+      organizationId: job.organizationId,
+    });
   },
 });
 
