@@ -1968,18 +1968,25 @@ export default defineSchema({
     .index("by_clip", ["clipId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
 
-  // A project's storyboard: the video planned line by line before it is made. A project
-  // has at most one. Its chapters and takes are kept in their own tables below.
+  // A storyboard: the video planned line by line before it is made. A project has at most
+  // one, and so does each upload: the draft made from what was said in it, a line for every
+  // sentence with its own clip. Its chapters and takes are kept in their own tables below.
   storyboards: defineTable({
     organizationId: v.string(),
-    projectId: v.id("projects"),
+    // The project it plans. Left out on an upload's draft.
+    projectId: v.optional(v.id("projects")),
+    // The upload it was drafted from. Left out on a project's storyboard.
+    libraryItemId: v.optional(v.id("libraryItems")),
     aspect: v.union(v.literal("16:9"), v.literal("9:16"), v.literal("1:1"), v.literal("4:5")),
     // Where its lines came from, such as "From the page AI-Assisted Development, Part 1".
     source: v.optional(v.string()),
     // The videos the storyboard is cut into, such as "Short lessons" on "YouTube · 16:9".
     cuts: v.array(cutValidator),
     updatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_library_item", ["libraryItemId"])
+    .index("by_organization", ["organizationId"]),
 
   storyboardChapters: defineTable({
     storyboardId: v.id("storyboards"),

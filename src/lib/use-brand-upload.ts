@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { readUploadRef, uploadRef } from "@ncat-dash/automation-core";
+import { readClipRef, readUploadRef, uploadRef } from "@ncat-dash/automation-core";
 import { useAction, useMutation } from "convex/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -61,7 +61,10 @@ export function useBrandUpload() {
  */
 export function useFileLink(value: string | undefined): string | null {
   const linkFor = useAction(api.storage.linkFor);
-  const uploadId = readUploadRef(value);
+  // Part of an upload plays from the upload's link, cut to its stretch by `#t=start,end`.
+  const clip = readClipRef(value);
+  const uploadId = readUploadRef(value) ?? clip?.uploadId ?? null;
+  const fragment = clip ? `#t=${clip.start},${clip.end}` : "";
   const [link, setLink] = useState<{ id: string; url: string } | null>(null);
   useEffect(() => {
     if (!uploadId) return;
@@ -73,6 +76,6 @@ export function useFileLink(value: string | undefined): string | null {
       live = false;
     };
   }, [uploadId, linkFor]);
-  if (uploadId) return link?.id === uploadId ? link.url : null;
+  if (uploadId) return link?.id === uploadId ? `${link.url}${fragment}` : null;
   return value && /^https?:\/\/\S+$/.test(value) ? value : null;
 }

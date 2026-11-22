@@ -47,6 +47,15 @@ test("an upload joins the library, is searched by what was said, and is tagged",
     timeout: 30_000,
   });
 
+  // A storyboard drafted from it: a line for every sentence, each with its own clip.
+  const storyboard = page.getByRole("region", { name: "Storyboard" });
+  await expect(storyboard.getByText("Today we talk about pricing your edits.")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(storyboard.getByText(/1 chapter · 2 takes/)).toBeVisible();
+  await storyboard.getByRole("button", { name: /Take 1/ }).click();
+  await expect(storyboard.getByText(/From the upload, 0:00 to 0:0\d/)).toBeVisible();
+
   // The same words as SRT and VTT, to read, copy or download.
   await page.getByRole("radio", { name: "SRT" }).click();
   const subtitles = page.getByTestId("subtitle-text");
