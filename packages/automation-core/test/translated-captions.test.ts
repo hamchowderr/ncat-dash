@@ -50,7 +50,14 @@ describe("caption language setting", () => {
     expect(writtenWithoutSpaces("ja")).toBe(true);
     expect(writtenWithoutSpaces("zh-TW")).toBe(true);
     expect(writtenWithoutSpaces("es")).toBe(false);
-    expect(scriptFontFor("ja")).toBe("Noto Sans TC");
+    expect(scriptFontFor("ja")).toBe("Noto Sans CJK JP");
+    expect(scriptFontFor("zh")).toBe("Noto Sans CJK SC");
+    expect(scriptFontFor("zh-TW")).toBe("Noto Sans CJK TC");
+    expect(scriptFontFor("ko")).toBe("Noto Sans CJK KR");
+    expect(scriptFontFor("hi")).toBe("Noto Sans Devanagari");
+    expect(scriptFontFor("th")).toBe("Noto Sans Thai");
+    expect(scriptFontFor("he")).toBe("Noto Sans Hebrew");
+    expect(scriptFontFor("am")).toBe("Noto Sans Ethiopic");
     expect(scriptFontFor("ar")).toBe("Noto Sans Arabic");
     expect(scriptFontFor("es")).toBeNull();
   });
@@ -237,7 +244,7 @@ describe("translatedCaptionFile", () => {
       size,
       "ja",
     );
-    expect(file).toContain("Style: Default,Noto Sans TC,");
+    expect(file).toContain("Style: Default,Noto Sans CJK JP,");
     expect(file).toContain("洞窟を{\\c&H0000FFFF}探検しました");
   });
 
