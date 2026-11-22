@@ -62,3 +62,61 @@ export function translatePrompt(request: TranslateRequest): string {
   ];
   return lines.filter((line) => line !== "").join("\n");
 }
+
+/**
+ * Translated captions with the word being said lit up (the "Caption video" step with a
+ * caption language; see automation-core translated-captions.ts). The dashboard sends the
+ * spoken words, cut into short lines; the model translates each line and, with every
+ * translated word, names the spoken words it stands for. The dashboard times the
+ * translated words from those, so they light up as the speaker says what they mean.
+ */
+export const translateWordsRequest = z.object({
+  /** The language to caption in, by name, such as "Japanese". */
+  language: z.string().min(1).max(80),
+  /** Whether the language is written without spaces between words (Japanese, Thai...). */
+  noSpaces: z.boolean().default(false),
+  /** The spoken lines, each a list of its words in order. */
+  lines: z
+    .array(z.array(z.string().max(200)).min(1).max(40))
+    .min(1)
+    .max(60),
+});
+
+export type TranslateWordsRequest = z.infer<typeof translateWordsRequest>;
+
+export const TRANSLATE_WORDS_INSTRUCTIONS = `You translate the spoken words of a video into captions in another language, for a video dashboard. You never edit video.
+
+You are given numbered lines of what was said. In each line every spoken word has a number, starting at 0 in each line. Translate each line into the language you are asked for, naturally, as a good subtitler would, in the register of the speaker. Keep names of people, brands and products as they are, and numbers as numbers.
+
+With each translated word, name the numbers of the spoken words in the same line it translates: one number, several when it stands for several words, or none for a word with nothing to stand for (such as an article the other language needs). A spoken word that the translation leaves out needs no translated word. This lets the captions light each translated word up as the speaker says what it means, so pair words by meaning, not by position.
+
+Your answer is read by a program, so answer with one JSON list and nothing else: no words before or after it, no code fence. The list has exactly one entry for each numbered line, in the same order. Each entry is a list of [word, [numbers]] pairs in reading order. Never move words from one line to another.`;
+
+export const translateWordsAgent = new Agent({
+  id: "translate-words",
+  name: "Translate captions word by word",
+  description:
+    "Translates a video's spoken lines into another language, pairing each translated word with the spoken words it stands for.",
+  instructions: TRANSLATE_WORDS_INSTRUCTIONS,
+  model: ({ requestContext }) => {
+    const key = requestContext.get(TEAM_KEY);
+    return onTeamKey(translateModel(), typeof key === "string" ? key : null);
+  },
+});
+
+/** What the model is told along with the words. */
+export function translateWordsPrompt(request: TranslateWordsRequest): string {
+  return [
+    `Translate these spoken caption lines into ${request.language}, pairing each translated word with the spoken words it stands for.`,
+    request.noSpaces
+      ? `${request.language} is written without spaces, so give its words as the short words or word groups a reader would see one by one.`
+      : "",
+    `Lines (${request.lines.length}):`,
+    ...request.lines.map(
+      (words, index) =>
+        `Line ${index + 1}: ${words.map((word, at) => `${at}:${word.replace(/\s+/g, " ")}`).join(" ")}`,
+    ),
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}

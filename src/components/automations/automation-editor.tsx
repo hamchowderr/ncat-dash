@@ -1292,7 +1292,8 @@ function Editor({ automation }: { automation: Loaded }) {
                         selected.data.node.kind === "motion" ||
                         selected.data.node.kind === "sound-effects" ||
                         selected.data.node.kind === "cleanup" ||
-                        selected.data.node.kind === "footage-check") && (
+                        selected.data.node.kind === "footage-check" ||
+                        selected.data.node.kind === "subtitles") && (
                         <StepTest
                           key={selected.id}
                           automationId={automation._id}

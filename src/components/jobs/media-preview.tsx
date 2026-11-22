@@ -7,6 +7,15 @@ const VIDEO = /\.(mp4|mov|webm|mkv|m4v)(\?|$)/i;
 const AUDIO = /\.(mp3|wav|m4a|aac|ogg|flac)(\?|$)/i;
 const IMAGE = /\.(png|jpe?g|gif|webp|avif)(\?|$)/i;
 
+/** Whether a link is to a video a player can show, judged by its file name. */
+export function isVideoUrl(url: string): boolean {
+  try {
+    return VIDEO.test(new URL(url).pathname);
+  } catch {
+    return VIDEO.test(url);
+  }
+}
+
 export function fileNameOf(url: string): string {
   try {
     const name = new URL(url).pathname.split("/").filter(Boolean).pop();

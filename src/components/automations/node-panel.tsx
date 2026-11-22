@@ -10,6 +10,7 @@ import type {
 import {
   BRAND_WORDS,
   CAPTION_SHAPES,
+  CAPTION_LANGUAGE_SETTING,
   CAPTION_STYLE_SETTING,
   isCaptionStep,
   getPlatform,
@@ -56,8 +57,10 @@ import { LogicSettings } from "./logic-panel";
 import { LOOK_SETTING, LookPicker } from "./look-picker";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
 import { BrollMain, BrollMore, BrollPlanMain } from "./broll-settings";
+import { CaptionLanguagePicker } from "./caption-language-picker";
 import { CleanupMain } from "./cleanup-settings";
 import { FootageMain } from "./footage-settings";
+import { SubtitleLanguagesPicker } from "./subtitle-languages-picker";
 import { MotionMain, MotionPlanMain, SoundEffectsMain } from "./motion-settings";
 import { PlatformPicker } from "./platform-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
@@ -225,7 +228,8 @@ export function NodePanel({
     node.kind === "motion-plan" ||
     node.kind === "motion" ||
     node.kind === "sound-effects" ||
-    node.kind === "cleanup"
+    node.kind === "cleanup" ||
+    node.kind === "subtitles"
   ) {
     handled.push({
       label: "Video",
@@ -280,13 +284,14 @@ export function NodePanel({
     setValues(next);
     const parsed = toInput(fields, next);
     setProblem(parsed.ok ? null : parsed.message);
-    // The caption style is not one of the toolkit's fields, so it is carried over by hand.
-    const picked = node.input[CAPTION_STYLE_SETTING];
-    if (parsed.ok) {
-      onChange({
-        input: { ...parsed.input, ...(picked ? { [CAPTION_STYLE_SETTING]: picked } : {}) },
-      });
-    }
+    // The caption style and language are not the toolkit's fields, so they are carried
+    // over by hand.
+    const own = Object.fromEntries(
+      [CAPTION_STYLE_SETTING, CAPTION_LANGUAGE_SETTING].flatMap((name) =>
+        node.input[name] ? [[name, node.input[name]]] : [],
+      ),
+    );
+    if (parsed.ok) onChange({ input: { ...parsed.input, ...own } });
   };
   const automatic = { field: automaticField, sources, filled, brand: brandFields };
 
@@ -447,6 +452,14 @@ export function NodePanel({
         <FootageMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
       )}
 
+      {node.kind === "subtitles" && (
+        <SubtitleLanguagesPicker
+          nodeId={node.id}
+          input={node.input}
+          onChange={(input) => onChange({ input })}
+        />
+      )}
+
       {picksLook && (
         <LookPicker
           nodeId={node.id}
@@ -462,6 +475,17 @@ export function NodePanel({
         <CaptionStylePicker
           node={node}
           captions={captions}
+          onChange={(input) => {
+            setValues(fromInput(input));
+            onChange({ input });
+          }}
+        />
+      )}
+
+      {captionStep && node.stepId === "video-caption" && (
+        <CaptionLanguagePicker
+          nodeId={node.id}
+          input={node.input}
           onChange={(input) => {
             setValues(fromInput(input));
             onChange({ input });

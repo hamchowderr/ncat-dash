@@ -9,14 +9,17 @@
  */
 
 import type * as access from "../access.js";
+import type * as agentScreen from "../agentScreen.js";
 import type * as aiSpend from "../aiSpend.js";
 import type * as alerts from "../alerts.js";
 import type * as anthropicKey from "../anthropicKey.js";
 import type * as auth from "../auth.js";
+import type * as automationFolders from "../automationFolders.js";
 import type * as automations from "../automations.js";
 import type * as blocks from "../blocks.js";
 import type * as broll from "../broll.js";
 import type * as calendar from "../calendar.js";
+import type * as captionTranslation from "../captionTranslation.js";
 import type * as chatAlertPresses from "../chatAlertPresses.js";
 import type * as chatAlerts from "../chatAlerts.js";
 import type * as clients from "../clients.js";
@@ -69,6 +72,7 @@ import type * as lib_exports from "../lib/exports.js";
 import type * as lib_facts from "../lib/facts.js";
 import type * as lib_footage from "../lib/footage.js";
 import type * as lib_googleMeet from "../lib/googleMeet.js";
+import type * as lib_knownWords from "../lib/knownWords.js";
 import type * as lib_library from "../lib/library.js";
 import type * as lib_limits from "../lib/limits.js";
 import type * as lib_logic from "../lib/logic.js";
@@ -96,6 +100,7 @@ import type * as lib_slackPosts from "../lib/slackPosts.js";
 import type * as lib_slackSignature from "../lib/slackSignature.js";
 import type * as lib_storyboard from "../lib/storyboard.js";
 import type * as lib_storyboards from "../lib/storyboards.js";
+import type * as lib_subtitles from "../lib/subtitles.js";
 import type * as lib_teamSteps from "../lib/teamSteps.js";
 import type * as lib_teamsApp from "../lib/teamsApp.js";
 import type * as lib_teamsPosts from "../lib/teamsPosts.js";
@@ -138,6 +143,7 @@ import type * as slackReview from "../slackReview.js";
 import type * as storage from "../storage.js";
 import type * as storyboards from "../storyboards.js";
 import type * as stuck from "../stuck.js";
+import type * as subtitleTranslation from "../subtitleTranslation.js";
 import type * as teamSettings from "../teamSettings.js";
 import type * as teamSteps from "../teamSteps.js";
 import type * as teams from "../teams.js";
@@ -163,14 +169,17 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  agentScreen: typeof agentScreen;
   aiSpend: typeof aiSpend;
   alerts: typeof alerts;
   anthropicKey: typeof anthropicKey;
   auth: typeof auth;
+  automationFolders: typeof automationFolders;
   automations: typeof automations;
   blocks: typeof blocks;
   broll: typeof broll;
   calendar: typeof calendar;
+  captionTranslation: typeof captionTranslation;
   chatAlertPresses: typeof chatAlertPresses;
   chatAlerts: typeof chatAlerts;
   clients: typeof clients;
@@ -223,6 +232,7 @@ declare const fullApi: ApiFromModules<{
   "lib/facts": typeof lib_facts;
   "lib/footage": typeof lib_footage;
   "lib/googleMeet": typeof lib_googleMeet;
+  "lib/knownWords": typeof lib_knownWords;
   "lib/library": typeof lib_library;
   "lib/limits": typeof lib_limits;
   "lib/logic": typeof lib_logic;
@@ -250,6 +260,7 @@ declare const fullApi: ApiFromModules<{
   "lib/slackSignature": typeof lib_slackSignature;
   "lib/storyboard": typeof lib_storyboard;
   "lib/storyboards": typeof lib_storyboards;
+  "lib/subtitles": typeof lib_subtitles;
   "lib/teamSteps": typeof lib_teamSteps;
   "lib/teamsApp": typeof lib_teamsApp;
   "lib/teamsPosts": typeof lib_teamsPosts;
@@ -292,6 +303,7 @@ declare const fullApi: ApiFromModules<{
   storage: typeof storage;
   storyboards: typeof storyboards;
   stuck: typeof stuck;
+  subtitleTranslation: typeof subtitleTranslation;
   teamSettings: typeof teamSettings;
   teamSteps: typeof teamSteps;
   teams: typeof teams;

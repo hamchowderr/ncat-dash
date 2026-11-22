@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 
@@ -13,6 +14,21 @@ function absoluteFileUrl(url: string): string {
   const p = url.slice('file:'.length);
   if (p.startsWith('/') || path.isAbsolute(p)) return url;
   return `file:${path.resolve(process.cwd(), p.replace(/^\.\//, '')).replace(/\\/g, '/')}`;
+}
+
+/**
+ * Resolve a relative path against the server package: the nearest directory at or above
+ * the cwd that holds a package.json, else the cwd. `mastra dev` runs the server with its
+ * cwd in src/mastra/public, so a bare cwd-relative `./knowledge` would miss the folder at
+ * the package root; tests and `mastra start` run from the package root, and the Docker
+ * image (no package.json above /app) resolves against /app.
+ */
+export function packageRelative(p: string, cwd = process.cwd()): string {
+  if (path.isAbsolute(p)) return p;
+  for (let dir = cwd; ; dir = path.dirname(dir)) {
+    if (existsSync(path.join(dir, 'package.json'))) return path.resolve(dir, p);
+    if (path.dirname(dir) === dir) return path.resolve(cwd, p);
+  }
 }
 
 const boolish = z
@@ -78,9 +94,23 @@ const envSchema = z
     SUBAGENT_WRITER: boolish.default(true),
     SUBAGENT_REVIEW: boolish.default(true),
     SUBAGENT_DATA: boolish.default(true),
-    // generateImage (needs OPENAI_API_KEY), and the demo tools getWeather + searchKnowledge.
+    // generateImage (needs OPENAI_API_KEY), and the chat kit's demo tools getWeather +
+    // searchKnowledge. The demo tools answer with made-up results (searchKnowledge cites
+    // pages on docs.example.com), so they are off unless asked for: only the kit's own
+    // tests and fixtures turn them on.
     TOOL_GENERATE_IMAGE: boolish.default(true),
-    TOOL_DEMO: boolish.default(true),
+    TOOL_DEMO: boolish.default(false),
+    // Mastra Knowledge (lib/chat-knowledge.ts): the knowledge_* tools on the chat agent and
+    // the research specialist, the Studio Knowledge explorer, and the boot-time folder sync.
+    TOOL_KNOWLEDGE: boolish.default(true),
+    // The markdown folder mirrored into the Takewon guide scope at boot: each file becomes a
+    // page, an edited file updates its page, and a deleted file has its page removed. A
+    // relative path resolves against the agent package (packageRelative above). A folder
+    // that does not exist syncs nothing.
+    KNOWLEDGE_DIR: z
+      .string()
+      .default('./knowledge')
+      .transform((p) => packageRelative(p)),
     // Anthropic prompt caching (lib/turn-context.ts): cache breakpoints after the tools and
     // instructions, after the stable turn-context sections, and on the conversation tail.
     // Other providers ignore the markers.

@@ -208,3 +208,44 @@ describe("Outputs of steps run by hand", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("Recent files for a review room's new version", () => {
+  test("each file carries its step's name in the automation, not the toolkit request", async () => {
+    const { t, teamId, olu, shortsRun } = await team();
+    await t.run(async (ctx) => {
+      const [connection] = await ctx.db.query("toolkitConnections").collect();
+      const steps = await ctx.db
+        .query("runSteps")
+        .filter((q) => q.eq(q.field("runId"), shortsRun))
+        .collect();
+      const of = (nodeId: string) => steps.find((step) => step.nodeId === nodeId)!._id;
+      for (const [nodeId, stepId, finishedAt] of [
+        ["cut", "ffmpeg-compose", 1_700_000_300_000],
+        ["caps", "video-caption", 1_700_000_200_000],
+      ] as const) {
+        await ctx.db.insert("jobs", {
+          organizationId: teamId,
+          connectionId: connection._id,
+          stepId,
+          input: {},
+          status: "done",
+          webhookToken: "w",
+          toolkitJobId: null,
+          outputs: [`https://files.example/out/${nodeId}.mp4`],
+          error: null,
+          createdBy: olu.id,
+          startedAt: 0,
+          finishedAt,
+          runStepId: of(nodeId),
+        });
+      }
+    });
+    const groups = await olu.as.query(api.jobs.outputs, { organizationId: teamId });
+    const named = Object.fromEntries(groups.map((group) => [group.urls[0], group.stepName]));
+    // Named in the automation, then the catalog's name for a step left unnamed.
+    expect(named["https://files.example/out/cut.mp4"]).toBe("TikTok clips");
+    expect(named["https://files.example/out/caps.mp4"]).toBe("Caption video");
+    // Run by hand on the Steps page: no automation step to name it after.
+    expect(named["https://files.example/out/episode.mp3"]).toBeNull();
+  });
+});

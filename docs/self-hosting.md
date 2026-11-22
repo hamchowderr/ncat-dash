@@ -283,7 +283,7 @@ To see how long videos take on your machine, before and after an update or a cha
 - **Convex** holds everything except files. `npx convex export --path backup.zip` (with the two `CONVEX_SELF_HOSTED_*` values set) saves it; `npx convex import` brings one back. Or back up the `convex-data` volume while Convex is stopped.
 - **Bucket**: use your storage provider's versioning or replication.
 - **Agent server**: the `agent-data` volume holds its conversation memory.
-- **On a computer run by the desktop app**, backups are made for you: see [the desktop app](desktop-app.md). To bring one back, start the stack with its `settings.env` as `.env`, then `npx convex import --replace-all database.zip` (with the two `CONVEX_SELF_HOSTED_*` values set), and unpack `agent-memory.tgz` into the `agent-data` volume.
+- **On a computer run by the desktop app**, backups are made for you: see [the desktop app](desktop-app.md). The app brings one back with **Bring back a backup**. By hand: start the stack, run `npx convex import --replace-all -y database.zip` and `npx convex env set --force < convex-settings.env` (with the two `CONVEX_SELF_HOSTED_*` values set), stop `agent` and unpack `agent-memory.tgz` into the `agent-data` volume, then start it and run `setup` again. `settings.env` is the app's settings file from then, for a computer that has none.
 - **Secrets**: keep `CONNECTIONS_SECRET`, `BETTER_AUTH_SECRET`, the Convex instance secret and admin key, and `MASTRA_JWT_SECRET` in a secrets manager. Without `CONNECTIONS_SECRET` a restored database cannot read its saved keys.
 
 ## When Something Is Wrong

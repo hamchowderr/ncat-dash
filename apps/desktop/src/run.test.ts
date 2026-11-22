@@ -34,6 +34,7 @@ const NOTHING: StackSaved = {
   bucketName: "",
   hasAdminKey: false,
   lastBackup: null,
+  backups: [],
   backupsFolder: "/Users/me/Documents/Backups",
   tunnel: null,
   usesTunnel: false,
@@ -56,6 +57,7 @@ function fakeApi(over: Partial<RunApi> = {}) {
     domains: vi.fn(async () => [DOMAIN, { id: "zone2", name: "other.org", account: "acct1" }]),
     tunnel: vi.fn(async () => MADE),
     backUp: vi.fn(async () => "/Users/me/Documents/Backups/2026-11-22 0518"),
+    restore: vi.fn(async () => "/Users/me/Documents/Backups/2026-11-22 0600"),
     step: vi.fn(async (step: Step) => {
       ran.push(step);
     }),
@@ -213,6 +215,7 @@ describe("running it on this computer", () => {
       bucketName: "videos",
       hasAdminKey: false,
       lastBackup: null,
+      backups: [],
       backupsFolder: "",
       tunnel: null,
       usesTunnel: false,
@@ -398,6 +401,79 @@ describe("running it on this computer", () => {
       expect($(root, ".backup-result").textContent).toContain("Docker isn't running"),
     );
     expect($(root, ".backup-result").className).toContain("error");
+  });
+
+  test("brings a backup back only after saying what it replaces", async () => {
+    const backups = ["2026-11-21 0300", "2026-11-20 0300"];
+    const saved: StackSaved = {
+      ...NOTHING,
+      saved: true,
+      addresses: MADE,
+      hasAdminKey: true,
+      lastBackup: backups[0]!,
+      backups,
+    };
+    const { api } = fakeApi({ saved: vi.fn(async () => saved) });
+    const { root } = await render(api);
+    expect($<HTMLElement>(root, ".restore").hidden).toBe(false);
+    const options = [...root.querySelectorAll<HTMLOptionElement>("#restore-from option")];
+    expect(options.map((option) => option.value)).toEqual(backups);
+    expect(options[1]!.textContent).toBe(whenBackedUp("2026-11-20 0300"));
+
+    $<HTMLSelectElement>(root, "#restore-from").value = "2026-11-20 0300";
+    $<HTMLButtonElement>(root, ".restore-ask").click();
+    expect(api.restore).not.toHaveBeenCalled();
+    expect($<HTMLElement>(root, ".restore-confirm").hidden).toBe(false);
+    const what = $(root, ".restore-what").textContent!;
+    expect(what).toContain(whenBackedUp("2026-11-20 0300"));
+    expect(what).toContain("backed up first");
+    expect(what).toContain("Videos in the bucket stay as they are");
+
+    $<HTMLButtonElement>(root, ".restore-cancel").click();
+    expect($<HTMLElement>(root, ".restore-confirm").hidden).toBe(true);
+    expect(api.restore).not.toHaveBeenCalled();
+
+    $<HTMLButtonElement>(root, ".restore-ask").click();
+    $<HTMLButtonElement>(root, ".restore-go").click();
+    expect($<HTMLButtonElement>(root, ".back-up").disabled).toBe(true);
+    await vi.waitFor(() =>
+      expect($(root, ".restore-result").textContent).toContain(
+        "What was there before is backed up in /Users/me/Documents/Backups/2026-11-22 0600.",
+      ),
+    );
+    expect(api.restore).toHaveBeenCalledWith("2026-11-20 0300");
+    expect($<HTMLButtonElement>(root, ".back-up").disabled).toBe(false);
+  });
+
+  test("offers nothing to bring back before the first backup, and says why one failed", async () => {
+    const none = await render(
+      fakeApi({
+        saved: async () => ({ ...NOTHING, saved: true, addresses: MADE, hasAdminKey: true }),
+      }).api,
+    );
+    expect($<HTMLElement>(none.root, ".restore").hidden).toBe(true);
+    none.root.remove();
+
+    const { api } = fakeApi({
+      saved: async () => ({
+        ...NOTHING,
+        saved: true,
+        addresses: MADE,
+        hasAdminKey: true,
+        backups: ["2026-11-21 0300"],
+      }),
+      restore: vi.fn(async () => {
+        throw "Bringing it back stopped with: no space left on device";
+      }),
+    });
+    const { root } = await render(api);
+    $<HTMLButtonElement>(root, ".restore-ask").click();
+    $<HTMLButtonElement>(root, ".restore-go").click();
+    await vi.waitFor(() =>
+      expect($(root, ".restore-result").textContent).toContain("no space left on device"),
+    );
+    expect($(root, ".restore-result").className).toContain("error");
+    expect($<HTMLButtonElement>(root, ".restore-ask").disabled).toBe(false);
   });
 
   test("shows a backup's time in the person's own time", () => {

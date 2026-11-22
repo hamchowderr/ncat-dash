@@ -7,6 +7,7 @@ import {
   askedToDecide,
   burnRequest,
   burnsInFast,
+  captionLanguageOf,
   captionVideoOf,
   canUseKnownWords,
   hasKnownWords,
@@ -74,11 +75,12 @@ import { collectUrls } from "./outputs";
 import { captionSetupOf } from "./captions";
 import { knownWordsFor } from "./knownWords";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
-import { finishListening, startListening } from "./moments";
+import { finishListening, listenRequest, startListening, wordsFor } from "./moments";
 import { type DisclosureNote, hearFirst } from "./disclosure";
 import { finishLaying, finishLooking } from "./broll";
 import { finishMotionListening, isPlaceKind } from "./motion";
 import { finishFootageCheck, startFootageCheck } from "./footage";
+import { startSubtitles } from "./subtitles";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
@@ -351,6 +353,11 @@ async function startNode(
     return;
   }
 
+  if (node.kind === "subtitles") {
+    await startSubtitles(ctx, run, node, step, byNode);
+    return;
+  }
+
   if (node.kind === "if") {
     await startIf(ctx, run, node, step, byNode);
     return;
@@ -488,7 +495,42 @@ async function startToolkitStep(
     const field = definition.primaryInput ?? "";
     const urlOf = (input: Record<string, unknown>) =>
       typeof input[field] === "string" ? (input[field] as string) : "";
-    if (!sizes && needsDetails(node.input, setup)) {
+    // "Caption video" in another language: the step draws the caption file itself from
+    // each video's words, translated and timed (captionTranslation.ts), then burns it in.
+    const languages = planned.map(captionLanguageOf);
+    const translating =
+      definition.id === "video-caption" &&
+      languages.some((code) => code !== null) &&
+      planned.every(burnsInFast);
+    if (translating && !heard && !step.heardWords) {
+      // Each video's words first, heard once and kept for every later step.
+      const unheard: string[] = [];
+      for (const url of new Set(planned.map(urlOf))) {
+        if (url && !(await wordsFor(ctx, run.organizationId, url))) unheard.push(url);
+      }
+      if (unheard.length > 0) {
+        const queued = await enqueueAll(
+          ctx,
+          run,
+          step,
+          unheard.map((url) => ({ stepId: "media-transcribe", input: listenRequest(url) })),
+        );
+        if (!queued.ok) {
+          await failStep(ctx, run, step, byNode, queued.message);
+          return;
+        }
+        await ctx.db.patch(step._id, {
+          status: "running",
+          stage: "hear",
+          heardWords: true,
+          jobIds: queued.jobIds,
+          startedAt: step.startedAt ?? now,
+        });
+        return;
+      }
+    }
+    // The caption file is drawn at the video's own size, so a translating step reads it.
+    if (!sizes && (translating || needsDetails(node.input, setup))) {
       const known = knownDetails(run.trigger);
       const unknown = [...new Set(planned.map(urlOf))].filter((url) => url && !known.has(url));
       if (unknown.length > 0) {
@@ -517,6 +559,32 @@ async function startToolkitStep(
     planned = planned.map((input) =>
       withCaptionSetup(input, setup, { details: details.get(urlOf(input)), brandFont }),
     );
+
+    if (translating) {
+      const captionPlan = planned.map((input, index) => {
+        const video = urlOf(input);
+        const size = details.get(video);
+        return {
+          video,
+          language: languages[index] ?? "",
+          look: lookOf(input.settings),
+          // A video whose size could not be read is drawn as a wide 1080p one.
+          width: size?.width && size.height ? size.width : 1920,
+          height: size?.width && size.height ? size.height : 1080,
+        };
+      });
+      await ctx.db.patch(step._id, {
+        status: "running",
+        stage: "translate",
+        jobIds: [],
+        captionPlan,
+        startedAt: step.startedAt ?? now,
+      });
+      await ctx.scheduler.runAfter(0, internal.captionTranslation.translate, {
+        runStepId: step._id,
+      });
+      return;
+    }
 
     // "Caption video" is made the fast way: the timed words first ("listen"), then one
     // quick save that burns them in ("render"). See burn-captions.ts.
@@ -599,7 +667,8 @@ export async function finishHearing(ctx: MutationCtx, run: Doc<"runs">, step: Do
   const byNode = new Map(steps.map((other) => [other.nodeId, other]));
   const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
   if (!node) return;
-  await startToolkitStep(ctx, run, node, step, byNode, undefined, true);
+  if (node.kind === "subtitles") await startSubtitles(ctx, run, node, step, byNode);
+  else await startToolkitStep(ctx, run, node, step, byNode, undefined, true);
   await advance(ctx, run._id);
 }
 
@@ -1085,6 +1154,18 @@ export async function retryStepNow(
   await pump(ctx, run.organizationId);
 }
 
+/** A caption job's look settings, kept for drawing its caption file (plain values only). */
+function lookOf(settings: unknown): Record<string, string | number | boolean> {
+  if (typeof settings !== "object" || settings === null || Array.isArray(settings)) return {};
+  return Object.fromEntries(
+    Object.entries(settings).filter(
+      (entry): entry is [string, string | number | boolean] =>
+        ["string", "number", "boolean"].includes(typeof entry[1]) &&
+        (typeof entry[1] !== "number" || Number.isFinite(entry[1])),
+    ),
+  );
+}
+
 /** A caption step's videos have been read: queue its caption jobs with the style for each. */
 async function finishSizes(
   ctx: MutationCtx,
@@ -1255,7 +1336,9 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
         run,
         step,
         new Map(steps.map((other) => [other.nodeId, other])),
-        `Could not transcribe the video to find its paid-ad disclosure: ${failed.error ?? "the toolkit gave no reason."}`,
+        step.heardWords
+          ? `Could not transcribe the video to ${(run.nodes as AutomationNode[]).find((one) => one.id === step.nodeId)?.kind === "subtitles" ? "translate its subtitles" : "caption it in another language"}: ${failed.error ?? "the toolkit gave no reason."}`
+          : `Could not transcribe the video to find its paid-ad disclosure: ${failed.error ?? "the toolkit gave no reason."}`,
       );
       await advance(ctx, run._id);
       return;
