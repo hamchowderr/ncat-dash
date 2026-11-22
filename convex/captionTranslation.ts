@@ -178,7 +178,7 @@ async function stepsOf(ctx: MutationCtx, runId: Id<"runs">) {
   return new Map(steps.map((other) => [other.nodeId, other]));
 }
 
-class TranslateError extends Error {}
+export class TranslateError extends Error {}
 
 type Asked = { lines: AlignedWord[][] | null; cost: number };
 
@@ -232,7 +232,7 @@ function batchGuess(words: number): number {
 }
 
 /** A video's words translated and timed, a batch of lines at a time. */
-async function translateVideo(
+export async function translateVideo(
   ctx: Pick<ActionCtx, "runMutation">,
   runStepId: Id<"runSteps">,
   organizationId: string,

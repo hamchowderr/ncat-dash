@@ -60,6 +60,7 @@ import { BrollMain, BrollMore, BrollPlanMain } from "./broll-settings";
 import { CaptionLanguagePicker } from "./caption-language-picker";
 import { CleanupMain } from "./cleanup-settings";
 import { FootageMain } from "./footage-settings";
+import { SubtitleLanguagesPicker } from "./subtitle-languages-picker";
 import { MotionMain, MotionPlanMain, SoundEffectsMain } from "./motion-settings";
 import { PlatformPicker } from "./platform-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
@@ -227,7 +228,8 @@ export function NodePanel({
     node.kind === "motion-plan" ||
     node.kind === "motion" ||
     node.kind === "sound-effects" ||
-    node.kind === "cleanup"
+    node.kind === "cleanup" ||
+    node.kind === "subtitles"
   ) {
     handled.push({
       label: "Video",
@@ -448,6 +450,14 @@ export function NodePanel({
 
       {node.kind === "footage-check" && (
         <FootageMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
+      )}
+
+      {node.kind === "subtitles" && (
+        <SubtitleLanguagesPicker
+          nodeId={node.id}
+          input={node.input}
+          onChange={(input) => onChange({ input })}
+        />
       )}
 
       {picksLook && (

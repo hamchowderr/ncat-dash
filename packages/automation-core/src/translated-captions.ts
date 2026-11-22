@@ -19,6 +19,7 @@
  */
 import { CAPTION_LANGUAGE_SETTING } from "./captions";
 import type { Word } from "./moments";
+import { type Cue, wrapCue } from "./subtitles";
 import { languageOf } from "./translation";
 
 /** The language a caption step captions in, when it is not the one spoken, else null. */
@@ -464,4 +465,95 @@ export function translatedCaptionFile(
     ...events,
     "",
   ].join("\n");
+}
+
+// ---------------------------------------------------------------------------------------
+// 5. Subtitle files
+
+/** The node that writes a video's subtitles in other languages (Translate Subtitles). */
+export const MAX_SUBTITLE_LANGUAGES = 10;
+const SUBTITLE_SECONDS = 6;
+const SUBTITLE_MIN_SECONDS = 0.5;
+// Two lines of 42 letters, or of 16 for a language written without spaces (a CJK letter
+// is about twice as wide).
+const SUBTITLE_CHARS = 84;
+const SUBTITLE_CHARS_NO_SPACES = 32;
+
+/** The languages a Translate Subtitles step writes, known codes only, each once. */
+export function subtitleLanguagesOf(input: Record<string, unknown>): string[] {
+  const asked = Array.isArray(input.languages) ? input.languages : [];
+  const codes: string[] = [];
+  for (const one of asked) {
+    const code = typeof one === "string" ? languageOf(one)?.code : undefined;
+    if (code && !codes.includes(code)) codes.push(code);
+  }
+  return codes.slice(0, MAX_SUBTITLE_LANGUAGES);
+}
+
+function twoLines(text: string, noSpaces: boolean): string {
+  if (!noSpaces) return wrapCue(text);
+  const letters = [...text];
+  if (letters.length <= SUBTITLE_CHARS_NO_SPACES / 2) return text;
+  const middle = Math.ceil(letters.length / 2);
+  return `${letters.slice(0, middle).join("")}\n${letters.slice(middle).join("")}`;
+}
+
+/**
+ * Subtitle cues from translated, timed lines: a line is cut where it grows past two
+ * subtitle lines or six seconds, every cue starts and ends with its words, and no cue runs
+ * into the next.
+ */
+export function translatedSubtitleCues(lines: TimedWord[][], code: string): Cue[] {
+  const noSpaces = writtenWithoutSpaces(code);
+  const join = noSpaces ? "" : " ";
+  const most = noSpaces ? SUBTITLE_CHARS_NO_SPACES : SUBTITLE_CHARS;
+  const cues: Cue[] = [];
+  for (const line of lines) {
+    let group: TimedWord[] = [];
+    const close = () => {
+      const text = group
+        .map((word) => word.t.trim())
+        .filter(Boolean)
+        .join(join);
+      if (text) {
+        cues.push({ start: group[0]!.s, end: group[group.length - 1]!.e, text });
+      }
+      group = [];
+    };
+    for (const word of line) {
+      if (!word.t.trim()) continue;
+      if (group.length > 0) {
+        const length = [...group.map((one) => one.t.trim()).join(join)].length;
+        const tooLong = length + join.length + [...word.t.trim()].length > most;
+        const tooSlow = word.e - group[0]!.s > SUBTITLE_SECONDS;
+        if (tooLong || tooSlow) close();
+      }
+      group.push(word);
+    }
+    close();
+  }
+  cues.sort((a, b) => a.start - b.start);
+  return cues.map((cue, index) => {
+    const next = cues[index + 1];
+    let end = Math.max(cue.end, cue.start + SUBTITLE_MIN_SECONDS);
+    if (next && end > next.start) end = Math.max(next.start, cue.start + 0.05);
+    const round = (seconds: number) => Math.round(seconds * 1000) / 1000;
+    return { start: round(cue.start), end: round(end), text: twoLines(cue.text, noSpaces) };
+  });
+}
+
+/** "Episode 12.mp4" in Spanish gives "Episode 12.es.srt". */
+export function subtitleFileName(videoName: string, code: string): string {
+  const dot = videoName.lastIndexOf(".");
+  const stem = (dot > 0 ? videoName.slice(0, dot) : videoName).trim() || "Video";
+  return `${stem.replace(/[/\\]/g, "-")}.${code}.srt`;
+}
+
+/** What a Translate Subtitles step writes, for its box on the canvas: "Spanish and French". */
+export function subtitleLanguagesSentence(input: Record<string, unknown>): string {
+  const names = subtitleLanguagesOf(input).map((code) => languageOf(code)?.name ?? code);
+  if (names.length === 0) return "No language picked yet";
+  if (names.length === 1) return names[0]!;
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }

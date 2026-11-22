@@ -193,6 +193,8 @@ export const get = query({
             footage: step.footage ?? null,
             // For Length Cuts and Hook And Ending Variants: the paid-ad disclosure kept.
             disclosures: step.disclosures ?? null,
+            // For Translate Subtitles: each video's subtitle file in each language.
+            subtitles: step.subtitles ?? null,
             pickNote: step.pickNote ?? null,
             // For a step that asks the AI: what it spent, in millionths of a dollar.
             aiSpent: step.aiSpent ?? null,
