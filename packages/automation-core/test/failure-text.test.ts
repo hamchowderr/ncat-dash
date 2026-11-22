@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { explainFailure } from "../src/failure-text";
+import { CAPTIONS_NEED_VIDEO, explainFailure, wrongKindOfFile } from "../src/failure-text";
 
 const fixture = (name: string) => readFileSync(join(__dirname, "fixtures", name), "utf8");
 
@@ -161,5 +161,29 @@ describe("explainFailure", () => {
 
   test("plain sentences with numbers are left alone", () => {
     expect(explainFailure("The file is over 500 MB.").reason).toBe("The file is over 500 MB.");
+  });
+});
+
+describe("wrongKindOfFile", () => {
+  test("Caption video on a picture fails with words meant for programmers; it is said plainly", () => {
+    expect(wrongKindOfFile("video-caption", "tuple index out of range")).toBe(CAPTIONS_NEED_VIDEO);
+    expect(wrongKindOfFile("video-caption", "Error: list index out of range")).toBe(
+      CAPTIONS_NEED_VIDEO,
+    );
+  });
+
+  test("a still image or a silent file is the file's fault for any step", () => {
+    const still = fixture("ffmpeg-still-image.txt");
+    expect(wrongKindOfFile("video-trim", still)).toBe(
+      "This file is a still image. This step needs a video or audio file.",
+    );
+    expect(wrongKindOfFile("video-caption", still)).toBe(CAPTIONS_NEED_VIDEO);
+  });
+
+  test("anything that might work next time is left to be tried again", () => {
+    expect(wrongKindOfFile("video-trim", "tuple index out of range")).toBeNull();
+    expect(wrongKindOfFile("video-caption", "connect ECONNREFUSED 10.0.0.5:8080")).toBeNull();
+    expect(wrongKindOfFile("video-caption", "")).toBeNull();
+    expect(wrongKindOfFile("video-caption", null)).toBeNull();
   });
 });

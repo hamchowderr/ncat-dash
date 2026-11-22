@@ -7,6 +7,8 @@ import {
   steps,
   testConnection,
   jobStatus,
+  pictureGivenForVideo,
+  StepSetupError,
   ToolkitError,
   userInputJsonSchema,
   userInputSchema,
@@ -233,5 +235,36 @@ describe("jobStatus", () => {
   it("throws on a toolkit error so the caller asks again later", async () => {
     const { fn } = fakeFetch(502, "bad gateway");
     await expect(jobStatus(connection, "tk-1", { fetch: fn })).rejects.toBeInstanceOf(ToolkitError);
+  });
+});
+
+describe("Caption video given a picture", () => {
+  const caption = getStep("video-caption")!;
+
+  it("is refused before anything is sent, in plain words", async () => {
+    const { fn, calls } = fakeFetch(202, { code: 202, job_id: "j" });
+    const sent = callStep(
+      connection,
+      caption,
+      { video_url: "https://files.example/uploads/Poster%20Final.PNG?X-Amz-Signature=abc" },
+      { fetch: fn },
+    );
+    await expect(sent).rejects.toBeInstanceOf(StepSetupError);
+    await expect(sent).rejects.toThrow("Captions need a video. This file is a picture.");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("sends videos, and links whose name says nothing, as before", async () => {
+    for (const url of ["https://files.example/a.mp4", "https://drive.example/uc?id=123"]) {
+      const { fn, calls } = fakeFetch(202, { code: 202, job_id: "j" });
+      await callStep(connection, caption, { video_url: url }, { fetch: fn });
+      expect(calls).toHaveLength(1);
+    }
+  });
+
+  it("other steps are not judged by the file's name", () => {
+    expect(
+      pictureGivenForVideo(getStep("video-trim")!, { video_url: "https://files.example/a.png" }),
+    ).toBeNull();
   });
 });

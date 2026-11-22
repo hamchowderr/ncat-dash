@@ -1,4 +1,4 @@
-import { isTransientStatus } from "@ncat-dash/automation-core";
+import { isTransientStatus, wrongKindOfFile } from "@ncat-dash/automation-core";
 import {
   callStep,
   getStep,
@@ -359,6 +359,11 @@ export const finish = internalMutation({
     if (args.token !== undefined && args.token !== job.webhookToken) return "forbidden";
     if (job.status === "done" || job.status === "failed") return "ignored";
     const now = Date.now();
+    // A picture given to Caption video and the like: the file can never work, so it is
+    // said plainly (the toolkit's own words kept below, for "Show details") and not retried.
+    const wrongFile = args.ok ? null : wrongKindOfFile(job.stepId, args.error);
+    const error = wrongFile ? `${wrongFile}\n\n${args.error}` : args.error;
+    const permanent = args.permanent || wrongFile !== null;
     // A Convex document holds at most 1 MB. A very long transcript is kept as its file
     // links only; the full data is still at the toolkit's own output URLs.
     const tooLarge = args.ok && JSON.stringify(args.result ?? null).length > MAX_RESULT_CHARS;
@@ -370,10 +375,10 @@ export const finish = internalMutation({
           ? { note: "This result is too large to show here.", urls: collectUrls(args.result) }
           : args.result,
       outputs: args.ok ? collectUrls(args.result) : [],
-      error: args.ok ? null : (args.error ?? "The step failed."),
+      error: args.ok ? null : (error ?? "The step failed."),
       startedAt: job.startedAt ?? now,
       finishedAt: now,
-      ...(!args.ok && args.permanent ? { permanent: true } : {}),
+      ...(!args.ok && permanent ? { permanent: true } : {}),
     });
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
     // A Zoom recording on its way in: it becomes an upload, or the import says why not.
