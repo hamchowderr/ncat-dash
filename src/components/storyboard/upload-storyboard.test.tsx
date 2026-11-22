@@ -1,10 +1,10 @@
 import { api } from "@convex/_generated/api";
 import { statusOf } from "@convex/lib/storyboard";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 
-import { answerQuery, mutationOf, toastError } from "@/test/convex";
+import { actionOf, answerQuery, mutationOf, toastError, toastSuccess } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
 import { StoryboardView, UploadStoryboard } from "./storyboard-view";
@@ -157,5 +157,30 @@ describe("a project gathers uploads' drafts", () => {
     renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     expect(screen.queryByRole("button", { name: "Start from an upload" })).toBeNull();
     expect(screen.getByRole("button", { name: "Start empty" })).toBeTruthy();
+  });
+});
+
+describe("suggesting scenes", () => {
+  test("asks the agent once when pressed and says what changed", async () => {
+    answerQuery(api.storyboards.forUpload, draft());
+    actionOf(api.storyboards.suggestScenes).mockResolvedValue({ scenes: 3, titles: 2 });
+    const user = userEvent.setup();
+    renderInApp(<UploadStoryboard libraryItemId={ITEM} transcribed />);
+    expect(actionOf(api.storyboards.suggestScenes)).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Suggest scenes" }));
+    expect(actionOf(api.storyboards.suggestScenes)).toHaveBeenCalledWith({ storyboardId: "sb9" });
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("New scenes for 3 lines, 2 chapters renamed."),
+    );
+  });
+
+  test("says so when the agent cannot suggest", async () => {
+    answerQuery(api.storyboards.get, draft({ projectId: "p1", libraryItemId: null }));
+    answerQuery(api.storyboards.uploadDrafts, []);
+    actionOf(api.storyboards.suggestScenes).mockRejectedValueOnce(new Error("not set up"));
+    const user = userEvent.setup();
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
+    await user.click(screen.getByRole("button", { name: "Suggest scenes" }));
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
   });
 });
