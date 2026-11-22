@@ -3,11 +3,17 @@ import { getStep, toolkitHealth } from "@ncat-dash/step-catalog";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { action, internalQuery, query } from "./_generated/server";
+import {
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+  query,
+} from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
 import { onOperatorToolkit } from "./lib/edition";
-import { parallelLimit } from "./lib/queue";
+import { parallelLimit, recordSharedWorkers } from "./lib/queue";
 
 const DAY = 24 * 60 * 60 * 1000;
 // More than this many jobs in flight at once is shown as "and N more".
@@ -72,6 +78,36 @@ export const read = action({
       { signal: AbortSignal.timeout(15_000) },
     );
     return { ...result, checkedAt };
+  },
+});
+
+/**
+ * Reads how many workers the operator's toolkit (HOSTED_TOOLKIT_URL and
+ * HOSTED_TOOLKIT_API_KEY) has, so every team on it shares that many jobs at once.
+ * Runs every few minutes. Does nothing when no such toolkit is set.
+ */
+export const checkShared = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const baseUrl = process.env.HOSTED_TOOLKIT_URL?.trim();
+    const apiKey = process.env.HOSTED_TOOLKIT_API_KEY?.trim();
+    if (!baseUrl || !apiKey) return;
+    const result = await toolkitHealth(
+      { baseUrl, apiKey },
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    // An unreachable toolkit keeps the last count it gave; it stops counting once stale.
+    if (!result.ok) return;
+    await ctx.runMutation(internal.toolkitHealth.recordShared, {
+      workers: result.health.queue.workers,
+    });
+  },
+});
+
+export const recordShared = internalMutation({
+  args: { workers: v.union(v.null(), v.number()) },
+  handler: async (ctx, args) => {
+    await recordSharedWorkers(ctx, args.workers);
   },
 });
 
