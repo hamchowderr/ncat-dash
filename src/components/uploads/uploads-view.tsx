@@ -41,6 +41,7 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { CopyLookFromUpload } from "@/components/looks/look-study";
 
 import { NeedsToolkit } from "./needs-toolkit";
+import { LinkRow, PasteLink, useLinks } from "./paste-link";
 import {
   UploadFrame,
   UploadingCard,
@@ -168,6 +169,9 @@ export function UploadsView() {
     [uploads],
   );
   const links = usePreviewLinks(team.id, ready);
+  // Videos coming in from pasted links, and links that could not be brought in. Those
+  // pasted to copy a look show in the step they were pasted in.
+  const pasted = (useLinks() ?? []).filter((link) => !link.forLook);
   // Meeting recordings the toolkit is still bringing in, straight from Zoom or Google
   // Drive to the bucket.
   const fromZoom = useMemo(
@@ -341,7 +345,16 @@ export function UploadsView() {
         <p className="text-muted-foreground text-xs">
           Going to your toolkit&apos;s storage, bucket {storage.bucket}.
         </p>
+        <PasteLink className="mt-3 max-w-md text-left" />
       </div>
+
+      {pasted.length > 0 && (
+        <section aria-label="Videos from links" className="flex flex-col gap-3">
+          {pasted.map((link) => (
+            <LinkRow key={link._id} link={link} />
+          ))}
+        </section>
+      )}
 
       {sending && (
         <p role="status" className="text-muted-foreground text-sm" data-keep-open>

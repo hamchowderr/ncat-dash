@@ -21,6 +21,7 @@ import { GoogleMeetCard } from "./google-meet-card";
 import { MicrosoftCard } from "./microsoft-card";
 import { TelegramCard } from "./telegram-card";
 import { TeamsCard } from "./teams-card";
+import { VideoLinksCard } from "./video-links-card";
 import { ZoomCard } from "./zoom-card";
 
 const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
@@ -41,6 +42,7 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   microsoft: MicrosoftCard,
   teams: TeamsCard,
   dropbox: DropboxCard,
+  "video-links": VideoLinksCard,
   mcp: McpSettings,
   team: TeamSettings,
 };

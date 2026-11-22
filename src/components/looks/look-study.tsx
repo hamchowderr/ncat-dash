@@ -9,6 +9,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { CaptionPreview } from "@/components/settings/caption-preview";
+import { LinkRow, PasteLink, useLinks } from "@/components/uploads/paste-link";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -94,7 +95,10 @@ export function CopyLookFromUpload({ upload }: { upload: { _id: string; fileName
   );
 }
 
-/** Inside the step: pick one of the team's videos and copy its look. */
+/**
+ * Inside the step: pick one of the team's videos and copy its look, or paste a link to a
+ * video on another site. A pasted video comes into Uploads, then its look is studied.
+ */
 export function CopyLookFromVideo({
   shown,
   onSaved,
@@ -104,6 +108,7 @@ export function CopyLookFromVideo({
 }) {
   const team = useActiveTeam();
   const uploads = useQuery(api.storage.listUploads, { organizationId: team.id });
+  const pasted = (useLinks() ?? []).find((link) => link.forLook);
   const { start, busy } = useStartStudy();
   const [picked, setPicked] = useState<string | null>(null);
 
@@ -117,39 +122,38 @@ export function CopyLookFromVideo({
       </p>
     );
   }
+  if (pasted) return <LinkRow link={pasted} />;
   const videos = (uploads ?? []).filter(
     (upload) =>
       upload.status === "ready" &&
       upload.purpose !== "brand" &&
       upload.contentType.startsWith("video/"),
   );
-  if (uploads && videos.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm text-pretty">
-        Upload a video whose look you like on the Uploads page, then copy its look here.
-      </p>
-    );
-  }
   return (
-    <div className="flex flex-col gap-2">
-      <Label htmlFor="look-sample">Copy a look from a video</Label>
-      <div className="flex flex-wrap gap-2">
-        <Select value={picked ?? ""} onValueChange={setPicked}>
-          <SelectTrigger id="look-sample" className="min-w-0 flex-1">
-            <SelectValue placeholder="Pick one of your videos" />
-          </SelectTrigger>
-          <SelectContent>
-            {videos.map((upload) => (
-              <SelectItem key={upload._id} value={upload._id}>
-                {upload.fileName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button disabled={!picked || busy} onClick={() => picked && start(picked)}>
-          {busy ? "Starting" : "Copy its look"}
-        </Button>
-      </div>
+    <div className="flex flex-col gap-4">
+      {videos.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="look-sample">Copy a look from a video</Label>
+          <div className="flex flex-wrap gap-2">
+            <Select value={picked ?? ""} onValueChange={setPicked}>
+              <SelectTrigger id="look-sample" className="min-w-0 flex-1">
+                <SelectValue placeholder="Pick one of your videos" />
+              </SelectTrigger>
+              <SelectContent>
+                {videos.map((upload) => (
+                  <SelectItem key={upload._id} value={upload._id}>
+                    {upload.fileName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button disabled={!picked || busy} onClick={() => picked && start(picked)}>
+              {busy ? "Starting" : "Copy its look"}
+            </Button>
+          </div>
+        </div>
+      )}
+      <PasteLink forLook />
       <p className="text-muted-foreground text-xs text-pretty">
         The toolkit takes six frames and finds the cuts, and the agent looks at them once. Every run
         after that is plain FFmpeg, with no AI spent per video.
