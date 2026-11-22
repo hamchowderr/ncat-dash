@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-run-stack-step"
+description = "Enables the run_stack_step command without any pre-configured scope."
+commands.allow = ["run_stack_step"]
+
+[[permission]]
+identifier = "deny-run-stack-step"
+description = "Denies the run_stack_step command without any pre-configured scope."
+commands.deny = ["run_stack_step"]

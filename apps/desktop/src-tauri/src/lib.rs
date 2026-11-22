@@ -16,7 +16,9 @@ pub mod browser;
 pub mod dashboard;
 pub mod exports;
 pub mod links;
+pub mod machine;
 pub mod saved;
+pub mod stack;
 pub mod uploads;
 pub mod watches;
 
@@ -678,6 +680,170 @@ fn main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     Ok(window)
 }
 
+/// Refuses anything but the app's own pages: running the stack is never the dashboard's
+/// to ask for (it also isn't in the dashboard's capability).
+fn from_home(window: &WebviewWindow, places: &Places) -> Result<(), String> {
+    let caller = window.url().map_err(|_| "Unknown page.".to_string())?;
+    // Or the page the window started on (the dev server while working on the app), compared
+    // by parts: tauri://localhost has an opaque origin, which never equals another. On
+    // Windows the window can start on about:blank, which never counts.
+    let home = &places.home;
+    if links::is_app_page(&caller)
+        || home.scheme() != "about"
+            && caller.scheme() == home.scheme()
+            && caller.host_str() == home.host_str()
+            && caller.port_or_known_default() == home.port_or_known_default()
+    {
+        Ok(())
+    } else {
+        Err(format!("Only {NAME}'s own pages can do that."))
+    }
+}
+
+fn stack_folder(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|folder| folder.join("stack"))
+        .map_err(|_| format!("{NAME} couldn't find its data folder."))
+}
+
+fn this_stack(app: &AppHandle) -> Result<stack::Stack, String> {
+    let docker = machine::docker_command().ok_or_else(|| "Docker isn't installed.".to_string())?;
+    Ok(stack::Stack::new(&stack_folder(app)?, docker))
+}
+
+/// Looks at this computer for running the whole stack here.
+#[tauri::command]
+async fn check_machine(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+) -> Result<machine::Check, String> {
+    from_home(&window, &places)?;
+    let folder = stack_folder(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        machine::judge(&machine::facts(&folder), std::env::consts::OS)
+    })
+    .await
+    .map_err(|_| "The check stopped part way. Try again.".to_string())
+}
+
+/// What is saved for the stack here, without its secrets.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StackSaved {
+    saved: bool,
+    addresses: stack::Addresses,
+    bucket_endpoint: String,
+    bucket_name: String,
+    has_admin_key: bool,
+}
+
+#[tauri::command]
+fn stack_saved(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+) -> Result<StackSaved, String> {
+    from_home(&window, &places)?;
+    let values = stack::Stack::new(&stack_folder(&app)?, "docker".into()).values();
+    let get = |name: &str| values.get(name).cloned().unwrap_or_default();
+    Ok(StackSaved {
+        saved: !values.is_empty(),
+        addresses: stack::Addresses {
+            dashboard: get("SITE_URL"),
+            api: get("CONVEX_URL"),
+            site: get("CONVEX_SITE_URL"),
+            agent: get("AGENT_URL"),
+            toolkit: get("TOOLKIT_URL"),
+        },
+        bucket_endpoint: get("S3_ENDPOINT_URL"),
+        bucket_name: get("S3_BUCKET_NAME"),
+        has_admin_key: !get("CONVEX_ADMIN_KEY").is_empty(),
+    })
+}
+
+/// Writes the stack's settings, sizing the toolkit to this machine.
+#[tauri::command]
+async fn save_stack(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    settings: stack::Settings,
+) -> Result<(), String> {
+    from_home(&window, &places)?;
+    let stack = this_stack(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let facts = machine::facts(&stack.folder);
+        let docker_memory = match facts.docker {
+            machine::Docker::Ready { memory, .. } => memory,
+            _ => None,
+        };
+        stack.save(&settings, stack::share(facts.cores, docker_memory))
+    })
+    .await
+    .map_err(|_| "Saving stopped part way. Try again.".to_string())?
+}
+
+/// The last lines a failed command printed, for the person and for support.
+fn tail(text: &str) -> String {
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    lines[lines.len().saturating_sub(6)..].join("\n")
+}
+
+/// Runs one step of starting the stack: "pull", "start", "adminKey", "setup" or "stop".
+#[tauri::command]
+async fn run_stack_step(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    step: String,
+) -> Result<(), String> {
+    from_home(&window, &places)?;
+    let stack = this_stack(&app)?;
+    let args = match step.as_str() {
+        "pull" => stack::PULL,
+        "start" => stack::START,
+        "adminKey" => stack::ADMIN_KEY,
+        "setup" => stack::SETUP,
+        "stop" => stack::STOP,
+        _ => return Err("Unknown step.".into()),
+    };
+    if step == "adminKey"
+        && stack
+            .values()
+            .get("CONVEX_ADMIN_KEY")
+            .is_some_and(|key| !key.is_empty())
+    {
+        return Ok(());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = stack
+            .compose(args)
+            .output()
+            .map_err(|_| "Docker couldn't be started.".to_string())?;
+        let said = String::from_utf8_lossy(&output.stdout).into_owned();
+        if !output.status.success() {
+            let problem = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "Docker stopped with: {}",
+                tail(&format!("{said}\n{problem}"))
+            ));
+        }
+        if step == "adminKey" {
+            let key =
+                stack::admin_key_from(&said).ok_or("Convex didn't give back an admin key.")?;
+            stack.keep_admin_key(&key)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| "That step stopped part way. Try again.".to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -706,7 +872,11 @@ pub fn run() {
             watched_folders,
             unwatch_folder,
             landed_files,
-            landed_sent
+            landed_sent,
+            check_machine,
+            stack_saved,
+            save_stack,
+            run_stack_step
         ])
         .setup(|app| {
             let handle = app.handle().clone();

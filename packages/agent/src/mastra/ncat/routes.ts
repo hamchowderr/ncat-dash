@@ -14,6 +14,7 @@ import {
   submitBatch,
 } from "./moments-batch";
 import { reviewPrompt, reviewQuestion } from "./review";
+import { scenesAgent, scenesPrompt, scenesRequest } from "./scenes";
 import { translateAgent, translateModel, translatePrompt, translateRequest } from "./translate";
 import { TEAM_KEY, teamKey } from "./team-key";
 import { rememberSession } from "./session-store";
@@ -131,6 +132,41 @@ export const createNcatRoutes = () => [
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);
         // What it used, so the dashboard can keep the run under its AI limit.
+        return c.json({
+          answer,
+          model: env.CHAT_MODEL,
+          usage: dashboardUsage(result.usage, result.providerMetadata),
+        });
+      } catch {
+        return c.json({ error: "The model did not answer." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/scenes: Convex asks, when someone presses "Suggest scenes" on a storyboard,
+  // which lines are better shown another way than Full Screen, and a name for each chapter.
+  // The answer goes back as text; the dashboard checks it against the storyboard itself.
+  registerApiRoute("/ncat/scenes", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const body = await c.req.json().catch(() => undefined);
+      const parsed = scenesRequest.safeParse(body);
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        const requestContext = new RequestContext();
+        const key = await teamKey(organizationOf(body));
+        if (key) requestContext.set(TEAM_KEY, key);
+        const result = await scenesAgent.generate(
+          [{ role: "user", content: scenesPrompt(parsed.data) }],
+          { requestContext },
+        );
+        const answer = result.text.trim();
+        if (!answer) return c.json({ error: "empty answer" }, 502);
         return c.json({
           answer,
           model: env.CHAT_MODEL,

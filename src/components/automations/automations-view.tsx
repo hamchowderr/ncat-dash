@@ -232,7 +232,7 @@ export function AutomationsView() {
             <TableBody>
               {automations.map((automation) => (
                 <TableRow key={automation._id}>
-                  <TableCell className="font-medium">
+                  <TableCell className="min-w-40 font-medium whitespace-normal">
                     <Link
                       href={`/automations/${automation._id}`}
                       transitionTypes={["nav-forward"]}
@@ -250,7 +250,7 @@ export function AutomationsView() {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-muted-foreground min-w-40 whitespace-normal">
                     {triggerSummary(automation.trigger)}
                     {automation.moreTriggers.length > 0 &&
                       `, or ${automation.moreTriggers.length === 1 ? "one other way" : `${automation.moreTriggers.length} other ways`}`}
@@ -258,6 +258,7 @@ export function AutomationsView() {
                   <TableCell>
                     <FlowStrip
                       size="sm"
+                      maxColumns={5}
                       trigger={automation.trigger}
                       nodes={automation.nodes as AutomationNode[]}
                       edges={automation.edges}
