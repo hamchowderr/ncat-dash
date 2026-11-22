@@ -2,11 +2,12 @@
 
 import { api } from "@convex/_generated/api";
 import type { DeliverableStatus } from "@convex/lib/packages";
-import { useMutation, useQuery } from "convex/react";
+import { readUploadRef } from "@ncat-dash/automation-core";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { ArrowLeft, ChevronRight, MessagesSquare } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type CSSProperties, type ReactNode, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { SlotFile } from "@/components/projects/slot-panel";
@@ -14,7 +15,6 @@ import { KindIcon } from "@/components/projects/slot-status";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
-import { useFileLink } from "@/lib/use-brand-upload";
 
 type Agency = { name: string; logo: string | null; color: string | null };
 
@@ -32,8 +32,30 @@ function brandStyle(color: string | null): CSSProperties | undefined {
   return { "--brand": color, "--brand-ink": inkOn(color) } as CSSProperties;
 }
 
-function AgencyMark({ agency }: { agency: Agency }) {
-  const link = useFileLink(agency.logo ?? undefined);
+/**
+ * Where the agency's logo shows from: its address, or for an uploaded logo a link the
+ * portal's secret opens, since nobody here is signed in. Null until there is one.
+ */
+function useLogoLink(token: string, logo: string | null): string | null {
+  const logoLink = useAction(api.portal.logoLink);
+  const uploaded = readUploadRef(logo ?? undefined) !== null;
+  const [link, setLink] = useState<{ for: string; url: string | null } | null>(null);
+  useEffect(() => {
+    if (!uploaded || !logo) return;
+    let live = true;
+    logoLink({ token })
+      .then((url) => live && setLink({ for: logo, url }))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [token, logo, uploaded, logoLink]);
+  if (uploaded) return link?.for === logo ? link.url : null;
+  return logo && /^https?:\/\/\S+$/.test(logo) ? logo : null;
+}
+
+function AgencyMark({ token, agency }: { token: string; agency: Agency }) {
+  const link = useLogoLink(token, agency.logo);
   if (link) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={link} alt={agency.name} className="h-9 max-w-40 object-contain" />;
@@ -52,12 +74,20 @@ function AgencyMark({ agency }: { agency: Agency }) {
 }
 
 /** The portal's frame: the agency's mark on top, in its colour, around one page. */
-function Frame({ agency, children }: { agency: Agency; children: ReactNode }) {
+function Frame({
+  token,
+  agency,
+  children,
+}: {
+  token: string;
+  agency: Agency;
+  children: ReactNode;
+}) {
   return (
     <div style={brandStyle(agency.color)} className="flex min-h-svh flex-col">
       <div aria-hidden="true" className="h-1 bg-[var(--brand,var(--primary))]" />
       <header className="mx-auto flex w-full max-w-5xl items-center px-4 py-5 sm:px-6">
-        <AgencyMark agency={agency} />
+        <AgencyMark token={token} agency={agency} />
       </header>
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 pb-16 sm:px-6">
         {children}
@@ -95,7 +125,7 @@ export function PortalView({ token }: { token: string }) {
   if (view === undefined) return <Loading />;
   if (view === null) return <Closed />;
   return (
-    <Frame agency={view.agency}>
+    <Frame token={token} agency={view.agency}>
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Projects for {view.client.name}</h1>
         <p className="text-muted-foreground text-sm">
@@ -184,7 +214,7 @@ export function PortalProject({ token, projectId }: { token: string; projectId: 
   }
 
   return (
-    <Frame agency={view.agency}>
+    <Frame token={token} agency={view.agency}>
       <div>
         <Button asChild variant="ghost" size="sm" className="-ml-2">
           <Link href={`/portal/${token}`}>

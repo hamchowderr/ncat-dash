@@ -72,6 +72,7 @@ import type * as lib_exports from "../lib/exports.js";
 import type * as lib_facts from "../lib/facts.js";
 import type * as lib_footage from "../lib/footage.js";
 import type * as lib_googleMeet from "../lib/googleMeet.js";
+import type * as lib_knownWords from "../lib/knownWords.js";
 import type * as lib_library from "../lib/library.js";
 import type * as lib_limits from "../lib/limits.js";
 import type * as lib_logic from "../lib/logic.js";
@@ -228,6 +229,7 @@ declare const fullApi: ApiFromModules<{
   "lib/facts": typeof lib_facts;
   "lib/footage": typeof lib_footage;
   "lib/googleMeet": typeof lib_googleMeet;
+  "lib/knownWords": typeof lib_knownWords;
   "lib/library": typeof lib_library;
   "lib/limits": typeof lib_limits;
   "lib/logic": typeof lib_logic;
