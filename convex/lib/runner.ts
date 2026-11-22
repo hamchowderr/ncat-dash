@@ -408,6 +408,28 @@ async function startNode(
 }
 
 /**
+ * A named value an earlier step made, by the file each of its jobs worked on: for a
+ * transcript step, each file's captions.
+ */
+async function valuesByFile(
+  ctx: MutationCtx,
+  step: Doc<"runSteps"> | undefined,
+  source: { value: string; from: AutomationNode },
+): Promise<Map<string, unknown>> {
+  const found = new Map<string, unknown>();
+  const field = getStep(source.from.stepId ?? "")?.primaryInput;
+  if (!step || step.status !== "done" || !field) return found;
+  for (const jobId of step.jobIds) {
+    const job = await ctx.db.get(jobId);
+    if (job?.status !== "done") continue;
+    const file = (job.input as Record<string, unknown>)[field];
+    const value = valueFrom(source.from.stepId ?? "", source.value, job.result);
+    if (typeof file === "string" && value !== undefined) found.set(file, value);
+  }
+  return found;
+}
+
+/**
  * Starts a toolkit step: works out its settings and queues one job per file. A caption
  * step may first read its videos' sizes ("size" stage); it comes back here with them.
  */
@@ -471,10 +493,6 @@ async function startToolkitStep(
   // Follow the speaker straight after Clips makes the platform's shape unless one was picked.
   const followShape = isEmptySetting(settings.aspect) ? followShapeFrom(node, nodes, edges) : null;
   if (followShape) settings.aspect = followShape;
-  for (const source of valueSources(node, nodes, edges)) {
-    const found = valueFrom(source.from.stepId ?? "", source.value, steps[source.from.id]?.result);
-    if (found !== undefined) settings[source.field] = found;
-  }
   let planned: Record<string, unknown>[];
   try {
     planned = planJobs(
@@ -486,6 +504,21 @@ async function startToolkitStep(
     if (!(error instanceof TemplateError)) throw error;
     await failStep(ctx, run, step, byNode, error.message);
     return;
+  }
+  // A value an earlier step made, such as a transcript's captions, belongs to the file it
+  // worked on: each job gets the one made for its own file, and none for a file cut or
+  // changed since, which then works it out for itself.
+  const primary = definition.primaryInput;
+  if (primary) {
+    for (const source of valueSources(node, nodes, edges)) {
+      const values = await valuesByFile(ctx, byNode.get(source.from.id), source);
+      planned = planned.map((input) => {
+        const found = values.get(String(input[primary] ?? ""));
+        return found === undefined || !isEmptySetting(input[source.field])
+          ? input
+          : { ...input, [source.field]: found };
+      });
+    }
   }
   if (planned.length > MAX_JOBS_PER_STEP) {
     await failStep(
