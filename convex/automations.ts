@@ -240,7 +240,12 @@ export const list = query({
           nodes: automation.nodes,
           edges: automation.edges,
           nextRunAt: automation.nextRunAt,
-          updatedAt: automation.updatedAt,
+          // The latest change, published or still a draft.
+          updatedAt: Math.max(automation.updatedAt, automation.draft?.updatedAt ?? 0),
+          createdAt: automation._creationTime,
+          clientId: automation.clientId ?? null,
+          // The folder it sits in on the Automations page.
+          folderId: automation.folderId ?? null,
           lastRun: lastRun
             ? { _id: lastRun._id, status: lastRun.status, startedAt: lastRun._creationTime }
             : null,
