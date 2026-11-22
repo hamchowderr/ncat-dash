@@ -759,6 +759,27 @@ export default defineSchema({
     outputs: v.array(v.string()),
     // Variant codes for its files, such as "h02_c01_15s_9x16", which name them.
     labels: v.optional(v.array(v.object({ url: v.string(), label: v.string() }))),
+    // Where each of its files came from, written once the step is finished: the file it
+    // was made from, the file the run started with, what kind of file it is, and its
+    // variant code. See convex/lib/items.ts.
+    items: v.optional(
+      v.array(
+        v.object({
+          url: v.string(),
+          from: v.union(v.null(), v.string()),
+          source: v.union(v.null(), v.string()),
+          kind: v.union(
+            v.literal("video"),
+            v.literal("audio"),
+            v.literal("image"),
+            v.literal("captions"),
+            v.literal("text"),
+            v.literal("other"),
+          ),
+          label: v.optional(v.string()),
+        }),
+      ),
+    ),
     error: v.union(v.null(), v.string()),
     // For a "clips" step, which works in two stages: first it reads each video's length
     // and pauses ("probe"), then it cuts the clips ("cut"). jobIds holds the current
