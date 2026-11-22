@@ -67,6 +67,10 @@ export const get = query({
       anthropicKey: settings?.anthropicKey
         ? { hint: settings.anthropicKey.hint, setAt: settings.anthropicKey.setAt }
         : null,
+      // The team's cookies for video sites, by the sites they are for only (videoCookies.ts).
+      videoCookies: settings?.videoCookies
+        ? { sites: settings.videoCookies.sites, setAt: settings.videoCookies.setAt }
+        : null,
       captions: await captionSetupOf(ctx, args.organizationId),
       builtInCaptionStyles: BUILT_IN_STYLES,
       builtInByShape: BUILT_IN_BY_SHAPE,

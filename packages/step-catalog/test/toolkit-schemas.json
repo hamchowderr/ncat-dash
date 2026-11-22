@@ -19,6 +19,9 @@
       "cloud_upload": {
         "type": "boolean"
       },
+      "filename": {
+        "type": "string"
+      },
       "cookie": {
         "description": "Path to cookie file, URL to cookie file, or cookie string in Netscape format",
         "type": "string"
