@@ -14,7 +14,7 @@ import {
   takeCount,
 } from "@convex/lib/storyboard";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ArrowDown, ArrowUp, FileVideo, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Bot, FileVideo, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
@@ -601,7 +601,7 @@ function SuggestScenes({ board }: { board: Board }) {
       onClick={() => void go()}
       title="The agent reads the lines once and picks a scene for each, and names the chapters."
     >
-      <Sparkles />
+      <Bot />
       {pending ? "Suggesting…" : "Suggest scenes"}
     </Button>
   );
