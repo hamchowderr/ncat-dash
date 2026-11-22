@@ -12,6 +12,8 @@ export type ExplainedFailure = {
 };
 
 const MAX_REASON = 240;
+const STILL_IMAGE = "This file is a still image. This step needs a video or audio file.";
+const NO_SOUND = "This file has no sound to work with.";
 const STILL_IMAGE_CODECS = /Video: (png|mjpeg|jpeg|jpegls|webp|bmp|tiff|ppm|pgm|qoi)\b/;
 
 // Lines from FFmpeg's banner and its description of the files, which say nothing about
@@ -45,7 +47,7 @@ function friendlyReason(text: string): string | null {
     STILL_IMAGE_CODECS.test(inputPart) ||
     /Input #\d+, (png|jpeg|webp|bmp|tiff)_pipe\b/.test(inputPart);
   if (stillImage && /Duration: N\/A/.test(inputPart) && !hasAudio) {
-    return "This file is a still image. This step needs a video or audio file.";
+    return STILL_IMAGE;
   }
   if (
     /does not contain any stream|matches no streams|Output file is empty, nothing was encoded/.test(
@@ -54,7 +56,7 @@ function friendlyReason(text: string): string | null {
     hasVideo &&
     !hasAudio
   ) {
-    return "This file has no sound to work with.";
+    return NO_SOUND;
   }
   if (/Server returned 404|HTTP error 404|404 Not Found/.test(text)) {
     return 'The file\'s link returned "not found". Check the file is still there.';
@@ -203,6 +205,32 @@ function missingStep(text: string): boolean {
 
 function clip(line: string): string {
   return line.length > MAX_REASON ? `${line.slice(0, MAX_REASON - 1).trimEnd()}…` : line;
+}
+
+export const CAPTIONS_NEED_VIDEO =
+  "Captions need a video. This file is a picture, or a video with no sound to caption.";
+
+/**
+ * A failure that comes from the file itself, such as a picture given to a step that needs a
+ * video: sending the same file again cannot work, so the step is not tried again. Returns
+ * what to tell people, or null when trying again might help.
+ */
+export function wrongKindOfFile(
+  stepId: string | null | undefined,
+  text: string | null | undefined,
+): string | null {
+  const full = (text ?? "").trim();
+  if (!full) return null;
+  // The toolkit's captioning reads the sound's words; a picture has none, and it fails
+  // with Python's "tuple index out of range" before saying why.
+  if (stepId === "video-caption" && /\b(tuple|list) index out of range\b/.test(full)) {
+    return CAPTIONS_NEED_VIDEO;
+  }
+  const { reason } = explainFailure(full);
+  if (reason === STILL_IMAGE || reason === NO_SOUND) {
+    return stepId === "video-caption" ? CAPTIONS_NEED_VIDEO : reason;
+  }
+  return null;
 }
 
 export function explainFailure(text: string | null | undefined): ExplainedFailure {

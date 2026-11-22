@@ -6,6 +6,7 @@ import {
   RUNNER_FIELDS,
   type SpokenWord,
   type StepDefinition,
+  StepSetupError,
   userInputSchema,
 } from "./define";
 
@@ -229,6 +230,33 @@ export function readPauses(raw: unknown): Pause[] {
  * Validates the input against the step's schema, then sends it to the toolkit.
  * Returns the toolkit's response envelope as parsed JSON.
  */
+/** Steps that can never work on a picture, and what to say when given one. */
+const NEEDS_VIDEO = new Map([["video-caption", "Captions need a video. This file is a picture."]]);
+
+const PICTURE = /\.(png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif|svg)$/i;
+
+/**
+ * A step that works on a video, handed a picture: said before anything is sent, since the
+ * toolkit can only fail on it, and only after a while, in words meant for programmers.
+ * Judged by the file's name, so a link without one is sent as it is.
+ */
+export function pictureGivenForVideo(
+  step: Pick<StepDefinition, "id">,
+  input: Record<string, unknown>,
+): string | null {
+  if (!NEEDS_VIDEO.has(step.id)) return null;
+  const value = input.video_url;
+  if (typeof value !== "string") return null;
+  let path: string;
+  try {
+    path = decodeURIComponent(new URL(value).pathname);
+  } catch {
+    return null;
+  }
+  if (!PICTURE.test(path)) return null;
+  return NEEDS_VIDEO.get(step.id)!;
+}
+
 export async function callStep(
   connection: ToolkitConnection,
   step: StepDefinition,
@@ -236,6 +264,8 @@ export async function callStep(
   options: CallOptions = {},
 ): Promise<unknown> {
   const parsed = userInputSchema(step).parse(input);
+  const picture = pictureGivenForVideo(step, parsed as Record<string, unknown>);
+  if (picture) throw new StepSetupError(picture);
   const facts =
     step.readsFirst || step.readsWords
       ? await readFacts(connection, step, parsed as Record<string, unknown>, options)
