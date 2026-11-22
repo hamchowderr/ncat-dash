@@ -23,6 +23,7 @@ import { decryptSecret } from "./lib/crypto";
 import { collectUrls, handOutputNames, outputNamesOf } from "./lib/outputs";
 import { enqueueJob, pump } from "./lib/queue";
 import { onJobFinished } from "./lib/runner";
+import { onLinkJobFinished } from "./links";
 import { onLookJobFinished } from "./looks";
 import { wordsForJob } from "./lib/disclosure";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
@@ -97,7 +98,8 @@ export const list = query({
           !job.zoomImportId &&
           !job.googleMeetImportId &&
           !job.microsoftImportId &&
-          !job.dropboxImportId,
+          !job.dropboxImportId &&
+          !job.linkImportId,
       )
       .map(toPublic);
   },
@@ -143,7 +145,8 @@ export const outputs = query({
             !job.zoomImportId &&
             !job.googleMeetImportId &&
             !job.microsoftImportId &&
-            !job.dropboxImportId,
+            !job.dropboxImportId &&
+            !job.linkImportId,
         )
         .map(async (job) => ({
           jobId: job._id,
@@ -214,6 +217,23 @@ async function withMicrosoftLink(
   return input;
 }
 
+/**
+ * A download from a video site gets the team's cookies for video sites (Settings → Video
+ * Links) only now, as it is sent, unless the step was given cookies of its own.
+ */
+async function withVideoCookies(
+  ctx: ActionCtx,
+  job: Doc<"jobs">,
+  input: unknown,
+): Promise<unknown> {
+  if (job.stepId !== "media-download" || !input || typeof input !== "object") return input;
+  if ((input as { cookie?: unknown }).cookie) return input;
+  const cipher: string | null = await ctx.runQuery(internal.videoCookies.forJob, {
+    organizationId: job.organizationId,
+  });
+  return cipher ? { ...input, cookie: await decryptSecret(cipher) } : input;
+}
+
 /** Sends the job to the toolkit and asks it to post the result back to our webhook. */
 export const dispatch = internalAction({
   args: { jobId: v.id("jobs") },
@@ -240,10 +260,18 @@ export const dispatch = internalAction({
       const answer = (await callStep(
         { baseUrl: connection.baseUrl, apiKey: await decryptSecret(connection.apiKeyCipher) },
         step,
-        await withMicrosoftLink(
+        await withVideoCookies(
           ctx,
           job,
-          await withZoomSignIn(ctx, job, await withUploadLinks(ctx, job.organizationId, job.input)),
+          await withMicrosoftLink(
+            ctx,
+            job,
+            await withZoomSignIn(
+              ctx,
+              job,
+              await withUploadLinks(ctx, job.organizationId, job.input),
+            ),
+          ),
         ),
         {
           webhookUrl: webhookUrl.toString(),
@@ -368,6 +396,13 @@ export const finish = internalMutation({
       args.ok,
       args.ok ? null : (args.error ?? "The step failed."),
     );
+    // A video on its way in from a pasted link.
+    await onLinkJobFinished(
+      ctx,
+      job,
+      args.ok ? args.result : null,
+      args.ok ? null : (args.error ?? "The step failed."),
+    );
     // A sample being studied for its look.
     await onLookJobFinished(ctx, job);
     // A library file being made searchable: keep what was said in it.
@@ -423,6 +458,7 @@ export const giveUp = internalMutation({
       false,
       "The toolkit never reported a result for this job.",
     );
+    await onLinkJobFinished(ctx, job, null, "The toolkit never reported a result for this job.");
     await onLookJobFinished(ctx, job);
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });

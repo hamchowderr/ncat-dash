@@ -261,6 +261,40 @@ createServer((request, response) => {
       );
       return;
     }
+    // A video from a link (yt-dlp). A link with "needs-sign-in" in it answers like YouTube
+    // does to a server with no cookies.
+    if (request.url.startsWith("/v1/BETA/media/download")) {
+      const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      if (String(body.media_url).includes("needs-sign-in") && !body.cookie) {
+        response.writeHead(500, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify({
+            code: 500,
+            message: "ERROR: [youtube] abc: Sign in to confirm you're not a bot. Use --cookies",
+          }),
+        );
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "application/json" });
+      const key = String(body.filename ?? "video.mp4").replace(/\.mp4$/, ".webm");
+      response.end(
+        JSON.stringify({
+          code: 200,
+          response: {
+            media: {
+              media_url: `${FILES}/${key}`,
+              title: "Crew interview reel",
+              ext: "webm",
+              width: 180,
+              height: 320,
+              duration: 6,
+            },
+          },
+          message: "success",
+        }),
+      );
+      return;
+    }
     response.writeHead(200, { "Content-Type": "application/json" });
     if (request.url.startsWith("/v1/toolkit/health")) {
       // What the fork's health route says about a 4-CPU box with a little work on.

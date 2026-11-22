@@ -113,58 +113,71 @@ export const study = mutation({
     if (!upload || upload.organizationId !== args.organizationId || upload.status !== "ready") {
       fail("not_found", "That file is no longer in your uploads.");
     }
-    const details = upload.details;
-    if (!upload.contentType.startsWith("video/") || details?.hasVideo === false) {
-      fail("invalid_input", "Pick a video. A look is copied from moving pictures.");
-    }
-    if (!details?.duration || !details.width || !details.height) {
-      fail(
-        "invalid_input",
-        "The toolkit has not read this video's size and length yet. Try again in a minute.",
-      );
-    }
-    const working = await openStudyOf(ctx, args.organizationId);
-    if (working?.status === "working") {
-      fail("busy", "A video is already being studied. Wait for it to finish first.");
-    }
-    if (working) await ctx.db.patch(working._id, { status: "closed" });
-
-    const file = `upload:${upload._id}`;
-    const vertical = lookShapeOf(details.width, details.height) === "vertical";
-    const sheet = await enqueueJob(ctx, {
-      organizationId: args.organizationId,
-      stepId: "ffmpeg-compose",
-      input: contactSheetRequest(file, details.duration, vertical),
-      createdBy: userId,
-    });
-    if (!sheet.ok) fail(sheet.code, sheet.message);
-    // The cuts give the look its pace. A toolkit without the cut finder still gets a look,
-    // only without a pace.
-    const cuts = await enqueueJob(ctx, {
-      organizationId: args.organizationId,
-      stepId: "media-look",
-      input: { media_url: file, cuts: true, frames: false },
-      createdBy: userId,
-    });
-    const studyId = await ctx.db.insert("lookStudies", {
-      organizationId: args.organizationId,
-      uploadId: upload._id,
-      sourceName: upload.fileName,
-      status: "working",
-      sheetJobId: sheet.jobId,
-      ...(cuts.ok ? { cutsJobId: cuts.jobId } : {}),
-      width: details.width,
-      height: details.height,
-      duration: details.duration,
-      createdBy: userId,
-      at: Date.now(),
-    });
-    await ctx.db.patch(sheet.jobId, { lookStudyId: studyId });
-    if (cuts.ok) await ctx.db.patch(cuts.jobId, { lookStudyId: studyId });
-    await pump(ctx, args.organizationId);
-    return studyId;
+    return await beginStudy(ctx, upload, userId);
   },
 });
+
+/**
+ * Starts studying a ready upload's look: from "Copy its look", or by itself once a video
+ * pasted as a link to copy its look has come in (links.ts). Throws when it cannot start.
+ */
+export async function beginStudy(
+  ctx: MutationCtx,
+  upload: Doc<"uploads">,
+  userId: string,
+): Promise<Id<"lookStudies">> {
+  const args = { organizationId: upload.organizationId };
+  const details = upload.details;
+  if (!upload.contentType.startsWith("video/") || details?.hasVideo === false) {
+    fail("invalid_input", "Pick a video. A look is copied from moving pictures.");
+  }
+  if (!details?.duration || !details.width || !details.height) {
+    fail(
+      "invalid_input",
+      "The toolkit has not read this video's size and length yet. Try again in a minute.",
+    );
+  }
+  const working = await openStudyOf(ctx, args.organizationId);
+  if (working?.status === "working") {
+    fail("busy", "A video is already being studied. Wait for it to finish first.");
+  }
+  if (working) await ctx.db.patch(working._id, { status: "closed" });
+
+  const file = `upload:${upload._id}`;
+  const vertical = lookShapeOf(details.width, details.height) === "vertical";
+  const sheet = await enqueueJob(ctx, {
+    organizationId: args.organizationId,
+    stepId: "ffmpeg-compose",
+    input: contactSheetRequest(file, details.duration, vertical),
+    createdBy: userId,
+  });
+  if (!sheet.ok) fail(sheet.code, sheet.message);
+  // The cuts give the look its pace. A toolkit without the cut finder still gets a look,
+  // only without a pace.
+  const cuts = await enqueueJob(ctx, {
+    organizationId: args.organizationId,
+    stepId: "media-look",
+    input: { media_url: file, cuts: true, frames: false },
+    createdBy: userId,
+  });
+  const studyId = await ctx.db.insert("lookStudies", {
+    organizationId: args.organizationId,
+    uploadId: upload._id,
+    sourceName: upload.fileName,
+    status: "working",
+    sheetJobId: sheet.jobId,
+    ...(cuts.ok ? { cutsJobId: cuts.jobId } : {}),
+    width: details.width,
+    height: details.height,
+    duration: details.duration,
+    createdBy: userId,
+    at: Date.now(),
+  });
+  await ctx.db.patch(sheet.jobId, { lookStudyId: studyId });
+  if (cuts.ok) await ctx.db.patch(cuts.jobId, { lookStudyId: studyId });
+  await pump(ctx, args.organizationId);
+  return studyId;
+}
 
 /**
  * Called whenever a job finishes. Once both of a study's jobs are done, the model is asked

@@ -372,6 +372,8 @@ export default defineSchema({
     microsoftImportId: v.optional(v.id("microsoftImports")),
     // Set when the job brings a file from a watched Dropbox folder into the team's folder.
     dropboxImportId: v.optional(v.id("dropboxImports")),
+    // Set when the job brings a video from a pasted link into the team's folder.
+    linkImportId: v.optional(v.id("linkImports")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
@@ -406,6 +408,16 @@ export default defineSchema({
     // server reads it back, never a member's browser.
     anthropicKey: v.optional(
       v.object({ cipher: v.string(), hint: v.string(), setBy: v.string(), setAt: v.number() }),
+    ),
+    // The team's browser cookies for video sites (videoCookies.ts), sent with each video
+    // brought in from a link, to get past sign-in walls. Kept encrypted; shown by site only.
+    videoCookies: v.optional(
+      v.object({
+        cipher: v.string(),
+        sites: v.array(v.string()),
+        setBy: v.string(),
+        setAt: v.number(),
+      }),
     ),
     // What the team makes and where it posts, from setting up (content-goals.ts). The
     // posting apps also become the agent's default platforms.
@@ -1560,6 +1572,25 @@ export default defineSchema({
     .index("by_connection", ["connectionId"])
     .index("by_organization", ["organizationId"]),
 
+  // A video being brought in from a pasted link (links.ts): the toolkit downloads it from
+  // the site into the team's folder, then it becomes an upload like any other.
+  linkImports: defineTable({
+    organizationId: v.string(),
+    url: v.string(),
+    status: v.union(v.literal("importing"), v.literal("done"), v.literal("failed")),
+    uploadId: v.optional(v.id("uploads")),
+    jobId: v.optional(v.id("jobs")),
+    error: v.optional(v.string()),
+    // Brought in to copy its look: the study starts once its size and length are read.
+    forLook: v.optional(v.union(v.literal("waiting"), v.literal("started"), v.literal("failed"))),
+    // Put away by someone, so it no longer shows.
+    dismissed: v.optional(v.boolean()),
+    createdBy: v.string(),
+    at: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_upload", ["uploadId"]),
+
   // One Dropbox file being brought in, or brought in: the toolkit streams it from Dropbox
   // straight into the team's folder, then it becomes an upload like any other.
   dropboxImports: defineTable({
@@ -1726,8 +1757,11 @@ export default defineSchema({
         v.literal("google_meet"),
         v.literal("microsoft"),
         v.literal("dropbox"),
+        v.literal("link"),
       ),
     ),
+    // The page a video brought in from a link came from.
+    sourceUrl: v.optional(v.string()),
     // Who shared a meeting recording brought in from someone else's Drive.
     sharedBy: v.optional(v.string()),
     // Read from the file by the toolkit once the upload finishes. Missing while that is
