@@ -156,13 +156,14 @@ export async function enqueueJob(
 // A worker count read from the toolkit longer ago than this is not trusted.
 const WORKERS_FRESH_FOR_MS = 30 * 60 * 1000;
 
+// Trouble within this long of the last cut is the same trouble, so it cuts the total once.
+const CUT_AT_MOST_EVERY_MS = 30 * 1000;
+
 /**
- * The most jobs all teams on the operator's toolkit may have there at once, or null when
- * there is no such total. It is the number of workers the toolkit reports (checked every
- * few minutes), unless HOSTED_TOOLKIT_JOBS_AT_ONCE sets it. Each team's own limit on
- * jobs at once still applies under it.
+ * The full total: the number of workers the toolkit reports (checked every few minutes),
+ * unless HOSTED_TOOLKIT_JOBS_AT_ONCE sets it. Null when there is no such total.
  */
-export async function sharedLimit(ctx: QueryCtx): Promise<number | null> {
+async function fullSharedLimit(ctx: QueryCtx): Promise<number | null> {
   const raw = Number(process.env.HOSTED_TOOLKIT_JOBS_AT_ONCE?.trim() || NaN);
   if (Number.isInteger(raw) && raw > 0) return raw;
   const known = await ctx.db.query("sharedToolkitWorkers").first();
@@ -172,14 +173,61 @@ export async function sharedLimit(ctx: QueryCtx): Promise<number | null> {
 }
 
 /**
+ * The most jobs all teams on the operator's toolkit may have there at once, or null when
+ * there is no such total. It is the full total, or less while backing off after the
+ * toolkit was busy or out of reach. Each team's own limit on jobs at once still applies
+ * under it.
+ */
+export async function sharedLimit(ctx: QueryCtx): Promise<number | null> {
+  const full = await fullSharedLimit(ctx);
+  if (full === null) return null;
+  const known = await ctx.db.query("sharedToolkitWorkers").first();
+  return known?.allowed !== undefined ? Math.min(full, known.allowed) : full;
+}
+
+async function sharedState(ctx: MutationCtx): Promise<Doc<"sharedToolkitWorkers">> {
+  const known = await ctx.db.query("sharedToolkitWorkers").first();
+  if (known) return known;
+  const id = await ctx.db.insert("sharedToolkitWorkers", { workers: null, checkedAt: 0 });
+  return (await ctx.db.get(id))!;
+}
+
+/**
  * Keeps the operator toolkit's worker count, and sends waiting jobs at once when it has
  * grown. Null when the toolkit could not say.
  */
 export async function recordSharedWorkers(ctx: MutationCtx, workers: number | null): Promise<void> {
+  const known = await sharedState(ctx);
+  await ctx.db.patch(known._id, { workers, checkedAt: Date.now() });
+  const cap = await sharedLimit(ctx);
+  if (cap !== null) await takeTurns(ctx, cap);
+}
+
+/**
+ * The shared toolkit was busy, restarting or out of reach: halve the total for now (never
+ * below one), so less is piled onto it while it struggles. The rest waits here, in turn.
+ */
+export async function sharedToolkitTrouble(ctx: MutationCtx): Promise<void> {
+  const current = await sharedLimit(ctx);
+  if (current === null) return;
+  const known = await sharedState(ctx);
+  const now = Date.now();
+  if (known.cutAt !== undefined && now - known.cutAt < CUT_AT_MOST_EVERY_MS) return;
+  await ctx.db.patch(known._id, { allowed: Math.max(1, Math.floor(current / 2)), cutAt: now });
+}
+
+/**
+ * The shared toolkit took a job: while backing off, allow one more at once, until the
+ * full total is back. Then sends the next waiting job, if any.
+ */
+export async function sharedToolkitWentFine(ctx: MutationCtx): Promise<void> {
   const known = await ctx.db.query("sharedToolkitWorkers").first();
-  const checkedAt = Date.now();
-  if (known) await ctx.db.patch(known._id, { workers, checkedAt });
-  else await ctx.db.insert("sharedToolkitWorkers", { workers, checkedAt });
+  if (!known || known.allowed === undefined) return;
+  const full = await fullSharedLimit(ctx);
+  const allowed = known.allowed + 1;
+  await ctx.db.patch(known._id, {
+    allowed: full === null || allowed >= full ? undefined : allowed,
+  });
   const cap = await sharedLimit(ctx);
   if (cap !== null) await takeTurns(ctx, cap);
 }

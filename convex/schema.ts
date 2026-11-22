@@ -345,6 +345,10 @@ export default defineSchema({
   sharedToolkitWorkers: defineTable({
     workers: v.union(v.null(), v.number()),
     checkedAt: v.number(),
+    // Set while backing off after trouble: the total allowed for now, below the full one.
+    allowed: v.optional(v.number()),
+    // When the total was last cut, so one burst of failures cuts it once.
+    cutAt: v.optional(v.number()),
   }),
 
   // Teams waiting for room at the operator's toolkit that teams share. The team served

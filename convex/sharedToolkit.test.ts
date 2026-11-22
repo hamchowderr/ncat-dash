@@ -256,3 +256,113 @@ describe("the total taken from the toolkit's workers", () => {
     expect(await sent()).toBe(2);
   });
 });
+
+// When the toolkit is busy or out of reach the total is halved, and it grows back by one
+// for each job the toolkit takes (AIMD).
+describe("backing off when the toolkit struggles", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubEnv("HOSTED_TOOLKIT_URL", SHARED);
+    vi.stubEnv("HOSTED_TOOLKIT_JOBS_AT_ONCE", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
+  async function setUp(workers: number | null, jobs: number) {
+    const t = backend();
+    await t.mutation(internal.toolkitHealth.recordShared, { workers });
+    const organizationId = await addTeam(t, "Small Shop");
+    await t.run((ctx) => ctx.db.insert("teamSettings", { organizationId, maxParallelJobs: 20 }));
+    const person = await addPerson(t, "Small Shop Owner", [organizationId]);
+    const connectionId = await t.run((ctx) =>
+      ctx.db.insert("toolkitConnections", {
+        organizationId,
+        baseUrl: SHARED,
+        apiKeyCipher: "x",
+        apiKeyHint: "abcd",
+        status: "ok",
+        buildNumber: null,
+        lastCheckedAt: 0,
+        lastError: null,
+        createdBy: person.id,
+      }),
+    );
+    for (let i = 0; i < jobs; i++) {
+      await t.run((ctx) =>
+        ctx.db.insert("jobs", {
+          organizationId,
+          connectionId,
+          stepId: "media-metadata",
+          input: { media_url: `https://files.example/${i}.mp4` },
+          status: "queued",
+          webhookToken: "token",
+          toolkitJobId: null,
+          outputs: [],
+          error: null,
+          createdBy: person.id,
+          startedAt: null,
+          finishedAt: null,
+        }),
+      );
+    }
+    const sent = () =>
+      t.run(
+        async (ctx) =>
+          (await ctx.db.query("jobs").collect()).filter(
+            (job) => job.dispatchedAt !== undefined && job.status === "queued",
+          ).length,
+      );
+    const pump = () => t.mutation(internal.jobs.pumpTeam, { organizationId });
+    const trouble = () => t.mutation(internal.toolkitHealth.sharedTrouble, {});
+    const fine = () => t.mutation(internal.toolkitHealth.sharedWentFine, {});
+    const state = () => t.run((ctx) => ctx.db.query("sharedToolkitWorkers").first());
+    return { sent, pump, trouble, fine, state };
+  }
+
+  test("halves the total when the toolkit is in trouble", async () => {
+    const { sent, pump, trouble } = await setUp(4, 6);
+    await trouble();
+    await pump();
+    expect(await sent()).toBe(2);
+  });
+
+  test("cuts once for one burst of failures, and never below one", async () => {
+    const { sent, pump, trouble, state } = await setUp(4, 6);
+    await trouble();
+    await trouble();
+    await trouble();
+    expect((await state())?.allowed).toBe(2);
+    vi.advanceTimersByTime(31_000);
+    await trouble();
+    expect((await state())?.allowed).toBe(1);
+    vi.advanceTimersByTime(31_000);
+    await trouble();
+    expect((await state())?.allowed).toBe(1);
+    await pump();
+    expect(await sent()).toBe(1);
+  });
+
+  test("grows back by one for each job the toolkit takes, up to the full total", async () => {
+    const { sent, pump, trouble, fine, state } = await setUp(4, 6);
+    await trouble();
+    await pump();
+    expect(await sent()).toBe(2);
+    await fine();
+    expect(await sent()).toBe(3);
+    await fine();
+    expect(await sent()).toBe(4);
+    // Back to full: nothing held back any more.
+    expect((await state())?.allowed).toBeUndefined();
+    await fine();
+    expect(await sent()).toBe(4);
+  });
+
+  test("does nothing when there is no total", async () => {
+    // The toolkit could not say how many workers it has.
+    const { state, trouble } = await setUp(null, 0);
+    await trouble();
+    expect((await state())?.allowed).toBeUndefined();
+  });
+});
