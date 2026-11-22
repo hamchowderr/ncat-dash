@@ -71,9 +71,7 @@ export function StepForm({ stepId }: { stepId: string }) {
           <CardTitle>
             <h2>Input</h2>
           </CardTitle>
-          <CardDescription>
-            Sent to <code className="text-xs">{step.endpoint}</code> on your toolkit.
-          </CardDescription>
+          <CardDescription>Runs on your toolkit with these settings.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit}>

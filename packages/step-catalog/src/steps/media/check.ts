@@ -10,7 +10,7 @@ export const mediaCheck = defineStep({
   category: "media",
   title: "Check footage",
   description:
-    "Measures a video before editing with FFmpeg alone: its shape as it plays, frame rate, length, how loud its sound is and whether it clips, and where its picture is black or frozen.",
+    "Measures a video before editing, with no AI: its shape as it plays, frame rate, length, how loud its sound is and whether it clips, and where its picture is black or frozen.",
   endpoint: "/v1/media/check",
   method: "POST",
   output: "json",

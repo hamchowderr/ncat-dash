@@ -1,6 +1,7 @@
 import type { Brand } from "./brand";
 import { branchesOfKind, canFailOver, FAILURE_WAY } from "./logic";
 import { missingSettingsOf, nodeTypeOf } from "./registry";
+import { fileFields } from "./wiring";
 
 /** One box on the canvas. */
 export interface AutomationNode {
@@ -18,7 +19,9 @@ export interface AutomationNode {
    * "motion" draws motion graphics and "sound-effects" adds sound effects onto each video
    * (motion.ts); "cleanup" takes long pauses and retakes out of each recording and can
    * split its hook takes into files of their own (cleanup.ts); "footage-check" measures
-   * each video and stops or warns before editing when one has a problem (footage.ts).
+   * each video and stops or warns before editing when one has a problem (footage.ts);
+   * "subtitles" writes each video's subtitles in other languages (translated-captions.ts);
+   * "send" posts the files that reach it, with the run's details, to an address (send.ts).
    */
   kind:
     | "step"
@@ -36,7 +39,9 @@ export interface AutomationNode {
     | "motion-plan"
     | "sound-effects"
     | "cleanup"
-    | "footage-check";
+    | "footage-check"
+    | "subtitles"
+    | "send";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */
@@ -47,6 +52,10 @@ export interface AutomationNode {
    * cannot be turned off, since it has no one way to hand files on.
    */
   off?: boolean;
+  /**
+   * How it treats files when two or more lines meet at it; "all" when unset. See join.ts.
+   */
+  join?: "all" | "source" | "position" | "first";
   /** The step's settings. Text may hold {{placeholders}}; see templates.ts. */
   input: Record<string, unknown>;
   position: { x: number; y: number };
@@ -73,7 +82,14 @@ export function missingSettings(node: AutomationNode, brand?: Brand): string[] {
   // A step that is turned off does no work, so it needs nothing.
   if (node.off) return [];
   const nodeType = nodeTypeOf(node);
-  return nodeType ? missingSettingsOf(nodeType, node.input, brand) : [];
+  if (!nodeType) return [];
+  const missing = missingSettingsOf(nodeType, node.input, brand);
+  // A step that pairs the files of the lines meeting at it gets its other files from them.
+  if (node.join === "source" || node.join === "position") {
+    const files = fileFields(nodeType);
+    return missing.filter((name) => !files.includes(name));
+  }
+  return missing;
 }
 
 export type NodeStatus = "pending" | "running" | "waiting_approval" | "done" | "failed" | "skipped";
@@ -188,6 +204,8 @@ export function readyNodes(
   return nodes.filter((node) => {
     if (status[node.id] !== "pending") return false;
     const states = incomingStates(node, edges, status, taken);
+    // A step that takes whichever line finishes first starts as soon as one has.
+    if (node.join === "first" && states.includes("live")) return true;
     return states.length === 0 || (!states.includes("open") && states.includes("live"));
   });
 }

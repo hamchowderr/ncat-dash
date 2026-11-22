@@ -504,3 +504,37 @@ describe("export and import", () => {
     expect(fallback.ok && fallback.draft.trigger).toEqual({ kind: "manual" });
   });
 });
+
+describe("an If on what is said", () => {
+  const input = { check: "words", is: "mentions", text: "  New Menu " };
+
+  it("needs the words to look for", () => {
+    expect(conditionProblem({ check: "words", is: "mentions" })).toBe(
+      "Say which words to look for.",
+    );
+    expect(conditionProblem({ check: "words", is: "mentions", text: " " })).toBe(
+      "Say which words to look for.",
+    );
+    expect(conditionProblem(input)).toBeNull();
+    expect(readCondition(input)).toEqual({ check: "words", is: "mentions", text: "New Menu" });
+    expect(conditionSentence(input)).toBe("Mentions “New Menu”");
+    expect(conditionSentence({ ...input, is: "not_mentions" })).toBe("Does not mention “New Menu”");
+  });
+
+  it("matches the words without regard to capitals, and a file never transcribed goes by No", () => {
+    const condition = readCondition(input)!;
+    expect(passes(condition, null, "Try our new menu today")).toBe(true);
+    expect(passes(condition, null, "Nothing about food")).toBe(false);
+    expect(passes(condition, null, null)).toBe(false);
+    const not = readCondition({ ...input, is: "not_mentions" })!;
+    expect(passes(not, null, "Nothing about food")).toBe(true);
+    expect(passes(not, null, undefined)).toBe(false);
+    expect(
+      sortFiles(condition, [
+        { url: "a", details: null, said: "the new menu is here" },
+        { url: "b", details: null, said: "hello" },
+        { url: "c", details: null },
+      ]),
+    ).toEqual({ yes: ["a"], no: ["b", "c"] });
+  });
+});

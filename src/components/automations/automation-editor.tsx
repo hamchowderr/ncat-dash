@@ -1168,12 +1168,16 @@ function Editor({ automation }: { automation: Loaded }) {
                     </InsertOnEdgeContext>
                   </AddAfterContext>
                 </BrandContext>
-                {stepNodes.length === 0 && (
-                  <p className="text-muted-foreground pointer-events-none absolute inset-x-0 bottom-6 text-center text-sm">
-                    Press Add step to put the first step after the trigger.
-                  </p>
-                )}
               </div>
+              {stepNodes.length === 0 && (
+                // Under the canvas, not on it: wherever the trigger sits, nothing covers it.
+                <p
+                  className="text-muted-foreground mx-2 mb-3 text-center text-sm"
+                  data-testid="canvas-first-step-hint"
+                >
+                  Press Add step to put the first step after the trigger.
+                </p>
+              )}
             </div>
 
             {afterShown && (
@@ -1288,7 +1292,8 @@ function Editor({ automation }: { automation: Loaded }) {
                         selected.data.node.kind === "motion" ||
                         selected.data.node.kind === "sound-effects" ||
                         selected.data.node.kind === "cleanup" ||
-                        selected.data.node.kind === "footage-check") && (
+                        selected.data.node.kind === "footage-check" ||
+                        selected.data.node.kind === "subtitles") && (
                         <StepTest
                           key={selected.id}
                           automationId={automation._id}
@@ -1317,6 +1322,7 @@ function Editor({ automation }: { automation: Loaded }) {
                         automationId={automation._id}
                         automationName={automation.name}
                         hookToken={automation.hookToken}
+                        runsAtOnce={automation.runsAtOnce ?? null}
                         // Only one webhook (one address) and one Run now per automation.
                         taken={triggersOf(triggers)
                           .filter((each) => each.id !== selected.id)

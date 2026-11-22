@@ -22,6 +22,7 @@ import {
   tidyMotionSetup,
   type MotionSetup,
   type Word,
+  nothingToDrawNote,
 } from "../src";
 
 /** Words spoken one after another, 0.4 s each, from `start`. */
@@ -428,5 +429,30 @@ describe("the Plan Motion Graphics step", () => {
     expect(plan.pieces).toEqual([
       { type: "keyword", start: 8, duration: 1.2, title: "Consistency" },
     ]);
+  });
+});
+
+describe("nothingToDrawNote", () => {
+  const setup = {
+    ...NO_MOTION_SETUP,
+    style: { ...NO_MOTION_SETUP.style, pieces: ["lower_third" as const], ending: "none" as const },
+  };
+
+  it("names the missing speaker name when the name card has nothing to show", () => {
+    expect(nothingToDrawNote("motion", setup)).toBe(
+      "Nothing to draw on the video, so it went on unchanged. Add a speaker name in Settings, under Motion, for the name and follow cards to show.",
+    );
+  });
+
+  it("says only that the videos went on when nothing is missing", () => {
+    expect(nothingToDrawNote("motion", { ...setup, hostName: "Ana" }, 2)).toBe(
+      "Nothing to draw on the videos, so they went on unchanged.",
+    );
+  });
+
+  it("says so plainly for sound effects", () => {
+    expect(nothingToDrawNote("sound-effects", setup)).toBe(
+      "No sound effect fit the video, so it went on unchanged.",
+    );
   });
 });

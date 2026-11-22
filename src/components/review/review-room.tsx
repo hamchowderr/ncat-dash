@@ -19,7 +19,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { fileNameOf } from "@/components/jobs/media-preview";
+import { fileNameOf, isVideoUrl } from "@/components/jobs/media-preview";
 import { Badge } from "@/components/ui/badge";
 import { PageTourButton, StartPageTour } from "@/components/tours/page-tour";
 import { Button } from "@/components/ui/button";
@@ -144,15 +144,16 @@ function AddVersion({ clip, organizationId }: { clip: Clip; organizationId: stri
   const addVersion = useMutation(api.reviews.addVersion);
   // Each file once, newest first, leaving out the ones this clip already has.
   const seen = new Set(clip.versions.map((version) => version.url));
-  const files: { url: string; name: string; stepId: string; finishedAt: number | null }[] = [];
+  const files: { url: string; name: string; step: string; finishedAt: number | null }[] = [];
   for (const group of groups ?? []) {
     for (const url of group.urls) {
-      if (seen.has(url)) continue;
+      // A clip's new version is a video: caption files, pictures and sound are left out.
+      if (seen.has(url) || !isVideoUrl(url)) continue;
       seen.add(url);
       files.push({
         url,
         name: group.names?.[url] ?? fileNameOf(url),
-        stepId: group.stepId,
+        step: group.stepName ?? stepTitle(group.stepId),
         finishedAt: group.finishedAt,
       });
     }
@@ -206,7 +207,7 @@ function AddVersion({ clip, organizationId }: { clip: Clip; organizationId: stri
                   >
                     <span className="max-w-full truncate text-sm font-medium">{file.name}</span>
                     <span className="text-muted-foreground text-xs">
-                      {stepTitle(file.stepId)}
+                      {file.step}
                       {file.finishedAt ? ` · ${finishedAt.format(file.finishedAt)}` : ""}
                     </span>
                   </button>

@@ -104,10 +104,15 @@ test("a client's project is laid out from a package and worked through", async (
   await expect(row).toContainText("Acme Studio");
   await expect(row).toContainText("1 of 7");
 
-  // The client's portal: one link, only their projects, in the team's name.
-  await page.getByRole("link", { name: "Clients", exact: true }).click();
-  // The project's row names the client too, so wait for the Clients page itself.
-  await expect(page).toHaveURL(/\/clients$/);
+  // The team's logo, uploaded, so the portal can wear it.
+  await page.goto("/settings/brand");
+  await page.getByLabel("Upload logo").first().setInputFiles("e2e/fixtures/still.jpg");
+  await expect(page.getByLabel("Logo: address of the file")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save brand" }).click();
+  await expect(page.getByText("Saved").first()).toBeVisible();
+
+  // The client's portal: one link, only their projects, in the team's name and logo.
+  await page.goto("/clients");
   await page.getByRole("link", { name: /Acme Studio/ }).click();
   await page.getByRole("button", { name: "Make the portal link" }).click();
   const link = await page.getByLabel("Portal link", { exact: true }).inputValue();
@@ -117,7 +122,12 @@ test("a client's project is laid out from a package and worked through", async (
   const portal = await client.newPage();
   await portal.goto(link);
   await expect(portal.getByRole("heading", { name: "Projects for Acme Studio" })).toBeVisible();
-  await expect(portal.getByText("Fischer Studio").first()).toBeVisible();
+  // The uploaded logo shows to someone who is not signed in, not the letter mark.
+  const logo = portal.getByRole("img", { name: "Fischer Studio" });
+  await expect(logo).toBeVisible();
+  await expect
+    .poll(() => logo.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBeGreaterThan(0);
   await portal.getByRole("link", { name: /Episode 12/ }).click();
   const piece = portal.getByRole("listitem").filter({ hasText: "Full episode" });
   await expect(piece.getByText("Approved")).toBeVisible();

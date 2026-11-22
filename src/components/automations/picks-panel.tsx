@@ -11,6 +11,7 @@ import {
   clock,
   frameSize,
   getPlatform,
+  languageOf,
   showNotes,
   youtubeChapters,
 } from "@ncat-dash/automation-core";
@@ -58,6 +59,9 @@ export function PicksPanel({
     if (node.kind === "broll" && step.cutaways?.length) return [{ node, step }];
     if (node.kind === "cleanup" && step.cleaned?.length) return [{ node, step }];
     if (node.kind === "footage-check" && step.footage?.files.length) return [{ node, step }];
+    if (node.kind === "subtitles" && step.status === "done" && step.subtitles?.length) {
+      return [{ node, step }];
+    }
     if (step.disclosures?.length) return [{ node, step }];
     return [];
   });
@@ -81,6 +85,8 @@ export function PicksPanel({
           <CleanupSection key={step._id} title={nodeTitle(node)} step={step} />
         ) : node.kind === "footage-check" ? (
           <FootageSection key={step._id} title={nodeTitle(node)} step={step} />
+        ) : node.kind === "subtitles" ? (
+          <SubtitlesSection key={step._id} title={nodeTitle(node)} step={step} />
         ) : step.disclosures?.length ? (
           <DisclosureSection key={step._id} title={nodeTitle(node)} step={step} />
         ) : (
@@ -88,6 +94,55 @@ export function PicksPanel({
         ),
       )}
     </div>
+  );
+}
+
+/**
+ * The subtitle files a Translate Subtitles step wrote: one row per video, one link per
+ * language. A video with no speech heard has no files, and the note says so.
+ */
+function SubtitlesSection({ title, step }: { title: string; step: RunStep }) {
+  const files = step.subtitles ?? [];
+  const videos = [...new Set(files.map((file) => file.source))];
+  return (
+    <section aria-label={title} className="bg-surface rounded-xl">
+      <header className="grid px-4 py-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="text-muted-foreground text-xs">
+          SRT files to upload beside each video. They are kept in Files under Subtitles.
+        </p>
+      </header>
+      <ul className="grid gap-1 px-4 pb-4">
+        {videos.map((video) => {
+          const made = files.filter((file) => file.source === video && file.link);
+          const name = files.find((file) => file.source === video)?.name ?? "";
+          return (
+            <li key={video} className="bg-background grid gap-2 rounded-lg px-3 py-2">
+              <p className="truncate text-sm">{name.replace(/\.[^.]+\.srt$/, "")}</p>
+              {made.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {made.map((file) => (
+                    <a
+                      key={file.language}
+                      href={file.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      download={file.name}
+                      className="bg-muted hover:bg-accent flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
+                    >
+                      <Download className="size-3" />
+                      {languageOf(file.language)?.name ?? file.language}
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-xs">No speech was heard in this video.</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -216,7 +271,7 @@ function FootageSection({ title, step }: { title: string; step: RunStep }) {
         <p className="text-muted-foreground text-xs text-pretty">
           {footageSummary(footage.files)}{" "}
           {bad > 0 && (footage.stopped ? "Editing did not start. " : "Editing went ahead. ")}
-          No AI: measured by FFmpeg, judged by rules.
+          No AI: measured by your toolkit, judged by rules.
           {footage.note ? ` A note for the creator is in ${footage.note}.` : ""}
         </p>
       </header>

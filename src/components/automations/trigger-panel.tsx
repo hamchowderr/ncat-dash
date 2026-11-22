@@ -18,6 +18,7 @@ import {
 import { hookUrl, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib/automations";
 
 import { AutomationPicker } from "./automation-picker";
+import { RunsAtOnce } from "./runs-at-once";
 import { TRIGGER_ICONS, TRIGGER_TINT } from "./flow-nodes";
 import { TimeZonePicker, zoneCity } from "./time-zone-picker";
 import { LocalFolder } from "./local-folder";
@@ -103,6 +104,7 @@ export function TriggerPanel({
   onStopStarting,
   onAddStep,
   onRemove,
+  runsAtOnce,
 }: {
   trigger: Trigger;
   onChange: (trigger: Trigger) => void;
@@ -117,6 +119,8 @@ export function TriggerPanel({
   onStopStarting?: (stepId: string) => void;
   onAddStep?: () => void;
   onRemove?: () => void;
+  /** How many of the automation's runs go at once (null: no limit); left out to hide it. */
+  runsAtOnce?: number | null;
 }) {
   const address = hookUrl(automationId, hookToken);
 
@@ -169,8 +173,15 @@ export function TriggerPanel({
           </div>
           <FieldDescription>
             Send a POST here to start a run once the automation is switched on. To hand it a file,
-            send JSON with the file&apos;s link as <code>file_url</code>. Anything else you send is
-            kept with the run. Treat the address like a password.
+            send JSON with the file&apos;s link as <code>file_url</code>, or several links as{" "}
+            <code>files</code>. Anything else you send is kept with the run. Treat the address like
+            a password.
+          </FieldDescription>
+          <FieldDescription>
+            The answer says where to read how the run went. Add <code>callback_url</code> to be sent
+            its end when it finishes, signed with the token. Send the same{" "}
+            <code>Idempotency-Key</code> header again and no second run starts. The token can go in
+            an <code>X-Takewon-Token</code> header instead of the address.
           </FieldDescription>
         </Field>
       )}
@@ -427,6 +438,9 @@ export function TriggerPanel({
             )}
           </div>
         </Field>
+      )}
+      {runsAtOnce !== undefined && (
+        <RunsAtOnce automationId={automationId} runsAtOnce={runsAtOnce} />
       )}
     </FieldGroup>
   );

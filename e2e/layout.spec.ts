@@ -241,3 +241,88 @@ test("settings open from the team menu and swap the sidebar for their own menu, 
   await expect(page).toHaveURL(/\/uploads$/);
   await expect(sidebar.getByRole("link", { name: "Uploads" })).toBeVisible();
 });
+
+test("the first-step hint and the On switches stay clear at a small laptop size", async ({
+  page,
+}) => {
+  await page.setViewportSize(SIZES[0]);
+  await page.goto("/sign-up");
+  await page.locator("#name").fill("Tomas Lindqvist");
+  await page.locator("#email").fill(`tomas.${stamp}@example.test`);
+  await page.locator("#password").fill("layout-e2e-12345");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
+  await page.getByPlaceholder("Your company or channel").fill("Small Screen Shop");
+  await page.getByRole("button", { name: "Create team" }).click();
+  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+
+  // A trigger and no steps: the hint sits under the canvas, wherever the trigger lands, so it
+  // never covers the trigger's caption. Adding a second trigger puts one low on the canvas.
+  await page.goto("/automations");
+  await page.getByRole("link", { name: "New automation", exact: true }).click();
+  await page.getByRole("button", { name: "Empty canvas" }).first().click();
+  await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
+  const hint = page.getByTestId("canvas-first-step-hint");
+  await expect(hint).toBeVisible();
+  await page.getByRole("button", { name: "Add trigger" }).click();
+  await expect(page.locator(".react-flow__node-trigger")).toHaveCount(2);
+  await page.getByRole("button", { name: "Add trigger" }).click();
+  await expect(page.locator(".react-flow__node-trigger")).toHaveCount(3);
+  await page.waitForTimeout(800);
+  const canvas = await box(page, "[data-testid=canvas]");
+  const hintBox = (await hint.boundingBox())!;
+  expect(hintBox.y).toBeGreaterThanOrEqual(canvas.y + canvas.height - 1);
+  for (const trigger of await page.locator(".react-flow__node-trigger").all()) {
+    const t = (await trigger.boundingBox())!;
+    const apart =
+      t.y + t.height <= hintBox.y ||
+      t.y >= hintBox.y + hintBox.height ||
+      t.x + t.width <= hintBox.x ||
+      t.x >= hintBox.x + hintBox.width;
+    expect(apart, "a trigger is under the hint").toBe(true);
+  }
+  expect(await covered(page), "editor with only triggers").toEqual([]);
+
+  // The list of automations, with the main menu open: every row's On switch is in view, not
+  // cut off on the right or hidden behind a sideways scroll.
+  // A long name and a long chain of steps are what pushed the column out.
+  const long = {
+    format: "ncat-dash-automation",
+    version: 1,
+    name: "Weekly podcast clips with captions, thumbnails and a review before posting",
+    trigger: { kind: "webhook" },
+    nodes: Array.from({ length: 12 }, (_, n) => ({
+      id: `thumb_${n}`,
+      kind: "step",
+      stepId: "video-thumbnail",
+      input: { second: 1 },
+      position: { x: n * 320, y: 0 },
+    })),
+    edges: Array.from({ length: 11 }, (_, n) => ({
+      id: `thumb_${n}>thumb_${n + 1}`,
+      source: `thumb_${n}`,
+      target: `thumb_${n + 1}`,
+    })),
+  };
+  await page.goto("/automations");
+  await page.getByLabel("Automation file to import").setInputFiles({
+    name: "long.automation.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(long)),
+  });
+  await expect(page).toHaveURL(/\/automations\/[a-z0-9]+$/, { timeout: 30_000 });
+  await page.goto("/automations");
+  // The steps past the fifth are counted, not drawn.
+  await expect(page.getByTestId("flow-strip-more")).toHaveText("+7");
+  const switches = page.getByRole("switch");
+  await expect(switches.first()).toBeVisible();
+  const list = await box(page, "[data-item-list]");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    "the page scrolls sideways",
+  ).toBeLessThanOrEqual(1);
+  for (const toggle of await switches.all()) {
+    const s = (await toggle.boundingBox())!;
+    expect(s.x + s.width).toBeLessThanOrEqual(Math.min(list.x + list.width, SIZES[0].width));
+  }
+});

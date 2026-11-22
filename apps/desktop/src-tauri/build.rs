@@ -34,6 +34,14 @@ fn main() {
             "unwatch_folder",
             "landed_files",
             "landed_sent",
+            "check_machine",
+            "stack_saved",
+            "cloudflare_domains",
+            "make_tunnel",
+            "back_up_stack",
+            "restore_stack",
+            "save_stack",
+            "run_stack_step",
         ]),
     ))
     .expect("failed to build the desktop app");

@@ -3,6 +3,7 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useQuery } from "convex/react";
+import { FileVideo } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -15,16 +16,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { formatDuration, stepTitle } from "@/lib/catalog";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { ItemBadge, ItemList, ItemRow, MetaLine, Pager, usePages } from "@/components/ui/item-list";
+import { formatDuration, stepHref, stepTitle } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
+import { exactly, timeAgo } from "@/lib/when";
 
 import { JobResult } from "./job-result";
 import { StatusBadge } from "./status-badge";
@@ -36,6 +32,7 @@ export function JobsView() {
   const jobs = useQuery(api.jobs.list, { organizationId: team.id });
   const [openId, setOpenId] = useState<Id<"jobs"> | null>(null);
   const open = jobs?.find((job) => job._id === openId) ?? null;
+  const { shown, pager } = usePages(jobs ?? [], "jobs");
 
   return (
     <>
@@ -58,47 +55,56 @@ export function JobsView() {
           </Button>
         </div>
       ) : (
-        <div className="reveal overflow-hidden rounded-xl bg-surface">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Step</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Started</TableHead>
-                <TableHead>Took</TableHead>
-                <TableHead>Files</TableHead>
-                <TableHead>
-                  <span className="sr-only">Open</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {jobs.map((job) => (
-                <TableRow key={job._id}>
-                  <TableCell className="font-medium">{stepTitle(job.stepId)}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={job.status} />
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {startedAt.format(job._creationTime)}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground tabular-nums">
-                    {job.finishedAt && job.startedAt
-                      ? formatDuration(job.finishedAt - job.startedAt)
-                      : ""}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground tabular-nums">
-                    {job.outputs.length || ""}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => setOpenId(job._id)}>
-                      View<span className="sr-only"> {stepTitle(job.stepId)} job</span>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="flex flex-col gap-4">
+          <ItemList label="Jobs">
+            {shown.map((job) => {
+              const title = stepTitle(job.stepId);
+              const files = job.outputs.length;
+              return (
+                <ItemRow
+                  key={job._id}
+                  data-job={job._id}
+                  name={title}
+                  onOpen={() => setOpenId(job._id)}
+                  openLabel={`${title} job, started ${startedAt.format(job._creationTime)}`}
+                  meta={
+                    <MetaLine>
+                      <span title={exactly(job._creationTime)}>
+                        Started {timeAgo(job._creationTime)}
+                      </span>
+                      {job.finishedAt && job.startedAt && (
+                        <span>Took {formatDuration(job.finishedAt - job.startedAt)}</span>
+                      )}
+                    </MetaLine>
+                  }
+                  badges={
+                    <>
+                      {files > 0 && (
+                        <ItemBadge title={files === 1 ? "1 file made" : `${files} files made`}>
+                          <FileVideo aria-hidden="true" />
+                          {files}
+                          <span className="sr-only">{files === 1 ? " file" : " files"}</span>
+                        </ItemBadge>
+                      )}
+                      <StatusBadge status={job.status} />
+                    </>
+                  }
+                  menuLabel={`More for the ${title} job`}
+                  menu={
+                    <>
+                      <DropdownMenuItem onSelect={() => setOpenId(job._id)}>
+                        View details
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href={stepHref(job.stepId)}>Run this step again</Link>
+                      </DropdownMenuItem>
+                    </>
+                  }
+                />
+              );
+            })}
+          </ItemList>
+          <Pager {...pager} noun="jobs" />
         </div>
       )}
 
@@ -119,7 +125,7 @@ export function JobsView() {
                   </pre>
                 </div>
                 <Button asChild variant="outline" size="sm" className="self-start">
-                  <Link href={`/steps/${open.stepId}`}>Run this step again</Link>
+                  <Link href={stepHref(open.stepId)}>Run this step again</Link>
                 </Button>
               </div>
             </>

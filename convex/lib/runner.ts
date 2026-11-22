@@ -7,7 +7,13 @@ import {
   askedToDecide,
   burnRequest,
   burnsInFast,
+  captionLanguageOf,
   captionVideoOf,
+  canUseKnownWords,
+  hasKnownWords,
+  MAX_SENT_WORDS,
+  withKnownWords,
+  withoutKnownWords,
   wordsRequest,
   type AutomationEdge,
   type AutomationNode,
@@ -55,8 +61,16 @@ import {
   withDownloadLinks,
   withStart,
   stepFileLabels,
+  fileFields,
+  joinOf,
+  pairs,
+  partnersOf,
+  readSource,
 } from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+import { startSend } from "./send";
+import { type Item, recordItems } from "./items";
+import { mustWaitForSlot } from "./runLimit";
+import { getStep, pictureGivenForVideo } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
 import { components, internal } from "../_generated/api";
@@ -67,12 +81,14 @@ import { earlierFiles, runEnded, startAutomationStep, startingFiles } from "./ch
 import { cutListOf } from "./exports";
 import { collectUrls } from "./outputs";
 import { captionSetupOf } from "./captions";
+import { knownWordsFor } from "./knownWords";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
-import { finishListening, startListening } from "./moments";
+import { finishListening, listenRequest, startListening, wordsFor } from "./moments";
 import { type DisclosureNote, hearFirst } from "./disclosure";
 import { finishLaying, finishLooking } from "./broll";
-import { finishMotionListening, isPlaceKind } from "./motion";
+import { finishMotionListening, isMotionKind, isPlaceKind } from "./motion";
 import { finishFootageCheck, startFootageCheck } from "./footage";
+import { startSubtitles } from "./subtitles";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
@@ -109,6 +125,8 @@ export async function startRun(
       deliverableId?: Id<"deliverables">;
       clientId?: Id<"clients">;
     };
+    /** Where the run's end is reported, for a webhook call that asked. */
+    callbackUrl?: string;
   } = {},
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
@@ -149,6 +167,7 @@ export async function startRun(
     ...(options.test ? { test: options.test } : {}),
     ...(clientId ? { clientId } : {}),
     ...(graph.workflowId ? { workflowId: graph.workflowId } : {}),
+    ...(options.callbackUrl ? { callbackUrl: options.callbackUrl } : {}),
     ...(project
       ? {
           projectId: project.projectId,
@@ -176,6 +195,11 @@ export async function startRun(
       finishedAt: null,
     });
   }
+  // An automation that runs only a few at a time keeps this one waiting for its turn.
+  if (await mustWaitForSlot(ctx, automation, runId, options.test !== undefined)) {
+    await ctx.db.patch(runId, { status: "waiting", heldForSlot: true });
+    return { ok: true, runId };
+  }
   await advance(ctx, runId);
   return { ok: true, runId };
 }
@@ -200,13 +224,42 @@ function outputsToward(
   );
 }
 
+/**
+ * The steps straight before a node whose files it takes, in the order they are connected.
+ * One taking whichever line finishes first takes only the line that finished first, and
+ * one pairing files takes its main files from the first line (the others are its partners).
+ */
+function meetingSources(
+  node: AutomationNode,
+  run: Doc<"runs">,
+  byNode: Map<string, Doc<"runSteps">>,
+): string[] {
+  const sources = upstreamOf(node.id, run.edges as AutomationEdge[]);
+  if (sources.length < 2) return sources;
+  const mode = joinOf(node);
+  if (mode === "first") {
+    const finished = sources
+      .map((id) => byNode.get(id))
+      .filter(
+        (step): step is Doc<"runSteps"> =>
+          step !== undefined &&
+          (step.status === "done" || step.status === "failed") &&
+          outputsToward(step, node, run).length > 0,
+      )
+      .sort((a, b) => (a.finishedAt ?? 0) - (b.finishedAt ?? 0));
+    return finished.length > 0 ? [finished[0].nodeId] : sources;
+  }
+  if (mode === "source" || mode === "position") return sources.slice(0, 1);
+  return sources;
+}
+
 /** The files handed on by the steps straight before a node, or the trigger's file. */
 export function incomingFiles(
   node: AutomationNode,
   run: Doc<"runs">,
   byNode: Map<string, Doc<"runSteps">>,
 ): string[] {
-  const sources = upstreamOf(node.id, run.edges as AutomationEdge[]);
+  const sources = meetingSources(node, run, byNode);
   if (sources.length === 0) return triggerFiles(run.trigger);
   return sources.flatMap((source) => outputsToward(byNode.get(source), node, run));
 }
@@ -222,8 +275,10 @@ export function filesFor(
   run: Doc<"runs">,
   byNode: Map<string, Doc<"runSteps">>,
 ): string[] {
-  const levels = stepsBefore(node.id, run.edges as AutomationEdge[]).map((ids) =>
-    ids.flatMap((id) => outputsToward(byNode.get(id), node, run)),
+  const levels = stepsBefore(node.id, run.edges as AutomationEdge[]).map((ids, index) =>
+    (index === 0 ? meetingSources(node, run, byNode) : ids).flatMap((id) =>
+      outputsToward(byNode.get(id), node, run),
+    ),
   );
   // A run another one started also has that run's earlier files, nearest first, for a
   // step that wants a kind of file the other run did not finish with.
@@ -345,6 +400,11 @@ async function startNode(
     return;
   }
 
+  if (node.kind === "subtitles") {
+    await startSubtitles(ctx, run, node, step, byNode);
+    return;
+  }
+
   if (node.kind === "if") {
     await startIf(ctx, run, node, step, byNode);
     return;
@@ -352,6 +412,11 @@ async function startNode(
 
   if (node.kind === "wait") {
     await startWait(ctx, run, node, step, byNode);
+    return;
+  }
+
+  if (node.kind === "send") {
+    await startSend(ctx, run, node, step, byNode);
     return;
   }
 
@@ -383,6 +448,80 @@ async function startNode(
   }
 
   await startToolkitStep(ctx, run, node, step, byNode);
+}
+
+/**
+ * A named value an earlier step made, by the file each of its jobs worked on: for a
+ * transcript step, each file's captions.
+ */
+async function valuesByFile(
+  ctx: MutationCtx,
+  step: Doc<"runSteps"> | undefined,
+  source: { value: string; from: AutomationNode },
+): Promise<Map<string, unknown>> {
+  const found = new Map<string, unknown>();
+  const field = getStep(source.from.stepId ?? "")?.primaryInput;
+  if (!step || step.status !== "done" || !field) return found;
+  for (const jobId of step.jobIds) {
+    const job = await ctx.db.get(jobId);
+    if (job?.status !== "done") continue;
+    const file = (job.input as Record<string, unknown>)[field];
+    const value = valueFrom(source.from.stepId ?? "", source.value, job.result);
+    if (typeof file === "string" && value !== undefined) found.set(file, value);
+  }
+  return found;
+}
+
+/**
+ * Each job's partner files from the other lines meeting at a pairing step, or a plain
+ * reason a job has none. A file field already given a fixed address keeps it.
+ */
+function pairPartners(
+  node: AutomationNode,
+  run: Doc<"runs">,
+  byNode: Map<string, Doc<"runSteps">>,
+  nodeType: NonNullable<ReturnType<typeof nodeTypeOf>>,
+  primary: string,
+  planned: Record<string, unknown>[],
+): Record<string, unknown>[] | string {
+  const mode = joinOf(node) as "source" | "position";
+  const [first, ...others] = upstreamOf(node.id, run.edges as AutomationEdge[]);
+  if (!first || others.length === 0) return planned;
+  const known = new Map<string, Item>();
+  for (const other of byNode.values()) {
+    for (const item of (other.items ?? []) as Item[]) known.set(item.url, item);
+  }
+  const traced = (url: string) => ({ url, source: known.get(url)?.source ?? url });
+  const nameOf = (url: string) => decodeURIComponent(url.split(/[?#]/)[0].split("/").pop() ?? url);
+  const main = planned.map((input) => traced(String(input[primary] ?? "")));
+
+  let result = planned;
+  for (const field of fileFields(nodeType)) {
+    // Only fields that take a kind of media, so an address to call back is never paired.
+    if (field === primary || wantedKind(field) === "any") continue;
+    const set = readSource(node.input[field]);
+    const from =
+      set.from === "auto"
+        ? others
+        : set.from === "step" && others.includes(set.id)
+          ? [set.id]
+          : null;
+    if (!from) continue;
+    const pool = chooseFiles(wantedKind(field), [
+      from.flatMap((id) => outputsToward(byNode.get(id), node, run)),
+    ]);
+    if (pool.length === 0) continue;
+    const partners = partnersOf(mode, main, pool.map(traced));
+    const missing = partners.findIndex((partner) => partner === null);
+    if (missing >= 0) {
+      const file = nameOf(main[missing].url);
+      return mode === "source"
+        ? `Nothing from the other line started from the same upload as ${file}, so it has nothing to be paired with.`
+        : `The other line handed on fewer files than the first, so ${file} has nothing to be paired with.`;
+    }
+    result = result.map((input, index) => ({ ...input, [field]: partners[index] }));
+  }
+  return result;
 }
 
 /**
@@ -449,10 +588,6 @@ async function startToolkitStep(
   // Follow the speaker straight after Clips makes the platform's shape unless one was picked.
   const followShape = isEmptySetting(settings.aspect) ? followShapeFrom(node, nodes, edges) : null;
   if (followShape) settings.aspect = followShape;
-  for (const source of valueSources(node, nodes, edges)) {
-    const found = valueFrom(source.from.stepId ?? "", source.value, steps[source.from.id]?.result);
-    if (found !== undefined) settings[source.field] = found;
-  }
   let planned: Record<string, unknown>[];
   try {
     planned = planJobs(
@@ -465,6 +600,32 @@ async function startToolkitStep(
     await failStep(ctx, run, step, byNode, error.message);
     return;
   }
+  // A value an earlier step made, such as a transcript's captions, belongs to the file it
+  // worked on: each job gets the one made for its own file, and none for a file cut or
+  // changed since, which then works it out for itself.
+  const primary = definition.primaryInput;
+  if (primary) {
+    for (const source of valueSources(node, nodes, edges)) {
+      const values = await valuesByFile(ctx, byNode.get(source.from.id), source);
+      planned = planned.map((input) => {
+        const found = values.get(String(input[primary] ?? ""));
+        return found === undefined || !isEmptySetting(input[source.field])
+          ? input
+          : { ...input, [source.field]: found };
+      });
+    }
+  }
+  // A step pairing the files of the lines that meet at it gives each job its partner
+  // files from the other lines: the one that started from the same upload, or the one in
+  // the same place.
+  if (primary && pairs(node) && nodeType) {
+    const paired = pairPartners(node, run, byNode, nodeType, primary, planned);
+    if (typeof paired === "string") {
+      await failStep(ctx, run, step, byNode, paired);
+      return;
+    }
+    planned = paired;
+  }
   if (planned.length > MAX_JOBS_PER_STEP) {
     await failStep(
       ctx,
@@ -476,13 +637,58 @@ async function startToolkitStep(
     return;
   }
 
+  // A video step handed a picture can only fail, after a while and in programmers' words,
+  // so it stops at once in plain ones and is not tried again.
+  const picture = planned
+    .map((input) => pictureGivenForVideo(definition, input))
+    .find((said) => said !== null);
+  if (picture) {
+    await failStep(ctx, run, step, byNode, picture);
+    return;
+  }
+
   if (isCaptionStep(definition.id)) {
     // The team's word fixes, and its caption style for each video's shape, from Settings.
     const setup = await captionSetupOf(ctx, run.organizationId);
     const field = definition.primaryInput ?? "";
     const urlOf = (input: Record<string, unknown>) =>
       typeof input[field] === "string" ? (input[field] as string) : "";
-    if (!sizes && needsDetails(node.input, setup)) {
+    // "Caption video" in another language: the step draws the caption file itself from
+    // each video's words, translated and timed (captionTranslation.ts), then burns it in.
+    const languages = planned.map(captionLanguageOf);
+    const translating =
+      definition.id === "video-caption" &&
+      languages.some((code) => code !== null) &&
+      planned.every(burnsInFast);
+    if (translating && !heard && !step.heardWords) {
+      // Each video's words first, heard once and kept for every later step.
+      const unheard: string[] = [];
+      for (const url of new Set(planned.map(urlOf))) {
+        if (url && !(await wordsFor(ctx, run.organizationId, url))) unheard.push(url);
+      }
+      if (unheard.length > 0) {
+        const queued = await enqueueAll(
+          ctx,
+          run,
+          step,
+          unheard.map((url) => ({ stepId: "media-transcribe", input: listenRequest(url) })),
+        );
+        if (!queued.ok) {
+          await failStep(ctx, run, step, byNode, queued.message);
+          return;
+        }
+        await ctx.db.patch(step._id, {
+          status: "running",
+          stage: "hear",
+          heardWords: true,
+          jobIds: queued.jobIds,
+          startedAt: step.startedAt ?? now,
+        });
+        return;
+      }
+    }
+    // The caption file is drawn at the video's own size, so a translating step reads it.
+    if (!sizes && (translating || needsDetails(node.input, setup))) {
       const known = knownDetails(run.trigger);
       const unknown = [...new Set(planned.map(urlOf))].filter((url) => url && !known.has(url));
       if (unknown.length > 0) {
@@ -512,14 +718,58 @@ async function startToolkitStep(
       withCaptionSetup(input, setup, { details: details.get(urlOf(input)), brandFont }),
     );
 
+    if (translating) {
+      const captionPlan = planned.map((input, index) => {
+        const video = urlOf(input);
+        const size = details.get(video);
+        return {
+          video,
+          language: languages[index] ?? "",
+          look: lookOf(input.settings),
+          // A video whose size could not be read is drawn as a wide 1080p one.
+          width: size?.width && size.height ? size.width : 1920,
+          height: size?.width && size.height ? size.height : 1080,
+        };
+      });
+      await ctx.db.patch(step._id, {
+        status: "running",
+        stage: "translate",
+        jobIds: [],
+        captionPlan,
+        startedAt: step.startedAt ?? now,
+      });
+      await ctx.scheduler.runAfter(0, internal.captionTranslation.translate, {
+        runStepId: step._id,
+      });
+      return;
+    }
+
     // "Caption video" is made the fast way: the timed words first ("listen"), then one
     // quick save that burns them in ("render"). See burn-captions.ts.
     if (definition.id === "video-caption" && planned.every(burnsInFast)) {
+      // Words already known (the upload was transcribed when it came in, or the clip was
+      // cut from such a video) go with the request, so the video is not heard again.
+      const known = await knownWordsFor(
+        ctx,
+        run,
+        [...byNode.values()],
+        planned.filter(canUseKnownWords).map(captionVideoOf),
+      );
       const words = await enqueueAll(
         ctx,
         run,
         step,
-        planned.map((input) => ({ stepId: "media-generate-ass", input: wordsRequest(input) })),
+        planned.map((input) => {
+          const request = wordsRequest(input);
+          const heard = canUseKnownWords(input) ? known.get(captionVideoOf(input)) : undefined;
+          return {
+            stepId: "media-generate-ass",
+            input:
+              heard && heard.length <= MAX_SENT_WORDS
+                ? withKnownWords(request, heard, details.get(captionVideoOf(input)))
+                : request,
+          };
+        }),
       );
       if (!words.ok) {
         await failStep(ctx, run, step, byNode, words.message);
@@ -575,7 +825,8 @@ export async function finishHearing(ctx: MutationCtx, run: Doc<"runs">, step: Do
   const byNode = new Map(steps.map((other) => [other.nodeId, other]));
   const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
   if (!node) return;
-  await startToolkitStep(ctx, run, node, step, byNode, undefined, true);
+  if (node.kind === "subtitles") await startSubtitles(ctx, run, node, step, byNode);
+  else await startToolkitStep(ctx, run, node, step, byNode, undefined, true);
   await advance(ctx, run._id);
 }
 
@@ -770,6 +1021,8 @@ async function cutClips(
 export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void> {
   const run = await ctx.db.get(runId);
   if (!run || (run.status !== "running" && run.status !== "waiting")) return;
+  // A run waiting for its turn starts only when startWaitingRuns lets it.
+  if (run.heldForSlot) return;
   const nodes = run.nodes as AutomationNode[];
   const edges = run.edges as AutomationEdge[];
 
@@ -781,6 +1034,8 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
       .withIndex("by_run", (q) => q.eq("runId", runId))
       .take(200);
     const byNode = new Map(steps.map((step) => [step.nodeId, step]));
+    // Finished steps write down where their files came from before anything reads them.
+    await recordItems(ctx, run, byNode);
     const status = Object.fromEntries(steps.map((step) => [step.nodeId, step.status])) as Record<
       string,
       NodeStatus
@@ -930,6 +1185,14 @@ export async function retriesFor(ctx: QueryCtx, organizationId: string): Promise
   return retryLimit(settings?.stepRetries);
 }
 
+/** The most failed tries a step keeps in its log. */
+const MAX_TRIES_KEPT = 20;
+
+/** A step's log of failed tries with one more on the end. */
+function withTry(step: Doc<"runSteps">, error: string): { at: number; error: string }[] {
+  return [...(step.tries ?? []), { at: Date.now(), error }].slice(-MAX_TRIES_KEPT);
+}
+
 /**
  * Books another try for a step whose jobs failed, after a wait that grows with each
  * try. Returns false when the step has no tries left or the failure is one another try
@@ -945,14 +1208,74 @@ async function bookRetry(
   if (!shouldRetry(used, await retriesFor(ctx, run.organizationId), failures)) return false;
   const retry = used + 1;
   const delay = retryDelayMs(retry);
+  const error = failures[0].error ?? "The step failed.";
   await ctx.db.patch(step._id, {
     retries: retry,
     retryAt: Date.now() + delay,
-    retryError: failures[0].error ?? "The step failed.",
+    retryError: error,
+    tries: withTry(step, error),
   });
   await ctx.db.patch(run._id, { retries: (run.retries ?? 0) + 1 });
   await ctx.scheduler.runAfter(delay, internal.runs.retryStep, { runStepId: step._id, retry });
   return true;
+}
+
+/**
+ * Books another try for a step whose asking of the agent failed in a way that may pass
+ * (the model was busy, the agent server could not be reached), on the same waits and
+ * count as a toolkit job. `ask` is the part of the step to do again. Returns false when
+ * the step has no tries left, and the caller then fails it.
+ */
+export async function bookAgentRetry(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  error: string,
+  ask: AgentAsk,
+): Promise<boolean> {
+  const used = step.retries ?? 0;
+  if (used >= (await retriesFor(ctx, run.organizationId))) return false;
+  const retry = used + 1;
+  const delay = retryDelayMs(retry);
+  await ctx.db.patch(step._id, {
+    retries: retry,
+    retryAt: Date.now() + delay,
+    retryError: error,
+    tries: withTry(step, error),
+  });
+  await ctx.db.patch(run._id, { retries: (run.retries ?? 0) + 1 });
+  await ctx.scheduler.runAfter(delay, internal.runs.retryAgentStep, {
+    runStepId: step._id,
+    retry,
+    ask,
+  });
+  return true;
+}
+
+/** The parts of a step that ask the agent, which can be tried again on their own. */
+export type AgentAsk = "pick" | "match" | "choose";
+
+/** Runs a booked try of asking the agent. Does nothing if the run was stopped meanwhile. */
+export async function retryAgentStepNow(
+  ctx: MutationCtx,
+  runStepId: Id<"runSteps">,
+  retry: number,
+  ask: AgentAsk,
+): Promise<void> {
+  const step = await ctx.db.get(runStepId);
+  if (!step || step.status !== "running" || step.retryAt === undefined || step.retries !== retry) {
+    return;
+  }
+  const run = await ctx.db.get(step.runId);
+  if (!run || (run.status !== "running" && run.status !== "waiting")) return;
+  await ctx.db.patch(step._id, { retryAt: undefined });
+  if (ask === "pick") {
+    await ctx.scheduler.runAfter(0, internal.moments.pick, { runStepId, live: true });
+  } else if (ask === "match") {
+    await ctx.scheduler.runAfter(0, internal.broll.match, { runStepId });
+  } else {
+    await ctx.scheduler.runAfter(0, internal.broll.choose, { runStepId });
+  }
 }
 
 /**
@@ -1004,6 +1327,18 @@ export async function retryStepNow(
   await pump(ctx, run.organizationId);
 }
 
+/** A caption job's look settings, kept for drawing its caption file (plain values only). */
+function lookOf(settings: unknown): Record<string, string | number | boolean> {
+  if (typeof settings !== "object" || settings === null || Array.isArray(settings)) return {};
+  return Object.fromEntries(
+    Object.entries(settings).filter(
+      (entry): entry is [string, string | number | boolean] =>
+        ["string", "number", "boolean"].includes(typeof entry[1]) &&
+        (typeof entry[1] !== "number" || Number.isFinite(entry[1])),
+    ),
+  );
+}
+
 /** A caption step's videos have been read: queue its caption jobs with the style for each. */
 async function finishSizes(
   ctx: MutationCtx,
@@ -1043,6 +1378,25 @@ async function burnCaptions(
     .take(200);
   const byNode = new Map(steps.map((other) => [other.nodeId, other]));
   const failed = words.find((job) => job.status === "failed");
+  if (failed && words.some((job) => hasKnownWords(job.input))) {
+    // A toolkit from before caption files could be made from known words refuses them.
+    // It is asked again the old way, hearing each video itself.
+    const again = await enqueueAll(
+      ctx,
+      run,
+      step,
+      words.map((job) => ({
+        stepId: "media-generate-ass",
+        input: withoutKnownWords(job.input as Record<string, unknown>),
+      })),
+    );
+    if (!again.ok) {
+      await failStep(ctx, run, step, byNode, again.message);
+      return;
+    }
+    await ctx.db.patch(step._id, { stage: "listen", jobIds: again.jobIds });
+    return;
+  }
   if (failed) {
     await failStep(ctx, run, step, byNode, failed.error ?? "The captions could not be made.");
     return;
@@ -1155,7 +1509,9 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
         run,
         step,
         new Map(steps.map((other) => [other.nodeId, other])),
-        `Could not transcribe the video to find its paid-ad disclosure: ${failed.error ?? "the toolkit gave no reason."}`,
+        step.heardWords
+          ? `Could not transcribe the video to ${(run.nodes as AutomationNode[]).find((one) => one.id === step.nodeId)?.kind === "subtitles" ? "translate its subtitles" : "caption it in another language"}: ${failed.error ?? "the toolkit gave no reason."}`
+          : `Could not transcribe the video to find its paid-ad disclosure: ${failed.error ?? "the toolkit gave no reason."}`,
       );
       await advance(ctx, run._id);
       return;
@@ -1180,9 +1536,13 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
     );
   } else {
     const labels = await variantLabels(ctx, run, step, jobs);
+    const kind = (run.nodes as AutomationNode[]).find((other) => other.id === step.nodeId)?.kind;
+    // Add Motion Graphics and Add Sound Effects keep the videos that had nothing to draw,
+    // unchanged, in `outputs` while the rest render.
+    const keptAsIs = kind && isMotionKind(kind) && step.stage === "render" ? step.outputs : [];
     await ctx.db.patch(runStepId, {
       status: "done",
-      outputs: jobs.flatMap((job) => job.outputs),
+      outputs: [...keptAsIs, ...jobs.flatMap((job) => job.outputs)],
       finishedAt: Date.now(),
       retryError: undefined,
       ...(labels.length > 0 ? { labels } : {}),

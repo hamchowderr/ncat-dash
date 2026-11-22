@@ -1,8 +1,17 @@
+import { readUploadRef } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
-import { components } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
+import {
+  action,
+  internalQuery,
+  mutation,
+  type MutationCtx,
+  query,
+  type QueryCtx,
+} from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
+import { bucketOf, presign } from "./lib/bucket";
 import { packageOf } from "./lib/packages";
 import { brandOf } from "./lib/queue";
 import { shareOf } from "./lib/reviews";
@@ -13,6 +22,8 @@ import { shareOf } from "./lib/reviews";
 // the client's side checks it first. The team switches it on and off on the client's page.
 
 const PROJECTS_SHOWN = 100;
+// Long enough for a client reading the portal; the page asks again when it next opens.
+const LOGO_LINK_SECONDS = 6 * 60 * 60;
 const SLOTS_SHOWN = 200;
 
 const closed = () =>
@@ -224,5 +235,48 @@ export const openReview = mutation({
       showTeamComments: portal.showTeamComments,
     });
     return token;
+  },
+});
+
+/**
+ * The team's logo file, when the portal behind this link is live and the logo is one of the
+ * team's own finished uploads. Only that one file: nothing else in the team's storage.
+ */
+export const logoTarget = internalQuery({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const found = await portalFor(ctx, args.token);
+    if (!found) return null;
+    const { organizationId } = found.client;
+    const uploadId = readUploadRef((await brandOf(ctx, organizationId)).logo);
+    const id = uploadId ? ctx.db.normalizeId("uploads", uploadId) : null;
+    const upload = id ? await ctx.db.get(id) : null;
+    if (!upload || upload.organizationId !== organizationId || upload.status !== "ready") {
+      return null;
+    }
+    return { organizationId, key: upload.key };
+  },
+});
+
+/**
+ * A link the portal shows the team's uploaded logo from. Visitors are not signed in, so the
+ * portal's secret is what lets them see it. Null when there is no uploaded logo to show.
+ */
+export const logoLink = action({
+  args: { token: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args): Promise<string | null> => {
+    const target = await ctx.runQuery(internal.portal.logoTarget, { token: args.token });
+    if (!target) return null;
+    const storage = await ctx.runQuery(internal.storage.load, {
+      organizationId: target.organizationId,
+    });
+    if (!storage) return null;
+    try {
+      return await presign(await bucketOf(storage), "GET", target.key, LOGO_LINK_SECONDS);
+    } catch {
+      // A toolkit that is down only costs the portal its logo; the letter mark stands in.
+      return null;
+    }
   },
 });

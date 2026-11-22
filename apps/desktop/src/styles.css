@@ -78,7 +78,8 @@ h1 {
   gap: 8px;
 }
 
-input {
+input,
+select {
   flex: 1;
   min-width: 0;
   height: 36px;
@@ -89,7 +90,8 @@ input {
   color: inherit;
   font: inherit;
 }
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: none;
   border-color: var(--ring);
   box-shadow: 0 0 0 3px oklch(0.708 0 0 / 0.3);
@@ -190,4 +192,179 @@ button:focus-visible {
 
 [hidden] {
   display: none !important;
+}
+
+/* Running the whole product on this computer. */
+.run {
+  max-width: 520px;
+}
+.run h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 32px 0 8px;
+}
+.run .hint {
+  color: var(--muted-foreground);
+  margin: 0 0 12px;
+}
+.items,
+.steps {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.item .mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  background: var(--surface);
+}
+.item.fail .mark {
+  color: var(--destructive);
+}
+.item .detail {
+  color: var(--muted-foreground);
+}
+.field {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.field small {
+  color: var(--muted-foreground);
+}
+.here .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.backup-result.error,
+.restore-result.error {
+  color: var(--destructive);
+}
+.restore {
+  margin-top: 16px;
+}
+.restore label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.restore-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.restore-pick select {
+  flex: 1 1 200px;
+  width: auto;
+}
+.ways {
+  border: 0;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.ways legend {
+  padding: 0;
+  margin-bottom: 8px;
+}
+.way {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+.way:has(input:checked) {
+  background: var(--selected);
+}
+.way input {
+  flex: none;
+  height: auto;
+  margin: 3px 0 0;
+  accent-color: var(--primary);
+}
+.way small {
+  color: var(--muted-foreground);
+}
+.cloudflare .find-domains {
+  margin: 0 0 12px;
+}
+.field a {
+  color: inherit;
+  text-underline-offset: 2px;
+}
+.steps li {
+  color: var(--muted-foreground);
+  padding-left: 26px;
+  position: relative;
+}
+.steps li::before {
+  content: "○";
+  position: absolute;
+  left: 4px;
+}
+.steps li.doing {
+  color: var(--foreground);
+}
+.steps li.doing::before {
+  content: "◌";
+}
+.steps li.done {
+  color: var(--foreground);
+}
+.steps li.done::before {
+  content: "✓";
+}
+.steps li.failed::before {
+  content: "✕";
+  color: var(--destructive);
+}
+.primary,
+.secondary {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: calc(var(--radius) * 0.8);
+}
+.primary {
+  border: 0;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.secondary {
+  border: 1px solid var(--input);
+  background: var(--background);
+  color: inherit;
+}
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.run .back {
+  margin-top: 32px;
+}
+.run-here {
+  margin-top: 32px;
+  color: var(--muted-foreground);
 }

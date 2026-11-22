@@ -1,6 +1,7 @@
 // Runs that start other runs: the "Run an automation" step, and automations whose trigger
 // follows another one. The rules for what may start what are in automation-core's
 // chain.ts; this is where runs are started, waited on and finished.
+import { startWaitingRuns } from "./runLimit";
 import {
   type AutomationEdge,
   type AutomationNode,
@@ -12,8 +13,9 @@ import {
 } from "@ncat-dash/automation-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { reportRunEnd } from "./hooks";
 import { advance, failStep, startRun } from "./runner";
-import { enabledWithTrigger, triggersOfKind } from "./triggers";
+import { teamEnabledWithTrigger, triggersOfKind } from "./triggers";
 
 /** The automations that led to a run, itself last. Older runs only know themselves. */
 export function chainOf(run: Doc<"runs">): Id<"automations">[] {
@@ -181,9 +183,13 @@ export async function runEnded(
   const files = finishedFilesOf(run, steps);
 
   if (run.parentRunStepId) await finishWaitingStep(ctx, run, status, error, files);
+  // A run of the same automation waiting for its turn can start now.
+  await startWaitingRuns(ctx, run.automationId);
+  // A webhook that asked to hear how the run went is told.
+  await reportRunEnd(ctx, run);
 
   if (status === "cancelled" || run.test) return;
-  const followers = await enabledWithTrigger(ctx, "finished", 500);
+  const followers = await teamEnabledWithTrigger(ctx, run.organizationId, "finished");
   const chain = chainOf(run);
   for (const follower of followers) {
     if (follower.organizationId !== run.organizationId) continue;

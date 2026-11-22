@@ -18,6 +18,8 @@ import {
   type NodeGroup,
   nodeTypeOf,
   passedOverWithout,
+  sendSentence,
+  subtitleLanguagesSentence,
   waitSentence,
   approvalShort,
   waitsForRun,
@@ -37,6 +39,7 @@ import {
 } from "@xyflow/react";
 import {
   CalendarClock,
+  Languages,
   Clapperboard,
   Clock,
   Code,
@@ -54,6 +57,7 @@ import {
   Scissors,
   ScissorsLineDashed,
   ScanSearch,
+  Send,
   Shapes,
   Signpost,
   Bot,
@@ -237,6 +241,13 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
       kind: footageCheckSentence(node.input),
     };
   }
+  if (node.kind === "subtitles") {
+    return {
+      icon: Languages,
+      tint: CATEGORY_TINTS.media,
+      kind: subtitleLanguagesSentence(node.input),
+    };
+  }
   if (node.kind === "sound-effects") {
     const level = node.input.level;
     return {
@@ -251,6 +262,9 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
   }
   if (node.kind === "wait") {
     return { icon: Clock, tint: LOGIC_TINT, kind: waitSentence(node.input) };
+  }
+  if (node.kind === "send") {
+    return { icon: Send, tint: LOGIC_TINT, kind: sendSentence(node.input) };
   }
   if (node.kind === "automation") {
     return {

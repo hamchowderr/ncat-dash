@@ -238,7 +238,7 @@ export function CalendarView({ now: givenNow }: { now?: number } = {}) {
           </div>
           <div data-tour-step-id="tour-calendar-grid" className="overflow-x-auto pb-1">
             {byDay === null ? (
-              <Skeleton className="h-[36rem] min-w-[44rem] rounded-xl" />
+              <Skeleton className="h-[36rem] min-w-[36rem] rounded-xl" />
             ) : view === "month" ? (
               <MonthGrid
                 days={days}

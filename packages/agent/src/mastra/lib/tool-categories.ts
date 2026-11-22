@@ -69,6 +69,10 @@ export const BROWSER_ACTION_TOOLS = [
  * an always-allow on them then approves just that one call.
  *
  * - `mastra_workspace_delete`: destructive, so it asks every time.
+ * - `knowledge_page`: one tool creates, edits, moves, merges AND deletes pages, so an
+ *   "Always allow" on edits must not cover it; each call asks.
+ * - `knowledge_pin`: a pin puts a page in the context of every run in its audience, a
+ *   change to what the agent sees on every turn, not an edit; each call asks.
  * - `setGoal`, `start_schedule`, `stop_schedule`, `subagent`: each hands the
  *   agent more autonomy (a standing objective, a recurring background run, a
  *   delegated run). `ToolCategory` is a closed set, so they cannot get a category
@@ -89,7 +93,14 @@ const CATEGORIES: Record<string, ToolCategory> = {
   ...Object.fromEntries(NCAT_EDIT_TOOLS.map((name) => [name, 'edit' as const])),
   // Read: looks things up, changes nothing.
   getWeather: 'read',
-  searchKnowledge: 'read',
+  // Knowledge (lib/chat-knowledge.ts): searching, reading and listing pages change nothing.
+  knowledge_search: 'read',
+  knowledge_read: 'read',
+  knowledge_list: 'read',
+  // Skills (lib/agent-skills.ts): loading and reading the agent's own skill files.
+  skill: 'read',
+  skill_search: 'read',
+  skill_read: 'read',
   list_schedules: 'read',
   doltQuery: 'read',
   doltHistory: 'read',
@@ -111,6 +122,8 @@ const CATEGORIES: Record<string, ToolCategory> = {
 
   // Edit: changes files or data, but runs nothing.
   doltWrite: 'edit',
+  // Adds, restamps or removes a note on a Knowledge page.
+  knowledge_note: 'edit',
   [FILESYSTEM.WRITE_FILE]: 'edit',
   [FILESYSTEM.EDIT_FILE]: 'edit',
   [FILESYSTEM.AST_EDIT]: 'edit',
@@ -165,6 +178,8 @@ export const PLAN_MODE_TOOLS: readonly string[] = [
  *  - firecrawl_search / firecrawl_scrape — web lookups that change nothing. They spend
  *    Firecrawl credits, but the key's owner turned them on by setting the key, and a
  *    card before every search would make web search unusable.
+ *  - knowledge_search/read/list and skill/skill_search/skill_read — reading Knowledge
+ *    pages and the agent's own skill files changes nothing.
  *  - BROWSER_AUTO_ALLOWED_TOOLS — the Firecrawl browser's look-only tools (snapshot,
  *    screenshot, scroll, wait, back) and browser_close. Opening a new site
  *    (browser_goto) and every page action (click, type, …) stay GATED.
@@ -190,6 +205,13 @@ export const AUTO_ALLOWED_TOOLS = [
   ...BROWSER_AUTO_ALLOWED_TOOLS,
   // Looking at the dashboard changes nothing, so it never needs a card.
   ...NCAT_READ_TOOLS,
+  // Nor does looking in Knowledge or loading one of the agent's skills.
+  'knowledge_search',
+  'knowledge_read',
+  'knowledge_list',
+  'skill',
+  'skill_search',
+  'skill_read',
 ] as const;
 
 /**

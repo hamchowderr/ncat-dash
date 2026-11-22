@@ -150,7 +150,7 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
     case "try_team_step": {
       const step = (given?.step ?? {}) as { title?: unknown };
       return {
-        title: "Trying a new FFmpeg step",
+        title: "Trying a new step",
         question: "Try this step on a file?",
         lines: [
           isText(step.title) ? `"${step.title}"` : "A step written for you",
@@ -171,7 +171,7 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
         lines: [
           isText(step.title) ? `"${step.title}"` : "A step written for you",
           settings.length ? `Settings: ${settings.join(", ")}` : "No settings to fill in",
-          "It runs as plain FFmpeg, with no AI each time.",
+          "It runs on your toolkit by plain rules, with no AI each time.",
         ],
       };
     }
@@ -257,6 +257,16 @@ const PLAIN_TITLES: Record<string, string> = {
   task_check: "Checked the plan",
   updateWorkingMemory: "Saved a note",
   find_in_library: "Looking in your library",
+  library_file: "Looking up a library file",
+  knowledge_search: "Searching what I know",
+  knowledge_read: "Reading a page of notes",
+  knowledge_list: "Looking through my notes",
+  knowledge_page: "Writing a page of notes",
+  knowledge_note: "Saving a note",
+  knowledge_pin: "Keeping a page in mind",
+  skill: "Reading up on how to do it",
+  skill_search: "Looking through what I know how to do",
+  skill_read: "Reading a worked example",
   moments: "Finding the best moments",
   run_on_library_file: "Running an automation on a library file",
   list_schedules: "Looking at your schedules",

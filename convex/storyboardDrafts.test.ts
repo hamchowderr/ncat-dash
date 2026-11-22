@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -281,5 +281,109 @@ describe("a project gathers the drafts of several uploads", () => {
       "Welcome to the course",
       "Step two is the upload",
     ]);
+  });
+});
+
+describe("suggesting scenes", () => {
+  const AGENT_URL = "https://agent.example";
+
+  function agentAnswers(answer: unknown, status = 200) {
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) !== `${AGENT_URL}/ncat/scenes`) return new Response("", { status: 404 });
+        sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(JSON.stringify(answer), { status });
+      }),
+    );
+    return sent;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.AGENT_URL;
+    delete process.env.MASTRA_JWT_SECRET;
+  });
+
+  async function drafted() {
+    const studied = await studio();
+    const { itemId } = await studied.transcribed("lesson.mp4");
+    const storyboardId = (await studied.t.mutation(internal.storyboards.draftForUpload, {
+      itemId,
+    }))!;
+    return { ...studied, itemId, storyboardId };
+  }
+
+  test("asks once with the numbered lines and puts in the scenes and names it can read", async () => {
+    process.env.AGENT_URL = AGENT_URL;
+    process.env.MASTRA_JWT_SECRET = "a-shared-secret-for-the-agent-server";
+    const { maya, itemId, storyboardId, draft } = await drafted();
+    const sent = agentAnswers({
+      answer:
+        "Here you go:\n```json\n" +
+        JSON.stringify({
+          chapters: [{ title: "Why this course" }, { title: "Chapter 2: Uploading" }],
+          scenes: [
+            { n: 2, scene: "Panel" },
+            { n: 3, scene: "graphic" },
+            { n: 99, scene: "panel" },
+            { n: 4, scene: "spinning cube" },
+          ],
+        }) +
+        "\n```",
+    });
+    expect(await maya.as.action(api.storyboards.suggestScenes, { storyboardId })).toEqual({
+      scenes: 2,
+      titles: 2,
+    });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      name: "Drafted from lesson.mp4",
+      aspect: "9:16",
+      chapters: [
+        {
+          title: "Welcome to the course",
+          lines: [
+            { n: 1, line: "Welcome to the course." },
+            { n: 2, line: "So the first thing you do is open the folder." },
+          ],
+        },
+        { title: "Step two is the upload" },
+      ],
+    });
+    const board = (await draft(itemId))!;
+    expect(board.chapters.map((chapter) => chapter.title)).toEqual([
+      "Why this course",
+      "Uploading",
+    ]);
+    const takes = board.chapters.flatMap((chapter) => chapter.takes);
+    expect(takes.map((take) => take.scene)).toEqual(["full", "panel", "graphic", "full"]);
+    // A scene other than Full Screen needs a graphic; the take's clip stays.
+    expect(takes[1]!.parts).toEqual(["you", "graphic"]);
+    expect(takes[1]!.status.label).toBe("Needs a graphic");
+    expect(takes[1]!.files.you).toContain("#t=");
+  });
+
+  test("says plainly when the agent is not set up or does not answer", async () => {
+    const { maya, storyboardId } = await drafted();
+    await expect(maya.as.action(api.storyboards.suggestScenes, { storyboardId })).rejects.toThrow(
+      /AGENT_URL/,
+    );
+    process.env.AGENT_URL = AGENT_URL;
+    process.env.MASTRA_JWT_SECRET = "a-shared-secret-for-the-agent-server";
+    agentAnswers({ error: "The model did not answer." }, 502);
+    await expect(maya.as.action(api.storyboards.suggestScenes, { storyboardId })).rejects.toThrow(
+      /did not answer/,
+    );
+  });
+
+  test("another team cannot ask", async () => {
+    process.env.AGENT_URL = AGENT_URL;
+    process.env.MASTRA_JWT_SECRET = "a-shared-secret-for-the-agent-server";
+    const { olu, storyboardId } = await drafted();
+    const sent = agentAnswers({ answer: "{}" });
+    await expect(olu.as.action(api.storyboards.suggestScenes, { storyboardId })).rejects.toThrow();
+    expect(sent).toHaveLength(0);
   });
 });

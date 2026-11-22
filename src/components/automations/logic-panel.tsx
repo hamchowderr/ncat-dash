@@ -7,6 +7,7 @@ import {
   CHECKS,
   conditionFor,
   PICTURE_SIZES,
+  sendProblem,
   WAIT_UNITS,
   type WaitUnit,
   waitProblem,
@@ -151,9 +152,18 @@ function IfSettings({ input, onChange }: { input: Settings; onChange: (input: Se
             </SelectContent>
           </Select>
         )}
+        {description.text && (
+          <Input
+            aria-label="Words to look for"
+            value={typeof input.text === "string" ? input.text : ""}
+            autoComplete="off"
+            onChange={(event) => onChange({ ...input, text: event.target.value })}
+          />
+        )}
         <FieldDescription>
-          Every other file goes out by No. The step reads each file itself, so there is nothing else
-          to set.
+          {description.text
+            ? "Every other file goes out by No. The words come from a Transcribe step before this one; a file nothing transcribed goes out by No."
+            : "Every other file goes out by No. The step reads each file itself, so there is nothing else to set."}
         </FieldDescription>
       </Field>
     </FieldGroup>
@@ -213,6 +223,43 @@ function WaitSettings({
 }
 
 /** Settings for an If or a Wait step. Mount with key={node.id}. */
+function SendSettings({
+  input,
+  onChange,
+}: {
+  input: Settings;
+  onChange: (input: Settings) => void;
+}) {
+  const url = typeof input.url === "string" ? input.url : "";
+  // Said once something is typed, so an empty new step does not open on an error.
+  const problem = url.trim() ? sendProblem(input) : null;
+  return (
+    <Field data-invalid={problem !== null}>
+      <FieldLabel htmlFor="send-url">Address</FieldLabel>
+      <Input
+        id="send-url"
+        type="url"
+        value={url}
+        placeholder="https://n8n.example.com/webhook/clips"
+        autoComplete="off"
+        className="font-mono text-xs"
+        aria-invalid={problem !== null}
+        onChange={(event) => onChange({ ...input, url: event.target.value })}
+      />
+      {problem ? (
+        <FieldError>{problem}</FieldError>
+      ) : (
+        <FieldDescription>
+          The files that reach this step are posted here as JSON, with the run&apos;s id, the
+          automation and what started it. The post is signed in an <code>X-Takewon-Signature</code>{" "}
+          header with the automation&apos;s token. If the address does not answer, it is tried three
+          more times, then the step fails. The files carry on to the next step.
+        </FieldDescription>
+      )}
+    </Field>
+  );
+}
+
 export function LogicSettings({
   node,
   onChange,
@@ -221,6 +268,7 @@ export function LogicSettings({
   onChange: (patch: Partial<NodeContent>) => void;
 }) {
   const change = (input: Settings) => onChange({ input });
+  if (node.kind === "send") return <SendSettings input={node.input} onChange={change} />;
   return node.kind === "if" ? (
     <IfSettings input={node.input} onChange={change} />
   ) : (

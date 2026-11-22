@@ -12,6 +12,9 @@ crons.interval("check watched folders", { minutes: 1 }, internal.watch.poll, {})
 // Asks the toolkit about running jobs whose result is late, in case its webhook was lost.
 crons.interval("check on late toolkit jobs", { minutes: 1 }, internal.jobs.checkLate, {});
 
+// Ends steps that stopped moving, so their runs finish and the team hears about them.
+crons.interval("end stuck steps", { minutes: 15 }, internal.stuck.endStuckSteps, {});
+
 // Asks Google Meet for finished recordings of every account that brings them in.
 crons.interval("check Google Meet recordings", { minutes: 5 }, internal.googleMeet.checkAll, {});
 
@@ -27,6 +30,14 @@ crons.hourly(
 // change notice missed.
 crons.interval("check Microsoft 365 recordings", { minutes: 15 }, internal.microsoft.sweep, {});
 crons.interval("check watched Dropbox folders", { minutes: 15 }, internal.dropbox.sweep, {});
+
+// Forgets webhook calls' Idempotency-Keys after a day.
+crons.daily(
+  "forget old webhook keys",
+  { hourUTC: 9, minuteUTC: 45 },
+  internal.hooks.forgetOldCalls,
+  {},
+);
 
 // Forgets saved Best moments and Chapters answers more than 30 days old.
 crons.daily(

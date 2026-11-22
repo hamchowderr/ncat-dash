@@ -157,4 +157,43 @@ describe("the draft bar after bringing a version back", () => {
     );
     expect(screen.getByText("Draft from version 2.")).toBeInTheDocument();
   });
+
+  test("a version's logo step reads the team's brand, as the editor does", async () => {
+    answerQuery(api.versions.list, listed());
+    answerQuery(api.versions.get, (args: Record<string, unknown>) => ({
+      ...content(args.versionId as string, 3),
+      nodes: [
+        {
+          id: "logo_1",
+          kind: "step",
+          stepId: "recipe-logo",
+          input: {},
+          position: { x: 0, y: 0 },
+        },
+      ],
+    }));
+    answerQuery(api.teamSettings.get, { brand: { logo: "upload:logo.png" } });
+    renderInApp(<VersionsPanel automationId={"a1" as never} />);
+    expect(await screen.findByText("Add a logo")).toBeInTheDocument();
+    expect(screen.queryByText(/Needs your logo/)).toBeNull();
+  });
+
+  test("without a team logo the same step says it needs one", async () => {
+    answerQuery(api.versions.list, listed());
+    answerQuery(api.versions.get, (args: Record<string, unknown>) => ({
+      ...content(args.versionId as string, 3),
+      nodes: [
+        {
+          id: "logo_1",
+          kind: "step",
+          stepId: "recipe-logo",
+          input: {},
+          position: { x: 0, y: 0 },
+        },
+      ],
+    }));
+    answerQuery(api.teamSettings.get, { brand: {} });
+    renderInApp(<VersionsPanel automationId={"a1" as never} />);
+    expect(await screen.findByText("Needs your logo")).toBeInTheDocument();
+  });
 });

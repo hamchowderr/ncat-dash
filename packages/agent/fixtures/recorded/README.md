@@ -44,3 +44,8 @@ e2e/looks.spec.ts`): The dashboard sends the sheet of six frames FFmpeg took fro
 stand-in clip, uploaded as "Crew interview reel.webm". The model saw a colour-bar test
 pattern filling the frame, no grade and no captions, and said so. Its match was cut down to
 the sample's name line.
+
+One translation, recorded 2026-11-22 by the browser tests (`RECORD_AGENT=1 pnpm test:e2e
+e2e/translation.spec.ts`): the two subtitle lines of the stand-in clip ("Welcome back to the
+station.", "Today we talk about pricing your edits.") translated into Spanish by
+`anthropic/claude-haiku-5-5` (SIMPLE_CHAT_MODEL), one string per line as asked.

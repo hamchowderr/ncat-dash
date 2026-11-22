@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   forgetSessions,
+  personOf,
   rememberMade,
   rememberSession,
   sessionOf,
@@ -51,5 +52,21 @@ describe('the automation a tool works on', () => {
   it('is nothing when neither is known', () => {
     rememberSession('ada', hand(null));
     expect(workingAutomationOf(sessionOf('ada')!)).toBeNull();
+  });
+});
+
+describe('a person on two teams', () => {
+  it('gets one session per team, so memory kept per resource stays apart', () => {
+    rememberSession('ada~team_1', { ...hand('a1'), organizationId: 'team_1' });
+    rememberSession('ada~team_2', { ...hand('b1'), organizationId: 'team_2' });
+    expect(sessionOf('ada~team_1')?.organizationId).toBe('team_1');
+    expect(sessionOf('ada~team_2')?.organizationId).toBe('team_2');
+    expect(sessionOf('ada~team_2')?.automationId).toBe('b1');
+  });
+
+  it('is read back as the person', () => {
+    expect(personOf('ada~team_1')).toBe('ada');
+    expect(personOf('ada')).toBe('ada');
+    expect(personOf('channel:slack:C1:1.2')).toBeNull();
   });
 });

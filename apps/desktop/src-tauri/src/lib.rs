@@ -12,18 +12,24 @@
 pub const NAME: &str = env!("PRODUCT_NAME");
 
 pub mod address;
+pub mod awake;
+pub mod backups;
 pub mod browser;
 pub mod dashboard;
 pub mod exports;
 pub mod links;
+pub mod machine;
 pub mod saved;
+pub mod stack;
+pub mod tunnel;
+pub mod updates;
 pub mod uploads;
 pub mod watches;
 
 use std::sync::Mutex;
 
 use tauri::ipc::CapabilityBuilder;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::webview::NewWindowResponse;
 use tauri::{
@@ -38,6 +44,13 @@ const MAIN: &str = "main";
 const SWITCH: &str = "switch-server";
 const RELOAD: &str = "reload";
 const SHOW: &str = "show";
+const KEEP_AWAKE: &str = "keep-awake";
+const OPEN_AT_LOGIN: &str = "open-at-login";
+const BACK_UP: &str = "back-up";
+const SHOW_BACKUPS: &str = "show-backups";
+const UPDATE: &str = "update";
+/// Opening at sign-in starts the app in the tray, without the window.
+const HIDDEN: &str = "--hidden";
 const TRAY: &str = "tray";
 
 /// Where the app's own pages live (differs by platform), and the dashboard now open.
@@ -546,13 +559,125 @@ fn show_window(app: &AppHandle) {
     }
 }
 
-/// The tray icon. Closing the window keeps the app here, so alerts keep coming.
-fn tray(app: &AppHandle) -> tauri::Result<TrayIcon> {
+/// The tray's menu. Once the stack has started on this computer it also has the two
+/// switches for running it here.
+fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let show = MenuItem::with_id(app, SHOW, format!("Open {NAME}"), true, None::<&str>)?;
     let switch = MenuItem::with_id(app, SWITCH, format!("Switch {NAME}…"), true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, Some(&format!("Quit {NAME}")))?;
-    let separator = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&show, &switch, &separator, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &switch])?;
+    if let Some(version) = app.state::<updates::Ready>().version() {
+        menu.insert(
+            &MenuItem::with_id(
+                app,
+                UPDATE,
+                updates::restart_label(&version),
+                true,
+                None::<&str>,
+            )?,
+            0,
+        )?;
+    }
+    if let Some(prefs) = stack_folder(app)
+        .ok()
+        .and_then(|folder| awake::load(&folder))
+    {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+        menu.append(&CheckMenuItem::with_id(
+            app,
+            KEEP_AWAKE,
+            "Keep this computer awake",
+            true,
+            prefs.keep_awake,
+            None::<&str>,
+        )?)?;
+        menu.append(&CheckMenuItem::with_id(
+            app,
+            OPEN_AT_LOGIN,
+            format!("Open {NAME} when I sign in"),
+            true,
+            prefs.open_at_login,
+            None::<&str>,
+        )?)?;
+        menu.append(&MenuItem::with_id(
+            app,
+            BACK_UP,
+            "Back up now",
+            true,
+            None::<&str>,
+        )?)?;
+        menu.append(&MenuItem::with_id(
+            app,
+            SHOW_BACKUPS,
+            "Show backups",
+            true,
+            None::<&str>,
+        )?)?;
+    }
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&quit)?;
+    Ok(menu)
+}
+
+/// Puts the person's choices for running the stack here into effect.
+fn apply(app: &AppHandle, prefs: awake::Prefs, login_too: bool) {
+    use tauri_plugin_autostart::ManagerExt;
+    app.state::<awake::Awake>().set(prefs.keep_awake);
+    if login_too {
+        let launcher = app.autolaunch();
+        let _ = if prefs.open_at_login {
+            launcher.enable()
+        } else {
+            launcher.disable()
+        };
+    }
+    refresh_tray(app);
+}
+
+fn refresh_tray(app: &AppHandle) {
+    if let (Some(tray), Ok(menu)) = (app.tray_by_id(TRAY), tray_menu(app)) {
+        let _ = tray.set_menu(Some(menu));
+    }
+}
+
+/// Looks for a new version of the app soon after it opens and every few hours after, and
+/// says once when one is ready.
+fn keep_up_to_date(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(updates::FIRST).await;
+        loop {
+            // A failed check (offline, feed not there yet) just waits for the next one.
+            if let Ok(Some(version)) = updates::check(&app).await {
+                refresh_tray(&app);
+                let (title, body) = updates::ready_note(NAME, &version);
+                let _ = app.notification().builder().title(title).body(body).show();
+            }
+            tokio::time::sleep(updates::EVERY).await;
+        }
+    });
+}
+
+/// Flips one of the two switches from the tray.
+fn toggle(app: &AppHandle, which: &str) {
+    let Ok(folder) = stack_folder(app) else {
+        return;
+    };
+    let Some(mut prefs) = awake::load(&folder) else {
+        return;
+    };
+    if which == KEEP_AWAKE {
+        prefs.keep_awake = !prefs.keep_awake;
+    } else {
+        prefs.open_at_login = !prefs.open_at_login;
+    }
+    if awake::save(&folder, prefs).is_ok() {
+        apply(app, prefs, which == OPEN_AT_LOGIN);
+    }
+}
+
+/// The tray icon. Closing the window keeps the app here, so alerts keep coming.
+fn tray(app: &AppHandle) -> tauri::Result<TrayIcon> {
+    let menu = tray_menu(app)?;
     let mut builder = TrayIconBuilder::with_id(TRAY)
         .tooltip(NAME)
         .menu(&menu)
@@ -678,14 +803,335 @@ fn main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     Ok(window)
 }
 
+/// Refuses anything but the app's own pages: running the stack is never the dashboard's
+/// to ask for (it also isn't in the dashboard's capability).
+fn from_home(window: &WebviewWindow, places: &Places) -> Result<(), String> {
+    let caller = window.url().map_err(|_| "Unknown page.".to_string())?;
+    // Or the page the window started on (the dev server while working on the app), compared
+    // by parts: tauri://localhost has an opaque origin, which never equals another. On
+    // Windows the window can start on about:blank, which never counts.
+    let home = &places.home;
+    if links::is_app_page(&caller)
+        || home.scheme() != "about"
+            && caller.scheme() == home.scheme()
+            && caller.host_str() == home.host_str()
+            && caller.port_or_known_default() == home.port_or_known_default()
+    {
+        Ok(())
+    } else {
+        Err(format!("Only {NAME}'s own pages can do that."))
+    }
+}
+
+fn stack_folder(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|folder| folder.join("stack"))
+        .map_err(|_| format!("{NAME} couldn't find its data folder."))
+}
+
+fn this_stack(app: &AppHandle) -> Result<stack::Stack, String> {
+    let docker = machine::docker_command().ok_or_else(|| "Docker isn't installed.".to_string())?;
+    Ok(stack::Stack::new(&stack_folder(app)?, docker))
+}
+
+/// Looks at this computer for running the whole stack here.
+#[tauri::command]
+async fn check_machine(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+) -> Result<machine::Check, String> {
+    from_home(&window, &places)?;
+    let folder = stack_folder(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        machine::judge(&machine::facts(&folder), std::env::consts::OS)
+    })
+    .await
+    .map_err(|_| "The check stopped part way. Try again.".to_string())
+}
+
+/// What is saved for the stack here, without its secrets.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StackSaved {
+    saved: bool,
+    addresses: stack::Addresses,
+    bucket_endpoint: String,
+    bucket_name: String,
+    has_admin_key: bool,
+    /// The newest backup's folder name, every backup there (newest first), and where
+    /// backups go.
+    last_backup: Option<String>,
+    backups: Vec<String>,
+    backups_folder: String,
+    /// The Cloudflare Tunnel made for it, if any, and whether the stack uses it.
+    tunnel: Option<tunnel::Saved>,
+    uses_tunnel: bool,
+}
+
+#[tauri::command]
+fn stack_saved(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+) -> Result<StackSaved, String> {
+    from_home(&window, &places)?;
+    let folder = stack_folder(&app)?;
+    let values = stack::Stack::new(&folder, "docker".into()).values();
+    let get = |name: &str| values.get(name).cloned().unwrap_or_default();
+    let backups = backups_folder(&app)
+        .map(|root| backups::list(&root))
+        .unwrap_or_default();
+    Ok(StackSaved {
+        saved: !values.is_empty(),
+        addresses: stack::Addresses {
+            dashboard: get("SITE_URL"),
+            api: get("CONVEX_URL"),
+            site: get("CONVEX_SITE_URL"),
+            agent: get("AGENT_URL"),
+            toolkit: get("TOOLKIT_URL"),
+        },
+        bucket_endpoint: get("S3_ENDPOINT_URL"),
+        bucket_name: get("S3_BUCKET_NAME"),
+        has_admin_key: !get("CONVEX_ADMIN_KEY").is_empty(),
+        last_backup: backups.first().cloned(),
+        backups,
+        backups_folder: backups_folder(&app)
+            .map(|root| root.display().to_string())
+            .unwrap_or_default(),
+        tunnel: tunnel::load(&folder),
+        uses_tunnel: get("COMPOSE_PROFILES")
+            .split(',')
+            .any(|name| name == "tunnel"),
+    })
+}
+
+/// Where backups of the stack go: a folder named after the app in the person's Documents.
+fn backups_folder(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let paths = app.path();
+    paths
+        .document_dir()
+        .or_else(|_| paths.home_dir())
+        .map(|base| base.join(format!("{NAME} Backups")))
+        .map_err(|_| "There is no folder to save backups in.".to_string())
+}
+
+/// Makes a backup now (on a blocking thread) and gives back its folder.
+async fn back_up(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let stack = this_stack(app)?;
+    if !stack
+        .values()
+        .get("CONVEX_ADMIN_KEY")
+        .is_some_and(|key| !key.is_empty())
+    {
+        return Err(format!("Start {NAME} on this computer first."));
+    }
+    let root = backups_folder(app)?;
+    tauri::async_runtime::spawn_blocking(move || backups::make(&stack, &root))
+        .await
+        .map_err(|_| "The backup stopped part way. Try again.".to_string())?
+}
+
+/// Backs up the stack on this computer now.
+#[tauri::command]
+async fn back_up_stack(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+) -> Result<String, String> {
+    from_home(&window, &places)?;
+    back_up(&app)
+        .await
+        .map(|folder| folder.display().to_string())
+}
+
+/// Brings back the backup called `name` (a folder in the backups folder) and gives back the
+/// folder that what was there before was backed up to.
+#[tauri::command]
+async fn restore_stack(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    name: String,
+) -> Result<String, String> {
+    from_home(&window, &places)?;
+    let stack = this_stack(&app)?;
+    let root = backups_folder(&app)?;
+    tauri::async_runtime::spawn_blocking(move || backups::restore(&stack, &root, &name))
+        .await
+        .map_err(|_| "Bringing it back stopped part way. Try again.".to_string())?
+        .map(|folder| folder.display().to_string())
+}
+
+/// Says how a backup went in a system notification (from the tray or the daily one).
+fn tell(app: &AppHandle, result: &Result<std::path::PathBuf, String>) {
+    let (title, body) = match result {
+        Ok(folder) => ("Backed up".to_string(), folder.display().to_string()),
+        Err(why) => (format!("{NAME} couldn't back up"), why.clone()),
+    };
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
+/// While the app is open, backs up a stack that runs here once a day.
+fn back_up_daily(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(15 * 60)).await;
+            let started = stack_folder(&app)
+                .ok()
+                .and_then(|folder| awake::load(&folder))
+                .is_some();
+            let due = backups_folder(&app)
+                .is_ok_and(|root| backups::due(&root, std::time::SystemTime::now()));
+            if started && due {
+                let result = back_up(&app).await;
+                // Only a failure is worth interrupting someone for.
+                if result.is_err() {
+                    tell(&app, &result);
+                }
+            }
+        }
+    });
+}
+
+/// The domains a Cloudflare token can give addresses on.
+#[tauri::command]
+async fn cloudflare_domains(
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    token: String,
+) -> Result<Vec<tunnel::Domain>, String> {
+    from_home(&window, &places)?;
+    tunnel::Cloudflare::new(tunnel::API, &token)?
+        .domains()
+        .await
+}
+
+/// Makes the Cloudflare Tunnel and the names for this copy, keeps its token in the stack's
+/// settings, and gives back the addresses it made.
+#[tauri::command]
+async fn make_tunnel(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    token: String,
+    domain: tunnel::Domain,
+    name: String,
+) -> Result<stack::Addresses, String> {
+    from_home(&window, &places)?;
+    let folder = stack_folder(&app)?;
+    let cloudflare = tunnel::Cloudflare::new(tunnel::API, &token)?;
+    let before = tunnel::load(&folder);
+    let (saved, run_token) = tunnel::make(&cloudflare, &domain, &name, before.as_ref()).await?;
+    stack::Stack::new(&folder, "docker".into()).keep_tunnel_token(&run_token)?;
+    tunnel::keep(&folder, &saved)?;
+    Ok(tunnel::addresses(&saved.name, &saved.domain.name))
+}
+
+/// Writes the stack's settings, sizing the toolkit to this machine.
+#[tauri::command]
+async fn save_stack(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    settings: stack::Settings,
+) -> Result<(), String> {
+    from_home(&window, &places)?;
+    let stack = this_stack(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let facts = machine::facts(&stack.folder);
+        let docker_memory = match facts.docker {
+            machine::Docker::Ready { memory, .. } => memory,
+            _ => None,
+        };
+        stack.save(&settings, stack::share(facts.cores, docker_memory))
+    })
+    .await
+    .map_err(|_| "Saving stopped part way. Try again.".to_string())?
+}
+
+/// The last lines a failed command printed, for the person and for support.
+fn tail(text: &str) -> String {
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    lines[lines.len().saturating_sub(6)..].join("\n")
+}
+
+/// Runs one step of starting the stack: "pull", "start", "adminKey", "setup" or "stop".
+#[tauri::command]
+async fn run_stack_step(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    step: String,
+) -> Result<(), String> {
+    from_home(&window, &places)?;
+    let stack = this_stack(&app)?;
+    let args = match step.as_str() {
+        "pull" => stack::PULL,
+        "start" => stack::START,
+        "adminKey" => stack::ADMIN_KEY,
+        "setup" => stack::SETUP,
+        "stop" => stack::STOP,
+        _ => return Err("Unknown step.".into()),
+    };
+    if step == "adminKey"
+        && stack
+            .values()
+            .get("CONVEX_ADMIN_KEY")
+            .is_some_and(|key| !key.is_empty())
+    {
+        return Ok(());
+    }
+    let finishing = step == "setup";
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = stack
+            .compose(args)
+            .output()
+            .map_err(|_| "Docker couldn't be started.".to_string())?;
+        let said = String::from_utf8_lossy(&output.stdout).into_owned();
+        if !output.status.success() {
+            let problem = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "Docker stopped with: {}",
+                tail(&format!("{said}\n{problem}"))
+            ));
+        }
+        if step == "adminKey" {
+            let key =
+                stack::admin_key_from(&said).ok_or("Convex didn't give back an admin key.")?;
+            stack.keep_admin_key(&key)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| "That step stopped part way. Try again.".to_string())??;
+    // Running here from now on: keep the computer awake and open at sign-in, unless the
+    // person turned those off before.
+    if finishing {
+        let (prefs, new) = awake::after_start(&stack_folder(&app)?)?;
+        apply(&app, prefs, new);
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![HIDDEN]),
+        ))
         .manage(uploads::Allowed::default())
         .manage(ChosenFolders::default())
+        .manage(updates::Ready::default())
         .invoke_handler(tauri::generate_handler![
             saved_servers,
             forget_server,
@@ -706,7 +1152,15 @@ pub fn run() {
             watched_folders,
             unwatch_folder,
             landed_files,
-            landed_sent
+            landed_sent,
+            check_machine,
+            stack_saved,
+            cloudflare_domains,
+            make_tunnel,
+            back_up_stack,
+            restore_stack,
+            save_stack,
+            run_stack_step
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -714,6 +1168,33 @@ pub fn run() {
             app.on_menu_event(|app, event| match event.id().as_ref() {
                 SWITCH => go_home(app),
                 SHOW => show_window(app),
+                KEEP_AWAKE | OPEN_AT_LOGIN => toggle(app, event.id().as_ref()),
+                UPDATE => {
+                    if let Err(why) = updates::install(app) {
+                        let _ = app
+                            .notification()
+                            .builder()
+                            .title(format!("{NAME} couldn't update"))
+                            .body(why)
+                            .show();
+                        refresh_tray(app);
+                    }
+                }
+                BACK_UP => {
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let result = back_up(&app).await;
+                        tell(&app, &result);
+                    });
+                }
+                SHOW_BACKUPS => {
+                    if let Ok(root) = backups_folder(app) {
+                        let _ = std::fs::create_dir_all(&root);
+                        let _ = app
+                            .opener()
+                            .open_path(root.display().to_string(), None::<&str>);
+                    }
+                }
                 RELOAD => {
                     if let Some(window) = app.get_webview_window(MAIN) {
                         let _ = window.eval("location.reload()");
@@ -731,7 +1212,20 @@ pub fn run() {
                     let _ = hide.hide();
                 }
             });
+            app.manage(awake::Awake::start());
+            let prefs = stack_folder(&handle)
+                .ok()
+                .and_then(|folder| awake::load(&folder));
+            if let Some(prefs) = prefs {
+                handle.state::<awake::Awake>().set(prefs.keep_awake);
+            }
+            // Opened at sign-in: stay in the tray until the person opens the window.
+            if prefs.is_some() && std::env::args().any(|arg| arg == HIDDEN) {
+                let _ = window.hide();
+            }
             tray(&handle)?;
+            back_up_daily(handle.clone());
+            keep_up_to_date(handle.clone());
             let mut home = window.url()?;
             home.set_fragment(None);
             app.manage(Places {

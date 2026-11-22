@@ -14,7 +14,7 @@ import {
 import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
-import { CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
+import { CAPTION_LANGUAGE_SETTING, CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
 import { CLEANUP_DEFAULTS, HOOK_MODES, MAX_HOOKS } from "./cleanup";
 import { FOOTAGE_ACTIONS, FOOTAGE_DEFAULTS, FOOTAGE_SHAPES } from "./footage";
 import { FINISH_CHOICES } from "./chain";
@@ -42,6 +42,8 @@ import {
 import { MAX_CHAPTERS, MAX_MOMENTS, MAX_PADDING, MOMENT_DEFAULTS, MOMENT_EDGES } from "./moments";
 import { MOTION_PRESETS, SOUND_LEVELS, STYLE_SOUNDS, TEAM_STYLE } from "./motion";
 import { MIN_INTERVAL_MINUTES } from "./schedule";
+import { MAX_SUBTITLE_LANGUAGES } from "./translated-captions";
+import { LANGUAGES } from "./translation";
 import type { StarterTrigger } from "./starters";
 
 /** What moves along a connection. Only files do today; "data" is a step's JSON result. */
@@ -59,8 +61,8 @@ export interface JsonSchema {
 export interface NodeType {
   /**
    * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "broll",
-   * "broll-plan", "motion", "sound-effects", "cleanup", "footage-check", "export",
-   * "if", "wait", "automation", or "step:<catalog id>".
+   * "broll-plan", "motion", "sound-effects", "cleanup", "footage-check", "subtitles", "export",
+   * "if", "wait", "send", "automation", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
   type: string;
@@ -115,7 +117,7 @@ export const GROUP_LABELS: Record<NodeGroup, string> = {
   image: "Image",
   recipe: "Recipes",
   team: "Your team's steps",
-  ffmpeg: "FFmpeg",
+  ffmpeg: "Custom edits",
   code: "Code",
   storage: "Storage",
   people: "People",
@@ -714,13 +716,39 @@ const CLEANUP: NodeType = {
   automatic: null,
 };
 
+const SUBTITLES: NodeType = {
+  type: "subtitles",
+  role: "action",
+  group: "media",
+  title: "Translate Subtitles",
+  description:
+    "Writes each video's subtitles in other languages, as SRT files to upload beside the video on YouTube and other platforms, where each viewer sees their own language. Uses the words heard in the video (transcribed once and kept) and translates each video into each language once. The files are kept in Files under Subtitles and listed on the run page; the video carries on to the next step unchanged.",
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      languages: {
+        type: "array",
+        items: { type: "string", enum: LANGUAGES.map((language) => language.code) },
+        minItems: 1,
+        maxItems: MAX_SUBTITLE_LANGUAGES,
+        default: [],
+        description: `The languages to write subtitles in, as codes such as es, ja or pt-BR. Up to ${MAX_SUBTITLE_LANGUAGES}.`,
+      },
+    },
+    required: ["languages"],
+  },
+  automatic: null,
+};
+
 const FOOTAGE_CHECK: NodeType = {
   type: "footage-check",
   role: "action",
   group: "video",
   title: "Check Footage",
   description:
-    "Checks each video before editing, by plain rules on what FFmpeg measures, with no AI: the shape it was filmed in, enough pixels, sound that is there, clear and not clipped, no black or frozen picture, and long enough. For a creator's folder it checks every hook, body and ending take. When something is wrong the team is told in the bell and their chat apps, a note is left in the creator's folder, and the run stops before editing (or carries on, if you choose). Put it first.",
+    "Checks each video before editing, by plain rules on what the toolkit measures, with no AI: the shape it was filmed in, enough pixels, sound that is there, clear and not clipped, no black or frozen picture, and long enough. For a creator's folder it checks every hook, body and ending take. When something is wrong the team is told in the bell and their chat apps, a note is left in the creator's folder, and the run stops before editing (or carries on, if you choose). Put it first.",
   takes: "file",
   gives: "files",
   settings: {
@@ -779,7 +807,7 @@ const IF: NodeType = {
   group: "logic",
   title: "If",
   description:
-    "Sends each file one of two ways. A file leaves by Yes when it passes a check on its length, type, shape, picture size or sound, and by No when it does not.",
+    "Sends each file one of two ways. A file leaves by Yes when it passes a check on its length, type, shape, picture size, sound or what is said in it, and by No when it does not.",
   takes: "files",
   gives: "files",
   settings: {
@@ -805,6 +833,11 @@ const IF: NodeType = {
         exclusiveMinimum: 0,
         default: DEFAULT_CONDITION.value,
         description: `The number to compare against. For length: seconds. For size: pixels on the shorter side (${PICTURE_SIZES.map((size) => size.value).join(", ")}). Not used by the other checks.`,
+      },
+      text: {
+        type: "string",
+        description:
+          "For words: the words to look for in what is said, matched without regard to capitals. The words come from a Transcribe step before the If; a file nothing transcribed leaves by No. Not used by the other checks.",
       },
     },
     required: ["check", "is"],
@@ -838,6 +871,30 @@ const WAIT: NodeType = {
   automatic: null,
 };
 
+const SEND: NodeType = {
+  type: "send",
+  role: "action",
+  group: "logic",
+  title: "Send to a URL",
+  description:
+    "Posts the files that reach it, with the run's details, to an address as JSON, such as an n8n webhook, then hands the same files to the next step. The post is signed with the automation's token. If the address does not answer, it is tried three more times.",
+  takes: "files",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      url: {
+        type: "string",
+        format: "uri",
+        description: "The http or https address to post to.",
+      },
+    },
+    required: ["url"],
+  },
+  automatic: null,
+  ask: ["url"],
+};
+
 const EXPORT: NodeType = {
   type: "export",
   role: "action",
@@ -868,6 +925,15 @@ function stepSettings(step: StepDefinition): JsonSchema {
         description:
           "The name of a caption style from Settings. Leave it and settings blank to use the team's style for the video's shape.",
       },
+      ...(step.id === "video-caption"
+        ? {
+            [CAPTION_LANGUAGE_SETTING]: {
+              type: "string",
+              description:
+                "A language code (such as es, ja or pt-BR) to caption in instead of the language spoken. The words are translated once and still light up as they are said. Leave it blank to caption in the spoken language.",
+            },
+          }
+        : {}),
     },
   };
 }
@@ -912,9 +978,11 @@ export const NODE_TYPES: NodeType[] = [
   SOUND_EFFECTS,
   CLEANUP,
   FOOTAGE_CHECK,
+  SUBTITLES,
   EXPORT,
   IF,
   WAIT,
+  SEND,
   RUN_AUTOMATION,
   ...allSteps.map(stepType),
   APPROVAL,
@@ -981,9 +1049,11 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
     type === "sound-effects" ||
     type === "cleanup" ||
     type === "footage-check" ||
+    type === "subtitles" ||
     type === "export" ||
     type === "if" ||
     type === "wait" ||
+    type === "send" ||
     type === "automation"
   ) {
     return { kind: type };
@@ -1019,7 +1089,12 @@ export function missingSettingsOf(
   return (nodeType.settings.required ?? []).filter((name) => {
     if (name === nodeType.automatic) return false;
     const value = input[name];
-    if (!(value === undefined || value === null || value === "")) return false;
+    const blank =
+      value === undefined ||
+      value === null ||
+      value === "" ||
+      (Array.isArray(value) && value.length === 0);
+    if (!blank) return false;
     const key = nodeType.brand?.[name];
     return !(key && brand?.[key]);
   });

@@ -55,3 +55,12 @@ describe("lists of files on the Steps page", () => {
     await waitFor(() => expect(screen.getByDisplayValue(link("up2"))).toBeTruthy());
   });
 });
+
+describe("the Custom edit step's form", () => {
+  test("says it runs on the toolkit, without the toolkit's request address", () => {
+    answerQuery(api.storage.listUploads, UPLOADS);
+    renderInApp(<StepForm stepId="ffmpeg-compose" />);
+    expect(screen.getByText("Runs on your toolkit with these settings.")).toBeInTheDocument();
+    expect(document.body.textContent ?? "").not.toMatch(/ffmpeg/i);
+  });
+});

@@ -29,11 +29,19 @@ export const nodeValidator = v.object({
     v.literal("cleanup"),
     // Measures each video before editing and stops or warns when one has a problem.
     v.literal("footage-check"),
+    // Writes each video's subtitles in other languages.
+    v.literal("subtitles"),
+    // Posts the files that reach it, with the run's details, to an address.
+    v.literal("send"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
   // Turned off: runs hand its files straight on without doing its work.
   off: v.optional(v.boolean()),
+  // How it treats files when two or more lines meet at it (automation-core join.ts).
+  join: v.optional(
+    v.union(v.literal("all"), v.literal("source"), v.literal("position"), v.literal("first")),
+  ),
   input: v.record(v.string(), v.any()),
   position: v.object({ x: v.number(), y: v.number() }),
 });
@@ -377,7 +385,11 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    // Jobs handed to be sent, by when: finds a send that broke without reading the queue.
+    .index("by_status_and_dispatchedAt", ["status", "dispatchedAt"])
+    // Every job a step in a run sent, earlier tries too, for the step's log.
+    .index("by_runStep", ["runStepId"]),
 
   // Per-team settings. A team without a row uses the defaults.
   teamSettings: defineTable({
@@ -530,6 +542,14 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_automation", ["automationId"]),
 
+  // A folder on the Automations page that a team names itself, like a workflow folder in
+  // n8n. Separate from clients: it only groups the list.
+  automationFolders: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
   automations: defineTable({
     organizationId: v.string(),
     name: v.string(),
@@ -574,9 +594,15 @@ export default defineSchema({
     ),
     createdBy: v.string(),
     updatedAt: v.number(),
+    // How many of its runs go at once; the rest wait their turn (lib/runLimit.ts). No
+    // limit when unset. Not part of versions.
+    runsAtOnce: v.optional(v.number()),
     // The client this automation works for. Its runs use that client's brand over the
     // team's, and keep their finished files in the client's folder. Not part of versions.
     clientId: v.optional(v.id("clients")),
+    // The folder it sits in on the Automations page, only for keeping the list tidy.
+    // Not part of versions.
+    folderId: v.optional(v.id("automationFolders")),
     // Switched on: each finished run's files are also sent to this Dropbox account, into
     // `folder` (or "/Takewon/<automation>"). Not part of versions.
     dropboxSend: v.optional(
@@ -589,9 +615,22 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"])
     .index("by_client", ["clientId"])
+    .index("by_folder", ["folderId"])
     .index("by_enabled_and_nextRunAt", ["enabled", "nextRunAt"])
     .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"])
-    .index("by_enabled_and_multiTrigger", ["enabled", "multiTrigger"]),
+    .index("by_enabled_and_multiTrigger", ["enabled", "multiTrigger"])
+    // One team's switched-on automations with a trigger of a kind, so a trigger that only
+    // starts the team's own automations never reads other teams'.
+    .index("by_organization_and_enabled_and_trigger_kind", [
+      "organizationId",
+      "enabled",
+      "trigger.kind",
+    ])
+    .index("by_organization_and_enabled_and_multiTrigger", [
+      "organizationId",
+      "enabled",
+      "multiTrigger",
+    ]),
 
   // Files a watched folder has already started a run for, so each starts only one.
   // Every version an automation has had as its live version, numbered from 1, so an
@@ -689,11 +728,28 @@ export default defineSchema({
     // against the team's limit, in millionths of a dollar (convex/lib/aiSpend.ts).
     aiSpent: v.optional(v.number()),
     aiHeld: v.optional(v.number()),
+    // For a run its webhook started with a callback_url: where its end is reported.
+    callbackUrl: v.optional(v.string()),
+    // Waiting for one of the automation's runs under way to end, because it runs only a
+    // few at a time (automations.runsAtOnce). Its steps have not started.
+    heldForSlot: v.optional(v.boolean()),
   })
     .index("by_automation", ["automationId"])
+    .index("by_automation_and_status", ["automationId", "status"])
     .index("by_parentRun", ["parentRunId"])
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
+
+  // Webhook calls that sent an Idempotency-Key, so the same call sent again within a day
+  // answers with the run it already started instead of starting another.
+  hookCalls: defineTable({
+    automationId: v.id("automations"),
+    key: v.string(),
+    runId: v.id("runs"),
+    at: v.number(),
+  })
+    .index("by_automation_and_key", ["automationId", "key"])
+    .index("by_at", ["at"]),
 
   // The live state of one step within one run.
   runSteps: defineTable({
@@ -714,6 +770,27 @@ export default defineSchema({
     outputs: v.array(v.string()),
     // Variant codes for its files, such as "h02_c01_15s_9x16", which name them.
     labels: v.optional(v.array(v.object({ url: v.string(), label: v.string() }))),
+    // Where each of its files came from, written once the step is finished: the file it
+    // was made from, the file the run started with, what kind of file it is, and its
+    // variant code. See convex/lib/items.ts.
+    items: v.optional(
+      v.array(
+        v.object({
+          url: v.string(),
+          from: v.union(v.null(), v.string()),
+          source: v.union(v.null(), v.string()),
+          kind: v.union(
+            v.literal("video"),
+            v.literal("audio"),
+            v.literal("image"),
+            v.literal("captions"),
+            v.literal("text"),
+            v.literal("other"),
+          ),
+          label: v.optional(v.string()),
+        }),
+      ),
+    ),
     error: v.union(v.null(), v.string()),
     // For a "clips" step, which works in two stages: first it reads each video's length
     // and pauses ("probe"), then it cuts the clips ("cut"). jobIds holds the current
@@ -729,6 +806,9 @@ export default defineSchema({
     // and places what goes on it ("place"), then draws on it ("render"). A "cleanup" step
     // does the same, also hearing each video's pauses, and "render" cuts the cleaned files.
     // A step keeping a paid-ad disclosure in every cut first transcribes its videos ("hear").
+    // "Caption video" with a caption language hears its videos too, then has the words
+    // translated and timed and the caption files written ("translate"), then burns them in
+    // ("render"). Translate Subtitles hears and translates the same way, then is done.
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -745,7 +825,40 @@ export default defineSchema({
         v.literal("render"),
         // A "footage-check" step waiting for the toolkit to measure each file.
         v.literal("footage"),
+        // A "send" step posting its files to an address.
+        v.literal("send"),
         v.literal("hear"),
+        v.literal("translate"),
+      ),
+    ),
+    // For "Caption video" with a caption language, or Translate Subtitles: its videos have
+    // been heard ("hear").
+    heardWords: v.optional(v.boolean()),
+    // For "Caption video" with a caption language: each video, the language, and the look
+    // and size its caption file is drawn with, in the order of the step's jobs.
+    captionPlan: v.optional(
+      v.array(
+        v.object({
+          video: v.string(),
+          language: v.string(),
+          look: v.record(v.string(), v.union(v.string(), v.number(), v.boolean())),
+          width: v.number(),
+          height: v.number(),
+        }),
+      ),
+    ),
+    // For a Translate Subtitles step: each video's subtitle file in each language, in the
+    // team's folder (`key`, under Subtitles/) and the link it is opened by. A file not
+    // written yet has no key or link.
+    subtitles: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          language: v.string(),
+          name: v.string(),
+          key: v.optional(v.string()),
+          link: v.optional(v.string()),
+        }),
       ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
@@ -906,6 +1019,8 @@ export default defineSchema({
     // last one failed.
     retryAt: v.optional(v.number()),
     retryError: v.optional(v.string()),
+    // Each try that failed and was tried again: when, and why. The newest last.
+    tries: v.optional(v.array(v.object({ at: v.number(), error: v.string() }))),
     startedAt: v.union(v.null(), v.number()),
     finishedAt: v.union(v.null(), v.number()),
     // An AI step: what it spent, and what it holds against the run's limit while it waits
@@ -914,7 +1029,9 @@ export default defineSchema({
     aiHeld: v.optional(v.number()),
   })
     .index("by_run", ["runId"])
-    .index("by_organization_and_status", ["organizationId", "status"]),
+    .index("by_organization_and_status", ["organizationId", "status"])
+    // Steps that have been going a long time, for the check that ends a stuck one.
+    .index("by_status_and_startedAt", ["status", "startedAt"]),
 
   // A video's words with when each is said, from a transcript made with word timestamps,
   // kept so the same video is not transcribed again (Find more moments, Chapters after
@@ -2141,6 +2258,43 @@ export default defineSchema({
   })
     .index("by_item_and_start", ["itemId", "start"])
     .searchIndex("search_speech", { searchField: "text", filterFields: ["organizationId"] }),
+
+  // What was said in a library file in another language (translations.ts): its subtitle
+  // cues, each on the original cue's times, translated once and kept, so captions,
+  // downloads and later automations never pay for the same language twice. Made from the
+  // file's transcript, so a new transcript drops them (deletePieces).
+  translations: defineTable({
+    organizationId: v.string(),
+    itemId: v.id("libraryItems"),
+    // The language's code (automation-core LANGUAGES), such as "es" or "pt-BR".
+    language: v.string(),
+    status: v.union(v.literal("working"), v.literal("ready"), v.literal("failed")),
+    error: v.optional(v.string()),
+    // The cues translated so far, in order: s start, e end (seconds), t the words.
+    cues: v.array(v.object({ s: v.number(), e: v.number(), t: v.string() })),
+    // How many cues there are to translate in all.
+    total: v.number(),
+    // What asking the model cost, in millionths of a dollar.
+    aiSpent: v.number(),
+    // Who asked, so the agent server knows who it is answering.
+    requestedBy: v.string(),
+    at: v.number(),
+  })
+    .index("by_item_and_language", ["itemId", "language"])
+    .index("by_organization", ["organizationId"]),
+
+  // A video's words translated for captions in another language (captionTranslation.ts),
+  // each translated word timed from the spoken words it stands for, one list per spoken
+  // line. Kept so a video is never translated twice into the same language.
+  captionTranslations: defineTable({
+    organizationId: v.string(),
+    // The video, as spokenWords keys it (lib/moments.ts sourceKey).
+    source: v.string(),
+    language: v.string(),
+    lines: v.array(v.array(v.object({ t: v.string(), s: v.number(), e: v.number() }))),
+    aiSpent: v.number(),
+    savedAt: v.number(),
+  }).index("by_source_and_language", ["organizationId", "source", "language"]),
 
   // Frames of a library video (or the one picture), as the picture model sees them, so
   // footage can be found by what it shows. `vector` is CLIP ViT-B/32, length 1.

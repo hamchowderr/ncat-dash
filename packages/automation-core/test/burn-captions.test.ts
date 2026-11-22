@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { burnRequest, burnsInFast, clipRequest, wordsRequest } from "../src";
+import {
+  burnRequest,
+  burnsInFast,
+  canUseKnownWords,
+  clipRequest,
+  hasKnownWords,
+  segmentsFromWords,
+  withKnownWords,
+  withoutKnownWords,
+  wordsInClip,
+  wordsRequest,
+} from "../src";
 
 describe("captions burned in with one quick save", () => {
   it("asks for the timed words with the caption job's look, word fixes, skipped parts and language", () => {
@@ -52,5 +63,85 @@ describe("clips", () => {
       filters: { filter: string }[];
     };
     expect(clip.filters[0].filter).toContain("crop=270:480,boxblur=5:5,scale=1080:1920[blurred]");
+  });
+});
+
+describe("captions from words already known", () => {
+  const words = [
+    { text: "So", start: 0, end: 0.2 },
+    { text: "this", start: 0.3, end: 0.5 },
+    { text: "works.", start: 0.6, end: 1 },
+    { text: "Then", start: 1.1, end: 1.3 },
+    { text: "a", start: 1.4, end: 1.5 },
+    { text: "pause", start: 1.6, end: 2 },
+    { text: "later", start: 3.5, end: 4 },
+  ];
+
+  it("groups words into stretches at sentence ends and pauses, as Whisper does", () => {
+    const segments = segmentsFromWords(words);
+    expect(segments.map((s) => s.words.map((w) => w.word).join(" "))).toEqual([
+      "So this works.",
+      "Then a pause",
+      "later",
+    ]);
+    expect(segments[1]).toMatchObject({ start: 1.1, end: 2 });
+  });
+
+  it("breaks a long run of talk without pauses", () => {
+    const talk = Array.from({ length: 100 }, (_, i) => ({
+      text: `w${i}`,
+      start: i * 0.3,
+      end: i * 0.3 + 0.25,
+    }));
+    const segments = segmentsFromWords(talk);
+    expect(segments.length).toBeGreaterThan(1);
+    for (const segment of segments) expect(segment.end - segment.start).toBeLessThanOrEqual(15);
+    expect(segments.flatMap((s) => s.words)).toHaveLength(100);
+  });
+
+  it("skips blank or broken words and keeps times going forward", () => {
+    expect(
+      segmentsFromWords([
+        { text: " ", start: 0, end: 1 },
+        { text: "Hi", start: 2, end: 1.5 },
+        { text: "x", start: Number.NaN, end: 1 },
+      ]),
+    ).toEqual([{ start: 2, end: 2, words: [{ word: "Hi", start: 2, end: 2 }] }]);
+  });
+
+  it("takes a clip's words timed from its start, counting a cut word when most of it is in", () => {
+    expect(wordsInClip(words, 1.2, 1)).toEqual([
+      { text: "Then", start: 0, end: 0.1 },
+      { text: "a", start: 0.2, end: 0.3 },
+      { text: "pause", start: 0.4, end: 0.8 },
+    ]);
+  });
+
+  it("only for a step that hears the language it is given", () => {
+    expect(canUseKnownWords({})).toBe(true);
+    expect(canUseKnownWords({ language: "auto" })).toBe(true);
+    expect(canUseKnownWords({ language: "fr" })).toBe(false);
+  });
+
+  it("adds the words and the picture size to the request, and can take them off again", () => {
+    const request = {
+      media_url: "https://f/a.mp4",
+      settings: { style: "highlight" },
+      language: "auto",
+    };
+    const known = withKnownWords(request, words.slice(0, 3), { width: 1080, height: 1920 });
+    expect(known).toMatchObject({
+      media_url: "https://f/a.mp4",
+      canvas_width: 1080,
+      canvas_height: 1920,
+    });
+    expect(known).not.toHaveProperty("language");
+    expect(hasKnownWords(known)).toBe(true);
+    expect(hasKnownWords(request)).toBe(false);
+    expect(withKnownWords(request, [], null)).not.toHaveProperty("canvas_width");
+    expect(withoutKnownWords(known)).toEqual({
+      media_url: "https://f/a.mp4",
+      settings: { style: "highlight" },
+    });
   });
 });

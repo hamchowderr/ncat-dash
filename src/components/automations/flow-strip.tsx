@@ -33,18 +33,25 @@ export function FlowStrip({
   nodes,
   edges,
   size = "md",
+  maxColumns,
   className,
 }: {
   trigger: Trigger;
   nodes: Step[];
   edges: AutomationEdge[];
   size?: "sm" | "md";
+  /** At most this many columns of steps; the rest are counted in a last "+n" tile. */
+  maxColumns?: number;
   className?: string;
 }) {
   const TriggerIcon = TRIGGER_ICONS[trigger.kind];
   const box = size === "sm" ? "size-7 rounded-md" : "size-10 rounded-lg";
   const icon = size === "sm" ? "size-3.5" : "size-5";
   const line = size === "sm" ? "w-3" : "w-5";
+  const all = columns(nodes, edges);
+  const shown =
+    maxColumns !== undefined && all.length > maxColumns ? all.slice(0, maxColumns) : all;
+  const more = all.slice(shown.length).reduce((count, column) => count + column.length, 0);
   return (
     <div
       className={cn("flex items-center", className)}
@@ -57,7 +64,7 @@ export function FlowStrip({
       >
         <TriggerIcon className={cn(icon, TRIGGER_TINT)} strokeWidth={1.7} aria-hidden="true" />
       </span>
-      {columns(nodes, edges).map((column, index) => (
+      {shown.map((column, index) => (
         <Fragment key={index}>
           <span className={cn("bg-border h-px shrink-0", line)} aria-hidden="true" />
           <span className="flex flex-col gap-1">
@@ -72,6 +79,18 @@ export function FlowStrip({
           </span>
         </Fragment>
       ))}
+      {more > 0 && (
+        <>
+          <span className={cn("bg-border h-px shrink-0", line)} aria-hidden="true" />
+          <span
+            className={cn(tile, box, "text-muted-foreground text-xs font-medium tabular-nums")}
+            title={`${more} more ${more === 1 ? "step" : "steps"}`}
+            data-testid="flow-strip-more"
+          >
+            +{more}
+          </span>
+        </>
+      )}
     </div>
   );
 }

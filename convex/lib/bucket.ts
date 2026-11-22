@@ -69,6 +69,23 @@ export class BucketError extends Error {
   }
 }
 
+export const TOOLKIT_UNREACHABLE =
+  "Your toolkit can't be reached right now. Check that it is running, then try again.";
+
+/**
+ * What a toolkit's answer means, in plain words. A proxy in front of a toolkit that is down
+ * answers 502, 503 or 504; people are told the toolkit can't be reached, not a status number.
+ */
+export function plainStatus(status: number): string {
+  if (status === 0 || status === 502 || status === 503 || status === 504)
+    return TOOLKIT_UNREACHABLE;
+  if (status === 401 || status === 403) {
+    return "The toolkit did not accept the API key. Check it in Settings.";
+  }
+  if (status >= 500) return "The toolkit ran into a problem of its own. Try again in a moment.";
+  return `The toolkit answered ${status}.`;
+}
+
 function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}${path}`;
 }
@@ -88,7 +105,7 @@ async function ask<T>(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
-    throw new BucketError("The toolkit could not be reached.", 0);
+    throw new BucketError(TOOLKIT_UNREACHABLE, 0);
   }
   let json: { response?: T; message?: unknown } | null = null;
   try {
@@ -97,11 +114,10 @@ async function ask<T>(
     json = null;
   }
   if (!res.ok || !json || json.response === undefined || json.response === null) {
-    const message =
-      typeof json?.message === "string" && json.message
-        ? json.message
-        : `The toolkit answered ${res.status}.`;
-    throw new BucketError(message, res.status);
+    const said = typeof json?.message === "string" && json.message ? json.message : null;
+    // A toolkit that answers in its own words is up, and says what is wrong; anything else
+    // (a proxy's error page in front of a stopped toolkit) is said in plain words.
+    throw new BucketError(said ?? plainStatus(res.status), res.status);
   }
   return json.response;
 }

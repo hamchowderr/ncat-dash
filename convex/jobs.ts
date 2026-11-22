@@ -1,4 +1,10 @@
-import { getNodeType, isTransientStatus, withBrand } from "@ncat-dash/automation-core";
+import {
+  failsTheSameEveryTime,
+  getNodeType,
+  isTransientStatus,
+  withBrand,
+  wrongKindOfFile,
+} from "@ncat-dash/automation-core";
 import {
   callStep,
   getStep,
@@ -124,12 +130,22 @@ export const get = query({
 
 /** Finished jobs that produced files, newest first: the outputs library. */
 /** Readable names for a job's files: as its run names them, or else as a step run by hand. */
-async function namesOfJob(ctx: QueryCtx, job: Doc<"jobs">): Promise<Record<string, string>> {
+async function namesOfJob(
+  ctx: QueryCtx,
+  job: Doc<"jobs">,
+): Promise<{ names: Record<string, string>; stepName: string | null }> {
   const step = job.runStepId ? await ctx.db.get(job.runStepId) : null;
   const run = step ? await ctx.db.get(step.runId) : null;
-  if (!step || !run) return handOutputNames(job);
+  if (!step || !run) return { names: handOutputNames(job), stepName: null };
   const names = outputNamesOf(run, [step]);
-  return { ...handOutputNames(job), ...names };
+  // The step as it is named in the automation ("Caption TikTok clips"), not the toolkit
+  // request it was sent as.
+  const node = (run.nodes as { id: string; stepId?: string; label?: string }[]).find(
+    (candidate) => candidate.id === step.nodeId,
+  );
+  const stepName =
+    node?.label?.trim() || (node?.stepId ? (getStep(node.stepId)?.title ?? null) : null);
+  return { names: { ...handOutputNames(job), ...names }, stepName };
 }
 
 export const outputs = query({
@@ -155,14 +171,19 @@ export const outputs = query({
             !job.dropboxImportId &&
             !job.linkImportId,
         )
-        .map(async (job) => ({
-          jobId: job._id,
-          stepId: job.stepId,
-          finishedAt: job.finishedAt,
-          urls: job.outputs,
-          // Readable names, by link: from the run the job was part of, if it was.
-          names: await namesOfJob(ctx, job),
-        })),
+        .map(async (job) => {
+          // Readable names, by link, and the step's own name: from the run the job was
+          // part of, if it was.
+          const { names, stepName } = await namesOfJob(ctx, job);
+          return {
+            jobId: job._id,
+            stepId: job.stepId,
+            stepName,
+            finishedAt: job.finishedAt,
+            urls: job.outputs,
+            names,
+          };
+        }),
     );
   },
 });
@@ -366,6 +387,13 @@ export const finish = internalMutation({
     if (args.token !== undefined && args.token !== job.webhookToken) return "forbidden";
     if (job.status === "done" || job.status === "failed") return "ignored";
     const now = Date.now();
+    // A picture given to Caption video and the like: the file can never work, so it is
+    // said plainly (the toolkit's own words kept below, for "Show details") and not retried.
+    const wrongFile = args.ok ? null : wrongKindOfFile(job.stepId, args.error);
+    const error = wrongFile ? `${wrongFile}\n\n${args.error}` : args.error;
+    // A request the toolkit turned down for what it asks, such as motion with nothing to
+    // draw, fails the same way when sent again.
+    const permanent = args.permanent || (!args.ok && failsTheSameEveryTime(job.stepId, args.error));
     // A Convex document holds at most 1 MB. A very long transcript is kept as its file
     // links only; the full data is still at the toolkit's own output URLs.
     const tooLarge = args.ok && JSON.stringify(args.result ?? null).length > MAX_RESULT_CHARS;
@@ -377,10 +405,10 @@ export const finish = internalMutation({
           ? { note: "This result is too large to show here.", urls: collectUrls(args.result) }
           : args.result,
       outputs: args.ok ? collectUrls(args.result) : [],
-      error: args.ok ? null : (args.error ?? "The step failed."),
+      error: args.ok ? null : (error ?? "The step failed."),
       startedAt: job.startedAt ?? now,
       finishedAt: now,
-      ...(!args.ok && args.permanent ? { permanent: true } : {}),
+      ...(!args.ok && permanent ? { permanent: true } : {}),
     });
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
     // A Zoom recording on its way in: it becomes an upload, or the import says why not.
@@ -491,11 +519,40 @@ export const LOST_AFTER_MS = 5 * 60 * 1000;
 export const LOST_JOB_ERROR =
   "The toolkit lost this job before it finished, most likely because it restarted.";
 
-/** Every minute: books a question to the toolkit for each running job that is late. */
+/**
+ * A job handed to be sent this long ago that is still waiting was never sent: sending
+ * gives up on the toolkit after two minutes, so the send itself broke. It is failed so it
+ * can be tried again, instead of holding one of the team's places for hours.
+ */
+export const NOT_SENT_AFTER_MS = 10 * 60 * 1000;
+
+export const NOT_SENT_ERROR = "The job could not be sent to the toolkit.";
+
+/**
+ * Every minute: books a question to the toolkit for each running job that is late, and
+ * fails each job whose sending broke.
+ */
 export const checkLate = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
+    const notSent = await ctx.db
+      .query("jobs")
+      .withIndex("by_status_and_dispatchedAt", (q) =>
+        q
+          .eq("status", "queued")
+          .gt("dispatchedAt", 0)
+          .lte("dispatchedAt", now - NOT_SENT_AFTER_MS),
+      )
+      .take(100);
+    for (const job of notSent) {
+      // Not permanent: sending the same job again may well work.
+      await ctx.scheduler.runAfter(0, internal.jobs.finish, {
+        jobId: job._id,
+        ok: false,
+        error: NOT_SENT_ERROR,
+      });
+    }
     const running = await ctx.db
       .query("jobs")
       .withIndex("by_status", (q) => q.eq("status", "running"))

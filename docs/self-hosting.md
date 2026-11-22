@@ -95,6 +95,8 @@ curl -H "x-api-key: $TOOLKIT_API_KEY" https://toolkit.example.com/v1/toolkit/tes
 
 The toolkit's test writes `success.txt` to the bucket, so a success there also proves the bucket keys work.
 
+No reverse proxy? A [Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/) works instead, with no ports opened on the router; it is what the [desktop app](desktop-app.md) sets up for a copy on a computer at home. Make a remotely-managed tunnel, give it a route for each address to its piece by name on Docker's network (`http://web:3000`, `http://convex:3210`, `http://convex:3211`, `http://agent:4111`, `http://toolkit:8080`), then set `TUNNEL_TOKEN` to the tunnel's token and `COMPOSE_PROFILES=tunnel` in `deploy/.env` so the `tunnel` service starts with the rest. `TUNNEL_IMAGE` pins its image.
+
 On **Coolify**, make each piece its own resource rather than one big stack, so one can restart without the others: the toolkit as a Docker Compose service (toolkit plus Redis), Convex as a Docker Compose service, and the agent server as an application from this repository using `packages/agent/Dockerfile.release` on the `agent-release` branch (it only pulls the image GitHub Actions already published for that commit). Give each its domain in Coolify. Set Convex's `CONVEX_CLOUD_ORIGIN` and `CONVEX_SITE_ORIGIN` as literal addresses: Coolify's own `SERVICE_URL_*` values can end up pointing both at the same host.
 
 ### 2. Make the Convex admin key
@@ -236,13 +238,14 @@ Settings on Convex take effect at once; settings on the agent server need a rest
 
 In `deploy/compose.yml` the web app takes these from `deploy/.env` (`CONVEX_URL`, `CONVEX_SITE_URL`, `MASTRA_JWT_SECRET`) and needs nothing more. Elsewhere:
 
-| Name                          | Needed        | What it does                                                              |
-| ----------------------------- | ------------- | ------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_CONVEX_URL`      | yes           | The Convex API address. Built into the pages.                             |
-| `NEXT_PUBLIC_CONVEX_SITE_URL` | yes           | The Convex HTTP actions address. Built into the pages.                    |
-| `NEXT_PUBLIC_SITE_URL`        | yes           | The dashboard's own address.                                              |
-| `MASTRA_SERVER_URL`           | for the agent | The agent server's address. The web app talks to it from the server side. |
-| `MASTRA_JWT_SECRET`           | for the agent | The shared secret. Without it the agent chat stays signed out.            |
+| Name                          | Needed        | What it does                                                                                                     |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CONVEX_URL`      | yes           | The Convex API address. Built into the pages.                                                                    |
+| `NEXT_PUBLIC_CONVEX_SITE_URL` | yes           | The Convex HTTP actions address. Built into the pages.                                                           |
+| `NEXT_PUBLIC_SITE_URL`        | yes           | The dashboard's own address.                                                                                     |
+| `NEXT_PUBLIC_WATCH_URL`       | no            | Where the "Watch how" videos play from. Unset, they come from `https://takewon.com/watch`. Built into the pages. |
+| `MASTRA_SERVER_URL`           | for the agent | The agent server's address. The web app talks to it from the server side.                                        |
+| `MASTRA_JWT_SECRET`           | for the agent | The shared secret. Without it the agent chat stays signed out.                                                   |
 
 ### Agent server
 
@@ -253,7 +256,7 @@ In `deploy/compose.yml` the web app takes these from `deploy/.env` (`CONVEX_URL`
 | `CONVEX_URL`                                                                  | yes              | The Convex API address. The agent calls it as the signed-in person; it has no key of its own.              |
 | `CONVEX_SITE_URL`                                                             | when self-hosted | The Convex HTTP actions address. Worked out from `CONVEX_URL` only for Convex Cloud and local development. |
 | `CHAT_MODEL`                                                                  | no               | `provider/model`; `anthropic/claude-sonnet-5-5` in `deploy/compose.yml`.                                   |
-| `SIMPLE_CHAT_MODEL`                                                           | no               | The cheaper model for simple turns (`anthropic/claude-haiku-5-5`).                                         |
+| `SIMPLE_CHAT_MODEL`                                                           | no               | The cheaper model for simple turns and for translating subtitles (`anthropic/claude-haiku-5-5`).           |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`         | one of them      | The key for the provider `CHAT_MODEL` names.                                                               |
 | `DISCORD_BOT_TOKEN`, `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY`           | Discord          |                                                                                                            |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`                                 | Telegram         |                                                                                                            |
@@ -281,6 +284,7 @@ To see how long videos take on your machine, before and after an update or a cha
 - **Convex** holds everything except files. `npx convex export --path backup.zip` (with the two `CONVEX_SELF_HOSTED_*` values set) saves it; `npx convex import` brings one back. Or back up the `convex-data` volume while Convex is stopped.
 - **Bucket**: use your storage provider's versioning or replication.
 - **Agent server**: the `agent-data` volume holds its conversation memory.
+- **On a computer run by the desktop app**, backups are made for you: see [the desktop app](desktop-app.md). The app brings one back with **Bring back a backup**. By hand: start the stack, run `npx convex import --replace-all -y database.zip` and `npx convex env set --force < convex-settings.env` (with the two `CONVEX_SELF_HOSTED_*` values set), stop `agent` and unpack `agent-memory.tgz` into the `agent-data` volume, then start it and run `setup` again. `settings.env` is the app's settings file from then, for a computer that has none.
 - **Secrets**: keep `CONNECTIONS_SECRET`, `BETTER_AUTH_SECRET`, the Convex instance secret and admin key, and `MASTRA_JWT_SECRET` in a secrets manager. Without `CONNECTIONS_SECRET` a restored database cannot read its saved keys.
 
 ## When Something Is Wrong

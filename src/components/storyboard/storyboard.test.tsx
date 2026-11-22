@@ -262,6 +262,28 @@ describe("a storyboard", () => {
     });
   });
 
+  test("a next cut typed while one saves is kept, and a cut that fails comes back", async () => {
+    answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
+    let save!: () => void;
+    mutationOf(api.storyboards.addCut).mockImplementationOnce(
+      () => new Promise<null>((resolve) => (save = () => resolve(null))),
+    );
+    const user = userEvent.setup();
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
+    const cuts = screen.getByRole("region", { name: "Cuts from this storyboard" });
+    const what = within(cuts).getByRole("textbox", { name: "Cut" });
+    await user.type(what, "Full lesson");
+    await user.click(within(cuts).getByRole("button", { name: "Add" }));
+    await user.type(what, "Short lessons");
+    await act(async () => save());
+    expect(what).toHaveValue("Short lessons");
+
+    mutationOf(api.storyboards.addCut).mockRejectedValueOnce(new Error("offline"));
+    await user.click(within(cuts).getByRole("button", { name: "Add" }));
+    expect(what).toHaveValue("Short lessons");
+    expect(toastError).toHaveBeenCalled();
+  });
+
   test("the whole script can be edited as text and saved", async () => {
     answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
     answerQuery(api.storyboards.script, "## Cold open\n[Full Screen · You] First line.");

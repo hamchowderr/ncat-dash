@@ -43,9 +43,9 @@ import { bucketOf, presign } from "./lib/bucket";
 import { refreshBrollLike, usableAsBroll } from "./lib/broll";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { heardFrom, MAX_VIDEOS_PER_PICK_STEP, wordsFor } from "./lib/moments";
-import { enqueueAll, advance, failStep } from "./lib/runner";
+import { enqueueAll, advance, bookAgentRetry, failStep } from "./lib/runner";
 import { enqueueJob, pump } from "./lib/queue";
-import { PickError, wordsOfVideo } from "./moments";
+import { mayPass, PickError, wordsOfVideo } from "./moments";
 
 /**
  * B-Roll (automation-core broll.ts has the rules).
@@ -640,25 +640,31 @@ export const match = internalAction({
       await ctx.runMutation(internal.broll.stop, {
         runStepId: args.runStepId,
         stage: "match",
-        error:
-          error instanceof PickError
-            ? error.message
-            : "Finding B-Roll failed. Run it again in a moment.",
+        error: error instanceof PickError ? error.message : "Finding B-Roll failed.",
+        tryAgain: mayPass(error),
       });
     }
   },
 });
 
-/** Fails an Add B-Roll step with a plain reason. */
+/**
+ * Fails an Add B-Roll step with a plain reason, or, when the failure may pass, books
+ * another try of the same stage while the step has tries left.
+ */
 export const stop = internalMutation({
   args: {
     runStepId: v.id("runSteps"),
     stage: v.union(v.literal("match"), v.literal("look")),
     error: v.string(),
+    tryAgain: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const loaded = await loadStep(ctx, args.runStepId, args.stage);
     if (!loaded) return;
+    if (args.tryAgain) {
+      const ask = args.stage === "match" ? "match" : "choose";
+      if (await bookAgentRetry(ctx, loaded.run, loaded.step, args.error, ask)) return;
+    }
     await failStep(ctx, loaded.run, loaded.step, await stepsMap(ctx, loaded.run), args.error);
     await advance(ctx, loaded.run._id);
   },
@@ -889,10 +895,8 @@ export const choose = internalAction({
       await ctx.runMutation(internal.broll.stop, {
         runStepId: args.runStepId,
         stage: "look",
-        error:
-          error instanceof PickError
-            ? error.message
-            : "Choosing B-Roll failed. Run it again in a moment.",
+        error: error instanceof PickError ? error.message : "Choosing B-Roll failed.",
+        tryAgain: mayPass(error),
       });
     }
   },

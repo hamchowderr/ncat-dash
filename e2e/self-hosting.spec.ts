@@ -90,7 +90,7 @@ test("shows the toolkit's load, fixes a share link, and picks a failed run up", 
   await expect(page).toHaveURL(/\/runs$/);
   await page.getByRole("tab", { name: /Failed/ }).click();
   await expect(page).toHaveURL(/show=failed/);
-  const rows = page.locator("tr[data-run]");
+  const rows = page.locator("li[data-run]");
   await expect(rows).toHaveCount(2, { timeout: 30_000 });
   await expect(rows.first()).toContainText("At Video thumbnail.");
   await page.waitForTimeout(2500);
@@ -111,12 +111,16 @@ test("shows the toolkit's load, fixes a share link, and picks a failed run up", 
 
   // Both finished, each picked up once, and the run page says so.
   await page.getByRole("tab", { name: "All runs" }).click();
-  await expect(page.locator("tr[data-run]").filter({ hasText: "Picked up once" })).toHaveCount(2);
-  await expect(page.locator("tr[data-run]").filter({ hasText: "Done" })).toHaveCount(2, {
+  await expect(page.locator("li[data-run]").filter({ hasText: "Picked up once" })).toHaveCount(2);
+  await expect(page.locator("li[data-run]").filter({ hasText: "Done" })).toHaveCount(2, {
     timeout: 30_000,
   });
   await page.waitForTimeout(1500);
-  await page.locator("tr[data-run]").first().getByRole("link", { name: /View/ }).click();
+  await page
+    .locator("li[data-run]")
+    .first()
+    .getByRole("link", { name: /run from/ })
+    .click();
   await expect(page).toHaveURL(/\/runs\/[a-z0-9]+$/);
   await page.waitForTimeout(2500);
 });

@@ -16,13 +16,40 @@ describe("what the dashboard's pages may do inside the app", () => {
     expect(capability.windows).toEqual(["main"]);
   });
 
-  test("allows only the Connect screen's own commands", () => {
+  test("allows only the app's own screens' commands", () => {
     expect(capability.permissions).toEqual([
       "core:default",
       "allow-saved-servers",
       "allow-forget-server",
       "allow-open-server",
+      "allow-check-machine",
+      "allow-stack-saved",
+      "allow-cloudflare-domains",
+      "allow-make-tunnel",
+      "allow-back-up-stack",
+      "allow-restore-stack",
+      "allow-save-stack",
+      "allow-run-stack-step",
     ]);
+  });
+
+  test("never lets the dashboard run or change the stack on this computer", () => {
+    const dashboard = readFileSync(
+      fileURLToPath(new URL("../src-tauri/src/dashboard.rs", import.meta.url)),
+      "utf8",
+    );
+    for (const command of [
+      "check-machine",
+      "stack-saved",
+      "cloudflare-domains",
+      "make-tunnel",
+      "back-up-stack",
+      "restore-stack",
+      "save-stack",
+      "run-stack-step",
+    ]) {
+      expect(dashboard).not.toContain(command);
+    }
   });
 });
 
@@ -42,5 +69,22 @@ describe("the app's details", () => {
 
   test("keeps a strict content policy on its own pages", () => {
     expect(config.app.security.csp).toContain("default-src 'self'");
+  });
+
+  test("updates itself only from this repository's latest release, signed with its own key", () => {
+    const { pubkey, endpoints } = config.plugins.updater;
+    expect(endpoints).toEqual([
+      "https://github.com/hamchowderr/ncat-dash/releases/latest/download/latest.json",
+    ]);
+    // A minisign public key, as `tauri signer generate` writes it (base64 of two lines).
+    expect(Buffer.from(pubkey, "base64").toString()).toMatch(
+      /^untrusted comment: minisign public key/,
+    );
+    // Update files are only made in the release builds, which have the private key.
+    expect(config.bundle.createUpdaterArtifacts).toBeUndefined();
+  });
+
+  test("lets neither its own screens nor the dashboard install updates", () => {
+    expect(JSON.stringify(read("capabilities/default.json"))).not.toContain("updater");
   });
 });

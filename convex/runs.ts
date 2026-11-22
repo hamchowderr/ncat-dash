@@ -6,6 +6,7 @@ import { runEnded } from "./lib/chain";
 import { approvalView, membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { factsOf } from "./lib/facts";
+import { loggedJob } from "./lib/stepLog";
 import { finishWait } from "./lib/logic";
 import { pickUp as pickUpRun, pickUpCheck, stepsOf } from "./lib/pickUp";
 import { pump } from "./lib/queue";
@@ -22,6 +23,7 @@ import {
   approvalTimeUp as decideWhenTimeIsUp,
   decideApproval,
   retriesFor,
+  retryAgentStepNow,
   retryStepNow,
   startRun,
 } from "./lib/runner";
@@ -156,6 +158,11 @@ export const get = query({
       startedByRun: parent ? linkTo(parent) : null,
       // Runs this one started: by a Run an automation step, or by being followed.
       startedRuns: started.map(linkTo),
+      // Waiting for the automation's other runs, when it runs only a few at a time: how
+      // many it runs at once. Null when the run is not waiting for its turn.
+      waitingForTurn: run.heldForSlot
+        ? ((await ctx.db.get(run.automationId))?.runsAtOnce ?? null)
+        : null,
       // What the run's AI steps spent, in millionths of a dollar, and the team's limit.
       aiSpent: run.aiSpent ?? 0,
       aiLimit: (await aiLimitOf(ctx, run.organizationId)) ?? null,
@@ -193,6 +200,8 @@ export const get = query({
             footage: step.footage ?? null,
             // For Length Cuts and Hook And Ending Variants: the paid-ad disclosure kept.
             disclosures: step.disclosures ?? null,
+            // For Translate Subtitles: each video's subtitle file in each language.
+            subtitles: step.subtitles ?? null,
             pickNote: step.pickNote ?? null,
             // For a step that asks the AI: what it spent, in millionths of a dollar.
             aiSpent: step.aiSpent ?? null,
@@ -212,6 +221,35 @@ export const get = query({
           };
         }),
       ),
+    };
+  },
+});
+
+/** The most jobs a step's log lists. */
+const LOG_JOBS = 100;
+
+/**
+ * One step's log: every job it sent, earlier tries too, oldest first, and each try that
+ * failed and was tried again. Null for someone outside the team.
+ */
+export const stepLog = query({
+  args: { runStepId: v.id("runSteps") },
+  handler: async (ctx, args) => {
+    const step = await ctx.db.get(args.runStepId);
+    if (!step) return null;
+    const run = await ctx.db.get(step.runId);
+    if (!run || !(await isMember(ctx, run.organizationId))) return null;
+    const jobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_runStep", (q) => q.eq("runStepId", step._id))
+      .take(LOG_JOBS + 1);
+    return {
+      tries: step.tries ?? [],
+      jobs: jobs.slice(0, LOG_JOBS).map(loggedJob),
+      more: jobs.length > LOG_JOBS,
+      // The files it handed on, each with the file it was made from and the one the run
+      // started with. Steps that finished before these were kept have none.
+      files: (step.items ?? []).slice(0, LOG_JOBS),
     };
   },
 });
@@ -378,6 +416,18 @@ export const retryStep = internalMutation({
   args: { runStepId: v.id("runSteps"), retry: v.number() },
   handler: async (ctx, args) => {
     await retryStepNow(ctx, args.runStepId, args.retry);
+  },
+});
+
+/** Asks the agent again for a step whose asking failed. Scheduled by the runner. */
+export const retryAgentStep = internalMutation({
+  args: {
+    runStepId: v.id("runSteps"),
+    retry: v.number(),
+    ask: v.union(v.literal("pick"), v.literal("match"), v.literal("choose")),
+  },
+  handler: async (ctx, args) => {
+    await retryAgentStepNow(ctx, args.runStepId, args.retry, args.ask);
   },
 });
 

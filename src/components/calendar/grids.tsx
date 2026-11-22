@@ -117,7 +117,7 @@ export function MonthGrid({
   ...shared
 }: Shared & { days: Date[]; month: number; onMore: (day: Date) => void }) {
   return (
-    <div className="flex min-w-[44rem] flex-col gap-1">
+    <div className="flex min-w-[36rem] flex-col gap-1">
       <div className="grid grid-cols-7 gap-1" aria-hidden="true">
         {days.slice(0, 7).map((day) => (
           <span key={dayKey(day)} className="text-muted-foreground px-1.5 text-xs font-medium">
@@ -209,7 +209,7 @@ export function WeekGrid({ days, ...shared }: Shared & { days: Date[] }) {
     );
   const columns = "grid grid-cols-[3.5rem_repeat(7,minmax(0,1fr))] gap-1";
   return (
-    <div className="flex min-w-[44rem] flex-col gap-1">
+    <div className="flex min-w-[36rem] flex-col gap-1">
       <div className={columns}>
         <span />
         {days.map((day) => {

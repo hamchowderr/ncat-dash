@@ -4,6 +4,8 @@ import { TaskSignalProvider } from '@mastra/core/signals';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { env } from '../../lib/env';
+import { chatSkillPaths } from '../lib/agent-skills';
+import { chatKnowledge, chatKnowledgeScopes } from '../lib/chat-knowledge';
 import { type ChatFeatures, features as defaultFeatures } from '../lib/features';
 import { putImage } from '../lib/image-store';
 import { liveScorers } from '../lib/live-scorers';
@@ -13,7 +15,9 @@ import { createDefaultMemory } from '../lib/memory';
 import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
 import { toolScopeProcessor } from '../lib/tool-scope';
 import { CACHE_BREAKPOINT, TurnContextProcessor } from '../lib/turn-context';
+import { turnRequestContextSchema } from '../lib/turn-keys';
 import { getChatWorkspace } from '../lib/workspace';
+import { screenStateProcessor } from '../ncat/screen';
 import { NCAT_INSTRUCTIONS, ncatTools } from '../ncat/tools';
 import { listSchedules, startSchedule, stopSchedule } from '../tools/schedule';
 
@@ -27,7 +31,9 @@ import { listSchedules, startSchedule, stopSchedule } from '../tools/schedule';
  * Endpoint: POST /agent-controller/stream (SSE), registered in index.ts. Mastra
  * Studio also drives it directly at /api/agents/chat.
  *
- * Demo tools are deterministic so AIMock fixtures can drive them with zero spend.
+ * The demo tool (getWeather) is deterministic so AIMock fixtures can drive it with zero
+ * spend. Knowledge (lib/chat-knowledge.ts) is real: its knowledge_* tools search and
+ * read the pages synced from KNOWLEDGE_DIR, and the UI renders their results as sources.
  */
 
 /** Instant tool → exercises <Tool>/<ToolInput>/<ToolOutput> rendering. */
@@ -54,39 +60,6 @@ export const getWeather = createTool({
       condition: conditions[seed % conditions.length],
     };
   },
-});
-
-/** Returns documents → exercises sources/citation rendering in the UI. */
-export const searchKnowledge = createTool({
-  id: 'searchKnowledge',
-  description:
-    'Search the knowledge base for documents relevant to a query. Use when the user asks a factual or how-to question.',
-  inputSchema: z.object({
-    query: z.string().describe('The search query'),
-  }),
-  outputSchema: z.object({
-    results: z.array(
-      z.object({
-        title: z.string(),
-        url: z.string(),
-        snippet: z.string(),
-      }),
-    ),
-  }),
-  execute: async ({ query }) => ({
-    results: [
-      {
-        title: `Overview: ${query}`,
-        url: `https://docs.example.com/${encodeURIComponent(query)}`,
-        snippet: `A concise overview covering ${query} and how it works.`,
-      },
-      {
-        title: `Guide: getting started with ${query}`,
-        url: `https://docs.example.com/${encodeURIComponent(query)}/guide`,
-        snippet: `Step-by-step guide for ${query}, with examples.`,
-      },
-    ],
-  }),
 });
 
 /**
@@ -228,10 +201,10 @@ export function chatInstructions(f: ChatFeatures): string {
     (k) => f.subagents[k],
   );
   const lines = [
-    ...(f.demoTools
+    ...(f.demoTools ? ['- When the user asks about weather, call getWeather.'] : []),
+    ...(f.knowledge
       ? [
-          '- When the user asks about weather, call getWeather.',
-          '- When the user asks a factual or how-to question, call searchKnowledge and ground your answer in the results, citing the document titles.',
+          '- When the user asks a factual or how-to question, search Knowledge with knowledge_search first and ground your answer in the pages you found, citing their names. When Knowledge has nothing on it, say so.',
         ]
       : []),
     ...(f.generateImage
@@ -267,7 +240,7 @@ const FIRECRAWL_BROWSER_INSTRUCTIONS =
 /** The chat agent's own tools for a set of features (the workspace adds its own). */
 export function chatTools(f: ChatFeatures) {
   return {
-    ...(f.demoTools ? { getWeather, searchKnowledge } : {}),
+    ...(f.demoTools ? { getWeather } : {}),
     ...(f.generateImage ? { generateImage } : {}),
     ...ncatTools,
     setGoal,
@@ -331,6 +304,9 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
     name: 'Automation builder',
     description:
       'Builds, changes and switches on automations in the dashboard, using the same pieces the canvas uses.',
+    // What a turn carries on its request context, all of it set by this server
+    // (lib/turn-keys.ts). A value of the wrong type stops the turn before the model is called.
+    requestContextSchema: turnRequestContextSchema,
     // Dynamic so the AgentController "Search" toggle (request context `webSearch`) can switch
     // the agent into search-the-web mode. Static string otherwise.
     instructions: ({ requestContext }) =>
@@ -377,6 +353,14 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
         ? getChatWorkspace()
         : undefined,
     tools: chatTools(f),
+    // Mastra Knowledge: the knowledge_* tools (search, read, list, page, note, pin), their
+    // usage instructions, and pinned pages in context every turn. `scopes` decides, from the
+    // dashboard session, which pages a run may see: the Takewon guide, the person's team,
+    // and the client whose item is on screen (lib/chat-knowledge.ts).
+    ...(f.knowledge ? { knowledge: chatKnowledge, scopes: chatKnowledgeScopes } : {}),
+    // The FFmpeg skills (lib/agent-skills.ts): the skill, skill_search and skill_read tools
+    // load one only when a turn needs it.
+    skills: chatSkillPaths(),
     // Default execution options applied to EVERY run. Adaptive thinking, so the model
     // emits real `reasoning` parts (→ the <Reasoning> element): Claude Sonnet 5.5 and the
     // other current models refuse a fixed thinking budget, and `effort` (CHAT_EFFORT, set
@@ -406,6 +390,8 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
       toolScopeProcessor,
       new TurnContextProcessor({ promptCache: f.promptCache }),
       new CostRouteProcessor({ promptCache: f.promptCache }),
+      // What the person has open in the dashboard, as a state signal (ncat/screen.ts).
+      screenStateProcessor,
     ],
     outputProcessors: defaultOutputProcessors,
   });

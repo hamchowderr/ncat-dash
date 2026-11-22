@@ -127,6 +127,24 @@ describe("what happened in a run", () => {
     expect(skipped.textContent).not.toContain("1m 3s");
   });
 
+  test("Add Motion Graphics with nothing to draw says the video went on unchanged", () => {
+    const note = "Nothing to draw on the video, so it went on unchanged.";
+    renderInApp(
+      <RunSteps
+        run={run({
+          nodes: [{ id: "motion", kind: "motion", input: {}, position: { x: 0, y: 0 } }],
+          steps: [step({ nodeId: "motion", outputs: [CLIP], pickNote: note })],
+        } as never)}
+        highlighted={null}
+        busy={false}
+        onDecide={vi.fn()}
+      />,
+    );
+    const row = screen.getByRole("heading", { name: "Add Motion Graphics" }).closest("li")!;
+    expect(row.textContent).toContain(note);
+    expect(row.textContent).not.toContain("Nothing to add");
+  });
+
   test("shows what a step found out as labelled facts, never raw data", () => {
     renderInApp(<RunSteps run={run()} highlighted={null} busy={false} onDecide={vi.fn()} />);
     const caption = screen.getByRole("heading", { name: "Caption video" }).closest("li")!;

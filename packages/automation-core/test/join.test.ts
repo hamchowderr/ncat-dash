@@ -1,56 +1,69 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, test } from "vitest";
 
-import { applyOperations, type AutomationDraft, readyNodes } from "../src";
+import {
+  type AutomationEdge,
+  type AutomationNode,
+  JOIN_MODES,
+  joinOf,
+  linesInto,
+  missingSettings,
+  partnersOf,
+  readyNodes,
+} from "../src";
 
-const empty: AutomationDraft = { name: "Clips", trigger: { kind: "manual" }, nodes: [], edges: [] };
-
-// Two sides from the start: trim and thumbnail.
-const sides = applyOperations(empty, [
-  { op: "add", type: "step:video-trim", id: "trim_1" },
-  { op: "add", type: "step:video-caption", id: "caption_1", after: "trim_1" },
-  { op: "add", type: "step:video-trim", id: "trim_2" },
-]);
-
-it("a step joined to nothing goes below, in the first column, ready to be joined", () => {
-  const at = (id: string) => sides.nodes.find((node) => node.id === id)!.position;
-  expect(at("trim_2").x).toBe(at("trim_1").x);
-  expect(at("trim_2").y).toBeGreaterThan(at("caption_1").y);
+const node = (id: string, extra: Partial<AutomationNode> = {}): AutomationNode => ({
+  id,
+  kind: "step",
+  stepId: "video-trim",
+  input: { start: "0", end: "1" },
+  position: { x: 0, y: 0 },
+  ...extra,
 });
+const edges: AutomationEdge[] = [
+  { id: "e1", source: "a", target: "c" },
+  { id: "e2", source: "b", target: "c" },
+];
 
-describe("joining two sides back together", () => {
-  const joined = applyOperations(sides, [
-    {
-      op: "add",
-      type: "step:video-concatenate",
-      id: "join_1",
-      after: "caption_1",
-      join: ["trim_2"],
-    },
-  ]);
-
-  it("connects the new step from each, and puts it right of both, between them", () => {
-    const into = joined.edges.filter((edge) => edge.target === "join_1").map((e) => e.source);
-    expect(into.sort()).toEqual(["caption_1", "trim_2"]);
-    const at = (id: string) => joined.nodes.find((node) => node.id === id)!.position;
-    expect(at("join_1").x).toBeGreaterThan(Math.max(at("caption_1").x, at("trim_2").x));
-    expect(at("join_1").y).toBe(Math.round((at("caption_1").y + at("trim_2").y) / 2));
+describe("how a step treats lines that meet at it", () => {
+  test("waits for every line unless it takes whichever finishes first", () => {
+    const status = { a: "done", b: "running", c: "pending" } as const;
+    expect(readyNodes([node("a"), node("b"), node("c")], edges, { ...status })).toEqual([]);
+    const first = node("c", { join: "first" });
+    expect(readyNodes([node("a"), node("b"), first], edges, { ...status })).toEqual([first]);
+    // Nothing finished yet: still waits.
+    expect(
+      readyNodes([node("a"), node("b"), first], edges, {
+        a: "running",
+        b: "running",
+        c: "pending",
+      }),
+    ).toEqual([]);
   });
 
-  it("waits until both sides have finished", () => {
-    const base = {
-      trim_1: "done",
-      trim_2: "done",
-      caption_1: "running",
-      join_1: "pending",
-    } as const;
-    expect(readyNodes(joined.nodes, joined.edges, base).map((n) => n.id)).toEqual([]);
-    const both = { ...base, caption_1: "done" } as const;
-    expect(readyNodes(joined.nodes, joined.edges, both).map((n) => n.id)).toEqual(["join_1"]);
+  test("pairs by upload or by place, null where there is no partner", () => {
+    const main = [
+      { url: "m1", source: "A" },
+      { url: "m2", source: "B" },
+      { url: "m3", source: null },
+    ];
+    const others = [
+      { url: "o2", source: "B" },
+      { url: "o1", source: "A" },
+    ];
+    expect(partnersOf("source", main, others)).toEqual(["o1", "o2", null]);
+    expect(partnersOf("position", main, others)).toEqual(["o2", "o1", null]);
   });
 
-  it("needs a step to come after", () => {
-    expect(() =>
-      applyOperations(sides, [{ op: "add", type: "step:video-concatenate", join: ["trim_2"] }]),
-    ).toThrow(/say which step it comes after/);
+  test("a pairing step does not ask for the files it gets from the other line", () => {
+    const pip = node("c", { stepId: "recipe-picture-in-picture", input: {} });
+    expect(missingSettings(pip)).toContain("other_video_url");
+    expect(missingSettings({ ...pip, join: "source" })).not.toContain("other_video_url");
+  });
+
+  test("defaults to using every file, and counts the lines in", () => {
+    expect(joinOf(node("c"))).toBe("all");
+    expect(JOIN_MODES.map((mode) => mode.value)).toEqual(["all", "source", "position", "first"]);
+    expect(linesInto("c", edges)).toBe(2);
+    expect(linesInto("a", edges)).toBe(0);
   });
 });

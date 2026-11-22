@@ -2,7 +2,7 @@ import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveToolCategory } from "../../src/mastra/lib/tool-categories";
 import { type DashClient, useDashClientForTests } from "../../src/mastra/ncat/convex";
-import { findInLibrary, runOnLibraryFile } from "../../src/mastra/ncat/library";
+import { findInLibrary, libraryFile, runOnLibraryFile } from "../../src/mastra/ncat/library";
 import { forgetSessions, rememberSession } from "../../src/mastra/ncat/session-store";
 import { NCAT_INSTRUCTIONS, NCAT_READ_TOOLS, ncatTools } from "../../src/mastra/ncat/tools";
 
@@ -30,12 +30,46 @@ const HIT = {
   moments: [{ start: 751.4, text: "Let's talk about pricing." }],
 };
 
+const made = (n: number) => ({
+  _id: `item_c${n}`,
+  shortId: `C${n}`,
+  title: `Crew interview clip ${n}`,
+  kind: "video",
+  source: "automation",
+  automationName: "Interview clips",
+  parent: { shortId: "V1", title: "Crew interview" },
+  client: null,
+  tags: [],
+  duration: 30,
+  searchable: "no",
+});
+
+const V1 = {
+  _id: "item_v1",
+  shortId: "V1",
+  title: "Crew interview",
+  kind: "video",
+  source: "upload",
+  automationName: null,
+  parent: null,
+  client: null,
+  tags: [],
+  duration: 600,
+  searchable: "ready",
+  children: [1, 2, 3, 4, 9, 10].map(made),
+};
+
 const client = {
   query: async (ref: never, args: Record<string, unknown>) => {
     const name = getFunctionName(ref);
     calls.push({ name, args });
     if (name === "library:search") return [HIT];
-    if (name === "library:byShortId") return args.shortId === "C99" ? { _id: "item_1" } : null;
+    if (name === "library:byShortId") {
+      if (args.shortId === "C99") return { _id: "item_1" };
+      if (args.shortId === "V1") return { _id: "item_v1" };
+      return null;
+    }
+    if (name === "library:get" && args.itemId === "item_v1") return V1;
     throw new Error(`No answer for ${name}`);
   },
   mutation: async () => {
@@ -63,6 +97,36 @@ beforeEach(() => {
 afterEach(() => {
   useDashClientForTests();
   forgetSessions();
+});
+
+describe("library_file", () => {
+  it("lists exactly the files made from a video, as the Library does", async () => {
+    const result = (await run(libraryFile, { file: "V1" })) as {
+      file: { id: string; from: string; link: string };
+      madeFromIt: { id: string; link: string }[];
+    };
+    expect(calls.map((c) => c.name)).toEqual(["library:byShortId", "library:get"]);
+    expect(result.file).toMatchObject({ id: "V1", from: "Uploaded", link: "/library/item_v1" });
+    expect(result.madeFromIt.map((f) => f.id)).toEqual(["C1", "C2", "C3", "C4", "C9", "C10"]);
+    expect(result.madeFromIt[0]).toMatchObject({
+      madeBy: "Interview clips",
+      link: "/library/item_c1",
+    });
+  });
+
+  it("says plainly when there is no such file", async () => {
+    expect(await run(libraryFile, { file: "V404" })).toEqual({
+      found: false,
+      file: null,
+      madeFromIt: [],
+    });
+  });
+
+  it("only looks, and the instructions send lineage questions to it", () => {
+    expect(NCAT_READ_TOOLS).toContain("library_file");
+    expect(Object.keys(ncatTools)).toContain("library_file");
+    expect(NCAT_INSTRUCTIONS).toContain("use library_file");
+  });
 });
 
 describe("find_in_library", () => {
