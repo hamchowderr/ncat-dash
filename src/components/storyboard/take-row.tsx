@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { type Part, PARTS, type Scene, SCENES, sceneLabel } from "@convex/lib/storyboard";
-import { readUploadRef } from "@ncat-dash/automation-core";
+import { clock, readClipRef, readUploadRef, timeRangeOf } from "@ncat-dash/automation-core";
 import { useMutation } from "convex/react";
 import { ArrowDown, ArrowUp, Link2, Trash2, Upload, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
@@ -43,6 +43,8 @@ export function PartChip({ part }: { part: Part }) {
 
 function fileName(url: string) {
   if (readUploadRef(url)) return "Uploaded file";
+  const range = readClipRef(url) ?? timeRangeOf(url);
+  if (range) return `From the upload, ${clock(range.start)} to ${clock(range.end)}`;
   return decodeURIComponent(url.split(/[?#]/)[0].split("/").pop() || url);
 }
 

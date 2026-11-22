@@ -414,7 +414,7 @@ function Project({ project }: { project: Loaded }) {
           <TabsTrigger value="storyboard">Storyboard</TabsTrigger>
         </TabsList>
         <TabsContent value="storyboard">
-          <StoryboardView projectId={project._id} />
+          <StoryboardView projectId={project._id} organizationId={project.organizationId} />
         </TabsContent>
         <TabsContent value="slots" className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

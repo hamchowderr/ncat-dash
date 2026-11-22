@@ -14,11 +14,18 @@ import {
   takeCount,
 } from "@convex/lib/storyboard";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { ArrowDown, ArrowUp, FileVideo, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { PickList } from "@/components/ui/pick-list";
 import { Progress } from "@/components/ui/progress";
@@ -75,7 +82,71 @@ function ScriptHelp() {
 }
 
 /** What a project shows before it has a storyboard: a place to paste or write one. */
-function StartStoryboard({ projectId }: { projectId: Id<"projects"> }) {
+/**
+ * Adds the lines drafted from one of the team's uploads to the project's storyboard, so a
+ * project can gather several recordings. Shows nothing while no upload has a draft.
+ */
+function GatherFromUpload({
+  projectId,
+  organizationId,
+  label = "Add an upload's lines",
+  variant = "outline",
+}: {
+  projectId: Id<"projects">;
+  organizationId: string;
+  label?: string;
+  variant?: "outline" | "default";
+}) {
+  const drafts = useQuery(api.storyboards.uploadDrafts, { organizationId });
+  const gather = useMutation(api.storyboards.gatherUploadDraft);
+  const [pending, setPending] = useState(false);
+  if (!drafts || drafts.length === 0) return null;
+
+  async function add(libraryItemId: Id<"libraryItems">, title: string) {
+    setPending(true);
+    try {
+      const added = await gather({ projectId, libraryItemId });
+      toast.success(
+        `Added ${count(added.takes, "line")} in ${count(added.chapters, "chapter")} from ${title}.`,
+      );
+    } catch (caught) {
+      toast.error(errorMessage(caught, "Those lines could not be added."));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant={variant} disabled={pending}>
+          <FileVideo />
+          {label}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
+        <DropdownMenuLabel>Uploads with a drafted storyboard</DropdownMenuLabel>
+        {drafts.map((draft) => (
+          <DropdownMenuItem
+            key={draft.libraryItemId}
+            onSelect={() => void add(draft.libraryItemId, draft.title)}
+          >
+            <span className="text-muted-foreground font-mono text-xs">{draft.shortId}</span>
+            <span className="min-w-0 flex-1 truncate">{draft.title}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function StartStoryboard({
+  projectId,
+  organizationId,
+}: {
+  projectId: Id<"projects">;
+  organizationId: string;
+}) {
   const create = useMutation(api.storyboards.create);
   const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
@@ -99,6 +170,18 @@ function StartStoryboard({ projectId }: { projectId: Id<"projects"> }) {
           A storyboard lays out every line of the video in chapters, with the scene it is shown in
           and what goes into it, so you can see what is still to record before anything is edited.
         </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <GatherFromUpload
+          projectId={projectId}
+          organizationId={organizationId}
+          label="Start from an upload"
+          variant="default"
+        />
+        <span className="text-muted-foreground text-sm">
+          Every upload gets a storyboard drafted from what was said in it. Start from one, then add
+          more uploads to gather them here.
+        </span>
       </div>
       <Textarea
         aria-label="Script"
@@ -488,7 +571,7 @@ function SidePanel({ board, chapter }: { board: Board; chapter: Chapter }) {
   );
 }
 
-function StoryboardBoard({ board }: { board: Board }) {
+function StoryboardBoard({ board, actions }: { board: Board; actions?: ReactNode }) {
   const setDetails = useMutation(api.storyboards.setDetails);
   const [view, setView] = useState<"board" | "script">("board");
   const [picked, setPicked] = useState<Id<"storyboardChapters"> | null>(null);
@@ -526,16 +609,19 @@ function StoryboardBoard({ board }: { board: Board }) {
             options={ASPECTS.map((aspect) => ({ value: aspect, label: aspect }))}
           />
         </p>
-        <Segmented
-          aria-label="Show"
-          className="w-auto"
-          value={view}
-          onValueChange={setView}
-          options={[
-            { value: "board", label: "Storyboard" },
-            { value: "script", label: "Script" },
-          ]}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {actions}
+          <Segmented
+            aria-label="Show"
+            className="w-auto"
+            value={view}
+            onValueChange={setView}
+            options={[
+              { value: "board", label: "Storyboard" },
+              { value: "script", label: "Script" },
+            ]}
+          />
+        </div>
       </div>
 
       {view === "script" ? (
@@ -593,9 +679,82 @@ function StoryboardBoard({ board }: { board: Board }) {
 }
 
 /** A project's storyboard, or a place to start one. */
-export function StoryboardView({ projectId }: { projectId: Id<"projects"> }) {
+export function StoryboardView({
+  projectId,
+  organizationId,
+}: {
+  projectId: Id<"projects">;
+  organizationId: string;
+}) {
   const board = useQuery(api.storyboards.get, { projectId });
   if (board === undefined) return <Skeleton className="h-96 rounded-xl" />;
-  if (board === null) return <StartStoryboard projectId={projectId} />;
-  return <StoryboardBoard board={board} />;
+  if (board === null) {
+    return <StartStoryboard projectId={projectId} organizationId={organizationId} />;
+  }
+  return (
+    <StoryboardBoard
+      board={board}
+      actions={<GatherFromUpload projectId={projectId} organizationId={organizationId} />}
+    />
+  );
+}
+
+/** Drafts the upload's storyboard again from its transcript, after asking. */
+function DraftAgain({ libraryItemId }: { libraryItemId: Id<"libraryItems"> }) {
+  const again = useMutation(api.storyboards.draftAgain);
+  const [asking, setAsking] = useState(false);
+  async function go() {
+    try {
+      await again({ libraryItemId });
+      toast.success("Drafted again from the transcript.");
+    } catch (caught) {
+      toast.error(errorMessage(caught, "It could not be drafted again."));
+    } finally {
+      setAsking(false);
+    }
+  }
+  if (asking) {
+    return (
+      <span className="flex items-center gap-1 text-sm">
+        <span className="text-muted-foreground">Your changes to it go.</span>
+        <Button size="sm" variant="outline" onClick={() => void go()}>
+          Draft again
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>
+          Keep it
+        </Button>
+      </span>
+    );
+  }
+  return (
+    <Button size="sm" variant="ghost" onClick={() => setAsking(true)}>
+      <RotateCcw />
+      Draft again
+    </Button>
+  );
+}
+
+/**
+ * The storyboard drafted from an upload: a line for every sentence said in it, each with
+ * its own clip, ready to change. While the transcript is on its way, says so.
+ */
+export function UploadStoryboard({
+  libraryItemId,
+  transcribed,
+}: {
+  libraryItemId: Id<"libraryItems">;
+  transcribed: boolean;
+}) {
+  const board = useQuery(api.storyboards.forUpload, { libraryItemId });
+  if (board === undefined) return <Skeleton className="h-96 rounded-xl" />;
+  if (board === null) {
+    return (
+      <p className="text-muted-foreground rounded-xl bg-surface px-4 py-3 text-sm">
+        {transcribed
+          ? "The storyboard is being drafted from what was said."
+          : "The storyboard is drafted from what was said once the transcript is in."}
+      </p>
+    );
+  }
+  return <StoryboardBoard board={board} actions={<DraftAgain libraryItemId={libraryItemId} />} />;
 }

@@ -964,6 +964,10 @@ export const saveTranscript = internalMutation({
     });
     // How much is said in it helps tell B-Roll from a talking head.
     await refreshBrollLike(ctx, item._id);
+    // Every upload gets a storyboard drafted from what was said in it.
+    if (item.source === "upload" && (item.kind === "video" || item.kind === "audio")) {
+      await ctx.scheduler.runAfter(0, internal.storyboards.draftForUpload, { itemId: item._id });
+    }
   },
 });
 

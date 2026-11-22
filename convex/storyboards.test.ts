@@ -133,7 +133,7 @@ describe("a storyboard", () => {
       outsider.as.mutation(api.storyboards.updateTake, { takeId: take._id, line: "Hacked" }),
     ).rejects.toThrow();
     await expect(
-      outsider.as.mutation(api.storyboards.create, { projectId: (await board()).projectId }),
+      outsider.as.mutation(api.storyboards.create, { projectId: (await board()).projectId! }),
     ).rejects.toThrow();
   });
 
