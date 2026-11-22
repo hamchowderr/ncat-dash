@@ -18,7 +18,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ItemBadge, ItemList, ItemRow, MetaLine, Pager, usePages } from "@/components/ui/item-list";
-import { formatDuration, stepTitle } from "@/lib/catalog";
+import { formatDuration, stepHref, stepTitle } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { exactly, timeAgo } from "@/lib/when";
 
@@ -96,7 +96,7 @@ export function JobsView() {
                         View details
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
-                        <Link href={`/steps/${job.stepId}`}>Run this step again</Link>
+                        <Link href={stepHref(job.stepId)}>Run this step again</Link>
                       </DropdownMenuItem>
                     </>
                   }
@@ -125,7 +125,7 @@ export function JobsView() {
                   </pre>
                 </div>
                 <Button asChild variant="outline" size="sm" className="self-start">
-                  <Link href={`/steps/${open.stepId}`}>Run this step again</Link>
+                  <Link href={stepHref(open.stepId)}>Run this step again</Link>
                 </Button>
               </div>
             </>

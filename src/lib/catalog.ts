@@ -24,6 +24,22 @@ export const CATEGORY_ORDER: StepCategory[] = [
   "storage",
 ];
 
+/**
+ * Step pages whose address would otherwise name the tool the toolkit uses underneath. The
+ * old address still works and moves to the new one.
+ */
+const PAGE_NAMES: Record<string, string> = { "ffmpeg-compose": "custom-edit" };
+
+/** The address of a step's own page, such as /steps/custom-edit. */
+export function stepHref(stepId: string): string {
+  return `/steps/${PAGE_NAMES[stepId] ?? stepId}`;
+}
+
+/** The step a page address names, or undefined. */
+export function stepIdOfPage(name: string): string | undefined {
+  return Object.entries(PAGE_NAMES).find(([, page]) => page === name)?.[0];
+}
+
 /** A step's title, or its id when the catalog no longer has it. */
 export function stepTitle(stepId: string): string {
   return getStep(stepId)?.title ?? stepId;
