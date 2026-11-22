@@ -1162,3 +1162,29 @@ export function motionBeatsFromPicks(
   beats.sort((a, b) => a.start - b.start);
   return { beats, dropped };
 }
+
+/**
+ * What an Add Motion Graphics or Add Sound Effects step says when it found nothing to put on
+ * a video, so the video went on as it was. Names what is missing when the style's pieces
+ * wait on a name or handle no one has set.
+ */
+export function nothingToDrawNote(
+  kind: "motion" | "sound-effects",
+  setup: MotionSetup,
+  videos = 1,
+): string {
+  const which = videos === 1 ? "the video" : "the videos";
+  if (kind === "sound-effects") {
+    return `No sound effect fit ${which}, so ${videos === 1 ? "it" : "they"} went on unchanged.`;
+  }
+  const lead = `Nothing to draw on ${which}, so ${videos === 1 ? "it" : "they"} went on unchanged.`;
+  const wanted = [
+    setup.style.pieces.includes("lower_third") && !setup.hostName.trim() ? "a speaker name" : null,
+    (setup.style.pieces.includes("follow") || setup.style.ending === "follow") &&
+    !setup.handle.trim()
+      ? "a handle"
+      : null,
+  ].filter((one): one is string => one !== null);
+  if (wanted.length === 0) return lead;
+  return `${lead} Add ${wanted.join(" and ")} in Settings, under Motion, for the name and follow cards to show.`;
+}

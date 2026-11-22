@@ -117,7 +117,7 @@ export const GROUP_LABELS: Record<NodeGroup, string> = {
   image: "Image",
   recipe: "Recipes",
   team: "Your team's steps",
-  ffmpeg: "FFmpeg",
+  ffmpeg: "Custom edits",
   code: "Code",
   storage: "Storage",
   people: "People",
@@ -748,7 +748,7 @@ const FOOTAGE_CHECK: NodeType = {
   group: "video",
   title: "Check Footage",
   description:
-    "Checks each video before editing, by plain rules on what FFmpeg measures, with no AI: the shape it was filmed in, enough pixels, sound that is there, clear and not clipped, no black or frozen picture, and long enough. For a creator's folder it checks every hook, body and ending take. When something is wrong the team is told in the bell and their chat apps, a note is left in the creator's folder, and the run stops before editing (or carries on, if you choose). Put it first.",
+    "Checks each video before editing, by plain rules on what the toolkit measures, with no AI: the shape it was filmed in, enough pixels, sound that is there, clear and not clipped, no black or frozen picture, and long enough. For a creator's folder it checks every hook, body and ending take. When something is wrong the team is told in the bell and their chat apps, a note is left in the creator's folder, and the run stops before editing (or carries on, if you choose). Put it first.",
   takes: "file",
   gives: "files",
   settings: {

@@ -7,7 +7,7 @@ export const CATEGORY_LABELS: Record<StepCategory, string> = {
   image: "Image",
   recipe: "Recipes",
   team: "Your team's steps",
-  ffmpeg: "FFmpeg",
+  ffmpeg: "Custom edits",
   code: "Code",
   storage: "Storage",
 };

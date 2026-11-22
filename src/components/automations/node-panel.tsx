@@ -242,7 +242,7 @@ export function NodePanel({
   if (node.kind === "footage-check") {
     handled.push({
       label: "Videos",
-      text: "every video before this step and, from a creator's folder, each hook and ending take, measured by FFmpeg",
+      text: "every video before this step and, from a creator's folder, each hook and ending take, measured by your toolkit",
     });
   }
   // Length Cuts and Hook And Ending Variants keeping a paid creator's ad disclosure.

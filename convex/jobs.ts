@@ -1,4 +1,8 @@
-import { isTransientStatus, wrongKindOfFile } from "@ncat-dash/automation-core";
+import {
+  failsTheSameEveryTime,
+  isTransientStatus,
+  wrongKindOfFile,
+} from "@ncat-dash/automation-core";
 import {
   callStep,
   getStep,
@@ -378,7 +382,9 @@ export const finish = internalMutation({
     // said plainly (the toolkit's own words kept below, for "Show details") and not retried.
     const wrongFile = args.ok ? null : wrongKindOfFile(job.stepId, args.error);
     const error = wrongFile ? `${wrongFile}\n\n${args.error}` : args.error;
-    const permanent = args.permanent || wrongFile !== null;
+    // A request the toolkit turned down for what it asks, such as motion with nothing to
+    // draw, fails the same way when sent again.
+    const permanent = args.permanent || (!args.ok && failsTheSameEveryTime(job.stepId, args.error));
     // A Convex document holds at most 1 MB. A very long transcript is kept as its file
     // links only; the full data is still at the toolkit's own output URLs.
     const tooLarge = args.ok && JSON.stringify(args.result ?? null).length > MAX_RESULT_CHARS;

@@ -156,7 +156,7 @@ export function CopyLookFromVideo({
       <PasteLink forLook />
       <p className="text-muted-foreground text-xs text-pretty">
         The toolkit takes six frames and finds the cuts, and the agent looks at them once. Every run
-        after that is plain FFmpeg, with no AI spent per video.
+        after that runs on your toolkit by plain rules, with no AI spent per video.
       </p>
     </div>
   );

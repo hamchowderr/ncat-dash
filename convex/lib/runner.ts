@@ -63,7 +63,7 @@ import {
   stepFileLabels,
 } from "@ncat-dash/automation-core";
 import { startSend } from "./send";
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep, pictureGivenForVideo } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
 import { components, internal } from "../_generated/api";
@@ -79,7 +79,7 @@ import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { finishListening, listenRequest, startListening, wordsFor } from "./moments";
 import { type DisclosureNote, hearFirst } from "./disclosure";
 import { finishLaying, finishLooking } from "./broll";
-import { finishMotionListening, isPlaceKind } from "./motion";
+import { finishMotionListening, isMotionKind, isPlaceKind } from "./motion";
 import { finishFootageCheck, startFootageCheck } from "./footage";
 import { startSubtitles } from "./subtitles";
 import { fillProjectSlots } from "./projects";
@@ -528,6 +528,16 @@ async function startToolkitStep(
       byNode,
       `${planned.length} files reached this step; the most it takes at once is ${MAX_JOBS_PER_STEP}.`,
     );
+    return;
+  }
+
+  // A video step handed a picture can only fail, after a while and in programmers' words,
+  // so it stops at once in plain ones and is not tried again.
+  const picture = planned
+    .map((input) => pictureGivenForVideo(definition, input))
+    .find((said) => said !== null);
+  if (picture) {
+    await failStep(ctx, run, step, byNode, picture);
     return;
   }
 
@@ -1416,9 +1426,13 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
     );
   } else {
     const labels = await variantLabels(ctx, run, step, jobs);
+    const kind = (run.nodes as AutomationNode[]).find((other) => other.id === step.nodeId)?.kind;
+    // Add Motion Graphics and Add Sound Effects keep the videos that had nothing to draw,
+    // unchanged, in `outputs` while the rest render.
+    const keptAsIs = kind && isMotionKind(kind) && step.stage === "render" ? step.outputs : [];
     await ctx.db.patch(runStepId, {
       status: "done",
-      outputs: jobs.flatMap((job) => job.outputs),
+      outputs: [...keptAsIs, ...jobs.flatMap((job) => job.outputs)],
       finishedAt: Date.now(),
       retryError: undefined,
       ...(labels.length > 0 ? { labels } : {}),

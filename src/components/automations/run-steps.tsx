@@ -157,6 +157,10 @@ function stepSentence(
   if (step.status === "failed") {
     return failsOver ? "Failed, so its files went the way for when it fails." : "Stopped here.";
   }
+  // Add Motion Graphics or Add Sound Effects with nothing to put on a video says so.
+  if ((node.kind === "motion" || node.kind === "sound-effects") && step.pickNote) {
+    return step.pickNote;
+  }
   const made = node.kind === "step" ? step.outputs.length : 0;
   if (made === 1) return "Made 1 file.";
   if (made > 1) return `Made ${made} files.`;

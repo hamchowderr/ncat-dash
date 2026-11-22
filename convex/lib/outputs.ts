@@ -55,9 +55,7 @@ export function handOutputNames(job: {
   outputs: string[];
 }): Record<string, string> {
   const given = collectUrls(job.input)[0];
-  // The toolkit's free-form edit is named for people, never after the tool behind it.
-  const title =
-    job.stepId === "ffmpeg-compose" ? "Custom edit" : (getStep(job.stepId)?.title ?? "Step");
+  const title = getStep(job.stepId)?.title ?? "Step";
   const stem = plainName(given ? fileNameOfLink(given) : null) ?? title;
   return runOutputNames(stem, [{ stepId: job.stepId, outputs: job.outputs }]);
 }
