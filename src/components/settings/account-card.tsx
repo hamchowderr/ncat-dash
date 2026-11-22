@@ -18,7 +18,8 @@ export function AccountCard() {
       tabs={[
         { id: "profile", label: "Profile" },
         { id: "security", label: "Password And Devices" },
-      ]}>
+      ]}
+    >
       <TabsContent value="profile">
         <AccountProfile />
       </TabsContent>

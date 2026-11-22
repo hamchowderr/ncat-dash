@@ -86,12 +86,14 @@ test("the Account page changes your name and password and signs out your other d
   await expect(second).not.toHaveURL(/\/sign-in/, { timeout: 30_000 });
 
   await first.goto("/settings/account");
-  await expect(first.getByText("Where you're signed in")).toBeVisible({ timeout: 30_000 });
-  await expect(first.getByText("This device")).toBeVisible();
-
   await first.getByLabel("Your name").fill("Robin Vale-Hart");
   await first.getByRole("button", { name: "Save changes" }).click();
   await expect(first.getByText(/Profile updated/i)).toBeVisible();
+
+  await first.getByRole("tab", { name: "Password And Devices" }).click();
+  await expect(first).toHaveURL(/tab=security/);
+  await expect(first.getByText("Where you're signed in")).toBeVisible({ timeout: 30_000 });
+  await expect(first.getByText("This device")).toBeVisible();
 
   await first.getByLabel("Current password").fill(PASSWORD);
   await first.getByLabel("New password").fill("a-brand-new-password-2");
