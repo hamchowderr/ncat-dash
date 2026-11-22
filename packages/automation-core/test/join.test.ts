@@ -1,12 +1,15 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  applyOperation,
+  type AutomationDraft,
   type AutomationEdge,
   type AutomationNode,
   JOIN_MODES,
   joinOf,
   linesInto,
   missingSettings,
+  OperationError,
   partnersOf,
   readyNodes,
 } from "../src";
@@ -65,5 +68,42 @@ describe("how a step treats lines that meet at it", () => {
     expect(JOIN_MODES.map((mode) => mode.value)).toEqual(["all", "source", "position", "first"]);
     expect(linesInto("c", edges)).toBe(2);
     expect(linesInto("a", edges)).toBe(0);
+  });
+});
+
+describe("the meet change", () => {
+  const draft = {
+    trigger: { kind: "manual" as const },
+    nodes: [
+      node("a"),
+      node("b"),
+      node("c"),
+      { id: "check", kind: "if" as const, input: {}, position: { x: 0, y: 0 } },
+    ] as AutomationNode[],
+    edges: [...edges, { id: "e3", source: "c", target: "check" }],
+  } as AutomationDraft;
+
+  test("sets how files meet, and the default clears it", () => {
+    const paired = applyOperation(draft, { op: "meet", id: "c", mode: "source" });
+    expect(paired.nodes.find((one) => one.id === "c")?.join).toBe("source");
+    const back = applyOperation(paired, { op: "meet", id: "c", mode: "all" });
+    expect(back.nodes.find((one) => one.id === "c")).not.toHaveProperty("join");
+  });
+
+  test("lets an If take the first line but not pair files", () => {
+    const first = applyOperation(draft, { op: "meet", id: "check", mode: "first" });
+    expect(first.nodes.find((one) => one.id === "check")?.join).toBe("first");
+    expect(() => applyOperation(draft, { op: "meet", id: "check", mode: "position" })).toThrow(
+      "Only a step that does work can pair files.",
+    );
+  });
+
+  test("refuses an unknown step or way", () => {
+    expect(() => applyOperation(draft, { op: "meet", id: "nope", mode: "all" })).toThrow(
+      OperationError,
+    );
+    expect(() =>
+      applyOperation(draft, { op: "meet", id: "c", mode: "both" as unknown as "all" }),
+    ).toThrow(/Files can meet in these ways/);
   });
 });
