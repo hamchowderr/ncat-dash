@@ -92,6 +92,83 @@ export const findInLibrary = createTool({
   },
 });
 
+type Summary = Omit<Hit, "moments">;
+
+const madeOut = z.object({
+  id: z.string(),
+  title: z.string(),
+  kind: z.string(),
+  madeBy: z.string().nullable().describe("The automation that made it."),
+  link: z.string(),
+});
+
+const linkOf = (file: { _id: string }) => `/library/${file._id}`;
+
+export const libraryFile = createTool({
+  id: "library_file",
+  description:
+    "Look up one library file by its short ID (like V1 or C99): what it is, where it came from, and every file made from it. Use it whenever the person asks what was made from a file, which clips came from a video, or where a clip came from. find_in_library searches words and cannot answer that.",
+  inputSchema: z.object({
+    file: z.string().min(1).describe("The file's short ID, like V1 or C99."),
+  }),
+  outputSchema: z.object({
+    found: z.boolean(),
+    file: z
+      .object({
+        id: z.string(),
+        title: z.string(),
+        kind: z.string(),
+        from: z.string(),
+        client: z.string().nullable(),
+        length: z.string().nullable(),
+        link: z.string(),
+      })
+      .nullable(),
+    madeFromIt: z
+      .array(madeOut)
+      .describe("Every file made from this one, oldest first. This list is complete."),
+  }),
+  execute: async ({ file }, ctx) => {
+    const { client, session } = dashFor(userOf(ctx));
+    if (!session.organizationId) throw new Error("No team is open on the dashboard.");
+    try {
+      const found = (await client.query(dash.library.byShortId, {
+        organizationId: session.organizationId,
+        shortId: file,
+      })) as { _id: string } | null;
+      if (!found) return { found: false, file: null, madeFromIt: [] };
+      const item = (await client.query(dash.library.get, { itemId: found._id })) as
+        | (Summary & { children: Summary[] })
+        | null;
+      if (!item) return { found: false, file: null, madeFromIt: [] };
+      return {
+        found: true,
+        file: {
+          id: item.shortId,
+          title: item.title,
+          kind: item.kind,
+          from:
+            item.source === "upload"
+              ? "Uploaded"
+              : `Made by ${item.automationName ?? "an automation"}${item.parent ? ` from ${item.parent.shortId}` : ""}`,
+          client: item.client?.name ?? null,
+          length: item.duration === null ? null : moment(item.duration),
+          link: linkOf(item),
+        },
+        madeFromIt: item.children.map((child) => ({
+          id: child.shortId,
+          title: child.title,
+          kind: child.kind,
+          madeBy: child.automationName,
+          link: linkOf(child),
+        })),
+      };
+    } catch (caught) {
+      throw new Error(plainError(caught));
+    }
+  },
+});
+
 export const runOnLibraryFile = createTool({
   id: "run_on_library_file",
   description:
@@ -125,7 +202,8 @@ export const runOnLibraryFile = createTool({
 
 export const libraryTools = {
   find_in_library: findInLibrary,
+  library_file: libraryFile,
   run_on_library_file: runOnLibraryFile,
 };
 
-export const LIBRARY_INSTRUCTIONS = `- The library: every file the team uploaded or an automation made has a short ID (V for videos brought in, C for clips automations made, A for sound, I for pictures, F for other files). When the person names a file by its ID ("caption C99") or asks where they talked about something, use find_in_library. To work on one file, find or build the automation, then run_on_library_file with the file's ID; report it with the link it returns. Link to a file with the address find_in_library gives, like [C99](/library/...).`;
+export const LIBRARY_INSTRUCTIONS = `- The library: every file the team uploaded or an automation made has a short ID (V for videos brought in, C for clips automations made, A for sound, I for pictures, F for other files). When the person names a file by its ID ("caption C99") or asks where they talked about something, use find_in_library. To say what was made from a file ("which clips came from V1?") or where a file came from, use library_file and give exactly the files it lists; never work that out from find_in_library, which matches words and misses or adds files. To work on one file, find or build the automation, then run_on_library_file with the file's ID; report it with the link it returns. Link to a file with the address find_in_library gives, like [C99](/library/...).`;
