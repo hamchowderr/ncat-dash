@@ -117,12 +117,22 @@ export const get = query({
 
 /** Finished jobs that produced files, newest first: the outputs library. */
 /** Readable names for a job's files: as its run names them, or else as a step run by hand. */
-async function namesOfJob(ctx: QueryCtx, job: Doc<"jobs">): Promise<Record<string, string>> {
+async function namesOfJob(
+  ctx: QueryCtx,
+  job: Doc<"jobs">,
+): Promise<{ names: Record<string, string>; stepName: string | null }> {
   const step = job.runStepId ? await ctx.db.get(job.runStepId) : null;
   const run = step ? await ctx.db.get(step.runId) : null;
-  if (!step || !run) return handOutputNames(job);
+  if (!step || !run) return { names: handOutputNames(job), stepName: null };
   const names = outputNamesOf(run, [step]);
-  return { ...handOutputNames(job), ...names };
+  // The step as it is named in the automation ("Caption TikTok clips"), not the toolkit
+  // request it was sent as.
+  const node = (run.nodes as { id: string; stepId?: string; label?: string }[]).find(
+    (candidate) => candidate.id === step.nodeId,
+  );
+  const stepName =
+    node?.label?.trim() || (node?.stepId ? (getStep(node.stepId)?.title ?? null) : null);
+  return { names: { ...handOutputNames(job), ...names }, stepName };
 }
 
 export const outputs = query({
@@ -148,14 +158,19 @@ export const outputs = query({
             !job.dropboxImportId &&
             !job.linkImportId,
         )
-        .map(async (job) => ({
-          jobId: job._id,
-          stepId: job.stepId,
-          finishedAt: job.finishedAt,
-          urls: job.outputs,
-          // Readable names, by link: from the run the job was part of, if it was.
-          names: await namesOfJob(ctx, job),
-        })),
+        .map(async (job) => {
+          // Readable names, by link, and the step's own name: from the run the job was
+          // part of, if it was.
+          const { names, stepName } = await namesOfJob(ctx, job);
+          return {
+            jobId: job._id,
+            stepId: job.stepId,
+            stepName,
+            finishedAt: job.finishedAt,
+            urls: job.outputs,
+            names,
+          };
+        }),
     );
   },
 });
