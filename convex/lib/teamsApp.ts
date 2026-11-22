@@ -66,7 +66,9 @@ export function zip(files: { name: string; data: Uint8Array }[]): Uint8Array {
   const entries: Record<string, Uint8Array> = {};
   for (const file of files) entries[file.name] = file.data;
   // A fixed date keeps the package byte-for-byte the same each time it is made.
-  return zipSync(entries, { level: 6, mtime: new Date("2026-01-01T00:00:00Z") });
+  // Stored, not compressed, as before: the package is a few kilobytes, and the files stay
+  // readable in the zip as they are.
+  return zipSync(entries, { level: 0, mtime: new Date("2026-01-01T00:00:00Z") });
 }
 
 function fromBase64(text: string): Uint8Array {
