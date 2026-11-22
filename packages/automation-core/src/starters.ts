@@ -866,7 +866,10 @@ const RECIPES: Starter[] = [
       group: "recipe" as const,
       category: RECIPE_CATEGORY[recipe.id],
       trigger: { kind: "upload" as const, fileType: "video" as const },
-      nodes: [step("split_shots_1", "recipe-split-shots", 0), step("beat_cut_1", recipe.id, 1)],
+      nodes: [
+        step("split_shots_1", "recipe-split-shots", 0),
+        step("beat_cut_1", recipe.id, 1, 0, { order: "mixed up" }),
+      ],
       edges: chain("split_shots_1", "beat_cut_1"),
     };
   }

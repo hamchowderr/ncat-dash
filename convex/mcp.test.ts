@@ -482,6 +482,24 @@ describe("building automations through MCP", () => {
     expect(checked.data.steps[0].step).toBe("Shorten");
   });
 
+  test("chooses how files meet where two lines join", async () => {
+    const { t, key } = await setUp();
+    const made = await call(t, key, "create_automation", { name: "Paired" });
+    const changed = await call(t, key, "change_automation", {
+      automation_id: made.data.automation_id,
+      operations: [
+        { op: "trigger", trigger: { kind: "trigger:upload", fileType: "video" } },
+        { op: "add", type: "step:video-trim", id: "a" },
+        { op: "add", type: "step:video-trim", id: "b" },
+        { op: "add", type: "step:video-trim", id: "both", after: "a", join: ["b"] },
+        { op: "meet", id: "both", mode: "first" },
+      ],
+    });
+    expect(changed.isError).toBe(false);
+    const stored = await t.run((ctx) => ctx.db.get(made.data.automation_id as Id<"automations">));
+    expect(stored?.draft?.nodes.find((node) => node.id === "both")?.join).toBe("first");
+  });
+
   test("says plainly when a change cannot be made, and keeps to the team", async () => {
     const { t, other, otherTeam, automationId, key } = await setUp();
     const wrong = await call(t, key, "change_automation", {
