@@ -360,7 +360,10 @@ mod tests {
         assert_eq!(item(&check, "memory").title, "8 GB of memory");
         // A 16 GB Windows PC reports 15.4 usable; it once showed as "17 GB".
         facts.memory = 16_535_000_000;
-        assert_eq!(item(&judge(&facts, "windows"), "memory").title, "16 GB of memory");
+        assert_eq!(
+            item(&judge(&facts, "windows"), "memory").title,
+            "16 GB of memory"
+        );
     }
 
     #[test]
