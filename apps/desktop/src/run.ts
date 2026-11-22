@@ -17,6 +17,8 @@ export type StackSaved = {
   hasAdminKey: boolean;
   /** The newest backup's folder name ("2026-11-22 0518", in UTC), and where backups go. */
   lastBackup: string | null;
+  /** Every backup there, newest first. */
+  backups: string[];
   backupsFolder: string;
   /** The Cloudflare Tunnel made for it, and whether the stack uses it. */
   tunnel: { domain: Domain; name: string; tunnel: string } | null;
@@ -52,6 +54,11 @@ export type RunApi = {
   step: (step: Step) => Promise<void>;
   /** Backs up the copy here now and gives back the backup's folder. */
   backUp: () => Promise<string>;
+  /**
+   * Brings back the backup with this folder name, after backing up what is there now, and
+   * gives back that new backup's folder.
+   */
+  restore: (name: string) => Promise<string>;
   /** Opens the dashboard in the window, as Connect does. */
   open: (address: string) => Promise<void>;
 };
@@ -125,6 +132,21 @@ export async function startRun(
           <button type="button" class="secondary back-up">Back up now</button>
         </div>
         <p class="hint backup-result" aria-live="polite"></p>
+        <div class="restore" hidden>
+          <label for="restore-from">Bring back a backup</label>
+          <div class="restore-pick">
+            <select id="restore-from"></select>
+            <button type="button" class="secondary restore-ask">Bring it back</button>
+          </div>
+          <div class="restore-confirm" hidden>
+            <p class="hint restore-what"></p>
+            <div class="actions">
+              <button type="button" class="primary restore-go">Bring it back</button>
+              <button type="button" class="link restore-cancel">Cancel</button>
+            </div>
+          </div>
+          <p class="hint restore-result" aria-live="polite"></p>
+        </div>
         <button type="button" class="link change">Change its settings</button>
       </section>
 
@@ -221,6 +243,12 @@ export async function startRun(
   const here = root.querySelector<HTMLElement>(".here")!;
   const backUp = root.querySelector<HTMLButtonElement>(".back-up")!;
   const backupResult = root.querySelector<HTMLElement>(".backup-result")!;
+  const restore = root.querySelector<HTMLElement>(".restore")!;
+  const restoreFrom = root.querySelector<HTMLSelectElement>("#restore-from")!;
+  const restoreAsk = root.querySelector<HTMLButtonElement>(".restore-ask")!;
+  const restoreConfirm = root.querySelector<HTMLElement>(".restore-confirm")!;
+  const restoreGo = root.querySelector<HTMLButtonElement>(".restore-go")!;
+  const restoreResult = root.querySelector<HTMLElement>(".restore-result")!;
   // A copy already running here shows what can be done with it; its settings only on asking.
   let wantForm = true;
   const form = root.querySelector<HTMLFormElement>(".settings")!;
@@ -493,6 +521,58 @@ export async function startRun(
       backUp.textContent = "Back up now";
     }
   });
+  const listBackups = (names: string[]) => {
+    restore.hidden = names.length === 0;
+    restoreFrom.replaceChildren(
+      ...names.map((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = whenBackedUp(name);
+        return option;
+      }),
+    );
+  };
+  restoreAsk.addEventListener("click", () => {
+    const when = whenBackedUp(restoreFrom.value);
+    root.querySelector(".restore-what")!.textContent =
+      `Everything in ${NAME} goes back to how it was on ${when}: automations, uploads, ` +
+      `sign-ins, saved keys and the agent's memory. Videos in the bucket stay as they are. ` +
+      `What's there now is backed up first, so you can bring it back too. ` +
+      `${NAME} is unavailable for a few minutes while this runs.`;
+    restoreResult.textContent = "";
+    restoreConfirm.hidden = false;
+    restoreAsk.disabled = true;
+  });
+  root.querySelector(".restore-cancel")!.addEventListener("click", () => {
+    restoreConfirm.hidden = true;
+    restoreAsk.disabled = false;
+  });
+  restoreGo.addEventListener("click", async () => {
+    const name = restoreFrom.value;
+    const busy = [restoreGo, restoreAsk, restoreFrom, backUp];
+    for (const control of busy) control.disabled = true;
+    restoreGo.textContent = "Bringing it back…";
+    restoreResult.classList.remove("error");
+    restoreResult.textContent = "";
+    try {
+      const before = await api.restore(name);
+      restoreResult.textContent =
+        `Brought back the backup from ${whenBackedUp(name)}. ` +
+        `What was there before is backed up in ${before}.`;
+      try {
+        listBackups((await api.saved()).backups);
+      } catch {
+        // The list stays as it was; the restore itself went through.
+      }
+    } catch (problem) {
+      restoreResult.textContent = message(problem);
+      restoreResult.classList.add("error");
+    } finally {
+      restoreConfirm.hidden = true;
+      restoreGo.textContent = "Bring it back";
+      for (const control of busy) control.disabled = false;
+    }
+  });
   root.querySelector(".change")!.addEventListener("click", () => {
     wantForm = true;
     void check();
@@ -524,6 +604,7 @@ export async function startRun(
     root.querySelector(".here-status")!.textContent =
       `${NAME} runs here at ${saved.addresses.dashboard}. It backs itself up every day while ` +
       `${NAME} is open, keeping the newest 14 in ${saved.backupsFolder}. Last backup: ${last}.`;
+    listBackups(saved.backups);
   }
   showWay();
   await check();

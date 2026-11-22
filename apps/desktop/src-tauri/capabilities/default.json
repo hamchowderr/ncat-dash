@@ -13,6 +13,7 @@
     "allow-cloudflare-domains",
     "allow-make-tunnel",
     "allow-back-up-stack",
+    "allow-restore-stack",
     "allow-save-stack",
     "allow-run-stack-step"
   ]

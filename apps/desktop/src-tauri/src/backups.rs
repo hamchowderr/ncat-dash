@@ -1,16 +1,18 @@
-//! Backs up a copy that runs on this computer: the database (Convex, with its stored files),
-//! the agent server's memory, and the settings file with the secrets a restore needs. Each
-//! backup is a folder named by its time in the person's Documents, and the newest few are
-//! kept. The bucket (videos) is not in it: that is the storage provider's to keep.
+//! Backs up a copy that runs on this computer, and brings a backup back: the database
+//! (Convex, with its stored files and its settings, which hold the secrets saved keys are
+//! locked with), the agent server's memory, and the app's settings file. Each backup is a
+//! folder named by its time in the person's Documents, and the newest few are kept. The
+//! bucket (videos) is not in it: that is the storage provider's to keep.
 //!
 //! The work happens in the setup image, which already has the Convex command line and the
 //! admin key, so the computer needs nothing but Docker.
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::stack::Stack;
+use crate::stack::{Stack, SETUP, START};
 use crate::NAME;
 
 /// How many backups are kept; older ones are removed after a new one is made.
@@ -77,32 +79,69 @@ pub fn due(root: &Path, now: SystemTime) -> bool {
     }
 }
 
-/// What runs inside the setup image: the database with its files, then the agent's memory.
-/// On Linux, Docker writes as root, so the files are handed back to the person (OWNER).
+/// The files a backup holds. CONVEX_SETTINGS came later, so a backup without it still
+/// comes back (with the secrets the database has now).
+pub const DATABASE: &str = "database.zip";
+pub const AGENT_MEMORY: &str = "agent-memory.tgz";
+pub const CONVEX_SETTINGS: &str = "convex-settings.env";
+pub const SETTINGS: &str = "settings.env";
+
+/// The agent server's volume (compose.yml's project name and volume).
+const AGENT_VOLUME: &str = "takewon_agent-data";
+
+/// What runs inside the setup image: the database with its files and its settings, then the
+/// agent's memory. On Linux, Docker writes as root, so the files are handed back to the
+/// person (OWNER).
 pub const SCRIPT: &str = "set -e; \
-    /app/node_modules/.bin/convex export --include-file-storage --path /backup/database.zip; \
+    convex() { /app/node_modules/.bin/convex \"$@\"; }; \
+    convex export --include-file-storage --path /backup/database.zip; \
+    convex env list --include-values > /backup/convex-settings.env; \
+    chmod 600 /backup/convex-settings.env; \
     tar czf /backup/agent-memory.tgz -C /agent .; \
     [ -z \"$OWNER\" ] || chown -R \"$OWNER\" /backup";
 
-/// `docker compose` arguments for a backup into `into` (an absolute folder on this computer).
-/// `owner` is "uid:gid" where Docker's files would otherwise belong to root.
-pub fn args(into: &Path, owner: Option<&str>) -> Vec<String> {
+/// What brings a backup back, with the agent server stopped: the database replaced whole
+/// (tables and files), its settings put back, then the agent's memory.
+pub const RESTORE: &str = "set -e; \
+    convex() { /app/node_modules/.bin/convex \"$@\"; }; \
+    convex import --replace-all -y /backup/database.zip; \
+    [ ! -s /backup/convex-settings.env ] || convex env set --force < /backup/convex-settings.env; \
+    find /agent -mindepth 1 -delete; \
+    tar xzf /backup/agent-memory.tgz -C /agent";
+
+/// `docker compose run` in the setup image with the backup folder at /backup, the agent's
+/// volume at /agent and these other arguments.
+fn run(folder: &Path, writing: bool, extra: &[String], script: &str) -> Vec<String> {
     let mut args: Vec<String> = vec!["run".into(), "--rm".into(), "-T".into()];
-    if let Some(owner) = owner {
-        args.extend(["-e".into(), format!("OWNER={owner}")]);
-    }
+    args.extend_from_slice(extra);
+    // A backup is written to and its agent memory only read; bringing one back the other way.
+    let (backup, agent) = if writing { ("", ":ro") } else { (":ro", "") };
     args.extend([
         "-v".into(),
-        format!("{}:/backup", into.display()),
+        format!("{}:/backup{backup}", folder.display()),
         "-v".into(),
-        "takewon_agent-data:/agent:ro".into(),
+        format!("{AGENT_VOLUME}:/agent{agent}"),
         "--entrypoint".into(),
         "sh".into(),
         "setup".into(),
         "-c".into(),
-        SCRIPT.into(),
+        script.into(),
     ]);
     args
+}
+
+/// `docker compose` arguments for a backup into `into` (an absolute folder on this computer).
+/// `owner` is "uid:gid" where Docker's files would otherwise belong to root.
+pub fn args(into: &Path, owner: Option<&str>) -> Vec<String> {
+    let extra: Vec<String> = owner
+        .map(|owner| vec!["-e".into(), format!("OWNER={owner}")])
+        .unwrap_or_default();
+    run(into, true, &extra, SCRIPT)
+}
+
+/// `docker compose` arguments that bring back the backup in `from`.
+pub fn restore_args(from: &Path) -> Vec<String> {
+    run(from, false, &[], RESTORE)
 }
 
 /// Who owns the backups folder, where Docker runs as root (Linux).
@@ -120,8 +159,50 @@ fn owner(folder: &Path) -> Option<String> {
     }
 }
 
+/// One backup or restore at a time: the daily one waits its turn behind the person's.
+static WORKING: Mutex<()> = Mutex::new(());
+
+fn one_at_a_time() -> Result<std::sync::MutexGuard<'static, ()>, String> {
+    WORKING
+        .try_lock()
+        .or_else(|error| match error {
+            std::sync::TryLockError::Poisoned(poisoned) => Ok(poisoned.into_inner()),
+            std::sync::TryLockError::WouldBlock => Err(()),
+        })
+        .map_err(|()| "A backup is being made or brought back. Try again when it's done.".into())
+}
+
+/// The last line Docker said, for an error.
+fn last_said(output: &std::process::Output) -> String {
+    let said = String::from_utf8_lossy(&output.stderr);
+    said.lines()
+        .rfind(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Runs `docker compose` for the stack and says what went wrong, if anything.
+fn compose(stack: &Stack, args: &[impl AsRef<str>], what: &str) -> Result<(), String> {
+    let output = stack
+        .compose(&args.iter().map(AsRef::as_ref).collect::<Vec<_>>())
+        .output()
+        .map_err(|_| "Docker couldn't be started.".to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!("{what} stopped with: {}", last_said(&output)))
+    }
+}
+
 /// Makes one backup now and gives back its folder.
 pub fn make(stack: &Stack, root: &Path) -> Result<PathBuf, String> {
+    let _turn = one_at_a_time()?;
+    let folder = make_one(stack, root)?;
+    prune(root, KEEP);
+    Ok(folder)
+}
+
+fn make_one(stack: &Stack, root: &Path) -> Result<PathBuf, String> {
     let problem = |_| format!("{NAME} couldn't make a folder in {}.", root.display());
     let folder = root.join(stamp(SystemTime::now()));
     fs::create_dir_all(&folder).map_err(problem)?;
@@ -129,22 +210,14 @@ pub fn make(stack: &Stack, root: &Path) -> Result<PathBuf, String> {
         let _ = fs::remove_dir_all(&folder);
         why
     };
-    let output = stack
-        .compose(
-            &args(&folder, owner(&folder).as_deref())
-                .iter()
-                .map(String::as_str)
-                .collect::<Vec<_>>(),
-        )
-        .output()
-        .map_err(|_| failed("Docker couldn't be started.".into()))?;
-    if !output.status.success() {
-        let said = String::from_utf8_lossy(&output.stderr);
-        let last = said.lines().rfind(|l| !l.trim().is_empty()).unwrap_or("");
-        return Err(failed(format!("The backup stopped with: {last}")));
-    }
+    compose(
+        stack,
+        &args(&folder, owner(&folder).as_deref()),
+        "The backup",
+    )
+    .map_err(failed)?;
     // A restore needs the secrets too. The folder is the person's own, on their computer.
-    let settings = folder.join("settings.env");
+    let settings = folder.join(SETTINGS);
     fs::copy(stack.folder.join(".env"), &settings).map_err(|_| {
         failed(format!(
             "{NAME} couldn't copy its settings into the backup."
@@ -155,8 +228,46 @@ pub fn make(stack: &Stack, root: &Path) -> Result<PathBuf, String> {
         use std::os::unix::fs::PermissionsExt;
         let _ = fs::set_permissions(&settings, fs::Permissions::from_mode(0o600));
     }
-    prune(root, KEEP);
     Ok(folder)
+}
+
+/// The backup called `name` in `root`, if it is one and has what a restore needs.
+pub fn find(root: &Path, name: &str) -> Result<PathBuf, String> {
+    let folder = root.join(name);
+    if !is_backup(name) || !folder.is_dir() {
+        return Err(format!("There is no backup called {name}."));
+    }
+    for file in [DATABASE, AGENT_MEMORY] {
+        if !folder.join(file).is_file() {
+            return Err(format!(
+                "The backup {name} has no {file}, so it can't be brought back."
+            ));
+        }
+    }
+    Ok(folder)
+}
+
+/// Brings back the backup called `name`, after backing up what is there now (given back, so
+/// the person can go back to it). The agent server is stopped while its memory is replaced,
+/// then the stack is started and set up again, so the backend matches this version.
+pub fn restore(stack: &Stack, root: &Path, name: &str) -> Result<PathBuf, String> {
+    let _turn = one_at_a_time()?;
+    let from = find(root, name)?;
+    // Not pruned now: that could remove the very backup being brought back.
+    let before = make_one(stack, root)
+        .map_err(|why| format!("Nothing was changed. Backing up what's there now failed: {why}"))?;
+    compose(stack, &["stop", "agent"], "Stopping the agent")?;
+    let brought = compose(stack, &restore_args(&from), "Bringing it back");
+    // Started again either way, so a failed restore doesn't leave the agent off.
+    let started = compose(stack, START, "Starting it again")
+        .and_then(|()| compose(stack, SETUP, "Setting it up again"));
+    let undo = format!(
+        " What was there before is backed up in {}.",
+        before.display()
+    );
+    brought.map_err(|why| why + &undo)?;
+    started.map_err(|why| why + &undo)?;
+    Ok(before)
 }
 
 #[cfg(test)]
@@ -216,6 +327,57 @@ mod tests {
         let script = args.last().unwrap();
         assert!(script.contains("convex export --include-file-storage --path /backup/database.zip"));
         assert!(script.contains("tar czf /backup/agent-memory.tgz -C /agent ."));
+    }
+
+    #[test]
+    fn keeps_the_database_settings_where_only_the_person_can_read_them() {
+        let script = args(Path::new("/b"), None).pop().unwrap();
+        assert!(script.contains("convex env list --include-values > /backup/convex-settings.env"));
+        assert!(script.contains("chmod 600 /backup/convex-settings.env"));
+    }
+
+    #[test]
+    fn brings_a_backup_back_without_writing_to_it() {
+        let args = restore_args(Path::new("/home/me/Documents/Backups/2026-11-22 0518"));
+        assert_eq!(args[..3], ["run", "--rm", "-T"]);
+        assert!(args.contains(&"/home/me/Documents/Backups/2026-11-22 0518:/backup:ro".to_string()));
+        assert!(args.contains(&"takewon_agent-data:/agent".to_string()));
+        let script = args.last().unwrap();
+        assert!(script.contains("convex import --replace-all -y /backup/database.zip"));
+        assert!(script.contains("convex env set --force < /backup/convex-settings.env"));
+        // A backup made before its database settings were kept still comes back.
+        assert!(script.contains("[ ! -s /backup/convex-settings.env ] ||"));
+        // The memory there now goes before the backup's is unpacked.
+        let (clear, unpack) = (
+            script.find("find /agent -mindepth 1 -delete").unwrap(),
+            script
+                .find("tar xzf /backup/agent-memory.tgz -C /agent")
+                .unwrap(),
+        );
+        assert!(clear < unpack);
+    }
+
+    #[test]
+    fn only_brings_back_a_whole_backup_from_the_backups_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let name = "2026-11-22 0518";
+        assert!(find(root.path(), name)
+            .unwrap_err()
+            .contains("no backup called"));
+        assert!(find(root.path(), "../elsewhere").is_err());
+        fs::create_dir(root.path().join(name)).unwrap();
+        fs::write(root.path().join(name).join(DATABASE), "zip").unwrap();
+        assert!(find(root.path(), name).unwrap_err().contains(AGENT_MEMORY));
+        fs::write(root.path().join(name).join(AGENT_MEMORY), "tgz").unwrap();
+        assert_eq!(find(root.path(), name).unwrap(), root.path().join(name));
+    }
+
+    #[test]
+    fn makes_or_brings_back_one_at_a_time() {
+        let turn = one_at_a_time().unwrap();
+        assert!(one_at_a_time().unwrap_err().contains("Try again"));
+        drop(turn);
+        assert!(one_at_a_time().is_ok());
     }
 
     #[test]
