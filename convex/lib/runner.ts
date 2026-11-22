@@ -1049,6 +1049,63 @@ async function bookRetry(
 }
 
 /**
+ * Books another try for a step whose asking of the agent failed in a way that may pass
+ * (the model was busy, the agent server could not be reached), on the same waits and
+ * count as a toolkit job. `ask` is the part of the step to do again. Returns false when
+ * the step has no tries left, and the caller then fails it.
+ */
+export async function bookAgentRetry(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  error: string,
+  ask: AgentAsk,
+): Promise<boolean> {
+  const used = step.retries ?? 0;
+  if (used >= (await retriesFor(ctx, run.organizationId))) return false;
+  const retry = used + 1;
+  const delay = retryDelayMs(retry);
+  await ctx.db.patch(step._id, {
+    retries: retry,
+    retryAt: Date.now() + delay,
+    retryError: error,
+  });
+  await ctx.db.patch(run._id, { retries: (run.retries ?? 0) + 1 });
+  await ctx.scheduler.runAfter(delay, internal.runs.retryAgentStep, {
+    runStepId: step._id,
+    retry,
+    ask,
+  });
+  return true;
+}
+
+/** The parts of a step that ask the agent, which can be tried again on their own. */
+export type AgentAsk = "pick" | "match" | "choose";
+
+/** Runs a booked try of asking the agent. Does nothing if the run was stopped meanwhile. */
+export async function retryAgentStepNow(
+  ctx: MutationCtx,
+  runStepId: Id<"runSteps">,
+  retry: number,
+  ask: AgentAsk,
+): Promise<void> {
+  const step = await ctx.db.get(runStepId);
+  if (!step || step.status !== "running" || step.retryAt === undefined || step.retries !== retry) {
+    return;
+  }
+  const run = await ctx.db.get(step.runId);
+  if (!run || (run.status !== "running" && run.status !== "waiting")) return;
+  await ctx.db.patch(step._id, { retryAt: undefined });
+  if (ask === "pick") {
+    await ctx.scheduler.runAfter(0, internal.moments.pick, { runStepId, live: true });
+  } else if (ask === "match") {
+    await ctx.scheduler.runAfter(0, internal.broll.match, { runStepId });
+  } else {
+    await ctx.scheduler.runAfter(0, internal.broll.choose, { runStepId });
+  }
+}
+
+/**
  * Runs a booked try: sends each job that failed again, exactly as it was, and leaves
  * the ones that worked alone. Does nothing if the run was stopped in the meantime.
  */

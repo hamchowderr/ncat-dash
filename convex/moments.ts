@@ -25,7 +25,7 @@ import {
   internalMutation,
   internalQuery,
 } from "./_generated/server";
-import { advance, failStep } from "./lib/runner";
+import { advance, bookAgentRetry, failStep } from "./lib/runner";
 import { finishPicking, heardFrom, MAX_WORDS, wordsFor } from "./lib/moments";
 import { motionPlanOf } from "./lib/motion";
 import { startingFileName } from "./lib/outputs";
@@ -171,12 +171,17 @@ export const finishPick = internalMutation({
     runStepId: v.id("runSteps"),
     answers: v.array(v.object({ url: v.string(), answer: v.string() })),
     error: v.optional(v.string()),
+    // True when the failure may pass, so the step tries again while it has tries left.
+    tryAgain: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const step = await ctx.db.get(args.runStepId);
     if (!step || step.status !== "running" || step.stage !== "pick") return;
     const run = await ctx.db.get(step.runId);
     if (!run || (run.status !== "running" && run.status !== "waiting")) return;
+    if (args.error !== undefined && args.tryAgain) {
+      if (await bookAgentRetry(ctx, run, step, args.error, "pick")) return;
+    }
     if (args.error !== undefined) {
       const steps = await ctx.db
         .query("runSteps")
@@ -342,6 +347,17 @@ export async function readWordsFile(url: string): Promise<Word[] | null> {
 
 export class PickError extends Error {}
 
+/**
+ * The agent could not answer this time (busy, out of reach, or an empty answer): the
+ * step tries again later, on the team's retries, before it fails.
+ */
+export class AgentBusyError extends PickError {}
+
+/** Whether a failure in asking the agent may pass if the step tries again. */
+export function mayPass(error: unknown): boolean {
+  return error instanceof AgentBusyError || !(error instanceof PickError);
+}
+
 /** What Plan B-Roll asks for, from its own settings and those of the Add B-Roll after it. */
 function brollPlanSettings(
   input: Record<string, unknown>,
@@ -491,7 +507,7 @@ async function askModel(
       signal: AbortSignal.timeout(AGENT_TIMEOUT_MS),
     });
   } catch {
-    throw new PickError("The agent could not be reached to pick. Run it again in a moment.");
+    throw new AgentBusyError("The agent could not be reached to pick.");
   }
   const result = (await response.json().catch(() => null)) as {
     answer?: unknown;
@@ -499,7 +515,7 @@ async function askModel(
     model?: unknown;
   } | null;
   if (!response.ok || typeof result?.answer !== "string" || result.answer.trim() === "") {
-    throw new PickError("The agent did not answer when asked to pick. Run it again in a moment.");
+    throw new AgentBusyError("The agent did not answer when asked to pick.");
   }
   return { answer: result.answer, cost: answerCost(result) };
 }
@@ -514,11 +530,16 @@ export const pick = internalAction({
   handler: async (ctx, args) => {
     const loaded = await ctx.runQuery(internal.moments.loadPick, { runStepId: args.runStepId });
     if (!loaded) return;
-    const finish = (answers: { url: string; answer: string }[], error?: string) =>
+    const finish = (
+      answers: { url: string; answer: string }[],
+      error?: string,
+      tryAgain?: boolean,
+    ) =>
       ctx.runMutation(internal.moments.finishPick, {
         runStepId: args.runStepId as Id<"runSteps">,
         answers,
         ...(error !== undefined ? { error } : {}),
+        ...(tryAgain ? { tryAgain } : {}),
       });
     // What the answers asked this time really cost, in micros.
     let spent = 0;
@@ -624,7 +645,8 @@ export const pick = internalAction({
     } catch (error) {
       await finish(
         [],
-        error instanceof PickError ? error.message : "Picking failed. Run it again in a moment.",
+        error instanceof PickError ? error.message : "Picking failed.",
+        mayPass(error),
       );
     }
   },

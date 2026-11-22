@@ -196,7 +196,11 @@ describe("an automation with more than one trigger", () => {
       ],
     });
     await maya.as.mutation(api.automations.setEnabled, { automationId, enabled: true });
-    const watchers = await t.query(internal.watch.watchers, {});
+    const first = await t.query(internal.watch.watchers, {});
+    expect(first.found).toEqual([]);
+    expect(first.next).toEqual({ source: "several", cursor: null });
+    const { found: watchers, next } = await t.query(internal.watch.watchers, first.next!);
+    expect(next).toBeNull();
     expect(watchers.map(({ triggerId, prefix }) => ({ triggerId, prefix }))).toEqual([
       { triggerId: "__trigger_3", prefix: "drop/" },
     ]);

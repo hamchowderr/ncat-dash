@@ -475,11 +475,14 @@ function Cuts({ board }: { board: Board }) {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!what.trim()) return;
+    // Cleared straight away, so a next cut typed while this one saves is not wiped.
+    setWhat("");
+    setWhere("");
     try {
       await addCut({ storyboardId: board._id, what, where });
-      setWhat("");
-      setWhere("");
     } catch (caught) {
+      setWhat(what);
+      setWhere(where);
       toast.error(errorMessage(caught, "The cut could not be added."));
     }
   }

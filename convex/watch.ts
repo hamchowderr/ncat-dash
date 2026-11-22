@@ -11,18 +11,36 @@ import {
 import type { FunctionReturnType } from "convex/server";
 import type { CreatorTakes } from "@ncat-dash/automation-core";
 import { startRun } from "./lib/runner";
-import { enabledWithTrigger, triggersOfKind } from "./lib/triggers";
+import { enabledWithTriggerPage, triggersOfKind } from "./lib/triggers";
 import { bucketOf, listObjects, presign, storageConnection } from "./lib/bucket";
 
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
 // One check starts at most this many runs per automation; the rest follow a minute later.
 const MAX_NEW_FILES_PER_CHECK = 20;
 
-/** Every switched-on automation that watches a folder, with its team's bucket. */
+// How many automations one read of the watchers looks at.
+const WATCHERS_PAGE = 100;
+
+/**
+ * One page of the switched-on automations that watch a folder, with their team's bucket.
+ * The check reads page after page, first those whose first trigger watches a folder, then
+ * those with several triggers, so every team's folders are looked in however many there are.
+ */
 export const watchers = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const automations = await enabledWithTrigger(ctx, "folder", 200);
+  args: {
+    source: v.optional(v.union(v.literal("first"), v.literal("several"))),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const source = args.source ?? "first";
+    const { page, continueCursor, isDone } = await enabledWithTriggerPage(
+      ctx,
+      "folder",
+      source,
+      args.cursor ?? null,
+      WATCHERS_PAGE,
+    );
+    const automations = page;
     const found = [];
     for (const automation of automations) {
       const folders = triggersOfKind(automation, "folder");
@@ -42,7 +60,13 @@ export const watchers = internalQuery({
         });
       }
     }
-    return found;
+    // Where the next read starts, or null when every watcher has been read.
+    const next: { source: "first" | "several"; cursor: string | null } | null = !isDone
+      ? { source, cursor: continueCursor }
+      : source === "first"
+        ? { source: "several", cursor: null }
+        : null;
+    return { found, next };
   },
 });
 
@@ -50,7 +74,19 @@ export const watchers = internalQuery({
 export const poll = internalAction({
   args: {},
   handler: async (ctx) => {
-    const watching = await ctx.runQuery(internal.watch.watchers, {});
+    const watching: Watcher[] = [];
+    let at: { source: "first" | "several"; cursor: string | null } | null = {
+      source: "first",
+      cursor: null,
+    };
+    while (at) {
+      const read: FunctionReturnType<typeof internal.watch.watchers> = await ctx.runQuery(
+        internal.watch.watchers,
+        at,
+      );
+      watching.push(...read.found);
+      at = read.next;
+    }
     // Automations that watch the same folder share one listing.
     const listings = new Map<string, Awaited<ReturnType<typeof listObjects>>>();
 
@@ -107,7 +143,7 @@ export const poll = internalAction({
   },
 });
 
-type Watcher = FunctionReturnType<typeof internal.watch.watchers>[number];
+type Watcher = FunctionReturnType<typeof internal.watch.watchers>["found"][number];
 
 /**
  * A folder laid out one folder per creator: each creator whose takes have settled and

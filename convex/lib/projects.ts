@@ -8,7 +8,7 @@ import { finishedFilesOf } from "./chain";
 import { type DeliverableKind, type DeliverableStatus, fileKindOf, slotProblem } from "./packages";
 import { CLIP_LIMIT, VERSION_LIMIT } from "./reviews";
 import { startRun } from "./runner";
-import { enabledWithTrigger, triggersOfKind } from "./triggers";
+import { teamEnabledWithTrigger, triggersOfKind } from "./triggers";
 import { toReviewChannels } from "./reviewChannels";
 
 /** The project's review room, opened the first time a slot gets a version. */
@@ -174,7 +174,7 @@ export async function slotMoved(
   slot: Doc<"deliverables">,
   status: DeliverableStatus,
 ): Promise<void> {
-  const waiting = await enabledWithTrigger(ctx, "slot", 500);
+  const waiting = await teamEnabledWithTrigger(ctx, slot.organizationId, "slot");
   const starting = waiting.flatMap((automation) =>
     automation.organizationId === slot.organizationId
       ? triggersOfKind(automation, "slot")
