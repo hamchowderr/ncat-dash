@@ -37,7 +37,7 @@ import {
 } from "./lib/library";
 import { startingFiles } from "./lib/chain";
 import { outputNamesOf } from "./lib/outputs";
-import { enqueueJob, pump } from "./lib/queue";
+import { enqueueJob } from "./lib/queue";
 import { refreshBrollLike, usableAsBroll } from "./lib/broll";
 import { startRun } from "./lib/runner";
 
@@ -758,7 +758,10 @@ export const startTranscript = internalMutation({
     await ctx.db.patch(item._id, {
       transcript: { status: "working", jobId: queued.jobId, at: Date.now() },
     });
-    await pump(ctx, item.organizationId);
+    // Sent on separately, so starting a transcript never clashes with a job finishing.
+    await ctx.scheduler.runAfter(0, internal.jobs.pumpTeam, {
+      organizationId: item.organizationId,
+    });
     return true;
   },
 });
