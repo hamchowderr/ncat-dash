@@ -239,6 +239,15 @@ const operation = z.discriminatedUnion("op", [
   }),
   z.object({ op: z.literal("rename"), id: z.string(), label: z.string() }),
   z.object({
+    op: z.literal("meet"),
+    id: z.string(),
+    mode: z
+      .enum(["all", "source", "position", "first"])
+      .describe(
+        'How a step treats files when two or more lines meet at it. "all" (the default) waits for every line, then works on all their files. "source" pairs each file from the first line with the file from the other line that started from the same upload, such as each clip with its own captions. "position" pairs the first file with the first file, the second with the second. "first" starts as soon as one line finishes and uses only its files. Pairing works only on a step that does work, not an If.',
+      ),
+  }),
+  z.object({
     op: z.literal("switch"),
     id: z.string(),
     on: z
@@ -328,9 +337,7 @@ export const createAutomation = createTool({
   execute: async ({ name }, ctx) => {
     const { client, session } = dashFor(userOf(ctx));
     if (!session.organizationId) {
-      throw new Error(
-        "Takewon has not said which team is open. Ask the person to open Takewon.",
-      );
+      throw new Error("Takewon has not said which team is open. Ask the person to open Takewon.");
     }
     try {
       const id = (await client.mutation(dash.automations.create, {
@@ -399,7 +406,9 @@ const reviewInput = z
     reviewers: z
       .array(z.string())
       .optional()
-      .describe("User ids of who decides (the team from describe_automation). Empty: anyone on the team."),
+      .describe(
+        "User ids of who decides (the team from describe_automation). Empty: anyone on the team.",
+      ),
     timeLimit: z
       .number()
       .min(0)
@@ -439,7 +448,11 @@ export const setUpWorkflow = createTool({
       .describe(
         "client: client work. ugc: UGC and ads. own: the person's own content. quick: a quick personal job, with no review. Changing it brings that kind's review on or off unless review.on is given too.",
       ),
-    clientId: z.string().nullable().optional().describe("One of the team's clients, or null for the team."),
+    clientId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("One of the team's clients, or null for the team."),
     review: reviewInput,
   }),
   execute: async (input, ctx) => {

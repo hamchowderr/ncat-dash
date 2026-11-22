@@ -130,6 +130,14 @@ describe("what the agent's tools are called", () => {
     }
   });
 
+  test("choosing how files meet says so without the way's name", () => {
+    const words = toolWords("change_automation", {
+      operations: [{ op: "meet", id: "join_1", mode: "source" }],
+    });
+    expect(words?.lines).toEqual(["Choose how files meet at a step"]);
+    expect(JSON.stringify(words)).not.toContain("join_1");
+  });
+
   test("a change that only tidies says so", () => {
     expect(toolWords("change_automation", { operations: [{ op: "tidy" }] })?.lines).toEqual([
       "Tidy the canvas",

@@ -18,6 +18,7 @@ import {
 } from "./registry";
 import { scheduleProblem } from "./schedule";
 import { followProblem } from "./chain";
+import { JOIN_MODES, type JoinMode } from "./join";
 import type { StarterTrigger } from "./starters";
 import {
   addTrigger,
@@ -92,6 +93,12 @@ export type Operation =
    */
   | { op: "use"; id: string; field: string; from: string }
   | { op: "rename"; id: string; label: string }
+  /**
+   * How a step treats files when two or more lines meet at it: "all" (wait for every line,
+   * then use every file; the default), "source" (pair files from the same upload),
+   * "position" (pair files in order) or "first" (use whichever line finishes first).
+   */
+  | { op: "meet"; id: string; mode: JoinMode }
   /** Turns a step off (its files go straight on) or back on. */
   | { op: "switch"; id: string; on: boolean }
   /**
@@ -713,6 +720,26 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
           const rest = { ...other };
           delete rest.off;
           return op.on ? rest : { ...rest, off: true };
+        }),
+      };
+    }
+    case "meet": {
+      const node = need(draft, op.id);
+      if (!JOIN_MODES.some((one) => one.value === op.mode)) {
+        throw new OperationError(
+          `Files can meet in these ways: ${JOIN_MODES.map((one) => one.value).join(", ")}.`,
+        );
+      }
+      if ((op.mode === "source" || op.mode === "position") && node.kind !== "step") {
+        throw new OperationError("Only a step that does work can pair files.");
+      }
+      return {
+        ...draft,
+        nodes: draft.nodes.map((other) => {
+          if (other.id !== op.id) return other;
+          const rest = { ...other };
+          delete rest.join;
+          return op.mode === "all" ? rest : { ...rest, join: op.mode };
         }),
       };
     }

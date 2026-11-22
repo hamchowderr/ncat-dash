@@ -44,6 +44,8 @@ function changeLine(change: Record<string, unknown>): string | null {
       return typeof change.label === "string"
         ? `Rename a step to "${change.label}"`
         : "Rename a step";
+    case "meet":
+      return "Choose how files meet at a step";
     case "trigger":
       return `Start it with: ${typeTitle((change.trigger as { kind?: unknown } | undefined)?.kind)}`;
     case "addTrigger":
