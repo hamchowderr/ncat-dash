@@ -33,6 +33,8 @@ COPY --from=build /app/packages/agent/.mastra/output ./
 # The Takewon guide, synced into Knowledge (docs:takewon) at boot. KNOWLEDGE_DIR defaults
 # to ./knowledge, which resolves against this WORKDIR (/app).
 COPY --from=build /app/packages/agent/knowledge ./knowledge
+# The agent's FFmpeg skills (lib/agent-skills.ts), found at ./skills against /app.
+COPY --from=build /app/packages/agent/skills ./skills
 ENV NODE_ENV=production \
     PORT=4111 \
     TURSO_DATABASE_URL=file:/data/mastra.db \
