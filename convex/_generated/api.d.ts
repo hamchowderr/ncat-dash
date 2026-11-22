@@ -17,6 +17,7 @@ import type * as automations from "../automations.js";
 import type * as blocks from "../blocks.js";
 import type * as broll from "../broll.js";
 import type * as calendar from "../calendar.js";
+import type * as captionTranslation from "../captionTranslation.js";
 import type * as chatAlertPresses from "../chatAlertPresses.js";
 import type * as chatAlerts from "../chatAlerts.js";
 import type * as clients from "../clients.js";
@@ -170,6 +171,7 @@ declare const fullApi: ApiFromModules<{
   blocks: typeof blocks;
   broll: typeof broll;
   calendar: typeof calendar;
+  captionTranslation: typeof captionTranslation;
   chatAlertPresses: typeof chatAlertPresses;
   chatAlerts: typeof chatAlerts;
   clients: typeof clients;
