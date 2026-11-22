@@ -138,7 +138,7 @@ describe("telling the agent what is on screen", () => {
     window.history.pushState({}, "", "/api/agent-controller/stream");
     show();
     expect(screen.getByText("elsewhere")).toBeTruthy();
-    expect(sent()).toEqual({ organizationId: "team_1", automationId: null });
+    expect(sent()).toEqual({ organizationId: "team_1", automationId: null, screen: null });
   });
 
   test("sends the automation that is open, on its editor and its runs", () => {
@@ -146,10 +146,34 @@ describe("telling the agent what is on screen", () => {
     pathname = "/automations/abc123";
     show();
     expect(screen.getByText("on an automation")).toBeTruthy();
-    expect(sent()).toEqual({ organizationId: "team_1", automationId: "abc123" });
+    expect(sent()).toEqual({
+      organizationId: "team_1",
+      automationId: "abc123",
+      screen: { kind: "automation", id: "abc123" },
+    });
     cleanup();
     pathname = "/automations/abc123/runs/run9";
     show();
     expect(sent()?.automationId).toBe("abc123");
+    expect(sent()?.screen).toEqual({ kind: "run", id: "run9" });
+  });
+
+  test("sends the one thing other pages are about", () => {
+    window.history.pushState({}, "", "/api/agent-controller/stream");
+    for (const [path, kind, id] of [
+      ["/library/item7", "library", "item7"],
+      ["/projects/p2", "project", "p2"],
+      ["/clients/c3", "client", "c3"],
+      ["/review/r4", "review", "r4"],
+      ["/creators/k5", "creator", "k5"],
+    ] as const) {
+      pathname = path;
+      show();
+      expect(sent()?.screen).toEqual({ kind, id });
+      cleanup();
+    }
+    pathname = "/settings/agent";
+    show();
+    expect(sent()?.screen).toBeNull();
   });
 });

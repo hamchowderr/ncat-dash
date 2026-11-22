@@ -1787,6 +1787,15 @@
       }
     },
     {
+      "_comment": "WHAT IS ON SCREEN (ncat/screen.ts): tests/integration/screen-state.test.ts checks that the screen state signal reaches the model with the person's question.",
+      "match": {
+        "userMessage": "Screen test: what do I have open?"
+      },
+      "response": {
+        "content": "You have the automation Clips for Northwind open."
+      }
+    },
+    {
       "_comment": "LINKS in a reply (web components/chat/chat-markdown.tsx): a link to one of the app's own pages navigates in place; a link to another site opens in a new tab. No link-safety dialog.",
       "match": {
         "userMessage": "Where can I see the raw events?"
