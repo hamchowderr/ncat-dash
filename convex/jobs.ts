@@ -309,6 +309,7 @@ export const dispatch = internalAction({
         },
       )) as { code?: number; job_id?: string; response?: unknown; message?: string } | null;
 
+      if (job.sharedToolkit) await ctx.runMutation(internal.toolkitHealth.sharedWentFine, {});
       if (answer?.code === 200 && answer.response !== undefined) {
         // Some endpoints answer straight away instead of queueing.
         await ctx.runMutation(internal.jobs.finish, {
@@ -345,6 +346,12 @@ export const dispatch = internalAction({
             error instanceof GoogleSignInError ||
             error instanceof MicrosoftSignInError ||
             error instanceof DropboxSignInError;
+      // A shared toolkit that is busy or out of reach gets less sent to it for a while.
+      const toolkitTrouble =
+        error instanceof ToolkitError ? isTransientStatus(error.status) : !permanent;
+      if (job.sharedToolkit && toolkitTrouble) {
+        await ctx.runMutation(internal.toolkitHealth.sharedTrouble, {});
+      }
       await ctx.runMutation(internal.jobs.finish, {
         jobId: job._id,
         ok: false,
