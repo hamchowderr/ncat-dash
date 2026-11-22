@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 
 import { AppSidebar, isSettingsPath, navItemFor } from "./app-sidebar";
 import { DashboardTour } from "./dashboard-tour";
+import { LocalFolders } from "./local-folders";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const state = useTeam();
@@ -81,6 +82,7 @@ function Shell({
         <RoomForAgent agentOpen={agentOpen} />
         <CloseMenuOnNavigate pathname={pathname} />
         <AlertNotices />
+        <LocalFolders />
         <AppSidebar teamName={state.team.name} edition={edition} user={state.user} />
         {/* The page scrolls inside its own frame, so the bar along the top always stays put
           and a page can fill exactly the height that is left. */}

@@ -1315,6 +1315,7 @@ function Editor({ automation }: { automation: Loaded }) {
                         }
                         onChange={(next) => changeTrigger(selected.id, next)}
                         automationId={automation._id}
+                        automationName={automation.name}
                         hookToken={automation.hookToken}
                         // Only one webhook (one address) and one Run now per automation.
                         taken={triggersOf(triggers)

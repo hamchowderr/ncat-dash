@@ -18,6 +18,7 @@ pub mod exports;
 pub mod links;
 pub mod saved;
 pub mod uploads;
+pub mod watches;
 
 use std::sync::Mutex;
 
@@ -394,6 +395,149 @@ fn forget_upload(
     }
 }
 
+/// Folders chosen in the app's folder picker this session.
+#[derive(Default)]
+struct ChosenFolders(uploads::Allowed);
+
+fn watches_store(app: &AppHandle) -> Result<watches::Store, String> {
+    let folder = app
+        .path()
+        .app_config_dir()
+        .map_err(|_| format!("{NAME} couldn't find its settings folder."))?;
+    Ok(watches::Store::new(&folder))
+}
+
+/// A watch as the dashboard sees it: without the list of files already known.
+fn shown(mut watch: watches::Watch) -> watches::Watch {
+    watch.known.clear();
+    watch
+}
+
+/// Opens the computer's own folder picker. Null when nothing was chosen.
+#[tauri::command]
+async fn choose_folder(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    chosen: State<'_, ChosenFolders>,
+) -> Result<Option<String>, String> {
+    from_dashboard(&window, &places)?;
+    let Some(picked) = app
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .blocking_pick_folder()
+    else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|error| error.to_string())?;
+    chosen.0.allow(&path);
+    Ok(Some(path.display().to_string()))
+}
+
+/// Has a folder on this computer feed an automation's folder in the team's storage.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn watch_folder(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    chosen: State<'_, ChosenFolders>,
+    organization_id: String,
+    automation_id: String,
+    automation_name: String,
+    prefix: String,
+    folder: String,
+) -> Result<watches::Watch, String> {
+    from_dashboard(&window, &places)?;
+    let dashboard = current_dashboard(&places)?;
+    let store = watches_store(&app)?;
+    let already = store
+        .get(&dashboard, &automation_id)
+        .is_some_and(|watch| watch.folder == folder);
+    if !already && !chosen.0.contains(std::path::Path::new(&folder)) {
+        return Err("Only folders chosen in the app can be watched.".into());
+    }
+    if !std::path::Path::new(&folder).is_dir() {
+        return Err("That folder is no longer there.".into());
+    }
+    store
+        .set(watches::Watch {
+            automation_id,
+            automation_name,
+            organization_id,
+            prefix,
+            folder,
+            dashboard,
+            known: vec![],
+        })
+        .map(shown)
+}
+
+/// The open dashboard's watched folders.
+#[tauri::command]
+fn watched_folders(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+) -> Result<Vec<watches::Watch>, String> {
+    from_dashboard(&window, &places)?;
+    Ok(watches_store(&app)?
+        .list(&current_dashboard(&places)?)
+        .into_iter()
+        .map(shown)
+        .collect())
+}
+
+#[tauri::command]
+fn unwatch_folder(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    automation_id: String,
+) -> Result<(), String> {
+    from_dashboard(&window, &places)?;
+    watches_store(&app)?.remove(&current_dashboard(&places)?, &automation_id)
+}
+
+/// Files that landed in an automation's watched folder and are ready to send. Each may
+/// then be sent like a file chosen in the picker.
+#[tauri::command]
+fn landed_files(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    allowed: State<'_, uploads::Allowed>,
+    automation_id: String,
+) -> Result<Vec<watches::Landed>, String> {
+    from_dashboard(&window, &places)?;
+    let Some(watch) = watches_store(&app)?.get(&current_dashboard(&places)?, &automation_id) else {
+        return Ok(vec![]);
+    };
+    let landed = watches::landed(&watch, std::time::SystemTime::now());
+    for file in &landed {
+        allowed.allow(std::path::Path::new(&file.path));
+    }
+    Ok(landed)
+}
+
+/// Writes down a landed file as sent, so it is never sent again.
+#[tauri::command]
+fn landed_sent(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    automation_id: String,
+    path: String,
+) -> Result<(), String> {
+    from_dashboard(&window, &places)?;
+    watches_store(&app)?.sent(
+        &current_dashboard(&places)?,
+        &automation_id,
+        std::path::Path::new(&path),
+    )
+}
+
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN) {
         let _ = window.show();
@@ -541,6 +685,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(uploads::Allowed::default())
+        .manage(ChosenFolders::default())
         .invoke_handler(tauri::generate_handler![
             saved_servers,
             forget_server,
@@ -555,7 +700,13 @@ pub fn run() {
             begin_upload,
             send_part,
             stopped_uploads,
-            forget_upload
+            forget_upload,
+            choose_folder,
+            watch_folder,
+            watched_folders,
+            unwatch_folder,
+            landed_files,
+            landed_sent
         ])
         .setup(|app| {
             let handle = app.handle().clone();
