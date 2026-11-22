@@ -12,6 +12,7 @@
 pub const NAME: &str = env!("PRODUCT_NAME");
 
 pub mod address;
+pub mod awake;
 pub mod browser;
 pub mod dashboard;
 pub mod exports;
@@ -26,7 +27,7 @@ pub mod watches;
 use std::sync::Mutex;
 
 use tauri::ipc::CapabilityBuilder;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::webview::NewWindowResponse;
 use tauri::{
@@ -41,6 +42,10 @@ const MAIN: &str = "main";
 const SWITCH: &str = "switch-server";
 const RELOAD: &str = "reload";
 const SHOW: &str = "show";
+const KEEP_AWAKE: &str = "keep-awake";
+const OPEN_AT_LOGIN: &str = "open-at-login";
+/// Opening at sign-in starts the app in the tray, without the window.
+const HIDDEN: &str = "--hidden";
 const TRAY: &str = "tray";
 
 /// Where the app's own pages live (differs by platform), and the dashboard now open.
@@ -549,13 +554,78 @@ fn show_window(app: &AppHandle) {
     }
 }
 
-/// The tray icon. Closing the window keeps the app here, so alerts keep coming.
-fn tray(app: &AppHandle) -> tauri::Result<TrayIcon> {
+/// The tray's menu. Once the stack has started on this computer it also has the two
+/// switches for running it here.
+fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let show = MenuItem::with_id(app, SHOW, format!("Open {NAME}"), true, None::<&str>)?;
     let switch = MenuItem::with_id(app, SWITCH, format!("Switch {NAME}…"), true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, Some(&format!("Quit {NAME}")))?;
-    let separator = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&show, &switch, &separator, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &switch])?;
+    if let Some(prefs) = stack_folder(app)
+        .ok()
+        .and_then(|folder| awake::load(&folder))
+    {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+        menu.append(&CheckMenuItem::with_id(
+            app,
+            KEEP_AWAKE,
+            "Keep this computer awake",
+            true,
+            prefs.keep_awake,
+            None::<&str>,
+        )?)?;
+        menu.append(&CheckMenuItem::with_id(
+            app,
+            OPEN_AT_LOGIN,
+            format!("Open {NAME} when I sign in"),
+            true,
+            prefs.open_at_login,
+            None::<&str>,
+        )?)?;
+    }
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&quit)?;
+    Ok(menu)
+}
+
+/// Puts the person's choices for running the stack here into effect.
+fn apply(app: &AppHandle, prefs: awake::Prefs, login_too: bool) {
+    use tauri_plugin_autostart::ManagerExt;
+    app.state::<awake::Awake>().set(prefs.keep_awake);
+    if login_too {
+        let launcher = app.autolaunch();
+        let _ = if prefs.open_at_login {
+            launcher.enable()
+        } else {
+            launcher.disable()
+        };
+    }
+    if let (Some(tray), Ok(menu)) = (app.tray_by_id(TRAY), tray_menu(app)) {
+        let _ = tray.set_menu(Some(menu));
+    }
+}
+
+/// Flips one of the two switches from the tray.
+fn toggle(app: &AppHandle, which: &str) {
+    let Ok(folder) = stack_folder(app) else {
+        return;
+    };
+    let Some(mut prefs) = awake::load(&folder) else {
+        return;
+    };
+    if which == KEEP_AWAKE {
+        prefs.keep_awake = !prefs.keep_awake;
+    } else {
+        prefs.open_at_login = !prefs.open_at_login;
+    }
+    if awake::save(&folder, prefs).is_ok() {
+        apply(app, prefs, which == OPEN_AT_LOGIN);
+    }
+}
+
+/// The tray icon. Closing the window keeps the app here, so alerts keep coming.
+fn tray(app: &AppHandle) -> tauri::Result<TrayIcon> {
+    let menu = tray_menu(app)?;
     let mut builder = TrayIconBuilder::with_id(TRAY)
         .tooltip(NAME)
         .menu(&menu)
@@ -863,6 +933,7 @@ async fn run_stack_step(
     {
         return Ok(());
     }
+    let finishing = step == "setup";
     tauri::async_runtime::spawn_blocking(move || {
         let output = stack
             .compose(args)
@@ -884,7 +955,14 @@ async fn run_stack_step(
         Ok(())
     })
     .await
-    .map_err(|_| "That step stopped part way. Try again.".to_string())?
+    .map_err(|_| "That step stopped part way. Try again.".to_string())??;
+    // Running here from now on: keep the computer awake and open at sign-in, unless the
+    // person turned those off before.
+    if finishing {
+        let (prefs, new) = awake::after_start(&stack_folder(&app)?)?;
+        apply(&app, prefs, new);
+    }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -893,6 +971,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![HIDDEN]),
+        ))
         .manage(uploads::Allowed::default())
         .manage(ChosenFolders::default())
         .invoke_handler(tauri::generate_handler![
@@ -929,6 +1011,7 @@ pub fn run() {
             app.on_menu_event(|app, event| match event.id().as_ref() {
                 SWITCH => go_home(app),
                 SHOW => show_window(app),
+                KEEP_AWAKE | OPEN_AT_LOGIN => toggle(app, event.id().as_ref()),
                 RELOAD => {
                     if let Some(window) = app.get_webview_window(MAIN) {
                         let _ = window.eval("location.reload()");
@@ -946,6 +1029,17 @@ pub fn run() {
                     let _ = hide.hide();
                 }
             });
+            app.manage(awake::Awake::start());
+            let prefs = stack_folder(&handle)
+                .ok()
+                .and_then(|folder| awake::load(&folder));
+            if let Some(prefs) = prefs {
+                handle.state::<awake::Awake>().set(prefs.keep_awake);
+            }
+            // Opened at sign-in: stay in the tray until the person opens the window.
+            if prefs.is_some() && std::env::args().any(|arg| arg == HIDDEN) {
+                let _ = window.hide();
+            }
             tray(&handle)?;
             let mut home = window.url()?;
             home.set_fragment(None);
