@@ -8,6 +8,7 @@ import {
   BEAT_CUT_STEP,
   type Beats,
   beatCuts,
+  barEnergy,
   beatGrid,
   beatRecipes,
   callStep,
@@ -78,6 +79,36 @@ describe("Cut To The Beat", () => {
     expect(beatGrid(song(), "every beat").slice(0, 3)).toEqual([0.25, 0.75, 1.25]);
     expect(beatGrid(song(), "every bar").slice(0, 3)).toEqual([0.25, 2.25, 4.25]);
     expect(beatGrid(song(), "every 2 bars").slice(0, 3)).toEqual([0.25, 4.25, 8.25]);
+  });
+
+  it("cuts with the music's energy: every beat when loud, once a bar when quiet", () => {
+    // Bars 0-1 quiet (-12 dB), 2-3 middle (-5), 4 and on loud (0): a bar every 2 s.
+    const found = song();
+    const level = (time: number) => (time < 4.25 ? -12 : time < 8.25 ? -5 : 0);
+    const loud = { ...found, loudness: found.beats.map(level) };
+    expect(barEnergy(loud)?.slice(0, 6)).toEqual([
+      "quiet",
+      "quiet",
+      "middle",
+      "middle",
+      "loud",
+      "loud",
+    ]);
+    expect(beatGrid(loud, "with the music's energy").slice(0, 9)).toEqual([
+      0.25, 2.25, 4.25, 5.25, 6.25, 7.25, 8.25, 8.75, 9.25,
+    ]);
+    // From a later start it still judges each bar against the whole song.
+    expect(beatGrid(loud, "with the music's energy", 8)[0]).toBe(8.25);
+  });
+
+  it("cuts every two beats with the energy choice when loudness is missing or flat", () => {
+    const flat = { ...song(), loudness: song().beats.map((_, i) => (i % 2 ? -1 : -2)) };
+    expect(barEnergy(flat)?.every((bar) => bar === "middle")).toBe(true);
+    for (const found of [song(), flat]) {
+      expect(beatGrid(found, "with the music's energy").slice(0, 4)).toEqual(
+        beatGrid(found, "every 2 beats").slice(0, 4),
+      );
+    }
   });
 
   it("starts on a bar, not on an upbeat, when two beats at a time", () => {
@@ -214,6 +245,19 @@ describe("reading the beat from the toolkit", () => {
     ).toEqual({ tempo: 120, steadiness: 0.8, beats: [0.5, 1], downbeats: [0.5] });
     expect(readBeats({ tempo: null, beats: [] })).toBeUndefined();
     expect(readBeats(null)).toBeUndefined();
+  });
+
+  it("keeps each beat's loudness with its beat, and drops it when it does not line up", () => {
+    expect(
+      readBeats({ tempo: 120, beats: [1, 0.5], downbeats: [0.5], loudness: [-3, 0] })?.loudness,
+    ).toEqual([0, -3]);
+    expect(
+      readBeats({ tempo: 120, beats: [0.5, 1], downbeats: [], loudness: [0] })?.loudness,
+    ).toBeUndefined();
+    expect(
+      readBeats({ tempo: 120, beats: [0.5, 1, "x"], downbeats: [], loudness: [0, -1, -2] })
+        ?.loudness,
+    ).toBeUndefined();
   });
 
   it("asks for the beats after the length, only for steps that cut on them", async () => {
