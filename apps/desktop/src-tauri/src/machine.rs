@@ -12,10 +12,12 @@ use serde::Serialize;
 use crate::NAME;
 
 const GB: u64 = 1_000_000_000;
+/// Memory is counted in 1024s, the way it is sold and the way the system shows it.
+const GIB: u64 = 1 << 30;
 /// Memory as the system reports it is a little under the label (8 GB shows as ~7.8).
-const MEMORY_SLACK: u64 = 400_000_000;
+const MEMORY_SLACK: u64 = 400 * (1 << 20);
 pub const LEAST_CORES: usize = 4;
-pub const LEAST_MEMORY: u64 = 8 * GB;
+pub const LEAST_MEMORY: u64 = 8 * GIB;
 pub const LEAST_DISK: u64 = 60 * GB;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +80,11 @@ fn gb(bytes: u64) -> String {
     }
 }
 
+/// Memory by the size on its label: a 16 GB machine reports about 15.4, and says 16.
+fn memory_gb(bytes: u64) -> String {
+    format!("{:.0} GB", (bytes as f64 / GIB as f64).ceil())
+}
+
 /// Where Docker's memory is set on each system.
 fn docker_memory_setting(os: &str) -> &'static str {
     match os {
@@ -121,14 +128,14 @@ pub fn judge(facts: &Facts, os: &str) -> Check {
         Item {
             id: "memory",
             status: Status::Ok,
-            title: format!("{} of memory", gb(facts.memory)),
+            title: format!("{} of memory", memory_gb(facts.memory)),
             detail: "Enough to run every piece.".into(),
         }
     } else {
         Item {
             id: "memory",
             status: Status::Fail,
-            title: format!("{} of memory", gb(facts.memory)),
+            title: format!("{} of memory", memory_gb(facts.memory)),
             detail: format!("{NAME} needs 8 GB or more."),
         }
     });
@@ -191,7 +198,7 @@ pub fn judge(facts: &Facts, os: &str) -> Check {
             items.push(Item {
                 id: "docker-memory",
                 status: Status::Fail,
-                title: format!("Docker may use {} of memory", gb(memory)),
+                title: format!("Docker may use {} of memory", memory_gb(memory)),
                 detail: format!("It needs 8 GB or more. {}", docker_memory_setting(os)),
             });
         }
@@ -318,12 +325,12 @@ mod tests {
     fn good() -> Facts {
         Facts {
             cores: 8,
-            memory: 16 * GB,
+            memory: 16 * GIB,
             free_disk: 200 * GB,
             docker: Docker::Ready {
                 version: "29.1.0".into(),
                 compose: "2.40.0".into(),
-                memory: Some(12 * GB),
+                memory: Some(12 * GIB),
             },
         }
     }
@@ -347,10 +354,16 @@ mod tests {
     #[test]
     fn an_eight_gigabyte_machine_counts_as_eight() {
         let mut facts = good();
-        facts.memory = 7_800_000_000;
+        facts.memory = 7_800 * (1 << 20);
         let check = judge(&facts, "macos");
         assert_eq!(item(&check, "memory").status, Status::Ok);
-        assert_eq!(item(&check, "memory").title, "7.8 GB of memory");
+        assert_eq!(item(&check, "memory").title, "8 GB of memory");
+        // A 16 GB Windows PC reports 15.4 usable; it once showed as "17 GB".
+        facts.memory = 16_535_000_000;
+        assert_eq!(
+            item(&judge(&facts, "windows"), "memory").title,
+            "16 GB of memory"
+        );
     }
 
     #[test]
@@ -361,7 +374,7 @@ mod tests {
         assert_eq!(item(&check, "cores").status, Status::Warn);
         assert!(check.ready);
 
-        facts.memory = 4 * GB;
+        facts.memory = 4 * GIB;
         facts.free_disk = 20 * GB;
         let check = judge(&facts, "linux");
         assert_eq!(item(&check, "memory").status, Status::Fail);
@@ -405,7 +418,7 @@ mod tests {
         facts.docker = Docker::Ready {
             version: "29.1.0".into(),
             compose: "2.40.0".into(),
-            memory: Some(4 * GB),
+            memory: Some(4 * GIB),
         };
         let windows = judge(&facts, "windows");
         assert!(!windows.ready);

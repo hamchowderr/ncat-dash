@@ -1,8 +1,9 @@
 import { type Brand, unusableShareLink, withDownloadLinks } from "@ncat-dash/automation-core";
 import { getStep, isTeamStepId, SAVED_LOOK_STEP, userInputSchema } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { onOperatorToolkit } from "./edition";
 import { lookSettingFor, teamLooksOf } from "./looks";
 import { withTeamSteps } from "./teamSteps";
 
@@ -152,11 +153,51 @@ export async function enqueueJob(
   return { ok: true, jobId };
 }
 
+// A worker count read from the toolkit longer ago than this is not trusted.
+const WORKERS_FRESH_FOR_MS = 30 * 60 * 1000;
+
 /**
- * Sends waiting jobs to the toolkit, oldest first, until the team has as many in flight
- * as its limit allows. Called whenever a job is added or finishes.
+ * The most jobs all teams on the operator's toolkit may have there at once, or null when
+ * there is no such total. It is the number of workers the toolkit reports (checked every
+ * few minutes), unless HOSTED_TOOLKIT_JOBS_AT_ONCE sets it. Each team's own limit on
+ * jobs at once still applies under it.
  */
-export async function pump(ctx: MutationCtx, organizationId: string): Promise<void> {
+export async function sharedLimit(ctx: QueryCtx): Promise<number | null> {
+  const raw = Number(process.env.HOSTED_TOOLKIT_JOBS_AT_ONCE?.trim() || NaN);
+  if (Number.isInteger(raw) && raw > 0) return raw;
+  const known = await ctx.db.query("sharedToolkitWorkers").first();
+  if (!known || known.workers === null || known.workers <= 0) return null;
+  if (Date.now() - known.checkedAt > WORKERS_FRESH_FOR_MS) return null;
+  return known.workers;
+}
+
+/**
+ * Keeps the operator toolkit's worker count, and sends waiting jobs at once when it has
+ * grown. Null when the toolkit could not say.
+ */
+export async function recordSharedWorkers(ctx: MutationCtx, workers: number | null): Promise<void> {
+  const known = await ctx.db.query("sharedToolkitWorkers").first();
+  const checkedAt = Date.now();
+  if (known) await ctx.db.patch(known._id, { workers, checkedAt });
+  else await ctx.db.insert("sharedToolkitWorkers", { workers, checkedAt });
+  const cap = await sharedLimit(ctx);
+  if (cap !== null) await takeTurns(ctx, cap);
+}
+
+/** Whether the team sends its jobs to the operator's toolkit, shared with other teams. */
+async function onSharedToolkit(ctx: QueryCtx, organizationId: string): Promise<boolean> {
+  const connection = await ctx.db
+    .query("toolkitConnections")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .first();
+  return connection !== null && onOperatorToolkit(connection.baseUrl);
+}
+
+/** How many more jobs a team may send under its own limit, and its waiting jobs in order. */
+async function teamQueue(
+  ctx: MutationCtx,
+  organizationId: string,
+): Promise<{ room: number; waiting: Doc<"jobs">[] }> {
   const limit = await parallelLimit(ctx, organizationId);
   const running = await ctx.db
     .query("jobs")
@@ -164,7 +205,7 @@ export async function pump(ctx: MutationCtx, organizationId: string): Promise<vo
       q.eq("organizationId", organizationId).eq("status", "running"),
     )
     .take(limit);
-  if (running.length >= limit) return;
+  if (running.length >= limit) return { room: 0, waiting: [] };
 
   const queued = await ctx.db
     .query("jobs")
@@ -173,11 +214,106 @@ export async function pump(ctx: MutationCtx, organizationId: string): Promise<vo
     )
     .take(500);
   const inFlight = running.length + queued.filter((job) => job.dispatchedAt !== undefined).length;
-  const waiting = queued.filter((job) => job.dispatchedAt === undefined);
+  return {
+    room: Math.max(0, limit - inFlight),
+    waiting: queued.filter((job) => job.dispatchedAt === undefined),
+  };
+}
 
-  for (const job of waiting.slice(0, Math.max(0, limit - inFlight))) {
-    await ctx.db.patch(job._id, { dispatchedAt: Date.now() });
-    await ctx.scheduler.runAfter(0, internal.jobs.dispatch, { jobId: job._id });
-    await ctx.scheduler.runAfter(GIVE_UP_AFTER_MS, internal.jobs.giveUp, { jobId: job._id });
+/** Hands a job over to be sent to the toolkit, with the give-up check that backs it. */
+async function send(ctx: MutationCtx, job: Doc<"jobs">, shared: boolean): Promise<void> {
+  await ctx.db.patch(job._id, {
+    dispatchedAt: Date.now(),
+    ...(shared ? { sharedToolkit: true } : {}),
+  });
+  await ctx.scheduler.runAfter(0, internal.jobs.dispatch, { jobId: job._id });
+  await ctx.scheduler.runAfter(GIVE_UP_AFTER_MS, internal.jobs.giveUp, { jobId: job._id });
+}
+
+/** How many jobs of every team are at the operator's toolkit now, counted up to `cap`. */
+async function sharedInFlight(ctx: MutationCtx, cap: number): Promise<number> {
+  const running = await ctx.db
+    .query("jobs")
+    .withIndex("by_sharedToolkit_and_status", (q) =>
+      q.eq("sharedToolkit", true).eq("status", "running"),
+    )
+    .take(cap);
+  const sent = await ctx.db
+    .query("jobs")
+    .withIndex("by_sharedToolkit_and_status", (q) =>
+      q.eq("sharedToolkit", true).eq("status", "queued"),
+    )
+    .take(cap);
+  return running.length + sent.filter((job) => job.dispatchedAt !== undefined).length;
+}
+
+// The most teams looked at for a turn each time the shared toolkit has room.
+const TURNS_LOOKED_AT = 100;
+
+/**
+ * Fills free room at the operator's toolkit one job at a time, giving each waiting team a
+ * turn in order: the team served longest ago goes first, and a team just served goes to
+ * the back. So one team's big batch cannot hold up everyone else's work.
+ */
+async function takeTurns(ctx: MutationCtx, cap: number): Promise<void> {
+  let room = cap - (await sharedInFlight(ctx, cap));
+  if (room <= 0) return;
+  const turns = await ctx.db.query("toolkitTurns").withIndex("by_lastSentAt").take(TURNS_LOOKED_AT);
+  const queues = new Map<string, { room: number; waiting: Doc<"jobs">[] }>();
+  // Always later than any turn already given, so a team just served is truly at the back.
+  let clock = Math.max(Date.now(), ...turns.map((turn) => turn.lastSentAt));
+  let order = [...turns];
+  while (room > 0 && order.length > 0) {
+    let sentOne = false;
+    for (const turn of order) {
+      let queue = queues.get(turn.organizationId);
+      if (!queue) {
+        queue = await teamQueue(ctx, turn.organizationId);
+        queues.set(turn.organizationId, queue);
+      }
+      if (queue.room <= 0 || queue.waiting.length === 0) continue;
+      const job = queue.waiting.shift()!;
+      queue.room -= 1;
+      await send(ctx, job, true);
+      clock += 1;
+      turn.lastSentAt = clock;
+      await ctx.db.patch(turn._id, { lastSentAt: clock });
+      room -= 1;
+      sentOne = true;
+      // The team just served goes to the back of the line.
+      order = [...order.filter((one) => one._id !== turn._id), turn];
+      break;
+    }
+    if (!sentOne) break;
   }
+  // A team with nothing left waiting gives up its place.
+  for (const turn of turns) {
+    const queue = queues.get(turn.organizationId);
+    if (queue && queue.waiting.length === 0) await ctx.db.delete(turn._id);
+  }
+}
+
+/**
+ * Sends waiting jobs to the toolkit, oldest first, until the team has as many in flight
+ * as its limit allows. On the operator's toolkit with a total set, the team waits for its
+ * turn among every team using it. Called whenever a job is added or finishes.
+ */
+export async function pump(ctx: MutationCtx, organizationId: string): Promise<void> {
+  const cap = await sharedLimit(ctx);
+  if (cap !== null && (await onSharedToolkit(ctx, organizationId))) {
+    const { waiting } = await teamQueue(ctx, organizationId);
+    if (waiting.length > 0) {
+      const turn = await ctx.db
+        .query("toolkitTurns")
+        .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+        .first();
+      // A team that starts waiting goes ahead of teams that were just served.
+      if (!turn) await ctx.db.insert("toolkitTurns", { organizationId, lastSentAt: 0 });
+    }
+    await takeTurns(ctx, cap);
+    return;
+  }
+
+  const { room, waiting } = await teamQueue(ctx, organizationId);
+  for (const job of waiting.slice(0, room)) await send(ctx, job, false);
 }
