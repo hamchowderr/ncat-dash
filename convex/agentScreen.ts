@@ -202,3 +202,45 @@ export const describe = query({
     return text ? `What the person has open in the dashboard right now:\n${text}` : null;
   },
 });
+
+/**
+ * The client the thing on screen is for, when it is one of the team's own: the client
+ * page itself, or an automation, run, Library file or project made for a client. The
+ * agent holds that client's Knowledge pages (brief, notes) only while this says so.
+ */
+async function clientOnScreen(
+  ctx: QueryCtx,
+  organizationId: string,
+  kind: ScreenKind,
+  id: string,
+): Promise<Id<"clients"> | null> {
+  const forClient = async (clientId: Id<"clients"> | undefined) =>
+    clientId && (await clientName(ctx, organizationId, clientId)) !== null ? clientId : null;
+  switch (kind) {
+    case "client":
+      return (await own(ctx, "clients", organizationId, id))?._id ?? null;
+    case "automation":
+      return forClient((await own(ctx, "automations", organizationId, id))?.clientId);
+    case "run":
+      return forClient((await own(ctx, "runs", organizationId, id))?.clientId);
+    case "library":
+      return forClient((await own(ctx, "libraryItems", organizationId, id))?.clientId);
+    case "project":
+      return forClient((await own(ctx, "projects", organizationId, id))?.clientId);
+    case "review":
+    case "creator":
+      return null;
+  }
+}
+
+export const clientOf = query({
+  args: { organizationId: v.string(), kind: screenKind, id: v.string() },
+  returns: v.union(v.object({ id: v.id("clients"), name: v.string() }), v.null()),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const clientId = await clientOnScreen(ctx, args.organizationId, args.kind, args.id);
+    if (!clientId) return null;
+    const client = await ctx.db.get(clientId);
+    return client ? { id: client._id, name: client.name } : null;
+  },
+});
