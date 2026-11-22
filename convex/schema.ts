@@ -1957,9 +1957,13 @@ export default defineSchema({
     allowVerdict: v.boolean(),
     // Whether the client sees the team's own threads too, or only their own.
     showTeamComments: v.boolean(),
+    // Set when a client's portal opened this link. It then works only while that portal
+    // is on, and takes what the client may do from the portal's settings as they are now.
+    portalId: v.optional(v.id("clientPortals")),
   })
     .index("by_token", ["token"])
-    .index("by_review", ["reviewId"]),
+    .index("by_review", ["reviewId"])
+    .index("by_portal", ["portalId"]),
 
   // A client's portal: one link where the client sees only their own projects, in the
   // team's logo and colours, and opens each project's review room. At most one per client;

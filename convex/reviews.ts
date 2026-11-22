@@ -13,7 +13,7 @@ import { getCaller } from "./lib/caller";
 import { notify } from "./lib/alerts";
 import { isMember, requireMember } from "./lib/authz";
 import { drawingValidator } from "./lib/drawing";
-import { CLIP_LIMIT, openReview, shareOf, VERSION_LIMIT } from "./lib/reviews";
+import { CLIP_LIMIT, openReview, sharesOf, VERSION_LIMIT } from "./lib/reviews";
 import { decideProjectSlots, forgetProjectRoom, mirrorClipVersion } from "./lib/projects";
 import { decideApproval } from "./lib/runner";
 import { toReviewChannels } from "./lib/reviewChannels";
@@ -281,8 +281,7 @@ export const remove = mutation({
       .withIndex("by_review", (q) => q.eq("reviewId", review._id))
       .take(CLIP_LIMIT);
     for (const clip of clips) await ctx.db.delete(clip._id);
-    const share = await shareOf(ctx, review._id);
-    if (share) await ctx.db.delete(share._id);
+    for (const share of await sharesOf(ctx, review._id)) await ctx.db.delete(share._id);
     await forgetProjectRoom(ctx, review._id);
     await ctx.db.delete(review._id);
   },

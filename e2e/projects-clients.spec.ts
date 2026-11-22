@@ -132,9 +132,33 @@ test("a client's project is laid out from a package and worked through", async (
   const piece = portal.getByRole("listitem").filter({ hasText: "Full episode" });
   await expect(piece.getByText("Approved")).toBeVisible();
   await expect(piece.locator("video")).toBeVisible();
+  // An approved piece downloads; one still waiting for review has no button.
+  const fileSrc = await piece.locator("video").getAttribute("src");
+  const fetched = client.waitForEvent("page");
+  await piece.getByRole("button", { name: "Download Full episode" }).click();
+  const opened = await fetched;
+  await expect.poll(() => opened.url()).toContain(new URL(fileSrc!).pathname);
+  await opened.close();
+  const waiting = portal.getByRole("listitem").filter({ hasText: "Episode thumbnail" });
+  await expect(waiting).toBeVisible();
+  await expect(waiting.getByRole("button", { name: /Download/ })).toHaveCount(0);
+
+  // The review room keeps the team's logo.
   await portal.getByRole("button", { name: "Review and comment" }).click();
   await expect(portal).toHaveURL(/\/share\/[a-f0-9]{64}\?back=/);
   await expect(portal.getByText(/will see this name/)).toBeVisible();
+  const roomLogo = portal.getByRole("img", { name: "Fischer Studio" });
+  await expect(roomLogo).toBeVisible();
+  await expect
+    .poll(() => roomLogo.evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBeGreaterThan(0);
+  const room = portal.url();
+
+  // Switching the portal off closes the review room it opened too.
+  await page.getByRole("button", { name: "Switch off the portal" }).click();
+  await expect(page.getByRole("button", { name: "Make the portal link" })).toBeVisible();
+  await portal.goto(room);
+  await expect(portal.getByText("This review is no longer shared")).toBeVisible();
   await client.close();
 
   for (const width of [1280, 390]) {
