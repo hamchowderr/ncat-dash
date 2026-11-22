@@ -116,6 +116,12 @@ export const SETTINGS_GROUPS = [
           "Footage in the folders you pick comes into Uploads; finished clips can go back.",
       },
       {
+        slug: "video-links",
+        title: "Video Links",
+        description:
+          "Bring in videos from TikTok, Instagram, YouTube and other sites by pasting a link.",
+      },
+      {
         slug: "mcp",
         title: "MCP",
         description:

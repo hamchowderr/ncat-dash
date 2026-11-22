@@ -20,6 +20,7 @@ import {
   Home,
   Inbox,
   KeyRound,
+  Link2,
   Library,
   ListChecks,
   Mail,
@@ -135,6 +136,7 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   microsoft: MicrosoftLogo,
   teams: MicrosoftTeamsLogo,
   dropbox: DropboxLogo,
+  "video-links": Link2,
   mcp: KeyRound,
 };
 
