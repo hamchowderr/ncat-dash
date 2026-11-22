@@ -35,3 +35,8 @@ tauri-plugin-updater = "2"
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util"] }
+
+# Opening the app again (or the sign-in autostart) brings back the copy already running,
+# instead of a second tray icon and a second stack. Desktop only, per the plugin's docs.
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"

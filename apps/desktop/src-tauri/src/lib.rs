@@ -551,6 +551,12 @@ fn landed_sent(
     )
 }
 
+/// Whether opening the app again should bring its window forward. The copy started at sign-in
+/// (with `--hidden`) stays in the tray, as the first one would have.
+pub fn second_launch_shows(args: &[String]) -> bool {
+    !args.iter().any(|arg| arg == HIDDEN)
+}
+
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN) {
         let _ = window.show();
@@ -1120,7 +1126,16 @@ async fn run_stack_step(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Registered first, as the plugin's docs ask: a second copy hands its arguments to the
+    // running one and quits, so there is one tray icon and one stack.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+        if second_launch_shows(&args) {
+            show_window(app);
+        }
+    }));
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1244,4 +1259,21 @@ pub fn run() {
             }
             let _ = (app, event);
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opening_the_app_again_brings_its_window_forward() {
+        let args = vec!["takewon".to_string()];
+        assert!(second_launch_shows(&args));
+    }
+
+    #[test]
+    fn the_copy_started_at_sign_in_stays_in_the_tray() {
+        let args = vec!["takewon".to_string(), HIDDEN.to_string()];
+        assert!(!second_launch_shows(&args));
+    }
 }

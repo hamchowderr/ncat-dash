@@ -196,3 +196,24 @@ test("the self-hosting guide says how to reach each piece and what machine to us
     new RegExp(relative(root, join(root, "deploy/compose.yml")).replace(/\./g, "\\.")),
   );
 });
+
+test("each MCP server in .mcp.json is a vendor's own and is explained in AGENTS.md", () => {
+  const { mcpServers } = JSON.parse(read(".mcp.json"));
+  const official = {
+    convex: ["convex@latest", "mcp", "start"],
+    shadcn: ["shadcn@latest", "mcp"],
+    "next-devtools": ["next-devtools-mcp@latest"],
+  };
+  assert.deepEqual(Object.keys(mcpServers).sort(), Object.keys(official).sort());
+  const agents = read("AGENTS.md");
+  for (const [name, server] of Object.entries(mcpServers)) {
+    assert.equal(server.command, "npx", `${name} runs through npx`);
+    assert.deepEqual(
+      server.args.filter((arg) => arg !== "-y"),
+      official[name],
+    );
+    assert.match(agents, new RegExp("`" + name + "`"), `${name} is not explained in AGENTS.md`);
+  }
+  // Agents never get the production database through this file.
+  assert.ok(!mcpServers.convex.args.some((arg) => /production/.test(arg)));
+});
