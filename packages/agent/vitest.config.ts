@@ -34,6 +34,8 @@ export default defineConfig({
       // NODE_ENV=test gates OM + the agent workspace OFF (see lib/memory.ts + agents/chat.ts)
       // so AIMock runs stay hermetic — the controller still supplies its own workspace.
       NODE_ENV: 'test',
+      // The shell is off on a real server unless asked for; the kit's tests drive it.
+      WORKSPACE_SANDBOX: 'true',
       // Set here, not inherited: a shell that exports a real CHAT_MODEL or USE_AIMOCK=false
       // (a developer's own agent settings) must never send a test run to a real model.
       USE_AIMOCK: 'true',

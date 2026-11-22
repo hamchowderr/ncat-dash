@@ -39,6 +39,7 @@ ENV NODE_ENV=production \
     PORT=4111 \
     TURSO_DATABASE_URL=file:/data/mastra.db \
     WORKSPACE_ROOT=/data/workspace \
+    WORKSPACE_SANDBOX=false \
     WORKSPACE_BROWSER=false
 VOLUME /data
 EXPOSE 4111
