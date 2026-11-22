@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import { useQuery } from "convex/react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { type ReactNode, useEffect, useRef, ViewTransition } from "react";
+import { type ReactNode, useEffect, useRef, useState, ViewTransition } from "react";
 
 import { useAgentContext } from "@/components/agent/agent-context";
 import { AgentTrigger, useAgentShortcut } from "@/components/agent/agent-rail";
@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { AppSidebar, isSettingsPath, navItemFor } from "./app-sidebar";
 import { DashboardTour } from "./dashboard-tour";
 import { LocalFolders } from "./local-folders";
+import { WatchHowButton, WatchHowPanel } from "./watch-how";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const state = useTeam();
@@ -75,6 +76,9 @@ function Shell({
   const agentOpen = useAgentOpen();
   const refusal = useAccessRefusal(state.team.id);
   useAgentShortcut(agentOpen);
+  // The video belongs to the page it was opened on: moving to another page closes it.
+  const [watch, setWatch] = useState<{ pathname: string; playing: string | null } | null>(null);
+  const watching = watch?.pathname === pathname;
 
   return (
     <SidebarProvider className="md:h-svh md:overflow-hidden">
@@ -94,6 +98,11 @@ function Shell({
               <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
             )}
             <div className="ml-auto flex items-center gap-3">
+              <WatchHowButton
+                pathname={pathname}
+                open={watching}
+                onToggle={() => setWatch(watching ? null : { pathname, playing: null })}
+              />
               <TrialDays organizationId={state.team.id} />
               {/* The agent's button, the mirror of the menu's on the left. */}
               {!agentOpen && <AgentTrigger className="-mr-1" />}
@@ -107,6 +116,14 @@ function Shell({
               <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">
                 <TeamPaused organizationId={state.team.id} />
                 <TrialEnded organizationId={state.team.id} />
+                {watching && (
+                  <WatchHowPanel
+                    pathname={pathname}
+                    playing={watch.playing}
+                    onPlay={(playing) => setWatch({ pathname, playing })}
+                    onClose={() => setWatch(null)}
+                  />
+                )}
                 {children}
               </div>
             </PageTransition>
