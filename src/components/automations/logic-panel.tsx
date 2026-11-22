@@ -152,9 +152,18 @@ function IfSettings({ input, onChange }: { input: Settings; onChange: (input: Se
             </SelectContent>
           </Select>
         )}
+        {description.text && (
+          <Input
+            aria-label="Words to look for"
+            value={typeof input.text === "string" ? input.text : ""}
+            autoComplete="off"
+            onChange={(event) => onChange({ ...input, text: event.target.value })}
+          />
+        )}
         <FieldDescription>
-          Every other file goes out by No. The step reads each file itself, so there is nothing else
-          to set.
+          {description.text
+            ? "Every other file goes out by No. The words come from a Transcribe step before this one; a file nothing transcribed goes out by No."
+            : "Every other file goes out by No. The step reads each file itself, so there is nothing else to set."}
         </FieldDescription>
       </Field>
     </FieldGroup>
