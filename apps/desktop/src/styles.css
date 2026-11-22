@@ -191,3 +191,111 @@ button:focus-visible {
 [hidden] {
   display: none !important;
 }
+
+/* Running the whole product on this computer. */
+.run {
+  max-width: 520px;
+}
+.run h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 32px 0 8px;
+}
+.run .hint {
+  color: var(--muted-foreground);
+  margin: 0 0 12px;
+}
+.items,
+.steps {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.item .mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  background: var(--surface);
+}
+.item.fail .mark {
+  color: var(--destructive);
+}
+.item .detail {
+  color: var(--muted-foreground);
+}
+.field {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.field small {
+  color: var(--muted-foreground);
+}
+.steps li {
+  color: var(--muted-foreground);
+  padding-left: 26px;
+  position: relative;
+}
+.steps li::before {
+  content: "○";
+  position: absolute;
+  left: 4px;
+}
+.steps li.doing {
+  color: var(--foreground);
+}
+.steps li.doing::before {
+  content: "◌";
+}
+.steps li.done {
+  color: var(--foreground);
+}
+.steps li.done::before {
+  content: "✓";
+}
+.steps li.failed::before {
+  content: "✕";
+  color: var(--destructive);
+}
+.primary,
+.secondary {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: calc(var(--radius) * 0.8);
+}
+.primary {
+  border: 0;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.secondary {
+  border: 1px solid var(--input);
+  background: var(--background);
+  color: inherit;
+}
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.run .back {
+  margin-top: 32px;
+}
+.run-here {
+  margin-top: 32px;
+  color: var(--muted-foreground);
+}

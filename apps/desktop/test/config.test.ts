@@ -16,13 +16,27 @@ describe("what the dashboard's pages may do inside the app", () => {
     expect(capability.windows).toEqual(["main"]);
   });
 
-  test("allows only the Connect screen's own commands", () => {
+  test("allows only the app's own screens' commands", () => {
     expect(capability.permissions).toEqual([
       "core:default",
       "allow-saved-servers",
       "allow-forget-server",
       "allow-open-server",
+      "allow-check-machine",
+      "allow-stack-saved",
+      "allow-save-stack",
+      "allow-run-stack-step",
     ]);
+  });
+
+  test("never lets the dashboard run or change the stack on this computer", () => {
+    const dashboard = readFileSync(
+      fileURLToPath(new URL("../src-tauri/src/dashboard.rs", import.meta.url)),
+      "utf8",
+    );
+    for (const command of ["check-machine", "stack-saved", "save-stack", "run-stack-step"]) {
+      expect(dashboard).not.toContain(command);
+    }
   });
 });
 
