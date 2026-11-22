@@ -1,6 +1,7 @@
 // The Webhook trigger's other half: telling the caller how the run it started went.
 // A caller can read a run's state at its status address, or send a callback_url to have
 // the run's end posted to it. Reading the call itself is in lib/hooks.ts.
+import { outboundProblem } from "./lib/outbound";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -78,6 +79,8 @@ export const sendCallback = internalAction({
   handler: async (ctx, args) => {
     const loaded = await ctx.runQuery(internal.hooks.loadCallback, { runId: args.runId });
     if (!loaded) return;
+    // A copy strangers sign up to never posts inside its own network (lib/outbound.ts).
+    if (outboundProblem(loaded.url)) return;
     const body = JSON.stringify(loaded.report);
     let ok = false;
     try {

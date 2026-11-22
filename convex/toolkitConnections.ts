@@ -1,4 +1,5 @@
 import { testConnection } from "@ncat-dash/step-catalog";
+import { outboundProblem } from "./lib/outbound";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -165,6 +166,10 @@ async function connectTeam(
   if (!apiKey) {
     return { ok: false as const, reason: "unauthorized" as const, detail: "Enter the API key." };
   }
+  // A copy strangers sign up to never calls inside its own network, except the toolkit
+  // its owner lends (lib/outbound.ts).
+  const refused = outboundProblem(baseUrl, ourToolkit() ? [ourToolkit()!.baseUrl] : []);
+  if (refused) return { ok: false as const, reason: "invalid_url" as const, detail: refused };
 
   // Fork only: a toolkit without the storage requests is refused with steps to switch.
   const { result, storage } = await checkToolkit({ baseUrl, apiKey });

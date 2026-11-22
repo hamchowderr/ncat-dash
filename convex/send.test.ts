@@ -135,3 +135,23 @@ describe("Send to a URL", () => {
     expect((await state()).send.error).toBe("The address must start with http:// or https://.");
   });
 });
+
+describe("Send to a URL on a copy strangers sign up to", () => {
+  test("never posts inside the server's own network", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("OUTBOUND_PRIVATE", "block");
+    const posted: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      posted.push(String(input));
+      return new Response(null, { status: 200 });
+    });
+    const { t, start, state } = await setUp("http://convex:3210/api/run");
+    await start();
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(posted).toEqual([]);
+    const { send } = await state();
+    expect(send.status).toBe("failed");
+    expect(send.error).toMatch(/private network/);
+    vi.unstubAllEnvs();
+  });
+});
