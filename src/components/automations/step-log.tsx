@@ -39,6 +39,19 @@ export function jobTiming(job: {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** Where a file a step handed on came from, in words. */
+export function cameFrom(
+  file: { url: string; from: string | null; source: string | null },
+  nameOf: (url: string) => string,
+): string {
+  if (file.source === file.url) return "the file the run started with";
+  if (file.source === null) return "made from files that started in different places";
+  if (file.from && file.from !== file.source) {
+    return `made from ${nameOf(file.from)}, which started as ${nameOf(file.source)}`;
+  }
+  return `made from ${nameOf(file.source)}`;
+}
+
 /** What a step sent, try by try: each job's settings, timing, toolkit id and error. */
 export function StepLog({ runStepId, title }: { runStepId: Id<"runSteps">; title: string }) {
   const [open, setOpen] = useState(false);
@@ -106,6 +119,16 @@ function LogBody({ runStepId, title }: { runStepId: Id<"runSteps">; title: strin
           </li>
         ))}
       </ol>
+      {log.files.length > 0 && (
+        <ol aria-label="Files it handed on" className="flex flex-col gap-1 text-sm">
+          {log.files.map((file) => (
+            <li key={file.url} className="min-w-0 truncate">
+              {nameOf(file.url)}
+              <span className="text-muted-foreground"> · {cameFrom(file, nameOf)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
       {log.more && (
         <p className="text-muted-foreground text-xs">Only the first 100 jobs are listed.</p>
       )}
