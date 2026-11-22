@@ -243,7 +243,7 @@ async function onSharedToolkit(ctx: QueryCtx, organizationId: string): Promise<b
 
 /** How many more jobs a team may send under its own limit, and its waiting jobs in order. */
 async function teamQueue(
-  ctx: MutationCtx,
+  ctx: QueryCtx,
   organizationId: string,
 ): Promise<{ room: number; waiting: Doc<"jobs">[] }> {
   const limit = await parallelLimit(ctx, organizationId);
@@ -279,7 +279,7 @@ async function send(ctx: MutationCtx, job: Doc<"jobs">, shared: boolean): Promis
 }
 
 /** How many jobs of every team are at the operator's toolkit now, counted up to `cap`. */
-async function sharedInFlight(ctx: MutationCtx, cap: number): Promise<number> {
+async function sharedInFlight(ctx: QueryCtx, cap: number): Promise<number> {
   const running = await ctx.db
     .query("jobs")
     .withIndex("by_sharedToolkit_and_status", (q) =>
@@ -364,4 +364,24 @@ export async function pump(ctx: MutationCtx, organizationId: string): Promise<vo
 
   const { room, waiting } = await teamQueue(ctx, organizationId);
   for (const job of waiting.slice(0, room)) await send(ctx, job, false);
+}
+
+/**
+ * Why a team's waiting jobs have not been sent yet, or null when they are about to be:
+ * "own" when the team already has its own limit of jobs at once, "turn" when every team on
+ * the shared toolkit is using its total and this team waits its turn, "held" when that total
+ * is cut for now because the toolkit is struggling.
+ */
+export async function waitReason(
+  ctx: QueryCtx,
+  organizationId: string,
+): Promise<{ reason: "own" | "turn" | "held"; limit: number } | null> {
+  const limit = await parallelLimit(ctx, organizationId);
+  const { room } = await teamQueue(ctx, organizationId);
+  if (room <= 0) return { reason: "own", limit };
+  const cap = await sharedLimit(ctx);
+  if (cap === null || !(await onSharedToolkit(ctx, organizationId))) return null;
+  if ((await sharedInFlight(ctx, cap)) < cap) return null;
+  const full = await fullSharedLimit(ctx);
+  return { reason: full !== null && cap < full ? "held" : "turn", limit };
 }

@@ -38,6 +38,59 @@ describe("the Jobs page", () => {
     expect(within(first).getByRole("button", { name: /More for the .* job/ })).toBeInTheDocument();
   });
 
+  test("a job that has not started says why it is waiting", () => {
+    answerQuery(api.jobs.list, [
+      job("j1", {
+        status: "queued",
+        outputs: [],
+        startedAt: null,
+        finishedAt: null,
+        waiting: { reason: "turn", limit: 3 },
+      }),
+      job("j2", {
+        status: "queued",
+        outputs: [],
+        startedAt: null,
+        finishedAt: null,
+        waiting: { reason: "own", limit: 1 },
+      }),
+      job("j3", {
+        status: "queued",
+        outputs: [],
+        startedAt: null,
+        finishedAt: null,
+        waiting: { reason: "held", limit: 3 },
+      }),
+    ]);
+    renderInApp(<JobsView />);
+    expect(document.querySelector("[data-job='j1']")).toHaveTextContent(
+      "Waiting its turn. Other teams' jobs are being processed, and this one is next in line for your team.",
+    );
+    expect(document.querySelector("[data-job='j2']")).toHaveTextContent(
+      "Your team runs one job at a time, so this starts when the current one ends.",
+    );
+    expect(document.querySelector("[data-job='j3']")).toHaveTextContent(
+      "Processing is busy right now, so jobs go through a few at a time until it catches up.",
+    );
+  });
+
+  test("the details of a waiting job say why it waits", () => {
+    const waiting = job("j1", {
+      status: "queued",
+      outputs: [],
+      startedAt: null,
+      finishedAt: null,
+      waiting: { reason: "own", limit: 3 },
+    });
+    answerQuery(api.jobs.list, [waiting]);
+    answerQuery(api.jobs.get, waiting);
+    renderInApp(<JobsView />);
+    fireEvent.click(screen.getByRole("button", { name: /job, started/ }));
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "Your team runs 3 jobs at a time, so this starts when one of them ends.",
+    );
+  });
+
   test("a job's name opens its details", () => {
     answerQuery(api.jobs.list, [job("j1")]);
     answerQuery(api.jobs.get, null);
