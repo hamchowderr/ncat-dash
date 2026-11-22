@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stopped-uploads"
+description = "Enables the stopped_uploads command without any pre-configured scope."
+commands.allow = ["stopped_uploads"]
+
+[[permission]]
+identifier = "deny-stopped-uploads"
+description = "Denies the stopped_uploads command without any pre-configured scope."
+commands.deny = ["stopped_uploads"]

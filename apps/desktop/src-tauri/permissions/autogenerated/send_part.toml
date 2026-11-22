@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-send-part"
+description = "Enables the send_part command without any pre-configured scope."
+commands.allow = ["send_part"]
+
+[[permission]]
+identifier = "deny-send-part"
+description = "Denies the send_part command without any pre-configured scope."
+commands.deny = ["send_part"]

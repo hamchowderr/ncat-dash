@@ -11,7 +11,15 @@ import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Copy, FileText, LayoutGrid, List, Trash2, UploadCloud } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useRef, useSyncExternalStore, useState, type DragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+  useState,
+  type DragEvent,
+} from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -34,7 +42,14 @@ import {
 import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
-import { useSendFile } from "@/lib/send-file";
+import {
+  chooseFilesOnDesktop,
+  type DiskUpload,
+  forgetDiskUpload,
+  inDesktopApp,
+  stoppedDiskUploads,
+} from "@/lib/desktop";
+import { type StartedUpload, StoppedUpload, useSendFile, useSendFromDisk } from "@/lib/send-file";
 import { usePhone } from "@/hooks/use-narrow";
 import { useWakeLock } from "@/hooks/use-wake-lock";
 
@@ -145,6 +160,8 @@ export function UploadsView() {
   const uploads = useQuery(api.storage.listUploads, { organizationId: team.id });
   const startUpload = useAction(api.storage.startUpload);
   const sendFile = useSendFile();
+  const fromDisk = useSendFromDisk();
+  const cancelUpload = useAction(api.storage.cancelUpload);
   const finishUpload = useMutation(api.storage.finishUpload);
   const removeUpload = useMutation(api.storage.removeUpload);
   const linkFor = useAction(api.storage.linkFor);
@@ -160,6 +177,36 @@ export function UploadsView() {
   const chosen = useSyncExternalStore(watchLayout, readLayout, () => "tiles" as const);
   const layout = phone ? "tiles" : chosen;
   const sending = Object.keys(inFlight).length > 0;
+  // In the desktop app, files are chosen in the computer's own picker and sent from disk;
+  // an upload that stopped part way is listed here to carry on from where it got to.
+  const [desktop] = useState(inDesktopApp);
+  const [stoppedRecords, setStoppedRecords] = useState<DiskUpload[]>([]);
+  const refreshStopped = useCallback(() => {
+    void stoppedDiskUploads().then(setStoppedRecords);
+  }, []);
+  useEffect(() => {
+    if (desktop) refreshStopped();
+  }, [desktop, refreshStopped]);
+  const stopped = useMemo(
+    () =>
+      stoppedRecords.filter(
+        (record) =>
+          !inFlight[record.uploadId] &&
+          uploads?.some(
+            (upload) => upload._id === record.uploadId && upload.status === "uploading",
+          ),
+      ),
+    [stoppedRecords, uploads, inFlight],
+  );
+  // The app remembers an upload the team no longer has (removed elsewhere): forget it.
+  useEffect(() => {
+    if (!uploads) return;
+    for (const record of stoppedRecords) {
+      if (!uploads.some((upload) => upload._id === record.uploadId)) {
+        void forgetDiskUpload(record.uploadId);
+      }
+    }
+  }, [uploads, stoppedRecords]);
   useWakeLock(sending);
   const ready = useMemo(
     () =>
@@ -220,8 +267,79 @@ export function UploadsView() {
     [uploads, ready, inFlight],
   );
 
-  async function send(files: FileList | File[]) {
-    for (const file of Array.from(files)) {
+  function send(files: FileList | File[]) {
+    return sendAll(
+      Array.from(files).map((file) => ({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        go: (started: StartedUpload, onProgress: (percent: number) => void) =>
+          sendFile(started, file, onProgress),
+      })),
+    );
+  }
+
+  async function choose() {
+    const chosen = desktop ? await chooseFilesOnDesktop() : null;
+    // Outside the app, or an app too old to have its own picker: the page's file input.
+    if (chosen === null) {
+      input.current?.click();
+      return;
+    }
+    await sendAll(
+      chosen.map((file) => ({
+        name: file.name,
+        type: file.contentType,
+        size: file.size,
+        go: (started: StartedUpload, onProgress: (percent: number) => void) =>
+          fromDisk.send(started, file, onProgress),
+      })),
+    );
+  }
+
+  function stoppedNotice(name: string) {
+    refreshStopped();
+    toast.error(`${name} stopped part way. Carry on below to send the rest.`);
+  }
+
+  async function carryOn(record: DiskUpload) {
+    const id = record.uploadId as Id<"uploads">;
+    setInFlight((current) => ({ ...current, [id]: { name: record.name, percent: 0 } }));
+    try {
+      await fromDisk.carryOn(record, (percent) =>
+        setInFlight((current) => ({ ...current, [id]: { name: record.name, percent } })),
+      );
+      await finishUpload({ uploadId: id });
+      refreshStopped();
+    } catch (caught) {
+      if (caught instanceof StoppedUpload) stoppedNotice(record.name);
+      else {
+        await removeUpload({ uploadId: id }).catch(() => null);
+        refreshStopped();
+        toast.error(errorMessage(caught, `${record.name} did not upload.`));
+      }
+    } finally {
+      setInFlight((current) =>
+        Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)),
+      );
+    }
+  }
+
+  async function drop(record: DiskUpload) {
+    await cancelUpload({ uploadId: record.uploadId as Id<"uploads"> }).catch(() => null);
+    await forgetDiskUpload(record.uploadId);
+    refreshStopped();
+  }
+
+  async function sendAll(
+    files: {
+      name: string;
+      type: string;
+      size: number;
+      go: (started: StartedUpload, onProgress: (percent: number) => void) => Promise<void>;
+    }[],
+  ) {
+    for (const file of files) {
       let uploadId: Id<"uploads"> | null = null;
       try {
         const started = await startUpload({
@@ -233,11 +351,16 @@ export function UploadsView() {
         uploadId = started.uploadId;
         const id = started.uploadId;
         setInFlight((current) => ({ ...current, [id]: { name: file.name, percent: 0 } }));
-        await sendFile(started, file, (percent) =>
+        await file.go(started, (percent) =>
           setInFlight((current) => ({ ...current, [id]: { name: file.name, percent } })),
         );
         await finishUpload({ uploadId: id });
       } catch (caught) {
+        // Stopped part way from disk: kept, to carry on from where it got to.
+        if (caught instanceof StoppedUpload) {
+          stoppedNotice(file.name);
+          continue;
+        }
         if (uploadId) await removeUpload({ uploadId });
         toast.error(
           errorMessage(
@@ -338,7 +461,7 @@ export function UploadsView() {
         <Button
           size="sm"
           className="pointer-coarse:h-11 pointer-coarse:w-full pointer-coarse:max-w-xs pointer-coarse:text-base"
-          onClick={() => input.current?.click()}
+          onClick={() => void choose()}
         >
           Choose files
         </Button>
@@ -358,8 +481,48 @@ export function UploadsView() {
 
       {sending && (
         <p role="status" className="text-muted-foreground text-sm" data-keep-open>
-          Keep this page open until your files finish sending. The screen stays on meanwhile.
+          {desktop
+            ? "Keep the app open until your files finish sending; closing the window keeps it running. If sending stops, it carries on from where it got to."
+            : "Keep this page open until your files finish sending. The screen stays on meanwhile."}
         </p>
+      )}
+
+      {stopped.length > 0 && (
+        <section aria-label="Stopped uploads" className="flex flex-col gap-2">
+          {stopped.map((record) => {
+            const sent = record.parts.reduce(
+              (total, part) =>
+                total +
+                Math.min(
+                  record.plan.partSize,
+                  record.size - (part.partNumber - 1) * record.plan.partSize,
+                ),
+              0,
+            );
+            return (
+              <div
+                key={record.uploadId}
+                className="flex flex-wrap items-center gap-3 rounded-lg bg-surface px-4 py-3 text-sm"
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {record.name} stopped at {Math.floor((sent / record.size) * 100)}% (
+                  {formatBytes(sent)} of {formatBytes(record.size)}).
+                </span>
+                <Button size="sm" onClick={() => void carryOn(record)}>
+                  Carry on
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Drop ${record.name}`}
+                  onClick={() => void drop(record)}
+                >
+                  Drop
+                </Button>
+              </div>
+            );
+          })}
+        </section>
       )}
 
       {fromZoom.length > 0 && (
