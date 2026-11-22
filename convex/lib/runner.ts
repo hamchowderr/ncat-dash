@@ -63,6 +63,7 @@ import {
   stepFileLabels,
 } from "@ncat-dash/automation-core";
 import { startSend } from "./send";
+import { recordItems } from "./items";
 import { getStep, pictureGivenForVideo } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
@@ -926,6 +927,8 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
       .withIndex("by_run", (q) => q.eq("runId", runId))
       .take(200);
     const byNode = new Map(steps.map((step) => [step.nodeId, step]));
+    // Finished steps write down where their files came from before anything reads them.
+    await recordItems(ctx, run, byNode);
     const status = Object.fromEntries(steps.map((step) => [step.nodeId, step.status])) as Record<
       string,
       NodeStatus
