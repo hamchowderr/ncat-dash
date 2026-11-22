@@ -31,6 +31,8 @@ export const nodeValidator = v.object({
     v.literal("footage-check"),
     // Writes each video's subtitles in other languages.
     v.literal("subtitles"),
+    // Posts the files that reach it, with the run's details, to an address.
+    v.literal("send"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -789,6 +791,8 @@ export default defineSchema({
         v.literal("render"),
         // A "footage-check" step waiting for the toolkit to measure each file.
         v.literal("footage"),
+        // A "send" step posting its files to an address.
+        v.literal("send"),
         v.literal("hear"),
         v.literal("translate"),
       ),

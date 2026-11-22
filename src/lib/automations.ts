@@ -98,6 +98,7 @@ export function nodeTitle(node: Pick<AutomationNode, "kind" | "stepId" | "label"
   if (node.kind === "subtitles") return "Translate Subtitles";
   if (node.kind === "if") return "If";
   if (node.kind === "wait") return "Wait";
+  if (node.kind === "send") return "Send to a URL";
   if (node.kind === "export") return "Export for editors";
   if (node.kind === "automation") return "Run an automation";
   return getStep(node.stepId ?? "")?.title ?? node.stepId ?? "Step";

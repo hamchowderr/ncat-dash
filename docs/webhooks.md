@@ -50,3 +50,20 @@ A GET to `status_url`, with the token the same ways as above, answers:
 ## The Callback
 
 When the run ends, the same report is posted to `callback_url` as JSON. It carries an `X-Takewon-Signature: sha256=<hex>` header: the HMAC-SHA256 of the body, keyed with the automation's token. Check it before you trust the post. If the address does not answer with a 2xx, it is tried again after 30 seconds, 2 minutes and 10 minutes, then left.
+
+## Sending Files On From A Run
+
+The other way round: put a **Send to a URL** step in an automation, and it posts the files that reach it to an address you give, such as an n8n webhook, then hands the same files to the next step. The body is JSON:
+
+```json
+{
+  "run_id": "…",
+  "automation_id": "…",
+  "automation": "Clips For Shorts",
+  "step": "Send to a URL",
+  "files": ["https://…/clip-1.mp4", "https://…/clip-2.mp4"],
+  "trigger": { "file_url": "https://…/interview.mp4" }
+}
+```
+
+It is signed the same way as the callback, in `X-Takewon-Signature`. If the address does not answer with a 2xx, it is tried again after 30 seconds, 2 minutes and 10 minutes; after that the step fails, and an **If it fails** way after it can pick up from there.

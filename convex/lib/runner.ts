@@ -62,6 +62,7 @@ import {
   withStart,
   stepFileLabels,
 } from "@ncat-dash/automation-core";
+import { startSend } from "./send";
 import { getStep } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
@@ -368,6 +369,11 @@ async function startNode(
 
   if (node.kind === "wait") {
     await startWait(ctx, run, node, step, byNode);
+    return;
+  }
+
+  if (node.kind === "send") {
+    await startSend(ctx, run, node, step, byNode);
     return;
   }
 
