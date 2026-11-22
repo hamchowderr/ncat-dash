@@ -1,6 +1,7 @@
 "use client";
 
 import { fileKindOf } from "@convex/lib/packages";
+import { timeRangeOf } from "@ncat-dash/automation-core";
 import { type Part, secondsFor } from "@convex/lib/storyboard";
 import { Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,6 +30,10 @@ export const holdSeconds = (take: Take) => Math.max(2, secondsFor([take.line]));
 function Shown({ take, playing, onDone }: { take: Take; playing: boolean; onDone: () => void }) {
   const file = shownFile(take);
   const link = useFileLink(file ?? undefined);
+  // A take cut from an upload plays only its stretch; the browser pauses at its end
+  // without an "ended", so the next take starts from here.
+  const range = file ? timeRangeOf(file) : null;
+  const finished = useRef(false);
   const kind = link ? fileKindOf(link) : null;
   const video = kind === "video" || kind === "audio";
 
@@ -60,6 +65,14 @@ function Shown({ take, playing, onDone }: { take: Take; playing: boolean; onDone
         preload="auto"
         controls={!playing}
         onEnded={onDone}
+        onTimeUpdate={(event) => {
+          if (finished.current || !playing || !range) return;
+          if (event.currentTarget.currentTime >= range.end - 0.05) {
+            finished.current = true;
+            event.currentTarget.pause();
+            onDone();
+          }
+        }}
         onError={() => setStuck(true)}
         className="aspect-video w-full rounded-lg bg-black object-contain"
       />
