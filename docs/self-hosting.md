@@ -255,7 +255,7 @@ In `deploy/compose.yml` the web app takes these from `deploy/.env` (`CONVEX_URL`
 | `CONVEX_URL`                                                                  | yes              | The Convex API address. The agent calls it as the signed-in person; it has no key of its own.              |
 | `CONVEX_SITE_URL`                                                             | when self-hosted | The Convex HTTP actions address. Worked out from `CONVEX_URL` only for Convex Cloud and local development. |
 | `CHAT_MODEL`                                                                  | no               | `provider/model`; `anthropic/claude-sonnet-5-5` in `deploy/compose.yml`.                                   |
-| `SIMPLE_CHAT_MODEL`                                                           | no               | The cheaper model for simple turns (`anthropic/claude-haiku-5-5`).                                         |
+| `SIMPLE_CHAT_MODEL`                                                           | no               | The cheaper model for simple turns and for translating subtitles (`anthropic/claude-haiku-5-5`).           |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`         | one of them      | The key for the provider `CHAT_MODEL` names.                                                               |
 | `DISCORD_BOT_TOKEN`, `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY`           | Discord          |                                                                                                            |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`                                 | Telegram         |                                                                                                            |

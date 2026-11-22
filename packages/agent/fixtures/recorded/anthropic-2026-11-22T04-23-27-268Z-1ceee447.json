@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Translate these subtitle lines into Spanish.\nThe video is called: clip\nLines (2):\n1. Welcome back to the station.\n2. Today we talk about pricing your edits.",
+        "model": "claude-haiku-5-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "usage": {
+          "input_tokens": 402,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 47
+        },
+        "content": "[\"Bienvenidos de nuevo a la estación.\", \"Hoy hablamos de cómo poner precio a tus ediciones.\"]"
+      },
+      "metadata": {
+        "systemHash": "400926ac"
+      }
+    }
+  ]
+}
