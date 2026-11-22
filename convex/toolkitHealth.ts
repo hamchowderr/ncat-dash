@@ -13,7 +13,12 @@ import {
 import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
 import { onOperatorToolkit } from "./lib/edition";
-import { parallelLimit, recordSharedWorkers } from "./lib/queue";
+import {
+  parallelLimit,
+  recordSharedWorkers,
+  sharedToolkitTrouble,
+  sharedToolkitWentFine,
+} from "./lib/queue";
 
 const DAY = 24 * 60 * 60 * 1000;
 // More than this many jobs in flight at once is shown as "and N more".
@@ -96,11 +101,31 @@ export const checkShared = internalAction({
       { baseUrl, apiKey },
       { signal: AbortSignal.timeout(15_000) },
     );
-    // An unreachable toolkit keeps the last count it gave; it stops counting once stale.
-    if (!result.ok) return;
+    // An unreachable toolkit keeps the last count it gave (it stops counting once stale),
+    // and the total is cut for now.
+    if (!result.ok) {
+      await ctx.runMutation(internal.toolkitHealth.sharedTrouble, {});
+      return;
+    }
     await ctx.runMutation(internal.toolkitHealth.recordShared, {
       workers: result.health.queue.workers,
     });
+  },
+});
+
+/** The shared toolkit was busy or out of reach: back off. */
+export const sharedTrouble = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    await sharedToolkitTrouble(ctx);
+  },
+});
+
+/** The shared toolkit took a job: let the total grow back. */
+export const sharedWentFine = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    await sharedToolkitWentFine(ctx);
   },
 });
 
