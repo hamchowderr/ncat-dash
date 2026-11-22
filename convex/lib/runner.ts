@@ -8,6 +8,11 @@ import {
   burnRequest,
   burnsInFast,
   captionVideoOf,
+  canUseKnownWords,
+  hasKnownWords,
+  MAX_SENT_WORDS,
+  withKnownWords,
+  withoutKnownWords,
   wordsRequest,
   type AutomationEdge,
   type AutomationNode,
@@ -67,6 +72,7 @@ import { earlierFiles, runEnded, startAutomationStep, startingFiles } from "./ch
 import { cutListOf } from "./exports";
 import { collectUrls } from "./outputs";
 import { captionSetupOf } from "./captions";
+import { knownWordsFor } from "./knownWords";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { finishListening, startListening } from "./moments";
 import { type DisclosureNote, hearFirst } from "./disclosure";
@@ -515,11 +521,29 @@ async function startToolkitStep(
     // "Caption video" is made the fast way: the timed words first ("listen"), then one
     // quick save that burns them in ("render"). See burn-captions.ts.
     if (definition.id === "video-caption" && planned.every(burnsInFast)) {
+      // Words already known (the upload was transcribed when it came in, or the clip was
+      // cut from such a video) go with the request, so the video is not heard again.
+      const known = await knownWordsFor(
+        ctx,
+        run,
+        [...byNode.values()],
+        planned.filter(canUseKnownWords).map(captionVideoOf),
+      );
       const words = await enqueueAll(
         ctx,
         run,
         step,
-        planned.map((input) => ({ stepId: "media-generate-ass", input: wordsRequest(input) })),
+        planned.map((input) => {
+          const request = wordsRequest(input);
+          const heard = canUseKnownWords(input) ? known.get(captionVideoOf(input)) : undefined;
+          return {
+            stepId: "media-generate-ass",
+            input:
+              heard && heard.length <= MAX_SENT_WORDS
+                ? withKnownWords(request, heard, details.get(captionVideoOf(input)))
+                : request,
+          };
+        }),
       );
       if (!words.ok) {
         await failStep(ctx, run, step, byNode, words.message);
@@ -1043,6 +1067,25 @@ async function burnCaptions(
     .take(200);
   const byNode = new Map(steps.map((other) => [other.nodeId, other]));
   const failed = words.find((job) => job.status === "failed");
+  if (failed && words.some((job) => hasKnownWords(job.input))) {
+    // A toolkit from before caption files could be made from known words refuses them.
+    // It is asked again the old way, hearing each video itself.
+    const again = await enqueueAll(
+      ctx,
+      run,
+      step,
+      words.map((job) => ({
+        stepId: "media-generate-ass",
+        input: withoutKnownWords(job.input as Record<string, unknown>),
+      })),
+    );
+    if (!again.ok) {
+      await failStep(ctx, run, step, byNode, again.message);
+      return;
+    }
+    await ctx.db.patch(step._id, { stage: "listen", jobIds: again.jobIds });
+    return;
+  }
   if (failed) {
     await failStep(ctx, run, step, byNode, failed.error ?? "The captions could not be made.");
     return;

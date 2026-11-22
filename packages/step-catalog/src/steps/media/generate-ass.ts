@@ -31,6 +31,20 @@ export const mediaGenerateAss = defineStep({
       .array(z.object({ start: z.string(), end: z.string() }))
       .optional()
       .describe("Time ranges to leave captions out of"),
+    segments: z
+      .array(
+        z.object({
+          start: z.number().min(0),
+          end: z.number().min(0),
+          text: z.string().optional(),
+          words: z
+            .array(z.object({ word: z.string(), start: z.number().min(0), end: z.number().min(0) }))
+            .max(2000),
+        }),
+      )
+      .max(20000)
+      .optional()
+      .describe("A transcript with word times already made, so the media is not transcribed again"),
     webhook_url: z.string().url().optional().describe("Callback URL for async job completion"),
     id: z.string().optional().describe("Custom identifier echoed back in the response"),
   }),
