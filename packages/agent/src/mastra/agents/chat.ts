@@ -16,7 +16,7 @@ import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processo
 import { toolScopeProcessor } from '../lib/tool-scope';
 import { CACHE_BREAKPOINT, TurnContextProcessor } from '../lib/turn-context';
 import { turnRequestContextSchema } from '../lib/turn-keys';
-import { getChatWorkspace } from '../lib/workspace';
+import { chatWorkspaceFor } from '../lib/workspace';
 import { screenStateProcessor } from '../ncat/screen';
 import { NCAT_INSTRUCTIONS, ncatTools } from '../ncat/tools';
 import { listSchedules, startSchedule, stopSchedule } from '../tools/schedule';
@@ -350,7 +350,7 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
     // is HITL-gated there.
     workspace: ({ requestContext }) =>
       env.NODE_ENV !== 'test' && requestContext?.get('noWorkspace') !== true
-        ? getChatWorkspace()
+        ? chatWorkspaceFor(requestContext)
         : undefined,
     tools: chatTools(f),
     // Mastra Knowledge: the knowledge_* tools (search, read, list, page, note, pin), their

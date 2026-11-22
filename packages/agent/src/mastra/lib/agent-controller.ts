@@ -44,6 +44,7 @@ import { createWorkThreads, openWorkSession, type WorkThreads } from './work-thr
 import {
   createBrowser,
   createChatWorkspace,
+  chatWorkspaceFor,
   getChatBrowserInstance,
   getChatWorkspace,
   WORKSPACE_ROOT,
@@ -129,7 +130,7 @@ export function createChatAgentController(opts?: {
    * nothing is double-provisioned. Omit it (tests) to build a throwaway workspace from
    * the `browser` option instead, keeping AIMock runs hermetic.
    */
-  workspace?: Workspace;
+  workspace?: Workspace | ((ctx: { requestContext: { get(key: string): unknown } }) => Workspace | undefined);
   /** Chat apps (Slack, Discord) the controller also answers in. The live singleton passes the team apps. */
   channels?: AgentControllerChannelsConfig;
 }): AgentController {
@@ -339,7 +340,8 @@ export function getChatAgentControllerInstance(): AgentController {
   // the chat agent carries (getChatWorkspace), so Studio + the controller + the
   // screencast route all point at one workspace/browser. No double-provision.
   instance ??= createChatAgentController({
-    workspace: getChatWorkspace(),
+    // Each session gets its team's own workspace (lib/workspace.ts, chatWorkspaceFor).
+    workspace: ({ requestContext }) => chatWorkspaceFor(requestContext),
     storage: createAgentControllerStore(),
     channels: chatChannels(),
   });

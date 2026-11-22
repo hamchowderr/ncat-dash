@@ -25,8 +25,10 @@
 import path from 'node:path';
 import { BrowserViewer } from '@mastra/browser-viewer';
 import type { MastraBrowser } from '@mastra/core/browser';
+import { MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
 import { LocalFilesystem, LocalSandbox, WORKSPACE_TOOLS, Workspace } from '@mastra/core/workspace';
 import { env } from '../../lib/env';
+import { TURN_USER_KEY } from './turn-user';
 import { type ChatFeatures, features as defaultFeatures } from './features';
 
 // Absolute root for the agent's workspace (filesystem + sandbox share it). Under
@@ -108,4 +110,73 @@ export function getChatWorkspace(): Workspace {
     );
   }
   return workspaceSingleton;
+}
+
+// ── One workspace per team ────────────────────────────────────────────────
+// On a server with sign-in (MASTRA_JWT_SECRET), every team gets its own folder under
+// WORKSPACE_ROOT/teams/<team>, so one team's agent never reads or writes another team's
+// files. The team comes from the resource id the web server signs (`<person>~<team>`,
+// chatOwnerId in src/lib/agent-session.ts), never from anything the person typed. A
+// resource with no team (a chat-app thread, a person with no team open) gets no
+// workspace at all. Without sign-in there is one shared user and WORKSPACE_ROOT itself.
+
+/** A team id safe to use as one folder name. */
+const SAFE_TEAM = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** The team a resource id belongs to (`<person>~<team>`), or null. */
+export function workspaceTeamOf(resourceId: string | undefined): string | null {
+  if (!resourceId || resourceId.startsWith('channel:')) return null;
+  const cut = resourceId.lastIndexOf('~');
+  if (cut <= 0) return null;
+  const team = resourceId.slice(cut + 1);
+  return SAFE_TEAM.test(team) ? team : null;
+}
+
+/**
+ * The folder a resource's workspace lives in, or null when it gets none. `signedIn`
+ * defaults to whether this server runs with MASTRA_JWT_SECRET.
+ */
+export function workspaceRootFor(
+  resourceId: string | undefined,
+  { root = WORKSPACE_ROOT, signedIn = Boolean(env.MASTRA_JWT_SECRET) } = {},
+): string | null {
+  if (!signedIn) return root;
+  const team = workspaceTeamOf(resourceId);
+  return team ? path.join(root, 'teams', team) : null;
+}
+
+/** Whose turn a request context is for: the controller session's resource, else the turn user. */
+function resourceIdOfContext(requestContext: { get(key: string): unknown } | undefined) {
+  if (!requestContext) return undefined;
+  const controller = requestContext.get('controller') as { resourceId?: unknown } | undefined;
+  for (const id of [
+    controller?.resourceId,
+    requestContext.get(TURN_USER_KEY),
+    requestContext.get(MASTRA_RESOURCE_ID_KEY),
+  ]) {
+    if (typeof id === 'string' && id) return id;
+  }
+  return undefined;
+}
+
+const teamWorkspaces = new Map<string, Workspace>();
+
+/**
+ * The workspace a request runs against: the team's own, the shared one without sign-in,
+ * or none. Used as the controller's and the chat agent's workspace factory.
+ */
+export function chatWorkspaceFor(
+  requestContext: { get(key: string): unknown } | undefined,
+): Workspace | undefined {
+  const root = workspaceRootFor(resourceIdOfContext(requestContext));
+  if (!root) return undefined;
+  if (root === WORKSPACE_ROOT) return getChatWorkspace();
+  let workspace = teamWorkspaces.get(root);
+  if (!workspace) {
+    // No browser: the viewer is one Chrome for the whole server, so it stays with the
+    // single-user workspace.
+    workspace = createChatWorkspace({ root });
+    teamWorkspaces.set(root, workspace);
+  }
+  return workspace;
 }
