@@ -1,6 +1,9 @@
-// A small client for toSend (https://tosend.com), the service that delivers this app's
-// email. It uses fetch only, so it runs in Convex's default runtime. The API is described
-// at https://tosend.com/docs/api/introduction/.
+// Sends this app's email through toSend (https://tosend.com) with its official SDK
+// (npm "tosend", https://github.com/tosend/tosend-node). The SDK uses fetch only, so it
+// runs in Convex's default runtime. This file turns its answers and errors into plain
+// outcomes that never throw. API docs: https://tosend.com/docs/api/introduction/.
+
+import { ToSend, ToSendError } from "tosend";
 
 export const TOSEND_API = "https://api.tosend.com";
 
@@ -24,7 +27,25 @@ export type KeyCheck =
   | { ok: true; domains: { name: string; verified: boolean }[] }
   | { ok: false; reason: "unauthorized" | "unreachable"; detail: string };
 
-type Options = { fetch?: typeof fetch; signal?: AbortSignal; baseUrl?: string };
+type Options = { timeoutMs?: number; baseUrl?: string };
+
+function clientFor(apiKey: string, options: Options): ToSend {
+  return new ToSend({
+    apiKey,
+    baseUrl: options.baseUrl ?? TOSEND_API,
+    timeout: options.timeoutMs ?? 30_000,
+  });
+}
+
+/** The HTTP status and message of a failed SDK call; status 0 when nothing answered. */
+function failureOf(error: unknown): { status: number; message: string } {
+  if (error instanceof ToSendError) {
+    const message = (error.message || "No answer").slice(0, 300);
+    // The SDK reports a timeout as 408; nothing usable came back.
+    return { status: error.code === 408 ? 0 : error.code, message };
+  }
+  return { status: 0, message: error instanceof Error ? error.message : "No answer" };
+}
 
 /** The part of an address after the @, in lower case. Empty when there is none. */
 export function domainOf(address: string): string {
@@ -69,16 +90,6 @@ export function failureText(reason: SendFailure, detail: string): string {
   }
 }
 
-async function readMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { message?: unknown };
-    if (typeof body.message === "string" && body.message) return body.message.slice(0, 300);
-  } catch {
-    // Not JSON; the status says enough.
-  }
-  return `HTTP ${response.status}`;
-}
-
 /** Sends one email. Never throws: the outcome says what happened. */
 export async function sendEmail(
   apiKey: string,
@@ -86,79 +97,42 @@ export async function sendEmail(
   message: EmailMessage,
   options: Options = {},
 ): Promise<SendResult> {
-  const doFetch = options.fetch ?? fetch;
-  let response: Response;
   try {
-    response = await doFetch(`${options.baseUrl ?? TOSEND_API}/v2/emails`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: from.name ? { email: from.email, name: from.name } : { email: from.email },
-        to: [{ email: message.to }],
-        subject: message.subject,
-        html: message.html,
-        text: message.text,
-      }),
-      signal: options.signal,
+    const answer = await clientFor(apiKey, options).send({
+      from: from.name ? { email: from.email, name: from.name } : { email: from.email },
+      to: [{ email: message.to }],
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
     });
-  } catch (error) {
     return {
-      ok: false,
-      status: 0,
-      reason: "unreachable",
-      detail: error instanceof Error ? error.message : "No answer",
+      ok: true,
+      messageId: typeof answer?.message_id === "string" ? answer.message_id : null,
     };
+  } catch (error) {
+    const { status, message: detail } = failureOf(error);
+    if (status === 0) return { ok: false, status: 0, reason: "unreachable", detail };
+    return { ok: false, status, reason: reasonFor(status, detail), detail };
   }
-  if (response.ok) {
-    let messageId: string | null = null;
-    try {
-      const body = (await response.json()) as { message_id?: unknown };
-      if (typeof body.message_id === "string") messageId = body.message_id;
-    } catch {
-      // Accepted without a readable body.
-    }
-    return { ok: true, messageId };
-  }
-  const detail = await readMessage(response);
-  return { ok: false, status: response.status, reason: reasonFor(response.status, detail), detail };
 }
 
 /** Checks an API key without sending anything, and lists the account's sending domains. */
 export async function checkKey(apiKey: string, options: Options = {}): Promise<KeyCheck> {
-  const doFetch = options.fetch ?? fetch;
-  let response: Response;
+  let info: Awaited<ReturnType<ToSend["getAccountInfo"]>>;
   try {
-    response = await doFetch(`${options.baseUrl ?? TOSEND_API}/v2/info`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: options.signal,
-    });
+    info = await clientFor(apiKey, options).getAccountInfo();
   } catch (error) {
-    return {
-      ok: false,
-      reason: "unreachable",
-      detail: error instanceof Error ? error.message : "No answer",
-    };
+    const { status, message } = failureOf(error);
+    const reason = status === 401 || status === 403 ? "unauthorized" : "unreachable";
+    return { ok: false, reason, detail: message };
   }
-  if (response.status === 401 || response.status === 403) {
-    return { ok: false, reason: "unauthorized", detail: await readMessage(response) };
-  }
-  if (!response.ok) {
-    return { ok: false, reason: "unreachable", detail: await readMessage(response) };
-  }
-  try {
-    const body = (await response.json()) as {
-      domains?: { domain_name?: unknown; verification_status?: unknown }[];
-    };
-    const domains = (Array.isArray(body.domains) ? body.domains : [])
-      .filter((domain) => typeof domain.domain_name === "string")
-      .map((domain) => ({
-        name: String(domain.domain_name).toLowerCase(),
-        verified: domain.verification_status === "verified",
-      }));
-    return { ok: true, domains };
-  } catch {
-    return { ok: false, reason: "unreachable", detail: "toSend sent an answer that was not JSON." };
-  }
+  const domains = (Array.isArray(info?.domains) ? info.domains : [])
+    .filter((domain) => typeof domain.domain_name === "string")
+    .map((domain) => ({
+      name: String(domain.domain_name).toLowerCase(),
+      verified: domain.verification_status === "verified",
+    }));
+  return { ok: true, domains };
 }
 
 /**

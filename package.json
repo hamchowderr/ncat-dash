@@ -46,6 +46,7 @@
     "convex": "^1.50.0",
     "date-fns": "^4.4.0",
     "embla-carousel-react": "^8.6.0",
+    "fflate": "0.8.3",
     "lucide-react": "^0.577.0",
     "motion": "^14.14.0",
     "nanoid": "^6.0.2",

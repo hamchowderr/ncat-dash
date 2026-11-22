@@ -8,7 +8,11 @@ import { registerApiRoute } from '@mastra/core/server';
 import { resourceIdOf } from './resource';
 import type { ChatServerDeps } from './types';
 
-export const createWorkspaceRoutes = (deps: ChatServerDeps) => [
+export const createWorkspaceRoutes = (deps: ChatServerDeps) => {
+  // biome-ignore lint/suspicious/noExplicitAny: the Hono context type is Mastra-internal
+  const rootOf = (c: any): string | null =>
+    deps.workspace.rootFor ? deps.workspace.rootFor(resourceIdOf(c)) : deps.workspace.root;
+  return [
   // Serves a generated image's bytes by id (the generateImage tool stashes them
   // so they never enter the model context). Returns { base64, mediaType }.
   registerApiRoute('/images/:id', {
@@ -25,10 +29,15 @@ export const createWorkspaceRoutes = (deps: ChatServerDeps) => [
   // Workbench Files panel: read the controller agent's workspace (WORKSPACE_ROOT)
   // directly off disk. GET /workspace/files → the file tree; GET /workspace/file
   // ?path=<rel> → one file's text (confined to WORKSPACE_ROOT by the reader).
+  // Each request reads the requesting team's own folder (deps.workspace.rootFor); a
+  // resource with no workspace gets an empty tree and no files.
   registerApiRoute('/workspace/files', {
     method: 'GET',
-    handler: async (c) =>
-      c.json({ root: deps.workspace.root, tree: await deps.workspace.readTree() }),
+    handler: async (c) => {
+      const root = rootOf(c);
+      if (root === null) return c.json({ root: '', tree: [] });
+      return c.json({ root, tree: await deps.workspace.readTree(root) });
+    },
   }),
   registerApiRoute('/workspace/file', {
     method: 'GET',
@@ -37,7 +46,9 @@ export const createWorkspaceRoutes = (deps: ChatServerDeps) => [
       if (!p) {
         return c.json({ error: 'path query is required' }, 400);
       }
-      const file = await deps.workspace.readFile(p);
+      const root = rootOf(c);
+      if (root === null) return c.json({ error: 'not found' }, 404);
+      const file = await deps.workspace.readFile(p, root);
       if (!file) {
         return c.json({ error: 'not found' }, 404);
       }
@@ -133,3 +144,4 @@ export const createWorkspaceRoutes = (deps: ChatServerDeps) => [
     },
   }),
 ];
+};

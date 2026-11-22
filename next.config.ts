@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { SECURITY_HEADERS } from "./src/lib/security-headers";
 
 const nextConfig: NextConfig = {
   // The Docker image (Dockerfile) builds a self-contained server that needs no pnpm
@@ -12,6 +13,9 @@ const nextConfig: NextConfig = {
     "@ncat-dash/review-core",
   ],
   partialPrefetching: true,
+  async headers() {
+    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+  },
   turbopack: {
     rules: {
       "*.css": {

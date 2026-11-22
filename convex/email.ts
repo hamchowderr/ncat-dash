@@ -150,7 +150,7 @@ export const connect = action({
     if (!apiKey) return { ok: false as const, detail: "Enter your toSend API key." };
 
     const check = await checkKey(apiKey, {
-      signal: AbortSignal.timeout(15_000),
+      timeoutMs: 15_000,
       baseUrl: apiBase(),
     });
     if (!check.ok) {
@@ -577,7 +577,7 @@ async function deliver(
     sending.apiKey,
     { email: sending.fromEmail, name: sending.fromName },
     message,
-    { signal: AbortSignal.timeout(20_000), baseUrl: apiBase() },
+    { timeoutMs: 20_000, baseUrl: apiBase() },
   );
   if (!result.ok) console.error(`Email "${message.subject}" was not sent: ${result.detail}`);
   // A busy moment or one refused address says nothing about the setup.
