@@ -9,7 +9,14 @@ import { TeamContext } from "@/lib/team-context";
 import { answerQuery } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
-import { SETTINGS_GROUPS, SETTINGS_PAGES, settingsPageFor } from "./settings-pages";
+import {
+  INTEGRATION_GROUPS,
+  INTEGRATIONS,
+  SETTINGS_GROUPS,
+  SETTINGS_PAGES,
+  settingsLocation,
+  settingsPathFor,
+} from "./settings-pages";
 import { SettingRow, SettingsShell } from "./settings-shell";
 
 const path = vi.hoisted(() => ({ current: "/settings/agent" }));
@@ -61,7 +68,7 @@ describe("a settings page", () => {
       ["microsoft", "Microsoft 365"],
       ["dropbox", "Dropbox"],
     ]) {
-      path.current = `/settings/${slug}`;
+      path.current = `/settings/integrations/${slug}`;
       const { unmount } = renderInApp(
         <SettingsShell>
           <p>Page</p>
@@ -69,6 +76,11 @@ describe("a settings page", () => {
       );
       const header = screen.getByRole("heading", { level: 1 }).closest("header")!;
       expect(within(header).getByRole("img", { name: `${name} logo` })).toBeInTheDocument();
+      // An app's page says it sits under Integrations, and leads back there.
+      expect(screen.getByRole("link", { name: "Integrations" })).toHaveAttribute(
+        "href",
+        "/settings/integrations",
+      );
       unmount();
     }
     path.current = "/settings/agent";
@@ -78,6 +90,7 @@ describe("a settings page", () => {
       </SettingsShell>,
     );
     expect(screen.queryByRole("img", { name: /logo$/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Integrations" })).toBeNull();
     unmount();
 
     // Video Editors shows every editor the team can export to.
@@ -112,18 +125,51 @@ describe("the settings pages", () => {
     for (const page of SETTINGS_PAGES) expect(page.description.length).toBeLessThanOrEqual(90);
   });
 
+  test("the menu stays short: every app is under Integrations, never in the menu", () => {
+    expect(SETTINGS_PAGES.length).toBeLessThanOrEqual(12);
+    const apps = INTEGRATION_GROUPS.flatMap((group) => group.apps.map((app) => app.slug));
+    expect(new Set(apps).size).toBe(apps.length);
+    for (const app of INTEGRATIONS) {
+      expect(SETTINGS_PAGES.map((page) => page.slug as string)).not.toContain(app.slug);
+      expect(app.description.length).toBeLessThanOrEqual(90);
+    }
+    expect(INTEGRATION_GROUPS.map((group) => group.label)).toEqual([
+      "Chat",
+      "Meeting Recordings",
+      "Files",
+      "AI Apps",
+      "Sending Email",
+    ]);
+  });
+
+  test("an app's page lights Integrations in the menu", () => {
+    expect(settingsLocation("/settings/integrations/zoom")).toMatchObject({
+      menu: "integrations",
+      app: "zoom",
+      page: { title: "Zoom" },
+    });
+    expect(settingsLocation("/settings/integrations")).toMatchObject({
+      menu: "integrations",
+      app: null,
+    });
+    expect(settingsLocation("/settings/captions")).toMatchObject({ menu: "captions", app: null });
+    expect(settingsLocation("/settings/integrations/nonsense")).toBeNull();
+    expect(settingsLocation("/settings/nonsense")).toBeNull();
+  });
+
   test("old addresses and old section links open the page they moved to", () => {
-    expect(settingsPageFor("#notifications")).toBe("notifications");
-    expect(settingsPageFor("#agent")).toBe("agent");
-    expect(settingsPageFor("#jobs")).toBe("runs");
-    expect(settingsPageFor("#failures")).toBe("runs");
-    expect(settingsPageFor("#slack")).toBe("slack");
-    expect(settingsPageFor("#discord")).toBe("discord");
-    expect(settingsPageFor("#telegram")).toBe("telegram");
-    expect(settingsPageFor("chat")).toBe("slack");
-    expect(settingsPageFor("members")).toBe("team");
-    expect(settingsPageFor("")).toBe("brand");
-    expect(settingsPageFor("#nonsense")).toBe("brand");
+    expect(settingsPathFor("#notifications")).toBe("/settings/notifications");
+    expect(settingsPathFor("#agent")).toBe("/settings/agent");
+    expect(settingsPathFor("#jobs")).toBe("/settings/runs");
+    expect(settingsPathFor("#failures")).toBe("/settings/runs");
+    expect(settingsPathFor("#slack")).toBe("/settings/integrations/slack");
+    expect(settingsPathFor("discord")).toBe("/settings/integrations/discord");
+    expect(settingsPathFor("google-meet")).toBe("/settings/integrations/google-meet");
+    expect(settingsPathFor("chat")).toBe("/settings/integrations/slack");
+    expect(settingsPathFor("ai-agents")).toBe("/settings/integrations/mcp");
+    expect(settingsPathFor("members")).toBe("/settings/team");
+    expect(settingsPathFor("")).toBe("/settings/brand");
+    expect(settingsPathFor("#nonsense")).toBe("/settings/brand");
   });
 });
 
@@ -174,6 +220,8 @@ describe("settings in the sidebar", () => {
     expect(links.map((link) => link.textContent)).toEqual(SETTINGS_PAGES.map((page) => page.title));
     expect(within(menu).getByRole("link", { current: "page" })).toHaveTextContent("Agent");
     for (const group of SETTINGS_GROUPS) expect(within(menu).getByText(group.label)).toBeVisible();
+    // No app is listed in the menu itself.
+    expect(within(menu).queryByRole("link", { name: "Slack" })).toBeNull();
 
     // The everyday pages are out of the way, and Back to app returns where you were.
     expect(screen.queryByRole("link", { name: "Uploads" })).toBeNull();
@@ -181,6 +229,13 @@ describe("settings in the sidebar", () => {
       "href",
       "/automations",
     );
+  });
+
+  test("on an app's page, Integrations stays lit", () => {
+    path.current = "/settings/integrations/dropbox";
+    sidebar();
+    const menu = screen.getByRole("navigation", { name: "Settings" });
+    expect(within(menu).getByRole("link", { current: "page" })).toHaveTextContent("Integrations");
   });
 
   test("Back to app goes Home when there is nowhere remembered", () => {

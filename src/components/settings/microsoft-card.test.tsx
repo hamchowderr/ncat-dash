@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { actionOf, answerQuery, mutationOf, toastError, toastSuccess } from "@/test/convex";
-import { renderInApp, TEAM } from "@/test/render";
+import { openTab, renderInApp, TEAM } from "@/test/render";
 
 import { MicrosoftCard } from "./microsoft-card";
 
@@ -82,9 +82,12 @@ describe("the Microsoft 365 card", () => {
     renderInApp(<MicrosoftCard />);
     expect(screen.getByText("Jordan Lee")).toBeInTheDocument();
     expect(screen.getByText(/Maya Ortiz \(Maya O\)/)).toBeInTheDocument();
+    // What came in sits with the past recordings, a tab away from the connection.
+    await openTab("Past Recordings");
     expect(screen.getByRole("link", { name: "In Uploads" })).toHaveAttribute("href", "/uploads");
     expect(screen.getByText("Did not come in")).toBeInTheDocument();
     expect(screen.getByText(/Connect your toolkit first/)).toBeInTheDocument();
+    await openTab("Connection");
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("switch", { name: /Bring in new recordings/ }));
@@ -123,6 +126,7 @@ describe("the Microsoft 365 card", () => {
     bring.mockResolvedValue("started");
     renderInApp(<MicrosoftCard />);
     const user = userEvent.setup();
+    await openTab("Past Recordings");
     await user.click(screen.getByRole("button", { name: "Show the last 30 days" }));
     expect(await screen.findByText("Podcast Taping")).toBeInTheDocument();
     expect(screen.getByText(/58 min · 1\.9 GB/)).toBeInTheDocument();
@@ -224,6 +228,7 @@ describe("the Microsoft 365 card", () => {
     bring.mockResolvedValue("started");
     renderInApp(<MicrosoftCard />);
     const user = userEvent.setup();
+    await openTab("Past Recordings");
     await user.click(screen.getByRole("button", { name: "Show the last 30 days" }));
     expect(await screen.findByText(/Shared with you/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Bring in" }));

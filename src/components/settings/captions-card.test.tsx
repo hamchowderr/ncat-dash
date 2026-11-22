@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { NodePanel, type TeamCaptions } from "@/components/automations/node-panel";
 import { mutationOf, resetConvex } from "@/test/convex";
-import { renderInApp, TEAM } from "@/test/render";
+import { openTab, renderInApp, TEAM } from "@/test/render";
 
 import { CaptionPreview } from "./caption-preview";
 import { CaptionsCard } from "./captions-card";
@@ -37,14 +37,46 @@ function card(captions: CaptionSetup = NO_CAPTION_SETUP, canEdit = true) {
 }
 
 describe("Captions in Settings", () => {
-  beforeEach(() => resetConvex());
+  beforeEach(() => {
+    resetConvex();
+    window.history.replaceState(null, "", "/");
+  });
 
-  test("starts with no word fixes, the built-in styles, and a style for each shape", () => {
+  test("opens on Styles, with Style For Each Shape and Word Fixes a tab away", async () => {
     card();
-    expect(screen.getByText("No word fixes yet.")).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "Captions" })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Styles",
+      "Style For Each Shape",
+      "Word Fixes",
+    ]);
+    expect(screen.getByRole("tab", { name: "Styles" })).toHaveAttribute("aria-selected", "true");
+    // Only the open tab's settings are on screen; Save stays below whichever is open.
+    expect(screen.queryByText("No word fixes yet.")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Vertical videos" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    // The open tab goes in the address, so a reload or a link lands on it.
+    await openTab("Word Fixes");
+    expect(window.location.search).toBe("?tab=words");
+    await openTab("Styles");
+    expect(window.location.search).toBe("");
+  });
+
+  test("a link to a tab opens that tab", async () => {
+    window.history.replaceState(null, "", "/settings/captions?tab=shapes");
+    card();
+    expect(await screen.findByRole("combobox", { name: "Vertical videos" })).toBeInTheDocument();
+    window.history.replaceState(null, "", "/");
+  });
+
+  test("starts with no word fixes, the built-in styles, and a style for each shape", async () => {
+    card();
     for (const style of BUILT_IN_STYLES) {
       expect(screen.getByRole("button", { name: `${style.name}, built in` })).toBeInTheDocument();
     }
+    await openTab("Word Fixes");
+    expect(screen.getByText("No word fixes yet.")).toBeInTheDocument();
+    await openTab("Style For Each Shape");
     expect(screen.getByRole("combobox", { name: "Vertical videos" })).toHaveTextContent(
       "Bold highlight",
     );
@@ -52,9 +84,10 @@ describe("Captions in Settings", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
-  test("adds word fixes and saves them", () => {
+  test("adds word fixes and saves them", async () => {
     const save = mutationOf(api.teamSettings.setCaptions);
     card();
+    await openTab("Word Fixes");
     fireEvent.click(screen.getByRole("button", { name: "Add a word" }));
     fireEvent.change(screen.getByLabelText("Word 1 heard as"), { target: { value: "otaku" } });
     fireEvent.change(screen.getByLabelText("Word 1 written as"), {
@@ -96,18 +129,29 @@ describe("Captions in Settings", () => {
     ]);
   });
 
-  test("renaming a style keeps it on the shapes it was picked for; removing it lets go", () => {
+  test("renaming a style keeps it on the shapes it was picked for", async () => {
     const save = mutationOf(api.teamSettings.setCaptions);
     card(OURS);
     const editor = screen.getByRole("group", { name: "Change Night Shift" });
     const name = within(editor).getByLabelText("Name");
     fireEvent.change(name, { target: { value: "Nights" } });
     fireEvent.blur(name);
+    // A change made on one tab is kept while another is open.
+    await openTab("Style For Each Shape");
     expect(screen.getByRole("combobox", { name: "Vertical videos" })).toHaveTextContent("Nights");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(save.mock.calls[0][0].captions.byShape).toEqual({ vertical: "Nights" });
+  });
 
+  test("removing a style lets go of the shapes it was picked for", async () => {
+    card(OURS);
+    await openTab("Style For Each Shape");
+    expect(screen.getByRole("combobox", { name: "Vertical videos" })).toHaveTextContent(
+      "Night Shift",
+    );
+    await openTab("Styles");
     fireEvent.click(screen.getByRole("button", { name: "Remove style" }));
+    await openTab("Style For Each Shape");
     expect(screen.getByRole("combobox", { name: "Vertical videos" })).toHaveTextContent(
       "Bold highlight",
     );
@@ -131,8 +175,9 @@ describe("Captions in Settings", () => {
     expect(screen.getByText("Another style has this name.")).toBeInTheDocument();
   });
 
-  test("someone who cannot change them sees them and is told why", () => {
+  test("someone who cannot change them sees them and is told why", async () => {
     card(OURS, false);
+    await openTab("Word Fixes");
     expect(screen.getByLabelText("Word 1 heard as")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Add a word" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();

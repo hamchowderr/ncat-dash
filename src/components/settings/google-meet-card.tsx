@@ -10,12 +10,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
 import { MeetPastRecordings, when } from "./google-meet-past";
-import { SettingsSection } from "./settings-shell";
+import { SettingsSection, SettingsTabs } from "./settings-shell";
 
 /** What Settings says when Google sends someone back, by the result in the address. */
 export const MEET_RESULTS: Record<string, { ok: boolean; text: string }> = {
@@ -115,139 +116,155 @@ export function GoogleMeetCard() {
   );
 
   return (
-    <SettingsSection data-meet-card className="gap-8">
-      <section className="flex flex-col gap-3" aria-label="Your Google account">
-        {meet.me ? (
-          <>
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span>
-                Connected as <span className="font-medium">{meet.me.googleName}</span>
-                {meet.me.googleEmail && (
-                  <span className="text-muted-foreground"> · {meet.me.googleEmail}</span>
-                )}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy !== null}
-                onClick={() =>
-                  run(
-                    "disconnect",
-                    () => disconnect({ organizationId: team.id }),
-                    "Your Google Meet is disconnected",
-                  )
-                }
-              >
-                Disconnect
-              </Button>
-            </div>
-            {meet.me.signInLost && (
+    <SettingsSection data-meet-card>
+      <SettingsTabs
+        label="Google Meet"
+        tabs={[
+          { id: "connection", label: "Connection" },
+          ...(meet.me !== null || meet.imports.length > 0
+            ? [{ id: "recordings", label: "Past Recordings" }]
+            : []),
+        ]}
+      >
+        <TabsContent value="connection" className="flex flex-col gap-8">
+          <section className="flex flex-col gap-3" aria-label="Your Google account">
+            {meet.me ? (
               <>
-                <p className="text-destructive text-sm">
-                  Google stopped accepting this sign-in, so new recordings are not coming in.
-                  Connect again to pick up where it left off.
-                </p>
-                {connectButton("Connect Google Meet again")}
-              </>
-            )}
-            <div className="flex items-start gap-3">
-              <Switch
-                id="meet-auto"
-                checked={meet.me.autoImport}
-                disabled={busy !== null}
-                onCheckedChange={(checked) =>
-                  run("auto", () => setAutoImport({ organizationId: team.id, autoImport: checked }))
-                }
-              />
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="meet-auto">Bring in new recordings by themselves</Label>
-                <p className="text-muted-foreground text-sm">
-                  When Meet finishes saving a recording of a meeting you organize, its video goes to
-                  Uploads within a few minutes and starts any automation set to run on an upload.
-                </p>
-              </div>
-            </div>
-            {meet.me.autoImport && (
-              <div className="flex items-start gap-3">
-                <Switch
-                  id="meet-shared"
-                  checked={meet.me.includeShared}
-                  disabled={busy !== null}
-                  onCheckedChange={(checked) =>
-                    run("shared", () =>
-                      setIncludeShared({ organizationId: team.id, includeShared: checked }),
-                    )
-                  }
-                />
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="meet-shared">Also bring in recordings shared with you</Label>
-                  <p className="text-muted-foreground text-sm">
-                    Recordings of meetings someone else organized come in too, once they share them
-                    with your Google account.
-                  </p>
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <p className="text-muted-foreground text-sm">
-              Connect the Google account you organize meetings with. The recordings Meet saves to
-              its Drive then come into Uploads by themselves, ready to clip and caption.
-            </p>
-            {connectButton("Connect Google Meet")}
-          </>
-        )}
-        {meet.others.length > 0 && (
-          <p className="text-muted-foreground text-sm">
-            Also connected on this team:{" "}
-            {meet.others
-              .map((one) =>
-                one.memberName ? `${one.memberName} (${one.googleName})` : one.googleName,
-              )
-              .join(", ")}
-            .
-          </p>
-        )}
-      </section>
-
-      {meet.me && <MeetPastRecordings organizationId={team.id} />}
-
-      {meet.imports.length > 0 && (
-        <section className="flex flex-col gap-3" aria-label="Brought in from Google Meet">
-          <p className="text-sm font-medium">Brought in from Google Meet</p>
-          <ul className="flex flex-col gap-2 text-sm">
-            {meet.imports.map((one: MeetImportRow) => (
-              <li key={one._id} className="flex flex-col gap-0.5">
-                <span className="flex items-center justify-between gap-3">
-                  <span className="min-w-0">
-                    <span className="font-medium">{one.topic}</span>
-                    <span className="text-muted-foreground"> · {when(one.startTime)}</span>
-                  </span>
-                  <span
-                    className={
-                      one.status === "failed"
-                        ? "text-destructive shrink-0"
-                        : "text-muted-foreground shrink-0"
-                    }
-                  >
-                    {one.status === "done" ? (
-                      <Link href="/uploads" className="underline-offset-4 hover:underline">
-                        {STATUS_TEXT.done}
-                      </Link>
-                    ) : (
-                      STATUS_TEXT[one.status]
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span>
+                    Connected as <span className="font-medium">{meet.me.googleName}</span>
+                    {meet.me.googleEmail && (
+                      <span className="text-muted-foreground"> · {meet.me.googleEmail}</span>
                     )}
                   </span>
-                </span>
-                {one.status === "failed" && one.error && (
-                  <span className="text-muted-foreground">{one.error}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy !== null}
+                    onClick={() =>
+                      run(
+                        "disconnect",
+                        () => disconnect({ organizationId: team.id }),
+                        "Your Google Meet is disconnected",
+                      )
+                    }
+                  >
+                    Disconnect
+                  </Button>
+                </div>
+                {meet.me.signInLost && (
+                  <>
+                    <p className="text-destructive text-sm">
+                      Google stopped accepting this sign-in, so new recordings are not coming in.
+                      Connect again to pick up where it left off.
+                    </p>
+                    {connectButton("Connect Google Meet again")}
+                  </>
                 )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+                <div className="flex items-start gap-3">
+                  <Switch
+                    id="meet-auto"
+                    checked={meet.me.autoImport}
+                    disabled={busy !== null}
+                    onCheckedChange={(checked) =>
+                      run("auto", () =>
+                        setAutoImport({ organizationId: team.id, autoImport: checked }),
+                      )
+                    }
+                  />
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="meet-auto">Bring in new recordings by themselves</Label>
+                    <p className="text-muted-foreground text-sm">
+                      When Meet finishes saving a recording of a meeting you organize, its video
+                      goes to Uploads within a few minutes and starts any automation set to run on
+                      an upload.
+                    </p>
+                  </div>
+                </div>
+                {meet.me.autoImport && (
+                  <div className="flex items-start gap-3">
+                    <Switch
+                      id="meet-shared"
+                      checked={meet.me.includeShared}
+                      disabled={busy !== null}
+                      onCheckedChange={(checked) =>
+                        run("shared", () =>
+                          setIncludeShared({ organizationId: team.id, includeShared: checked }),
+                        )
+                      }
+                    />
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="meet-shared">Also bring in recordings shared with you</Label>
+                      <p className="text-muted-foreground text-sm">
+                        Recordings of meetings someone else organized come in too, once they share
+                        them with your Google account.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-muted-foreground text-sm">
+                  Connect the Google account you organize meetings with. The recordings Meet saves
+                  to its Drive then come into Uploads by themselves, ready to clip and caption.
+                </p>
+                {connectButton("Connect Google Meet")}
+              </>
+            )}
+            {meet.others.length > 0 && (
+              <p className="text-muted-foreground text-sm">
+                Also connected on this team:{" "}
+                {meet.others
+                  .map((one) =>
+                    one.memberName ? `${one.memberName} (${one.googleName})` : one.googleName,
+                  )
+                  .join(", ")}
+                .
+              </p>
+            )}
+          </section>
+        </TabsContent>
+        <TabsContent value="recordings" className="flex flex-col gap-8">
+          {meet.me && <MeetPastRecordings organizationId={team.id} />}
+
+          {meet.imports.length > 0 && (
+            <section className="flex flex-col gap-3" aria-label="Brought in from Google Meet">
+              <p className="text-sm font-medium">Brought in from Google Meet</p>
+              <ul className="flex flex-col gap-2 text-sm">
+                {meet.imports.map((one: MeetImportRow) => (
+                  <li key={one._id} className="flex flex-col gap-0.5">
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="min-w-0">
+                        <span className="font-medium">{one.topic}</span>
+                        <span className="text-muted-foreground"> · {when(one.startTime)}</span>
+                      </span>
+                      <span
+                        className={
+                          one.status === "failed"
+                            ? "text-destructive shrink-0"
+                            : "text-muted-foreground shrink-0"
+                        }
+                      >
+                        {one.status === "done" ? (
+                          <Link href="/uploads" className="underline-offset-4 hover:underline">
+                            {STATUS_TEXT.done}
+                          </Link>
+                        ) : (
+                          STATUS_TEXT[one.status]
+                        )}
+                      </span>
+                    </span>
+                    {one.status === "failed" && one.error && (
+                      <span className="text-muted-foreground">{one.error}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </TabsContent>
+      </SettingsTabs>
     </SettingsSection>
   );
 }

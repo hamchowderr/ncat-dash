@@ -32,25 +32,34 @@ test("the team picks a motion style, changes it, and it is kept", async ({ page 
   await slow(1200);
   await card.getByRole("radio", { name: /Bold Hook/ }).click();
   await slow(800);
+  // Pieces and Names are tabs of their own; the picked style waits on its tab.
+  await card.getByRole("tab", { name: "Pieces" }).click();
   await card.getByRole("checkbox", { name: /Stat card/ }).click();
+  await card.getByRole("tab", { name: "Style" }).click();
   await expect(card.getByText("Bold Hook, changed")).toBeVisible();
   await slow(800);
+  await card.getByRole("tab", { name: "Names" }).click();
   await card.getByRole("textbox", { name: "Usual speaker" }).fill("Ana Moreno");
   await card.getByRole("textbox", { name: "Handle", exact: true }).fill("morenostudio");
   await slow(800);
   await card.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Motion settings saved.")).toBeVisible();
 
+  // The reload opens Names again, the tab that was open.
   await page.reload();
+  await expect(card.getByRole("textbox", { name: "Handle", exact: true })).toBeVisible();
+  await card.getByRole("tab", { name: "Style" }).click();
   await expect(card.getByRole("radio", { name: /Bold Hook/ })).toHaveAttribute(
     "aria-checked",
     "true",
   );
+  await card.getByRole("tab", { name: "Pieces" }).click();
   await expect(card.getByRole("checkbox", { name: /Stat card/ })).toHaveAttribute(
     "aria-checked",
     "false",
   );
   // The handle is saved with its @.
+  await card.getByRole("tab", { name: "Names" }).click();
   await expect(card.getByRole("textbox", { name: "Handle", exact: true })).toHaveValue(
     "@morenostudio",
   );

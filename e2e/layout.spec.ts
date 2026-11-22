@@ -188,11 +188,11 @@ test("settings open from the team menu and swap the sidebar for their own menu, 
   await page.goto("/settings#notifications");
   await expect(page).toHaveURL(/\/settings\/notifications$/);
   await page.goto("/settings/chat");
-  await expect(page).toHaveURL(/\/settings\/slack$/);
+  await expect(page).toHaveURL(/\/settings\/integrations\/slack$/);
   // A Discord sign-in that returns to the old address lands on the Discord page, which reads
   // how it went and then tidies the address.
   await page.goto("/settings/chat?discord=taken");
-  await expect(page).toHaveURL(/\/settings\/discord(\?discord=taken)?$/);
+  await expect(page).toHaveURL(/\/settings\/integrations\/discord(\?discord=taken)?$/);
   await expect(page.getByRole("heading", { level: 1, name: "Discord" })).toBeVisible();
 
   // Settings are not an everyday page: the main menu leaves them out, and the team's menu

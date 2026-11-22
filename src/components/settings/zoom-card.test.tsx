@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { actionOf, answerQuery, mutationOf, toastError, toastSuccess } from "@/test/convex";
-import { renderInApp, TEAM } from "@/test/render";
+import { openTab, renderInApp, TEAM } from "@/test/render";
 
 import { ZoomCard } from "./zoom-card";
 
@@ -59,6 +59,12 @@ describe("the Zoom card", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
+  test("before anything is connected there is nothing past to show, so no tabs", () => {
+    answerQuery(api.zoom.forTeam, empty);
+    renderInApp(<ZoomCard />);
+    expect(screen.queryByRole("tablist")).toBeNull();
+  });
+
   test("connecting opens Zoom", async () => {
     answerQuery(api.zoom.forTeam, empty);
     const start = mutationOf(api.zoom.startLink);
@@ -86,10 +92,14 @@ describe("the Zoom card", () => {
     renderInApp(<ZoomCard />);
     expect(screen.getByText("Jordan Lee")).toBeInTheDocument();
     expect(screen.getByText(/Maya Ortiz \(Maya O\)/)).toBeInTheDocument();
+    // What came in sits with the past recordings, a tab away from the connection.
+    expect(screen.queryByRole("link", { name: "In Uploads" })).toBeNull();
+    await openTab("Past Recordings");
     expect(screen.getByRole("link", { name: "In Uploads" })).toHaveAttribute("href", "/uploads");
     expect(screen.getByText("Did not come in")).toBeInTheDocument();
     expect(screen.getByText(/Connect your toolkit first/)).toBeInTheDocument();
 
+    await openTab("Connection");
     const user = userEvent.setup();
     await user.click(screen.getByRole("switch", { name: /Bring in new recordings/ }));
     expect(setAuto).toHaveBeenCalledWith({ organizationId: TEAM.id, autoImport: false });
@@ -123,6 +133,7 @@ describe("the Zoom card", () => {
     bring.mockResolvedValue("started");
     renderInApp(<ZoomCard />);
     const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Past Recordings" }));
     await user.click(screen.getByRole("button", { name: "Show the last 30 days" }));
     expect(await screen.findByText("Podcast Taping")).toBeInTheDocument();
     expect(screen.getByText(/58 min · 1\.9 GB/)).toBeInTheDocument();
@@ -200,7 +211,9 @@ describe("the Zoom card", () => {
       const region = screen.getByRole("region", { name: "Whole Zoom account" });
       expect(region).toHaveTextContent(/Every host's recordings come in, connected by Jordan Lee/);
       // Past recordings can be listed from the whole account without a Zoom of one's own.
+      await openTab("Past Recordings");
       expect(screen.getByRole("button", { name: "Show the last 30 days" })).toBeInTheDocument();
+      await openTab("Connection");
       const user = userEvent.setup();
       await user.click(screen.getByRole("button", { name: "Disconnect" }));
       expect(disconnect).toHaveBeenCalledWith({ organizationId: TEAM.id, wholeAccount: true });

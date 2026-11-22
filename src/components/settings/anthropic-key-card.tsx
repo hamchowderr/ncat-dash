@@ -73,7 +73,6 @@ export function AnthropicKeyCard({
   return (
     <SettingsSection
       id="anthropic-key"
-      title="Your own Anthropic key"
       description={
         <>
           The agent and the Best moments and Chapters steps run on your team&apos;s Anthropic

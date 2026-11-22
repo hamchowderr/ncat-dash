@@ -41,11 +41,11 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
     method: "POST",
     body: JSON.stringify({ sub: `google-user-${stamp}` }),
   });
-  await page.goto("/settings/google-meet");
+  await page.goto("/settings/integrations/google-meet");
   await expect(page.getByRole("heading", { level: 1, name: "Google Meet" })).toBeVisible();
   await expect(page.getByRole("img", { name: "Google Meet logo" })).toBeVisible();
   await page.getByRole("button", { name: "Connect Google Meet" }).click();
-  await expect(page).toHaveURL(/\/settings\/google-meet$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/settings\/integrations\/google-meet$/, { timeout: 30_000 });
   await expect(page.getByText("Your Google Meet is connected")).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Your Google account" }).getByText(GOOGLE_USER.name),
@@ -59,7 +59,9 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
 
   // A past recording, brought in by hand.
   // Every past recording found at once: the recent one, and one from over a year ago that
-  // only Drive still has. Both are picked; one press brings them over.
+  // only Drive still has. Both are picked; one press brings them over. Past recordings are
+  // a tab beside the connection.
+  await page.getByRole("tab", { name: "Past Recordings" }).click();
   await page.getByRole("button", { name: "Find recordings" }).click();
   const past = page.getByRole("region", { name: "Past recordings" });
   await expect(
