@@ -58,6 +58,30 @@ export function beatGrid(found: Beats, every: CutEvery, from = 0): number[] {
   }
 }
 
+/** The order clips take turns in: as listed, or mixed up so neighbours in the list never follow each other. */
+export const CLIP_ORDER = ["as they come", "mixed up"] as const;
+export type ClipOrder = (typeof CLIP_ORDER)[number];
+
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+
+/**
+ * The clips' positions in a mixed-up order that is the same every time: stepping through the
+ * list by about 0.62 of its length (the golden ratio), so two clips that follow each other are
+ * always far apart in the list. Shots split from one long shot sit next to each other in the
+ * list, and played as they come they look like one shot running on with no cut.
+ */
+export function mixedOrder(count: number): number[] {
+  // Too few to keep every pair apart; six has no stride that does, so it is set out by hand.
+  if (count <= 4) return [0, 2, 1, 3].filter((index) => index < count);
+  if (count === 6) return [0, 2, 4, 1, 5, 3];
+  const aim = count / 1.618034;
+  // The nearest stride to the aim that visits every clip and never steps to a neighbour.
+  const stride = Array.from({ length: count }, (_, index) => index)
+    .filter((step) => step >= 2 && step <= count - 2 && gcd(step, count) === 1)
+    .sort((a, b) => Math.abs(a - aim) - Math.abs(b - aim) || a - b)[0];
+  return Array.from({ length: count }, (_, index) => (index * stride) % count);
+}
+
 export interface BeatCuts {
   /** Where in the song the video starts, in seconds: the first cut. */
   start: number;
@@ -238,7 +262,7 @@ export const beatRecipes: StepDefinition[] = [
     id: BEAT_CUT_STEP,
     title: "Cut To The Beat",
     description:
-      "Cuts your clips and pictures together so the picture changes on the beat of the music: every beat, every two beats, every bar or every two bars. The beat is found in the music itself with plain sound analysis, no AI. Clips take turns, each carrying on from where it last left off and looping if it runs out; pictures hold still. The music plays under it and fades out on the last cut. With no music picked it uses your team's first music track from Settings.",
+      "Cuts your clips and pictures together so the picture changes on the beat of the music: every beat, every two beats, every bar or every two bars. The beat is found in the music itself with plain sound analysis, no AI. Clips take turns, each carrying on from where it last left off and looping if it runs out; pictures hold still. Clips take turns in the order listed, or mixed up so neighbours in the list are kept apart. The music plays under it and fades out on the last cut. With no music picked it uses your team's first music track from Settings.",
     primaryInput: null,
     listInput: { field: "video_urls", itemKey: "video_url" },
     brandInputs: { music_url: "music" },
@@ -269,6 +293,12 @@ export const beatRecipes: StepDefinition[] = [
         900,
       ).default(0),
       shape: choice(SHAPE_NAMES, "The shape of the video").default("vertical"),
+      order: choice(
+        CLIP_ORDER,
+        "The order the clips take turns in. Mixed up keeps clips that sit next to each other in the list apart, so shots split from one long shot never play back to back",
+      )
+        .default("as they come")
+        .meta({ title: "Order" }),
     },
     toRequest: (b, facts) => {
       const music = facts.music_url;
@@ -290,7 +320,9 @@ export const beatRecipes: StepDefinition[] = [
         length: b.length,
       });
       const [w, h] = SHAPES[b.shape];
-      const clips = b.video_urls.map((item) => item.video_url);
+      const listed = b.video_urls.map((item) => item.video_url);
+      const clips =
+        b.order === "mixed up" ? mixedOrder(listed.length).map((index) => listed[index]) : listed;
       const uses = clips.map(() => 0);
       cuts.pieces.forEach((_, index) => (uses[index % clips.length] += 1));
 
