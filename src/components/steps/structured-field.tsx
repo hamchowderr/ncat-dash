@@ -10,7 +10,7 @@ import {
   type SettingSchema,
 } from "@ncat-dash/automation-core";
 import { ArrowUp, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { createContext, type ReactNode, useContext, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,18 @@ import { fieldLabel } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 const UNSET = "__unset__";
+
+/**
+ * Draws a button that fills an address from one of the team's uploads. `label` names what
+ * it fills, for screen readers. Not given where addresses can hold {{placeholders}}.
+ */
+export type PickFile = (args: {
+  onPick: (url: string) => void;
+  label: string;
+  text?: string;
+}) => ReactNode;
+
+const PickFileContext = createContext<PickFile | null>(null);
 
 /** What one row of a list is called, for its Add button. */
 const ROW_WORDS: Record<string, string> = {
@@ -98,12 +110,15 @@ export function StructuredField({
   value,
   onChange,
   id,
+  pickFile,
 }: {
   schema: SettingSchema;
   name: string;
   value: string;
   onChange: (value: string) => void;
   id: string;
+  /** Lets address settings, also inside list rows, be filled from an upload. */
+  pickFile?: PickFile;
 }) {
   const [draft, setDraft] = useState(() => read(schema, value));
   const [saved, setSaved] = useState(value);
@@ -115,18 +130,20 @@ export function StructuredField({
   const missing = missingInRows(schema, draft);
   return (
     <div role="group" aria-label={fieldLabel(name)} className="flex flex-col gap-2">
-      <Editor
-        schema={schema}
-        name={name}
-        value={draft}
-        id={id}
-        onChange={(next) => {
-          setDraft(next);
-          const text = write(schema, next);
-          setSaved(text);
-          onChange(text);
-        }}
-      />
+      <PickFileContext.Provider value={pickFile ?? null}>
+        <Editor
+          schema={schema}
+          name={name}
+          value={draft}
+          id={id}
+          onChange={(next) => {
+            setDraft(next);
+            const text = write(schema, next);
+            setSaved(text);
+            onChange(text);
+          }}
+        />
+      </PickFileContext.Provider>
       {missing.length > 0 && (
         <p className="text-destructive text-xs">
           Every {ROW_WORDS[name] ?? "row"} needs{" "}
@@ -200,10 +217,24 @@ function RowButtons({
   );
 }
 
+/**
+ * For a list whose rows are one file each (a link, or a group with one link in it): how to
+ * make a row from a link. Null for other lists.
+ */
+function rowFromLink(item: SettingSchema): ((url: string) => unknown) | null {
+  if (item.format === "uri") return (url) => url;
+  const links = Object.entries(item.properties ?? {}).filter(([, field]) => field.format === "uri");
+  if (settingShape(item) !== "group" || links.length !== 1) return null;
+  const [field] = links[0];
+  return (url) => ({ ...(blankOf(item) as object), [field]: url });
+}
+
 function ListEditor({ schema, name, value, onChange, id }: EditorProps) {
+  const pickFile = useContext(PickFileContext);
   const rows = Array.isArray(value) ? value : [];
   const item = schema.items ?? {};
   const word = ROW_WORDS[name] ?? "row";
+  const linkRow = rowFromLink(item);
   const inner = Object.entries(item.properties ?? {});
   // Rows of one or two simple settings, such as a start and an end, sit on one line each.
   const inline =
@@ -295,16 +326,24 @@ function ListEditor({ schema, name, value, onChange, id }: EditorProps) {
           </div>
         ),
       )}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="self-start"
-        onClick={() => onChange([...rows, blankOf(item)])}
-      >
-        <Plus />
-        Add {/^[aeiou]/.test(word) ? "an" : "a"} {word}
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onChange([...rows, blankOf(item)])}
+        >
+          <Plus />
+          Add {/^[aeiou]/.test(word) ? "an" : "a"} {word}
+        </Button>
+        {pickFile &&
+          linkRow &&
+          pickFile({
+            onPick: (url) => onChange([...rows, linkRow(url)]),
+            label: `Add an upload as ${/^[aeiou]/.test(word) ? "an" : "a"} ${word}`,
+            text: "Add an upload",
+          })}
+      </div>
     </div>
   );
 }
@@ -392,6 +431,7 @@ function ValueEditor({
   id,
   label,
 }: EditorProps & { label?: string }) {
+  const pickFile = useContext(PickFileContext);
   const shape = settingShape(schema);
   const text = value === undefined || value === null ? "" : String(value);
   if (shape === "choice" || shape === "yesno") {
@@ -442,6 +482,18 @@ function ValueEditor({
       className={time ? "tabular-nums" : undefined}
     />
   );
+  if (schema.format === "uri" && pickFile) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {input}
+        {pickFile({
+          onPick: (url) => onChange(url),
+          label: `Use an upload for ${label ?? fieldLabel(name).toLowerCase()}`,
+          text: "Upload",
+        })}
+      </div>
+    );
+  }
   if (!colour) return input;
   return (
     <div className="flex items-center gap-1.5">
