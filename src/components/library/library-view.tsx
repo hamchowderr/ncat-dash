@@ -508,10 +508,12 @@ export function LibraryView() {
   const onScreen = text ? hits : items;
   const links = useLibraryLinks(team.id, onScreen);
 
+  // What was brought in is transcribed by itself; this is for files automations made
+  // (when the setting is off) and for any transcript that failed.
   const waiting = (library?.items ?? []).filter(
     (item) =>
       (item.kind === "video" || item.kind === "audio") &&
-      (item.searchable === "no" || item.searchable === "failed"),
+      (item.searchable === "failed" || (item.searchable === "no" && item.source !== "upload")),
   );
 
   async function searchWaiting() {
@@ -571,8 +573,8 @@ export function LibraryView() {
               >
                 <Bot />
                 {waiting.length === 1
-                  ? "Make 1 file searchable"
-                  : `Make ${Math.min(waiting.length, 25)} files searchable`}
+                  ? "Transcribe 1 file"
+                  : `Transcribe ${Math.min(waiting.length, 25)} files`}
               </Button>
             )}
             <label

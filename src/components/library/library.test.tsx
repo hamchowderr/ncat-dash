@@ -152,17 +152,18 @@ describe("the Library page", () => {
     expect(mutationOf(api.library.setRating)).toHaveBeenCalledWith({ itemId: "i1", rating: 5 });
   });
 
-  test("offers to make the videos and sounds that are not searchable yet", async () => {
-    actionOf(api.library.makeSearchable).mockResolvedValue(2);
+  test("offers to transcribe what automations made, never what was brought in", async () => {
+    actionOf(api.library.makeSearchable).mockResolvedValue(1);
     renderInApp(<LibraryView />);
-    fireEvent.click(screen.getByRole("button", { name: "Make 2 files searchable" }));
+    // The clip (made by an automation) is offered; the uploaded theme is caught up by itself.
+    fireEvent.click(screen.getByRole("button", { name: "Transcribe 1 file" }));
     await waitFor(() =>
       expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
         organizationId: "team_1",
-        itemIds: ["i2", "i3"],
+        itemIds: ["i2"],
       }),
     );
-    expect(toastSuccess).toHaveBeenCalledWith("2 files are being transcribed on your toolkit.");
+    expect(toastSuccess).toHaveBeenCalledWith("1 file is being transcribed on your toolkit.");
   });
 
   test("the setting for new files is the owners' and admins'", () => {
@@ -355,11 +356,42 @@ describe("a library file", () => {
     expect(mutationOf(api.library.setTags)).toHaveBeenLastCalledWith({ itemId: "i1", tags: [] });
   });
 
-  test("a file that is not searchable yet offers to be", async () => {
+  test("an uploaded file without words yet is on its way, with nothing to press", () => {
     answerQuery(api.library.get, { ...DETAIL, searchable: "no", pieces: [] });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.getByText(/Being transcribed on your toolkit/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Transcribe" })).toBeNull();
+  });
+
+  test("a failed transcript can be tried again", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      searchable: "failed",
+      transcriptError: "No sound.",
+      pieces: [],
+    });
     actionOf(api.library.makeSearchable).mockResolvedValue(1);
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
-    fireEvent.click(screen.getByRole("button", { name: "Make searchable" }));
+    expect(screen.getByText("The last try did not work: No sound.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() =>
+      expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
+        organizationId: "team_1",
+        itemIds: ["i1"],
+      }),
+    );
+  });
+
+  test("a file an automation made can be transcribed by hand", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      source: "automation",
+      searchable: "no",
+      pieces: [],
+    });
+    actionOf(api.library.makeSearchable).mockResolvedValue(1);
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    fireEvent.click(screen.getByRole("button", { name: "Transcribe" }));
     await waitFor(() =>
       expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
         organizationId: "team_1",
