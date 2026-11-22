@@ -1,10 +1,12 @@
 name: Web image
 
-# Builds the web app's Docker image (Dockerfile) for self-hosted copies, once for
-# Intel/AMD (amd64) and once for ARM such as Apple-chip Macs (arm64), each on its own kind
-# of runner. On each, deploy/test/stack-check.sh starts Convex and the image from
-# deploy/compose.yml, pushes the backend and signs up through it. Main also publishes
-# both under one tag: ghcr.io/hamchowderr/ncat-dash-web:sha-<commit> and :latest.
+# Builds the web app's Docker image (Dockerfile) for self-hosted copies, and the setup
+# image that pushes the backend (its `setup` stage), once for Intel/AMD (amd64) and once
+# for ARM such as Apple-chip Macs (arm64), each on its own kind of runner. On each,
+# deploy/test/stack-check.sh starts Convex and the web image from deploy/compose.yml,
+# pushes the backend with the setup image and signs up through it. Main also publishes
+# both under one tag each: ghcr.io/hamchowderr/ncat-dash-web and ncat-dash-setup,
+# :sha-<commit> and :latest.
 on:
   pull_request:
   push:
@@ -21,6 +23,7 @@ permissions:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}-web
+  SETUP: ghcr.io/${{ github.repository }}-setup
   PUBLISH: ${{ github.event_name != 'pull_request' }}
 
 jobs:
@@ -61,18 +64,25 @@ jobs:
           tags: ncat-dash-web:check
           cache-from: type=gha,scope=web-${{ matrix.arch }}
           cache-to: type=gha,scope=web-${{ matrix.arch }},mode=max
-      - name: Image size
-        run: docker image inspect ncat-dash-web:check --format '{{.Size}}' | awk '{ printf "%.0f MB\n", $1 / 1000000 }'
-      # The Convex command that pushes the backend, as an owner runs it.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - name: Build the setup image
+        uses: docker/build-push-action@v6
         with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          context: .
+          target: setup
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: ncat-dash-setup:check
+          cache-from: type=gha,scope=web-${{ matrix.arch }}
+      - name: Image sizes
+        run: |
+          for image in ncat-dash-web:check ncat-dash-setup:check; do
+            docker image inspect "$image" --format '{{.Size}}' | awk -v i="$image" '{ printf "%s %.0f MB\n", i, $1 / 1000000 }'
+          done
+      # Only Docker on the machine, as for an owner: the setup image pushes the backend.
       - name: Start the stack and sign up through it
         env:
           WEB_IMAGE: ncat-dash-web:check
+          SETUP_IMAGE: ncat-dash-setup:check
         run: deploy/test/stack-check.sh
       - if: env.PUBLISH == 'true'
         uses: docker/login-action@v3
@@ -91,15 +101,29 @@ jobs:
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=web-${{ matrix.arch }}
+      - name: Publish this half of the setup image
+        id: push-setup
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: setup
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.SETUP }},push-by-digest=true,name-canonical=true,push=true
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=web-${{ matrix.arch }}
       - if: env.PUBLISH == 'true'
         run: |
           mkdir -p digests
           echo "${{ steps.push.outputs.digest }}" > "digests/${{ matrix.arch }}"
+          echo "${{ steps.push-setup.outputs.digest }}" > "digests/setup-${{ matrix.arch }}"
       - if: env.PUBLISH == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: web-digest-${{ matrix.arch }}
-          path: digests/${{ matrix.arch }}
+          path: |
+            digests/${{ matrix.arch }}
+            digests/setup-${{ matrix.arch }}
           retention-days: 1
 
   publish:
@@ -127,3 +151,7 @@ jobs:
             -t "$IMAGE:sha-$GITHUB_SHA" -t "$IMAGE:latest" \
             "$IMAGE@$(cat digests/amd64)" "$IMAGE@$(cat digests/arm64)"
           docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA"
+          docker buildx imagetools create \
+            -t "$SETUP:sha-$GITHUB_SHA" -t "$SETUP:latest" \
+            "$SETUP@$(cat digests/setup-amd64)" "$SETUP@$(cat digests/setup-arm64)"
+          docker buildx imagetools inspect "$SETUP:sha-$GITHUB_SHA"

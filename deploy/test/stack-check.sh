@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Starts Convex and the web app from deploy/compose.yml the way an owner would, pushes
-# the backend to it, and checks that signing up works and that an invite-only copy
-# keeps strangers out. Run from the repository root:
-#   WEB_IMAGE=ncat-dash-web:check deploy/test/stack-check.sh
+# the backend to it with the setup image, and checks that signing up works and that an
+# invite-only copy keeps strangers out. Run from the repository root:
+#   WEB_IMAGE=ncat-dash-web:check SETUP_IMAGE=ncat-dash-setup:check deploy/test/stack-check.sh
 # CI runs it on Intel/AMD and on ARM (.github/workflows/web-image.yml).
 set -euo pipefail
 
@@ -24,6 +24,7 @@ S3_BUCKET_NAME=unused
 AGENT_APP_SECRET=$(secret)
 MASTRA_JWT_SECRET=$(secret)
 WEB_IMAGE=${WEB_IMAGE:-ghcr.io/hamchowderr/ncat-dash-web:latest}
+SETUP_IMAGE=${SETUP_IMAGE:-ghcr.io/hamchowderr/ncat-dash-setup:latest}
 ENV
 
 compose() {
@@ -53,19 +54,27 @@ compose up -d convex web
 wait_for http://127.0.0.1:3210/version
 
 admin_key=$(compose exec -T convex ./generate_admin_key.sh | tail -1)
-export CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
-export CONVEX_SELF_HOSTED_ADMIN_KEY=$admin_key
-unset CONVEX_DEPLOYMENT CONVEX_DEPLOY_KEY
+cat >> "$env_file" <<ENV
+CONVEX_ADMIN_KEY=$admin_key
+SITE_URL=http://127.0.0.1:3000
+ENV
 
-cd "$root"
-convex() { npx convex "$@"; }
-convex env set SITE_URL http://127.0.0.1:3000 >/dev/null
-convex env set BETTER_AUTH_SECRET "$(secret)" >/dev/null
-convex env set CONNECTIONS_SECRET "$(secret)" >/dev/null
-convex env set MASTRA_JWT_SECRET "$(grep MASTRA_JWT_SECRET "$env_file" | cut -d= -f2)" >/dev/null
-convex env set SIGN_UPS invite-only >/dev/null
-echo "Pushing the backend"
-convex deploy -y > "$work/deploy.log" 2>&1 || { cat "$work/deploy.log"; exit 1; }
+# The setup image pushes the backend, as an owner runs it: the machine needs only Docker.
+echo "Pushing the backend with the setup image"
+compose run --rm setup > "$work/setup.log" 2>&1 || { cat "$work/setup.log"; exit 1; }
+grep -q "Made CONNECTIONS_SECRET" "$work/setup.log" || { cat "$work/setup.log"; exit 1; }
+connections_secret() {
+  compose run --rm --no-deps --entrypoint /app/node_modules/.bin/convex setup env get CONNECTIONS_SECRET 2>/dev/null | tail -1
+}
+first_secret=$(connections_secret)
+[ -n "$first_secret" ] || { echo "Setup left Convex without a CONNECTIONS_SECRET" >&2; exit 1; }
+
+# Running it again (as after an update) keeps the secrets: a new CONNECTIONS_SECRET would
+# lock every team out of its saved keys.
+compose run --rm setup > "$work/setup-again.log" 2>&1 || { cat "$work/setup-again.log"; exit 1; }
+grep -q "Kept the CONNECTIONS_SECRET" "$work/setup-again.log" || { cat "$work/setup-again.log"; exit 1; }
+[ "$(connections_secret)" = "$first_secret" ] || { echo "Setup replaced CONNECTIONS_SECRET" >&2; exit 1; }
+echo "Setup ran twice and kept the secrets"
 
 wait_for http://127.0.0.1:3000/sign-up
 
