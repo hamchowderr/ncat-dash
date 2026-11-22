@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 
-import { answerQuery, mutationOf, pushed } from "@/test/convex";
+import { actionOf, answerQuery, mutationOf, pushed } from "@/test/convex";
 
 import { PortalProject, PortalView } from "./portal-view";
 
@@ -123,5 +123,47 @@ describe("a client's portal", () => {
     answerQuery(api.portal.project, null);
     render(<PortalProject token={TOKEN} projectId="p9" />);
     expect(screen.getByText("This project is not shared here.")).toBeInTheDocument();
+  });
+
+  test("shows the agency's uploaded logo, asking for it with the portal's link", async () => {
+    const logoLink = actionOf(api.portal.logoLink).mockResolvedValue(
+      "https://files.example/northlight.png?signed",
+    );
+    answerQuery(
+      api.portal.view,
+      view({ agency: { name: "Northlight Media", logo: "upload:u1", color: null } }),
+    );
+    render(<PortalView token={TOKEN} />);
+    const logo = await screen.findByRole("img", { name: "Northlight Media" });
+    expect(logo).toHaveAttribute("src", "https://files.example/northlight.png?signed");
+    expect(logoLink).toHaveBeenCalledWith({ token: TOKEN });
+  });
+
+  test("a logo given as an address shows as it is", () => {
+    const logoLink = actionOf(api.portal.logoLink);
+    answerQuery(
+      api.portal.view,
+      view({
+        agency: { name: "Northlight Media", logo: "https://cdn.example/n.png", color: null },
+      }),
+    );
+    render(<PortalView token={TOKEN} />);
+    expect(screen.getByRole("img", { name: "Northlight Media" })).toHaveAttribute(
+      "src",
+      "https://cdn.example/n.png",
+    );
+    expect(logoLink).not.toHaveBeenCalled();
+  });
+
+  test("keeps the letter mark when the uploaded logo cannot be shown", async () => {
+    const logoLink = actionOf(api.portal.logoLink).mockResolvedValue(null);
+    answerQuery(
+      api.portal.view,
+      view({ agency: { name: "Northlight Media", logo: "upload:u1", color: null } }),
+    );
+    render(<PortalView token={TOKEN} />);
+    await waitFor(() => expect(logoLink).toHaveBeenCalled());
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.getByText("Northlight Media")).toBeInTheDocument();
   });
 });
