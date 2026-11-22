@@ -13,6 +13,7 @@ import type * as aiSpend from "../aiSpend.js";
 import type * as alerts from "../alerts.js";
 import type * as anthropicKey from "../anthropicKey.js";
 import type * as auth from "../auth.js";
+import type * as automationFolders from "../automationFolders.js";
 import type * as automations from "../automations.js";
 import type * as blocks from "../blocks.js";
 import type * as broll from "../broll.js";
@@ -167,6 +168,7 @@ declare const fullApi: ApiFromModules<{
   alerts: typeof alerts;
   anthropicKey: typeof anthropicKey;
   auth: typeof auth;
+  automationFolders: typeof automationFolders;
   automations: typeof automations;
   blocks: typeof blocks;
   broll: typeof broll;
