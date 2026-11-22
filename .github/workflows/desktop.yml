@@ -237,11 +237,13 @@ jobs:
           BUNDLE: src-tauri/target/${{ matrix.target }}/release/bundle
         run: |
           mkdir -p out
-          # Both Macs make Takewon.app.tar.gz; the chip goes in its name.
+          # Both Macs make Takewon.app.tar.gz; the chip goes in its name. (Plain if: the Mac's
+          # bash 3.2 can't read a case inside $(...).)
+          chip=x64
+          if [[ "${{ matrix.target }}" == aarch64-* ]]; then chip=aarch64; fi
           for file in "$BUNDLE"/macos/*.app.tar.gz "$BUNDLE"/macos/*.app.tar.gz.sig; do
             [ -e "$file" ] || continue
             name=$(basename "$file")
-            chip=$(case "${{ matrix.target }}" in aarch64-*) echo aarch64 ;; *) echo x64 ;; esac)
             cp "$file" "out/${name%%.app.tar.gz*}_${{ needs.release.outputs.version }}_${chip}.app.tar.gz${name#*.app.tar.gz}"
           done
           for file in "$BUNDLE"/dmg/*.dmg "$BUNDLE"/msi/*.msi* "$BUNDLE"/nsis/*.exe* \
