@@ -19,6 +19,9 @@ fn main() {
             "open_server",
             "notify",
             "set_unseen",
+            "save_export",
+            "open_export",
+            "show_export",
         ]),
     ))
     .expect("failed to build the desktop app");
