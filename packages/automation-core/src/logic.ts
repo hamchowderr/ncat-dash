@@ -6,6 +6,7 @@
  * details.ts), so it can sit anywhere in an automation, also after a step that made a new
  * file. Its settings are a few words and a number that the canvas shows as a sentence.
  */
+import { sendProblem } from "./send";
 import { approvalProblem } from "./approval";
 import { detailsKind, type FileDetails, formatDuration } from "./details";
 
@@ -46,7 +47,8 @@ export function canFailOver(kind: string | undefined): boolean {
     kind === "footage-check" ||
     kind === "subtitles" ||
     kind === "export" ||
-    kind === "automation"
+    kind === "automation" ||
+    kind === "send"
   );
 }
 
@@ -280,5 +282,6 @@ export function logicProblem(node: {
   if (node.kind === "if") return conditionProblem(node.input);
   if (node.kind === "wait") return waitProblem(node.input);
   if (node.kind === "approval") return approvalProblem(node.input);
+  if (node.kind === "send") return sendProblem(node.input);
   return null;
 }

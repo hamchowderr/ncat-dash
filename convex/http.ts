@@ -7,6 +7,7 @@ import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
 import { decryptSecret } from "./lib/crypto";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
+import { hookTokenOf, MAX_HOOK_KEY } from "./lib/hooks";
 import { noStream, serve } from "./mcp";
 import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
 import { settingsUrl as microsoftSettingsUrl } from "./microsoft";
@@ -74,8 +75,14 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
     const automationId = url.searchParams.get("id");
-    const token = url.searchParams.get("token");
+    const token = hookTokenOf(request, url);
     if (!automationId || !token) return new Response("Missing id or token", { status: 400 });
+    const key = request.headers.get("idempotency-key")?.trim() || undefined;
+    if (key !== undefined && key.length > MAX_HOOK_KEY) {
+      return new Response(`Idempotency-Key can be at most ${MAX_HOOK_KEY} characters`, {
+        status: 400,
+      });
+    }
 
     let body: unknown = {};
     const text = await request.text();
@@ -95,10 +102,22 @@ http.route({
       automationId,
       token,
       body,
+      ...(key !== undefined ? { key } : {}),
     });
     switch (result.outcome) {
       case "started":
-        return Response.json({ run_id: result.runId }, { status: 202 });
+        return Response.json(
+          { run_id: result.runId, status_url: statusUrl(url, result.runId) },
+          {
+            status: 202,
+          },
+        );
+      case "repeat":
+        // The same call again: the run it started the first time, not a second one.
+        return Response.json(
+          { run_id: result.runId, status_url: statusUrl(url, result.runId), repeat: true },
+          { status: 200 },
+        );
       case "forbidden":
         return new Response("Wrong token", { status: 403 });
       case "off":
@@ -108,6 +127,34 @@ http.route({
       default:
         return new Response("Unknown automation", { status: 404 });
     }
+  }),
+});
+
+/** Where a caller reads how a run it started is going, with the same token. */
+function statusUrl(url: URL, runId: string): string {
+  const status = new URL("/automations/hook/run", url.origin);
+  status.searchParams.set("id", url.searchParams.get("id") ?? "");
+  status.searchParams.set("run", runId);
+  return status.toString();
+}
+
+// How a run a webhook started is going, and its finished files once it is done. The
+// caller proves it holds the automation's token, as when it started the run.
+http.route({
+  path: "/automations/hook/run",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const automationId = url.searchParams.get("id");
+    const runId = url.searchParams.get("run");
+    const token = hookTokenOf(request, url);
+    if (!automationId || !runId || !token) {
+      return new Response("Missing id, run or token", { status: 400 });
+    }
+    const answer = await ctx.runQuery(internal.hooks.runForCaller, { automationId, runId, token });
+    if (answer === "forbidden") return new Response("Wrong token", { status: 403 });
+    if (answer === null) return new Response("Unknown run", { status: 404 });
+    return Response.json(answer);
   }),
 });
 

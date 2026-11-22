@@ -31,6 +31,14 @@ crons.hourly(
 crons.interval("check Microsoft 365 recordings", { minutes: 15 }, internal.microsoft.sweep, {});
 crons.interval("check watched Dropbox folders", { minutes: 15 }, internal.dropbox.sweep, {});
 
+// Forgets webhook calls' Idempotency-Keys after a day.
+crons.daily(
+  "forget old webhook keys",
+  { hourUTC: 9, minuteUTC: 45 },
+  internal.hooks.forgetOldCalls,
+  {},
+);
+
 // Forgets saved Best moments and Chapters answers more than 30 days old.
 crons.daily(
   "forget old pick answers",
