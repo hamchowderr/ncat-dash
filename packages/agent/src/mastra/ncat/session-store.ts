@@ -18,6 +18,20 @@ export type DashSession = {
 
 const sessions = new Map<string, DashSession>();
 
+/**
+ * The dashboard person a resource id stands for, or null when it is not one (a Slack,
+ * Discord, Teams or Telegram thread, whose resource is `channel:<thread>`).
+ *
+ * The dashboard names a chat's owner `<person>~<team>` (`chatOwnerId` in the web app's
+ * src/lib/agent-session.ts) so that memory, which is kept per resource, stays apart per
+ * team. With no team open it is the person's id alone.
+ */
+export function personOf(resourceId: string): string | null {
+  if (resourceId.startsWith("channel:")) return null;
+  const cut = resourceId.lastIndexOf("~");
+  return cut > 0 ? resourceId.slice(0, cut) : resourceId;
+}
+
 /** A Convex token is short-lived; one older than this is not worth trying. */
 const MAX_AGE_MS = 30 * 60 * 1000;
 

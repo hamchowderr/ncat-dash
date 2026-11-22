@@ -29,6 +29,19 @@ function subjectOf(token: string): string | null {
   }
 }
 
+/**
+ * Who the agent works for in a chat: the person within the team they have open.
+ *
+ * The agent keeps its memory (notes it makes as it goes, its working notes and what it
+ * recalls of earlier chats) under this id. With the person's id alone, someone on two
+ * teams would carry one team's notes into the other's chats; with the team in it, each
+ * team's chats and notes stay apart. With no team open it is the person alone. The
+ * agent server reads the person back with `personOf` (packages/agent ncat/session-store.ts).
+ */
+export function chatOwnerId(userId: string, organizationId: string | null): string {
+  return organizationId ? `${userId}~${organizationId}` : userId;
+}
+
 export function readAgentContext(cookieHeader: string | null): AgentContext {
   const empty = { organizationId: null, automationId: null };
   const raw = cookieHeader
@@ -47,7 +60,8 @@ export function readAgentContext(cookieHeader: string | null): AgentContext {
 }
 
 /**
- * Who a chat request is for, or null when nobody is signed in.
+ * Who a chat request is for (`chatOwnerId`: the person within the team they have open), or
+ * null when nobody is signed in.
  *
  * Before answering, it hands the agent server what it needs to act for this person: their
  * own Convex token, and the team and automation they have on screen. The agent then calls
@@ -63,22 +77,23 @@ export async function agentUserFor(request: Request): Promise<string | null> {
   if (!token || !userId) return null;
 
   const context = readAgentContext(request.headers.get("cookie"));
+  const owner = chatOwnerId(userId, context.organizationId);
   const sending = JSON.stringify([token, context]);
-  const last = sentSessions().get(userId);
-  if (last?.sent === sending && Date.now() - last.at < FRESH_MS) return userId;
+  const last = sentSessions().get(owner);
+  if (last?.sent === sending && Date.now() - last.at < FRESH_MS) return owner;
 
   try {
     const response = await fetch(`${SERVER_URL}/ncat/session`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${signServerToken(secret, userId)}`,
+        authorization: `Bearer ${signServerToken(secret, owner)}`,
       },
       body: JSON.stringify({ convexToken: token, ...context }),
     });
-    if (response.ok) sentSessions().set(userId, { sent: sending, at: Date.now() });
+    if (response.ok) sentSessions().set(owner, { sent: sending, at: Date.now() });
   } catch {
     // The agent server is down: the chat request itself will say so.
   }
-  return userId;
+  return owner;
 }
