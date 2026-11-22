@@ -74,6 +74,7 @@ import type * as lib_facts from "../lib/facts.js";
 import type * as lib_footage from "../lib/footage.js";
 import type * as lib_googleMeet from "../lib/googleMeet.js";
 import type * as lib_hooks from "../lib/hooks.js";
+import type * as lib_items from "../lib/items.js";
 import type * as lib_knownWords from "../lib/knownWords.js";
 import type * as lib_library from "../lib/library.js";
 import type * as lib_limits from "../lib/limits.js";
@@ -239,6 +240,7 @@ declare const fullApi: ApiFromModules<{
   "lib/footage": typeof lib_footage;
   "lib/googleMeet": typeof lib_googleMeet;
   "lib/hooks": typeof lib_hooks;
+  "lib/items": typeof lib_items;
   "lib/knownWords": typeof lib_knownWords;
   "lib/library": typeof lib_library;
   "lib/limits": typeof lib_limits;
