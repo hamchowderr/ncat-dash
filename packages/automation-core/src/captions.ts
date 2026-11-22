@@ -23,6 +23,21 @@ export function isCaptionStep(stepId: string | undefined): boolean {
 /** The setting on a caption step that names the style it uses. Never sent to the toolkit. */
 export const CAPTION_STYLE_SETTING = "caption_style";
 
+/**
+ * The setting on "Caption video" that names a language to caption in, other than the one
+ * spoken (see translated-captions.ts). Never sent to the toolkit.
+ */
+export const CAPTION_LANGUAGE_SETTING = "caption_language";
+
+/** A caption step's input without the dashboard's own settings, as the toolkit takes it. */
+export function withoutDashboardSettings(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(input).filter(
+      ([name]) => name !== CAPTION_STYLE_SETTING && name !== CAPTION_LANGUAGE_SETTING,
+    ),
+  );
+}
+
 export type CaptionShape = "vertical" | "wide" | "square";
 
 export const CAPTION_SHAPES: { shape: CaptionShape; label: string; example: string }[] = [
@@ -253,9 +268,7 @@ export function withCaptionSetup(
   setup: CaptionSetup,
   file: { details?: Pick<FileDetails, "width" | "height"> | null; brandFont?: string },
 ): Record<string, unknown> {
-  const rest = Object.fromEntries(
-    Object.entries(input).filter(([name]) => name !== CAPTION_STYLE_SETTING),
-  );
+  const rest = withoutDashboardSettings(input);
   const shape = shapeOf(file.details);
   const style = styleFor(setup, input, shape);
   const out: Record<string, unknown> = { ...rest };

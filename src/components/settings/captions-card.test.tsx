@@ -220,4 +220,53 @@ describe("a caption step's panel", () => {
       input: expect.objectContaining({ caption_style: "Night Shift", language: "en" }),
     });
   });
+
+  test("captions in the language spoken until another is picked", async () => {
+    const onChange = panel({ caption_style: "Karaoke" });
+    const picker = screen.getByRole("combobox", { name: "Caption language" });
+    expect(picker).toHaveTextContent("The language spoken");
+    expect(
+      screen.getByText("Captions are in the language spoken in the video."),
+    ).toBeInTheDocument();
+    fireEvent.click(picker);
+    fireEvent.change(await screen.findByPlaceholderText("Find a language"), {
+      target: { value: "Japan" },
+    });
+    fireEvent.click(await screen.findByRole("option", { name: "Japanese" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      input: { caption_style: "Karaoke", caption_language: "ja" },
+    });
+  });
+
+  test("shows a picked caption language, keeps it when another setting changes, and can go back", async () => {
+    const onChange = panel({ caption_language: "es" });
+    const picker = screen.getByRole("combobox", { name: "Caption language" });
+    expect(picker).toHaveTextContent("Spanish");
+    expect(screen.getByText(/Translated into Spanish once per video/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("More options"));
+    fireEvent.change(screen.getByLabelText(/Language/), { target: { value: "en" } });
+    expect(onChange).toHaveBeenLastCalledWith({
+      input: expect.objectContaining({ caption_language: "es", language: "en" }),
+    });
+    fireEvent.click(picker);
+    fireEvent.click(await screen.findByRole("option", { name: "The language spoken" }));
+    expect(onChange).toHaveBeenLastCalledWith({ input: {} });
+  });
+
+  test("Generate caption file has no caption language", () => {
+    renderInApp(
+      <NodePanel
+        node={{ id: "ass_1", kind: "step", stepId: "media-generate-ass", input: {} }}
+        before={[]}
+        startGivesFile
+        filled={{}}
+        brand={{}}
+        music={[]}
+        captions={CAPTIONS}
+        onChange={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("combobox", { name: "Caption language" })).toBeNull();
+  });
 });

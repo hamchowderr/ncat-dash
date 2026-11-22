@@ -2,6 +2,15 @@
   "fixtures": [
     {
       "match": {
+        "userMessage": "Translate these spoken caption lines into Spanish"
+      },
+      "response": {
+        "content": "[[[\"Abrimos\", [1]], [\"la\", []], [\"cafetería\", [3]], [\"en\", []], [\"primavera.\", [4, 5]]], [[\"Nadie\", [0]], [\"vino.\", [1]]]]"
+      },
+      "_comment": "NCAT TRANSLATE CAPTIONS WORD BY WORD (src/mastra/ncat/translate.ts). Caption video with a caption language: each translated word names the spoken words it stands for."
+    },
+    {
+      "match": {
         "userMessage": "Translate these subtitle lines into Spanish."
       },
       "response": {

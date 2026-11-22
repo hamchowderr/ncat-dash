@@ -14,7 +14,7 @@ import {
 import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
-import { CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
+import { CAPTION_LANGUAGE_SETTING, CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
 import { CLEANUP_DEFAULTS, HOOK_MODES, MAX_HOOKS } from "./cleanup";
 import { FOOTAGE_ACTIONS, FOOTAGE_DEFAULTS, FOOTAGE_SHAPES } from "./footage";
 import { FINISH_CHOICES } from "./chain";
@@ -868,6 +868,15 @@ function stepSettings(step: StepDefinition): JsonSchema {
         description:
           "The name of a caption style from Settings. Leave it and settings blank to use the team's style for the video's shape.",
       },
+      ...(step.id === "video-caption"
+        ? {
+            [CAPTION_LANGUAGE_SETTING]: {
+              type: "string",
+              description:
+                "A language code (such as es, ja or pt-BR) to caption in instead of the language spoken. The words are translated once and still light up as they are said. Leave it blank to caption in the spoken language.",
+            },
+          }
+        : {}),
     },
   };
 }
