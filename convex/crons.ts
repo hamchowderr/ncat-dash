@@ -11,6 +11,7 @@ crons.interval("check watched folders", { minutes: 1 }, internal.watch.poll, {})
 
 // Asks the toolkit about running jobs whose result is late, in case its webhook was lost.
 crons.interval("check on late toolkit jobs", { minutes: 1 }, internal.jobs.checkLate, {});
+crons.interval("stop jobs that waited too long", { minutes: 10 }, internal.jobs.ageOut, {});
 
 // Reads how many workers the toolkit teams share has, which sets how many of their jobs
 // it is sent at once.

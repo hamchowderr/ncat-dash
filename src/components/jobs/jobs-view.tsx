@@ -24,6 +24,7 @@ import { exactly, timeAgo } from "@/lib/when";
 
 import { JobResult } from "./job-result";
 import { StatusBadge } from "./status-badge";
+import { waitingWords } from "./waiting-words";
 
 const startedAt = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -75,6 +76,7 @@ export function JobsView() {
                       {job.finishedAt && job.startedAt && (
                         <span>Took {formatDuration(job.finishedAt - job.startedAt)}</span>
                       )}
+                      {job.waiting && <span>{waitingWords(job.waiting)}</span>}
                     </MetaLine>
                   }
                   badges={

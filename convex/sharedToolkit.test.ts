@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { addPerson, addTeam, backend } from "./test.setup";
 
@@ -364,5 +364,116 @@ describe("backing off when the toolkit struggles", () => {
     const { state, trouble } = await setUp(null, 0);
     await trouble();
     expect((await state())?.allowed).toBeUndefined();
+  });
+});
+
+// A job waiting to be sent says why, and one that waited too long is stopped.
+describe("jobs that wait", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubEnv("HOSTED_TOOLKIT_URL", SHARED);
+    vi.stubEnv("HOSTED_TOOLKIT_JOBS_AT_ONCE", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
+  async function shopWith(t: ReturnType<typeof backend>, name: string, jobs: number, limit = 3) {
+    const organizationId = await addTeam(t, name);
+    await t.run((ctx) => ctx.db.insert("teamSettings", { organizationId, maxParallelJobs: limit }));
+    const person = await addPerson(t, `${name} Owner`, [organizationId]);
+    const connectionId = await t.run((ctx) =>
+      ctx.db.insert("toolkitConnections", {
+        organizationId,
+        baseUrl: SHARED,
+        apiKeyCipher: "x",
+        apiKeyHint: "abcd",
+        status: "ok",
+        buildNumber: null,
+        lastCheckedAt: 0,
+        lastError: null,
+        createdBy: person.id,
+      }),
+    );
+    for (let i = 0; i < jobs; i++) {
+      await t.run((ctx) =>
+        ctx.db.insert("jobs", {
+          organizationId,
+          connectionId,
+          stepId: "media-metadata",
+          input: { media_url: `https://files.example/${name}-${i}.mp4` },
+          status: "queued",
+          webhookToken: "token",
+          toolkitJobId: null,
+          outputs: [],
+          error: null,
+          createdBy: person.id,
+          startedAt: null,
+          finishedAt: null,
+        }),
+      );
+    }
+    await t.mutation(internal.jobs.pumpTeam, { organizationId });
+    const reasons = async () => {
+      const jobs = await person.as.query(api.jobs.list, { organizationId });
+      return jobs.map((job) => job.waiting?.reason ?? null).filter((one) => one !== null);
+    };
+    return { organizationId, reasons };
+  }
+
+  test("says a job waits for the team's own limit", async () => {
+    const t = backend();
+    const { reasons } = await shopWith(t, "Small Shop", 3, 1);
+    expect(await reasons()).toEqual(["own", "own"]);
+  });
+
+  test("says a job waits its turn on the shared toolkit, or is held back", async () => {
+    const t = backend();
+    await t.mutation(internal.toolkitHealth.recordShared, { workers: 2 });
+    await shopWith(t, "Big Batch", 2);
+    const small = await shopWith(t, "Small Shop", 1);
+    expect(await small.reasons()).toEqual(["turn"]);
+    await t.mutation(internal.toolkitHealth.sharedTrouble, {});
+    expect(await small.reasons()).toEqual(["held"]);
+  });
+
+  test("stops a job that waited more than 6 hours", async () => {
+    const t = backend();
+    const { organizationId } = await shopWith(t, "Small Shop", 2, 1);
+    const neverSent = await t.run(async (ctx) =>
+      (
+        await ctx.db
+          .query("jobs")
+          .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+          .collect()
+      ).find((job) => job.dispatchedAt === undefined),
+    );
+    vi.advanceTimersByTime(6 * 60 * 60 * 1000 + 1000);
+    await t.mutation(internal.jobs.ageOut, {});
+    await t.finishInProgressScheduledFunctions();
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
+    const job = await t.run((ctx) => ctx.db.get(neverSent!._id));
+    expect(job?.status).toBe("failed");
+    expect(job?.error).toContain("waited more than 6 hours");
+    // Not permanent: the step's retries still apply, and the retry joins the back of the line.
+    expect(job?.permanent).toBeUndefined();
+  });
+
+  test("leaves a job that has not waited long", async () => {
+    const t = backend();
+    const { organizationId } = await shopWith(t, "Small Shop", 2, 1);
+    vi.advanceTimersByTime(60 * 60 * 1000);
+    await t.mutation(internal.jobs.ageOut, {});
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
+    const jobs = await t.run((ctx) =>
+      ctx.db
+        .query("jobs")
+        .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+        .collect(),
+    );
+    expect(jobs.filter((job) => job.status === "failed")).toHaveLength(0);
   });
 });
