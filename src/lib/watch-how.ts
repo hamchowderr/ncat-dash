@@ -33,6 +33,8 @@ const VIDEOS = [
   ["24-your-inbox", "Your Inbox", 74],
   ["25-home", "Home", 52],
   ["26-jobs", "Jobs", 52],
+  ["27-meeting-imports", "Meeting Imports", 71],
+  ["28-chat-alerts", "Chat Alerts", 66],
 ] as const;
 
 export type ExplainerSlug = (typeof VIDEOS)[number][0];
@@ -49,7 +51,7 @@ const byNumber = (n: number) => EXPLAINERS[n - 1];
 const PAGES: Array<[match: RegExp, videos: number[]]> = [
   [/^\/$/, [25, 1, 17]],
   [/^\/get-started/, [1]],
-  [/^\/inbox/, [24, 11, 12]],
+  [/^\/inbox/, [24, 11, 12, 28]],
   [/^\/automations\/new/, [4, 2]],
   [/^\/automations\/[^/]+\/runs\//, [12, 13]],
   [/^\/automations\/[^/]+/, [3, 5, 8, 9, 13, 22, 23, 16]],
@@ -60,11 +62,15 @@ const PAGES: Array<[match: RegExp, videos: number[]]> = [
   [/^\/(clients|projects)/, [21]],
   [/^\/library/, [19]],
   [/^\/files/, [14, 15]],
+  [/^\/uploads/, [27]],
   [/^\/steps/, [6]],
   [/^\/jobs/, [26, 6]],
   [/^\/settings\/brand/, [7]],
   [/^\/settings\/(captions|motion|broll)/, [7, 23]],
-  [/^\/settings\/team/, [10]],
+  [/^\/settings\/team(\/|$)/, [10]],
+  [/^\/settings\/notifications/, [28]],
+  [/^\/settings\/(slack|discord|telegram|teams)(\/|$)/, [28]],
+  [/^\/settings\/(zoom|google-meet|microsoft|dropbox)(\/|$)/, [27]],
   [/^\/settings\/runs/, [13]],
 ];
 
