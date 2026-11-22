@@ -10,6 +10,10 @@ import {
   readAlignedLines,
   scriptFontFor,
   spokenLines,
+  subtitleFileName,
+  subtitleLanguagesOf,
+  toSrt,
+  translatedSubtitleCues,
   timeAlignedLine,
   timeTranslatedLines,
   translatedCaptionFile,
@@ -252,5 +256,67 @@ describe("translatedCaptionFile", () => {
     const file = translatedCaptionFile([[{ t: "{\\b1}hi", s: 0, e: 1 }]], {}, size, "es");
     expect(file).toContain("}b1hi");
     expect(file).not.toContain("{\\b1}");
+  });
+});
+
+describe("translated subtitle files", () => {
+  it("keeps known languages once, at most ten", () => {
+    expect(subtitleLanguagesOf({ languages: ["es", "ES", "pt-BR", "xx", 4, "es"] })).toEqual([
+      "es",
+      "pt-BR",
+    ]);
+    expect(subtitleLanguagesOf({})).toEqual([]);
+    const many = ["es", "fr", "de", "it", "pt", "ja", "ko", "zh", "hi", "ar", "th", "he"];
+    expect(subtitleLanguagesOf({ languages: many })).toHaveLength(10);
+  });
+
+  it("cuts long lines into cues that start and end with their words", () => {
+    const words = Array.from({ length: 30 }, (_, index) => ({
+      t: `palabra${index}`,
+      s: index * 0.4,
+      e: index * 0.4 + 0.3,
+    }));
+    const cues = translatedSubtitleCues([words], "es");
+    expect(cues.length).toBeGreaterThan(1);
+    expect(cues[0]!.start).toBe(0);
+    for (const cue of cues) {
+      expect(cue.text.split("\n").length).toBeLessThanOrEqual(2);
+      expect(cue.end - cue.start).toBeLessThanOrEqual(6.4);
+    }
+    for (let k = 1; k < cues.length; k++) {
+      expect(cues[k]!.start).toBeGreaterThanOrEqual(cues[k - 1]!.end);
+    }
+    expect(cues.map((cue) => cue.text.replace("\n", " ")).join(" ")).toBe(
+      words.map((word) => word.t).join(" "),
+    );
+  });
+
+  it("joins a language written without spaces without them", () => {
+    const cues = translatedSubtitleCues(
+      [
+        [
+          { t: "洞窟を", s: 0, e: 1 },
+          { t: "探検しました", s: 1, e: 2 },
+        ],
+      ],
+      "ja",
+    );
+    expect(cues).toEqual([{ start: 0, end: 2, text: "洞窟を探検しました" }]);
+    expect(toSrt(cues)).toBe("1\n00:00:00,000 --> 00:00:02,000\n洞窟を探検しました\n");
+  });
+
+  it("gives a short cue time to be read and never overlaps the next", () => {
+    const cues = translatedSubtitleCues(
+      [[{ t: "Hola", s: 1, e: 1.1 }], [{ t: "adiós", s: 1.3, e: 1.6 }]],
+      "es",
+    );
+    expect(cues[0]).toEqual({ start: 1, end: 1.3, text: "Hola" });
+    expect(cues[1]).toEqual({ start: 1.3, end: 1.8, text: "adiós" });
+  });
+
+  it("names the file after the video and the language", () => {
+    expect(subtitleFileName("Episode 12.mp4", "es")).toBe("Episode 12.es.srt");
+    expect(subtitleFileName("a/b.mov", "pt-BR")).toBe("a-b.pt-BR.srt");
+    expect(subtitleFileName("", "ja")).toBe("Video.ja.srt");
   });
 });

@@ -29,6 +29,8 @@ export const nodeValidator = v.object({
     v.literal("cleanup"),
     // Measures each video before editing and stops or warns when one has a problem.
     v.literal("footage-check"),
+    // Writes each video's subtitles in other languages.
+    v.literal("subtitles"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -743,7 +745,7 @@ export default defineSchema({
     // A step keeping a paid-ad disclosure in every cut first transcribes its videos ("hear").
     // "Caption video" with a caption language hears its videos too, then has the words
     // translated and timed and the caption files written ("translate"), then burns them in
-    // ("render").
+    // ("render"). Translate Subtitles hears and translates the same way, then is done.
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -764,7 +766,8 @@ export default defineSchema({
         v.literal("translate"),
       ),
     ),
-    // For "Caption video" with a caption language: its videos have been heard ("hear").
+    // For "Caption video" with a caption language, or Translate Subtitles: its videos have
+    // been heard ("hear").
     heardWords: v.optional(v.boolean()),
     // For "Caption video" with a caption language: each video, the language, and the look
     // and size its caption file is drawn with, in the order of the step's jobs.
@@ -776,6 +779,20 @@ export default defineSchema({
           look: v.record(v.string(), v.union(v.string(), v.number(), v.boolean())),
           width: v.number(),
           height: v.number(),
+        }),
+      ),
+    ),
+    // For a Translate Subtitles step: each video's subtitle file in each language, in the
+    // team's folder (`key`, under Subtitles/) and the link it is opened by. A file not
+    // written yet has no key or link.
+    subtitles: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          language: v.string(),
+          name: v.string(),
+          key: v.optional(v.string()),
+          link: v.optional(v.string()),
         }),
       ),
     ),

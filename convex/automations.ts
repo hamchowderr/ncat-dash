@@ -1320,6 +1320,7 @@ export const testStep = mutation({
       "sound-effects",
       "cleanup",
       "footage-check",
+      "subtitles",
     ];
     if (!testable.includes(args.node.kind)) {
       fail("invalid_input", "Only steps that do work on a file can be tested on their own.");

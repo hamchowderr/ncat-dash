@@ -42,6 +42,8 @@ import {
 import { MAX_CHAPTERS, MAX_MOMENTS, MAX_PADDING, MOMENT_DEFAULTS, MOMENT_EDGES } from "./moments";
 import { MOTION_PRESETS, SOUND_LEVELS, STYLE_SOUNDS, TEAM_STYLE } from "./motion";
 import { MIN_INTERVAL_MINUTES } from "./schedule";
+import { MAX_SUBTITLE_LANGUAGES } from "./translated-captions";
+import { LANGUAGES } from "./translation";
 import type { StarterTrigger } from "./starters";
 
 /** What moves along a connection. Only files do today; "data" is a step's JSON result. */
@@ -59,7 +61,7 @@ export interface JsonSchema {
 export interface NodeType {
   /**
    * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "broll",
-   * "broll-plan", "motion", "sound-effects", "cleanup", "footage-check", "export",
+   * "broll-plan", "motion", "sound-effects", "cleanup", "footage-check", "subtitles", "export",
    * "if", "wait", "automation", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
@@ -714,6 +716,32 @@ const CLEANUP: NodeType = {
   automatic: null,
 };
 
+const SUBTITLES: NodeType = {
+  type: "subtitles",
+  role: "action",
+  group: "media",
+  title: "Translate Subtitles",
+  description:
+    "Writes each video's subtitles in other languages, as SRT files to upload beside the video on YouTube and other platforms, where each viewer sees their own language. Uses the words heard in the video (transcribed once and kept) and translates each video into each language once. The files are kept in Files under Subtitles and listed on the run page; the video carries on to the next step unchanged.",
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      languages: {
+        type: "array",
+        items: { type: "string", enum: LANGUAGES.map((language) => language.code) },
+        minItems: 1,
+        maxItems: MAX_SUBTITLE_LANGUAGES,
+        default: [],
+        description: `The languages to write subtitles in, as codes such as es, ja or pt-BR. Up to ${MAX_SUBTITLE_LANGUAGES}.`,
+      },
+    },
+    required: ["languages"],
+  },
+  automatic: null,
+};
+
 const FOOTAGE_CHECK: NodeType = {
   type: "footage-check",
   role: "action",
@@ -921,6 +949,7 @@ export const NODE_TYPES: NodeType[] = [
   SOUND_EFFECTS,
   CLEANUP,
   FOOTAGE_CHECK,
+  SUBTITLES,
   EXPORT,
   IF,
   WAIT,
@@ -990,6 +1019,7 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
     type === "sound-effects" ||
     type === "cleanup" ||
     type === "footage-check" ||
+    type === "subtitles" ||
     type === "export" ||
     type === "if" ||
     type === "wait" ||
@@ -1028,7 +1058,12 @@ export function missingSettingsOf(
   return (nodeType.settings.required ?? []).filter((name) => {
     if (name === nodeType.automatic) return false;
     const value = input[name];
-    if (!(value === undefined || value === null || value === "")) return false;
+    const blank =
+      value === undefined ||
+      value === null ||
+      value === "" ||
+      (Array.isArray(value) && value.length === 0);
+    if (!blank) return false;
     const key = nodeType.brand?.[name];
     return !(key && brand?.[key]);
   });

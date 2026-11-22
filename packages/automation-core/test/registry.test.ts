@@ -94,9 +94,19 @@ describe("node registry", () => {
       group: "video",
     });
     expect(savedKind("footage-check")).toEqual({ kind: "footage-check" });
+    expect(getNodeType("subtitles")).toMatchObject({
+      title: "Translate Subtitles",
+      takes: "file",
+      gives: "files",
+      group: "media",
+    });
+    expect(savedKind("subtitles")).toEqual({ kind: "subtitles" });
+    // No language picked yet is a setting still to fill in.
+    expect(missingSettingsOf(getNodeType("subtitles")!, { languages: [] })).toEqual(["languages"]);
+    expect(missingSettingsOf(getNodeType("subtitles")!, { languages: ["es"] })).toEqual([]);
     // The toolkit's footage check is only sent by it, never listed as a step.
     expect(names).not.toContain("step:media-check");
-    expect(names.length).toBe(6 + allSteps.length + 15);
+    expect(names.length).toBe(6 + allSteps.length + 16);
   });
 
   it("gives every type a title, a description and an object schema for its settings", () => {
@@ -113,7 +123,7 @@ describe("node registry", () => {
   it("lists only steps that can be added, with no trigger among them", () => {
     const listed = actionTypesByGroup().flatMap((group) => group.types);
     expect(listed.every((nodeType) => nodeType.role === "action")).toBe(true);
-    expect(listed.length).toBe(allSteps.length + 15);
+    expect(listed.length).toBe(allSteps.length + 16);
   });
 
   it("knows the type of every node in every template", () => {
