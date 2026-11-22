@@ -31,6 +31,20 @@ describe("the videos for a page", () => {
     expect(titles("/settings/brand")).toEqual(["Set Your Brand Once"]);
   });
 
+  test("meeting and chat app pages get Meeting Imports and Chat Alerts", () => {
+    expect(titles("/settings/zoom")).toEqual(["Meeting Imports"]);
+    expect(titles("/settings/microsoft")).toEqual(["Meeting Imports"]);
+    expect(titles("/uploads")).toEqual(["Meeting Imports"]);
+    expect(titles("/settings/telegram")).toEqual(["Chat Alerts"]);
+    expect(titles("/settings/notifications")).toEqual(["Chat Alerts"]);
+    expect(titles("/inbox")).toContain("Chat Alerts");
+  });
+
+  test("Settings > Microsoft Teams is not mistaken for Settings > Team", () => {
+    expect(titles("/settings/team")).toEqual(["Your Team"]);
+    expect(titles("/settings/teams")).toEqual(["Chat Alerts"]);
+  });
+
   test("a page no video explains has none", () => {
     expect(videosFor("/toolkit")).toEqual([]);
     expect(videosFor("/settings/mcp")).toEqual([]);
@@ -55,6 +69,8 @@ describe("the videos for a page", () => {
       "/jobs",
       "/settings/brand",
       "/settings/team",
+      "/settings/zoom",
+      "/settings/telegram",
     ];
     const shown = new Set(pages.flatMap(titles));
     expect(EXPLAINERS.filter((video) => !shown.has(video.title))).toEqual([]);
