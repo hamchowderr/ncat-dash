@@ -17,11 +17,13 @@ Takewon in its own window on Mac, Windows and Linux. The app opens your Takewon,
 - **Addresses made with Cloudflare.** Teammates and webhooks need https addresses that reach the computer. With a Cloudflare token (Zone: Read, DNS: Edit and Cloudflare Tunnel: Edit, made at dash.cloudflare.com) the app lists your domains, makes a free Cloudflare Tunnel, routes `name.yourdomain.com` to the dashboard and `name-api`, `name-actions`, `name-agent` and `name-toolkit` to the rest, and starts it with the stack (the `tunnel` service in compose.yml). Nothing is opened on your router. A name your domain already uses for something else is never replaced. The token is used once and not kept; starting again later needs no token. Already have a tunnel or a reverse proxy? Choose **I have my own** and type the five addresses.
 - **Links.** Takewon's own pages stay in the window. Other sites open in your browser.
 
+- **Updates itself.** About half a minute after it opens, and every six hours after, the app looks for a newer version, downloads it in the background and checks its signature. It then says once that the new version is ready, and the tray's first item becomes **Restart to update to <version>**. Nothing installs until you choose that; your settings, saved addresses and a copy running on this computer stay as they are.
+
 Addresses use HTTPS. Plain `http://` is allowed only for this computer, a home or office network address (such as `192.168.1.20:3000`) and `.local` names (such as `mac-mini.local:3000`).
 
 ## Installing
 
-Each change to the app builds installers on GitHub Actions (the **Desktop app** workflow): `.dmg` for Macs with an Apple chip or Intel, `.msi` and `.exe` for Windows, `.AppImage`, `.deb` and `.rpm` for Linux. Open a run and download from its **Artifacts**.
+Each change to the app builds installers on GitHub Actions (the **Desktop app** workflow): `.dmg` for Macs with an Apple chip or Intel, `.msi` and `.exe` for Windows, `.AppImage`, `.deb` and `.rpm` for Linux. Each change merged to main is published as a release, **Desktop app <version>**, on the repository's Releases page: download the installer for your computer there. After that the app keeps itself up to date. (A pull request's builds are under its run's **Artifacts**.)
 
 The builds are not signed yet, so the first open needs one extra step:
 
@@ -38,6 +40,14 @@ The builds are not signed yet, so the first open needs one extra step:
 - The web app answers `GET /api/desktop` with `{"app":"ncat-dash"}` (`src/app/api/desktop/route.ts`). That is how the app tells the dashboard from another site; it names the codebase, not the product, so a rename doesn't break it. A self-hosted copy needs a web image from this change or later.
 - The dashboard's pages are a remote site inside the window. `capabilities/default.json` covers only the Connect screen (a test keeps it that way). On connecting, the app gives that one dashboard's origin its commands (`notify`, `set_unseen`, `save_export`, `open_export`, `show_export`, `choose_files`, `send_file`, `begin_upload`, `send_part`, `stopped_uploads`, `forget_upload`, `choose_folder`, `watch_folder`, `watched_folders`, `unwatch_folder`, `landed_files`, `landed_sent`), and each checks the caller is the dashboard open now. The dashboard says what to save; the app picks the folder, fetches only web addresses, and opens or shows only files inside its own exports folder (`src-tauri/src/exports.rs`). For uploads the app reads only files chosen in its own picker, or files an upload chosen that way is still sending, and keeps the uploads still going in `uploads.json` in its settings folder (`src-tauri/src/uploads.rs`). Watched folders must be chosen in its folder picker, links inside them are not followed, and they are kept in `watches.json` (`src-tauri/src/watches.rs`); `src/components/app-shell/local-folders.tsx` sends what lands. The web app calls them from `src/lib/desktop.ts`; in a browser those calls do nothing.
 - The saved addresses are in `servers.json` in the app's settings folder (for example `~/Library/Application Support/io.otakusolutions.desktop/` on a Mac).
+
+## Releases and updates
+
+The **Desktop app** workflow publishes a release for each change to the app on main. The version is the major and minor number in `src-tauri/tauri.conf.json` plus the workflow's run number (`0.1.57`), so each is newer than the last. The release starts as a draft; each build adds its installers and signed update files, then `scripts/desktop-release.mjs` writes `latest.json` from their signatures and the release becomes the latest. The app reads `https://github.com/<owner>/<repo>/releases/latest/download/latest.json` (`plugins.updater` in `tauri.conf.json`) and installs an update only if its signature matches the public key there.
+
+That key is the app's own update key, separate from Apple's and Microsoft's signing, so updates work while the builds are unsigned. Its private half is the repository secret `TAURI_SIGNING_PRIVATE_KEY` (no password). Without it the builds still run but nothing is published. Lose it and installed copies can't update; a new key means everyone downloads the app once more.
+
+For your own copy of the code: make a key with `pnpm tauri signer generate -w takewon.key` in `apps/desktop`, put the public key and your repository's address in `plugins.updater`, and the private key in your repository's `TAURI_SIGNING_PRIVATE_KEY` secret.
 
 ## Working on it
 

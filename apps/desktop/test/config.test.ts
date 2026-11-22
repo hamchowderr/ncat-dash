@@ -70,4 +70,21 @@ describe("the app's details", () => {
   test("keeps a strict content policy on its own pages", () => {
     expect(config.app.security.csp).toContain("default-src 'self'");
   });
+
+  test("updates itself only from this repository's latest release, signed with its own key", () => {
+    const { pubkey, endpoints } = config.plugins.updater;
+    expect(endpoints).toEqual([
+      "https://github.com/hamchowderr/ncat-dash/releases/latest/download/latest.json",
+    ]);
+    // A minisign public key, as `tauri signer generate` writes it (base64 of two lines).
+    expect(Buffer.from(pubkey, "base64").toString()).toMatch(
+      /^untrusted comment: minisign public key/,
+    );
+    // Update files are only made in the release builds, which have the private key.
+    expect(config.bundle.createUpdaterArtifacts).toBeUndefined();
+  });
+
+  test("lets neither its own screens nor the dashboard install updates", () => {
+    expect(JSON.stringify(read("capabilities/default.json"))).not.toContain("updater");
+  });
 });
