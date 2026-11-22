@@ -153,9 +153,23 @@ test("posts are planned on the calendar, fill repeating slots, and move by dragg
   await expect(side.getByRole("link", { name: "V1 · clip" })).toBeVisible();
   await side.getByRole("button", { name: "Back" }).click();
 
-  // The week view, with hours.
+  // At 1280 wide with the sidebar open, every day of the week fits: Saturday is not cut off.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const grid = page.locator('[data-tour-step-id="tour-calendar-grid"]');
+  const wholeWeek = async () => {
+    const fits = await grid.evaluate((box) => box.scrollWidth <= box.clientWidth + 1);
+    const box = (await grid.boundingBox())!;
+    const saturday = (await page.locator("[data-day]").nth(6).boundingBox())!;
+    return fits && saturday.x + saturday.width <= box.x + box.width + 1;
+  };
+  await expect(page.getByRole("button", { name: "Week", exact: true })).toBeVisible();
+  expect(await wholeWeek(), "the month cuts off Saturday at 1280").toBe(true);
+
+  // The week view, with hours, fits too.
   await page.getByRole("button", { name: "Week", exact: true }).click();
   await expect(page.locator("[data-hour]").first()).toBeVisible();
+  expect(await wholeWeek(), "the week cuts off Saturday at 1280").toBe(true);
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
