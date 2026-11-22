@@ -18,6 +18,7 @@ import {
 import { hookUrl, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib/automations";
 
 import { AutomationPicker } from "./automation-picker";
+import { RunsAtOnce } from "./runs-at-once";
 import { TRIGGER_ICONS, TRIGGER_TINT } from "./flow-nodes";
 import { TimeZonePicker, zoneCity } from "./time-zone-picker";
 import { LocalFolder } from "./local-folder";
@@ -103,6 +104,7 @@ export function TriggerPanel({
   onStopStarting,
   onAddStep,
   onRemove,
+  runsAtOnce,
 }: {
   trigger: Trigger;
   onChange: (trigger: Trigger) => void;
@@ -117,6 +119,8 @@ export function TriggerPanel({
   onStopStarting?: (stepId: string) => void;
   onAddStep?: () => void;
   onRemove?: () => void;
+  /** How many of the automation's runs go at once (null: no limit); left out to hide it. */
+  runsAtOnce?: number | null;
 }) {
   const address = hookUrl(automationId, hookToken);
 
@@ -434,6 +438,9 @@ export function TriggerPanel({
             )}
           </div>
         </Field>
+      )}
+      {runsAtOnce !== undefined && (
+        <RunsAtOnce automationId={automationId} runsAtOnce={runsAtOnce} />
       )}
     </FieldGroup>
   );

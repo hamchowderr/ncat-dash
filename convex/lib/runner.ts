@@ -69,6 +69,7 @@ import {
 } from "@ncat-dash/automation-core";
 import { startSend } from "./send";
 import { type Item, recordItems } from "./items";
+import { mustWaitForSlot } from "./runLimit";
 import { getStep, pictureGivenForVideo } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
@@ -193,6 +194,11 @@ export async function startRun(
       startedAt: null,
       finishedAt: null,
     });
+  }
+  // An automation that runs only a few at a time keeps this one waiting for its turn.
+  if (await mustWaitForSlot(ctx, automation, runId, options.test !== undefined)) {
+    await ctx.db.patch(runId, { status: "waiting", heldForSlot: true });
+    return { ok: true, runId };
   }
   await advance(ctx, runId);
   return { ok: true, runId };
@@ -1015,6 +1021,8 @@ async function cutClips(
 export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void> {
   const run = await ctx.db.get(runId);
   if (!run || (run.status !== "running" && run.status !== "waiting")) return;
+  // A run waiting for its turn starts only when startWaitingRuns lets it.
+  if (run.heldForSlot) return;
   const nodes = run.nodes as AutomationNode[];
   const edges = run.edges as AutomationEdge[];
 

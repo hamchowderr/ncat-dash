@@ -96,6 +96,7 @@ import type * as lib_queue from "../lib/queue.js";
 import type * as lib_reviewChannels from "../lib/reviewChannels.js";
 import type * as lib_reviewSpeaker from "../lib/reviewSpeaker.js";
 import type * as lib_reviews from "../lib/reviews.js";
+import type * as lib_runLimit from "../lib/runLimit.js";
 import type * as lib_runner from "../lib/runner.js";
 import type * as lib_send from "../lib/send.js";
 import type * as lib_signUps from "../lib/signUps.js";
@@ -262,6 +263,7 @@ declare const fullApi: ApiFromModules<{
   "lib/reviewChannels": typeof lib_reviewChannels;
   "lib/reviewSpeaker": typeof lib_reviewSpeaker;
   "lib/reviews": typeof lib_reviews;
+  "lib/runLimit": typeof lib_runLimit;
   "lib/runner": typeof lib_runner;
   "lib/send": typeof lib_send;
   "lib/signUps": typeof lib_signUps;

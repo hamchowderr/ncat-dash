@@ -594,6 +594,9 @@ export default defineSchema({
     ),
     createdBy: v.string(),
     updatedAt: v.number(),
+    // How many of its runs go at once; the rest wait their turn (lib/runLimit.ts). No
+    // limit when unset. Not part of versions.
+    runsAtOnce: v.optional(v.number()),
     // The client this automation works for. Its runs use that client's brand over the
     // team's, and keep their finished files in the client's folder. Not part of versions.
     clientId: v.optional(v.id("clients")),
@@ -727,8 +730,12 @@ export default defineSchema({
     aiHeld: v.optional(v.number()),
     // For a run its webhook started with a callback_url: where its end is reported.
     callbackUrl: v.optional(v.string()),
+    // Waiting for one of the automation's runs under way to end, because it runs only a
+    // few at a time (automations.runsAtOnce). Its steps have not started.
+    heldForSlot: v.optional(v.boolean()),
   })
     .index("by_automation", ["automationId"])
+    .index("by_automation_and_status", ["automationId", "status"])
     .index("by_parentRun", ["parentRunId"])
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"]),

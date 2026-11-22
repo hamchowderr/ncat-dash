@@ -158,6 +158,11 @@ export const get = query({
       startedByRun: parent ? linkTo(parent) : null,
       // Runs this one started: by a Run an automation step, or by being followed.
       startedRuns: started.map(linkTo),
+      // Waiting for the automation's other runs, when it runs only a few at a time: how
+      // many it runs at once. Null when the run is not waiting for its turn.
+      waitingForTurn: run.heldForSlot
+        ? ((await ctx.db.get(run.automationId))?.runsAtOnce ?? null)
+        : null,
       // What the run's AI steps spent, in millionths of a dollar, and the team's limit.
       aiSpent: run.aiSpent ?? 0,
       aiLimit: (await aiLimitOf(ctx, run.organizationId)) ?? null,
