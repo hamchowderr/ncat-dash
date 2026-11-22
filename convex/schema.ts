@@ -522,11 +522,15 @@ export default defineSchema({
     accessExpiresAt: v.number(),
     refreshHash: v.string(),
     refreshExpiresAt: v.number(),
+    // The refresh token this grant's current one replaced. Seeing it again means a copy
+    // was taken, so the whole grant is revoked (RFC 9700, refresh token rotation).
+    previousRefreshHash: v.optional(v.string()),
     createdAt: v.number(),
     lastUsedAt: v.union(v.null(), v.number()),
   })
     .index("by_access", ["accessHash"])
     .index("by_refresh", ["refreshHash"])
+    .index("by_previous_refresh", ["previousRefreshHash"])
     .index("by_organization", ["organizationId"]),
 
   // A team's own FFmpeg steps, written by the agent (or a person) when no ready-made step
