@@ -271,8 +271,7 @@ export function useStepFields(stepId: string): StepFieldList | null {
     const step = getStep(stepId);
     if (!step) return null;
     const schema = userInputJsonSchema(step) as JsonSchema;
-    // A setting the team's brand fills in (music, logo...) can be left empty to use it.
-    const required = new Set((schema.required ?? []).filter((name) => !step.brandInputs?.[name]));
+    const required = new Set(schema.required ?? []);
     return Object.entries(schema.properties ?? {})
       .map(([name, field]) => ({ name, schema: field, required: required.has(name) }))
       .sort((a, b) => Number(b.required) - Number(a.required));

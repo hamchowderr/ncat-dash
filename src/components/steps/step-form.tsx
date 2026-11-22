@@ -29,7 +29,10 @@ export function StepForm({ stepId }: { stepId: string }) {
   const allFields = useStepFields(stepId);
   // The saved look is picked by name from the team's looks, never typed.
   const picksLook = stepId === SAVED_LOOK_STEP;
-  const fields = allFields?.filter(({ name }) => !(picksLook && name === LOOK_SETTING));
+  // A setting the team's brand fills in (music, logo...) can be left empty to use it.
+  const fields = allFields
+    ?.filter(({ name }) => !(picksLook && name === LOOK_SETTING))
+    .map((field) => (step?.brandInputs?.[field.name] ? { ...field, required: false } : field));
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
