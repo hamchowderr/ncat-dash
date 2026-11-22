@@ -65,7 +65,12 @@ const STAND_IN_PAGE = `<!doctype html><title>Stand-in dashboard</title>
                         folder: "/etc",
                       }).then(
                         () => "watches anything",
-                        () => null,
+                        () =>
+                          // Running the stack on this computer is only for the app's own pages.
+                          invoke("run_stack_step", { step: "stop" }).then(
+                            () => "runs the stack",
+                            () => null,
+                          ),
                       ),
                   ),
               )
@@ -149,6 +154,15 @@ describe("connecting the desktop app to a dashboard", () => {
     const app = await Session.start(driverUrl, application);
     try {
       await app.waitFor("h1", (text) => text === `Connect to your ${NAME}`);
+
+      // Running it here starts with a real look at this computer, then comes back.
+      await app.click(await app.find(".run-here-button"));
+      await app.waitFor("h1", (text) => text === `Run ${NAME} on this computer`);
+      await app.waitFor("[data-id=docker]", (text) => text.includes("Docker"));
+      await app.waitFor("[data-id=memory]", (text) => text.includes("of memory"));
+      await app.click(await app.find(".back"));
+      await app.waitFor("h1", (text) => text === `Connect to your ${NAME}`);
+
       const input = await app.find("#address");
 
       await app.type(input, otherSiteAddress);

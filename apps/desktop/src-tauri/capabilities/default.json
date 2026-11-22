@@ -1,12 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The app's own pages (the Connect screen). The dashboard's pages are a remote site and get nothing: there is no \"remote\" entry here on purpose.",
+  "description": "The app's own pages (the Connect screen and running the stack on this computer). The dashboard's pages are a remote site and get nothing: there is no \"remote\" entry here on purpose.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "allow-saved-servers",
     "allow-forget-server",
-    "allow-open-server"
+    "allow-open-server",
+    "allow-check-machine",
+    "allow-stack-saved",
+    "allow-save-stack",
+    "allow-run-stack-step"
   ]
 }
