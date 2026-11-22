@@ -1,9 +1,17 @@
 import { cleanDrawing, COMMENT_LIMIT } from "@ncat-dash/review-core";
 import { ConvexError, v } from "convex/values";
-import { components } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
+import {
+  action,
+  internalQuery,
+  mutation,
+  type MutationCtx,
+  query,
+  type QueryCtx,
+} from "./_generated/server";
 import { notify } from "./lib/alerts";
+import { clientBrand, signLogo, teamLogoFile } from "./lib/clientLinks";
 import { drawingValidator } from "./lib/drawing";
 import { CLIP_LIMIT } from "./lib/reviews";
 import { toReviewChannels } from "./lib/reviewChannels";
@@ -28,7 +36,20 @@ async function shareFor(ctx: QueryCtx | MutationCtx, token: string) {
     .first();
   if (!share) return null;
   const review = await ctx.db.get(share.reviewId);
-  return review ? { share, review } : null;
+  if (!review) return null;
+  if (share.portalId === undefined) return { share, review };
+  // Opened from a client's portal: it works only while that portal is on, and the client
+  // may do what the portal allows now, not what it allowed when the room was opened.
+  const portal = await ctx.db.get(share.portalId);
+  if (!portal) return null;
+  return {
+    share: {
+      ...share,
+      allowVerdict: portal.allowVerdict,
+      showTeamComments: portal.showTeamComments,
+    },
+    review,
+  };
 }
 
 export async function requireShare(ctx: QueryCtx | MutationCtx, token: string) {
@@ -79,6 +100,8 @@ export const room = query({
     return {
       title: review.title,
       teamName: team.teamName,
+      // The team's logo and colour, so the room looks like the portal the client came from.
+      brand: await clientBrand(ctx, review.organizationId),
       status: review.status,
       allowVerdict: share.allowVerdict,
       verdict: review.clientVerdict ?? null,
@@ -276,5 +299,23 @@ export const verdict = mutation({
       args.approved ? "Approved the review." : "Asked for changes.",
       {},
     );
+  },
+});
+
+/** The team's logo file, while this share link works. */
+export const logoTarget = internalQuery({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const found = await shareFor(ctx, args.token);
+    return found ? await teamLogoFile(ctx, found.review.organizationId) : null;
+  },
+});
+
+/** A link the room shows the team's uploaded logo from. Null when there is none to show. */
+export const logoLink = action({
+  args: { token: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args): Promise<string | null> => {
+    return await signLogo(ctx, await ctx.runQuery(internal.sharedReview.logoTarget, args));
   },
 });
