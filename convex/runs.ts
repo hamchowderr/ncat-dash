@@ -6,6 +6,7 @@ import { runEnded } from "./lib/chain";
 import { approvalView, membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { factsOf } from "./lib/facts";
+import { loggedJob } from "./lib/stepLog";
 import { finishWait } from "./lib/logic";
 import { pickUp as pickUpRun, pickUpCheck, stepsOf } from "./lib/pickUp";
 import { pump } from "./lib/queue";
@@ -215,6 +216,32 @@ export const get = query({
           };
         }),
       ),
+    };
+  },
+});
+
+/** The most jobs a step's log lists. */
+const LOG_JOBS = 100;
+
+/**
+ * One step's log: every job it sent, earlier tries too, oldest first, and each try that
+ * failed and was tried again. Null for someone outside the team.
+ */
+export const stepLog = query({
+  args: { runStepId: v.id("runSteps") },
+  handler: async (ctx, args) => {
+    const step = await ctx.db.get(args.runStepId);
+    if (!step) return null;
+    const run = await ctx.db.get(step.runId);
+    if (!run || !(await isMember(ctx, run.organizationId))) return null;
+    const jobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_runStep", (q) => q.eq("runStepId", step._id))
+      .take(LOG_JOBS + 1);
+    return {
+      tries: step.tries ?? [],
+      jobs: jobs.slice(0, LOG_JOBS).map(loggedJob),
+      more: jobs.length > LOG_JOBS,
     };
   },
 });
