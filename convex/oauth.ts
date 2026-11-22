@@ -416,10 +416,28 @@ export const refreshGrant = internalMutation({
       error: "invalid_grant",
       description: "This refresh token is not valid.",
     };
-    if (!grant || grant.clientId !== args.clientId) return bad;
+    if (!grant) {
+      // A refresh token that was already swapped for a new one: someone holds a copy.
+      // End the grant, so neither copy works any more.
+      const replayed = await ctx.db
+        .query("oauthGrants")
+        .withIndex("by_previous_refresh", (q) => q.eq("previousRefreshHash", hash))
+        .unique();
+      if (replayed) await ctx.db.delete(replayed._id);
+      return bad;
+    }
+    if (grant.clientId !== args.clientId) return bad;
     if (grant.refreshExpiresAt < Date.now()) {
       await ctx.db.delete(grant._id);
       return bad;
+    }
+    const role = await ctx.runQuery(components.betterAuth.members.roleFor, {
+      userId: grant.userId,
+      organizationId: grant.organizationId,
+    });
+    if (!role) {
+      await ctx.db.delete(grant._id);
+      return { ...bad, description: "The person is no longer on this team." };
     }
     const tokens = await newTokens();
     await ctx.db.patch(grant._id, {
@@ -427,6 +445,7 @@ export const refreshGrant = internalMutation({
       accessExpiresAt: tokens.accessExpiresAt,
       refreshHash: tokens.refreshHash,
       refreshExpiresAt: tokens.refreshExpiresAt,
+      previousRefreshHash: grant.refreshHash,
     });
     return { ok: true, reply: tokenReply(tokens) };
   },
