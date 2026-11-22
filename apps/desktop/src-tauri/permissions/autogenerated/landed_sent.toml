@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-landed-sent"
+description = "Enables the landed_sent command without any pre-configured scope."
+commands.allow = ["landed_sent"]
+
+[[permission]]
+identifier = "deny-landed-sent"
+description = "Denies the landed_sent command without any pre-configured scope."
+commands.deny = ["landed_sent"]

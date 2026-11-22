@@ -20,6 +20,7 @@ import { hookUrl, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib/a
 import { AutomationPicker } from "./automation-picker";
 import { TRIGGER_ICONS, TRIGGER_TINT } from "./flow-nodes";
 import { TimeZonePicker, zoneCity } from "./time-zone-picker";
+import { LocalFolder } from "./local-folder";
 import { WatchedFolder } from "./watched-folder";
 
 const UNITS = { minutes: 1, hours: 60, days: 1440 } as const;
@@ -95,6 +96,7 @@ export function TriggerPanel({
   trigger,
   onChange,
   automationId,
+  automationName = "",
   hookToken,
   taken = [],
   starts,
@@ -105,6 +107,8 @@ export function TriggerPanel({
   trigger: Trigger;
   onChange: (trigger: Trigger) => void;
   automationId: string;
+  /** The automation's name, for the desktop app's list of watched folders. */
+  automationName?: string;
   hookToken: string;
   /** Kinds the automation's other triggers are; a webhook or Run now can only be there once. */
   taken?: TriggerKind[];
@@ -272,6 +276,11 @@ export function TriggerPanel({
             It is checked every minute. Files already there when you switch the automation on are
             left alone.
           </FieldDescription>
+          <LocalFolder
+            automationId={automationId}
+            automationName={automationName}
+            prefix={trigger.prefix}
+          />
         </Field>
       )}
 

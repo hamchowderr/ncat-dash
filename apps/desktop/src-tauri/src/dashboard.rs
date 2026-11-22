@@ -1,7 +1,8 @@
 //! What the dashboard's own pages may ask of the app once someone has connected to it:
 //! show an alert as a system notification, keep the number of unseen alerts on the tray
-//! and the Dock or taskbar, save a run for a video editor, and send files chosen in the
-//! app's file picker. Nothing else, and only for the dashboard that is open.
+//! and the Dock or taskbar, save a run for a video editor, send files chosen in the app's
+//! file picker, and bring in files from a folder on this computer chosen in its folder
+//! picker. Nothing else, and only for the dashboard that is open.
 
 use tauri::Url;
 
@@ -9,7 +10,7 @@ use crate::NAME;
 
 /// The commands the dashboard may call (see `capability_for`). Everything else the app
 /// does stays with its own pages.
-pub const COMMANDS: [&str; 11] = [
+pub const COMMANDS: [&str; 17] = [
     "allow-notify",
     "allow-set-unseen",
     "allow-save-export",
@@ -21,6 +22,12 @@ pub const COMMANDS: [&str; 11] = [
     "allow-send-part",
     "allow-stopped-uploads",
     "allow-forget-upload",
+    "allow-choose-folder",
+    "allow-watch-folder",
+    "allow-watched-folders",
+    "allow-unwatch-folder",
+    "allow-landed-files",
+    "allow-landed-sent",
 ];
 
 /// The address pattern the dashboard's pages match: every page of that one origin.
