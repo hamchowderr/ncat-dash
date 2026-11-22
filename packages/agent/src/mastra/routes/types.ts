@@ -74,8 +74,13 @@ export type ChatServerDeps = {
   workspace: {
     /** Absolute root, echoed to the Files panel. */
     root: string;
-    readTree: () => Promise<WorkspaceNode[]>;
-    readFile: (relPath: string) => Promise<unknown | null>;
+    /**
+     * The folder one resource's workspace lives in, or null when it has none (one
+     * workspace per team on a signed-in server). Left out, every request reads `root`.
+     */
+    rootFor?: (resourceId?: string) => string | null;
+    readTree: (root?: string) => Promise<WorkspaceNode[]>;
+    readFile: (relPath: string, root?: string) => Promise<unknown | null>;
   };
 
   /** Generated-image byte store (`/images/:id`). */

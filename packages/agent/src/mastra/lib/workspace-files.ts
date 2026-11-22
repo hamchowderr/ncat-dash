@@ -25,7 +25,7 @@ const MAX_NODES = 2000;
 const MAX_FILE_BYTES = 200_000;
 
 /** Walk WORKSPACE_ROOT into a nested tree (dirs first, then alphabetical). */
-export async function readWorkspaceTree(): Promise<FileNode[]> {
+export async function readWorkspaceTree(root: string = WORKSPACE_ROOT): Promise<FileNode[]> {
   let count = 0;
 
   async function walk(absDir: string, relDir: string): Promise<FileNode[]> {
@@ -56,7 +56,7 @@ export async function readWorkspaceTree(): Promise<FileNode[]> {
     return nodes;
   }
 
-  return walk(WORKSPACE_ROOT, '');
+  return walk(root, '');
 }
 
 /**
@@ -65,11 +65,12 @@ export async function readWorkspaceTree(): Promise<FileNode[]> {
  */
 export async function readWorkspaceFile(
   relPath: string,
+  root: string = WORKSPACE_ROOT,
 ): Promise<{ path: string; content: string; truncated: boolean } | null> {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
-  const abs = path.resolve(WORKSPACE_ROOT, normalized);
-  // Path-traversal guard: the resolved path must stay within WORKSPACE_ROOT.
-  const rel = path.relative(WORKSPACE_ROOT, abs);
+  const abs = path.resolve(root, normalized);
+  // Path-traversal guard: the resolved path must stay within the root.
+  const rel = path.relative(root, abs);
   if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
   try {
     // `utf8` yields a string at runtime; this @types/node overload widens it to
