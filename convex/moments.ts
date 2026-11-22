@@ -1,7 +1,10 @@
 import {
+  type AiUsage,
   type AutomationEdge,
   type AutomationNode,
   BROLL_GAPS,
+  costOfUsage,
+  guessCost,
   brollSettings,
   chapterSettings,
   MAX_CUTAWAYS,
@@ -440,12 +443,34 @@ async function sendBatch(
   return typeof result?.batchId === "string" ? result.batchId : null;
 }
 
-/** Asks the agent server's model to pick from one transcript. Returns its answer as text. */
+/** What the agent server says an answer used, read leniently. */
+export function usageOf(value: unknown): AiUsage {
+  const usage = (value ?? {}) as Record<string, unknown>;
+  const n = (key: string) => (typeof usage[key] === "number" ? (usage[key] as number) : 0);
+  return {
+    inputTokens: n("inputTokens"),
+    outputTokens: n("outputTokens"),
+    cacheReadTokens: n("cacheReadTokens"),
+    cacheWriteTokens: n("cacheWriteTokens"),
+  };
+}
+
+/** What one answer cost, from what the agent server reported with it, in micros. */
+export function answerCost(result: { usage?: unknown; model?: unknown }, batch = false): number {
+  // No model named: priced as the dearest, so the run's limit still holds.
+  const model = typeof result.model === "string" ? result.model : "";
+  return costOfUsage(model, usageOf(result.usage), batch);
+}
+
+/**
+ * Asks the agent server's model to pick from one transcript. Returns its answer as text,
+ * and what it cost in millionths of a dollar.
+ */
 async function askModel(
   body: Record<string, unknown>,
   askedBy: string,
   organizationId: string,
-): Promise<string> {
+): Promise<{ answer: string; cost: number }> {
   const url = process.env.AGENT_URL;
   const secret = process.env.MASTRA_JWT_SECRET;
   if (!url || !secret) {
@@ -468,11 +493,15 @@ async function askModel(
   } catch {
     throw new PickError("The agent could not be reached to pick. Run it again in a moment.");
   }
-  const result = (await response.json().catch(() => null)) as { answer?: unknown } | null;
+  const result = (await response.json().catch(() => null)) as {
+    answer?: unknown;
+    usage?: unknown;
+    model?: unknown;
+  } | null;
   if (!response.ok || typeof result?.answer !== "string" || result.answer.trim() === "") {
     throw new PickError("The agent did not answer when asked to pick. Run it again in a moment.");
   }
-  return result.answer;
+  return { answer: result.answer, cost: answerCost(result) };
 }
 
 /**
@@ -491,6 +520,8 @@ export const pick = internalAction({
         answers,
         ...(error !== undefined ? { error } : {}),
       });
+    // What the answers asked this time really cost, in micros.
+    let spent = 0;
     try {
       const questions: { url: string; key: string; body: Record<string, unknown> }[] = [];
       for (const video of loaded.videos) {
@@ -541,7 +572,20 @@ export const pick = internalAction({
         ).map(({ question, answer }) => [question, answer]),
       );
       const unanswered = questions.filter(({ key }) => !saved.has(key));
-      if (unanswered.length > 0 && loaded.unattended && !args.live) {
+      const batching = unanswered.length > 0 && loaded.unattended && !args.live;
+      // Hold a generous guess against the run's AI limit before asking anything.
+      if (unanswered.length > 0) {
+        const guess = unanswered.reduce(
+          (sum, { body }) => sum + guessCost("", JSON.stringify(body).length, batching),
+          0,
+        );
+        const held = await ctx.runMutation(internal.aiSpend.hold, {
+          runStepId: args.runStepId,
+          micros: guess,
+        });
+        if (!held.ok) throw new PickError(held.message);
+      }
+      if (batching) {
         const batchId = await sendBatch(unanswered, loaded.askedBy, loaded.organizationId);
         if (batchId) {
           await ctx.runMutation(internal.moments.waitForBatch, {
@@ -554,16 +598,27 @@ export const pick = internalAction({
       }
 
       const answers: { url: string; answer: string }[] = [];
-      for (const question of questions) {
-        let answer = saved.get(question.key);
-        if (answer === undefined) {
-          answer = await askModel(question.body, loaded.askedBy, loaded.organizationId);
-          await ctx.runMutation(internal.moments.saveAnswers, {
-            organizationId: loaded.organizationId,
-            answers: [{ question: question.key, answer }],
+      try {
+        for (const question of questions) {
+          let answer = saved.get(question.key);
+          if (answer === undefined) {
+            const asked = await askModel(question.body, loaded.askedBy, loaded.organizationId);
+            answer = asked.answer;
+            spent += asked.cost;
+            await ctx.runMutation(internal.moments.saveAnswers, {
+              organizationId: loaded.organizationId,
+              answers: [{ question: question.key, answer }],
+            });
+          }
+          answers.push({ url: question.url, answer });
+        }
+      } finally {
+        if (unanswered.length > 0) {
+          await ctx.runMutation(internal.aiSpend.settle, {
+            runStepId: args.runStepId,
+            micros: spent,
           });
         }
-        answers.push({ url: question.url, answer });
       }
       await finish(answers);
     } catch (error) {
@@ -593,7 +648,7 @@ export const checkBatch = internalAction({
     const result = response?.ok
       ? ((await response.json().catch(() => null)) as {
           pending?: unknown;
-          answers?: { id?: unknown; answer?: unknown }[];
+          answers?: { id?: unknown; answer?: unknown; usage?: unknown; model?: unknown }[];
         } | null)
       : null;
     const answers = Array.isArray(result?.answers) ? result.answers : null;
@@ -607,6 +662,13 @@ export const checkBatch = internalAction({
         ? [{ question: id, answer }]
         : [],
     );
+    // Every answer the batch gave was paid for, at the batch price, even one not usable.
+    if (answers) {
+      await ctx.runMutation(internal.aiSpend.settle, {
+        runStepId: args.runStepId,
+        micros: answers.reduce((sum, one) => sum + answerCost(one, true), 0),
+      });
+    }
     if (good.length > 0) {
       await ctx.runMutation(internal.moments.saveAnswers, {
         organizationId: batch.organizationId,

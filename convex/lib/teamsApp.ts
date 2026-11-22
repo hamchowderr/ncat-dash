@@ -10,7 +10,7 @@ const OUTLINE_ICON =
   "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCxQHKTnNrGL7AAAAmUlEQVRYw+3WsQkCQRCF4V0RDcyNTSzADkxswxpMzyKsxTZswD6s4DPazIODUx7C/gXM/gyzb6aUTqczERwRFYAHdkmBxgXLpAC8cEgKNG7YJAUap7QA3LFNCjTOqEkBeGKfFGgMWI3Vndwm5sVgrfXjW4uvtWicayllPbvKv81A7BdEcyCWhLFdEN2GsXsgehFlb8JO51e8AQ80Ykj1aI+6AAAAAElFTkSuQmCC";
 
 /** What the agent is called in Teams, unless whoever runs the dashboard names it. */
-export const DEFAULT_BOT_NAME = "Kontifi";
+export const DEFAULT_BOT_NAME = "Takewon";
 
 /** The manifest for the dashboard's bot. Exported for the tests. */
 export function teamsManifest(options: { botId: string; name: string; siteUrl: string }) {

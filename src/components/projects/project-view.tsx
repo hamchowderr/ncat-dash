@@ -11,7 +11,7 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Columns3, List, MessagesSquare, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type CSSProperties, type DragEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -27,6 +27,8 @@ import { type Slot, SlotPanel } from "./slot-panel";
 import { Filled, KindIcon, StatusIcon, statusLabel, STATUSES } from "./slot-status";
 import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
 import { PickList } from "@/components/ui/pick-list";
+import { StoryboardView } from "@/components/storyboard/storyboard-view";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.projects.get>>>;
 type Layout = "list" | "board";
@@ -385,6 +387,19 @@ function Project({ project }: { project: Loaded }) {
     }
   }
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const tab = search.get("view") === "storyboard" ? "storyboard" : "slots";
+
+  function pickTab(next: string) {
+    const params = new URLSearchParams(search.toString());
+    if (next === "storyboard") params.set("view", "storyboard");
+    else params.delete("view");
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
   const select = (id: Id<"deliverables">) =>
     setSelectedId((current) => (current === id ? null : id));
 
@@ -393,66 +408,77 @@ function Project({ project }: { project: Loaded }) {
       <StartPageTour tourId="project" />
       <Header key={project.name} project={project} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <SegmentedGroup aria-label="Layout" data-tour-step-id="tour-project-layout">
-          {(
-            [
-              ["list", "List", List],
-              ["board", "Board", Columns3],
-            ] as const
-          ).map(([value, label, Icon]) => (
-            <SegmentedButton
-              key={value}
-              pressed={layout === value}
-              onClick={() => pickLayout(value)}
-            >
-              <Icon aria-hidden="true" />
-              {label}
-            </SegmentedButton>
-          ))}
-        </SegmentedGroup>
-        <AddSlot projectId={project._id} />
-      </div>
+      <Tabs value={tab} onValueChange={pickTab} className="gap-4">
+        <TabsList variant="line" aria-label="Project">
+          <TabsTrigger value="slots">Slots</TabsTrigger>
+          <TabsTrigger value="storyboard">Storyboard</TabsTrigger>
+        </TabsList>
+        <TabsContent value="storyboard">
+          <StoryboardView projectId={project._id} />
+        </TabsContent>
+        <TabsContent value="slots" className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SegmentedGroup aria-label="Layout" data-tour-step-id="tour-project-layout">
+              {(
+                [
+                  ["list", "List", List],
+                  ["board", "Board", Columns3],
+                ] as const
+              ).map(([value, label, Icon]) => (
+                <SegmentedButton
+                  key={value}
+                  pressed={layout === value}
+                  onClick={() => pickLayout(value)}
+                >
+                  <Icon aria-hidden="true" />
+                  {label}
+                </SegmentedButton>
+              ))}
+            </SegmentedGroup>
+            <AddSlot projectId={project._id} />
+          </div>
 
-      <div
-        className={cn(
-          "grid gap-4 lg:grid-cols-[minmax(0,1fr)_var(--panel-width)]",
-          "motion-safe:transition-[grid-template-columns] motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)]",
-        )}
-        style={{ "--panel-width": selected ? "24rem" : "0rem" } as CSSProperties}
-      >
-        <div className="min-w-0" data-tour-step-id="tour-project-slots">
-          {slots.length === 0 ? (
-            <p className="text-muted-foreground rounded-xl bg-surface px-4 py-3 text-sm">
-              No slots yet. Add the first one above.
-            </p>
-          ) : layout === "board" ? (
-            <SlotBoard
-              slots={slots}
-              selected={selectedId}
-              onSelect={select}
-              onMove={(id, status) => void onMove(id, status)}
-            />
-          ) : (
-            <SlotList slots={slots} selected={selectedId} onSelect={select} />
-          )}
-        </div>
-        <aside
-          className={cn(
-            "min-w-0 overflow-hidden rounded-xl bg-surface lg:self-start",
-            !selected && "hidden lg:block",
-          )}
-        >
-          {selected && (
-            <SlotPanel
-              key={selected._id}
-              slot={selected}
-              reviewId={project.review?._id ?? null}
-              onClose={() => setSelectedId(null)}
-            />
-          )}
-        </aside>
-      </div>
+          <div
+            className={cn(
+              "grid gap-4 lg:grid-cols-[minmax(0,1fr)_var(--panel-width)]",
+              "motion-safe:transition-[grid-template-columns] motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.16,1,0.3,1)]",
+            )}
+            style={{ "--panel-width": selected ? "24rem" : "0rem" } as CSSProperties}
+          >
+            <div className="min-w-0" data-tour-step-id="tour-project-slots">
+              {slots.length === 0 ? (
+                <p className="text-muted-foreground rounded-xl bg-surface px-4 py-3 text-sm">
+                  No slots yet. Add the first one above.
+                </p>
+              ) : layout === "board" ? (
+                <SlotBoard
+                  slots={slots}
+                  selected={selectedId}
+                  onSelect={select}
+                  onMove={(id, status) => void onMove(id, status)}
+                />
+              ) : (
+                <SlotList slots={slots} selected={selectedId} onSelect={select} />
+              )}
+            </div>
+            <aside
+              className={cn(
+                "min-w-0 overflow-hidden rounded-xl bg-surface lg:self-start",
+                !selected && "hidden lg:block",
+              )}
+            >
+              {selected && (
+                <SlotPanel
+                  key={selected._id}
+                  slot={selected}
+                  reviewId={project.review?._id ?? null}
+                  onClose={() => setSelectedId(null)}
+                />
+              )}
+            </aside>
+          </div>
+        </TabsContent>
+      </Tabs>
     </>
   );
 }

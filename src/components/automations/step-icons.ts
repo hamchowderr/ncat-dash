@@ -45,6 +45,7 @@ import {
   ScissorsLineDashed,
   Smartphone,
   Split,
+  SquareSplitHorizontal,
   SquareScissors,
   SquareTerminal,
   Stamp,
@@ -53,6 +54,8 @@ import {
   Type,
   TypeOutline,
   VolumeX,
+  Drum,
+  Metronome,
 } from "lucide-react";
 
 /**
@@ -60,6 +63,7 @@ import {
  * comes from the step's group. A step with no entry falls back to its group's icon.
  */
 export const STEP_ICONS: Record<string, LucideIcon> = {
+  "audio-beats": Metronome,
   "audio-concatenate": ListMusic,
   "code-execute-python": SquareTerminal,
   "ffmpeg-compose": Terminal,
@@ -113,6 +117,8 @@ export const STEP_ICONS: Record<string, LucideIcon> = {
   "recipe-frame-choices": GalleryHorizontalEnd,
   "recipe-fit-to-voiceover": AudioWaveform,
   "recipe-slideshow": Presentation,
+  "recipe-beat-cut": Drum,
+  "recipe-split-shots": SquareSplitHorizontal,
   "recipe-intro-outro": Film,
   "recipe-change-format": FileCog,
 };

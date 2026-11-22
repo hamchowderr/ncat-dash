@@ -1,8 +1,8 @@
 import { expect, test } from "./test";
 
 // Hook variants and length cuts in a real browser: they sit together in the one list of
-// ready-mades, and UGC Ad Variants opens as variants, length cuts, three ad shapes and
-// captioned copies, with each other take picked on the first step.
+// ready-mades, and UGC Ad Variants opens as variants, length cuts, three ad shapes,
+// captioned copies and a copy of each with music, with each other take picked on the first step.
 
 const stamp = Date.now().toString(36);
 const TOOLKIT = "http://127.0.0.1:8767";
@@ -51,9 +51,13 @@ test("UGC Ad Variants opens as variants, cuts, shapes and captions, with its tak
 
   await variants.getByText("UGC Ad Variants", { exact: true }).click();
   await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
-  // Variants, length cuts, three shapes and a captioned copy of each.
+  // Variants, length cuts, three shapes and a captioned copy of each, then each of those
+  // again with the team's music under it.
   const steps = page.locator(".react-flow__node-step");
-  await expect(steps).toHaveCount(8);
+  await expect(steps).toHaveCount(14);
+  // With no music in Settings yet, the music steps say they are passed over, and the
+  // automation is not held up waiting for it.
+  await expect(page.getByText("Passed over until you add background music")).toHaveCount(6);
   await pause(2000);
 
   // The first step takes the base cut from the run and asks for the other takes and the
@@ -71,10 +75,19 @@ test("UGC Ad Variants opens as variants, cuts, shapes and captions, with its tak
   // The creator's files are kept in a folder of their own.
   await page.getByRole("textbox", { name: "Creator optional" }).fill("Jane Doe");
   await pause(2000);
+  // A paid creator's disclosure is found in what they say and kept in every pairing.
+  await expect(
+    page.getByText("found in what the creator says, and kept in every cut"),
+  ).toBeVisible();
+  await pause(1500);
 
   // The length cuts keep the call to action on 6, 15, 30 and 60 second cuts.
   await steps.nth(1).click();
   await expect(page.locator("input[value='6, 15, 30, 60']")).toBeVisible();
+  // And in every length: a 6 second cut keeps the line too.
+  await expect(
+    page.getByText("found in what the creator says, and kept in every cut"),
+  ).toBeVisible();
   await pause(2500);
 });
 
@@ -100,7 +113,7 @@ test("UGC Ad Variants From Creator Folders starts by itself from each creator's 
   const variants = page.getByRole("region", { name: /^Hooks, lengths and ad variants/ });
   await variants.getByText("UGC Ad Variants From Creator Folders", { exact: true }).click();
   await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
-  await expect(page.locator(".react-flow__node-step")).toHaveCount(9);
+  await expect(page.locator(".react-flow__node-step")).toHaveCount(15);
   await pause(1500);
 
   // The watched folder waits for each creator's takes, not single files.

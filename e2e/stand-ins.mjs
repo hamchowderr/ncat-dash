@@ -20,12 +20,43 @@ export const CLIPS = ["opening-hello", "why-the-station-matters"];
 export const CAPTIONS =
   "1\n00:00:01,000 --> 00:00:02,500\nWelcome back to the station.\n\n2\n00:00:03,000 --> 00:00:05,000\nToday we talk about pricing your edits.\n";
 
+/** Each word with its timing, as Whisper gives them with word timestamps. */
+const timedWords = (text, start, step) =>
+  text
+    .trim()
+    .split(" ")
+    .map((word, index) => ({
+      word: ` ${word}`,
+      start: start + index * step,
+      end: start + index * step + step * 0.8,
+    }));
+
 export const SEGMENTS = [
-  { id: 0, start: 0, end: 2.5, text: " Welcome back to the station.", tokens: [1] },
-  { id: 1, start: 2.5, end: 6, text: " Today we talk about pricing your edits.", tokens: [2] },
+  {
+    id: 0,
+    start: 0,
+    end: 2.5,
+    text: " Welcome back to the station.",
+    tokens: [1],
+    words: timedWords("Welcome back to the station.", 0, 0.5),
+  },
+  {
+    id: 1,
+    start: 2.5,
+    end: 6,
+    text: " Today we talk about pricing your edits.",
+    tokens: [2],
+    words: timedWords("Today we talk about pricing your edits.", 2.5, 0.5),
+  },
 ];
 
 const clip = fileURLToPath(new URL("./fixtures/clip.webm", import.meta.url));
+// For a screen recording on real footage: STAND_IN_CLIP is served instead of the short
+// clip, and STAND_IN_PLAIN for any name with "plain" in it. Their details and camera cuts
+// are then read from the files themselves.
+const ownClip = process.env.STAND_IN_CLIP ?? null;
+const plainClip = process.env.STAND_IN_PLAIN ?? null;
+const clipFor = (url) => (plainClip && /plain/.test(url) ? plainClip : (ownClip ?? clip));
 const still = fileURLToPath(new URL("./fixtures/still.jpg", import.meta.url));
 // Files the real jobs make, served at /made/<name>.
 const made = mkdtempSync(join(tmpdir(), "ncat-dash-e2e-made-"));
@@ -60,6 +91,38 @@ async function python(body) {
     `import json\ndef execute_code():\n${indented}\nprint(json.dumps({"result": execute_code()}))\n`,
   );
   return JSON.parse(await run("python3", [script]));
+}
+
+/** A file's details, as the toolkit's metadata request gives them. */
+async function probe(file) {
+  const read = JSON.parse(
+    await run("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", file]),
+  );
+  const video = read.streams.find((one) => one.codec_type === "video");
+  return {
+    duration: Number(read.format.duration),
+    format: read.format.format_name,
+    has_video: Boolean(video),
+    has_audio: read.streams.some((one) => one.codec_type === "audio"),
+    width: video?.width,
+    height: video?.height,
+    fps: 25,
+    video_codec: video?.codec_name,
+  };
+}
+
+/** A file's camera cuts, found by FFmpeg's scene change score. */
+async function cutsIn(file) {
+  const log = await new Promise((resolve) =>
+    execFile(
+      "ffmpeg",
+      ["-i", file, "-filter:v", "select='gt(scene,0.3)',showinfo", "-f", "null", "-"],
+      { timeout: 120_000, maxBuffer: 1 << 24 },
+      (_error, _stdout, stderr) => resolve(stderr),
+    ),
+  );
+  const cuts = [...String(log).matchAll(/pts_time:([\d.]+)/g)].map((match) => Number(match[1]));
+  return { duration: (await probe(file)).duration, cuts };
 }
 
 /** /v1/ffmpeg/compose: the same command the toolkit builds, with its files served here. */
@@ -138,10 +201,11 @@ createServer((request, response) => {
     createReadStream(still).pipe(response);
     return;
   }
-  const size = statSync(clip).size;
+  const served = clipFor(request.url);
+  const size = statSync(served).size;
   const range = /bytes=(\d*)-(\d*)/.exec(request.headers.range ?? "");
   const head = {
-    "Content-Type": "video/webm",
+    "Content-Type": served.endsWith(".mp4") ? "video/mp4" : "video/webm",
     "Accept-Ranges": "bytes",
     "Access-Control-Allow-Origin": "*",
   };
@@ -153,10 +217,10 @@ createServer((request, response) => {
       "Content-Range": `bytes ${start}-${end}/${size}`,
       "Content-Length": end - start + 1,
     });
-    createReadStream(clip, { start, end }).pipe(response);
+    createReadStream(served, { start, end }).pipe(response);
   } else {
     response.writeHead(200, { ...head, "Content-Length": size });
-    createReadStream(clip).pipe(response);
+    createReadStream(served).pipe(response);
   }
 }).listen(FILES_PORT, "127.0.0.1");
 
@@ -296,6 +360,29 @@ createServer((request, response) => {
       };
       const answer = answers[request.url.slice("/v1/storage/".length)];
       response.end(JSON.stringify({ code: 200, response: answer ?? null, message: "success" }));
+      return;
+    }
+    // Real footage for a recording: its details and cuts read from the file itself.
+    if (ownClip && request.url.startsWith("/v1/media/metadata")) {
+      const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      response.end(
+        JSON.stringify({
+          code: 200,
+          response: await probe(clipFor(String(body.media_url))),
+          message: "success",
+        }),
+      );
+      return;
+    }
+    if (ownClip && request.url.startsWith("/v1/media/look")) {
+      const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      response.end(
+        JSON.stringify({
+          code: 200,
+          response: { media: await cutsIn(clipFor(String(body.media_url))) },
+          message: "success",
+        }),
+      );
       return;
     }
     // What the toolkit reads from a file: the stand-in clip's own details.

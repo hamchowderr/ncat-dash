@@ -820,7 +820,7 @@ export const startImport = internalMutation({
     }
 
     const fileName = recordingFileName(recording.topic, recording.startTime, "mp4", FALLBACK_TOPIC);
-    const key = `uploads/${crypto.randomUUID()}/${safeName(fileName)}`;
+    const key = `uploads/Google Meet/${crypto.randomUUID()}/${safeName(fileName)}`;
     const importId =
       before?._id ??
       (await ctx.db.insert("googleMeetImports", {

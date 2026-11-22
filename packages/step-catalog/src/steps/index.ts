@@ -1,3 +1,4 @@
+import { audioBeats } from "./audio/beats";
 import { audioConcatenate } from "./audio/concatenate";
 import { codeExecutePython } from "./code/execute-python";
 import { ffmpegCompose } from "./ffmpeg/compose";
@@ -24,6 +25,7 @@ import { videoThumbnail } from "./video/thumbnail";
 import { videoTrim } from "./video/trim";
 
 export const steps = [
+  audioBeats,
   audioConcatenate,
   codeExecutePython,
   ffmpegCompose,
@@ -51,6 +53,7 @@ export const steps = [
 export const hiddenSteps = [mediaCheck, mediaLook, videoMotion] as const;
 
 export {
+  audioBeats,
   audioConcatenate,
   codeExecutePython,
   ffmpegCompose,

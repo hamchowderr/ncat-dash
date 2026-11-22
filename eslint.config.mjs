@@ -17,6 +17,10 @@ const eslintConfig = defineConfig([
     "convex/betterAuth/_generated/**",
     ".agents/**",
     ".claude/**",
+    // The desktop app's build output (Rust and the Connect screen's bundle).
+    "apps/desktop/src-tauri/target/**",
+    "apps/desktop/src-tauri/gen/**",
+    "apps/desktop/dist/**",
     // The agent server follows the chat kit's own conventions and has its own typecheck.
     "packages/agent/**",
     // The chat panel, installed as it ships from the mastra-chat-kit registry.

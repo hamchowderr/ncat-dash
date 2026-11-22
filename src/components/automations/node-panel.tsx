@@ -19,7 +19,7 @@ import {
   wantedKind,
   writeSource,
 } from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep, SAVED_LOOK_STEP, userInputSchema } from "@ncat-dash/step-catalog";
 import { ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -53,6 +53,7 @@ import { TeamApprovalSettings } from "./approval-panel";
 import { AutomationPicker } from "./automation-picker";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
+import { LOOK_SETTING, LookPicker } from "./look-picker";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
 import { BrollMain, BrollMore, BrollPlanMain } from "./broll-settings";
 import { CleanupMain } from "./cleanup-settings";
@@ -130,7 +131,11 @@ export function NodePanel({
   const nodeType = nodeTypeOf(node);
   const allFields = useStepFields(node.stepId ?? "");
   // Settings taken from the file that started the run are never filled in by hand.
-  const fields = allFields?.filter(({ name }) => !nodeType?.fromStart?.[name]);
+  // The saved look is picked by name from the team's looks, never typed.
+  const picksLook = node.kind === "step" && node.stepId === SAVED_LOOK_STEP;
+  const fields = allFields?.filter(
+    ({ name }) => !nodeType?.fromStart?.[name] && !(picksLook && name === LOOK_SETTING),
+  );
   const [values, setValues] = useState(() => fromInput(node.input));
   const [problem, setProblem] = useState<string | null>(null);
   const look = nodeLook(node);
@@ -195,9 +200,13 @@ export function NodePanel({
     });
   }
   if (automaticField && isBlank(node.input[automaticField])) {
+    const word = KIND_WORDS[wantedKind(automaticField)];
+    // A list takes every file that reaches it, such as the clips of Cut To The Beat.
+    const many = step?.listInput?.field === automaticField;
+    const label = fieldLabel(automaticField).replace(/ URLs?$/i, "");
     handled.push({
-      label: fieldLabel(automaticField).replace(/ URLs?$/, ""),
-      text: `the nearest ${KIND_WORDS[wantedKind(automaticField)]} before this step`,
+      label: many && !label.endsWith("s") ? `${label}s` : label,
+      text: many ? `every ${word} that reaches this step` : `the nearest ${word} before this step`,
     });
   }
   for (const [name, note] of Object.entries(filled)) {
@@ -231,6 +240,17 @@ export function NodePanel({
       label: "Videos",
       text: "every video before this step and, from a creator's folder, each hook and ending take, measured by FFmpeg",
     });
+  }
+  // Length Cuts and Hook And Ending Variants keeping a paid creator's ad disclosure.
+  if (step?.readsWords) {
+    const parsed = userInputSchema(step).safeParse(node.input);
+    const settings = (parsed.success ? parsed.data : node.input) as Record<string, unknown>;
+    if (step.readsWords(settings).length > 0) {
+      handled.push({
+        label: "Paid-ad disclosure",
+        text: "found in what the creator says, and kept in every cut",
+      });
+    }
   }
   for (const name of Object.keys(nodeType?.fromStart ?? {})) {
     if (isBlank(node.input[name])) {
@@ -427,6 +447,17 @@ export function NodePanel({
         <FootageMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
       )}
 
+      {picksLook && (
+        <LookPicker
+          nodeId={node.id}
+          input={node.input}
+          onChange={(input) => {
+            setValues(fromInput(input));
+            onChange({ input });
+          }}
+        />
+      )}
+
       {captionStep && (
         <CaptionStylePicker
           node={node}
@@ -520,7 +551,7 @@ export function NodePanel({
         </div>
       )}
 
-      {node.kind === "step" && needed.length === 0 && unset.length === 0 && (
+      {node.kind === "step" && !picksLook && needed.length === 0 && unset.length === 0 && (
         <p className="text-muted-foreground text-sm">Nothing to set. This step works as it is.</p>
       )}
 

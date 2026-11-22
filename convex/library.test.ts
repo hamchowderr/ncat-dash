@@ -325,25 +325,24 @@ describe("names, tags and stars", () => {
 
 describe("searching", () => {
   async function searchable() {
+    vi.useFakeTimers();
     const setup = await studio();
-    const { t, maya, team, upload, itemOf } = setup;
+    const { t, upload, itemOf } = setup;
     const episode = await itemOf(await upload("episode.mp4"));
-    const sent = await maya.as.action(api.library.makeSearchable, {
-      organizationId: team,
-      itemIds: [episode._id],
-    });
+    // Brought in, so it is sent to be transcribed straight away.
+    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(10));
+    vi.useRealTimers();
     const job = (await t.run((ctx) =>
       ctx.db
         .query("jobs")
         .filter((q) => q.eq(q.field("libraryItemId"), episode._id))
         .first(),
     ))!;
-    return { ...setup, episode, sent, job };
+    return { ...setup, episode: (await itemOf(episode.uploadId!))!, job };
   }
 
-  test("making a file searchable transcribes it on the team's own toolkit", async () => {
-    const { maya, team, sent, job, episode } = await searchable();
-    expect(sent).toBe(1);
+  test("a file brought in is transcribed on the team's own toolkit", async () => {
+    const { maya, team, job, episode } = await searchable();
     expect(job.stepId).toBe("media-transcribe");
     expect(job.input).toMatchObject({ include_segments: true, response_type: "cloud" });
     expect(String(job.input.media_url)).toContain(`teams/${team}/${episode.key}`);
@@ -399,6 +398,12 @@ describe("searching", () => {
     ).toMatchObject({ shortId: "V1", title: "episode" });
   });
 
+  test("Uploads knows where each file's transcript is", async () => {
+    const { maya, team, episode } = await searchable();
+    const uploads = await maya.as.query(api.storage.listUploads, { organizationId: team });
+    expect(uploads[0]).toMatchObject({ libraryItemId: episode._id, transcript: "working" });
+  });
+
   test("a failed transcription says so, and can be tried again", async () => {
     const { t, maya, team, job, episode } = await searchable();
     await t.mutation(internal.jobs.finish, { jobId: job._id, ok: false, error: "No sound." });
@@ -425,7 +430,105 @@ describe("searching", () => {
     ).toBe(0);
   });
 
-  test("with the setting on, each new video is transcribed as it arrives", async () => {
+  test("every video or sound brought in is transcribed as it arrives, with word timings", async () => {
+    vi.useFakeTimers();
+    const { t, upload } = await studio();
+    // The team never turned the setting on: what comes in is transcribed anyway.
+    await upload("episode.mp4");
+    await upload("intro.mp3", "audio/mpeg");
+    await upload("still.png", "image/png");
+    await upload("logo.png", "image/png", "brand");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const jobs = (await t.run((ctx) => ctx.db.query("jobs").collect())).filter(
+      (job) => job.stepId === "media-transcribe",
+    );
+    expect(jobs).toHaveLength(2);
+    for (const job of jobs) {
+      expect(job.input).toMatchObject({ word_timestamps: true, include_segments: true });
+    }
+  });
+
+  test("a file an automation made is transcribed only with the setting on", async () => {
+    vi.useFakeTimers();
+    const { t, team, upload, finishedRun, toolkit } = await studio();
+    const episode = await upload("episode.mp4");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const { runId } = await finishedRun(episode, [`${LINK}/${JOB}_output_0.mp4`]);
+    toolkit.put(`${JOB}_output_0.mp4`);
+    await t.action(internal.files.keepFinished, { runId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const transcribed = async () =>
+      (await t.run((ctx) => ctx.db.query("jobs").collect())).filter(
+        (job) => job.stepId === "media-transcribe",
+      ).length;
+    expect(await transcribed()).toBe(1);
+
+    // Set straight in the table: the fake clock has run far past the sign-in by now.
+    await t.run((ctx) =>
+      ctx.db.insert("librarySettings", { organizationId: team, searchNewFiles: true }),
+    );
+    const second = await finishedRun(episode, [`${LINK}/${JOB}_output_1.mp4`]);
+    toolkit.put(`${JOB}_output_1.mp4`);
+    await t.action(internal.files.keepFinished, { runId: second.runId });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await transcribed()).toBe(2);
+  });
+
+  test("the words are kept with their timing, for subtitles and for the steps", async () => {
+    const { t, maya, team, job, episode } = await searchable();
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "https://toolkit.example/segments.json") {
+        return new Response(
+          JSON.stringify([
+            {
+              start: 0,
+              end: 1.6,
+              text: " Welcome back everyone.",
+              words: [
+                { word: " Welcome", start: 0, end: 0.5 },
+                { word: " back", start: 0.6, end: 0.9 },
+                { word: " everyone.", start: 1, end: 1.6 },
+              ],
+            },
+          ]),
+        );
+      }
+      return realFetch(input, init);
+    });
+    await t.mutation(internal.jobs.finish, {
+      jobId: job._id,
+      ok: true,
+      result: { segments_url: "https://toolkit.example/segments.json" },
+    });
+    await t.action(internal.library.readTranscript, { jobId: job._id });
+
+    const view = await maya.as.query(api.library.get, { itemId: episode._id });
+    expect(view?.pieces).toEqual([
+      {
+        start: 0,
+        end: 1.6,
+        text: "Welcome back everyone.",
+        words: [
+          { t: "Welcome", s: 0, e: 0.5 },
+          { t: "back", s: 0.6, e: 0.9 },
+          { t: "everyone.", s: 1, e: 1.6 },
+        ],
+      },
+    ]);
+    // Kept under the file's address too, where Best moments, Chapters and Clean Up Pauses
+    // And Retakes look before transcribing it again.
+    const source = String(job.input.media_url).split("?")[0];
+    const kept = await t.run((ctx) =>
+      ctx.db
+        .query("spokenWords")
+        .withIndex("by_source", (q) => q.eq("organizationId", team).eq("source", source))
+        .first(),
+    );
+    expect(kept?.words.map((word) => word.t)).toEqual(["Welcome", "back", "everyone."]);
+  });
+
+  test("only owners and admins change the setting", async () => {
     vi.useFakeTimers();
     const { t, maya, sam, team, upload } = await studio();
     await expect(

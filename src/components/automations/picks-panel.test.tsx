@@ -190,3 +190,58 @@ describe("what Add B-Roll laid over the video", () => {
     expect(section.textContent).toContain("Brewer on Pixabay");
   });
 });
+
+describe("the paid-ad disclosure kept by Length Cuts", () => {
+  const cutsRun = (disclosures: { source: string; text: string | null }[]) =>
+    runWith(
+      { nodeId: "lengths", disclosures } as Partial<Step>,
+      {
+        nodes: [
+          {
+            id: "lengths",
+            kind: "step",
+            stepId: "recipe-length-cuts",
+            input: {},
+            position: { x: 0, y: 0 },
+          },
+        ],
+      } as Partial<RunDetails>,
+    );
+
+  test("quotes the line kept in every cut of each video", () => {
+    renderInApp(
+      <PicksPanel
+        run={cutsRun([
+          {
+            source: "https://files.example/uploads/Boots%20ad.mp4",
+            text: "This is a paid partnership with Boots.",
+          },
+        ])}
+        busy={false}
+        onFindMore={vi.fn()}
+      />,
+    );
+    const section = screen.getByRole("region", { name: /paid-ad disclosure/ });
+    expect(section.textContent).toContain("Boots ad.mp4");
+    expect(section.textContent).toContain("Kept in every cut:");
+    expect(section.textContent).toContain("This is a paid partnership with Boots.");
+  });
+
+  test("says when none was heard, so the creator can add one", () => {
+    renderInApp(
+      <PicksPanel
+        run={cutsRun([{ source: "https://files.example/uploads/take.mp4", text: null }])}
+        busy={false}
+        onFindMore={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/No disclosure was heard, so the cuts have none/)).toBeTruthy();
+  });
+
+  test("shows nothing for a step that was not keeping it", () => {
+    const { container } = renderInApp(
+      <PicksPanel run={cutsRun([])} busy={false} onFindMore={vi.fn()} />,
+    );
+    expect(container.textContent).toBe("");
+  });
+});

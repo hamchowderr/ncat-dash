@@ -17,6 +17,7 @@ import {
   NODE_GAP,
   type NodeGroup,
   nodeTypeOf,
+  passedOverWithout,
   waitSentence,
   approvalShort,
   waitsForRun,
@@ -332,6 +333,8 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
   const nodeType = nodeTypeOf(node);
   const missing = status ? [] : missingSettings({ ...node, position: { x: 0, y: 0 } }, brand);
   const missingBrand = status || !nodeType ? [] : missingBrandOf(nodeType, node.input, brand);
+  // A step such as Music Under Each Variant runs only once the team has set its music.
+  const waitsFor = status || !nodeType ? null : passedOverWithout(nodeType, node.input, brand);
   const second = node.off
     ? "Turned off"
     : note
@@ -342,7 +345,9 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
           ? `Needs your ${BRAND_WORDS[missingBrand[0]]}`
           : missing.length > 0
             ? "Needs settings"
-            : look.kind;
+            : waitsFor
+              ? `Passed over until you add ${BRAND_WORDS[waitsFor]}`
+              : look.kind;
   return (
     <div className="relative" data-node={id}>
       <div

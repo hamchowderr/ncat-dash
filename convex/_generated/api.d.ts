@@ -9,6 +9,7 @@
  */
 
 import type * as access from "../access.js";
+import type * as aiSpend from "../aiSpend.js";
 import type * as alerts from "../alerts.js";
 import type * as anthropicKey from "../anthropicKey.js";
 import type * as auth from "../auth.js";
@@ -20,7 +21,9 @@ import type * as chatAlertPresses from "../chatAlertPresses.js";
 import type * as chatAlerts from "../chatAlerts.js";
 import type * as clients from "../clients.js";
 import type * as contentGoals from "../contentGoals.js";
+import type * as creators from "../creators.js";
 import type * as crons from "../crons.js";
+import type * as disclosure from "../disclosure.js";
 import type * as discord from "../discord.js";
 import type * as discordReview from "../discordReview.js";
 import type * as dropbox from "../dropbox.js";
@@ -52,7 +55,9 @@ import type * as lib_chatAlerts_telegram from "../lib/chatAlerts/telegram.js";
 import type * as lib_cleanup from "../lib/cleanup.js";
 import type * as lib_clientIp from "../lib/clientIp.js";
 import type * as lib_clients from "../lib/clients.js";
+import type * as lib_creatorRights from "../lib/creatorRights.js";
 import type * as lib_crypto from "../lib/crypto.js";
+import type * as lib_disclosure from "../lib/disclosure.js";
 import type * as lib_discordApi from "../lib/discordApi.js";
 import type * as lib_discordPosts from "../lib/discordPosts.js";
 import type * as lib_disposableDomains from "../lib/disposableDomains.js";
@@ -67,6 +72,7 @@ import type * as lib_googleMeet from "../lib/googleMeet.js";
 import type * as lib_library from "../lib/library.js";
 import type * as lib_limits from "../lib/limits.js";
 import type * as lib_logic from "../lib/logic.js";
+import type * as lib_looks from "../lib/looks.js";
 import type * as lib_mcpContent from "../lib/mcpContent.js";
 import type * as lib_mcpKeys from "../lib/mcpKeys.js";
 import type * as lib_mcpServer from "../lib/mcpServer.js";
@@ -88,6 +94,8 @@ import type * as lib_signUps from "../lib/signUps.js";
 import type * as lib_slackApi from "../lib/slackApi.js";
 import type * as lib_slackPosts from "../lib/slackPosts.js";
 import type * as lib_slackSignature from "../lib/slackSignature.js";
+import type * as lib_storyboard from "../lib/storyboard.js";
+import type * as lib_storyboards from "../lib/storyboards.js";
 import type * as lib_teamSteps from "../lib/teamSteps.js";
 import type * as lib_teamsApp from "../lib/teamsApp.js";
 import type * as lib_teamsPosts from "../lib/teamsPosts.js";
@@ -101,6 +109,7 @@ import type * as lib_versions from "../lib/versions.js";
 import type * as lib_workflows from "../lib/workflows.js";
 import type * as lib_zoom from "../lib/zoom.js";
 import type * as library from "../library.js";
+import type * as looks from "../looks.js";
 import type * as mcp from "../mcp.js";
 import type * as mcpKeys from "../mcpKeys.js";
 import type * as microsoft from "../microsoft.js";
@@ -126,6 +135,7 @@ import type * as sharedReview from "../sharedReview.js";
 import type * as slack from "../slack.js";
 import type * as slackReview from "../slackReview.js";
 import type * as storage from "../storage.js";
+import type * as storyboards from "../storyboards.js";
 import type * as teamSettings from "../teamSettings.js";
 import type * as teamSteps from "../teamSteps.js";
 import type * as teams from "../teams.js";
@@ -149,6 +159,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  aiSpend: typeof aiSpend;
   alerts: typeof alerts;
   anthropicKey: typeof anthropicKey;
   auth: typeof auth;
@@ -160,7 +171,9 @@ declare const fullApi: ApiFromModules<{
   chatAlerts: typeof chatAlerts;
   clients: typeof clients;
   contentGoals: typeof contentGoals;
+  creators: typeof creators;
   crons: typeof crons;
+  disclosure: typeof disclosure;
   discord: typeof discord;
   discordReview: typeof discordReview;
   dropbox: typeof dropbox;
@@ -192,7 +205,9 @@ declare const fullApi: ApiFromModules<{
   "lib/cleanup": typeof lib_cleanup;
   "lib/clientIp": typeof lib_clientIp;
   "lib/clients": typeof lib_clients;
+  "lib/creatorRights": typeof lib_creatorRights;
   "lib/crypto": typeof lib_crypto;
+  "lib/disclosure": typeof lib_disclosure;
   "lib/discordApi": typeof lib_discordApi;
   "lib/discordPosts": typeof lib_discordPosts;
   "lib/disposableDomains": typeof lib_disposableDomains;
@@ -207,6 +222,7 @@ declare const fullApi: ApiFromModules<{
   "lib/library": typeof lib_library;
   "lib/limits": typeof lib_limits;
   "lib/logic": typeof lib_logic;
+  "lib/looks": typeof lib_looks;
   "lib/mcpContent": typeof lib_mcpContent;
   "lib/mcpKeys": typeof lib_mcpKeys;
   "lib/mcpServer": typeof lib_mcpServer;
@@ -228,6 +244,8 @@ declare const fullApi: ApiFromModules<{
   "lib/slackApi": typeof lib_slackApi;
   "lib/slackPosts": typeof lib_slackPosts;
   "lib/slackSignature": typeof lib_slackSignature;
+  "lib/storyboard": typeof lib_storyboard;
+  "lib/storyboards": typeof lib_storyboards;
   "lib/teamSteps": typeof lib_teamSteps;
   "lib/teamsApp": typeof lib_teamsApp;
   "lib/teamsPosts": typeof lib_teamsPosts;
@@ -241,6 +259,7 @@ declare const fullApi: ApiFromModules<{
   "lib/workflows": typeof lib_workflows;
   "lib/zoom": typeof lib_zoom;
   library: typeof library;
+  looks: typeof looks;
   mcp: typeof mcp;
   mcpKeys: typeof mcpKeys;
   microsoft: typeof microsoft;
@@ -266,6 +285,7 @@ declare const fullApi: ApiFromModules<{
   slack: typeof slack;
   slackReview: typeof slackReview;
   storage: typeof storage;
+  storyboards: typeof storyboards;
   teamSettings: typeof teamSettings;
   teamSteps: typeof teamSteps;
   teams: typeof teams;

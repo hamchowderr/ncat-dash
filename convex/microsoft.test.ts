@@ -426,6 +426,8 @@ describe("Microsoft's change notices", () => {
       source: "microsoft",
       createdBy: setup.owner.id,
     });
+    // Kept in its own folder, beside the other places recordings come from.
+    expect(upload.key).toMatch(/^uploads\/Microsoft\/[0-9a-f-]+\//);
     const [job] = await jobs(setup.t);
     expect(job.stepId).toBe("storage-upload-s3");
     expect(job.input).toEqual({

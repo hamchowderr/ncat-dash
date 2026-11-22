@@ -310,7 +310,16 @@ export const listUploads = query({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .order("desc")
       .take(100);
-    return uploads.map((upload) => ({
+    // Each one's place in the library, where its transcript, SRT and VTT are read.
+    const items = await Promise.all(
+      uploads.map((upload) =>
+        ctx.db
+          .query("libraryItems")
+          .withIndex("by_upload", (q) => q.eq("uploadId", upload._id))
+          .first(),
+      ),
+    );
+    return uploads.map((upload, index) => ({
       _id: upload._id,
       _creationTime: upload._creationTime,
       fileName: upload.fileName,
@@ -321,6 +330,8 @@ export const listUploads = query({
       source: upload.source ?? null,
       sharedBy: upload.sharedBy ?? null,
       details: upload.details ?? null,
+      libraryItemId: items[index]?._id ?? null,
+      transcript: items[index]?.transcript?.status ?? null,
     }));
   },
 });

@@ -57,7 +57,14 @@ function Choice({
  * Shares a review with someone outside the team, such as a client: a link they open
  * without an account to watch, comment and, if the team wants, approve.
  */
-export function ShareDialog({ reviewId }: { reviewId: Id<"reviews"> }) {
+export function ShareDialog({
+  reviewId,
+  compact = false,
+}: {
+  reviewId: Id<"reviews">;
+  /** Just the link icon, named for screen readers, on a narrow screen. */
+  compact?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const share = useQuery(api.reviewShares.forReview, open ? { reviewId } : "skip");
   const set = useMutation(api.reviewShares.set);
@@ -108,10 +115,21 @@ export function ShareDialog({ reviewId }: { reviewId: Id<"reviews"> }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" data-tour-step-id="tour-review-share">
-          <Link2 />
-          Share
-        </Button>
+        {compact ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Share"
+            data-tour-step-id="tour-review-share"
+          >
+            <Link2 />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" data-tour-step-id="tour-review-share">
+            <Link2 />
+            Share
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

@@ -72,6 +72,23 @@ export const deliverableKindValidator = v.union(
 );
 
 /** Where a deliverable is, as a column on the project's board. */
+export const sceneValidator = v.union(
+  v.literal("full"),
+  v.literal("panel"),
+  v.literal("centre"),
+  v.literal("graphic"),
+  v.literal("circle"),
+);
+
+export const takePartValidator = v.union(
+  v.literal("you"),
+  v.literal("graphic"),
+  v.literal("recording"),
+  v.literal("screen"),
+);
+
+export const cutValidator = v.object({ what: v.string(), where: v.string() });
+
 export const deliverableStatusValidator = v.union(
   v.literal("todo"),
   v.literal("in_progress"),
@@ -348,6 +365,8 @@ export default defineSchema({
     libraryItemId: v.optional(v.id("libraryItems")),
     // Set when the job brings a Zoom recording into the team's folder.
     zoomImportId: v.optional(v.id("zoomImports")),
+    // A sample being studied for its look: its sheet of frames or cuts.
+    lookStudyId: v.optional(v.id("lookStudies")),
     // Set when the job brings a Google Meet recording into the team's folder.
     googleMeetImportId: v.optional(v.id("googleMeetImports")),
     microsoftImportId: v.optional(v.id("microsoftImports")),
@@ -371,6 +390,9 @@ export default defineSchema({
     music: v.optional(musicValidator),
     // How many times a failed step in a run tries again before the run fails.
     stepRetries: v.optional(v.number()),
+    // The most one run may spend on AI steps, in millionths of a dollar. Left out: no
+    // limit (automation-core ai-spend.ts).
+    aiLimit: v.optional(v.number()),
     // The video editors the team uses, which decides the files an export makes.
     editors: v.optional(v.array(editorValidator)),
     // How the agent works for this team: its model, house rules and default platforms.
@@ -544,7 +566,7 @@ export default defineSchema({
     // team's, and keep their finished files in the client's folder. Not part of versions.
     clientId: v.optional(v.id("clients")),
     // Switched on: each finished run's files are also sent to this Dropbox account, into
-    // `folder` (or "/Kontifi/<automation>"). Not part of versions.
+    // `folder` (or "/Takewon/<automation>"). Not part of versions.
     dropboxSend: v.optional(
       v.object({
         connectionId: v.id("dropboxConnections"),
@@ -651,6 +673,10 @@ export default defineSchema({
     // fill the project's empty slots.
     projectId: v.optional(v.id("projects")),
     deliverableId: v.optional(v.id("deliverables")),
+    // What the run's AI steps have spent, and what steps waiting on an answer hold
+    // against the team's limit, in millionths of a dollar (convex/lib/aiSpend.ts).
+    aiSpent: v.optional(v.number()),
+    aiHeld: v.optional(v.number()),
   })
     .index("by_automation", ["automationId"])
     .index("by_parentRun", ["parentRunId"])
@@ -690,6 +716,7 @@ export default defineSchema({
     // A "motion" or "sound-effects" step transcribes each video ("listen"), reads its words
     // and places what goes on it ("place"), then draws on it ("render"). A "cleanup" step
     // does the same, also hearing each video's pauses, and "render" cuts the cleaned files.
+    // A step keeping a paid-ad disclosure in every cut first transcribes its videos ("hear").
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -706,6 +733,7 @@ export default defineSchema({
         v.literal("render"),
         // A "footage-check" step waiting for the toolkit to measure each file.
         v.literal("footage"),
+        v.literal("hear"),
       ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
@@ -823,6 +851,11 @@ export default defineSchema({
         }),
       ),
     ),
+    // For a step keeping a paid creator's ad disclosure in every cut (Length Cuts, Hook And
+    // Ending Variants): per video, the disclosure heard and kept, or null when none was.
+    disclosures: v.optional(
+      v.array(v.object({ source: v.string(), text: v.union(v.string(), v.null()) })),
+    ),
     // What a "moments" or "chapters" step left out, said plainly ("2 picks were left out…").
     pickNote: v.optional(v.string()),
     // What a Plan step decided, for the step that carries it out (automation-core plans.ts).
@@ -863,6 +896,10 @@ export default defineSchema({
     retryError: v.optional(v.string()),
     startedAt: v.union(v.null(), v.number()),
     finishedAt: v.union(v.null(), v.number()),
+    // An AI step: what it spent, and what it holds against the run's limit while it waits
+    // for an answer, in millionths of a dollar.
+    aiSpent: v.optional(v.number()),
+    aiHeld: v.optional(v.number()),
   })
     .index("by_run", ["runId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
@@ -914,6 +951,34 @@ export default defineSchema({
   // approval waiting or run out of time, a mention in a review. Shown under the bell to
   // the members it is for until each has seen it, unless they switched that kind off in
   // their notification settings.
+  // The creators who film for the team, named as their folders are, so their runs match.
+  creators: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    note: v.optional(v.string()),
+    createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
+  // Usage rights, one per deal: how long footage a creator filmed may be used, for which
+  // client and how. A week before the last day the team hears about it (convex/creators.ts).
+  creatorRights: defineTable({
+    organizationId: v.string(),
+    creatorId: v.id("creators"),
+    // The brand the deal is with. Left out: the team's own content.
+    clientId: v.optional(v.id("clients")),
+    // The last day the footage may be used, "YYYY-MM-DD".
+    endsOn: v.string(),
+    usage: v.union(v.literal("organic"), v.literal("paid"), v.literal("both")),
+    note: v.optional(v.string()),
+    // The end date a week-before alert has gone out for, so it goes once per date.
+    alertedFor: v.optional(v.string()),
+    updatedBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_creator", ["creatorId"])
+    .index("by_client", ["clientId"])
+    .index("by_ends", ["endsOn"]),
+
   alerts: defineTable({
     organizationId: v.string(),
     // "run_failed": a run ended with a failed step. "approval_waiting": a run reached an
@@ -933,6 +998,9 @@ export default defineSchema({
       v.literal("clip_finished"),
       // "footage_problem": a Check Footage step found footage that needs another look.
       v.literal("footage_problem"),
+      // "rights_ending": a deal's usage rights end within a week. `automationName` holds
+      // the creator's name, `stepName` the client's, and `message` says when.
+      v.literal("rights_ending"),
     ),
     // The members it is for. Left out: everyone on the team.
     recipients: v.optional(v.array(v.string())),
@@ -953,6 +1021,8 @@ export default defineSchema({
     clipId: v.optional(v.id("reviewClips")),
     commentId: v.optional(v.id("reviewComments")),
     from: v.optional(v.string()),
+    // For "rights_ending": the creator it is about.
+    creatorId: v.optional(v.id("creators")),
     // The members who have seen it.
     seenBy: v.array(v.string()),
   })
@@ -1597,6 +1667,7 @@ export default defineSchema({
         ready_for_review: v.optional(kindChannels),
         clip_finished: v.optional(kindChannels),
         footage_problem: v.optional(kindChannels),
+        rights_ending: v.optional(kindChannels),
       }),
     ),
     // "now": each email as it happens. "daily": one summary a day at `digestHour` in
@@ -1863,6 +1934,47 @@ export default defineSchema({
     .index("by_clip", ["clipId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
 
+  // A project's storyboard: the video planned line by line before it is made. A project
+  // has at most one. Its chapters and takes are kept in their own tables below.
+  storyboards: defineTable({
+    organizationId: v.string(),
+    projectId: v.id("projects"),
+    aspect: v.union(v.literal("16:9"), v.literal("9:16"), v.literal("1:1"), v.literal("4:5")),
+    // Where its lines came from, such as "From the page AI-Assisted Development, Part 1".
+    source: v.optional(v.string()),
+    // The videos the storyboard is cut into, such as "Short lessons" on "YouTube · 16:9".
+    cuts: v.array(cutValidator),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  storyboardChapters: defineTable({
+    storyboardId: v.id("storyboards"),
+    organizationId: v.string(),
+    title: v.string(),
+    order: v.number(),
+  }).index("by_storyboard", ["storyboardId"]),
+
+  // One line of the video: what is said, the scene it is shown in, what goes into it
+  // (you on camera, a graphic, a page recording, your screen) and the file for each part
+  // once it is in. A file is a link or a pointer to one of the team's uploads.
+  storyboardTakes: defineTable({
+    storyboardId: v.id("storyboards"),
+    chapterId: v.id("storyboardChapters"),
+    organizationId: v.string(),
+    order: v.number(),
+    line: v.string(),
+    scene: sceneValidator,
+    parts: v.array(takePartValidator),
+    files: v.object({
+      you: v.optional(v.string()),
+      graphic: v.optional(v.string()),
+      recording: v.optional(v.string()),
+      screen: v.optional(v.string()),
+    }),
+  })
+    .index("by_storyboard", ["storyboardId"])
+    .index("by_chapter", ["chapterId"]),
+
   // A post planned on the content calendar: what goes out, where, and when. With no time
   // it waits in the calendar's side list; queued ones fill the team's repeating slots.
   // Nothing is posted for the team yet, so "posted" is set by hand.
@@ -1982,6 +2094,9 @@ export default defineSchema({
     start: v.number(),
     end: v.number(),
     text: v.string(),
+    // Each word with when it is said (text, start, end), for subtitles. Missing on a
+    // transcript made before words were kept, and on a caption file.
+    words: v.optional(v.array(v.object({ t: v.string(), s: v.number(), e: v.number() }))),
   })
     .index("by_item_and_start", ["itemId", "start"])
     .searchIndex("search_speech", { searchField: "text", filterFields: ["organizationId"] }),
@@ -2085,5 +2200,55 @@ export default defineSchema({
     searchNewFiles: v.boolean(),
     // When the files a team had before the library were added to it.
     filledAt: v.optional(v.number()),
+  }).index("by_organization", ["organizationId"]),
+
+  // A sample video being studied for its look, once: the toolkit takes
+  // a sheet of frames and finds its cuts, then the model looks at the sheet one time and
+  // its answer waits here as a proposal until someone names and saves it.
+  lookStudies: defineTable({
+    organizationId: v.string(),
+    uploadId: v.id("uploads"),
+    sourceName: v.string(),
+    status: v.union(
+      v.literal("working"),
+      v.literal("ready"),
+      v.literal("failed"),
+      // Saved as a look, or put away: no longer shown.
+      v.literal("closed"),
+    ),
+    sheetJobId: v.id("jobs"),
+    cutsJobId: v.optional(v.id("jobs")),
+    width: v.number(),
+    height: v.number(),
+    duration: v.number(),
+    sheetUrl: v.optional(v.string()),
+    shotSeconds: v.optional(v.number()),
+    proposal: v.optional(v.any()),
+    error: v.optional(v.string()),
+    createdBy: v.string(),
+    at: v.number(),
+  }).index("by_organization", ["organizationId"]),
+
+  // A team's saved looks, which the Match A Saved Look step puts videos into with plain
+  // FFmpeg. `frame` is a FrameLook (step-catalog looks.ts); its captions are a team
+  // caption style of the same name, kept with the team's other caption styles.
+  teamLooks: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    frame: v.object({
+      shape: v.union(v.literal("vertical"), v.literal("wide"), v.literal("square")),
+      fill: v.union(v.literal("crop"), v.literal("blur"), v.literal("bars")),
+      brightness: v.number(),
+      contrast: v.number(),
+      saturation: v.number(),
+      warmth: v.number(),
+    }),
+    captionStyle: v.optional(v.string()),
+    shotSeconds: v.optional(v.number()),
+    notes: v.string(),
+    sourceName: v.string(),
+    sheetUrl: v.optional(v.string()),
+    createdBy: v.string(),
+    at: v.number(),
   }).index("by_organization", ["organizationId"]),
 });

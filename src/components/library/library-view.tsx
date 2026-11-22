@@ -595,7 +595,9 @@ export function LibraryView() {
         )}
       </div>
       <p id="search-new-files-note" className="text-muted-foreground -mt-3 text-xs">
-        Searchable files are transcribed once on your own toolkit, with no AI tokens spent.
+        Every video and sound you bring in is transcribed once on your own toolkit, with no AI
+        tokens spent. This also transcribes the files your automations make and looks at new videos
+        for B-Roll.
         {library && !library.canChangeSettings && " Only an owner or admin can change this."}
       </p>
 

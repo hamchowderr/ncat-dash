@@ -1,8 +1,9 @@
 import { type Brand, unusableShareLink, withDownloadLinks } from "@ncat-dash/automation-core";
-import { getStep, isTeamStepId, userInputSchema } from "@ncat-dash/step-catalog";
+import { getStep, isTeamStepId, SAVED_LOOK_STEP, userInputSchema } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { lookSettingFor, teamLooksOf } from "./looks";
 import { withTeamSteps } from "./teamSteps";
 
 export const DEFAULT_PARALLEL_JOBS = 3;
@@ -83,6 +84,13 @@ export async function enqueueJob(
   },
 ): Promise<Enqueued> {
   await withTeamSteps(ctx, args.organizationId);
+  if (args.stepId === SAVED_LOOK_STEP) {
+    // The saved look's name is swapped for the look itself, so a look changed in Settings
+    // is the one used from the next job on, from a run, the Steps page or the agent.
+    const input = (args.input ?? {}) as Record<string, unknown>;
+    const looks = await teamLooksOf(ctx, args.organizationId);
+    args = { ...args, input: { ...input, look: lookSettingFor(looks, input.look) } };
+  }
   const found = getStep(args.stepId);
   if (!found) return { ok: false, code: "not_found", message: "Unknown step." };
   // A team step is sent as the FFmpeg compose request it fills in, so the job needs

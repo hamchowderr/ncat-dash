@@ -1443,5 +1443,43 @@
       }
     },
     "type": "object"
+  },
+  "/v1/audio/beats": {
+    "additionalProperties": false,
+    "properties": {
+      "beats_per_bar": {
+        "maximum": 4,
+        "minimum": 3,
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "max_bpm": {
+        "maximum": 300,
+        "minimum": 30,
+        "type": "number"
+      },
+      "max_seconds": {
+        "maximum": 3600,
+        "minimum": 1,
+        "type": "number"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "min_bpm": {
+        "maximum": 300,
+        "minimum": 30,
+        "type": "number"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": ["media_url"],
+    "type": "object"
   }
 }

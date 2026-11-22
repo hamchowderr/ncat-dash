@@ -69,6 +69,7 @@ import { collectUrls } from "./outputs";
 import { captionSetupOf } from "./captions";
 import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { finishListening, startListening } from "./moments";
+import { type DisclosureNote, hearFirst } from "./disclosure";
 import { finishLaying, finishLooking } from "./broll";
 import { finishMotionListening, isPlaceKind } from "./motion";
 import { finishFootageCheck, startFootageCheck } from "./footage";
@@ -261,6 +262,23 @@ export async function failStep(
   }
 }
 
+/** Marks a step passed over, with nothing made, and every step after it with it. */
+async function passOver(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  byNode: Map<string, Doc<"runSteps">>,
+) {
+  const now = Date.now();
+  await ctx.db.patch(step._id, { status: "skipped", startedAt: now, finishedAt: now });
+  for (const nodeId of downstreamOf(step.nodeId, run.edges as AutomationEdge[])) {
+    const below = byNode.get(nodeId);
+    if (below && below.status === "pending") {
+      await ctx.db.patch(below._id, { status: "skipped", finishedAt: now });
+    }
+  }
+}
+
 async function startNode(
   ctx: MutationCtx,
   run: Doc<"runs">,
@@ -378,6 +396,8 @@ async function startToolkitStep(
   step: Doc<"runSteps">,
   byNode: Map<string, Doc<"runSteps">>,
   sizes?: Map<string, FileDetails | null>,
+  /** Whether the step's videos were just transcribed, so nothing is to be heard again. */
+  heard = false,
 ) {
   const now = Date.now();
   await withTeamSteps(ctx, run.organizationId);
@@ -420,6 +440,12 @@ async function startToolkitStep(
       : node.input),
     ...settingsForLaterSteps(node, nodes, edges),
   };
+  // A step that is no use without a setting nobody has given yet, such as the music it lays
+  // under each video, is passed over: the run carries on without what it would have made.
+  if (definition.skipsWithout && isEmptySetting(settings[definition.skipsWithout])) {
+    await passOver(ctx, run, step, byNode);
+    return;
+  }
   // Follow the speaker straight after Clips makes the platform's shape unless one was picked.
   const followShape = isEmptySetting(settings.aspect) ? followShapeFrom(node, nodes, edges) : null;
   if (followShape) settings.aspect = followShape;
@@ -509,6 +535,14 @@ async function startToolkitStep(
     }
   }
 
+  // A step keeping a paid creator's disclosure in every cut hears its videos first.
+  let disclosures: DisclosureNote[] = [];
+  if (definition.readsWords) {
+    const found = await hearFirst(ctx, run, step, byNode, definition, planned, heard);
+    if (found === "hearing" || found === "failed") return;
+    disclosures = found;
+  }
+
   const queued = await enqueueAll(
     ctx,
     run,
@@ -525,7 +559,24 @@ async function startToolkitStep(
     stage: undefined,
     jobIds,
     startedAt: step.startedAt ?? now,
+    ...(disclosures.length > 0 ? { disclosures } : {}),
   });
+}
+
+/**
+ * After a step's videos were transcribed to find a paid-ad disclosure ("hear", see
+ * lib/disclosure.ts): queues its jobs, which now get the words.
+ */
+export async function finishHearing(ctx: MutationCtx, run: Doc<"runs">, step: Doc<"runSteps">) {
+  const steps = await ctx.db
+    .query("runSteps")
+    .withIndex("by_run", (q) => q.eq("runId", run._id))
+    .take(200);
+  const byNode = new Map(steps.map((other) => [other.nodeId, other]));
+  const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
+  if (!node) return;
+  await startToolkitStep(ctx, run, node, step, byNode, undefined, true);
+  await advance(ctx, run._id);
 }
 
 // A pause must last this long, and be this quiet, to count as a place to cut.
@@ -1089,6 +1140,28 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
   if (step.stage === "size") {
     await finishSizes(ctx, run, step, jobs);
     await advance(ctx, run._id);
+    return;
+  }
+
+  if (step.stage === "hear") {
+    const failed = jobs.find((job) => job.status === "failed");
+    if (failed) {
+      const steps = await ctx.db
+        .query("runSteps")
+        .withIndex("by_run", (q) => q.eq("runId", run._id))
+        .take(200);
+      await failStep(
+        ctx,
+        run,
+        step,
+        new Map(steps.map((other) => [other.nodeId, other])),
+        `Could not transcribe the video to find its paid-ad disclosure: ${failed.error ?? "the toolkit gave no reason."}`,
+      );
+      await advance(ctx, run._id);
+      return;
+    }
+    // The words are read in from the toolkit's transcript files, then the jobs queued.
+    await ctx.scheduler.runAfter(0, internal.disclosure.hear, { runStepId: step._id });
     return;
   }
 

@@ -12,6 +12,7 @@ import { pump } from "./lib/queue";
 import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
 import { outputNamesOf, startingFileName } from "./lib/outputs";
+import { aiLimitOf } from "./aiSpend";
 import {
   approvalTimeUp as decideWhenTimeIsUp,
   decideApproval,
@@ -150,6 +151,9 @@ export const get = query({
       startedByRun: parent ? linkTo(parent) : null,
       // Runs this one started: by a Run an automation step, or by being followed.
       startedRuns: started.map(linkTo),
+      // What the run's AI steps spent, in millionths of a dollar, and the team's limit.
+      aiSpent: run.aiSpent ?? 0,
+      aiLimit: (await aiLimitOf(ctx, run.organizationId)) ?? null,
       nodes: run.nodes,
       edges: run.edges,
       steps: await Promise.all(
@@ -182,7 +186,11 @@ export const get = query({
             cleaned: step.cleaned ?? null,
             // For Check Footage: each file it checked and what is wrong with it.
             footage: step.footage ?? null,
+            // For Length Cuts and Hook And Ending Variants: the paid-ad disclosure kept.
+            disclosures: step.disclosures ?? null,
             pickNote: step.pickNote ?? null,
+            // For a step that asks the AI: what it spent, in millionths of a dollar.
+            aiSpent: step.aiSpent ?? null,
             // For an If: the files that left by each way. For a Wait: when it carries on.
             branches: step.branches,
             resumeAt: step.resumeAt,
@@ -311,13 +319,19 @@ async function cancelRun(ctx: MutationCtx, run: Doc<"runs">): Promise<void> {
     if (step.status === "done" || step.status === "failed" || step.status === "skipped") continue;
     for (const jobId of step.jobIds) {
       const job = await ctx.db.get(jobId);
-      if (job && job.status === "queued" && job.dispatchedAt === undefined) {
-        await ctx.db.patch(jobId, {
-          status: "failed",
-          error: "The run was cancelled before this job was sent.",
-          finishedAt: now,
-        });
-      }
+      if (!job || job.status === "done" || job.status === "failed") continue;
+      // A job the toolkit already has ends here too, so it stops counting toward the
+      // team's jobs at once. Otherwise a job that hangs on the toolkit would hold its slot,
+      // and the team's next runs would wait, until the dashboard gives up on it hours later.
+      // Its result, if one ever comes, is not used.
+      const sent = job.status === "running" || job.dispatchedAt !== undefined;
+      await ctx.db.patch(jobId, {
+        status: "failed",
+        error: sent
+          ? "The run was stopped while the toolkit worked on this job, so its result is not used."
+          : "The run was cancelled before this job was sent.",
+        finishedAt: now,
+      });
     }
     await ctx.db.patch(step._id, { status: "skipped", finishedAt: now });
   }

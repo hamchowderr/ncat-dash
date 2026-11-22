@@ -133,6 +133,29 @@ describe("the Uploads page shows each file", () => {
     expect(within(dialog).getByRole("button", { name: "Copy link" })).toBeTruthy();
   });
 
+  test("an opened video links to its transcript and SRT in the library", async () => {
+    answerQuery(api.storage.listUploads, [
+      { ...UPLOADS[0], libraryItemId: "i1", transcript: "ready" },
+      { ...UPLOADS[3], libraryItemId: "i4", transcript: "working" },
+    ]);
+    renderInApp(<UploadsView />);
+    fireEvent.click(screen.getByRole("button", { name: "Open Big Talk.mp4" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("link", { name: "Transcript and SRT" }).getAttribute("href"),
+    ).toBe("/library/i1");
+  });
+
+  test("a transcript still being made says it is on its way", async () => {
+    answerQuery(api.storage.listUploads, [
+      { ...UPLOADS[3], libraryItemId: "i4", transcript: "working" },
+    ]);
+    renderInApp(<UploadsView />);
+    fireEvent.click(screen.getByRole("button", { name: "Open still-reading.mov" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("link", { name: "Transcript on its way" })).toBeTruthy();
+  });
+
   test("a file still being read opens too, and says so", async () => {
     renderInApp(<UploadsView />);
     fireEvent.click(screen.getByRole("button", { name: "Open still-reading.mov" }));

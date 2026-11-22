@@ -8,7 +8,7 @@ export type Branding = {
   appName: string;
 };
 
-export const DEFAULT_APP_NAME = "Kontifi";
+export const DEFAULT_APP_NAME = "Takewon";
 
 export function escapeHtml(value: string): string {
   return value
@@ -342,6 +342,35 @@ export function footageProblemEmail(
         ...files.slice(0, 10).map((line) => oneLine(line, 400)),
       ],
       button: { label: "Open the run", url: args.runUrl },
+      footnote: `To stop these emails, change your notification settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
+export function rightsEndingEmail(
+  args: {
+    teamName?: string;
+    creator: string;
+    client?: string;
+    summary: string;
+    creatorsUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const creator = oneLine(args.creator, 80);
+  const title = args.client
+    ? `${creator}'s rights for ${oneLine(args.client, 80)} end soon`
+    : `Usage rights for ${creator} end soon`;
+  return compose(
+    title,
+    {
+      heading: title,
+      paragraphs: [
+        `${oneLine(args.summary, 300)}${args.teamName ? ` In ${oneLine(args.teamName, 60)}.` : ""}`,
+      ],
+      button: { label: "Open the creator", url: args.creatorsUrl },
       footnote: `To stop these emails, change your notification settings: ${args.settingsUrl}`,
     },
     branding,
