@@ -1,8 +1,8 @@
 import { expect, type Page, test } from "./test";
 
 // The Automations, Runs and Jobs pages as lists of soft rows, in a real browser against a
-// real backend: a client's automations sit in its folder at the top, a row's menu moves
-// one there, and the pages still fit a phone.
+// real backend: New folder makes a folder at the top, a row's menu moves an automation
+// into it, and the pages still fit a phone.
 
 const stamp = Date.now().toString(36);
 if (process.env.RECORD_VIDEO === "1") {
@@ -23,7 +23,7 @@ async function importAutomation(page: Page) {
   await expect(page).toHaveURL(/\/automations\/[a-z0-9]+$/, { timeout: 30_000 });
 }
 
-test("automations, runs and jobs are rows, with a client's automations in its folder", async ({
+test("automations, runs and jobs are rows, and New folder groups automations", async ({
   page,
 }) => {
   await page.goto("/sign-up");
@@ -36,11 +36,6 @@ test("automations, runs and jobs are rows, with a client's automations in its fo
   await page.getByRole("button", { name: "Create team" }).click();
   await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
 
-  await page.goto("/clients");
-  await page.getByLabel("Client name").fill("Clio");
-  await page.getByRole("button", { name: "Add client" }).click();
-  await expect(page).toHaveURL(/\/clients\/[a-z0-9]+$/, { timeout: 30_000 });
-
   await importAutomation(page);
   await importAutomation(page);
   await page.goto("/automations");
@@ -52,27 +47,34 @@ test("automations, runs and jobs are rows, with a client's automations in its fo
   await expect(rows.first().getByRole("switch")).toBeVisible();
   await pause(2000);
 
-  // One goes into the client's folder from its menu.
+  // New folder, named in a small window.
+  await page.getByRole("button", { name: "New folder" }).click();
+  await pause(800);
+  await page.getByLabel("Folder name").pressSequentially("Shorts", { delay: 80 });
+  await page.getByRole("button", { name: "Create folder" }).click();
+  const folder = list.locator("[data-folder]");
+  await expect(folder).toHaveCount(1);
+  await expect(folder).toContainText("0 automations");
+  await pause(1500);
+
+  // One goes into the folder from its menu.
   await rows
     .first()
     .getByRole("button", { name: /^More for / })
     .click();
   await page.getByRole("menuitem", { name: "Move to folder" }).click();
-  await page.getByRole("menuitemradio", { name: "Clio" }).click();
-  await expect(page.getByText("Moved to Clio")).toBeVisible();
-  const folder = list.locator("[data-folder]");
-  await expect(folder).toHaveCount(1);
-  await expect(folder).toContainText("Clio");
+  await page.getByRole("menuitemradio", { name: "Shorts" }).click();
+  await expect(page.getByText("Moved to Shorts")).toBeVisible();
   await expect(folder).toContainText("1 automation");
   await expect(rows).toHaveCount(1);
   await pause(2000);
 
   // The folder opens onto what is in it, and leads back.
-  await folder.getByRole("link", { name: "Clio folder" }).click();
+  await folder.getByRole("link", { name: "Shorts folder" }).click();
   await expect(page).toHaveURL(/\/automations\?folder=/);
-  await expect(page.getByRole("navigation", { name: "Folder" })).toContainText("Clio");
+  await expect(page.getByRole("navigation", { name: "Folder" })).toContainText("Shorts");
   await expect(
-    page.getByRole("list", { name: "Automations for Clio" }).locator("[data-automation]"),
+    page.getByRole("list", { name: "Automations for Shorts" }).locator("[data-automation]"),
   ).toHaveCount(1);
   await pause(2000);
   await page.getByRole("link", { name: /All automations/ }).click();

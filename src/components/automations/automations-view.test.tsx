@@ -28,6 +28,7 @@ function automation(id: string, over: Record<string, unknown> = {}) {
     updatedAt: NOW - 14 * DAY,
     createdAt: NOW - 20 * DAY,
     clientId: null,
+    folderId: null,
     lastRun: null,
     ...over,
   };
@@ -39,19 +40,15 @@ const CLIENTS = [
     name: "Clio",
     logo: null,
     color: null,
-    automations: 2,
+    automations: 1,
     projects: 0,
-    createdAt: NOW - 60 * DAY,
-  },
-  {
-    _id: "empty",
-    name: "Nobody's",
-    logo: null,
-    color: null,
-    automations: 0,
-    projects: 1,
     createdAt: NOW,
   },
+];
+
+const FOLDERS = [
+  { _id: "empty", name: "Ads", count: 0, createdAt: NOW, updatedAt: NOW },
+  { _id: "shorts", name: "Shorts", count: 2, createdAt: NOW - 60 * DAY, updatedAt: NOW - 2 * DAY },
 ];
 
 function show(automations: unknown[], search = "") {
@@ -59,31 +56,32 @@ function show(automations: unknown[], search = "") {
   place.search = search;
   answerQuery(api.automations.list, automations);
   answerQuery(api.clients.list, CLIENTS);
+  answerQuery(api.automationFolders.list, FOLDERS);
   answerQuery(api.runs.waitingApprovals, []);
   return renderInApp(<AutomationsView />);
 }
 
 describe("the Automations page", () => {
-  test("lists each automation as a row, with a client's ones in its folder at the top", () => {
+  test("lists each automation as a row, with folders at the top", () => {
     show([
-      automation("a1", { name: "Daily reel", enabled: true, hasDraft: true }),
-      automation("a2", { name: "For Clio one", clientId: "clio" }),
-      automation("a3", { name: "For Clio two", clientId: "clio", updatedAt: NOW - 2 * DAY }),
+      automation("a1", { name: "Daily reel", enabled: true, hasDraft: true, clientId: "clio" }),
+      automation("a2", { name: "Shorts one", folderId: "shorts" }),
+      automation("a3", { name: "Shorts two", folderId: "shorts" }),
     ]);
     const list = screen.getByRole("list", { name: "Automations" });
     const rows = within(list).getAllByRole("listitem");
-    // The folder comes first; a client with nothing in it has no folder.
+    // Folders come first, empty ones too, like n8n.
     expect(rows[0]).toHaveAttribute("data-folder");
-    expect(rows[0]).toHaveTextContent("Clio");
-    expect(rows[0]).toHaveTextContent("2 automations");
-    expect(rows[0]).toHaveTextContent("Last updated 2 days ago");
-    expect(within(list).queryByText("Nobody's")).not.toBeInTheDocument();
-    expect(within(list).getByRole("link", { name: "Clio folder" })).toHaveAttribute(
+    expect(rows[0]).toHaveTextContent("Ads");
+    expect(rows[1]).toHaveTextContent("Shorts");
+    expect(rows[1]).toHaveTextContent("2 automations");
+    expect(rows[1]).toHaveTextContent("Last updated 2 days ago");
+    expect(within(list).getByRole("link", { name: "Shorts folder" })).toHaveAttribute(
       "href",
-      "/automations?folder=clio",
+      "/automations?folder=shorts",
     );
-    // What is in the folder is not repeated outside it.
-    expect(within(list).queryByText("For Clio one")).not.toBeInTheDocument();
+    // What is in a folder is not repeated outside it.
+    expect(within(list).queryByText("Shorts one")).not.toBeInTheDocument();
 
     const reel = list.querySelector("[data-automation='a1']") as HTMLElement;
     expect(within(reel).getByRole("link", { name: "Daily reel" })).toHaveAttribute(
@@ -92,28 +90,74 @@ describe("the Automations page", () => {
     );
     expect(reel).toHaveTextContent("Last updated 2 weeks ago");
     expect(reel).toHaveTextContent("Starts when you press Run now");
+    // The client it works for shows as a badge; clients are not folders.
+    expect(within(reel).getByText("Clio")).toBeInTheDocument();
     expect(within(reel).getByText("Draft")).toBeInTheDocument();
     expect(within(reel).getByRole("switch", { name: "Daily reel is on" })).toBeChecked();
-    expect(within(reel).getByText("On")).toBeInTheDocument();
   });
 
-  test("a folder opens onto its client's automations, with a way back", () => {
+  test("a folder opens onto what is in it, with a way back", () => {
     show(
       [
         automation("a1", { name: "Daily reel" }),
-        automation("a2", { name: "For Clio one", clientId: "clio" }),
+        automation("a2", { name: "Shorts one", folderId: "shorts" }),
       ],
-      "folder=clio",
+      "folder=shorts",
     );
-    expect(screen.getByRole("navigation", { name: "Folder" })).toHaveTextContent("Clio");
+    expect(screen.getByRole("navigation", { name: "Folder" })).toHaveTextContent("Shorts");
     expect(screen.getByRole("link", { name: /All automations/ })).toHaveAttribute(
       "href",
       "/automations",
     );
-    const list = screen.getByRole("list", { name: "Automations for Clio" });
-    expect(within(list).getByText("For Clio one")).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "Automations for Shorts" });
+    expect(within(list).getByText("Shorts one")).toBeInTheDocument();
     expect(within(list).queryByText("Daily reel")).not.toBeInTheDocument();
     expect(list.querySelector("[data-folder]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "New folder" })).not.toBeInTheDocument();
+  });
+
+  test("New folder names a folder and makes it", async () => {
+    const user = userEvent.setup();
+    show([automation("a1")]);
+    await user.click(screen.getByRole("button", { name: "New folder" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "Create folder" })).toBeDisabled();
+    await user.type(within(dialog).getByLabelText("Folder name"), "Podcasts");
+    await user.click(within(dialog).getByRole("button", { name: "Create folder" }));
+    await waitFor(() =>
+      expect(mutationOf(api.automationFolders.create)).toHaveBeenCalledWith({
+        organizationId: "team_1",
+        name: "Podcasts",
+      }),
+    );
+  });
+
+  test("a folder's menu renames or deletes it", async () => {
+    const user = userEvent.setup();
+    show([automation("a1")]);
+    await user.click(screen.getByRole("button", { name: "More for the Shorts folder" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const name = within(screen.getByRole("dialog")).getByLabelText("Folder name");
+    expect(name).toHaveValue("Shorts");
+    await user.clear(name);
+    await user.type(name, "Reels");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(mutationOf(api.automationFolders.rename)).toHaveBeenCalledWith({
+        folderId: "shorts",
+        name: "Reels",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "More for the Shorts folder" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "The 2 automations in it stay, back on the main list.",
+    );
+    await user.click(screen.getByRole("button", { name: "Delete folder" }));
+    await waitFor(() =>
+      expect(mutationOf(api.automationFolders.remove)).toHaveBeenCalledWith({ folderId: "shorts" }),
+    );
   });
 
   test("switching one on, and moving one into a folder from its menu", async () => {
@@ -128,11 +172,11 @@ describe("the Automations page", () => {
     );
     await user.click(screen.getByRole("button", { name: "More for Daily reel" }));
     await user.click(await screen.findByRole("menuitem", { name: "Move to folder" }));
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Clio" }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Shorts" }));
     await waitFor(() =>
-      expect(mutationOf(api.clients.setForAutomation)).toHaveBeenCalledWith({
+      expect(mutationOf(api.automationFolders.moveAutomation)).toHaveBeenCalledWith({
         automationId: "a1",
-        clientId: "clio",
+        folderId: "shorts",
       }),
     );
   });

@@ -12,7 +12,15 @@ import {
 } from "@ncat-dash/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { ChevronLeft, FileUp, FolderOpen, Hourglass, Plus, Workflow } from "lucide-react";
+import {
+  ChevronLeft,
+  FileUp,
+  FolderOpen,
+  FolderPlus,
+  Hourglass,
+  Plus,
+  Workflow,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
@@ -45,6 +53,7 @@ import {
   Pager,
   usePages,
 } from "@/components/ui/item-list";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { triggerSummary } from "@/lib/automations";
@@ -61,6 +70,11 @@ const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle
 
 type Automation = FunctionReturnType<typeof api.automations.list>[number];
 type Client = FunctionReturnType<typeof api.clients.list>[number];
+type Folder = FunctionReturnType<typeof api.automationFolders.list>[number];
+type FolderDialog =
+  | { mode: "new" }
+  | { mode: "rename"; id: Id<"automationFolders">; name: string }
+  | { mode: "delete"; id: Id<"automationFolders">; name: string; count: number };
 
 export function AutomationsView() {
   const team = useActiveTeam();
@@ -72,34 +86,26 @@ export function AutomationsView() {
   const remove = useMutation(api.automations.remove);
   const importFile = useMutation(api.automations.importFile);
   const clients = useQuery(api.clients.list, { organizationId: team.id });
-  const moveTo = useMutation(api.clients.setForAutomation);
+  const teamFolders = useQuery(api.automationFolders.list, { organizationId: team.id });
+  const moveTo = useMutation(api.automationFolders.moveAutomation);
+  const createFolder = useMutation(api.automationFolders.create);
+  const renameFolder = useMutation(api.automationFolders.rename);
+  const removeFolder = useMutation(api.automationFolders.remove);
+  const [folderDialog, setFolderDialog] = useState<FolderDialog | null>(null);
+  const [folderName, setFolderName] = useState("");
   const picker = useRef<HTMLInputElement>(null);
-  // A client's automations sit in its folder; ?folder= is the one open.
+  // ?folder= is the folder that is open.
   const folderId = useSearchParams().get("folder");
-  const folder = clients?.find((client) => client._id === folderId) ?? null;
+  const folders = useMemo(() => teamFolders ?? [], [teamFolders]);
+  const folder = folders.find((each) => each._id === folderId) ?? null;
 
-  const { folders, here } = useMemo(() => {
+  const here = useMemo(() => {
     const all = automations ?? [];
-    const known = new Set((clients ?? []).map((client) => client._id as string));
-    const inFolder = (automation: Automation) =>
-      automation.clientId !== null && known.has(automation.clientId);
-    const folders = (clients ?? [])
-      .map((client) => {
-        const inside = all.filter((automation) => automation.clientId === client._id);
-        return {
-          _id: client._id,
-          name: client.name,
-          count: inside.length,
-          createdAt: client.createdAt,
-          updatedAt: Math.max(client.createdAt, ...inside.map((each) => each.updatedAt)),
-        };
-      })
-      .filter((each) => each.count > 0);
-    const here = folderId
-      ? all.filter((automation) => automation.clientId === folderId)
-      : all.filter((automation) => !inFolder(automation));
-    return { folders, here };
-  }, [automations, clients, folderId]);
+    const known = new Set(folders.map((each) => each._id as string));
+    return folderId
+      ? all.filter((automation) => automation.folderId === folderId)
+      : all.filter((automation) => automation.folderId === null || !known.has(automation.folderId));
+  }, [automations, folders, folderId]);
   const { shown, pager } = usePages(here, "automations");
 
   const [pending, setPending] = useState(false);
@@ -181,6 +187,19 @@ export function AutomationsView() {
             <FileUp />
             Import
           </Button>
+          {!folder && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setFolderName("");
+                setFolderDialog({ mode: "new" });
+              }}
+            >
+              <FolderPlus />
+              New folder
+            </Button>
+          )}
           <Button asChild size="sm">
             <Link href="/automations/new" transitionTypes={["nav-forward"]}>
               <Plus />
@@ -254,7 +273,7 @@ export function AutomationsView() {
 
       {automations === undefined ? (
         <Skeleton className="h-48 rounded-xl" />
-      ) : automations.length === 0 ? (
+      ) : automations.length === 0 && folders.length === 0 ? (
         <div className="grid gap-5">
           <div className="flex items-center gap-3">
             <div className="bg-muted flex size-10 shrink-0 items-center justify-center rounded-lg">
@@ -281,7 +300,8 @@ export function AutomationsView() {
             </p>
           ) : folder && here.length === 0 ? (
             <p className="text-muted-foreground bg-surface rounded-xl px-5 py-8 text-sm">
-              Nothing is in this folder now. Move an automation here from its menu.
+              Nothing is in this folder yet. Move an automation here with Move to folder in its menu
+              on the main list.
             </p>
           ) : (
             <ItemList label={folder ? `Automations for ${folder.name}` : "Automations"}>
@@ -289,7 +309,6 @@ export function AutomationsView() {
                 folders.map((each) => (
                   <FolderRow
                     key={each._id}
-                    data-client={each._id}
                     name={each.name}
                     href={`/automations?folder=${each._id}`}
                     openLabel={`${each.name} folder`}
@@ -308,8 +327,27 @@ export function AutomationsView() {
                         <DropdownMenuItem asChild>
                           <Link href={`/automations?folder=${each._id}`}>Open</Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/clients/${each._id}`}>Client page</Link>
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setFolderName(each.name);
+                            setFolderDialog({ mode: "rename", id: each._id, name: each.name });
+                          }}
+                        >
+                          Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onSelect={() =>
+                            setFolderDialog({
+                              mode: "delete",
+                              id: each._id,
+                              name: each.name,
+                              count: each.count,
+                            })
+                          }
+                        >
+                          Delete
                         </DropdownMenuItem>
                       </>
                     }
@@ -319,7 +357,8 @@ export function AutomationsView() {
                 <AutomationRow
                   key={automation._id}
                   automation={automation}
-                  clients={clients ?? []}
+                  folders={folders}
+                  client={clients?.find((client) => client._id === automation.clientId) ?? null}
                   onSwitch={async (enabled) => {
                     try {
                       await setEnabled({ automationId: automation._id, enabled });
@@ -327,10 +366,10 @@ export function AutomationsView() {
                       toast.error(errorMessage(caught, "It could not be switched on."));
                     }
                   }}
-                  onMove={async (clientId) => {
+                  onMove={async (folderId) => {
                     try {
-                      await moveTo({ automationId: automation._id, clientId });
-                      const where = clients?.find((client) => client._id === clientId)?.name;
+                      await moveTo({ automationId: automation._id, folderId });
+                      const where = folders.find((each) => each._id === folderId)?.name;
                       toast.success(where ? `Moved to ${where}` : "Moved out of the folder");
                     } catch (caught) {
                       toast.error(errorMessage(caught, "It could not be moved."));
@@ -344,6 +383,85 @@ export function AutomationsView() {
           <Pager {...pager} noun="automations" />
         </div>
       )}
+
+      <Dialog open={folderDialog !== null} onOpenChange={(next) => !next && setFolderDialog(null)}>
+        <DialogContent>
+          {folderDialog?.mode === "delete" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Delete the {folderDialog.name} folder?</DialogTitle>
+                <DialogDescription>
+                  {folderDialog.count === 0
+                    ? "It is empty."
+                    : `The ${folderDialog.count === 1 ? "automation" : `${folderDialog.count} automations`} in it stay${folderDialog.count === 1 ? "s" : ""}, back on the main list.`}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setFolderDialog(null)}>
+                  Keep it
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    try {
+                      await removeFolder({ folderId: folderDialog.id });
+                      setFolderDialog(null);
+                    } catch (caught) {
+                      toast.error(errorMessage(caught, "The folder could not be deleted."));
+                    }
+                  }}
+                >
+                  Delete folder
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <form
+              className="contents"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (!folderDialog) return;
+                try {
+                  if (folderDialog.mode === "new") {
+                    await createFolder({ organizationId: team.id, name: folderName });
+                  } else {
+                    await renameFolder({ folderId: folderDialog.id, name: folderName });
+                  }
+                  setFolderDialog(null);
+                } catch (caught) {
+                  toast.error(errorMessage(caught, "The folder could not be saved."));
+                }
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>
+                  {folderDialog?.mode === "rename" ? `Rename ${folderDialog.name}` : "New folder"}
+                </DialogTitle>
+                <DialogDescription>
+                  Folders keep the list tidy. Moving an automation into one changes nothing about
+                  how it runs.
+                </DialogDescription>
+              </DialogHeader>
+              <Input
+                aria-label="Folder name"
+                placeholder="Podcasts, Shorts, Ads"
+                autoFocus
+                maxLength={80}
+                value={folderName}
+                onChange={(event) => setFolderName(event.target.value)}
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setFolderDialog(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={folderName.trim() === ""}>
+                  {folderDialog?.mode === "rename" ? "Save" : "Create folder"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={removing !== null} onOpenChange={(next) => !next && setRemoving(null)}>
         <DialogContent>
@@ -375,15 +493,17 @@ export function AutomationsView() {
 
 function AutomationRow({
   automation,
-  clients,
+  folders,
+  client,
   onSwitch,
   onMove,
   onRemove,
 }: {
   automation: Automation;
-  clients: Client[];
+  folders: Folder[];
+  client: Client | null;
   onSwitch: (enabled: boolean) => void;
-  onMove: (clientId: Id<"clients"> | null) => void;
+  onMove: (folderId: Id<"automationFolders"> | null) => void;
   onRemove: () => void;
 }) {
   const others = automation.moreTriggers.length;
@@ -413,6 +533,7 @@ function AutomationRow({
       }
       badges={
         <>
+          {client && <ItemBadge title="The client it works for">{client.name}</ItemBadge>}
           {automation.hasDraft && (
             <ItemBadge dot="amber" title="Has changes that are not published yet">
               Draft
@@ -445,18 +566,20 @@ function AutomationRow({
           <DropdownMenuItem asChild>
             <Link href={`/automations/${automation._id}`}>Open</Link>
           </DropdownMenuItem>
-          {clients.length > 0 && (
+          {folders.length > 0 && (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>Move to folder</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 <DropdownMenuRadioGroup
-                  value={automation.clientId ?? ""}
-                  onValueChange={(value) => onMove(value ? (value as Id<"clients">) : null)}
+                  value={automation.folderId ?? ""}
+                  onValueChange={(value) =>
+                    onMove(value ? (value as Id<"automationFolders">) : null)
+                  }
                 >
                   <DropdownMenuRadioItem value="">No folder</DropdownMenuRadioItem>
-                  {clients.map((client) => (
-                    <DropdownMenuRadioItem key={client._id} value={client._id}>
-                      {client.name}
+                  {folders.map((each) => (
+                    <DropdownMenuRadioItem key={each._id} value={each._id}>
+                      {each.name}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>

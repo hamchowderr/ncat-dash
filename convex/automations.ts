@@ -243,8 +243,9 @@ export const list = query({
           // The latest change, published or still a draft.
           updatedAt: Math.max(automation.updatedAt, automation.draft?.updatedAt ?? 0),
           createdAt: automation._creationTime,
-          // The client it works for: the folder it sits in on the Automations page.
           clientId: automation.clientId ?? null,
+          // The folder it sits in on the Automations page.
+          folderId: automation.folderId ?? null,
           lastRun: lastRun
             ? { _id: lastRun._id, status: lastRun.status, startedAt: lastRun._creationTime }
             : null,

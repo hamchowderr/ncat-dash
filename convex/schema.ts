@@ -530,6 +530,14 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_automation", ["automationId"]),
 
+  // A folder on the Automations page that a team names itself, like a workflow folder in
+  // n8n. Separate from clients: it only groups the list.
+  automationFolders: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
   automations: defineTable({
     organizationId: v.string(),
     name: v.string(),
@@ -577,6 +585,9 @@ export default defineSchema({
     // The client this automation works for. Its runs use that client's brand over the
     // team's, and keep their finished files in the client's folder. Not part of versions.
     clientId: v.optional(v.id("clients")),
+    // The folder it sits in on the Automations page, only for keeping the list tidy.
+    // Not part of versions.
+    folderId: v.optional(v.id("automationFolders")),
     // Switched on: each finished run's files are also sent to this Dropbox account, into
     // `folder` (or "/Takewon/<automation>"). Not part of versions.
     dropboxSend: v.optional(
@@ -589,6 +600,7 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"])
     .index("by_client", ["clientId"])
+    .index("by_folder", ["folderId"])
     .index("by_enabled_and_nextRunAt", ["enabled", "nextRunAt"])
     .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"])
     .index("by_enabled_and_multiTrigger", ["enabled", "multiTrigger"]),
