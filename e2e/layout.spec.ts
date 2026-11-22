@@ -316,16 +316,13 @@ test("the first-step hint and the On switches stay clear at a small laptop size"
   await expect(page.getByTestId("flow-strip-more")).toHaveText("+7");
   const switches = page.getByRole("switch");
   await expect(switches.first()).toBeVisible();
-  const table = await box(page, "[data-slot=table-container]");
+  const list = await box(page, "[data-item-list]");
   expect(
-    await page
-      .locator("[data-slot=table-container]")
-      .first()
-      .evaluate((el) => el.scrollWidth - el.clientWidth),
-    "the list scrolls sideways",
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    "the page scrolls sideways",
   ).toBeLessThanOrEqual(1);
   for (const toggle of await switches.all()) {
     const s = (await toggle.boundingBox())!;
-    expect(s.x + s.width).toBeLessThanOrEqual(Math.min(table.x + table.width, SIZES[0].width));
+    expect(s.x + s.width).toBeLessThanOrEqual(Math.min(list.x + list.width, SIZES[0].width));
   }
 });

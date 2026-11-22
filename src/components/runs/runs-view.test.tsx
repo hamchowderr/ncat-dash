@@ -63,10 +63,17 @@ describe("the Runs page", () => {
     expect(screen.getByRole("tab", { name: "All runs" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: /Failed/ }).textContent).toContain("3");
     expect(screen.getByText("episode-12.mp4")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /View/ })).toHaveAttribute(
+    // Each run is a row: its name opens the run, facts sit under it, its state on the right.
+    const row = document.querySelector("[data-run='r0']") as HTMLElement;
+    expect(within(row).getByRole("link", { name: /Weekly clips, run from/ })).toHaveAttribute(
       "href",
       "/automations/auto1/runs/r0",
     );
+    expect(within(row).getByText("Took 1m 5s")).toBeInTheDocument();
+    expect(within(row).getByText("Done")).toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: "More for the Weekly clips run" }),
+    ).toBeVisible();
     // A run that worked has nothing to pick up, and the list has no boxes to tick.
     expect(screen.queryByRole("button", { name: /Pick up/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
@@ -121,5 +128,25 @@ describe("the Runs page", () => {
     expect(screen.getByText(/Nothing has run yet/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Failed" }));
     expect(replaced).toHaveBeenCalledWith("/runs?show=failed");
+  });
+
+  test("a long history comes in pages, with the total and a choice of how many per page", () => {
+    place.pathname = "/runs";
+    const many = Array.from({ length: 30 }, (_, n) =>
+      run(`r${n}`, { status: "done", error: null, canPickUp: false, automationName: `Clips ${n}` }),
+    );
+    answerQuery(api.runs.listForTeam, { runs: many, failedCount: 0 });
+    renderInApp(<RunsView />);
+    expect(document.querySelectorAll("[data-run]")).toHaveLength(25);
+    const pages = screen.getByRole("navigation", { name: "Pages of runs" });
+    expect(within(pages).getByText("Total 30")).toBeInTheDocument();
+    expect(within(pages).getByRole("button", { name: "Page 1" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    fireEvent.click(within(pages).getByRole("button", { name: "Next page" }));
+    expect(document.querySelectorAll("[data-run]")).toHaveLength(5);
+    expect(screen.getByText("Clips 29")).toBeInTheDocument();
+    expect(screen.queryByText("Clips 0")).not.toBeInTheDocument();
   });
 });
