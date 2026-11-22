@@ -14,3 +14,7 @@ toolkit's code. Two pieces of this repository are taken from toolkit material:
   toolkit's Postman collection, with the sample values turned into blanks.
 
 packages/agent/LICENSE-mastra-chat-kit covers code from mastra-chat-kit (MIT).
+
+src/components/auth/LICENSE-better-auth-ui covers the sign-in screens and account cards
+from Better Auth UI (https://better-auth-ui.com, MIT), in src/components/auth and
+src/lib/auth.

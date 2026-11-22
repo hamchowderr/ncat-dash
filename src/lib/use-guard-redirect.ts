@@ -20,7 +20,9 @@ export function useGuardRedirect(target: "/sign-in" | "/onboarding" | null) {
     void (async () => {
       const session = await authClient.getSession();
       if (cancelled || session.error) return;
-      if (!session.data) return router.replace("/sign-in");
+      // Signed out (the session ended, or they signed out in another tab): back here
+      // once they sign in again.
+      if (!session.data) return router.replace(signInBackTo(window.location));
       if (target !== "/onboarding") return;
       const teams = await authClient.organization.list();
       if (cancelled || !teams.data) return;
@@ -30,4 +32,11 @@ export function useGuardRedirect(target: "/sign-in" | "/onboarding" | null) {
       cancelled = true;
     };
   }, [target, router]);
+}
+
+/** The sign-in address that returns to where someone was, unless they were signing out. */
+export function signInBackTo(place: Pick<Location, "pathname" | "search">): string {
+  const here = `${place.pathname}${place.search}`;
+  if (place.pathname === "/" || place.pathname.startsWith("/sign-")) return "/sign-in";
+  return `/sign-in?redirectTo=${encodeURIComponent(here)}`;
 }

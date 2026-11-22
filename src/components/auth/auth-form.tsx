@@ -1,176 +1,348 @@
-"use client";
+"use client"
 
-import { api } from "@convex/_generated/api";
-import { useQuery } from "convex/react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  type AdditionalField as AdditionalFieldConfig,
+  type AdditionalFieldFormValue,
+  DEFAULT_ADDITIONAL_FIELD_VALIDATION_DEBOUNCE_MS,
+  getFormFieldErrors,
+  normalizeAuthFormServerError,
+  validateAdditionalFieldRequired,
+  validateAdditionalFieldValue
+} from "@better-auth-ui/core"
+import {
+  type AnyFormApi,
+  createFormHook,
+  createFormHookContexts
+} from "@tanstack/react-form"
+import {
+  type ComponentProps,
+  type SubmitEvent,
+  type ReactNode,
+  useRef
+} from "react"
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { authClient } from "@/lib/auth-client";
+import { Button } from "@/components/ui/button"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel
+} from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
+import { AdditionalField, type AdditionalFieldProps } from "./additional-field"
 
-const copy = {
-  "sign-in": {
-    title: "Sign in to your account",
-    description: "Enter your email and password to get back to your team.",
-    submit: "Sign in",
-    pending: "Signing in",
-    switchText: "New here?",
-    switchLabel: "Create an account",
-    switchHref: "/sign-up",
-  },
-  "sign-up": {
-    title: "Create your account",
-    description: "You will name your team and connect your toolkit next.",
-    submit: "Create account",
-    pending: "Creating account",
-    switchText: "Already have an account?",
-    switchLabel: "Sign in",
-    switchHref: "/sign-in",
-  },
-} as const;
+const { fieldContext, formContext, useFieldContext, useFormContext } =
+  createFormHookContexts()
 
-export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
-  const router = useRouter();
-  const session = authClient.useSession();
-  const email = useQuery(api.email.status);
-  const settings = useQuery(api.settings.get);
-  const trialDays = mode === "sign-up" ? (settings?.trialDays ?? null) : null;
-  // Where to go once signed in: an invitation link sends people here first. Only paths
-  // inside this app are followed.
-  const wanted = useSearchParams().get("next");
-  const next = wanted && wanted.startsWith("/") && !wanted.startsWith("//") ? wanted : "/";
-  const withNext = (href: string) =>
-    next === "/" ? href : `${href}?next=${encodeURIComponent(next)}`;
-  const [error, setError] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const text = copy[mode];
+const DEFAULT_AUTH_FORM_SERVER_ERROR = "Unable to submit this form. Try again."
 
-  const signedIn = Boolean(session.data?.user);
-  useEffect(() => {
-    if (!signedIn) return;
-    let cancelled = false;
-    // Checked against the server first: a page returning from the background can
-    // briefly hold an old session.
-    void authClient.getSession().then((fresh) => {
-      if (!cancelled && fresh.data) router.replace(next);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [signedIn, router, next]);
+export function focusFirstInvalidAuthFormControl(form: HTMLFormElement) {
+  requestAnimationFrame(() => {
+    form
+      .querySelector<HTMLElement>(
+        '[aria-invalid="true"]:not([disabled]), :invalid:not([disabled])'
+      )
+      ?.focus()
+  })
+}
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const email = String(form.get("email") ?? "").trim();
-    const password = String(form.get("password") ?? "");
-    setError(null);
-    setPending(true);
-    const result =
-      mode === "sign-up"
-        ? await authClient.signUp.email({
-            name: String(form.get("name") ?? "").trim(),
-            email,
-            password,
-            // Where the link in the confirmation email ends up.
-            callbackURL: "/",
-          })
-        : await authClient.signIn.email({ email, password });
-    setPending(false);
-    if (result.error) {
-      setError(result.error.message ?? "That did not work. Check your details and try again.");
-      return;
+function AuthFormFieldError({ id }: { id?: string }) {
+  const field = useFieldContext<unknown>()
+  const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+
+  if (!isInvalid) return null
+
+  const errors = getFormFieldErrors(field.state.meta.errors)
+
+  return errors.length > 0 ? <FieldError id={id} errors={errors} /> : null
+}
+
+function AuthFormServerError() {
+  const form = useFormContext()
+
+  return (
+    <form.Subscribe selector={(state): unknown => state.errorMap.onServer}>
+      {(error) => {
+        const formError =
+          error && typeof error === "object" && "form" in error
+            ? error.form
+            : error
+        const errors = getFormFieldErrors(formError ? [formError] : [])
+        return errors.length > 0 ? <FieldError errors={errors} /> : null
+      }}
+    </form.Subscribe>
+  )
+}
+
+export function setAuthFormServerError(
+  form: AnyFormApi,
+  error: unknown,
+  fallbackMessage: string
+) {
+  const normalized = normalizeAuthFormServerError(error, fallbackMessage)
+  form.setErrorMap({
+    onServer: {
+      fields: normalized.fields ?? {},
+      form: normalized.form
     }
-    // With confirmation required, a new account is not signed in until its address is
-    // confirmed from the email.
-    if (mode === "sign-up" && !(result.data as { token?: string | null }).token) {
-      setConfirm(email);
-      return;
+  })
+}
+
+export function clearAuthFormServerError(form: AnyFormApi) {
+  form.setErrorMap({ onServer: { fields: {} } })
+}
+
+export function clearAuthFormFieldServerError(
+  form: AnyFormApi,
+  fieldName: string
+) {
+  form.setErrorMap({ onServer: undefined })
+  if (!fieldName) return
+
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- AnyFormApi has untyped field names
+  const fieldMeta = form.getFieldMeta(fieldName as never)
+  if (!fieldMeta?.errorMap.onServer) return
+
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- AnyFormApi has untyped field names
+  form.setFieldMeta(fieldName as never, (current = fieldMeta) => ({
+    ...current,
+    errorMap: { ...current.errorMap, onServer: undefined },
+    errorSourceMap: { ...current.errorSourceMap, onServer: undefined }
+  }))
+}
+
+export async function runAuthFormAction(
+  form: AnyFormApi,
+  action: () => Promise<unknown>,
+  serverErrorMessage = DEFAULT_AUTH_FORM_SERVER_ERROR
+) {
+  clearAuthFormServerError(form)
+  try {
+    await action()
+    return true
+  } catch (error) {
+    if (!form.state.errorMap.onServer) {
+      setAuthFormServerError(form, error, serverErrorMessage)
     }
-    router.replace(next);
+    return false
+  }
+}
+
+export async function submitAuthForm(
+  form: AnyFormApi,
+  serverErrorMessage = DEFAULT_AUTH_FORM_SERVER_ERROR
+) {
+  clearAuthFormServerError(form)
+  try {
+    await form.handleSubmit()
+    return form.state.isValid
+  } catch (error) {
+    if (!form.state.errorMap.onServer) {
+      setAuthFormServerError(form, error, serverErrorMessage)
+    }
+    return false
+  }
+}
+
+type AuthFormRootProps = Omit<ComponentProps<"form">, "onSubmit"> & {
+  onBeforeSubmit?: () => void
+  serverErrorMessage?: string
+}
+
+function AuthFormRoot({
+  children,
+  onBeforeSubmit,
+  onInput,
+  serverErrorMessage = DEFAULT_AUTH_FORM_SERVER_ERROR,
+  ...props
+}: AuthFormRootProps) {
+  const form = useFormContext()
+  const submittingRef = useRef(false)
+
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (submittingRef.current || form.state.isSubmitting) return
+
+    const formElement = event.currentTarget
+    onBeforeSubmit?.()
+    submittingRef.current = true
+    try {
+      const isValid = await submitAuthForm(form, serverErrorMessage)
+      if (!isValid) focusFirstInvalidAuthFormControl(formElement)
+    } finally {
+      submittingRef.current = false
+    }
   }
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm">
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h1>{text.title}</h1>
-            </CardTitle>
-            <CardDescription>
-              {mode === "sign-up" && settings?.inviteOnly
-                ? "This dashboard is invite-only. Use the email address your invitation went to."
-                : trialDays
-                  ? `Free for ${trialDays} ${trialDays === 1 ? "day" : "days"}, with no card needed. ${text.description}`
-                  : text.description}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={onSubmit}>
-              <FieldGroup>
-                {mode === "sign-up" && (
-                  <Field>
-                    <FieldLabel htmlFor="name">Your name</FieldLabel>
-                    <Input id="name" name="name" autoComplete="name" required />
-                  </Field>
-                )}
-                <Field>
-                  <FieldLabel htmlFor="email">Email address</FieldLabel>
-                  <Input id="email" name="email" type="email" autoComplete="email" required />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <Input
-                    id="password"
-                    name="password"
-                    type="password"
-                    autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
-                    minLength={8}
-                    required
-                  />
-                  {mode === "sign-up" && (
-                    <FieldDescription>At least 8 characters.</FieldDescription>
-                  )}
-                </Field>
-                {error && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
-                {confirm && (
-                  <Alert>
-                    <AlertDescription>
-                      We sent a link to {confirm}. Open it to confirm your address and you will be
-                      signed in.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <Field>
-                  <Button type="submit" disabled={pending}>
-                    {pending ? text.pending : text.submit}
-                  </Button>
-                  <FieldDescription className="text-center">
-                    {text.switchText}{" "}
-                    <Link href={withNext(text.switchHref)}>{text.switchLabel}</Link>
-                  </FieldDescription>
-                  {mode === "sign-in" && email?.configured && (
-                    <FieldDescription className="text-center">
-                      <Link href="/forgot-password">Forgot your password?</Link>
-                    </FieldDescription>
-                  )}
-                </Field>
-              </FieldGroup>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+    <form
+      {...props}
+      onInvalid={(event) => {
+        focusFirstInvalidAuthFormControl(event.currentTarget)
+      }}
+      onInput={(event) => {
+        const target = event.target
+        const fieldName =
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLSelectElement ||
+          target instanceof HTMLTextAreaElement
+            ? target.name
+            : ""
+        clearAuthFormFieldServerError(form, fieldName)
+        onInput?.(event)
+      }}
+      onSubmit={(event) => void submit(event)}
+    >
+      {children}
+    </form>
+  )
+}
+
+type AuthFormTextFieldProps = Omit<
+  ComponentProps<typeof Input>,
+  "name" | "onBlur" | "onChange" | "value"
+> & {
+  description?: ReactNode
+  label: ReactNode
+}
+
+function AuthFormTextField({
+  description,
+  id,
+  label,
+  ...props
+}: AuthFormTextFieldProps) {
+  const field = useFieldContext<string>()
+  const form = useFormContext()
+  const isInvalid = isAuthFormFieldInvalid(field.state.meta)
+  const inputId = id ?? field.name
+
+  return (
+    <Field data-invalid={isInvalid}>
+      <FieldLabel htmlFor={inputId}>{label}</FieldLabel>
+      <Input
+        {...props}
+        aria-busy={field.state.meta.isValidating || undefined}
+        aria-invalid={isInvalid}
+        id={inputId}
+        name={field.name}
+        onBlur={field.handleBlur}
+        onChange={(event) => {
+          clearAuthFormFieldServerError(form, field.name)
+          field.handleChange(event.target.value)
+        }}
+        value={field.state.value}
+      />
+      {description ? <FieldDescription>{description}</FieldDescription> : null}
+      <AuthFormFieldError />
+    </Field>
+  )
+}
+
+function AuthFormSubmitButton({
+  children,
+  disabled,
+  isPending,
+  ...props
+}: ComponentProps<typeof Button> & { isPending?: boolean }) {
+  const form = useFormContext()
+
+  return (
+    <form.Subscribe
+      selector={(state) => [state.isSubmitting, state.isValidating] as const}
+    >
+      {([isSubmitting, isValidating]) => (
+        <Button
+          {...props}
+          aria-busy={isPending || isSubmitting || undefined}
+          aria-disabled={
+            disabled || isPending || isSubmitting || isValidating || undefined
+          }
+          disabled={disabled || isPending || isSubmitting || isValidating}
+          type="submit"
+        >
+          {isPending || isSubmitting ? (
+            <Spinner data-icon="inline-start" />
+          ) : null}
+          {children}
+        </Button>
+      )}
+    </form.Subscribe>
+  )
+}
+
+type AuthFormAdditionalFieldProps = Omit<
+  AdditionalFieldProps,
+  "errors" | "isInvalid" | "name" | "onBlur" | "onChange" | "value"
+>
+
+function AuthFormAdditionalField(props: AuthFormAdditionalFieldProps) {
+  const field = useFieldContext<AdditionalFieldFormValue>()
+  const form = useFormContext()
+  const isInvalid = isAuthFormFieldInvalid(field.state.meta)
+
+  return (
+    <AdditionalField
+      {...props}
+      errors={
+        isInvalid ? getFormFieldErrors(field.state.meta.errors) : undefined
+      }
+      isInvalid={isInvalid}
+      name={field.name}
+      onBlur={field.handleBlur}
+      onChange={(value) => {
+        clearAuthFormFieldServerError(form, field.name)
+        field.handleChange(value)
+      }}
+      value={field.state.value}
+    />
+  )
+}
+
+export const {
+  useAppForm: useAuthForm,
+  withFieldGroup: withAuthFieldGroup,
+  withForm: withAuthForm
+} = createFormHook({
+  fieldComponents: {
+    AuthFormAdditionalField,
+    AuthFormFieldError,
+    AuthFormTextField
+  },
+  fieldContext,
+  formComponents: {
+    AuthFormRoot,
+    AuthFormServerError,
+    AuthFormSubmitButton
+  },
+  formContext
+})
+
+export function isAuthFormFieldInvalid({
+  isTouched,
+  isValid
+}: {
+  isTouched: boolean
+  isValid: boolean
+}) {
+  return isTouched && !isValid
+}
+
+export function getAuthAdditionalFieldValidators(
+  field: AdditionalFieldConfig,
+  requiredMessage: string
+) {
+  return {
+    onChange: ({ value }: { value: AdditionalFieldFormValue }) =>
+      validateAdditionalFieldRequired(field, value, requiredMessage),
+    onChangeAsync: field.validate
+      ? ({ value }: { value: AdditionalFieldFormValue }) =>
+          validateAdditionalFieldValue(field, value)
+      : undefined,
+    onChangeAsyncDebounceMs: field.validate
+      ? (field.validateDebounceMs ??
+        DEFAULT_ADDITIONAL_FIELD_VALIDATION_DEBOUNCE_MS)
+      : undefined
+  }
 }

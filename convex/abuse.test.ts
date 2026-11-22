@@ -405,7 +405,7 @@ describe("signing up on the hosted edition", () => {
   });
 
   test("email confirmation is on by itself once the hosted edition can send email", async () => {
-    const { requireEmailVerification } = await import("./auth");
+    const { requireEmailVerification } = await import("./lib/signInOptions");
     process.env.NCAT_EDITION = "hosted";
     expect(requireEmailVerification({})).toBe(false);
     expect(requireEmailVerification({ TOSEND_API_KEY: "k", EMAIL_FROM: "a@b.example" })).toBe(true);

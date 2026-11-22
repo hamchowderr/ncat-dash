@@ -34,6 +34,17 @@ const eslintConfig = defineConfig([
     "src/app/api/browser/**",
     "src/app/api/images/**",
     "src/app/api/workspace/**",
+    // The sign-in screens and account cards, installed as they ship from the Better Auth
+    // UI registry (better-auth-ui.com). The dashboard's own files beside them are linted.
+    "src/components/auth/**",
+    "!src/components/auth/accept-invitation.tsx",
+    "!src/components/auth/auth-card.tsx",
+    "!src/components/auth/auth-view.tsx",
+    "!src/components/auth/connect-agent.tsx",
+    "!src/components/auth/connect-agent.test.tsx",
+    "!src/components/auth/sign-up-note.tsx",
+    "!src/components/auth/*.test.tsx",
+    "src/lib/auth/**",
   ]),
 ]);
 

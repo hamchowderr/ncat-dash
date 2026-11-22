@@ -31,6 +31,7 @@ import {
   internalQuery,
   mutation,
   query,
+  type QueryCtx,
 } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
@@ -64,11 +65,14 @@ const apiBase = () => process.env.TOSEND_API_URL?.trim() || undefined;
 export const status = query({
   args: {},
   returns: v.object({ configured: v.boolean() }),
-  handler: async (ctx) => {
-    if (fromEnvironment()) return { configured: true };
-    return { configured: (await ctx.db.query("emailConnections").first()) !== null };
-  },
+  handler: async (ctx) => ({ configured: await emailConfigured(ctx) }),
 });
+
+/** Whether the dashboard can send email: set by whoever runs it, or saved in Settings. */
+export async function emailConfigured(ctx: QueryCtx): Promise<boolean> {
+  if (fromEnvironment()) return true;
+  return (await ctx.db.query("emailConnections").first()) !== null;
+}
 
 /**
  * How email is set up, for the Settings page. Which emails each member gets is in their

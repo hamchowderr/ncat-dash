@@ -6,6 +6,7 @@ import * as React from "react";
 import {
   ArrowLeft,
   Bell,
+  CircleUser,
   ChevronsUpDown,
   Camera,
   Clapperboard,
@@ -118,6 +119,7 @@ export const isSettingsPath = (pathname: string) =>
   pathname === "/settings" || pathname.startsWith("/settings/");
 
 const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: string }>> = {
+  account: CircleUser,
   notifications: Bell,
   brand: Palette,
   captions: Captions,

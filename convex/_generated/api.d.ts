@@ -100,6 +100,7 @@ import type * as lib_reviews from "../lib/reviews.js";
 import type * as lib_runLimit from "../lib/runLimit.js";
 import type * as lib_runner from "../lib/runner.js";
 import type * as lib_send from "../lib/send.js";
+import type * as lib_signInOptions from "../lib/signInOptions.js";
 import type * as lib_signUps from "../lib/signUps.js";
 import type * as lib_slackApi from "../lib/slackApi.js";
 import type * as lib_slackPosts from "../lib/slackPosts.js";
@@ -268,6 +269,7 @@ declare const fullApi: ApiFromModules<{
   "lib/runLimit": typeof lib_runLimit;
   "lib/runner": typeof lib_runner;
   "lib/send": typeof lib_send;
+  "lib/signInOptions": typeof lib_signInOptions;
   "lib/signUps": typeof lib_signUps;
   "lib/slackApi": typeof lib_slackApi;
   "lib/slackPosts": typeof lib_slackPosts;

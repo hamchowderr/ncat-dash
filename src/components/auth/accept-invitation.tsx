@@ -54,10 +54,10 @@ export function AcceptInvitation() {
       >
         <div className="flex flex-col gap-2">
           <Button asChild>
-            <Link href={`/sign-up?next=${here}`}>Create an account</Link>
+            <Link href={`/sign-up?redirectTo=${here}`}>Create an account</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href={`/sign-in?next=${here}`}>Sign in</Link>
+            <Link href={`/sign-in?redirectTo=${here}`}>Sign in</Link>
           </Button>
         </div>
       </AuthCard>

@@ -5,6 +5,8 @@ import {
   invitationEmail,
   isEmailAddress,
   passwordResetEmail,
+  emailChangeEmail,
+  passwordChangedEmail,
   approvalTimedOutEmail,
   approvalWaitingEmail,
   clientFeedbackEmail,
@@ -134,6 +136,21 @@ describe("messages", () => {
     expect(reset.html).not.toContain("<b>Jane</b>");
     expect(reset.html).toContain("&lt;b&gt;Jane&lt;/b&gt;");
     expect(verificationEmail({ url }, branding).text).toContain(url);
+  });
+
+  it("names the new address on an address change, and links back on a password change", () => {
+    const url = "https://dash.example.com/api/auth/verify-email?token=t";
+    const change = emailChangeEmail({ name: "Jane", newEmail: "new@<x>.com", url }, branding);
+    expect(change.subject).toBe("Approve your new email address");
+    expect(change.text).toContain("new@<x>.com");
+    expect(change.html).toContain("new@&lt;x&gt;.com");
+    expect(change.text).toContain(url);
+    const changed = passwordChangedEmail(
+      { url: "https://dash.example.com/forgot-password" },
+      branding,
+    );
+    expect(changed.subject).toBe("Your password was changed");
+    expect(changed.text).toContain("https://dash.example.com/forgot-password");
   });
 
   it("keeps line breaks out of subjects", () => {
