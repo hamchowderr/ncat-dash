@@ -34,6 +34,10 @@ fn main() {
             "unwatch_folder",
             "landed_files",
             "landed_sent",
+            "check_machine",
+            "stack_saved",
+            "save_stack",
+            "run_stack_step",
         ]),
     ))
     .expect("failed to build the desktop app");

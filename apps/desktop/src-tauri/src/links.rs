@@ -8,6 +8,16 @@ pub fn may_load(url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https" | "tauri" | "about")
 }
 
+/// One of the app's own pages, built into it: tauri://localhost on Mac and Linux,
+/// http(s)://tauri.localhost on Windows.
+pub fn is_app_page(url: &Url) -> bool {
+    match url.scheme() {
+        "tauri" => url.host_str() == Some("localhost"),
+        "http" | "https" => url.host_str() == Some("tauri.localhost"),
+        _ => false,
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum NewWindow {
     /// One of the dashboard's pages: open it in the app's window.
@@ -42,6 +52,16 @@ mod tests {
 
     fn url(text: &str) -> Url {
         Url::parse(text).unwrap()
+    }
+
+    #[test]
+    fn knows_its_own_pages_on_every_system() {
+        assert!(is_app_page(&url("tauri://localhost/index.html")));
+        assert!(is_app_page(&url("http://tauri.localhost/")));
+        assert!(is_app_page(&url("https://tauri.localhost/#switch")));
+        assert!(!is_app_page(&url("http://localhost:3000/")));
+        assert!(!is_app_page(&url("https://tauri.localhost.example.com/")));
+        assert!(!is_app_page(&url("https://app.example.com/")));
     }
 
     #[test]

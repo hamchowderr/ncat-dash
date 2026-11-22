@@ -27,7 +27,7 @@ function message(error: unknown): string {
 export async function startConnect(
   root: HTMLElement,
   api: Api,
-  { reopenLast }: { reopenLast: boolean },
+  { reopenLast, onRun }: { reopenLast: boolean; onRun?: () => void },
 ): Promise<void> {
   document.title = NAME;
   root.innerHTML = html`
@@ -61,6 +61,10 @@ export async function startConnect(
           <h2>Recent</h2>
           <ul></ul>
         </div>
+        <p class="run-here" hidden>
+          No ${NAME} yet?
+          <button type="button" class="link run-here-button">Run one on this computer</button>
+        </p>
       </section>
     </div>
   `;
@@ -74,6 +78,10 @@ export async function startConnect(
   const error = root.querySelector<HTMLElement>(".error")!;
   const recent = root.querySelector<HTMLElement>(".recent")!;
   const list = recent.querySelector("ul")!;
+  if (onRun) {
+    root.querySelector<HTMLElement>(".run-here")!.hidden = false;
+    root.querySelector(".run-here-button")!.addEventListener("click", onRun);
+  }
 
   const showError = (text: string | null) => {
     error.textContent = text ?? "";
