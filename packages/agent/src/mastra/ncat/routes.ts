@@ -25,12 +25,15 @@ import {
   translateWordsRequest,
 } from "./translate";
 import { TEAM_KEY, teamKey } from "./team-key";
-import { rememberSession } from "./session-store";
+import { rememberSession, SCREEN_KINDS } from "./session-store";
 
 const body = z.object({
   convexToken: z.string().min(20).max(8000),
   organizationId: z.string().max(200).nullish(),
   automationId: z.string().max(200).nullish(),
+  screen: z
+    .object({ kind: z.enum(SCREEN_KINDS), id: z.string().min(1).max(200) })
+    .nullish(),
 });
 
 /**
@@ -61,6 +64,7 @@ export const createNcatRoutes = () => [
         convexToken: parsed.data.convexToken,
         organizationId: parsed.data.organizationId ?? null,
         automationId: parsed.data.automationId ?? null,
+        screen: parsed.data.screen ?? null,
       });
       return c.json({ ok: true });
     },

@@ -13,7 +13,9 @@ import { createDefaultMemory } from '../lib/memory';
 import { defaultInputProcessors, defaultOutputProcessors } from '../lib/processors';
 import { toolScopeProcessor } from '../lib/tool-scope';
 import { CACHE_BREAKPOINT, TurnContextProcessor } from '../lib/turn-context';
+import { turnRequestContextSchema } from '../lib/turn-keys';
 import { getChatWorkspace } from '../lib/workspace';
+import { screenStateProcessor } from '../ncat/screen';
 import { NCAT_INSTRUCTIONS, ncatTools } from '../ncat/tools';
 import { listSchedules, startSchedule, stopSchedule } from '../tools/schedule';
 
@@ -331,6 +333,9 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
     name: 'Automation builder',
     description:
       'Builds, changes and switches on automations in the dashboard, using the same pieces the canvas uses.',
+    // What a turn carries on its request context, all of it set by this server
+    // (lib/turn-keys.ts). A value of the wrong type stops the turn before the model is called.
+    requestContextSchema: turnRequestContextSchema,
     // Dynamic so the AgentController "Search" toggle (request context `webSearch`) can switch
     // the agent into search-the-web mode. Static string otherwise.
     instructions: ({ requestContext }) =>
@@ -406,6 +411,8 @@ export function createChatAgent(f: ChatFeatures = defaultFeatures): Agent {
       toolScopeProcessor,
       new TurnContextProcessor({ promptCache: f.promptCache }),
       new CostRouteProcessor({ promptCache: f.promptCache }),
+      // What the person has open in the dashboard, as a state signal (ncat/screen.ts).
+      screenStateProcessor,
     ],
     outputProcessors: defaultOutputProcessors,
   });

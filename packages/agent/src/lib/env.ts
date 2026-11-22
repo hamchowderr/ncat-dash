@@ -78,9 +78,12 @@ const envSchema = z
     SUBAGENT_WRITER: boolish.default(true),
     SUBAGENT_REVIEW: boolish.default(true),
     SUBAGENT_DATA: boolish.default(true),
-    // generateImage (needs OPENAI_API_KEY), and the demo tools getWeather + searchKnowledge.
+    // generateImage (needs OPENAI_API_KEY), and the chat kit's demo tools getWeather +
+    // searchKnowledge. The demo tools answer with made-up results (searchKnowledge cites
+    // pages on docs.example.com), so they are off unless asked for: only the kit's own
+    // tests and fixtures turn them on.
     TOOL_GENERATE_IMAGE: boolish.default(true),
-    TOOL_DEMO: boolish.default(true),
+    TOOL_DEMO: boolish.default(false),
     // Anthropic prompt caching (lib/turn-context.ts): cache breakpoints after the tools and
     // instructions, after the stable turn-context sections, and on the conversation tail.
     // Other providers ignore the markers.
