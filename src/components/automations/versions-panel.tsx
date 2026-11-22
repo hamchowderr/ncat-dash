@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 
 import {
+  BrandContext,
   canvasEdge,
   edgeTypes,
   FIT_VIEW,
@@ -38,7 +39,10 @@ import {
   triggerEdges,
   triggerPositions,
 } from "./flow-nodes";
+import { useActiveTeam } from "@/lib/team-context";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
+
+const NO_BRAND = {};
 
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -68,6 +72,11 @@ function VersionCanvas({ version }: { version: AutomationDraft }) {
   useTeamStepsVersion();
   const canvasRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
+  // The team's brand, as in the editor: a step whose logo or font Settings supplies is not
+  // shown as needing one.
+  const team = useActiveTeam();
+  const settings = useQuery(api.teamSettings.get, { organizationId: team.id });
+  const brand = settings?.brand ?? NO_BRAND;
   const flow = useMemo(() => {
     const starts = startsByTrigger(version);
     const places = triggerPositions([...starts.keys()], version.nodes, starts);
@@ -106,21 +115,23 @@ function VersionCanvas({ version }: { version: AutomationDraft }) {
           ref={canvasRef}
           className="bg-background relative mx-2 mb-2 min-h-0 flex-1 overflow-hidden rounded-lg"
         >
-          <ReactFlow
-            nodes={flow.nodes}
-            edges={flow.edges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            minZoom={0.25}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
-            fitView
-            fitViewOptions={FIT_VIEW}
-          >
-            <Background gap={20} />
-          </ReactFlow>
+          <BrandContext value={brand}>
+            <ReactFlow
+              nodes={flow.nodes}
+              edges={flow.edges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              minZoom={0.25}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              elementsSelectable={false}
+              forceColorMode={resolvedTheme === "dark" ? "dark" : "light"}
+              fitView
+              fitViewOptions={FIT_VIEW}
+            >
+              <Background gap={20} />
+            </ReactFlow>
+          </BrandContext>
         </div>
       </div>
     </ReactFlowProvider>
