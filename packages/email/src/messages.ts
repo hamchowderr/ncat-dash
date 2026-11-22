@@ -320,6 +320,34 @@ export function clipFinishedEmail(
   );
 }
 
+export function footageProblemEmail(
+  args: {
+    teamName?: string;
+    automationName: string;
+    /** The summary on its first line, then one line per file. */
+    message: string;
+    runUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const automation = oneLine(args.automationName, 80);
+  const [summary, ...files] = args.message.split("\n");
+  return compose(
+    `Footage needs another look in ${automation}`,
+    {
+      heading: "Footage needs another look",
+      paragraphs: [
+        `${oneLine(summary ?? "", 300)}${args.teamName ? ` In ${oneLine(args.teamName, 60)}.` : ""}`,
+        ...files.slice(0, 10).map((line) => oneLine(line, 400)),
+      ],
+      button: { label: "Open the run", url: args.runUrl },
+      footnote: `To stop these emails, change your notification settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
 export function rightsEndingEmail(
   args: {
     teamName?: string;

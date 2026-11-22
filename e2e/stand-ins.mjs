@@ -439,6 +439,28 @@ createServer((request, response) => {
       );
       return;
     }
+    // The footage check measures the stand-in clip: small, upright, with no sound.
+    if (request.url.startsWith("/v1/media/check")) {
+      response.end(
+        JSON.stringify({
+          code: 200,
+          response: {
+            duration: 6,
+            has_video: true,
+            has_audio: false,
+            width: 180,
+            height: 320,
+            rotation: 0,
+            fps: 25,
+            checked_seconds: 6,
+            black: [],
+            frozen: [],
+          },
+          message: "success",
+        }),
+      );
+      return;
+    }
     // A transcription kept as files at the toolkit, as with response_type "cloud".
     if (request.url.startsWith("/v1/media/transcribe")) {
       response.end(

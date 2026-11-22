@@ -57,6 +57,7 @@ import { LOOK_SETTING, LookPicker } from "./look-picker";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
 import { BrollMain, BrollMore, BrollPlanMain } from "./broll-settings";
 import { CleanupMain } from "./cleanup-settings";
+import { FootageMain } from "./footage-settings";
 import { MotionMain, MotionPlanMain, SoundEffectsMain } from "./motion-settings";
 import { PlatformPicker } from "./platform-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
@@ -233,6 +234,12 @@ export function NodePanel({
   }
   if (node.kind === "cleanup") {
     handled.push({ label: "Pauses", text: "where the toolkit hears silence in the video" });
+  }
+  if (node.kind === "footage-check") {
+    handled.push({
+      label: "Videos",
+      text: "every video before this step and, from a creator's folder, each hook and ending take, measured by FFmpeg",
+    });
   }
   // Length Cuts and Hook And Ending Variants keeping a paid creator's ad disclosure.
   if (step?.readsWords) {
@@ -434,6 +441,10 @@ export function NodePanel({
 
       {node.kind === "cleanup" && (
         <CleanupMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
+      )}
+
+      {node.kind === "footage-check" && (
+        <FootageMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
       )}
 
       {picksLook && (

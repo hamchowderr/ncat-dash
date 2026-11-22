@@ -30,6 +30,7 @@ type Kind =
   | "client_feedback"
   | "ready_for_review"
   | "clip_finished"
+  | "footage_problem"
   | "rights_ending";
 type ChatApp = "telegram" | "slack" | "discord" | "teams";
 type Channel = "bell" | "email" | ChatApp;

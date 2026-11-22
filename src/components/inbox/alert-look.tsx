@@ -7,6 +7,7 @@ import {
   CircleCheck,
   Clock,
   MessageSquareQuote,
+  Video,
   PackageCheck,
   UserCheck,
 } from "lucide-react";
@@ -25,6 +26,7 @@ export type Kind =
   | "client_feedback"
   | "ready_for_review"
   | "clip_finished"
+  | "footage_problem"
   | "rights_ending";
 type Shown = {
   kind: Kind;
@@ -49,6 +51,8 @@ export function alertTitle(alert: Shown): string {
       return `${alert.stepName ?? "A deliverable"} in ${alert.automationName} is ready for review`;
     case "clip_finished":
       return `${alert.automationName} finished`;
+    case "footage_problem":
+      return `${alert.automationName}: footage needs another look`;
     case "rights_ending":
       return alert.stepName
         ? `${alert.automationName}'s rights for ${alert.stepName} end soon`
@@ -106,6 +110,12 @@ export const LOOK: Record<Kind, { icon: typeof Bell; tint: string; wash: string;
       icon: CircleCheck,
       tint: "text-emerald-600",
       wash: "bg-emerald-500/10",
+      action: "View run",
+    },
+    footage_problem: {
+      icon: Video,
+      tint: "text-amber-600",
+      wash: "bg-amber-500/10",
       action: "View run",
     },
     rights_ending: {

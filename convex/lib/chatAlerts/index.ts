@@ -120,6 +120,13 @@ export function wordAlert(alert: Doc<"alerts">, link: string): ChatAlert {
         lines: alert.from ? [`Added by ${alert.from}.`] : [],
         linkLabel: "Open the review",
       };
+    case "footage_problem":
+      return {
+        ...base,
+        title: `${alert.automationName}: footage needs another look`,
+        lines: alert.message.split("\n"),
+        linkLabel: "Open the run",
+      };
     case "clip_finished":
       return {
         ...base,

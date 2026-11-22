@@ -16,6 +16,7 @@ import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 import type { Brand, BrandKey } from "./brand";
 import { CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
 import { CLEANUP_DEFAULTS, HOOK_MODES, MAX_HOOKS } from "./cleanup";
+import { FOOTAGE_ACTIONS, FOOTAGE_DEFAULTS, FOOTAGE_SHAPES } from "./footage";
 import { FINISH_CHOICES } from "./chain";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
@@ -58,7 +59,7 @@ export interface JsonSchema {
 export interface NodeType {
   /**
    * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "broll",
-   * "broll-plan", "motion", "sound-effects", "cleanup", "export",
+   * "broll-plan", "motion", "sound-effects", "cleanup", "footage-check", "export",
    * "if", "wait", "automation", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
@@ -713,6 +714,65 @@ const CLEANUP: NodeType = {
   automatic: null,
 };
 
+const FOOTAGE_CHECK: NodeType = {
+  type: "footage-check",
+  role: "action",
+  group: "video",
+  title: "Check Footage",
+  description:
+    "Checks each video before editing, by plain rules on what FFmpeg measures, with no AI: the shape it was filmed in, enough pixels, sound that is there, clear and not clipped, no black or frozen picture, and long enough. For a creator's folder it checks every hook, body and ending take. When something is wrong the team is told in the bell and their chat apps, a note is left in the creator's folder, and the run stops before editing (or carries on, if you choose). Put it first.",
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      shape: {
+        type: "string",
+        enum: [...FOOTAGE_SHAPES],
+        default: FOOTAGE_DEFAULTS.shape,
+        description:
+          "The shape the footage must be filmed in: vertical, horizontal, square or any.",
+      },
+      minShortSide: {
+        type: "integer",
+        minimum: 0,
+        maximum: 4320,
+        default: FOOTAGE_DEFAULTS.minShortSide,
+        description: "The fewest pixels on the short side, such as 1080 for 1080x1920. 0 skips it.",
+      },
+      minSeconds: {
+        type: "number",
+        minimum: 0,
+        maximum: 600,
+        default: FOOTAGE_DEFAULTS.minSeconds,
+        description: "The shortest a body or single video may be, in seconds.",
+      },
+      minTakeSeconds: {
+        type: "number",
+        minimum: 0,
+        maximum: 60,
+        default: FOOTAGE_DEFAULTS.minTakeSeconds,
+        description: "The shortest a hook or ending take may be, in seconds.",
+      },
+      quietBelow: {
+        type: "number",
+        minimum: -70,
+        maximum: -10,
+        default: FOOTAGE_DEFAULTS.quietBelow,
+        description: "Sound quieter than this, in LUFS, is too quiet to use.",
+      },
+      whenFound: {
+        type: "string",
+        enum: [...FOOTAGE_ACTIONS],
+        default: FOOTAGE_DEFAULTS.whenFound,
+        description:
+          "stop: the run stops before editing until better footage lands. tell: the team is told and editing goes on.",
+      },
+    },
+  },
+  automatic: null,
+};
+
 const IF: NodeType = {
   type: "if",
   role: "action",
@@ -851,6 +911,7 @@ export const NODE_TYPES: NodeType[] = [
   MOTION,
   SOUND_EFFECTS,
   CLEANUP,
+  FOOTAGE_CHECK,
   EXPORT,
   IF,
   WAIT,
@@ -919,6 +980,7 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
     type === "motion-plan" ||
     type === "sound-effects" ||
     type === "cleanup" ||
+    type === "footage-check" ||
     type === "export" ||
     type === "if" ||
     type === "wait" ||

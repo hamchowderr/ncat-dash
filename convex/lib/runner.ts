@@ -72,6 +72,7 @@ import { finishListening, startListening } from "./moments";
 import { type DisclosureNote, hearFirst } from "./disclosure";
 import { finishLaying, finishLooking } from "./broll";
 import { finishMotionListening, isPlaceKind } from "./motion";
+import { finishFootageCheck, startFootageCheck } from "./footage";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
@@ -336,6 +337,11 @@ async function startNode(
 
   if (isPlaceKind(node.kind)) {
     await startListening(ctx, run, node, step, byNode, filesFor("video", node, run, byNode));
+    return;
+  }
+
+  if (node.kind === "footage-check") {
+    await startFootageCheck(ctx, run, node, step, byNode);
     return;
   }
 
@@ -826,6 +832,8 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
             step.status === "failed" &&
             !step.decidedBy &&
             !step.decidedAutomatically &&
+            // Check Footage already told the team what was wrong.
+            !step.footage?.stopped &&
             !failsOver(step.nodeId, edges),
         );
         if (broken && !run.test) await alertTeam(ctx, run, broken);
@@ -1113,6 +1121,12 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
 
   if (step.stage === "lay") {
     await finishLaying(ctx, run, step, jobs);
+    await advance(ctx, run._id);
+    return;
+  }
+
+  if (step.stage === "footage") {
+    await finishFootageCheck(ctx, run, step, jobs);
     await advance(ctx, run._id);
     return;
   }

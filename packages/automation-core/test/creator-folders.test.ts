@@ -151,7 +151,12 @@ describe("creator folders", () => {
       fileType: "video",
       layout: "creators",
     });
-    expect(starter.nodes[0].input.base_cut).toBe("is only the body");
+    // Every take is checked before any editing.
+    expect(starter.nodes[0].kind).toBe("footage-check");
+    expect(starter.edges[0]).toMatchObject({ source: "check_1", target: "variants_1" });
+    expect(starter.nodes.find((node) => node.id === "variants_1")!.input.base_cut).toBe(
+      "is only the body",
+    );
     expect(starter.category).toBe("variants");
   });
 });
