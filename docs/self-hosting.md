@@ -238,13 +238,14 @@ Settings on Convex take effect at once; settings on the agent server need a rest
 
 In `deploy/compose.yml` the web app takes these from `deploy/.env` (`CONVEX_URL`, `CONVEX_SITE_URL`, `MASTRA_JWT_SECRET`) and needs nothing more. Elsewhere:
 
-| Name                          | Needed        | What it does                                                              |
-| ----------------------------- | ------------- | ------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_CONVEX_URL`      | yes           | The Convex API address. Built into the pages.                             |
-| `NEXT_PUBLIC_CONVEX_SITE_URL` | yes           | The Convex HTTP actions address. Built into the pages.                    |
-| `NEXT_PUBLIC_SITE_URL`        | yes           | The dashboard's own address.                                              |
-| `MASTRA_SERVER_URL`           | for the agent | The agent server's address. The web app talks to it from the server side. |
-| `MASTRA_JWT_SECRET`           | for the agent | The shared secret. Without it the agent chat stays signed out.            |
+| Name                          | Needed        | What it does                                                                                                     |
+| ----------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CONVEX_URL`      | yes           | The Convex API address. Built into the pages.                                                                    |
+| `NEXT_PUBLIC_CONVEX_SITE_URL` | yes           | The Convex HTTP actions address. Built into the pages.                                                           |
+| `NEXT_PUBLIC_SITE_URL`        | yes           | The dashboard's own address.                                                                                     |
+| `NEXT_PUBLIC_WATCH_URL`       | no            | Where the "Watch how" videos play from. Unset, they come from `https://takewon.com/watch`. Built into the pages. |
+| `MASTRA_SERVER_URL`           | for the agent | The agent server's address. The web app talks to it from the server side.                                        |
+| `MASTRA_JWT_SECRET`           | for the agent | The shared secret. Without it the agent chat stays signed out.                                                   |
 
 ### Agent server
 
