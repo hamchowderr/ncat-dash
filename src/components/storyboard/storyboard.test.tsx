@@ -54,6 +54,7 @@ function boardFor(text: string, files: Record<number, Partial<Record<Part, strin
   return {
     _id: "sb1",
     projectId: "p1",
+    libraryItemId: null,
     aspect: "16:9",
     source: "From the page AI-Assisted Development, Part 1",
     cuts: [{ what: "Full lesson", where: "YouTube · 16:9 · about 16 min" }],
@@ -73,7 +74,7 @@ describe("before a project has a storyboard", () => {
   test("a pasted script is counted as it is typed and makes the storyboard", async () => {
     answerQuery(api.storyboards.get, null);
     const user = userEvent.setup();
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     expect(screen.getByText("Plan the video line by line")).toBeTruthy();
     const make = screen.getByRole("button", { name: "Make the storyboard" });
     expect(make).toHaveProperty("disabled", true);
@@ -92,7 +93,7 @@ describe("before a project has a storyboard", () => {
     answerQuery(api.storyboards.get, null);
     mutationOf(api.storyboards.create).mockRejectedValueOnce(new Error("nope"));
     const user = userEvent.setup();
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     await user.click(screen.getByRole("button", { name: "Start empty" }));
     expect(mutationOf(api.storyboards.create)).toHaveBeenCalledWith({ projectId: PROJECT });
     expect(toastError).toHaveBeenCalled();
@@ -105,7 +106,7 @@ describe("a storyboard", () => {
       api.storyboards.get,
       boardFor(LESSON_STORYBOARD, { 1: { you: "https://f/a.mp4" } }),
     );
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     expect(screen.getByText(/15 chapters · 59 takes · about 16 min/)).toBeTruthy();
     const chapters = screen.getByRole("navigation", { name: "Chapters" });
     expect(within(chapters).getAllByRole("listitem")).toHaveLength(15);
@@ -126,7 +127,7 @@ describe("a storyboard", () => {
   test("picking a chapter shows its takes, with what only you can make named first", async () => {
     answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
     const user = userEvent.setup();
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     await user.click(screen.getByRole("button", { name: /A thread for every job/ }));
     expect(
       screen.getByRole("button", { name: /A thread for every job/ }).getAttribute("aria-current"),
@@ -142,7 +143,7 @@ describe("a storyboard", () => {
   test("a take opens in place to change its line, scene and parts, and to link its file", async () => {
     answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
     const user = userEvent.setup();
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     const first = screen
       .getAllByRole("listitem")
       .find((row) => row.getAttribute("data-take") === "1")!;
@@ -190,7 +191,7 @@ describe("a storyboard", () => {
       boardFor(LESSON_STORYBOARD, { 1: { you: "https://f/cold-open.mp4" } }),
     );
     const user = userEvent.setup();
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     const first = screen
       .getAllByRole("listitem")
       .find((row) => row.getAttribute("data-take") === "1")!;
@@ -207,7 +208,7 @@ describe("a storyboard", () => {
   test("takes and chapters are added, and chapters renamed and moved", async () => {
     answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
     const user = userEvent.setup();
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     await user.type(screen.getByRole("textbox", { name: "New take's line" }), "One more line.");
     await user.click(screen.getByRole("button", { name: "Add take" }));
     expect(mutationOf(api.storyboards.addTake)).toHaveBeenCalledWith({
@@ -244,7 +245,7 @@ describe("a storyboard", () => {
   test("cuts are added and taken off", async () => {
     answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
     const user = userEvent.setup();
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     const cuts = screen.getByRole("region", { name: "Cuts from this storyboard" });
     await user.type(within(cuts).getByRole("textbox", { name: "Cut" }), "Short lessons");
     await user.type(within(cuts).getByRole("textbox", { name: "Where it goes" }), "YouTube · 16:9");
@@ -266,7 +267,7 @@ describe("a storyboard", () => {
     answerQuery(api.storyboards.script, "## Cold open\n[Full Screen · You] First line.");
     mutationOf(api.storyboards.writeFromScript).mockResolvedValueOnce({ chapters: 1, takes: 2 });
     const user = userEvent.setup();
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     await user.click(screen.getByRole("radio", { name: "Script" }));
     const box = screen.getByRole("textbox", { name: "Script" });
     expect((box as HTMLTextAreaElement).value).toContain("[Full Screen · You] First line.");
@@ -284,7 +285,7 @@ describe("a storyboard", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     const preview = screen.getByRole("complementary", { name: "Preview" });
     expect(within(preview).getByTestId("take-card").textContent).toContain(
       "never known how to code",
@@ -303,7 +304,7 @@ describe("a storyboard", () => {
   test("the shape can be changed", async () => {
     answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
     const user = userEvent.setup();
-    renderInApp(<StoryboardView projectId={PROJECT} />);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
     await user.click(screen.getByRole("combobox", { name: "Shape" }));
     await user.click(await screen.findByRole("option", { name: "9:16" }));
     expect(mutationOf(api.storyboards.setDetails)).toHaveBeenCalledWith({

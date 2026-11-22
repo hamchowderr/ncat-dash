@@ -42,6 +42,7 @@ export * from "./burn-captions";
 export * from "./triggers";
 export * from "./workflows";
 export * from "./cleanup";
+export * from "./storyboard-draft";
 export * from "./creator-folders";
 export * from "./footage";
 export * from "./ai-spend";

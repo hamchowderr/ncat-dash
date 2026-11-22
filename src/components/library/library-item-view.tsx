@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 
 import { SubtitleText, TranscriptDownload } from "./transcript-files";
 import { LanguagePicker, ORIGINAL, TranslatedWords } from "./translations";
+import { UploadStoryboard } from "@/components/storyboard/storyboard-view";
 import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "./library-media";
 import { PickList } from "@/components/ui/pick-list";
 import { Segmented } from "@/components/ui/segmented";
@@ -661,6 +662,18 @@ export function LibraryItemView({
           <p className="text-muted-foreground -mt-4 text-xs">The file itself stays in Files.</p>
         </aside>
       </div>
+      {item.source === "upload" && speaks && !captions && (
+        <section className="flex flex-col gap-3" aria-label="Storyboard">
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-base font-semibold">Storyboard</h2>
+            <p className="text-muted-foreground text-sm">
+              Drafted from what was said: a line for every sentence, each with its own clip, with
+              pauses and retakes left out. Add it to a project to gather it with other uploads.
+            </p>
+          </div>
+          <UploadStoryboard libraryItemId={item._id} transcribed={item.searchable === "ready"} />
+        </section>
+      )}
     </>
   );
 }

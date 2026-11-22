@@ -363,6 +363,20 @@ describe("a library file", () => {
     expect(screen.queryByRole("button", { name: "Transcribe" })).toBeNull();
   });
 
+  test("an uploaded video has its storyboard below, drafted from what was said", () => {
+    answerQuery(api.library.get, DETAIL);
+    answerQuery(api.storyboards.forUpload, null);
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    const board = screen.getByRole("region", { name: "Storyboard" });
+    expect(board.textContent).toContain("a line for every sentence, each with its own clip");
+  });
+
+  test("a file an automation made has no storyboard of its own", () => {
+    answerQuery(api.library.get, { ...DETAIL, source: "automation" });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.queryByRole("region", { name: "Storyboard" })).toBeNull();
+  });
+
   test("a failed transcript can be tried again", async () => {
     answerQuery(api.library.get, {
       ...DETAIL,

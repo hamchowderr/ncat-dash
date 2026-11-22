@@ -163,6 +163,44 @@ function messageInBody(text: string): string | null {
   return null;
 }
 
+/** A web page in place of an answer: a server's own "Not Found" page, a proxy's error page. */
+const HTML_PAGE =
+  /<!doctype html|<html[\s>]|<head[\s>]|<body[\s>]|<title[\s>]|<\/(?:h1|p|div|pre|title)>/i;
+
+function looksLikeHtml(text: string): boolean {
+  return HTML_PAGE.test(text);
+}
+
+/** The words of a web page, with its tags, styles and scripts taken out. */
+function pageText(html: string): string {
+  return html
+    .replace(/<(script|style)[\s\S]*?(<\/\1>|$)/gi, " ")
+    .replace(/<!--[\s\S]*?(-->|$)/g, " ")
+    .replace(/<[^>]*>?/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
+}
+
+const MISSING_STEP = "Your toolkit does not have this step yet. Update it to the latest version.";
+
+/**
+ * A 404 or 405 for a job means the toolkit has no such endpoint: an older toolkit that
+ * predates this step. Unless it said something of its own, such as a file it could not find.
+ */
+function missingStep(text: string): boolean {
+  const status = Number(text.match(/\bHTTP (\d{3})\b/)?.[1] ?? NaN);
+  if (status !== 404 && status !== 405) return false;
+  if (looksLikeHtml(text)) return true;
+  return /^The toolkit (refused|was not ready for) the job/.test(text) && !messageInBody(text);
+}
+
 function clip(line: string): string {
   return line.length > MAX_REASON ? `${line.slice(0, MAX_REASON - 1).trimEnd()}…` : line;
 }
@@ -192,12 +230,26 @@ export function explainFailure(text: string | null | undefined): ExplainedFailur
       ? lead && !errorLine.toLowerCase().includes(lead.toLowerCase())
         ? `${lead}: ${errorLine}`
         : errorLine
-      : lead || "FFmpeg could not process this file.";
+      : lead || "The toolkit could not process this file.";
     return { reason: clip(reason), details: full };
   }
 
+  // Raw HTML never reaches people, not even behind "Show details".
+  const plain = looksLikeHtml(full) ? pageText(full) : full;
+
+  if (missingStep(full)) return { reason: MISSING_STEP, details: plain };
+
   const developer = developerReason(full);
-  if (developer) return { reason: developer, details: full };
+  if (developer) return { reason: developer, details: plain };
+
+  if (plain !== full) {
+    // Something other than the toolkit answered, or it failed before it could say why.
+    return {
+      reason:
+        "The toolkit answered with an error page instead of a result. Check that it is running and up to date, and that its address in Settings is right.",
+      details: plain,
+    };
+  }
 
   // "The toolkit refused the job (HTTP 400). {"message": "..."}": say what it said.
   const said = messageInBody(full);

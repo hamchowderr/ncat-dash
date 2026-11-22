@@ -11,6 +11,7 @@ import {
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { removeUploadDraft } from "./storyboards";
 
 /** The team's library settings, or the defaults. */
 export async function librarySettingsOf(ctx: QueryCtx, organizationId: string) {
@@ -174,6 +175,7 @@ export async function deleteLibraryItem(ctx: MutationCtx, itemId: Id<"libraryIte
     .withIndex("by_libraryItem", (q) => q.eq("libraryItemId", itemId))
     .take(500);
   for (const post of posts) await ctx.db.patch(post._id, { libraryItemId: undefined });
+  await removeUploadDraft(ctx, itemId);
   await ctx.db.delete(itemId);
 }
 
