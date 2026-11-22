@@ -80,6 +80,7 @@ import { type DisclosureNote, hearFirst } from "./disclosure";
 import { finishLaying, finishLooking } from "./broll";
 import { finishMotionListening, isPlaceKind } from "./motion";
 import { finishFootageCheck, startFootageCheck } from "./footage";
+import { startSubtitles } from "./subtitles";
 import { fillProjectSlots } from "./projects";
 import { brandOf, enqueueJob, pump } from "./queue";
 import { closeReviewForStep, openReviewForApproval } from "./reviews";
@@ -349,6 +350,11 @@ async function startNode(
 
   if (node.kind === "footage-check") {
     await startFootageCheck(ctx, run, node, step, byNode);
+    return;
+  }
+
+  if (node.kind === "subtitles") {
+    await startSubtitles(ctx, run, node, step, byNode);
     return;
   }
 
@@ -661,7 +667,8 @@ export async function finishHearing(ctx: MutationCtx, run: Doc<"runs">, step: Do
   const byNode = new Map(steps.map((other) => [other.nodeId, other]));
   const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
   if (!node) return;
-  await startToolkitStep(ctx, run, node, step, byNode, undefined, true);
+  if (node.kind === "subtitles") await startSubtitles(ctx, run, node, step, byNode);
+  else await startToolkitStep(ctx, run, node, step, byNode, undefined, true);
   await advance(ctx, run._id);
 }
 
@@ -1273,7 +1280,7 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
         step,
         new Map(steps.map((other) => [other.nodeId, other])),
         step.heardWords
-          ? `Could not transcribe the video to caption it in another language: ${failed.error ?? "the toolkit gave no reason."}`
+          ? `Could not transcribe the video to ${(run.nodes as AutomationNode[]).find((one) => one.id === step.nodeId)?.kind === "subtitles" ? "translate its subtitles" : "caption it in another language"}: ${failed.error ?? "the toolkit gave no reason."}`
           : `Could not transcribe the video to find its paid-ad disclosure: ${failed.error ?? "the toolkit gave no reason."}`,
       );
       await advance(ctx, run._id);
