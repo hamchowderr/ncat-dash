@@ -215,3 +215,58 @@ export function writeScript(script: Script): string {
 export function takeCount(script: Script): number {
   return script.chapters.reduce((sum, chapter) => sum + chapter.takes.length, 0);
 }
+
+/** What "Suggest scenes" changes: a scene for some lines, by number, and chapter names. */
+export type SceneAnswer = { scenes: Map<number, Scene>; titles: Map<number, string> };
+
+/**
+ * Reads the model's answer to "Suggest scenes" (`{ chapters: [{ title }], scenes: [{ n,
+ * scene }] }`), keeping only what fits the storyboard: known scenes for lines it has, and
+ * names for its chapters, by place. A code fence or words around the JSON are allowed.
+ */
+export function readSceneAnswer(text: string, chapters: number, takes: number): SceneAnswer {
+  const answer: SceneAnswer = { scenes: new Map(), titles: new Map() };
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) return answer;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return answer;
+  }
+  const body = (parsed ?? {}) as { chapters?: unknown; scenes?: unknown };
+  const known = SCENES.map((entry) => entry.scene) as Scene[];
+  if (Array.isArray(body.scenes)) {
+    for (const entry of body.scenes) {
+      const { n, scene } = (entry ?? {}) as { n?: unknown; scene?: unknown };
+      const number = typeof n === "number" ? n : Number(n);
+      const named =
+        typeof scene === "string" ? (SCENE_WORDS[scene.trim().toLowerCase()] ?? null) : null;
+      if (
+        Number.isInteger(number) &&
+        number >= 1 &&
+        number <= takes &&
+        named &&
+        known.includes(named)
+      ) {
+        answer.scenes.set(number, named);
+      }
+    }
+  }
+  if (Array.isArray(body.chapters)) {
+    body.chapters.slice(0, chapters).forEach((entry, index) => {
+      const title = (entry as { title?: unknown } | null)?.title;
+      if (typeof title !== "string") return;
+      const clean = clip(title.replace(/^(chapter\s+)?\d+[.:)]\s*/i, ""), LIMITS.title);
+      if (clean) answer.titles.set(index, clean);
+    });
+  }
+  return answer;
+}
+
+/** The parts a take needs in a scene: a graphic for every scene but Full Screen. */
+export function partsForScene(scene: Scene, parts: readonly Part[]): Part[] {
+  if (scene === "full" || parts.includes("graphic") || parts.includes("screen")) return [...parts];
+  return cleanParts([...parts, "graphic"]);
+}
