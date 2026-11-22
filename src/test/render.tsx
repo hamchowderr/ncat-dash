@@ -1,4 +1,4 @@
-import { render, screen as page } from "@testing-library/react";
+import { fireEvent, render, screen as page } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -30,4 +30,14 @@ export async function pick(
 ) {
   await user.click(list);
   await user.click(await page.findByRole("option", { name: option }));
+}
+
+/**
+ * Opens a tab on a settings page, the way a click does. Radix tabs switch on the press of
+ * the mouse button, which a bare `fireEvent.click` never sends.
+ */
+export async function openTab(name: string | RegExp) {
+  const tab = await page.findByRole("tab", { name });
+  fireEvent.mouseDown(tab, { button: 0, ctrlKey: false });
+  return tab;
 }

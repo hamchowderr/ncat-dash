@@ -68,7 +68,7 @@ describe("a video from a link, on Uploads", () => {
     expect(field).toHaveValue("");
     expect(screen.getByRole("link", { name: "Settings, Video Links" })).toHaveAttribute(
       "href",
-      "/settings/video-links",
+      "/settings/integrations/video-links",
     );
   });
 

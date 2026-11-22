@@ -121,7 +121,7 @@ function ready(wholeAccount = false): boolean {
 /** Back to Settings, saying how the Zoom sign-in went. */
 export function settingsUrl(result: string): string {
   const base = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  return `${base}/settings/zoom?zoom=${encodeURIComponent(result)}`;
+  return `${base}/settings/integrations/zoom?zoom=${encodeURIComponent(result)}`;
 }
 
 function basicAuth(wholeAccount?: boolean): string {

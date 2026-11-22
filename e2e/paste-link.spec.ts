@@ -49,7 +49,7 @@ test("a pasted link comes into Uploads, and cookies get past a sign-in", async (
     timeout: 60_000,
   });
   await page.getByRole("link", { name: "Settings, Video Links" }).click();
-  await expect(page).toHaveURL(/\/settings\/video-links/);
+  await expect(page).toHaveURL(/\/settings\/integrations\/video-links/);
   await page.getByLabel("cookies.txt", { exact: true }).fill(COOKIES);
   await page.getByRole("button", { name: "Save cookies" }).click();
   await expect(page.getByText("For youtube.com")).toBeVisible();
@@ -59,8 +59,7 @@ test("a pasted link comes into Uploads, and cookies get past a sign-in", async (
   await expect(page.getByText(/asks for a sign-in/)).toBeHidden();
   await page.getByLabel("Paste a link to a video").fill(youtube);
   await page.getByRole("button", { name: "Bring in" }).click();
-  await expect(page.getByRole("button", { name: "Open Crew interview reel.webm" })).toHaveCount(
-    2,
-    { timeout: 60_000 },
-  );
+  await expect(page.getByRole("button", { name: "Open Crew interview reel.webm" })).toHaveCount(2, {
+    timeout: 60_000,
+  });
 });

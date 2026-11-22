@@ -121,7 +121,7 @@ function ready(): boolean {
 /** Back to Settings, saying how the Microsoft sign-in went. */
 export function settingsUrl(result: string): string {
   const base = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  return `${base}/settings/microsoft?microsoft=${encodeURIComponent(result)}`;
+  return `${base}/settings/integrations/microsoft?microsoft=${encodeURIComponent(result)}`;
 }
 
 function randomText(): string {

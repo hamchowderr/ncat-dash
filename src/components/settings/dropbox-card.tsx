@@ -13,11 +13,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
-import { SettingsSection } from "./settings-shell";
+import { SettingsSection, SettingsTabs } from "./settings-shell";
 
 /** What Settings says when Dropbox sends someone back, by the result in the address. */
 export const DROPBOX_RESULTS: Record<string, { ok: boolean; text: string }> = {
@@ -121,165 +122,182 @@ export function DropboxCard() {
   const me = box.me;
 
   return (
-    <SettingsSection data-dropbox-card className="gap-8">
-      <section className="flex flex-col gap-3" aria-label="Your Dropbox">
-        {me ? (
-          <>
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span>
-                Connected as <span className="font-medium">{me.name}</span>
-                {me.email && <span className="text-muted-foreground"> · {me.email}</span>}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy !== null}
-                onClick={() =>
-                  run(
-                    "disconnect",
-                    () => disconnect({ organizationId: team.id }),
-                    "Your Dropbox is disconnected",
-                  )
-                }
-              >
-                Disconnect
-              </Button>
-            </div>
-            {me.needsReconnect && (
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-destructive">
-                  Dropbox stopped accepting your sign-in, so nothing new comes in.
-                </span>
-                <Button size="sm" disabled={busy !== null} onClick={connect}>
-                  Connect again
-                </Button>
-              </div>
-            )}
-            <div className="flex items-start gap-3">
-              <Switch
-                id="dropbox-auto"
-                checked={me.autoImport}
-                disabled={busy !== null}
-                onCheckedChange={(checked) =>
-                  run("auto", () => setAutoImport({ organizationId: team.id, autoImport: checked }))
-                }
-              />
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="dropbox-auto">Bring in new files by themselves</Label>
-                <p className="text-muted-foreground text-sm">
-                  When a video, sound or picture is added to a folder you watch, it goes to Uploads
-                  and starts any automation set to run on an upload. Documents and other files stay
-                  in Dropbox.
-                </p>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-muted-foreground text-sm">
-              Connect your Dropbox, then tick the folders to bring in. Their footage comes into
-              Uploads, now and whenever more is added, and automations can send finished clips back
-              to Dropbox.
-            </p>
-            <div>
-              <Button size="sm" disabled={busy !== null} onClick={connect}>
-                {busy === "connect" ? "Opening Dropbox" : "Connect Dropbox"}
-              </Button>
-            </div>
-          </>
-        )}
-        {box.others.length > 0 && (
-          <p className="text-muted-foreground text-sm">
-            Also connected on this team:{" "}
-            {box.others
-              .map((one) => (one.memberName ? `${one.memberName} (${one.name})` : one.name))
-              .join(", ")}
-            .
-          </p>
-        )}
-      </section>
-
-      {me && <MediaFolders watched={me.folders} teamSpace={me.teamSpace} />}
-
-      {box.imports.length > 0 && (
-        <section className="flex flex-col gap-3" aria-label="Brought in from Dropbox">
-          <p className="text-sm font-medium">Brought in from Dropbox</p>
-          <ul className="flex flex-col gap-2 text-sm">
-            {box.imports.map((one: DropboxImportRow) => (
-              <li key={one._id} className="flex flex-col gap-0.5">
-                <span className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate">
-                    <span className="font-medium">{one.name}</span>
-                    <span className="text-muted-foreground"> · {parentOf(one.path)}</span>
+    <SettingsSection data-dropbox-card>
+      <SettingsTabs
+        label="Dropbox"
+        tabs={[
+          { id: "connection", label: "Connection" },
+          ...(me !== null || box.imports.length > 0 || box.sends.length > 0
+            ? [{ id: "folders", label: "Folders" }]
+            : []),
+        ]}
+      >
+        <TabsContent value="connection" className="flex flex-col gap-8">
+          <section className="flex flex-col gap-3" aria-label="Your Dropbox">
+            {me ? (
+              <>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span>
+                    Connected as <span className="font-medium">{me.name}</span>
+                    {me.email && <span className="text-muted-foreground"> · {me.email}</span>}
                   </span>
-                  <span
-                    className={
-                      one.status === "failed"
-                        ? "text-destructive shrink-0"
-                        : "text-muted-foreground shrink-0"
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy !== null}
+                    onClick={() =>
+                      run(
+                        "disconnect",
+                        () => disconnect({ organizationId: team.id }),
+                        "Your Dropbox is disconnected",
+                      )
                     }
                   >
-                    {one.status === "done" ? (
-                      <Link href="/uploads" className="underline-offset-4 hover:underline">
-                        {IMPORT_TEXT.done}
-                      </Link>
-                    ) : (
-                      IMPORT_TEXT[one.status]
-                    )}
-                  </span>
-                </span>
-                {one.status === "failed" && one.error && (
-                  <span className="text-muted-foreground">{one.error}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {box.sends.length > 0 && (
-        <section className="flex flex-col gap-3" aria-label="Sent to Dropbox">
-          <p className="text-sm font-medium">Sent to Dropbox</p>
-          <ul className="flex flex-col gap-2 text-sm">
-            {box.sends.map((one: DropboxSendRow) => (
-              <li key={one._id} className="flex flex-col gap-0.5">
-                <span className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate">
-                    <span className="font-medium">{one.name}</span>
-                    <span className="text-muted-foreground">
-                      {" "}
-                      · {one.automationName} ·{" "}
-                      {one.dropboxPath ? parentOf(one.dropboxPath) : one.folder}
+                    Disconnect
+                  </Button>
+                </div>
+                {me.needsReconnect && (
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-destructive">
+                      Dropbox stopped accepting your sign-in, so nothing new comes in.
                     </span>
-                  </span>
-                  {one.status === "failed" ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="shrink-0"
-                      disabled={busy !== null}
-                      onClick={() => run(`send-${one._id}`, () => sendAgain({ sendId: one._id }))}
-                    >
-                      Send again
+                    <Button size="sm" disabled={busy !== null} onClick={connect}>
+                      Connect again
                     </Button>
-                  ) : (
-                    <span className="text-muted-foreground shrink-0 tabular-nums">
-                      {one.status === "done"
-                        ? "Sent"
-                        : one.size > 0
-                          ? `Sending ${Math.floor((one.offset / one.size) * 100)}%`
-                          : "Sending"}
-                    </span>
-                  )}
-                </span>
-                {one.status === "failed" && one.error && (
-                  <span className="text-muted-foreground">{one.error}</span>
+                  </div>
                 )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+                <div className="flex items-start gap-3">
+                  <Switch
+                    id="dropbox-auto"
+                    checked={me.autoImport}
+                    disabled={busy !== null}
+                    onCheckedChange={(checked) =>
+                      run("auto", () =>
+                        setAutoImport({ organizationId: team.id, autoImport: checked }),
+                      )
+                    }
+                  />
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="dropbox-auto">Bring in new files by themselves</Label>
+                    <p className="text-muted-foreground text-sm">
+                      When a video, sound or picture is added to a folder you watch, it goes to
+                      Uploads and starts any automation set to run on an upload. Documents and other
+                      files stay in Dropbox.
+                    </p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-muted-foreground text-sm">
+                  Connect your Dropbox, then tick the folders to bring in. Their footage comes into
+                  Uploads, now and whenever more is added, and automations can send finished clips
+                  back to Dropbox.
+                </p>
+                <div>
+                  <Button size="sm" disabled={busy !== null} onClick={connect}>
+                    {busy === "connect" ? "Opening Dropbox" : "Connect Dropbox"}
+                  </Button>
+                </div>
+              </>
+            )}
+            {box.others.length > 0 && (
+              <p className="text-muted-foreground text-sm">
+                Also connected on this team:{" "}
+                {box.others
+                  .map((one) => (one.memberName ? `${one.memberName} (${one.name})` : one.name))
+                  .join(", ")}
+                .
+              </p>
+            )}
+          </section>
+        </TabsContent>
+        <TabsContent value="folders" className="flex flex-col gap-8">
+          {me && <MediaFolders watched={me.folders} teamSpace={me.teamSpace} />}
+
+          {box.imports.length > 0 && (
+            <section className="flex flex-col gap-3" aria-label="Brought in from Dropbox">
+              <p className="text-sm font-medium">Brought in from Dropbox</p>
+              <ul className="flex flex-col gap-2 text-sm">
+                {box.imports.map((one: DropboxImportRow) => (
+                  <li key={one._id} className="flex flex-col gap-0.5">
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate">
+                        <span className="font-medium">{one.name}</span>
+                        <span className="text-muted-foreground"> · {parentOf(one.path)}</span>
+                      </span>
+                      <span
+                        className={
+                          one.status === "failed"
+                            ? "text-destructive shrink-0"
+                            : "text-muted-foreground shrink-0"
+                        }
+                      >
+                        {one.status === "done" ? (
+                          <Link href="/uploads" className="underline-offset-4 hover:underline">
+                            {IMPORT_TEXT.done}
+                          </Link>
+                        ) : (
+                          IMPORT_TEXT[one.status]
+                        )}
+                      </span>
+                    </span>
+                    {one.status === "failed" && one.error && (
+                      <span className="text-muted-foreground">{one.error}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {box.sends.length > 0 && (
+            <section className="flex flex-col gap-3" aria-label="Sent to Dropbox">
+              <p className="text-sm font-medium">Sent to Dropbox</p>
+              <ul className="flex flex-col gap-2 text-sm">
+                {box.sends.map((one: DropboxSendRow) => (
+                  <li key={one._id} className="flex flex-col gap-0.5">
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate">
+                        <span className="font-medium">{one.name}</span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {one.automationName} ·{" "}
+                          {one.dropboxPath ? parentOf(one.dropboxPath) : one.folder}
+                        </span>
+                      </span>
+                      {one.status === "failed" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="shrink-0"
+                          disabled={busy !== null}
+                          onClick={() =>
+                            run(`send-${one._id}`, () => sendAgain({ sendId: one._id }))
+                          }
+                        >
+                          Send again
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground shrink-0 tabular-nums">
+                          {one.status === "done"
+                            ? "Sent"
+                            : one.size > 0
+                              ? `Sending ${Math.floor((one.offset / one.size) * 100)}%`
+                              : "Sending"}
+                        </span>
+                      )}
+                    </span>
+                    {one.status === "failed" && one.error && (
+                      <span className="text-muted-foreground">{one.error}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </TabsContent>
+      </SettingsTabs>
     </SettingsSection>
   );
 }

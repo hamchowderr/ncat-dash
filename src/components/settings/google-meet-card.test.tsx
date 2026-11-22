@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { actionOf, answerQuery, mutationOf, toastError, toastSuccess } from "@/test/convex";
-import { renderInApp, TEAM } from "@/test/render";
+import { openTab, renderInApp, TEAM } from "@/test/render";
 
 import { GoogleMeetCard } from "./google-meet-card";
 
@@ -79,9 +79,12 @@ describe("the Google Meet card", () => {
     renderInApp(<GoogleMeetCard />);
     expect(screen.getByText("Jordan Lee")).toBeInTheDocument();
     expect(screen.getByText(/Maya Ortiz \(Maya O\)/)).toBeInTheDocument();
+    // What came in sits with the past recordings, a tab away from the connection.
+    await openTab("Past Recordings");
     expect(screen.getByRole("link", { name: "In Uploads" })).toHaveAttribute("href", "/uploads");
     expect(screen.getByText("Did not come in")).toBeInTheDocument();
     expect(screen.getByText(/Connect your toolkit first/)).toBeInTheDocument();
+    await openTab("Connection");
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("switch", { name: /Bring in new recordings/ }));
@@ -130,6 +133,7 @@ describe("the Google Meet card", () => {
     bring.mockResolvedValue({ started: 1, already: 1, duplicate: 0, missing: 0 });
     renderInApp(<GoogleMeetCard />);
     const user = userEvent.setup();
+    await openTab("Past Recordings");
     expect(screen.getByText(/however old/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Find recordings" }));
     expect(
@@ -192,6 +196,7 @@ describe("the Google Meet card", () => {
     });
     renderInApp(<GoogleMeetCard />);
     const user = userEvent.setup();
+    await openTab("Past Recordings");
     await user.click(screen.getByRole("button", { name: "Find recordings" }));
     expect(await screen.findByText(/Showing the newest 2,000/)).toBeInTheDocument();
     await user.click(
@@ -228,6 +233,7 @@ describe("the Google Meet card", () => {
     expect(shared).not.toBeChecked();
     await user.click(shared);
     expect(setShared).toHaveBeenCalledWith({ organizationId: TEAM.id, includeShared: true });
+    await openTab("Past Recordings");
     await user.click(screen.getByRole("button", { name: "Find recordings" }));
     expect(
       await screen.findByText(

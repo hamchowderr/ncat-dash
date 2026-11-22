@@ -31,11 +31,14 @@ describe("Settings > Motion", () => {
     await user.click(screen.getByRole("radio", { name: /Bold Hook/ }));
     expect(screen.getByRole("combobox", { name: "Look" })).toHaveTextContent("Bold");
     expect(screen.getByRole("combobox", { name: "Sound effects" })).toHaveTextContent("Heavy");
+    // Pieces are on their own tab; what was picked on Style is kept there.
+    await user.click(screen.getByRole("tab", { name: "Pieces" }));
     expect(screen.getByRole("checkbox", { name: /Stat card/ })).toHaveAttribute(
       "aria-checked",
       "true",
     );
     await user.click(screen.getByRole("checkbox", { name: /Stat card/ }));
+    await user.click(screen.getByRole("tab", { name: "Style" }));
     expect(screen.getByText("Bold Hook, changed")).toBeInTheDocument();
   });
 
@@ -43,6 +46,12 @@ describe("Settings > Motion", () => {
     const user = userEvent.setup();
     show();
     await user.click(screen.getByRole("radio", { name: /Neon/ }));
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Style",
+      "Pieces",
+      "Names",
+    ]);
+    await user.click(screen.getByRole("tab", { name: "Names" }));
     await user.type(screen.getByRole("textbox", { name: "Usual speaker" }), "Ana");
     await user.type(screen.getByRole("textbox", { name: "Handle" }), "@saltstudio");
     await user.click(screen.getByRole("button", { name: "Save" }));

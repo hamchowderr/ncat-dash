@@ -88,7 +88,7 @@ function ready(): boolean {
 /** Back to Settings, saying how the Dropbox sign-in went. */
 export function settingsUrl(result: string): string {
   const siteUrl = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  return `${siteUrl}/settings/dropbox?dropbox=${encodeURIComponent(result)}`;
+  return `${siteUrl}/settings/integrations/dropbox?dropbox=${encodeURIComponent(result)}`;
 }
 
 function randomText(): string {

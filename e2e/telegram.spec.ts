@@ -70,7 +70,7 @@ test("links a Telegram from Settings, then a group for review activity", async (
   await page.getByRole("button", { name: "Test and connect" }).click();
   await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
 
-  await page.goto("/settings/telegram");
+  await page.goto("/settings/integrations/telegram");
   await expect(page.getByRole("heading", { level: 1, name: "Telegram" })).toBeVisible();
   await expect(page.getByRole("img", { name: "Telegram logo" })).toBeVisible();
   await expect(page.getByText(/@TakewonStandInBot/)).toBeVisible();
@@ -129,7 +129,7 @@ test("links a Telegram from Settings, then a group for review activity", async (
   ).toBeChecked();
 
   // The owner adds the bot to the team's group; Telegram asks which, and the bot is in.
-  await page.goto("/settings/telegram");
+  await page.goto("/settings/integrations/telegram");
   const groupCode = await codeFrom(page, "Add to a group", "startgroup");
   const added = await asAgent<{ result: string }>("/telegram/link", {
     code: groupCode,

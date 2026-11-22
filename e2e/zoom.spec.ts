@@ -63,18 +63,19 @@ test("connects Zoom, brings a past meeting in, and a finished one arrives by its
   // its own account, since one Zoom account can be connected to only one team.
   const zoomUser = { id: `zoom-user-${stamp}`, account_id: `zoom-account-${stamp}` };
   await fetch(`${ZOOM}/stand-in/user`, { method: "POST", body: JSON.stringify(zoomUser) });
-  await page.goto("/settings/zoom");
+  await page.goto("/settings/integrations/zoom");
   await expect(page.getByRole("heading", { level: 1, name: "Zoom" })).toBeVisible();
   await expect(page.getByRole("img", { name: "Zoom logo" })).toBeVisible();
   await page.getByRole("button", { name: "Connect Zoom" }).click();
-  await expect(page).toHaveURL(/\/settings\/zoom$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/settings\/integrations\/zoom$/, { timeout: 30_000 });
   await expect(page.getByText("Your Zoom is connected")).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Your Zoom" }).getByText(ZOOM_USER.display_name),
   ).toBeVisible();
   await expect(page.getByRole("switch", { name: /Bring in new recordings/ })).toBeChecked();
 
-  // A past recording, brought in by hand.
+  // A past recording, brought in by hand, on the tab beside the connection.
+  await page.getByRole("tab", { name: "Past Recordings" }).click();
   await page.getByRole("button", { name: "Show the last 30 days" }).click();
   const past = page.getByRole("region", { name: "Past recordings" });
   await expect(past.getByText("Client Kickoff")).toBeVisible();
@@ -133,16 +134,17 @@ test("an owner connects the whole Zoom account and every host's meetings come in
     display_name: "Harbour Zoom Admin",
   };
   await fetch(`${ZOOM}/stand-in/user`, { method: "POST", body: JSON.stringify(admin) });
-  await page.goto("/settings/zoom");
+  await page.goto("/settings/integrations/zoom");
   const whole = page.getByRole("region", { name: "Whole Zoom account" });
   await whole.getByRole("button", { name: "Connect whole Zoom account" }).click();
-  await expect(page).toHaveURL(/\/settings\/zoom$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/settings\/integrations\/zoom$/, { timeout: 30_000 });
   await expect(page.getByText(/The whole Zoom account is connected/)).toBeVisible();
   await expect(whole.getByText(/connected by/)).toBeVisible();
   await expect(whole.getByText("Harbour Admin")).toBeVisible();
   await expect(page.getByRole("button", { name: "Connect Zoom" })).toBeVisible();
 
   // Past recordings list every host's, from the whole account.
+  await page.getByRole("tab", { name: "Past Recordings" }).click();
   await page.getByRole("button", { name: "Show the last 30 days" }).click();
   const past = page.getByRole("region", { name: "Past recordings" });
   await expect(past.getByText("Team Standup")).toBeVisible();
