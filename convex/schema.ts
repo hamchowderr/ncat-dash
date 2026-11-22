@@ -340,6 +340,22 @@ export default defineSchema({
     createdBy: v.string(),
   }).index("by_organization", ["organizationId"]),
 
+  // How many workers the operator's toolkit that teams share reported at its last check.
+  // It is the total of jobs at once there, unless HOSTED_TOOLKIT_JOBS_AT_ONCE sets one.
+  sharedToolkitWorkers: defineTable({
+    workers: v.union(v.null(), v.number()),
+    checkedAt: v.number(),
+  }),
+
+  // Teams waiting for room at the operator's toolkit that teams share. The team served
+  // longest ago goes next, so each waiting team gets a turn in order.
+  toolkitTurns: defineTable({
+    organizationId: v.string(),
+    lastSentAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_lastSentAt", ["lastSentAt"]),
+
   // One run of one toolkit step, started from the test bench or by an automation run.
   jobs: defineTable({
     organizationId: v.string(),
@@ -367,6 +383,9 @@ export default defineSchema({
     // When the job was handed to the toolkit. A queued job without it is waiting for a
     // free slot under the team's limit on jobs at once.
     dispatchedAt: v.optional(v.number()),
+    // Set when the job was sent to the operator's toolkit that teams share, so the total
+    // there (HOSTED_TOOLKIT_JOBS_AT_ONCE) can be counted.
+    sharedToolkit: v.optional(v.boolean()),
     // Set when an automation run created the job, so its result moves the run on.
     runStepId: v.optional(v.id("runSteps")),
     // True when the failure is one another try cannot fix, such as a setting the
@@ -391,6 +410,7 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
     .index("by_status", ["status"])
+    .index("by_sharedToolkit_and_status", ["sharedToolkit", "status"])
     // Jobs handed to be sent, by when: finds a send that broke without reading the queue.
     .index("by_status_and_dispatchedAt", ["status", "dispatchedAt"])
     // Every job a step in a run sent, earlier tries too, for the step's log.
