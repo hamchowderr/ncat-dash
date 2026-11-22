@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineStep, type StepDefinition } from "./define";
+import { composeProblem } from "./compose-guard";
 import { ffmpegCompose } from "./steps/ffmpeg/compose";
 
 /**
@@ -226,6 +227,9 @@ export function teamStepProblem(template: TeamStepTemplate): string | null {
     const issue = checked.error.issues[0];
     return `The request is not a valid FFmpeg compose request: ${issue.path.join(".") || "request"}: ${issue.message}`;
   }
+  // Nothing in it may read, write or load a file on the toolkit (compose-guard.ts).
+  const unsafe = composeProblem(filled as Record<string, unknown>);
+  if (unsafe) return unsafe;
   for (const field of ["webhook_url", "id"]) {
     if (field in (template.request as Record<string, unknown>)) {
       return `Leave ${field} out of the request: the dashboard sets it.`;
