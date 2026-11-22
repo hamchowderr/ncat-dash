@@ -1,5 +1,5 @@
 import { api } from "@convex/_generated/api";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 
@@ -33,9 +33,8 @@ describe("lists of files on the Steps page", () => {
     await waitFor(() =>
       expect(screen.getAllByDisplayValue(/files\.example\/uploads/)).toHaveLength(2),
     );
-    fireEvent.change(screen.getByRole("textbox", { name: /^Music/ }), {
-      target: { value: "https://files.example/uploads/song.mp3" },
-    });
+    // Music is left empty: the team's first track is used.
+    expect(screen.getByRole("textbox", { name: /^Music/ }).hasAttribute("required")).toBe(false);
     await user.click(screen.getByRole("button", { name: "Run step" }));
     expect(mutationOf(api.jobs.run)).toHaveBeenCalledWith(
       expect.objectContaining({

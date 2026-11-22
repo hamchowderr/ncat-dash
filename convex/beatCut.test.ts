@@ -196,3 +196,32 @@ describe("the Cut To The Beat ready-made, from an upload", () => {
     expect(run?.outputNames[shots[0]]).toBe("Skate park shot01");
   });
 });
+
+describe("Cut To The Beat on the Steps page", () => {
+  test("music left empty uses the team's first track, as in an automation", async () => {
+    const ready = await setUp(NODES);
+    await withMusic(ready);
+    toolkit();
+    const jobId = await ready.maya.as.mutation(api.jobs.run, {
+      organizationId: ready.team,
+      stepId: "recipe-beat-cut",
+      input: { video_urls: [{ video_url: VIDEO }] },
+    });
+    const job = await ready.t.run((ctx) => ctx.db.get(jobId));
+    expect(job?.input).toMatchObject({ music_url: SONG, video_urls: [{ video_url: VIDEO }] });
+  });
+
+  test("music picked on the page wins over the team's track", async () => {
+    const ready = await setUp(NODES);
+    await withMusic(ready);
+    toolkit();
+    const other = "https://files.example/uploads/other.mp3";
+    const jobId = await ready.maya.as.mutation(api.jobs.run, {
+      organizationId: ready.team,
+      stepId: "recipe-beat-cut",
+      input: { video_urls: [{ video_url: VIDEO }], music_url: other },
+    });
+    const job = await ready.t.run((ctx) => ctx.db.get(jobId));
+    expect(job?.input).toMatchObject({ music_url: other });
+  });
+});

@@ -1,4 +1,4 @@
-import { isTransientStatus } from "@ncat-dash/automation-core";
+import { getNodeType, isTransientStatus, withBrand } from "@ncat-dash/automation-core";
 import {
   callStep,
   getStep,
@@ -21,7 +21,7 @@ import {
 import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
 import { collectUrls, handOutputNames, outputNamesOf } from "./lib/outputs";
-import { enqueueJob, pump } from "./lib/queue";
+import { brandOf, enqueueJob, pump } from "./lib/queue";
 import { onJobFinished } from "./lib/runner";
 import { onLinkJobFinished } from "./links";
 import { onLookJobFinished } from "./looks";
@@ -69,10 +69,17 @@ export const run = mutation({
   returns: v.id("jobs"),
   handler: async (ctx, args) => {
     const { userId } = await requireMember(ctx, args.organizationId);
+    // Settings the team's brand fills in (music, logo...) are left empty to use it, as
+    // in an automation.
+    const nodeType = getNodeType(`step:${args.stepId}`);
+    const input =
+      nodeType?.brand && args.input && typeof args.input === "object"
+        ? withBrand(nodeType, args.input, await brandOf(ctx, args.organizationId))
+        : args.input;
     const queued = await enqueueJob(ctx, {
       organizationId: args.organizationId,
       stepId: args.stepId,
-      input: args.input,
+      input,
       createdBy: userId,
     });
     if (!queued.ok) throw new ConvexError({ code: queued.code, message: queued.message });
