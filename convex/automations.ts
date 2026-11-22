@@ -42,6 +42,7 @@ import {
   triggersProblem,
   triggerWithId,
 } from "@ncat-dash/automation-core";
+import { RUNS_AT_ONCE, startWaitingRuns } from "./lib/runLimit";
 import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -281,6 +282,8 @@ export const get = query({
       hookToken: automation.hookToken,
       nextRunAt: automation.nextRunAt,
       updatedAt: automation.updatedAt,
+      // How many of its runs go at once; null for no limit.
+      runsAtOnce: automation.runsAtOnce ?? null,
     };
   },
 });
@@ -1118,6 +1121,24 @@ export async function switchAutomation(
     watchFrom: watchStartOf(automation, automation, enabled),
   });
 }
+
+/**
+ * How many of its runs go at once. Runs started while that many are under way wait their
+ * turn. Null takes the limit away; waiting runs then start.
+ */
+export const setRunsAtOnce = mutation({
+  args: { automationId: v.id("automations"), runsAtOnce: v.union(v.null(), v.number()) },
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    const limit = args.runsAtOnce;
+    if (limit !== null && !(RUNS_AT_ONCE as readonly number[]).includes(limit)) {
+      fail("invalid_input", `Choose ${RUNS_AT_ONCE.join(", ")} runs at once, or no limit.`);
+    }
+    await ctx.db.patch(automation._id, { runsAtOnce: limit ?? undefined });
+    // A higher limit, or none, lets runs waiting for their turn start.
+    await startWaitingRuns(ctx, automation._id);
+  },
+});
 
 /** Deletes the automation. Its past runs stay in the run history. */
 export const remove = mutation({
