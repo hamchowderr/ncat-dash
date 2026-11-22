@@ -186,3 +186,50 @@ export async function forgetDiskUpload(uploadId: string): Promise<void> {
     // Nothing to forget.
   }
 }
+
+/** A folder on this computer that feeds an automation's folder in the team's storage. */
+export type DesktopWatch = {
+  automationId: string;
+  automationName: string;
+  organizationId: string;
+  prefix: string;
+  folder: string;
+};
+
+/** A file that landed in a watched folder. `folder` is where inside it, such as "Maya/hooks". */
+export type LandedFile = DiskFile & { folder: string };
+
+/** Opens the computer's own folder picker. Null when nothing was chosen or outside the app. */
+export async function chooseFolderOnDesktop(): Promise<string | null> {
+  if (!bridge()) return null;
+  return call<string | null>("choose_folder");
+}
+
+/** Has `folder` feed the automation's storage folder `prefix` while the app is open. */
+export function watchFolderOnDesktop(watch: DesktopWatch): Promise<DesktopWatch> {
+  return call("watch_folder", { ...watch });
+}
+
+/** This dashboard's watched folders. Empty outside the app or in an app without them. */
+export async function watchedFoldersOnDesktop(): Promise<DesktopWatch[]> {
+  if (!bridge()) return [];
+  try {
+    return await call<DesktopWatch[]>("watched_folders");
+  } catch {
+    return [];
+  }
+}
+
+export function unwatchFolderOnDesktop(automationId: string): Promise<void> {
+  return call("unwatch_folder", { automationId });
+}
+
+/** Files that landed in the automation's watched folder and are ready to send. */
+export function landedFilesOnDesktop(automationId: string): Promise<LandedFile[]> {
+  return call("landed_files", { automationId });
+}
+
+/** Writes down a landed file as sent, so it is never sent again. */
+export function landedSentOnDesktop(automationId: string, path: string): Promise<void> {
+  return call("landed_sent", { automationId, path });
+}

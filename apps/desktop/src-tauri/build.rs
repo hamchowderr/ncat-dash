@@ -28,6 +28,12 @@ fn main() {
             "send_part",
             "stopped_uploads",
             "forget_upload",
+            "choose_folder",
+            "watch_folder",
+            "watched_folders",
+            "unwatch_folder",
+            "landed_files",
+            "landed_sent",
         ]),
     ))
     .expect("failed to build the desktop app");

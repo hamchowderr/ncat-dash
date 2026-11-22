@@ -56,7 +56,17 @@ const STAND_IN_PAGE = `<!doctype html><title>Stand-in dashboard</title>
                     contentType: "text/plain",
                   }).then(
                     () => "sends anything",
-                    () => null,
+                    () =>
+                      invoke("watch_folder", {
+                        organizationId: "team",
+                        automationId: "a1",
+                        automationName: "Weekly clips",
+                        prefix: "incoming/",
+                        folder: "/etc",
+                      }).then(
+                        () => "watches anything",
+                        () => null,
+                      ),
                   ),
               )
               .then((leak) =>
