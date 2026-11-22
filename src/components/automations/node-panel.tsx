@@ -6,6 +6,7 @@ import type {
   CaptionSetup,
   CaptionShape,
   CaptionStyle,
+  JoinMode,
 } from "@ncat-dash/automation-core";
 import {
   BRAND_WORDS,
@@ -14,6 +15,8 @@ import {
   CAPTION_STYLE_SETTING,
   isCaptionStep,
   getPlatform,
+  JOIN_MODES,
+  joinOf,
   KIND_WORDS,
   nodeTypeOf,
   waitsForRun,
@@ -78,6 +81,54 @@ function isBlank(value: unknown): boolean {
  * itself is listed in one short block, and everything else sits under "More options".
  */
 /** "A", "A and B", "A, B and C". */
+/** How a step treats the files of the lines that meet at it. */
+function JoinSetting({
+  node,
+  waitsFor,
+  onChange,
+}: {
+  node: NodeContent;
+  waitsFor: string[];
+  onChange: (patch: Partial<NodeContent>) => void;
+}) {
+  const mode = joinOf(node as AutomationNode);
+  const picked = JOIN_MODES.find((one) => one.value === mode) ?? JOIN_MODES[0];
+  return (
+    <Field>
+      <FieldLabel htmlFor="join-mode">When files meet</FieldLabel>
+      <Select
+        value={mode}
+        onValueChange={(value) =>
+          onChange({ join: value === "all" ? undefined : (value as JoinMode) })
+        }
+      >
+        <SelectTrigger id="join-mode" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {JOIN_MODES.filter(
+            // Only a toolkit step has files of its own to pair.
+            (one) => node.kind === "step" || (one.value !== "source" && one.value !== "position"),
+          ).map((one) => (
+            <SelectItem key={one.value} value={one.value}>
+              {one.title}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-muted-foreground text-sm text-pretty">
+        {mode === "all"
+          ? `Waits for ${joinNames(waitsFor)} to finish, then runs once with the files from ${
+              waitsFor.length === 2 ? "both" : "all of them"
+            }. A side an If did not send files down is not waited for.`
+          : mode === "first"
+            ? `Starts as soon as one of ${joinNames(waitsFor)} finishes, with only its files. Files from the slower ones are not used.`
+            : `${picked.description} The first line is ${waitsFor[0]}.`}
+      </p>
+    </Field>
+  );
+}
+
 function joinNames(names: string[]): string {
   return names.length < 2
     ? (names[0] ?? "")
@@ -348,12 +399,8 @@ export function NodePanel({
         </p>
       </div>
 
-      {waitsFor && waitsFor.length > 1 && (
-        <p className="text-muted-foreground bg-background rounded-lg px-3 py-2 text-xs text-pretty">
-          Waits for {joinNames(waitsFor)} to finish, then runs once with the files from{" "}
-          {waitsFor.length === 2 ? "both" : "all of them"}. A side an If did not send files down is
-          not waited for.
-        </p>
+      {waitsFor && waitsFor.length > 1 && node.kind !== "if" && (
+        <JoinSetting node={node} waitsFor={waitsFor} onChange={onChange} />
       )}
 
       {node.off && (
