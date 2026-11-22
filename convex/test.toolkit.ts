@@ -2,6 +2,9 @@ import { vi } from "vitest";
 import { encryptSecret } from "./lib/crypto";
 import type { backend } from "./test.setup";
 
+// The fetch the test runner started with, before any test put a stand-in in its place.
+const NATIVE_FETCH = globalThis.fetch;
+
 /**
  * A stand-in for the toolkit fork's storage requests (/v1/storage/*), answering the way
  * the real ones do, over an in-memory bucket. Other requests go to the real fetch.
@@ -154,6 +157,13 @@ export function fakeToolkitStorage({
       return new Response(null, { status: 200 });
     }
     if (url.origin !== new URL(baseUrl).origin || !url.pathname.startsWith("/v1/storage/")) {
+      // The stand-in toolkit has no real address. A request to it that is not about storage
+      // (reading an upload's details, say) would otherwise go out to the network and hang
+      // until it times out, holding up whatever waits on it. Answer it the way a toolkit
+      // that is down does, unless a test put its own stand-in behind this one.
+      if (url.origin === new URL(baseUrl).origin && realFetch === NATIVE_FETCH) {
+        return new Response("Toolkit stand-in: not a storage request", { status: 503 });
+      }
       return realFetch(input, init);
     }
     const request = url.pathname.slice("/v1/storage/".length);
