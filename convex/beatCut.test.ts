@@ -167,7 +167,7 @@ describe("the Cut To The Beat ready-made, from an upload", () => {
   test("splits the upload at its camera cuts, then cuts those shots to the beat", async () => {
     const ready = await setUp([
       { id: "split_shots_1", stepId: "recipe-split-shots" },
-      { id: "beat_cut_1", stepId: "recipe-beat-cut", input: { length: 8 } },
+      { id: "beat_cut_1", stepId: "recipe-beat-cut", input: { length: 8, order: "mixed up" } },
     ]);
     await withMusic(ready);
     const calls = toolkit();
@@ -190,9 +190,39 @@ describe("the Cut To The Beat ready-made, from an upload", () => {
     expect(beat).toHaveLength(1);
     expect(beat[0].input).toMatchObject({
       music_url: SONG,
+      order: "mixed up",
       video_urls: shots.map((video_url) => ({ video_url })),
     });
     const run = await ready.maya.as.query(api.runs.get, { runId });
     expect(run?.outputNames[shots[0]]).toBe("Skate park shot01");
+  });
+});
+
+describe("Cut To The Beat on the Steps page", () => {
+  test("music left empty uses the team's first track, as in an automation", async () => {
+    const ready = await setUp(NODES);
+    await withMusic(ready);
+    toolkit();
+    const jobId = await ready.maya.as.mutation(api.jobs.run, {
+      organizationId: ready.team,
+      stepId: "recipe-beat-cut",
+      input: { video_urls: [{ video_url: VIDEO }] },
+    });
+    const job = await ready.t.run((ctx) => ctx.db.get(jobId));
+    expect(job?.input).toMatchObject({ music_url: SONG, video_urls: [{ video_url: VIDEO }] });
+  });
+
+  test("music picked on the page wins over the team's track", async () => {
+    const ready = await setUp(NODES);
+    await withMusic(ready);
+    toolkit();
+    const other = "https://files.example/uploads/other.mp3";
+    const jobId = await ready.maya.as.mutation(api.jobs.run, {
+      organizationId: ready.team,
+      stepId: "recipe-beat-cut",
+      input: { video_urls: [{ video_url: VIDEO }], music_url: other },
+    });
+    const job = await ready.t.run((ctx) => ctx.db.get(jobId));
+    expect(job?.input).toMatchObject({ music_url: other });
   });
 });

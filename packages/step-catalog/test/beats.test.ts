@@ -14,6 +14,7 @@ import {
   type FileFacts,
   getStep,
   isPicture,
+  mixedOrder,
   readBeats,
   readCuts,
   readFacts,
@@ -130,6 +131,38 @@ describe("Cut To The Beat", () => {
       "[c1x1]trim=start_frame=30:end_frame=60,setpts=PTS-STARTPTS[p4]",
       "[c2x1]trim=start_frame=30:end_frame=60,setpts=PTS-STARTPTS[p5]",
     ]);
+  });
+
+  it("mixes the clips up when asked, the same way every time", () => {
+    const listed = (request: ComposeRequest) =>
+      request.inputs.slice(0, -1).map((input) => input.file_url);
+    expect(listed(build())).toEqual([at("red.mp4"), at("green.mp4"), at("blue.png")]);
+    expect(listed(build({ order: "mixed up" }))).toEqual([
+      at("red.mp4"),
+      at("blue.png"),
+      at("green.mp4"),
+    ]);
+    expect(listed(build({ order: "mixed up" }))).toEqual(listed(build({ order: "mixed up" })));
+  });
+
+  it("never plays two shots back to back that sit next to each other in the list", () => {
+    for (let count = 1; count <= 30; count++) {
+      const order = mixedOrder(count);
+      // Every clip once.
+      expect([...order].sort((a, b) => a - b)).toEqual([...Array(count).keys()]);
+      if (count < 5) continue;
+      // Turns run round the list, so the last clip is followed by the first again.
+      for (let index = 0; index < count; index++) {
+        const gap = Math.abs(order[index] - order[(index + 1) % count]);
+        expect(Math.min(gap, count - gap)).toBeGreaterThanOrEqual(2);
+      }
+    }
+    // 28 shots: each one is followed by one at least ten shots away.
+    const order = mixedOrder(28);
+    for (let index = 1; index < 28; index++) {
+      const gap = Math.abs(order[index] - order[index - 1]);
+      expect(Math.min(gap, 28 - gap)).toBeGreaterThanOrEqual(10);
+    }
   });
 
   it("loops clips and holds pictures, and starts the music on the first cut", () => {
