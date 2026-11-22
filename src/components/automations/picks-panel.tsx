@@ -271,7 +271,7 @@ function FootageSection({ title, step }: { title: string; step: RunStep }) {
         <p className="text-muted-foreground text-xs text-pretty">
           {footageSummary(footage.files)}{" "}
           {bad > 0 && (footage.stopped ? "Editing did not start. " : "Editing went ahead. ")}
-          No AI: measured by FFmpeg, judged by rules.
+          No AI: measured by your toolkit, judged by rules.
           {footage.note ? ` A note for the creator is in ${footage.note}.` : ""}
         </p>
       </header>

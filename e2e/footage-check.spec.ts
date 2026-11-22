@@ -49,7 +49,9 @@ test("checks creator footage before editing", async ({ page }) => {
   }).toPass();
   const panel = page.getByRole("complementary", { name: "Settings for this step" });
   await expect(panel.getByRole("combobox", { name: "Filmed in" })).toContainText("Vertical");
-  await expect(panel.getByText(/each hook and ending take, measured by FFmpeg/)).toBeVisible();
+  await expect(
+    panel.getByText(/each hook and ending take, measured by your toolkit/),
+  ).toBeVisible();
   await expect(panel.getByText(/Nothing is edited until better footage lands/)).toBeVisible();
   await pause(1500);
   await panel.getByRole("textbox", { name: "Short side at least" }).fill("1080");

@@ -10,6 +10,7 @@ import {
   motionStepSettings,
   NO_MOTION_SETUP,
   nearestUpstreamOfKind,
+  nothingToDrawNote,
   type PlacedPiece,
   placedFrom,
   planMotionByRules,
@@ -163,6 +164,9 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
 
   const planned = node.kind === "motion" ? plannedBeats(run, node.id, byNode) : null;
   const renders: { stepId: string; input: unknown }[] = [];
+  // Videos with nothing to put on them go on as they are, with no render.
+  const unchanged: string[] = [];
+  let noteSetup = team;
   const placed: NonNullable<Doc<"runSteps">["placed"]> = [];
   for (const heard of heardFrom(jobs)) {
     const spoken = await wordsFor(ctx, run.organizationId, heard.url);
@@ -179,6 +183,7 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
     if (node.kind === "motion") {
       const settings = motionStepSettings(node.input);
       const setup = motionSetupFor(team, settings.style === "team" ? undefined : settings.style);
+      noteSetup = setup;
       const title = settings.title || titleFromFileName(fileName);
       plan = planMotionByRules({
         words,
@@ -200,8 +205,29 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
       plan = { pieces: [], sounds: planSoundsByRules({ words, duration, level, chapters }) };
       request = motionRequest(heard.url, plan, team, {}, { level: "heavy", pieceSounds: false });
     }
-    renders.push({ stepId: "video-motion", input: request });
     placed.push(placedFrom(heard.url, plan));
+    if (plan.pieces.length === 0 && plan.sounds.length === 0) unchanged.push(heard.url);
+    else renders.push({ stepId: "video-motion", input: request });
+  }
+  const note =
+    unchanged.length > 0
+      ? nothingToDrawNote(
+          node.kind === "motion" ? "motion" : "sound-effects",
+          noteSetup,
+          unchanged.length,
+        )
+      : undefined;
+  if (renders.length === 0 && unchanged.length > 0) {
+    await ctx.db.patch(step._id, {
+      status: "done",
+      stage: undefined,
+      outputs: unchanged,
+      placed,
+      pickNote: note,
+      finishedAt: Date.now(),
+    });
+    await advance(ctx, run._id);
+    return;
   }
   if (renders.length === 0) {
     await failStep(ctx, run, step, byNode, "No video reached this step.");
@@ -214,6 +240,13 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
     await advance(ctx, run._id);
     return;
   }
-  await ctx.db.patch(step._id, { stage: "render", jobIds: queued.jobIds, placed });
+  // The unchanged videos wait in `outputs` and go on with the drawn ones (lib/runner.ts).
+  await ctx.db.patch(step._id, {
+    stage: "render",
+    jobIds: queued.jobIds,
+    placed,
+    outputs: unchanged,
+    ...(note ? { pickNote: note } : {}),
+  });
   await advance(ctx, run._id);
 }
