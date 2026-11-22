@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { fileNameOf } from "@ncat-dash/timeline-export";
 import { useQuery } from "convex/react";
-import { Clapperboard, Download } from "lucide-react";
+import { Clapperboard, Download, FolderOpen, HardDriveDownload } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -19,6 +19,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  type DesktopSaved,
+  inDesktopApp,
+  openOnDesktop,
+  saveToDesktop,
+  showOnDesktop,
+} from "@/lib/desktop";
 
 /** Saves a file on the person's computer. */
 function saveBlob(name: string, blob: Blob) {
@@ -89,6 +96,9 @@ export function EditorExport({ runId }: { runId: Id<"runs"> }) {
   // The files are made when asked for, so nothing is fetched until the dialog opens.
   const result = useQuery(api.runs.editorFiles, open ? { runId } : "skip");
   const [saving, setSaving] = useState(false);
+  // In the desktop app everything can go straight into one folder on this computer.
+  const [desktop] = useState(inDesktopApp);
+  const [onDisk, setOnDisk] = useState<DesktopSaved | null>(null);
 
   const files = result?.files ?? [];
   const timelines = files.filter((file) => file.editors.length > 0);
@@ -106,6 +116,32 @@ export function EditorExport({ runId }: { runId: Id<"runs"> }) {
       setSaving(false);
     }
   }
+
+  /** Saves the timelines, captions, recordings and clips into one folder via the app. */
+  async function saveToComputer() {
+    if (!result) return;
+    setSaving(true);
+    try {
+      const downloads = [
+        ...result.recordings,
+        ...result.clips.map((url, index) => ({
+          url,
+          name: clipName(url, index, result.clipNames),
+        })),
+      ];
+      const saved = await saveToDesktop(result.folder, result.files, downloads);
+      if (!saved) {
+        toast.error("The app could not save the files. Download them below instead.");
+        return;
+      }
+      setOnDisk(saved);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Where the app saved a file, by the name it was given. */
+  const savedPath = (name: string) => onDisk?.files.find((file) => file.name === name)?.path;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -126,6 +162,66 @@ export function EditorExport({ runId }: { runId: Id<"runs"> }) {
         {result === undefined && <Skeleton className="h-24 rounded-lg" />}
         {result === null && (
           <p className="text-muted-foreground text-sm">This run has no cuts to open.</p>
+        )}
+        {result && desktop && (
+          <section aria-label="On this computer" className="flex flex-col gap-3">
+            {!onDisk ? (
+              <>
+                <p className="text-muted-foreground text-sm text-pretty">
+                  Save the timelines, the original recording and the finished clips into one folder
+                  on this computer, then open the timeline straight from here.
+                </p>
+                <Button className="self-start" disabled={saving} onClick={saveToComputer}>
+                  <HardDriveDownload />
+                  {saving ? "Saving to this computer" : "Save to this computer"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-pretty">
+                  Saved to <span className="font-medium break-all">{onDisk.folder}</span>
+                </p>
+                {onDisk.failed.length > 0 && (
+                  <p className="text-destructive text-sm text-pretty">
+                    {onDisk.failed.length === 1
+                      ? `${onDisk.failed[0]} could not be fetched.`
+                      : `${onDisk.failed.length} files could not be fetched: ${onDisk.failed.join(", ")}.`}{" "}
+                    Save again to try them once more.
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {timelines.map((file) => {
+                    const path = savedPath(file.name);
+                    if (!path) return null;
+                    return (
+                      <Button
+                        key={file.name}
+                        onClick={async () => {
+                          if (!(await openOnDesktop(path))) {
+                            toast.error(
+                              `Nothing on this computer opens ${file.name}. Open it from ${file.editors.join(" or ")}.`,
+                            );
+                          }
+                        }}
+                      >
+                        <Clapperboard />
+                        Open {file.name}
+                      </Button>
+                    );
+                  })}
+                  {onDisk.files[0] && (
+                    <Button
+                      variant="outline"
+                      onClick={() => void showOnDesktop(onDisk.files[0].path)}
+                    >
+                      <FolderOpen />
+                      Show in folder
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+          </section>
         )}
         {result && (
           <div className="flex flex-col gap-4">

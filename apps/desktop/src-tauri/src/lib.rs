@@ -14,6 +14,7 @@ pub const NAME: &str = env!("PRODUCT_NAME");
 pub mod address;
 pub mod browser;
 pub mod dashboard;
+pub mod exports;
 pub mod links;
 pub mod saved;
 
@@ -143,6 +144,72 @@ fn set_unseen(
         let _ = tray.set_tooltip(Some(dashboard::tray_text(count)));
     }
     Ok(())
+}
+
+/// Where "Open in your editor" saves: a folder named after the app in the person's Videos
+/// folder (or Documents, or home, on a computer without one).
+fn exports_folder(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let paths = app.path();
+    let base = paths
+        .video_dir()
+        .or_else(|_| paths.document_dir())
+        .or_else(|_| paths.home_dir())
+        .map_err(|_| "There is no folder to save into.".to_string())?;
+    Ok(base.join(NAME))
+}
+
+/// Saves a run's files for an editor into one folder of their own, and says where.
+#[tauri::command]
+async fn save_export(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    folder: String,
+    files: Vec<exports::TextFile>,
+    downloads: Vec<exports::Download>,
+) -> Result<exports::Saved, String> {
+    from_dashboard(&window, &places)?;
+    exports::save(&exports_folder(&app)?, &folder, &files, &downloads).await
+}
+
+/// A path the dashboard names, only when it is one the app saved.
+fn saved_path(app: &AppHandle, path: &str) -> Result<std::path::PathBuf, String> {
+    let path = std::path::PathBuf::from(path);
+    if exports::is_inside(&exports_folder(app)?, &path) && path.exists() {
+        Ok(path)
+    } else {
+        Err("Only files the app saved can be opened.".into())
+    }
+}
+
+/// Opens a saved timeline in the editor the computer opens that kind of file with.
+#[tauri::command]
+fn open_export(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    path: String,
+) -> Result<(), String> {
+    from_dashboard(&window, &places)?;
+    let path = saved_path(&app, &path)?;
+    app.opener()
+        .open_path(path.display().to_string(), None::<&str>)
+        .map_err(|_| "No app on this computer opens that file.".into())
+}
+
+/// Shows a saved file in its folder (Finder, Explorer or the file manager).
+#[tauri::command]
+fn show_export(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    path: String,
+) -> Result<(), String> {
+    from_dashboard(&window, &places)?;
+    let path = saved_path(&app, &path)?;
+    app.opener()
+        .reveal_item_in_dir(path)
+        .map_err(|error| error.to_string())
 }
 
 fn show_window(app: &AppHandle) {
@@ -295,7 +362,10 @@ pub fn run() {
             forget_server,
             open_server,
             notify,
-            set_unseen
+            set_unseen,
+            save_export,
+            open_export,
+            show_export
         ])
         .setup(|app| {
             let handle = app.handle().clone();

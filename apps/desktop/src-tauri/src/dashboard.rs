@@ -8,7 +8,13 @@ use crate::NAME;
 
 /// The commands the dashboard may call (see `capability_for`). Everything else the app
 /// does stays with its own pages.
-pub const COMMANDS: [&str; 2] = ["allow-notify", "allow-set-unseen"];
+pub const COMMANDS: [&str; 5] = [
+    "allow-notify",
+    "allow-set-unseen",
+    "allow-save-export",
+    "allow-open-export",
+    "allow-show-export",
+];
 
 /// The address pattern the dashboard's pages match: every page of that one origin.
 pub fn remote_pattern(dashboard: &Url) -> String {
