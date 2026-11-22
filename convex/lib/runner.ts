@@ -61,9 +61,14 @@ import {
   withDownloadLinks,
   withStart,
   stepFileLabels,
+  fileFields,
+  joinOf,
+  pairs,
+  partnersOf,
+  readSource,
 } from "@ncat-dash/automation-core";
 import { startSend } from "./send";
-import { recordItems } from "./items";
+import { type Item, recordItems } from "./items";
 import { getStep, pictureGivenForVideo } from "@ncat-dash/step-catalog";
 import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
@@ -213,13 +218,42 @@ function outputsToward(
   );
 }
 
+/**
+ * The steps straight before a node whose files it takes, in the order they are connected.
+ * One taking whichever line finishes first takes only the line that finished first, and
+ * one pairing files takes its main files from the first line (the others are its partners).
+ */
+function meetingSources(
+  node: AutomationNode,
+  run: Doc<"runs">,
+  byNode: Map<string, Doc<"runSteps">>,
+): string[] {
+  const sources = upstreamOf(node.id, run.edges as AutomationEdge[]);
+  if (sources.length < 2) return sources;
+  const mode = joinOf(node);
+  if (mode === "first") {
+    const finished = sources
+      .map((id) => byNode.get(id))
+      .filter(
+        (step): step is Doc<"runSteps"> =>
+          step !== undefined &&
+          (step.status === "done" || step.status === "failed") &&
+          outputsToward(step, node, run).length > 0,
+      )
+      .sort((a, b) => (a.finishedAt ?? 0) - (b.finishedAt ?? 0));
+    return finished.length > 0 ? [finished[0].nodeId] : sources;
+  }
+  if (mode === "source" || mode === "position") return sources.slice(0, 1);
+  return sources;
+}
+
 /** The files handed on by the steps straight before a node, or the trigger's file. */
 export function incomingFiles(
   node: AutomationNode,
   run: Doc<"runs">,
   byNode: Map<string, Doc<"runSteps">>,
 ): string[] {
-  const sources = upstreamOf(node.id, run.edges as AutomationEdge[]);
+  const sources = meetingSources(node, run, byNode);
   if (sources.length === 0) return triggerFiles(run.trigger);
   return sources.flatMap((source) => outputsToward(byNode.get(source), node, run));
 }
@@ -235,8 +269,10 @@ export function filesFor(
   run: Doc<"runs">,
   byNode: Map<string, Doc<"runSteps">>,
 ): string[] {
-  const levels = stepsBefore(node.id, run.edges as AutomationEdge[]).map((ids) =>
-    ids.flatMap((id) => outputsToward(byNode.get(id), node, run)),
+  const levels = stepsBefore(node.id, run.edges as AutomationEdge[]).map((ids, index) =>
+    (index === 0 ? meetingSources(node, run, byNode) : ids).flatMap((id) =>
+      outputsToward(byNode.get(id), node, run),
+    ),
   );
   // A run another one started also has that run's earlier files, nearest first, for a
   // step that wants a kind of file the other run did not finish with.
@@ -431,6 +467,58 @@ async function valuesByFile(
 }
 
 /**
+ * Each job's partner files from the other lines meeting at a pairing step, or a plain
+ * reason a job has none. A file field already given a fixed address keeps it.
+ */
+function pairPartners(
+  node: AutomationNode,
+  run: Doc<"runs">,
+  byNode: Map<string, Doc<"runSteps">>,
+  nodeType: NonNullable<ReturnType<typeof nodeTypeOf>>,
+  primary: string,
+  planned: Record<string, unknown>[],
+): Record<string, unknown>[] | string {
+  const mode = joinOf(node) as "source" | "position";
+  const [first, ...others] = upstreamOf(node.id, run.edges as AutomationEdge[]);
+  if (!first || others.length === 0) return planned;
+  const known = new Map<string, Item>();
+  for (const other of byNode.values()) {
+    for (const item of (other.items ?? []) as Item[]) known.set(item.url, item);
+  }
+  const traced = (url: string) => ({ url, source: known.get(url)?.source ?? url });
+  const nameOf = (url: string) => decodeURIComponent(url.split(/[?#]/)[0].split("/").pop() ?? url);
+  const main = planned.map((input) => traced(String(input[primary] ?? "")));
+
+  let result = planned;
+  for (const field of fileFields(nodeType)) {
+    // Only fields that take a kind of media, so an address to call back is never paired.
+    if (field === primary || wantedKind(field) === "any") continue;
+    const set = readSource(node.input[field]);
+    const from =
+      set.from === "auto"
+        ? others
+        : set.from === "step" && others.includes(set.id)
+          ? [set.id]
+          : null;
+    if (!from) continue;
+    const pool = chooseFiles(wantedKind(field), [
+      from.flatMap((id) => outputsToward(byNode.get(id), node, run)),
+    ]);
+    if (pool.length === 0) continue;
+    const partners = partnersOf(mode, main, pool.map(traced));
+    const missing = partners.findIndex((partner) => partner === null);
+    if (missing >= 0) {
+      const file = nameOf(main[missing].url);
+      return mode === "source"
+        ? `Nothing from the other line started from the same upload as ${file}, so it has nothing to be paired with.`
+        : `The other line handed on fewer files than the first, so ${file} has nothing to be paired with.`;
+    }
+    result = result.map((input, index) => ({ ...input, [field]: partners[index] }));
+  }
+  return result;
+}
+
+/**
  * Starts a toolkit step: works out its settings and queues one job per file. A caption
  * step may first read its videos' sizes ("size" stage); it comes back here with them.
  */
@@ -520,6 +608,17 @@ async function startToolkitStep(
           : { ...input, [source.field]: found };
       });
     }
+  }
+  // A step pairing the files of the lines that meet at it gives each job its partner
+  // files from the other lines: the one that started from the same upload, or the one in
+  // the same place.
+  if (primary && pairs(node) && nodeType) {
+    const paired = pairPartners(node, run, byNode, nodeType, primary, planned);
+    if (typeof paired === "string") {
+      await failStep(ctx, run, step, byNode, paired);
+      return;
+    }
+    planned = paired;
   }
   if (planned.length > MAX_JOBS_PER_STEP) {
     await failStep(
