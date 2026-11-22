@@ -1168,12 +1168,16 @@ function Editor({ automation }: { automation: Loaded }) {
                     </InsertOnEdgeContext>
                   </AddAfterContext>
                 </BrandContext>
-                {stepNodes.length === 0 && (
-                  <p className="text-muted-foreground pointer-events-none absolute inset-x-0 bottom-6 text-center text-sm">
-                    Press Add step to put the first step after the trigger.
-                  </p>
-                )}
               </div>
+              {stepNodes.length === 0 && (
+                // Under the canvas, not on it: wherever the trigger sits, nothing covers it.
+                <p
+                  className="text-muted-foreground mx-2 mb-3 text-center text-sm"
+                  data-testid="canvas-first-step-hint"
+                >
+                  Press Add step to put the first step after the trigger.
+                </p>
+              )}
             </div>
 
             {afterShown && (
