@@ -51,7 +51,10 @@ test("cleans up pauses and retakes before editing, splitting hook takes for UGC"
 
   // The step says how to name hook takes, and keeps a creator's files together.
   await expect(async () => {
-    await page.locator(".react-flow__node-step").first().click();
+    await page
+      .locator(".react-flow__node-step")
+      .filter({ hasText: "Clean Up Pauses And Retakes" })
+      .click();
     await expect(page.getByRole("combobox", { name: "Hook takes" })).toBeVisible({
       timeout: 2000,
     });

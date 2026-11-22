@@ -42,5 +42,6 @@ export * from "./triggers";
 export * from "./workflows";
 export * from "./cleanup";
 export * from "./creator-folders";
+export * from "./footage";
 export * from "./ai-spend";
 export * from "./looks";

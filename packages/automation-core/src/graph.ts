@@ -17,7 +17,8 @@ export interface AutomationNode {
    * "motion-plan" has the AI say which pieces go where first,
    * "motion" draws motion graphics and "sound-effects" adds sound effects onto each video
    * (motion.ts); "cleanup" takes long pauses and retakes out of each recording and can
-   * split its hook takes into files of their own (cleanup.ts).
+   * split its hook takes into files of their own (cleanup.ts); "footage-check" measures
+   * each video and stops or warns before editing when one has a problem (footage.ts).
    */
   kind:
     | "step"
@@ -34,7 +35,8 @@ export interface AutomationNode {
     | "motion"
     | "motion-plan"
     | "sound-effects"
-    | "cleanup";
+    | "cleanup"
+    | "footage-check";
   /** Catalog step id, for kind "step". */
   stepId?: string;
   /** Optional name shown on the canvas instead of the step title. */

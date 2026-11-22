@@ -33,8 +33,10 @@ async function setUpTeam(page: Page) {
 
 /** Whether the card keeps clear of the thing it points at, so that stays in sight. */
 async function clearOf(page: Page, id: string) {
-  const card = (await page.locator("[data-tour-card]").boundingBox())!;
-  const target = (await page.locator(`[data-tour-step-id~='${id}']`).boundingBox())!;
+  const card = await page.locator("[data-tour-card]").boundingBox();
+  const target = await page.locator(`[data-tour-step-id~='${id}']`).boundingBox();
+  // Not laid out yet (the card moving to the next step, or the page still drawing): ask again.
+  if (!card || !target) return false;
   return (
     card.x >= target.x + target.width - 1 ||
     card.x + card.width <= target.x + 1 ||

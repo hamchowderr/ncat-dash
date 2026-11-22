@@ -70,6 +70,15 @@ export const NOTIFICATION_KINDS = [
     chat: true,
   },
   {
+    kind: "footage_problem",
+    title: "Footage needs another look",
+    description:
+      "A Check Footage step found a video that is the wrong shape, too small, too quiet or clipped, black, frozen or too short, before editing. Goes to everyone on the team.",
+    bell: true,
+    email: true,
+    chat: true,
+  },
+  {
     kind: "rights_ending",
     title: "A creator's usage rights are about to end",
     description:

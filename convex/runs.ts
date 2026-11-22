@@ -189,6 +189,8 @@ export const get = query({
             placed: step.placed ?? null,
             // For Clean Up Pauses And Retakes: what it took out of each video.
             cleaned: step.cleaned ?? null,
+            // For Check Footage: each file it checked and what is wrong with it.
+            footage: step.footage ?? null,
             // For Length Cuts and Hook And Ending Variants: the paid-ad disclosure kept.
             disclosures: step.disclosures ?? null,
             pickNote: step.pickNote ?? null,

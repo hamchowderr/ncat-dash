@@ -7,6 +7,7 @@ import { imageToVideo } from "./image/to-video";
 import { mediaConvert } from "./media/convert";
 import { mediaDownload } from "./media/download";
 import { mediaGenerateAss } from "./media/generate-ass";
+import { mediaCheck } from "./media/check";
 import { mediaLook } from "./media/look";
 import { mediaMetadata } from "./media/metadata";
 import { mediaSilenceDetect } from "./media/silence-detect";
@@ -49,7 +50,7 @@ export const steps = [
 ] as const;
 
 /** Steps the runner sends for other steps; never shown in a step list. */
-export const hiddenSteps = [mediaLook, videoMotion] as const;
+export const hiddenSteps = [mediaCheck, mediaLook, videoMotion] as const;
 
 export {
   audioBeats,
@@ -60,6 +61,7 @@ export {
   imageToVideo,
   mediaConvert,
   mediaDownload,
+  mediaCheck,
   mediaGenerateAss,
   mediaLook,
   mediaMetadata,

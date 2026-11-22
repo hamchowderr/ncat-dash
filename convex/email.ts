@@ -11,6 +11,7 @@ import {
   type DigestItem,
   clientFeedbackEmail,
   clipFinishedEmail,
+  footageProblemEmail,
   rightsEndingEmail,
   readyForReviewEmail,
   mentionEmail,
@@ -298,53 +299,64 @@ export const sendAlert = internalAction({
                   },
                   branding,
                 )
-              : alert.kind === "rights_ending"
-                ? rightsEndingEmail(
+              : alert.kind === "footage_problem"
+                ? footageProblemEmail(
                     {
                       teamName,
-                      creator: alert.automationName,
-                      client: alert.stepName,
-                      summary: alert.message,
-                      creatorsUrl: link,
+                      automationName: alert.automationName,
+                      message: alert.message,
+                      runUrl: link,
                       settingsUrl,
                     },
                     branding,
                   )
-                : alert.kind === "clip_finished"
-                  ? clipFinishedEmail(
+                : alert.kind === "rights_ending"
+                  ? rightsEndingEmail(
                       {
                         teamName,
-                        automationName: alert.automationName,
+                        creator: alert.automationName,
+                        client: alert.stepName,
                         summary: alert.message,
-                        runUrl: link,
+                        creatorsUrl: link,
                         settingsUrl,
                       },
                       branding,
                     )
-                  : alert.kind === "client_feedback"
-                    ? clientFeedbackEmail(
-                        {
-                          teamName,
-                          from: alert.from ?? "A client",
-                          reviewTitle: alert.automationName,
-                          feedback: alert.message,
-                          reviewUrl: link,
-                          settingsUrl,
-                        },
-                        branding,
-                      )
-                    : runFailedEmail(
+                  : alert.kind === "clip_finished"
+                    ? clipFinishedEmail(
                         {
                           teamName,
                           automationName: alert.automationName,
-                          stepName: alert.stepName,
-                          message: explainFailure(alert.message).reason,
-                          retries: alert.retries,
+                          summary: alert.message,
                           runUrl: link,
                           settingsUrl,
                         },
                         branding,
-                      );
+                      )
+                    : alert.kind === "client_feedback"
+                      ? clientFeedbackEmail(
+                          {
+                            teamName,
+                            from: alert.from ?? "A client",
+                            reviewTitle: alert.automationName,
+                            feedback: alert.message,
+                            reviewUrl: link,
+                            settingsUrl,
+                          },
+                          branding,
+                        )
+                      : runFailedEmail(
+                          {
+                            teamName,
+                            automationName: alert.automationName,
+                            stepName: alert.stepName,
+                            message: explainFailure(alert.message).reason,
+                            retries: alert.retries,
+                            runUrl: link,
+                            settingsUrl,
+                          },
+                          branding,
+                        );
     for (const to of found.recipients) {
       const result = await deliver(ctx, sending, { to, ...composed });
       // A bad key, an unpaid account or an unverified domain fails for everyone alike.
@@ -485,6 +497,11 @@ function digestLine(alert: Doc<"alerts">): Omit<DigestItem, "url"> {
       };
     case "clip_finished":
       return { title: `${alert.automationName} finished`, detail: alert.message };
+    case "footage_problem":
+      return {
+        title: `${alert.automationName}: footage needs another look`,
+        detail: alert.message.split("\n")[0],
+      };
     case "rights_ending":
       return {
         title: alert.stepName

@@ -24,6 +24,7 @@ const kind = v.union(
   v.literal("client_feedback"),
   v.literal("ready_for_review"),
   v.literal("clip_finished"),
+  v.literal("footage_problem"),
   v.literal("rights_ending"),
 );
 
