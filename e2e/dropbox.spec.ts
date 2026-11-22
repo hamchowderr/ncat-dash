@@ -37,11 +37,11 @@ test("connects Dropbox, ticks folders to bring in, and sends clips back", async 
     method: "POST",
     body: JSON.stringify({ account_id: `dbid:${stamp}` }),
   });
-  await page.goto("/settings/dropbox");
+  await page.goto("/settings/integrations/dropbox");
   await expect(page.getByRole("heading", { level: 1, name: "Dropbox" })).toBeVisible();
   await expect(page.getByRole("img", { name: "Dropbox logo" })).toBeVisible();
   await page.getByRole("button", { name: "Connect Dropbox" }).click();
-  await expect(page).toHaveURL(/\/settings\/dropbox$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/settings\/integrations\/dropbox$/, { timeout: 30_000 });
   await expect(page.getByText(/Your Dropbox is connected/)).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Your Dropbox" }).getByText(DROPBOX_ACCOUNT.name.display_name),
@@ -49,6 +49,9 @@ test("connects Dropbox, ticks folders to bring in, and sends clips back", async 
 
   // The whole Dropbox is read and the folders with media are listed, team folders too.
   // Tick three and bring them in with one press: what is there comes over, the PDF does not.
+  // The folders are a tab of their own, beside the connection.
+  await page.getByRole("tab", { name: "Folders" }).click();
+  await expect(page).toHaveURL(/\/settings\/integrations\/dropbox\?tab=folders$/);
   const folders = page.getByRole("region", { name: "Folders with media" });
   await expect(folders.getByText("Team folders are included.", { exact: false })).toBeVisible();
   await folders.getByRole("checkbox", { name: "Bring in /Raw footage", exact: true }).click();

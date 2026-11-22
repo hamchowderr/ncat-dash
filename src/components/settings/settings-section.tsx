@@ -3,7 +3,8 @@
 import { AccountCard } from "./account-card";
 import { BrollCard } from "./broll-card";
 import { McpSettings } from "./mcp-settings";
-import type { SettingsSlug } from "./settings-pages";
+import { IntegrationsList } from "./integrations-list";
+import type { IntegrationSlug, SettingsSlug } from "./settings-pages";
 import {
   AgentSettings,
   BrandSettings,
@@ -35,6 +36,11 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   agent: AgentSettings,
   runs: RunsSettings,
   notifications: NotificationsSettings,
+  team: TeamSettings,
+  integrations: IntegrationsList,
+};
+
+const APPS: Record<IntegrationSlug, () => React.ReactNode> = {
   email: EmailSettings,
   slack: SlackSettings,
   discord: DiscordSettings,
@@ -46,11 +52,16 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   dropbox: DropboxCard,
   "video-links": VideoLinksCard,
   mcp: McpSettings,
-  team: TeamSettings,
 };
 
 /** One page of settings. */
 export function SettingsSection({ slug }: { slug: SettingsSlug }) {
   const Section = SECTIONS[slug];
   return <Section />;
+}
+
+/** One app's page under Integrations. */
+export function IntegrationSection({ slug }: { slug: IntegrationSlug }) {
+  const App = APPS[slug];
+  return <App />;
 }

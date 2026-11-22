@@ -3,18 +3,29 @@
 import { AccountSettings } from "@/components/auth/settings/account/account-settings";
 import { SecuritySettings } from "@/components/auth/settings/security/security-settings";
 
-import { SettingsSection } from "./settings-shell";
+import { TabsContent } from "@/components/ui/tabs";
+
+import { SettingsSection, SettingsTabs } from "./settings-shell";
 
 /**
  * Your account: Better Auth UI's own cards (src/components/auth/settings). Each part is its
- * own component so the page can be split into tabs.
+ * own component, one per tab.
  */
 export function AccountCard() {
   return (
-    <div className="flex flex-col gap-10">
-      <AccountProfile />
-      <AccountSecurity />
-    </div>
+    <SettingsTabs
+      label="Account"
+      tabs={[
+        { id: "profile", label: "Profile" },
+        { id: "security", label: "Password And Devices" },
+      ]}>
+      <TabsContent value="profile">
+        <AccountProfile />
+      </TabsContent>
+      <TabsContent value="security">
+        <AccountSecurity />
+      </TabsContent>
+    </SettingsTabs>
   );
 }
 
