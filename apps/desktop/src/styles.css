@@ -244,6 +244,15 @@ button:focus-visible {
 .field small {
   color: var(--muted-foreground);
 }
+.here .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.backup-result.error {
+  color: var(--destructive);
+}
 .ways {
   border: 0;
   margin: 0 0 16px;

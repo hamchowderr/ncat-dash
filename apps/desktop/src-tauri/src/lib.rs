@@ -13,6 +13,7 @@ pub const NAME: &str = env!("PRODUCT_NAME");
 
 pub mod address;
 pub mod awake;
+pub mod backups;
 pub mod browser;
 pub mod dashboard;
 pub mod exports;
@@ -44,6 +45,8 @@ const RELOAD: &str = "reload";
 const SHOW: &str = "show";
 const KEEP_AWAKE: &str = "keep-awake";
 const OPEN_AT_LOGIN: &str = "open-at-login";
+const BACK_UP: &str = "back-up";
+const SHOW_BACKUPS: &str = "show-backups";
 /// Opening at sign-in starts the app in the tray, without the window.
 const HIDDEN: &str = "--hidden";
 const TRAY: &str = "tray";
@@ -582,6 +585,20 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             prefs.open_at_login,
             None::<&str>,
         )?)?;
+        menu.append(&MenuItem::with_id(
+            app,
+            BACK_UP,
+            "Back up now",
+            true,
+            None::<&str>,
+        )?)?;
+        menu.append(&MenuItem::with_id(
+            app,
+            SHOW_BACKUPS,
+            "Show backups",
+            true,
+            None::<&str>,
+        )?)?;
     }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     menu.append(&quit)?;
@@ -808,6 +825,9 @@ struct StackSaved {
     bucket_endpoint: String,
     bucket_name: String,
     has_admin_key: bool,
+    /// The newest backup's folder name, and where backups go.
+    last_backup: Option<String>,
+    backups_folder: String,
     /// The Cloudflare Tunnel made for it, if any, and whether the stack uses it.
     tunnel: Option<tunnel::Saved>,
     uses_tunnel: bool,
@@ -835,11 +855,87 @@ fn stack_saved(
         bucket_endpoint: get("S3_ENDPOINT_URL"),
         bucket_name: get("S3_BUCKET_NAME"),
         has_admin_key: !get("CONVEX_ADMIN_KEY").is_empty(),
+        last_backup: backups_folder(&app)
+            .ok()
+            .and_then(|root| backups::list(&root).into_iter().next()),
+        backups_folder: backups_folder(&app)
+            .map(|root| root.display().to_string())
+            .unwrap_or_default(),
         tunnel: tunnel::load(&folder),
         uses_tunnel: get("COMPOSE_PROFILES")
             .split(',')
             .any(|name| name == "tunnel"),
     })
+}
+
+/// Where backups of the stack go: a folder named after the app in the person's Documents.
+fn backups_folder(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let paths = app.path();
+    paths
+        .document_dir()
+        .or_else(|_| paths.home_dir())
+        .map(|base| base.join(format!("{NAME} Backups")))
+        .map_err(|_| "There is no folder to save backups in.".to_string())
+}
+
+/// Makes a backup now (on a blocking thread) and gives back its folder.
+async fn back_up(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let stack = this_stack(app)?;
+    if !stack
+        .values()
+        .get("CONVEX_ADMIN_KEY")
+        .is_some_and(|key| !key.is_empty())
+    {
+        return Err(format!("Start {NAME} on this computer first."));
+    }
+    let root = backups_folder(app)?;
+    tauri::async_runtime::spawn_blocking(move || backups::make(&stack, &root))
+        .await
+        .map_err(|_| "The backup stopped part way. Try again.".to_string())?
+}
+
+/// Backs up the stack on this computer now.
+#[tauri::command]
+async fn back_up_stack(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+) -> Result<String, String> {
+    from_home(&window, &places)?;
+    back_up(&app)
+        .await
+        .map(|folder| folder.display().to_string())
+}
+
+/// Says how a backup went in a system notification (from the tray or the daily one).
+fn tell(app: &AppHandle, result: &Result<std::path::PathBuf, String>) {
+    let (title, body) = match result {
+        Ok(folder) => ("Backed up".to_string(), folder.display().to_string()),
+        Err(why) => (format!("{NAME} couldn't back up"), why.clone()),
+    };
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
+/// While the app is open, backs up a stack that runs here once a day.
+fn back_up_daily(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(15 * 60)).await;
+            let started = stack_folder(&app)
+                .ok()
+                .and_then(|folder| awake::load(&folder))
+                .is_some();
+            let due = backups_folder(&app)
+                .is_ok_and(|root| backups::due(&root, std::time::SystemTime::now()));
+            if started && due {
+                let result = back_up(&app).await;
+                // Only a failure is worth interrupting someone for.
+                if result.is_err() {
+                    tell(&app, &result);
+                }
+            }
+        }
+    });
 }
 
 /// The domains a Cloudflare token can give addresses on.
@@ -1002,6 +1098,7 @@ pub fn run() {
             stack_saved,
             cloudflare_domains,
             make_tunnel,
+            back_up_stack,
             save_stack,
             run_stack_step
         ])
@@ -1012,6 +1109,21 @@ pub fn run() {
                 SWITCH => go_home(app),
                 SHOW => show_window(app),
                 KEEP_AWAKE | OPEN_AT_LOGIN => toggle(app, event.id().as_ref()),
+                BACK_UP => {
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let result = back_up(&app).await;
+                        tell(&app, &result);
+                    });
+                }
+                SHOW_BACKUPS => {
+                    if let Ok(root) = backups_folder(app) {
+                        let _ = std::fs::create_dir_all(&root);
+                        let _ = app
+                            .opener()
+                            .open_path(root.display().to_string(), None::<&str>);
+                    }
+                }
                 RELOAD => {
                     if let Some(window) = app.get_webview_window(MAIN) {
                         let _ = window.eval("location.reload()");
@@ -1041,6 +1153,7 @@ pub fn run() {
                 let _ = window.hide();
             }
             tray(&handle)?;
+            back_up_daily(handle.clone());
             let mut home = window.url()?;
             home.set_fragment(None);
             app.manage(Places {

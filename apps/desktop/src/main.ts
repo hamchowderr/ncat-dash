@@ -16,6 +16,7 @@ const runApi: RunApi = {
   domains: (token) => invoke("cloudflare_domains", { token }),
   tunnel: (token, domain, name) => invoke("make_tunnel", { token, domain, name }),
   step: (step) => invoke("run_stack_step", { step }),
+  backUp: () => invoke("back_up_stack"),
   open: api.open,
 };
 

@@ -26,6 +26,7 @@ describe("what the dashboard's pages may do inside the app", () => {
       "allow-stack-saved",
       "allow-cloudflare-domains",
       "allow-make-tunnel",
+      "allow-back-up-stack",
       "allow-save-stack",
       "allow-run-stack-step",
     ]);
@@ -41,6 +42,7 @@ describe("what the dashboard's pages may do inside the app", () => {
       "stack-saved",
       "cloudflare-domains",
       "make-tunnel",
+      "back-up-stack",
       "save-stack",
       "run-stack-step",
     ]) {
