@@ -1,27 +1,29 @@
 import { allSteps, getStep } from "@ncat-dash/step-catalog";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 
 import { StepForm } from "@/components/steps/step-form";
-import { CATEGORY_LABELS } from "@/lib/catalog";
+import { CATEGORY_LABELS, stepHref, stepIdOfPage } from "@/lib/catalog";
 
 export const instant = false;
 
 // The catalog is fixed at build time, so every step page is known ahead of time.
 export function generateStaticParams() {
-  return allSteps.map((step) => ({ stepId: step.id }));
+  return allSteps.map((step) => ({ stepId: stepHref(step.id).slice("/steps/".length) }));
 }
 
 export async function generateMetadata(props: PageProps<"/steps/[stepId]">): Promise<Metadata> {
   const { stepId } = await props.params;
-  return { title: getStep(stepId)?.title ?? "Step" };
+  return { title: getStep(stepIdOfPage(stepId) ?? stepId)?.title ?? "Step" };
 }
 
 export default async function StepPage(props: PageProps<"/steps/[stepId]">) {
-  const { stepId } = await props.params;
-  const step = getStep(stepId);
+  const { stepId: name } = await props.params;
+  const step = getStep(stepIdOfPage(name) ?? name);
   if (!step) notFound();
+  // An old address, such as the one named after the tool underneath, moves to the plain one.
+  if (stepHref(step.id) !== `/steps/${name}`) permanentRedirect(stepHref(step.id));
 
   return (
     <>
