@@ -2,6 +2,15 @@
   "fixtures": [
     {
       "match": {
+        "userMessage": "Storyboard: Drafted from scenes-lesson.mp4"
+      },
+      "response": {
+        "content": "{\"chapters\": [{\"title\": \"Why this course\"}, {\"title\": \"Uploading your video\"}], \"scenes\": [{\"n\": 2, \"scene\": \"panel\"}, {\"n\": 3, \"scene\": \"circle\"}]}"
+      },
+      "_comment": "NCAT SUGGEST SCENES (src/mastra/ncat/scenes.ts). The dashboard asks for scenes and chapter names for a storyboard."
+    },
+    {
+      "match": {
         "userMessage": "Sample: Cafe sample reel"
       },
       "response": {

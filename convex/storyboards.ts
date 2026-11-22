@@ -11,7 +11,9 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
+  action,
   internalMutation,
+  internalQuery,
   mutation,
   type MutationCtx,
   query,
@@ -19,6 +21,7 @@ import {
 } from "./_generated/server";
 import { isMember, MANAGER_ROLES, requireMember, type TeamRole } from "./lib/authz";
 import { deleteBoard } from "./lib/storyboards";
+import { signAgentToken } from "./reviewAgent";
 import {
   aboutLength,
   ASPECTS,
@@ -26,6 +29,8 @@ import {
   LIMITS,
   type Part,
   PARTS,
+  partsForScene,
+  readSceneAnswer,
   readScript,
   type Scene,
   secondsFor,
@@ -850,5 +855,123 @@ export const gatherUploadDraft = mutation({
     await touch(ctx, board._id);
     await ctx.db.patch(project._id, { updatedAt: Date.now() });
     return { chapters: fromChapters.length, takes: fromTakes.length };
+  },
+});
+
+// Suggest scenes ----------------------------------------------------------------------------
+
+const SCENES_TIMEOUT_MS = 120_000;
+
+/** What the model is asked about a storyboard: its chapters and numbered lines. */
+export const sceneQuestion = internalQuery({
+  args: { storyboardId: v.id("storyboards") },
+  handler: async (ctx, args) => {
+    const board = await ctx.db.get(args.storyboardId);
+    if (!board) return null;
+    const { userId } = await requireMember(ctx, board.organizationId);
+    const chapters = await chaptersOf(ctx, board._id);
+    const takes = await takesOf(ctx, board._id);
+    let number = 0;
+    return {
+      organizationId: board.organizationId,
+      userId,
+      name: board.source ?? "A talking video",
+      aspect: board.aspect,
+      chapters: chapters.map((chapter) => ({
+        _id: chapter._id,
+        title: chapter.title,
+        lines: takes
+          .filter((take) => take.chapterId === chapter._id)
+          .map((take) => ({ n: ++number, takeId: take._id, line: take.line.slice(0, 600) })),
+      })),
+    };
+  },
+});
+
+/** Puts the suggested scenes and chapter names into the storyboard. */
+export const applyScenes = internalMutation({
+  args: {
+    storyboardId: v.id("storyboards"),
+    scenes: v.array(v.object({ takeId: v.id("storyboardTakes"), scene: sceneValidator })),
+    titles: v.array(v.object({ chapterId: v.id("storyboardChapters"), title: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const { board } = await loadBoard(ctx, args.storyboardId);
+    let scenes = 0;
+    for (const { takeId, scene } of args.scenes) {
+      const take = await ctx.db.get(takeId);
+      if (!take || take.storyboardId !== board._id || take.scene === scene) continue;
+      await ctx.db.patch(take._id, { scene, parts: partsForScene(scene, take.parts) });
+      scenes += 1;
+    }
+    let titles = 0;
+    for (const { chapterId, title } of args.titles) {
+      const chapter = await ctx.db.get(chapterId);
+      if (!chapter || chapter.storyboardId !== board._id || chapter.title === title) continue;
+      await ctx.db.patch(chapter._id, { title });
+      titles += 1;
+    }
+    await touch(ctx, board._id);
+    return { scenes, titles };
+  },
+});
+
+/**
+ * Asks the model, once, how each line is best shown and what each chapter is called, and
+ * puts its answer into the storyboard. Only when someone presses "Suggest scenes".
+ */
+export const suggestScenes = action({
+  args: { storyboardId: v.id("storyboards") },
+  returns: v.object({ scenes: v.number(), titles: v.number() }),
+  handler: async (ctx, args): Promise<{ scenes: number; titles: number }> => {
+    const question = await ctx.runQuery(internal.storyboards.sceneQuestion, args);
+    if (!question) return fail("not_found", "That storyboard is gone.");
+    const lines = question.chapters.flatMap((chapter) => chapter.lines);
+    if (lines.length === 0) return fail("empty", "Add a line first, so there is a scene to pick.");
+    const url = process.env.AGENT_URL;
+    const secret = process.env.MASTRA_JWT_SECRET;
+    if (!url || !secret) {
+      return fail(
+        "not_set_up",
+        "The agent is not set up on this dashboard yet, and it is what suggests scenes. Whoever runs the dashboard sets AGENT_URL and MASTRA_JWT_SECRET for Convex.",
+      );
+    }
+    let answer: string | null = null;
+    try {
+      const response = await fetch(new URL("/ncat/scenes", url), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${await signAgentToken(secret, question.userId)}`,
+        },
+        body: JSON.stringify({
+          organizationId: question.organizationId,
+          name: question.name,
+          aspect: question.aspect,
+          chapters: question.chapters.map((chapter) => ({
+            title: chapter.title,
+            lines: chapter.lines.map(({ n, line }) => ({ n, line })),
+          })),
+        }),
+        signal: AbortSignal.timeout(SCENES_TIMEOUT_MS),
+      });
+      const result = (await response.json().catch(() => null)) as { answer?: unknown } | null;
+      if (response.ok && typeof result?.answer === "string") answer = result.answer;
+    } catch {
+      return fail("unreachable", "The agent could not be reached. Try again in a moment.");
+    }
+    if (!answer) return fail("no_answer", "The agent did not answer. Try again in a moment.");
+    const read = readSceneAnswer(answer, question.chapters.length, lines.length);
+    return await ctx.runMutation(internal.storyboards.applyScenes, {
+      storyboardId: args.storyboardId,
+      scenes: lines.flatMap(({ n, takeId }) => {
+        const scene = read.scenes.get(n);
+        return scene ? [{ takeId, scene }] : [];
+      }),
+      titles: question.chapters.flatMap((chapter, index) => {
+        const title = read.titles.get(index);
+        return title ? [{ chapterId: chapter._id, title }] : [];
+      }),
+    });
   },
 });

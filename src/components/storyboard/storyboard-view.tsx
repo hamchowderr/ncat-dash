@@ -13,8 +13,8 @@ import {
   secondsFor,
   takeCount,
 } from "@convex/lib/storyboard";
-import { useMutation, useQuery } from "convex/react";
-import { ArrowDown, ArrowUp, FileVideo, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { ArrowDown, ArrowUp, FileVideo, Plus, RotateCcw, Sparkles, Trash2, X } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
@@ -571,6 +571,42 @@ function SidePanel({ board, chapter }: { board: Board; chapter: Chapter }) {
   );
 }
 
+/**
+ * Asks the agent, once, how each line is best shown and what each chapter is called. Off
+ * until pressed, so nothing is spent on AI unless someone asks.
+ */
+function SuggestScenes({ board }: { board: Board }) {
+  const suggest = useAction(api.storyboards.suggestScenes);
+  const [pending, setPending] = useState(false);
+  async function go() {
+    setPending(true);
+    try {
+      const changed = await suggest({ storyboardId: board._id });
+      toast.success(
+        changed.scenes + changed.titles === 0
+          ? "The agent would keep every scene as it is."
+          : `New scenes for ${count(changed.scenes, "line")}, ${count(changed.titles, "chapter")} renamed.`,
+      );
+    } catch (caught) {
+      toast.error(errorMessage(caught, "Scenes could not be suggested."));
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      disabled={pending || board.takeCount === 0}
+      onClick={() => void go()}
+      title="The agent reads the lines once and picks a scene for each, and names the chapters."
+    >
+      <Sparkles />
+      {pending ? "Suggesting…" : "Suggest scenes"}
+    </Button>
+  );
+}
+
 function StoryboardBoard({ board, actions }: { board: Board; actions?: ReactNode }) {
   const setDetails = useMutation(api.storyboards.setDetails);
   const [view, setView] = useState<"board" | "script">("board");
@@ -610,6 +646,7 @@ function StoryboardBoard({ board, actions }: { board: Board; actions?: ReactNode
           />
         </p>
         <div className="flex flex-wrap items-center gap-2">
+          <SuggestScenes board={board} />
           {actions}
           <Segmented
             aria-label="Show"

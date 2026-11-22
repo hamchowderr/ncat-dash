@@ -2,7 +2,14 @@ import { describe, expect, test } from "vitest";
 
 import { LESSON_STORYBOARD } from "../e2e/fixtures/lesson-storyboard";
 import { api } from "./_generated/api";
-import { aboutLength, readScript, statusOf, writeScript } from "./lib/storyboard";
+import {
+  aboutLength,
+  partsForScene,
+  readSceneAnswer,
+  readScript,
+  statusOf,
+  writeScript,
+} from "./lib/storyboard";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 async function lesson(script: string | undefined = LESSON_STORYBOARD) {
@@ -348,5 +355,28 @@ describe("a storyboard", () => {
       takes: await ctx.db.query("storyboardTakes").collect(),
     }));
     expect(left).toEqual({ boards: [], chapters: [], takes: [] });
+  });
+});
+
+describe("reading the answer to Suggest scenes", () => {
+  test("keeps known scenes for lines there are, and names chapters by place", () => {
+    const read = readSceneAnswer(
+      'Sure: {"chapters":[{"title":"1. Why"},{"title":""},{"title":"Extra"}],' +
+        '"scenes":[{"n":1,"scene":"Full Graphic"},{"n":"2","scene":"center"},{"n":7,"scene":"panel"},{"n":3,"scene":"zoom"}]}',
+      2,
+      3,
+    );
+    expect([...read.scenes]).toEqual([
+      [1, "graphic"],
+      [2, "centre"],
+    ]);
+    expect([...read.titles]).toEqual([[0, "Why"]]);
+    expect(readSceneAnswer("no json here", 2, 3).scenes.size).toBe(0);
+  });
+
+  test("a scene other than Full Screen asks for a graphic", () => {
+    expect(partsForScene("panel", ["you"])).toEqual(["you", "graphic"]);
+    expect(partsForScene("full", ["you"])).toEqual(["you"]);
+    expect(partsForScene("circle", ["you", "screen"])).toEqual(["you", "screen"]);
   });
 });
