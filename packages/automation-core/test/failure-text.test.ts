@@ -91,6 +91,61 @@ describe("explainFailure", () => {
     );
   });
 
+  test("an older toolkit without the step says to update it, never its HTML page", () => {
+    const flask404 = [
+      "<!doctype html>",
+      '<html lang="en">',
+      "<title>404 Not Found</title>",
+      "<h1>Not Found</h1>",
+      "<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>",
+    ].join("\n");
+    const explained = explainFailure(`The toolkit refused the job (HTTP 404). ${flask404}`);
+    expect(explained.reason).toBe(
+      "Your toolkit does not have this step yet. Update it to the latest version.",
+    );
+    expect(explained.details).toContain("The requested URL was not found on the server.");
+    expect(explained.details).not.toMatch(/<[a-z!/]/i);
+
+    // The alert keeps only the first line, so an older stored message arrives cut short.
+    expect(explainFailure("The toolkit refused the job (HTTP 404). <!doctype html>").reason).toBe(
+      "Your toolkit does not have this step yet. Update it to the latest version.",
+    );
+    expect(explainFailure("The toolkit refused the job (HTTP 405). ").reason).toBe(
+      "Your toolkit does not have this step yet. Update it to the latest version.",
+    );
+  });
+
+  test("a 404 that says what was missing keeps the toolkit's words", () => {
+    expect(
+      explainFailure('The toolkit refused the job (HTTP 404). {"message": "Job not found"}').reason,
+    ).toBe("The toolkit refused the job: Job not found");
+  });
+
+  test("any other web page in place of an answer is said plainly", () => {
+    const explained = explainFailure(
+      "The toolkit refused the job (HTTP 400). <html><head><style>body{color:red}</style></head><body><h1>Bad Request</h1><p>The browser sent a request this server could not understand.</p></body></html>",
+    );
+    expect(explained.reason).toBe(
+      "The toolkit answered with an error page instead of a result. Check that it is running and up to date, and that its address in Settings is right.",
+    );
+    expect(explained.reason).not.toContain("<");
+    expect(explained.details).toContain("Bad Request");
+    expect(explained.details).not.toContain("color:red");
+    expect(explained.details).not.toContain("<");
+
+    // A proxy's own error page still reads as the toolkit having trouble.
+    expect(
+      explainFailure(
+        "The toolkit was not ready for the job (HTTP 502). <html><head><title>502 Bad Gateway</title></head></html>",
+      ).reason,
+    ).toBe("The toolkit ran into a problem of its own. Try again in a moment.");
+  });
+
+  test("user-facing words never name FFmpeg when a log has no error line", () => {
+    const log = "ffmpeg version 6.1 Copyright (c) 2000-2023 the FFmpeg developers\n";
+    expect(explainFailure(log).reason).not.toMatch(/ffmpeg/i);
+  });
+
   test("crashes and raw data never reach people as they are", () => {
     for (const raw of [
       "TypeError: Cannot read properties of undefined (reading 'url')",
