@@ -46,7 +46,7 @@ jobs:
       - name: Install the system libraries and the WebKit driver
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES webkit2gtk-driver xvfb
+          sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES webkit2gtk-driver xvfb dbus
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -66,7 +66,68 @@ jobs:
       - name: Install tauri-driver
         run: command -v tauri-driver || cargo install tauri-driver --locked --version 2.1.0
       - run: pnpm tauri build --debug --no-bundle
-      - run: xvfb-run -a pnpm test:e2e
+      - run: dbus-run-session -- xvfb-run -a pnpm test:e2e
+
+  # The same browser tests on Windows, through Edge's WebView2 driver. (Apple has no
+  # driver for app web views, so the Mac builds are checked by hand.)
+  test-windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/desktop
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          cache-bin: true
+          key: windows-e2e
+      - run: pnpm install --frozen-lockfile
+      - name: Install tauri-driver and the matching Edge driver
+        run: |
+          command -v tauri-driver || cargo install tauri-driver --locked --version 2.1.0
+          command -v msedgedriver-tool || cargo install --git https://github.com/chippers/msedgedriver-tool --locked
+          msedgedriver-tool
+          ./msedgedriver.exe --version
+          # A small wrapper so the Edge driver writes a full log, shown if the tests fail.
+          printf '@"%%~dp0msedgedriver.exe" %%* --verbose --log-path="%%~dp0msedgedriver.log"\r\n' > edgedriver.cmd
+          echo "NATIVE_DRIVER=$(pwd -W)/edgedriver.cmd" >> "$GITHUB_ENV"
+      - run: pnpm tauri build --debug --no-bundle
+      # Starts the app on its own first, so a crash at start shows here and not as a
+      # driver that never answers.
+      # Starts the app on its own first with its web view open for debugging, the way the
+      # Edge driver starts it, so a problem shows here and not as a driver that never answers.
+      - name: Check the app starts
+        env:
+          RUST_BACKTRACE: "1"
+          WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: --remote-debugging-port=9222
+        run: |
+          app=src-tauri/target/debug/ncat-dash-desktop.exe
+          "$app" > app.log 2>&1 &
+          sleep 20
+          tasklist | grep -iE "ncat-dash|msedgewebview2" || true
+          answered=0
+          curl -s --max-time 5 http://127.0.0.1:9222/json/list && answered=1
+          cat app.log
+          taskkill //F //T //IM ncat-dash-desktop.exe > /dev/null 2>&1 || true
+          taskkill //F //IM msedgewebview2.exe > /dev/null 2>&1 || true
+          sleep 3
+          if [ "$answered" = 0 ]; then
+            echo "The web view did not open for debugging, so the Edge driver could not attach."
+            exit 1
+          fi
+      - run: pnpm test:e2e
+      - name: Show the Edge driver log
+        if: failure()
+        run: tail -n 200 msedgedriver.log || true
 
   build:
     strategy:
@@ -115,7 +176,7 @@ jobs:
       - run: pnpm tauri build --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: Kontifi ${{ matrix.name }}
+          name: Desktop app ${{ matrix.name }}
           path: |
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
             apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
