@@ -542,6 +542,61 @@ describe("searching", () => {
   });
 });
 
+describe("catching up files brought in before every upload was transcribed", () => {
+  test("each older video and sound brought in is transcribed once, by itself", async () => {
+    vi.useFakeTimers();
+    const { t, team, maya, sam } = await studio();
+    const old = (title: string, kind: "video" | "audio" | "image", extra = {}) =>
+      t.run((ctx) =>
+        ctx.db.insert("libraryItems", {
+          organizationId: team,
+          kind,
+          source: "upload",
+          title,
+          key: `uploads/old/${title}`,
+          shortId: title,
+          tags: [],
+          searchText: title,
+          createdBy: maya.id,
+          ...extra,
+        }),
+      );
+    const episode = await old("episode.mp4", "video");
+    const theme = await old("theme.mp3", "audio");
+    await old("still.png", "image");
+    await old("clip.mp4", "video", { source: "automation" });
+    await old("done.mp4", "video", { transcript: { status: "ready", at: 1 } });
+    await old("failed.mp4", "video", {
+      transcript: { status: "failed", error: "No sound.", at: 1 },
+    });
+
+    // Anyone on the team may set it off; it is what opening the dashboard does.
+    expect(await sam.as.mutation(api.library.catchUpTranscripts, { organizationId: team })).toBe(2);
+    // Already on their way: a second visit sends nothing more.
+    expect(await maya.as.mutation(api.library.catchUpTranscripts, { organizationId: team })).toBe(
+      0,
+    );
+    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(5_000));
+
+    const jobs = (await t.run((ctx) => ctx.db.query("jobs").collect())).filter(
+      (job) => job.stepId === "media-transcribe",
+    );
+    expect(jobs.map((job) => job.libraryItemId).sort()).toEqual([episode, theme].sort());
+    for (const itemId of [episode, theme]) {
+      const item = await t.run((ctx) => ctx.db.get(itemId));
+      expect(item?.transcript).toMatchObject({ status: "working" });
+      expect(item?.transcript?.jobId).toBeTruthy();
+    }
+  });
+
+  test("another team cannot set it off", async () => {
+    const { team, olu } = await studio();
+    await expect(
+      olu.as.mutation(api.library.catchUpTranscripts, { organizationId: team }),
+    ).rejects.toThrow();
+  });
+});
+
 describe("running an automation on a library file", () => {
   test("starts the automation on that file, and what it makes is made from it", async () => {
     const { t, maya, team, upload, itemOf, finishedRun } = await studio();

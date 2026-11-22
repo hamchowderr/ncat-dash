@@ -703,12 +703,68 @@ export const transcribe = internalAction({
         url = null;
       }
     }
-    if (!url) return;
+    if (!url) {
+      await ctx.runMutation(internal.library.transcriptNotStarted, {
+        itemId: item._id,
+        error: "The file could not be reached in your storage.",
+      });
+      return;
+    }
     await ctx.runMutation(internal.library.startTranscript, {
       itemId: item._id,
       mediaUrl: url,
       asMember: false,
     });
+  },
+});
+
+/** A transcript that could not be started says why, so the file can be tried again. */
+export const transcriptNotStarted = internalMutation({
+  args: { itemId: v.id("libraryItems"), error: v.string() },
+  handler: async (ctx, args) => {
+    const item = await ctx.db.get(args.itemId);
+    if (!item || item.transcript?.jobId) return;
+    await ctx.db.patch(item._id, {
+      transcript: { status: "failed", error: args.error, at: Date.now() },
+    });
+  },
+});
+
+// Files brought in before every upload was transcribed (2026-11-21) have no transcript.
+// The first time anyone on the team opens the dashboard they are sent, a few at a time.
+const CATCH_UP_AT_ONCE = 100;
+const CATCH_UP_SPACING_MS = 2_000;
+
+/**
+ * Sends each video and sound the team brought in that has no transcript yet to be
+ * transcribed, once. Safe to call on every visit: files already on their way, done or
+ * failed are left alone. Returns how many were sent.
+ */
+export const catchUpTranscripts = mutation({
+  args: { organizationId: v.string() },
+  returns: v.number(),
+  handler: async (ctx, args): Promise<number> => {
+    await requireMember(ctx, args.organizationId);
+    const items = await ctx.db
+      .query("libraryItems")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .order("desc")
+      .take(LIST_LIMIT);
+    const missing = items.filter(
+      (item) =>
+        item.source === "upload" &&
+        (item.kind === "video" || item.kind === "audio") &&
+        !item.transcript &&
+        !captionFileFormat(item.key ?? item.url ?? ""),
+    );
+    const sent = missing.slice(0, CATCH_UP_AT_ONCE);
+    for (const [index, item] of sent.entries()) {
+      await ctx.db.patch(item._id, { transcript: { status: "working", at: Date.now() } });
+      await ctx.scheduler.runAfter(index * CATCH_UP_SPACING_MS, internal.library.transcribe, {
+        itemId: item._id,
+      });
+    }
+    return sent.length;
   },
 });
 
@@ -727,7 +783,8 @@ export const startTranscript = internalMutation({
     const createdBy = args.asMember
       ? (await requireMember(ctx, item.organizationId)).userId
       : (item.createdBy ?? "library");
-    if (item.transcript?.status === "working") return false;
+    // A job already on its way; a catch-up marks files "working" before their job exists.
+    if (item.transcript?.status === "working" && item.transcript.jobId) return false;
     if (captionFileFormat(item.key ?? item.url ?? "")) {
       await ctx.db.patch(item._id, { transcript: { status: "working", at: Date.now() } });
       await ctx.scheduler.runAfter(0, internal.library.readCaptions, { itemId: item._id });

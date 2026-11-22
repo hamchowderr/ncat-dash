@@ -40,7 +40,7 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   await expect(tile.getByText(/Uploaded/)).toBeVisible();
 
   // Transcribed on the toolkit as it came in: nothing to press.
-  await expect(page.getByRole("button", { name: /Make 1 file searchable/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Transcribe 1 file/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Open V1 clip" }).click();
   const said = page.getByTestId("transcript");
   await expect(said.getByText("Today we talk about pricing your edits.")).toBeVisible({
