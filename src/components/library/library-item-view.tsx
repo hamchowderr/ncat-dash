@@ -496,7 +496,9 @@ export function LibraryItemView({
                     })}
                   </ol>
                 )
-              ) : item.searchable === "working" ? (
+              ) : item.searchable === "working" ||
+                (item.searchable === "no" && item.source === "upload" && !captions) ? (
+                // Everything brought in is transcribed by itself; an older file is caught up.
                 <p className="text-muted-foreground text-sm">
                   {captions
                     ? "Reading the caption file."
@@ -509,7 +511,7 @@ export function LibraryItemView({
                       ? `The last try did not work${item.transcriptError ? `: ${item.transcriptError}` : "."}`
                       : captions
                         ? "The caption file has not been read yet."
-                        : "Make this file searchable to find any moment by what was said in it."}
+                        : "Transcribe this file to find any moment by what was said in it, and to get its SRT and VTT."}
                   </p>
                   <Button size="sm" variant="secondary" onClick={() => void sendToSearch()}>
                     <Bot />
@@ -517,7 +519,7 @@ export function LibraryItemView({
                       ? "Try again"
                       : captions
                         ? "Read it"
-                        : "Make searchable"}
+                        : "Transcribe"}
                   </Button>
                   {!captions && (
                     <p className="text-muted-foreground text-xs">
