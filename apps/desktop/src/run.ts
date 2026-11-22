@@ -178,6 +178,11 @@ export async function startRun(
       <section class="start" hidden aria-labelledby="start-title">
         <h2 id="start-title">Starting ${NAME}</h2>
         <ol class="steps"></ol>
+        <p class="hint awake">
+          From now on ${NAME} keeps this computer awake and opens when you sign in, so automations
+          keep running. Turn either off from its icon in the menu bar or taskbar. A laptop with its
+          lid closed still sleeps.
+        </p>
         <p class="error start-error" role="alert" hidden></p>
         <button type="button" class="primary try-again" hidden>Try again</button>
       </section>
