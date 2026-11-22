@@ -96,6 +96,53 @@ describe("what the agent is told is on screen", () => {
   });
 });
 
+describe("which client the thing on screen is for", () => {
+  test("an automation for a client, the client page, and nothing for the team's own", async () => {
+    const { team, maya } = await setUp();
+    const automationId = await maya.as.mutation(api.automations.create, {
+      organizationId: team,
+      name: "Clips for Northwind",
+    });
+    const own = await maya.as.mutation(api.automations.create, {
+      organizationId: team,
+      name: "Our own clips",
+    });
+    const client = await maya.as.mutation(api.clients.create, {
+      organizationId: team,
+      name: "Northwind",
+    });
+    await maya.as.mutation(api.clients.setForAutomation, { automationId, clientId: client });
+
+    const ask = (kind: "automation" | "client", id: string) =>
+      maya.as.query(api.agentScreen.clientOf, { organizationId: team, kind, id });
+    expect(await ask("automation", automationId)).toEqual({ id: client, name: "Northwind" });
+    expect(await ask("client", client)).toEqual({ id: client, name: "Northwind" });
+    expect(await ask("automation", own)).toBeNull();
+  });
+
+  test("never names another team's client", async () => {
+    const { team, other, stranger, maya } = await setUp();
+    const theirs = await stranger.as.mutation(api.clients.create, {
+      organizationId: other,
+      name: "Their client",
+    });
+    expect(
+      await maya.as.query(api.agentScreen.clientOf, {
+        organizationId: team,
+        kind: "client",
+        id: theirs,
+      }),
+    ).toBeNull();
+    await expect(
+      stranger.as.query(api.agentScreen.clientOf, {
+        organizationId: team,
+        kind: "client",
+        id: theirs,
+      }),
+    ).rejects.toThrow();
+  });
+});
+
 describe("a file's details in words", () => {
   test("covers wide, square and audio-only files, and nothing when there are none", () => {
     expect(detailsText({ duration: 3725, width: 1920, height: 1080, hasAudio: false })).toBe(
