@@ -82,3 +82,9 @@ describe('the image GitHub builds is the one the server deploys', () => {
     expect(dockerfile).toContain('id=pnpm-store,target=/pnpm/store');
   });
 });
+
+describe('the agent image', () => {
+  it('never gives the agent a shell on the server', () => {
+    expect(read('packages/agent/Dockerfile')).toMatch(/WORKSPACE_SANDBOX=false/);
+  });
+});

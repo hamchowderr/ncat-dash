@@ -76,7 +76,10 @@ const envSchema = z
     // The workspace always has its filesystem and file tools; the shell sandbox and the
     // browser each have a switch. WORKSPACE_BROWSER=false turns the browser off whatever
     // BROWSER_PROVIDER says.
-    WORKSPACE_SANDBOX: boolish.default(true),
+    // Off unless asked for. The shell runs as the agent server itself, so whoever chats
+    // with the agent could read the server's settings and memory. Turn it on only for an
+    // agent that one trusted person uses, never one that several teams share.
+    WORKSPACE_SANDBOX: boolish.default(false),
     WORKSPACE_BROWSER: boolish.default(true),
     // Which browser (lib/features.ts resolveBrowser). `viewer`: the local Chrome above,
     // which the agent drives with the browser CLI through the sandbox. `firecrawl`: hosted

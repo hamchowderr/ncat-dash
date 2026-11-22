@@ -263,6 +263,7 @@ In `deploy/compose.yml` the web app takes these from `deploy/.env` (`CONVEX_URL`
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`                                 | Telegram         |                                                                                                            |
 | `TEAMS_APP_ID`, `TEAMS_APP_PASSWORD`, `TEAMS_APP_TENANT_ID`, `TEAMS_APP_NAME` | Microsoft Teams  |                                                                                                            |
 | `TURSO_DATABASE_URL`                                                          | no               | Where the agent keeps its memory. The image uses `file:/data/mastra.db`, so keep `/data` on a volume.      |
+| `WORKSPACE_SANDBOX`                                                           | no               | Lets the agent run shell commands on its own server. Off, and keep it off when more than one team uses it. |
 
 The agent server takes many more optional settings from the chat kit it is built on; they are listed with their defaults in [`packages/agent/.env.example`](../packages/agent/.env.example).
 
