@@ -13,7 +13,9 @@ if (process.env.RECORD === "1") {
     launchOptions: { slowMo: 350 },
   });
 }
-const captions = (page: Page) => page.locator("form").filter({ has: page.getByText("Word fixes") });
+const captions = (page: Page) =>
+  page.locator("form").filter({ has: page.getByRole("tablist", { name: "Captions" }) });
+const tab = (page: Page, name: string) => page.getByRole("tab", { name, exact: true }).click();
 
 test("an owner sets word fixes, a style and a style per shape, and caption steps use them", async ({
   page,
@@ -30,11 +32,13 @@ test("an owner sets word fixes, a style and a style per shape, and caption steps
 
   await page.goto("/settings/captions");
   await expect(page.getByRole("heading", { level: 1, name: "Captions" })).toBeVisible();
-  await expect(page.getByText("No word fixes yet.")).toBeVisible();
   const save = captions(page).getByRole("button", { name: "Save", exact: true });
   await expect(save).toBeDisabled();
 
-  // Two words the transcript keeps getting wrong.
+  // Two words the transcript keeps getting wrong, on their own tab.
+  await tab(page, "Word Fixes");
+  await expect(page).toHaveURL(/\?tab=words$/);
+  await expect(page.getByText("No word fixes yet.")).toBeVisible();
   await page.getByRole("button", { name: "Add a word" }).click();
   await page.getByLabel("Word 1 heard as").fill("chowder");
   await page.getByLabel("Word 1 written as").fill("Chowderr");
@@ -42,7 +46,8 @@ test("an owner sets word fixes, a style and a style per shape, and caption steps
   await page.getByLabel("Word 2 heard as").fill("otaku");
   await page.getByLabel("Word 2 written as").fill("Otaku Solutions");
 
-  // A style of the team's own, started from Karaoke.
+  // A style of the team's own, started from Karaoke. The words typed on the other tab wait.
+  await tab(page, "Styles");
   await page.getByRole("button", { name: "Karaoke, built in" }).click();
   await page.getByRole("button", { name: "Make a copy to change" }).click();
   const editor = page.getByRole("group", { name: "Change Karaoke copy" });
@@ -55,6 +60,7 @@ test("an owner sets word fixes, a style and a style per shape, and caption steps
   await ours.getByRole("switch", { name: "All capitals" }).click();
 
   // Vertical videos get it; wide keeps the built-in choice.
+  await tab(page, "Style For Each Shape");
   await page.getByRole("combobox", { name: "Vertical videos" }).click();
   await page.getByRole("option", { name: "Night Shift" }).click();
   await expect(page.getByRole("combobox", { name: "Wide videos" })).toHaveText("Clean");
@@ -62,10 +68,13 @@ test("an owner sets word fixes, a style and a style per shape, and caption steps
   await save.click();
   await expect(page.getByText("Captions saved.")).toBeVisible();
 
+  // A reload stays on the open tab, and everything was kept.
   await page.reload();
-  await expect(page.getByLabel("Word 2 written as")).toHaveValue("Otaku Solutions");
-  await expect(page.getByRole("button", { name: "Night Shift", exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Vertical videos" })).toHaveText("Night Shift");
+  await tab(page, "Word Fixes");
+  await expect(page.getByLabel("Word 2 written as")).toHaveValue("Otaku Solutions");
+  await tab(page, "Styles");
+  await expect(page.getByRole("button", { name: "Night Shift", exact: true })).toBeVisible();
   if (process.env.RECORD === "1") {
     await page.screenshot({ path: "test-results/captions-settings.png", fullPage: true });
   }

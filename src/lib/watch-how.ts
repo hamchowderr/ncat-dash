@@ -69,8 +69,8 @@ const PAGES: Array<[match: RegExp, videos: number[]]> = [
   [/^\/settings\/(captions|motion|broll)/, [7, 23]],
   [/^\/settings\/team(\/|$)/, [10]],
   [/^\/settings\/notifications/, [28]],
-  [/^\/settings\/(slack|discord|telegram|teams)(\/|$)/, [28]],
-  [/^\/settings\/(zoom|google-meet|microsoft|dropbox)(\/|$)/, [27]],
+  [/^\/settings\/(integrations\/)?(slack|discord|telegram|teams)(\/|$)/, [28]],
+  [/^\/settings\/(integrations\/)?(zoom|google-meet|microsoft|dropbox)(\/|$)/, [27]],
   [/^\/settings\/runs/, [13]],
 ];
 

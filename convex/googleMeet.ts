@@ -102,7 +102,7 @@ function ready(): boolean {
 /** Back to Settings, saying how the Google sign-in went. */
 export function settingsUrl(result: string): string {
   const base = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  return `${base}/settings/google-meet?meet=${encodeURIComponent(result)}`;
+  return `${base}/settings/integrations/google-meet?meet=${encodeURIComponent(result)}`;
 }
 
 function clientFields() {

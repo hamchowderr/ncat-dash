@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { actionOf, answerQuery, mutationOf, toastError, toastSuccess } from "@/test/convex";
-import { renderInApp, TEAM } from "@/test/render";
+import { openTab, renderInApp, TEAM } from "@/test/render";
 
 import { DropboxCard, folderLabel } from "./dropbox-card";
 
@@ -112,6 +112,15 @@ describe("the Dropbox card", () => {
     renderInApp(<DropboxCard />);
     expect(screen.getByText("Jordan Lee")).toBeInTheDocument();
     expect(screen.getByText(/Maya Ortiz \(Maya O\)/)).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("switch"));
+    expect(setAuto).toHaveBeenCalledWith({ organizationId: TEAM.id, autoImport: false });
+    // Folders, and what came in and went out, are a tab away from the connection.
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Connection",
+      "Folders",
+    ]);
+    await openTab("Folders");
     const folders = screen.getByRole("region", { name: "Folders with media" });
     expect(await within(folders).findByText("/Raw footage")).toBeInTheDocument();
     const came = screen.getByRole("region", { name: "Brought in from Dropbox" });
@@ -124,9 +133,6 @@ describe("the Dropbox card", () => {
     expect(within(sent).getByText("Sending 40%")).toBeInTheDocument();
     expect(within(sent).getByText(/Dropbox is full/)).toBeInTheDocument();
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("switch"));
-    expect(setAuto).toHaveBeenCalledWith({ organizationId: TEAM.id, autoImport: false });
     // Unticking a watched folder and pressing the one button stops watching it.
     await user.click(within(folders).getByRole("checkbox", { name: "Bring in /Raw footage" }));
     await user.click(within(folders).getByRole("button", { name: "Stop watching 1 folder" }));
@@ -140,6 +146,7 @@ describe("the Dropbox card", () => {
     let finish: (value: unknown) => void = () => {};
     actionOf(api.dropbox.scan).mockReturnValue(new Promise((done) => (finish = done)));
     renderInApp(<DropboxCard />);
+    await openTab("Folders");
     expect(screen.getByText("Reading your Dropbox")).toBeInTheDocument();
     finish({
       folders: [
@@ -170,6 +177,7 @@ describe("the Dropbox card", () => {
     pull.mockResolvedValue({ watching: 2, started: 14, more: false });
     renderInApp(<DropboxCard />);
     const user = userEvent.setup();
+    await openTab("Folders");
     await user.click(await screen.findByRole("checkbox", { name: "Bring in /Raw footage" }));
     await user.click(screen.getByRole("checkbox", { name: "Bring in /Shoots/Day 1" }));
     expect(screen.getByText("2 folders ticked")).toBeInTheDocument();
@@ -198,6 +206,7 @@ describe("the Dropbox card", () => {
       partial: true,
     });
     renderInApp(<DropboxCard />);
+    await openTab("Folders");
     expect(await screen.findByText(/only the first part was read/)).toBeInTheDocument();
     const user = userEvent.setup();
     await user.type(screen.getByRole("textbox", { name: "Search folders" }), "shoot 10");
@@ -214,6 +223,7 @@ describe("the Dropbox card", () => {
     scan.mockResolvedValue({ folders: [], partial: false });
     renderInApp(<DropboxCard />);
     const user = userEvent.setup();
+    await openTab("Folders");
     await user.click(await screen.findByRole("button", { name: "Try again" }));
     expect(toastError).toHaveBeenCalled();
     expect(

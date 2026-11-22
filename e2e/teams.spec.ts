@@ -59,11 +59,11 @@ test("links the organization; alerts with Approve and review activity go both wa
     body: JSON.stringify({ id: userId, tid: tenant }),
   });
 
-  await page.goto("/settings/teams");
+  await page.goto("/settings/integrations/teams");
   await expect(page.getByRole("heading", { level: 1, name: "Microsoft Teams" })).toBeVisible();
   await expect(page.getByRole("img", { name: "Microsoft Teams logo" })).toBeVisible();
   await page.getByRole("button", { name: "Link Microsoft organization" }).click();
-  await expect(page).toHaveURL(/\/settings\/teams$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/settings\/integrations\/teams$/, { timeout: 30_000 });
   await expect(page.getByText("Your Microsoft organization is linked")).toBeVisible();
   await expect(page.getByText("Harbour Films Ltd")).toBeVisible();
   await expect(

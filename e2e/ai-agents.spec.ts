@@ -69,7 +69,7 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
   await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
 
   // Settings > AI agents: the address to paste into Claude, and nothing connected yet.
-  await page.goto("/settings/mcp");
+  await page.goto("/settings/integrations/mcp");
   await expect(page.getByRole("tab", { name: /Claude Code/ })).toBeVisible();
   await expect(page.getByText("Nothing is connected yet.")).toBeVisible();
   await page.waitForTimeout(1500);
@@ -186,7 +186,7 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
 
   // Settings lists it as connected; disconnecting turns it away.
   await page.unrouteAll();
-  await page.goto("/settings/mcp");
+  await page.goto("/settings/integrations/mcp");
   const connected = page.getByRole("list", { name: "Connected apps" });
   await expect(connected).toContainText("Claude");
   await page.waitForTimeout(1000);

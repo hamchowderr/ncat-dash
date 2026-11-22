@@ -124,7 +124,7 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test("an owner makes the team's Slack app from a filled-in manifest and connects it", async () => {
-  await jordan.goto("/settings/slack");
+  await jordan.goto("/settings/integrations/slack");
   await expect(jordan.getByRole("heading", { level: 1, name: "Slack" })).toBeVisible();
 
   // The manifest carries the dashboard's own address for events and button presses.
@@ -194,7 +194,7 @@ test("someone in Slack who is not on the team is told so, and nothing else happe
 });
 
 test("an owner picks the channel review activity goes to, and the app joins it", async () => {
-  await jordan.goto("/settings/slack");
+  await jordan.goto("/settings/integrations/slack");
   const select = card(jordan).getByRole("combobox", { name: "Review activity" });
   await expect(select).toBeEnabled({ timeout: 30_000 });
   await expect(select).toHaveText(/Not posted/);
@@ -375,7 +375,7 @@ test("a request not signed with the team's secret is refused", async () => {
 });
 
 test("disconnecting stops the agent answering in that workspace", async () => {
-  await jordan.goto("/settings/slack");
+  await jordan.goto("/settings/integrations/slack");
   await card(jordan).getByRole("button", { name: "Disconnect" }).click();
   await expect(card(jordan).getByRole("link", { name: "Create the Slack app" })).toBeVisible();
 });

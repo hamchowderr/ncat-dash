@@ -7,6 +7,13 @@ import { resetConvex } from "./convex";
 afterEach(() => {
   cleanup();
   resetConvex();
+  // A settings tab that a test opened is kept in the address (`?tab=…`); the next test
+  // starts on the first tab again.
+  if (typeof window !== "undefined" && window.location?.search?.includes("tab=")) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url);
+  }
 });
 
 // Tests that ask for the node environment have no page to prepare.

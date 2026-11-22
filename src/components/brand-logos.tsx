@@ -140,14 +140,7 @@ export function DropboxLogo(props: SVGProps<SVGSVGElement>) {
 }
 
 export type ConnectedApp =
-  | "slack"
-  | "discord"
-  | "telegram"
-  | "zoom"
-  | "google-meet"
-  | "microsoft"
-  | "teams"
-  | "dropbox";
+  "slack" | "discord" | "telegram" | "zoom" | "google-meet" | "microsoft" | "teams" | "dropbox";
 
 const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactNode }> = {
   slack: { name: "Slack", tile: "bg-muted", mark: <SlackColorLogo className="size-6" /> },
@@ -185,14 +178,14 @@ const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactN
 };
 
 /** An app's logo in its own colours, on a soft rounded tile, for the top of its page. */
-export function AppTile({ app }: { app: ConnectedApp }) {
+export function AppTile({ app, small = false }: { app: ConnectedApp; small?: boolean }) {
   const { name, tile, mark } = APP_TILES[app];
   return (
     <span
       role="img"
       aria-label={`${name} logo`}
       data-app-tile={app}
-      className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${tile}`}
+      className={`flex shrink-0 items-center justify-center ${small ? "size-9 rounded-lg [&>svg]:scale-[0.85]" : "size-11 rounded-xl"} ${tile}`}
     >
       {mark}
     </span>

@@ -6,6 +6,7 @@ import * as React from "react";
 import {
   ArrowLeft,
   Bell,
+  Blocks,
   ChevronsUpDown,
   Camera,
   Clapperboard,
@@ -19,11 +20,8 @@ import {
   History,
   Home,
   Inbox,
-  KeyRound,
-  Link2,
   Library,
   ListChecks,
-  Mail,
   MessagesSquare,
   Palette,
   Captions,
@@ -41,22 +39,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import {
-  DiscordLogo,
-  DropboxLogo,
-  GoogleMeetLogo,
-  MicrosoftLogo,
-  MicrosoftTeamsLogo,
-  SlackLogo,
-  TelegramLogo,
-  ZoomLogo,
-} from "@/components/brand-logos";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SETTINGS_GROUPS, type SettingsSlug } from "@/components/settings/settings-pages";
+import {
+  SETTINGS_GROUPS,
+  settingsLocation,
+  type SettingsSlug,
+} from "@/components/settings/settings-pages";
 
 import {
   Sidebar,
@@ -123,21 +115,11 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   captions: Captions,
   motion: PanelsTopLeft,
   team: Users,
+  integrations: Blocks,
   agent: MessagesSquare,
   runs: RotateCcw,
   broll: Clapperboard,
   editors: Film,
-  email: Mail,
-  slack: SlackLogo,
-  discord: DiscordLogo,
-  telegram: TelegramLogo,
-  zoom: ZoomLogo,
-  "google-meet": GoogleMeetLogo,
-  microsoft: MicrosoftLogo,
-  teams: MicrosoftTeamsLogo,
-  dropbox: DropboxLogo,
-  "video-links": Link2,
-  mcp: KeyRound,
 };
 
 const LAST_APP_PAGE = "ncat:last-app-page";
@@ -361,7 +343,8 @@ function SettingsMenu({ pathname, back }: { pathname: string; back: string }) {
                 {group.pages.map((page) => {
                   const href = `/settings/${page.slug}`;
                   const Icon = SETTINGS_ICONS[page.slug];
-                  const active = pathname === href;
+                  // An app's page under Integrations keeps Integrations lit.
+                  const active = settingsLocation(pathname)?.menu === page.slug;
                   return (
                     <SidebarMenuItem key={page.slug}>
                       <SidebarMenuButton asChild tooltip={page.title} isActive={active}>

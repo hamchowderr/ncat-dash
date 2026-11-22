@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import { teamsCard } from "./lib/chatAlerts/teams";
 import { notify } from "./lib/alerts";
+import { unzipSync } from "fflate";
 import { teamsAppPackage, teamsManifest, zip } from "./lib/teamsApp";
 import { settingsUrl, tenantOfIdToken } from "./microsoftTeams";
 import { startRun } from "./lib/runner";
@@ -130,7 +131,7 @@ async function comeBack(
   const back = await t.fetch(`/microsoft/callback?code=${code}&state=${state}`, { method: "GET" });
   expect(back.status).toBe(302);
   const location = new URL(back.headers.get("location") ?? "");
-  expect(location.pathname).toBe("/settings/teams");
+  expect(location.pathname).toBe("/settings/integrations/teams");
   return location.searchParams.get("teams");
 }
 
@@ -246,12 +247,12 @@ describe("linking a team's Microsoft organization", () => {
       method: "GET",
     });
     expect(closed.headers.get("location")).toBe(
-      "http://localhost:3000/settings/teams?teams=cancelled",
+      "http://localhost:3000/settings/integrations/teams?teams=cancelled",
     );
     const microsoft = await setup.t.fetch("/microsoft/callback?error=access_denied", {
       method: "GET",
     });
-    expect(microsoft.headers.get("location")).toContain("/settings/microsoft?");
+    expect(microsoft.headers.get("location")).toContain("/settings/integrations/microsoft?");
   });
 
   test("without a bot set up, Settings says so and nothing starts", async () => {
@@ -674,6 +675,18 @@ describe("the Teams app a team uploads", () => {
     expect(text.startsWith("PK\u0003\u0004")).toBe(true);
     for (const name of ["manifest.json", "color.png", "outline.png"]) expect(text).toContain(name);
     expect(zip([]).length).toBe(22);
+    // It opens as a real zip, and the manifest inside is the one Teams is given.
+    const opened = unzipSync(bytes);
+    expect(Object.keys(opened).sort()).toEqual(["color.png", "manifest.json", "outline.png"]);
+    const inside = JSON.parse(new TextDecoder().decode(opened["manifest.json"]));
+    expect(inside).toEqual(
+      teamsManifest({ botId: "b", name: "Takewon", siteUrl: "https://dash.test" }),
+    );
+    expect(opened["color.png"].slice(0, 4)).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    // The same package every time, so Teams does not see a new upload when nothing changed.
+    expect(teamsAppPackage({ botId: "b", name: "Takewon", siteUrl: "https://dash.test" })).toEqual(
+      bytes,
+    );
 
     const { t } = await setUp();
     const served = await t.fetch("/teams/app.zip", { method: "GET" });
@@ -685,7 +698,9 @@ describe("the Teams app a team uploads", () => {
 
 describe("after the Microsoft sign-in", () => {
   test("it returns to the Teams settings page, and reads the organization from the id token", () => {
-    expect(settingsUrl("linked")).toBe("http://localhost:3000/settings/teams?teams=linked");
+    expect(settingsUrl("linked")).toBe(
+      "http://localhost:3000/settings/integrations/teams?teams=linked",
+    );
     expect(tenantOfIdToken(idToken({ tid: TENANT }))).toBe(TENANT);
     expect(tenantOfIdToken("not-a-token")).toBeNull();
   });

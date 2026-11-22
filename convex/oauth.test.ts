@@ -242,6 +242,33 @@ describe("signing an agent in", () => {
       client_id: client,
     });
     expect(reused.body.error).toBe("invalid_grant");
+    // Using the old one again means a copy was taken: the whole connection ends.
+    expect((await listAutomations(t, refreshed.body.access_token)).status).toBe(401);
+    const afterReuse = await exchange(t, {
+      grant_type: "refresh_token",
+      refresh_token: refreshed.body.refresh_token,
+      client_id: client,
+    });
+    expect(afterReuse.body.error).toBe("invalid_grant");
+  });
+
+  test("a refresh for someone who left the team ends the connection", async () => {
+    const setup = await setUp();
+    const { t, owner } = setup;
+    const { client, tokens } = await connect(setup);
+    await t.run((ctx) =>
+      ctx.runMutation(components.betterAuth.adapter.deleteMany, {
+        input: { model: "member", where: [{ field: "userId", value: owner.id }] },
+        paginationOpts: { numItems: 10, cursor: null },
+      } as never),
+    );
+    const refreshed = await exchange(t, {
+      grant_type: "refresh_token",
+      refresh_token: tokens.refresh_token,
+      client_id: client,
+    });
+    expect(refreshed.body.error).toBe("invalid_grant");
+    expect(await t.run((ctx) => ctx.db.query("oauthGrants").collect())).toEqual([]);
   });
 
   test("saying no sends the agent access_denied, and nothing is let in", async () => {

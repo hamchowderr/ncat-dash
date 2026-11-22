@@ -91,7 +91,7 @@ export function PasteLink({
       <p className="text-muted-foreground text-xs text-pretty">
         TikTok, Instagram, YouTube, X, Facebook, LinkedIn and most other video sites. Sites that
         want a sign-in need your cookies in{" "}
-        <Link href="/settings/video-links" className="underline underline-offset-2">
+        <Link href="/settings/integrations/video-links" className="underline underline-offset-2">
           Settings, Video Links
         </Link>
         .
