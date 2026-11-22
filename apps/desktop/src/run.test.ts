@@ -2,7 +2,15 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { startConnect } from "./connect";
 import { NAME } from "./product";
-import { startRun, STEPS, type Check, type RunApi, type StackSaved, type Step } from "./run";
+import {
+  startRun,
+  STEPS,
+  type Check,
+  type Domain,
+  type RunApi,
+  type StackSaved,
+  type Step,
+} from "./run";
 
 const READY: Check = {
   ready: true,
@@ -24,6 +32,16 @@ const NOTHING: StackSaved = {
   bucketEndpoint: "",
   bucketName: "",
   hasAdminKey: false,
+  tunnel: null,
+  usesTunnel: false,
+};
+const DOMAIN: Domain = { id: "zone1", name: "example.com", account: "acct1" };
+const MADE = {
+  dashboard: "https://studio.example.com",
+  api: "https://studio-api.example.com",
+  site: "https://studio-actions.example.com",
+  agent: "https://studio-agent.example.com",
+  toolkit: "https://studio-toolkit.example.com",
 };
 
 function fakeApi(over: Partial<RunApi> = {}) {
@@ -32,6 +50,8 @@ function fakeApi(over: Partial<RunApi> = {}) {
     check: vi.fn(async () => READY),
     saved: vi.fn(async () => NOTHING),
     save: vi.fn(async () => {}),
+    domains: vi.fn(async () => [DOMAIN, { id: "zone2", name: "other.org", account: "acct1" }]),
+    tunnel: vi.fn(async () => MADE),
     step: vi.fn(async (step: Step) => {
       ran.push(step);
     }),
@@ -51,23 +71,35 @@ async function render(api: RunApi, back = vi.fn()) {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const $ = <T extends Element>(root: Element, selector: string) => root.querySelector<T>(selector)!;
 
-function fill(root: Element) {
+/** The bucket and keys, and (unless `cloudflare`) addresses of the person's own. */
+function fill(root: Element, { cloudflare = false } = {}) {
+  if (!cloudflare) choose(root, "own");
   const values: Record<string, string> = {
     endpoint: "https://acct.r2.cloudflarestorage.com",
     name: "videos",
     accessKey: "access",
     secretKey: "secret",
     modelKey: "sk-ant-key",
-    dashboard: "https://app.example.com",
-    api: "https://api.example.com",
-    site: "https://site.example.com",
-    agent: "https://agent.example.com",
-    toolkit: "https://toolkit.example.com",
   };
+  if (!cloudflare) Object.assign(values, OWN);
   for (const [name, value] of Object.entries(values)) {
     $<HTMLInputElement>(root, `[name=${name}]`).value = value;
   }
 }
+
+function choose(root: Element, way: "own" | "cloudflare") {
+  const radio = $<HTMLInputElement>(root, `[name=way][value=${way}]`);
+  radio.checked = true;
+  radio.dispatchEvent(new Event("change"));
+}
+
+const OWN: Record<string, string> = {
+  dashboard: "https://app.example.com",
+  api: "https://api.example.com",
+  site: "https://site.example.com",
+  agent: "https://agent.example.com",
+  toolkit: "https://toolkit.example.com",
+};
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -132,6 +164,7 @@ describe("running it on this computer", () => {
         bucket: expect.objectContaining({ name: "videos", region: "" }),
         modelKey: "sk-ant-key",
         addresses: expect.objectContaining({ toolkit: "https://toolkit.example.com" }),
+        tunnel: false,
       }),
     );
     expect(ran).toEqual(STEPS.map(({ step }) => step));
@@ -173,11 +206,136 @@ describe("running it on this computer", () => {
       bucketEndpoint: "https://acct.r2.cloudflarestorage.com",
       bucketName: "videos",
       hasAdminKey: true,
+      tunnel: null,
+      usesTunnel: false,
     };
     const { root } = await render(fakeApi({ saved: async () => saved }).api);
+    expect($<HTMLInputElement>(root, "[name=way][value=own]").checked).toBe(true);
+    expect($<HTMLElement>(root, ".own").hidden).toBe(false);
     expect($<HTMLInputElement>(root, "[name=name]").value).toBe("videos");
     expect($<HTMLInputElement>(root, "[name=agent]").value).toBe("https://agent.example.com");
     expect($<HTMLInputElement>(root, "[name=secretKey]").value).toBe("");
+  });
+
+  test("makes the addresses with Cloudflare unless told otherwise", async () => {
+    const { root } = await render(fakeApi().api);
+    expect($<HTMLInputElement>(root, "[name=way][value=cloudflare]").checked).toBe(true);
+    expect($<HTMLElement>(root, ".cloudflare").hidden).toBe(false);
+    expect($<HTMLElement>(root, ".own").hidden).toBe(true);
+    expect($<HTMLInputElement>(root, "[name=tunnelName]").value).toBe(NAME.toLowerCase());
+    const link = $<HTMLAnchorElement>(root, ".cloudflare a");
+    expect(link.href).toBe("https://dash.cloudflare.com/profile/api-tokens");
+    expect(link.target).toBe("_blank");
+    expect(root.textContent).toContain("doesn't keep it");
+    expect(root.textContent).toContain("https://<account id>.r2.cloudflarestorage.com");
+
+    choose(root, "own");
+    expect($<HTMLElement>(root, ".cloudflare").hidden).toBe(true);
+    expect($<HTMLElement>(root, ".own").hidden).toBe(false);
+  });
+
+  test("finds the domains, makes the tunnel, then saves and starts with its addresses", async () => {
+    const { api, ran } = fakeApi();
+    const { root } = await render(api);
+    fill(root, { cloudflare: true });
+    $<HTMLInputElement>(root, "[name=cfToken]").value = " cf-token ";
+    $<HTMLButtonElement>(root, ".find-domains").click();
+    await vi.waitFor(() =>
+      expect($<HTMLSelectElement>(root, "[name=domain]").disabled).toBe(false),
+    );
+    expect(api.domains).toHaveBeenCalledWith("cf-token");
+    expect([...root.querySelectorAll("[name=domain] option")].map((o) => o.textContent)).toEqual([
+      "example.com",
+      "other.org",
+    ]);
+    const name = $<HTMLInputElement>(root, "[name=tunnelName]");
+    name.value = "Studio";
+    name.dispatchEvent(new Event("input"));
+    expect($(root, ".preview").textContent).toContain("studio.example.com for the dashboard");
+
+    $<HTMLFormElement>(root, ".settings").requestSubmit();
+    await vi.waitFor(() => expect(api.open).toHaveBeenCalledWith(MADE.dashboard));
+    expect(api.tunnel).toHaveBeenCalledWith("cf-token", DOMAIN, "Studio");
+    expect(api.save).toHaveBeenCalledWith(
+      expect.objectContaining({ addresses: MADE, tunnel: true }),
+    );
+    expect(ran).toEqual(STEPS.map(({ step }) => step));
+  });
+
+  test("asks for the token and a domain before making anything", async () => {
+    const { api } = fakeApi();
+    const { root } = await render(api);
+    fill(root, { cloudflare: true });
+    $<HTMLFormElement>(root, ".settings").requestSubmit();
+    await flush();
+    expect($(root, ".settings .error").textContent).toBe("Enter your Cloudflare token.");
+    expect(document.activeElement).toBe($(root, "[name=cfToken]"));
+
+    $<HTMLInputElement>(root, "[name=cfToken]").value = "cf-token";
+    $<HTMLFormElement>(root, ".settings").requestSubmit();
+    await flush();
+    expect($(root, ".settings .error").textContent).toBe("Find your domains and pick one.");
+    expect(api.tunnel).not.toHaveBeenCalled();
+    expect(api.save).not.toHaveBeenCalled();
+  });
+
+  test("says what Cloudflare said, and saves nothing when the tunnel can't be made", async () => {
+    const { api } = fakeApi({
+      tunnel: vi.fn(async () => {
+        throw "studio.example.com already points somewhere else. Pick another name.";
+      }),
+    });
+    const { root } = await render(api);
+    fill(root, { cloudflare: true });
+    $<HTMLInputElement>(root, "[name=cfToken]").value = "cf-token";
+    $<HTMLButtonElement>(root, ".find-domains").click();
+    await vi.waitFor(() =>
+      expect($<HTMLSelectElement>(root, "[name=domain]").disabled).toBe(false),
+    );
+    $<HTMLFormElement>(root, ".settings").requestSubmit();
+    await vi.waitFor(() =>
+      expect($(root, ".settings .error").textContent).toContain("already points somewhere else"),
+    );
+    expect(api.save).not.toHaveBeenCalled();
+    expect($<HTMLButtonElement>(root, ".settings button[type=submit]").disabled).toBe(false);
+  });
+
+  test("shows why the domains couldn't be found", async () => {
+    const { api } = fakeApi({
+      domains: vi.fn(async () => {
+        throw "Cloudflare didn't allow that with this token.";
+      }),
+    });
+    const { root } = await render(api);
+    $<HTMLButtonElement>(root, ".find-domains").click();
+    await vi.waitFor(() =>
+      expect($(root, ".settings .error").textContent).toContain("didn't allow that"),
+    );
+  });
+
+  test("starts a tunnel made before again without a new token", async () => {
+    const saved: StackSaved = {
+      ...NOTHING,
+      saved: true,
+      addresses: MADE,
+      bucketEndpoint: "https://acct.r2.cloudflarestorage.com",
+      bucketName: "videos",
+      tunnel: { domain: DOMAIN, name: "studio", tunnel: "t1" },
+      usesTunnel: true,
+    };
+    const { api } = fakeApi({ saved: async () => saved });
+    const { root } = await render(api);
+    expect($<HTMLInputElement>(root, "[name=way][value=cloudflare]").checked).toBe(true);
+    expect($<HTMLSelectElement>(root, "[name=domain]").value).toBe("zone1");
+    expect($<HTMLInputElement>(root, "[name=tunnelName]").value).toBe("studio");
+    expect($<HTMLInputElement>(root, "[name=dashboard]").value).toBe("");
+    fill(root, { cloudflare: true });
+    $<HTMLFormElement>(root, ".settings").requestSubmit();
+    await vi.waitFor(() => expect(api.open).toHaveBeenCalledWith(MADE.dashboard));
+    expect(api.tunnel).not.toHaveBeenCalled();
+    expect(api.save).toHaveBeenCalledWith(
+      expect.objectContaining({ addresses: MADE, tunnel: true }),
+    );
   });
 
   test("goes back to Connect", async () => {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cloudflare-domains"
+description = "Enables the cloudflare_domains command without any pre-configured scope."
+commands.allow = ["cloudflare_domains"]
+
+[[permission]]
+identifier = "deny-cloudflare-domains"
+description = "Denies the cloudflare_domains command without any pre-configured scope."
+commands.deny = ["cloudflare_domains"]

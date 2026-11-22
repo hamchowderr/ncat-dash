@@ -95,6 +95,8 @@ curl -H "x-api-key: $TOOLKIT_API_KEY" https://toolkit.example.com/v1/toolkit/tes
 
 The toolkit's test writes `success.txt` to the bucket, so a success there also proves the bucket keys work.
 
+No reverse proxy? A [Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/) works instead, with no ports opened on the router; it is what the [desktop app](desktop-app.md) sets up for a copy on a computer at home. Make a remotely-managed tunnel, give it a route for each address to its piece by name on Docker's network (`http://web:3000`, `http://convex:3210`, `http://convex:3211`, `http://agent:4111`, `http://toolkit:8080`), then set `TUNNEL_TOKEN` to the tunnel's token and `COMPOSE_PROFILES=tunnel` in `deploy/.env` so the `tunnel` service starts with the rest. `TUNNEL_IMAGE` pins its image.
+
 On **Coolify**, make each piece its own resource rather than one big stack, so one can restart without the others: the toolkit as a Docker Compose service (toolkit plus Redis), Convex as a Docker Compose service, and the agent server as an application from this repository using `packages/agent/Dockerfile.release` on the `agent-release` branch (it only pulls the image GitHub Actions already published for that commit). Give each its domain in Coolify. Set Convex's `CONVEX_CLOUD_ORIGIN` and `CONVEX_SITE_ORIGIN` as literal addresses: Coolify's own `SERVICE_URL_*` values can end up pointing both at the same host.
 
 ### 2. Make the Convex admin key
