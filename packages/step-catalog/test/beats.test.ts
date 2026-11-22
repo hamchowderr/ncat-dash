@@ -289,10 +289,29 @@ describe("Split Into Shots", () => {
     ]);
   });
 
-  it("keeps only the first pieces when there are more than asked for", () => {
-    expect(pieces([2, 4, 6, 8, 10], 12, { most: 2 })).toEqual([
+  it("keeps the first pieces when asked to", () => {
+    expect(pieces([2, 4, 6, 8, 10], 12, { most: 2, keep: "from the start" })).toEqual([
       [0, 2],
       [2, 4],
+    ]);
+  });
+
+  it("keeps pieces spread through the whole video unless told otherwise", () => {
+    // Twelve one-second shots, four kept: one from each quarter of the video, in order.
+    const cuts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    expect(pieces(cuts, 12, { most: 4 })).toEqual([
+      [1, 2],
+      [4, 5],
+      [7, 8],
+      [10, 11],
+    ]);
+  });
+
+  it("can keep the longest shots instead, still in the video's order", () => {
+    expect(pieces([1, 4, 5, 8.5, 10], 12, { most: 3, keep: "the longest shots" })).toEqual([
+      [1, 4],
+      [5, 8.5],
+      [10, 12],
     ]);
   });
 
