@@ -6,10 +6,11 @@
 // - The web app's image and its start script agree on the stand-in addresses, and the
 //   start script swaps them for the real ones.
 // - deploy/compose.yml runs the web app from its image.
-import { test } from "node:test";
+// - The setup image pushes the backend and makes its secrets once, never replacing them.
+import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,4 +115,108 @@ test("compose runs the web app from its image, beside the rest", () => {
 test("the web app only builds a standalone server for the image", () => {
   assert.match(read("next.config.ts"), /NEXT_OUTPUT === "standalone"/);
   assert.match(read("Dockerfile"), /NEXT_OUTPUT=standalone/);
+});
+
+test("compose runs the setup image only when asked, on the web image's commit", () => {
+  const compose = read("deploy/compose.yml");
+  assert.match(
+    compose,
+    /^  setup:\n    image: \$\{SETUP_IMAGE:-ghcr\.io\/hamchowderr\/ncat-dash-setup:latest\}\n    profiles: \[setup\]/m,
+  );
+  assert.match(compose, /CONVEX_SELF_HOSTED_ADMIN_KEY: \$\{CONVEX_ADMIN_KEY/);
+  assert.match(read("Dockerfile"), /^FROM source AS setup$/m);
+  // The web image stays the default target.
+  assert.match(read("Dockerfile"), /^FROM node:22-bookworm-slim AS web$(?![\s\S]*^FROM )/m);
+  const workflow = read(".github/workflows/web-image.yml");
+  assert.match(workflow, /target: setup/);
+  assert.match(workflow, /SETUP_IMAGE: ncat-dash-setup:check/);
+});
+
+describe("the setup script", () => {
+  // A stand-in Convex command that keeps its settings in a file, and a Convex that answers.
+  function setUp() {
+    const dir = mkdtempSync(join(tmpdir(), "takewon-setup-"));
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    const settings = join(dir, "settings");
+    writeFileSync(settings, "");
+    const fake = (name, body) => {
+      writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`);
+      chmodSync(join(bin, name), 0o755);
+    };
+    fake(
+      "convex",
+      `log=${join(dir, "log")}
+echo "$*" >> "$log"
+case "$1 $2" in
+  "env list") cat ${settings} ;;
+  "env set") grep -v "^$3=" ${settings} > ${settings}.new; echo "$3=$4" >> ${settings}.new; mv ${settings}.new ${settings} ;;
+  "deploy -y") [ "$(pwd)" = "${dir}" ] || exit 9 ;;
+  *) exit 2 ;;
+esac`,
+    );
+    const script = join(dir, "setup.sh");
+    writeFileSync(
+      script,
+      read("deploy/setup/setup.sh")
+        .replaceAll("/app/node_modules/.bin/convex", join(bin, "convex"))
+        .replace(/^answers\(\) \{.*\}$/m, "answers() { true; }")
+        .replace(/^cd \/app$/m, `cd ${dir}`),
+    );
+    const env = {
+      PATH: `${bin}:${process.env.PATH}`,
+      CONVEX_SELF_HOSTED_ADMIN_KEY: "takewon|key",
+      SITE_URL: "https://app.example.com/",
+      MASTRA_JWT_SECRET: "jwt",
+    };
+    const run = (extra = {}) =>
+      execFileSync("sh", [script], {
+        env: { ...env, ...extra },
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    const values = () =>
+      Object.fromEntries(
+        readFileSync(settings, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
+      );
+    return { run, values, log: () => readFileSync(join(dir, "log"), "utf8") };
+  }
+
+  test("gives Convex its settings and pushes the backend", () => {
+    const setup = setUp();
+    const said = setup.run({ AGENT_URL: "https://agent.example.com" });
+    const values = setup.values();
+    assert.equal(values.SITE_URL, "https://app.example.com");
+    assert.equal(values.AGENT_URL, "https://agent.example.com");
+    assert.equal(values.MASTRA_JWT_SECRET, "jwt");
+    assert.equal(values.SIGN_UPS, "invite-only");
+    assert.ok(values.BETTER_AUTH_SECRET.length >= 40);
+    assert.ok(values.CONNECTIONS_SECRET.length >= 40);
+    assert.notEqual(values.BETTER_AUTH_SECRET, values.CONNECTIONS_SECRET);
+    assert.match(setup.log(), /^deploy -y --typecheck disable$/m);
+    assert.match(said, /Made CONNECTIONS_SECRET/);
+  });
+
+  test("run again after an update, keeps every secret and the sign-up choice", () => {
+    const setup = setUp();
+    setup.run();
+    const first = setup.values();
+    const said = setup.run({ SITE_URL: "https://new.example.com", SIGN_UPS: "open" });
+    const again = setup.values();
+    assert.equal(again.CONNECTIONS_SECRET, first.CONNECTIONS_SECRET);
+    assert.equal(again.BETTER_AUTH_SECRET, first.BETTER_AUTH_SECRET);
+    assert.equal(again.SIGN_UPS, "invite-only");
+    assert.equal(again.SITE_URL, "https://new.example.com");
+    assert.match(said, /Kept the CONNECTIONS_SECRET/);
+  });
+
+  test("stops with a plain message when a setting is missing", () => {
+    const setup = setUp();
+    assert.throws(() => setup.run({ CONVEX_SELF_HOSTED_ADMIN_KEY: "" }), /generate_admin_key/);
+    assert.throws(() => setup.run({ SITE_URL: "app.example.com" }), /full address/);
+    assert.throws(() => setup.log(), /ENOENT/);
+  });
 });

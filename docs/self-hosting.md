@@ -61,8 +61,7 @@ The minimums above apply to each. A Windows PC or Mac also needs the memory for 
 - A bucket and an access key for it. For R2: create the bucket, then an R2 API token with Object Read & Write on it. If the token has an IP filter, it must allow the toolkit's machine.
 - A key for the agent's model. The agent uses Anthropic (Claude Sonnet 5.5) out of the box; any provider Mastra supports works by changing `CHAT_MODEL`.
 - Docker with Compose, and HTTPS in front of it: Coolify, Caddy, Traefik or nginx.
-- Node 22 and pnpm on the machine you push the functions from (your own computer is fine).
-- A clone of this repository at the version you are running.
+- This repository's `deploy/` folder at the version you are running (a clone, or the files downloaded). Node is only needed to push the backend from a clone instead of the setup image (step 3).
 
 ## Step By Step
 
@@ -104,13 +103,23 @@ On **Coolify**, make each piece its own resource rather than one big stack, so o
 docker compose -f deploy/compose.yml --env-file deploy/.env exec convex ./generate_admin_key.sh
 ```
 
-Keep the key somewhere safe, such as a secrets manager. It is the key to the whole database. The functions are pushed with it, and the admin page signs in with it.
+Put the key in `CONVEX_ADMIN_KEY` in `deploy/.env`, and keep a copy somewhere safe, such as a secrets manager. It is the key to the whole database. The backend is pushed with it, and the admin page signs in with it.
 
-On Convex Cloud instead, create a project at [convex.dev](https://www.convex.dev), and use `npx convex deploy` with a deploy key (`CONVEX_DEPLOY_KEY`) in place of the two `CONVEX_SELF_HOSTED_*` values below. Its addresses end in `.convex.cloud` and `.convex.site`.
+On Convex Cloud instead, create a project at [convex.dev](https://www.convex.dev), and push from a clone (below) with a deploy key (`CONVEX_DEPLOY_KEY`) in place of the two `CONVEX_SELF_HOSTED_*` values. Its addresses end in `.convex.cloud` and `.convex.site`.
 
 ### 3. Push the backend and set its settings
 
-From a clone of this repository, with no `.env.local` in it (that file points the Convex command at a development deployment):
+```bash
+docker compose -f deploy/compose.yml --env-file deploy/.env run --rm setup
+```
+
+The setup image (`ghcr.io/hamchowderr/ncat-dash-setup`) holds this version's backend. It gives Convex `SITE_URL`, `AGENT_URL` and `MASTRA_JWT_SECRET` from `deploy/.env`, makes `BETTER_AUTH_SECRET` and `CONNECTIONS_SECRET`, sets `SIGN_UPS` (`invite-only` unless `deploy/.env` says `open`), and pushes the functions. The machine needs nothing but Docker for it. Run it again after every update; it keeps the secrets and the sign-up choice Convex already has, and only writes the addresses again.
+
+`CONNECTIONS_SECRET` encrypts every saved key (toolkit, Slack, Zoom and so on). The setup never replaces it: if it changed, every team would have to connect everything again.
+
+`SIGN_UPS invite-only` keeps strangers out: the first account made (yours) is allowed, and after that only email addresses invited to a team can sign up. Set `SIGN_UPS=open` in `deploy/.env` before the first setup, or later with `npx convex env set SIGN_UPS open`, to let anyone who reaches the address make an account.
+
+**From a clone instead** (also for Convex Cloud), with Node 22 and pnpm, and no `.env.local` in it (that file points the Convex command at a development deployment):
 
 ```bash
 pnpm install
@@ -126,10 +135,6 @@ npx convex env set SIGN_UPS invite-only       # only you, then the people you in
 
 npx convex deploy -y
 ```
-
-`CONNECTIONS_SECRET` encrypts every saved key (toolkit, Slack, Zoom and so on). Keep it: if it changes, every team has to connect everything again.
-
-`SIGN_UPS invite-only` keeps strangers out: the first account made (yours) is allowed, and after that only email addresses invited to a team can sign up. Leave it out, or set `SIGN_UPS open`, to let anyone who reaches the address make an account.
 
 ### 4. The web app
 
@@ -150,7 +155,7 @@ The web app can live elsewhere instead. Either way, set these:
 
 The image needs no rebuild when an address changes: it writes the addresses in each time it starts, so a restart is enough.
 
-Neither Vercel nor the image pushes Convex functions. Each time you update, push the functions too (step 3's `npx convex deploy`), or the dashboard and backend drift apart and pages fail with "Could not find public function".
+Neither Vercel nor the web image pushes Convex functions. Each time you update, push the functions too (step 3), or the dashboard and backend drift apart and pages fail with "Could not find public function".
 
 ### 5. Sign up and connect the toolkit
 
@@ -263,9 +268,9 @@ The agent server takes many more optional settings from the chat kit it is built
 
 ## Updating
 
-1. Pull the new images. On a server you rely on, pin the Takewon images to a `sha-<commit>` tag in `deploy/.env` (`TOOLKIT_IMAGE`, `AGENT_IMAGE`, `WEB_IMAGE`) and move the tags on purpose. A commit's image appears once its GitHub Actions run has finished.
-2. `docker compose -f deploy/compose.yml --env-file deploy/.env up -d` restarts only what changed.
-3. Push the Convex functions from the same commit (`npx convex deploy -y`). If the web app is on Vercel instead, deploy it from that commit too.
+1. Pull the new images. On a server you rely on, pin the Takewon images to a `sha-<commit>` tag in `deploy/.env` (`TOOLKIT_IMAGE`, `AGENT_IMAGE`, `WEB_IMAGE`, and `SETUP_IMAGE` on the same commit as `WEB_IMAGE`) and move the tags on purpose. A commit's image appears once its GitHub Actions run has finished.
+2. `docker compose -f deploy/compose.yml --env-file deploy/.env pull`, then `... up -d`, which restarts only what changed.
+3. Push the backend from the same commit: `docker compose -f deploy/compose.yml --env-file deploy/.env run --rm setup` (or `npx convex deploy -y` from a clone at that commit). If the web app is on Vercel instead, deploy it from that commit too.
 
 Never set a service to build its image on the machine that serves people. The toolkit's build takes 20 to 40 minutes of full CPU; if a restart falls back to building, the toolkit stays down that long.
 
@@ -284,7 +289,7 @@ To see how long videos take on your machine, before and after an update or a cha
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Sign-up hangs on a spinner                    | Convex's `CONVEX_CLOUD_ORIGIN` or `CONVEX_SITE_ORIGIN` is wrong or not a literal address. Fix it, restart Convex, push the functions again.                                                                                                        |
 | "Invalid origin" at sign-in                   | The page's address is not `SITE_URL` or in `TRUSTED_ORIGINS`.                                                                                                                                                                                      |
-| "Could not find public function"              | The web app is newer than the backend. Push the functions from the same commit.                                                                                                                                                                    |
+| "Could not find public function"              | The web app is newer than the backend. Run the setup again (step 3) with `SETUP_IMAGE` on the same commit as `WEB_IMAGE`.                                                                                                                          |
 | Pages time out on a busy machine              | Each call loads its code first, and a slow or busy CPU can pass Convex's 1 second limit. `deploy/compose.yml` already raises it to 5 seconds (`DATABASE_UDF_USER_TIMEOUT_SECONDS`); give the machine more CPU or cap the toolkit (`TOOLKIT_CPUS`). |
 | Pushing functions times out while "analyzing" | Raise `ISOLATE_ANALYZE_USER_TIMEOUT_SECONDS` on Convex (compose sets 30).                                                                                                                                                                          |
 | Uploads fail with a CORS error                | The dashboard's address is missing from the bucket's CORS rule, or `ETag` is not exposed.                                                                                                                                                          |
