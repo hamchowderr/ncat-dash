@@ -32,8 +32,10 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
+import { SubtitleText, TranscriptDownload } from "./transcript-files";
 import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "./library-media";
 import { PickList } from "@/components/ui/pick-list";
+import { Segmented } from "@/components/ui/segmented";
 
 /** Wraps each place the search words appear in a highlight. */
 function marked(text: string, words: string[]): ReactNode {
@@ -270,6 +272,8 @@ export function LibraryItemView({
   const media = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const [now, setNow] = useState(0);
   const [find, setFind] = useState(search ?? "");
+  // Read the transcript line by line, or as the SRT or WebVTT file it makes.
+  const [shown, setShown] = useState<"read" | "srt" | "vtt">("read");
 
   const self = useMemo(() => (item ? [{ _id: item._id, kind: item.kind }] : undefined), [item]);
   const links = useLibraryLinks(team.id, self);
@@ -409,17 +413,35 @@ export function LibraryItemView({
                     </p>
                   )}
                 </div>
-                {item.searchable === "ready" && (
-                  <Input
-                    value={find}
-                    onChange={(event) => setFind(event.target.value)}
-                    placeholder="Find in this file"
-                    aria-label="Find in what was said"
-                    className="h-8 w-56"
-                  />
+                {item.searchable === "ready" && pieces.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Segmented
+                      aria-label="Show the words as"
+                      className="w-auto"
+                      value={shown}
+                      onValueChange={setShown}
+                      options={[
+                        { value: "read", label: "Transcript" },
+                        { value: "srt", label: "SRT" },
+                        { value: "vtt", label: "VTT" },
+                      ]}
+                    />
+                    <TranscriptDownload pieces={pieces} title={item.title} />
+                  </div>
                 )}
               </div>
-              {item.searchable === "ready" ? (
+              {item.searchable === "ready" && pieces.length > 0 && shown === "read" && (
+                <Input
+                  value={find}
+                  onChange={(event) => setFind(event.target.value)}
+                  placeholder="Find in this file"
+                  aria-label="Find in what was said"
+                  className="h-8 w-full sm:w-64"
+                />
+              )}
+              {item.searchable === "ready" && pieces.length > 0 && shown !== "read" ? (
+                <SubtitleText pieces={pieces} format={shown} />
+              ) : item.searchable === "ready" ? (
                 shownPieces.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
                     {pieces.length === 0
@@ -478,7 +500,7 @@ export function LibraryItemView({
                 <p className="text-muted-foreground text-sm">
                   {captions
                     ? "Reading the caption file."
-                    : "Being transcribed on your toolkit. The words show here when it is done."}
+                    : "Being transcribed on your toolkit. The words, SRT and VTT show here when it is done."}
                 </p>
               ) : (
                 <div className="bg-surface flex flex-col items-start gap-3 rounded-xl p-5">

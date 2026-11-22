@@ -88,13 +88,34 @@ describe("Cut To The Beat on the canvas", () => {
 });
 
 describe("Cut To The Beat among the ready-mades", () => {
-  test("is under Music and starts by hand, to pick the clips", () => {
+  test("is under Music and runs on an upload: split into shots, then cut to the beat", () => {
     const onPick = vi.fn();
     renderInApp(<TemplateGallery onPick={onPick} />);
     fireEvent.click(screen.getByRole("button", { name: /^Music \d+$/ }));
     fireEvent.click(screen.getByRole("button", { name: /Cut To The Beat/ }));
     expect(onPick).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "recipe-beat-cut", trigger: { kind: "manual" } }),
+      expect.objectContaining({
+        id: "recipe-beat-cut",
+        trigger: { kind: "upload", fileType: "video" },
+        nodes: [
+          expect.objectContaining({ id: "split_shots_1", stepId: "recipe-split-shots" }),
+          expect.objectContaining({ id: "beat_cut_1", stepId: "recipe-beat-cut" }),
+        ],
+        edges: [expect.objectContaining({ source: "split_shots_1", target: "beat_cut_1" })],
+      }),
+    );
+  });
+
+  test("Split Into Shots is a ready-made of its own under Clips, on a video upload", () => {
+    const onPick = vi.fn();
+    renderInApp(<TemplateGallery onPick={onPick} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Clips and shapes \d+$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Split Into Shots/ }));
+    expect(onPick).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "recipe-split-shots",
+        trigger: { kind: "upload", fileType: "video" },
+      }),
     );
   });
 

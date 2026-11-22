@@ -10,10 +10,11 @@ import { composeParts } from "./editing";
  * off the beat however long the video runs.
  */
 
-const { opt, VIDEO_OUT, url, number, choice, seconds, editStep, SHAPES, SHAPE_NAMES } =
+const { opt, VIDEO_OUT, url, number, whole, choice, seconds, editStep, SHAPES, SHAPE_NAMES } =
   composeParts;
 
 export const BEAT_CUT_STEP = "recipe-beat-cut";
+export const SPLIT_SHOTS_STEP = "recipe-split-shots";
 
 /** How often the picture changes, from every beat to every two bars. */
 export const CUT_EVERY = ["every beat", "every 2 beats", "every bar", "every 2 bars"] as const;
@@ -99,7 +100,104 @@ export function beatCuts(args: {
   return { start, pieces, frames: pieces.reduce((sum, n) => sum + n, 0) };
 }
 
+/** A piece of a video, from and to in seconds. */
+export interface Shot {
+  from: number;
+  to: number;
+}
+
+/**
+ * The pieces of a video between its camera cuts. A shot shorter than `shortest` joins the
+ * one after it (the last joins the one before), a shot longer than `longest` is split
+ * evenly, and only the first `most` are kept. With no cuts the whole video is split evenly.
+ */
+export function shotPieces(args: {
+  cuts: number[];
+  length: number;
+  shortest: number;
+  longest: number;
+  most: number;
+}): Shot[] {
+  const { length, shortest, longest, most } = args;
+  const inside = [...new Set(args.cuts)]
+    .filter((time) => time > 0.05 && time < length - 0.05)
+    .sort((a, b) => a - b);
+  const edges = [0, ...inside, length];
+  const shots: Shot[] = [];
+  for (let index = 1; index < edges.length; index++) {
+    const shot = { from: edges[index - 1], to: edges[index] };
+    const last = shots[shots.length - 1];
+    // A short shot left before this one: this one takes it in.
+    if (last && last.to - last.from < shortest) last.to = shot.to;
+    else shots.push(shot);
+  }
+  const end = shots[shots.length - 1];
+  if (shots.length > 1 && end.to - end.from < shortest) {
+    shots.pop();
+    shots[shots.length - 1].to = end.to;
+  }
+  const even = shots.flatMap((shot) => {
+    const parts = Math.ceil((shot.to - shot.from) / longest - 0.001);
+    if (parts <= 1) return [shot];
+    const size = (shot.to - shot.from) / parts;
+    return Array.from({ length: parts }, (_, part) => ({
+      from: shot.from + part * size,
+      to: part === parts - 1 ? shot.to : shot.from + (part + 1) * size,
+    }));
+  });
+  return even.slice(0, most);
+}
+
 export const beatRecipes: StepDefinition[] = [
+  editStep({
+    id: SPLIT_SHOTS_STEP,
+    title: "Split Into Shots",
+    description:
+      "Splits a video into its shots, cutting where the camera cuts. The cuts are found in the picture itself with plain image comparison, no AI. Shots shorter than you set join the next one, and long shots are split into even pieces, so a video with no cuts at all is split evenly. Put Cut To The Beat after it to cut the shots to music.",
+    primaryInput: "video_url",
+    readsFirst: ["video_url"],
+    readsCuts: ["video_url"],
+    askFirst: ["longest"],
+    blanks: {
+      video_url: url("The video"),
+      shortest: number("Shots shorter than this many seconds join the next one", 0.2, 10).default(
+        1,
+      ),
+      longest: number("Shots longer than this many seconds are split evenly", 1, 60).default(4),
+      most: whole("How many pieces at most, from the start", 1, 30).default(30),
+    },
+    outputLabels: (_b, count) =>
+      Array.from({ length: count }, (_, index) => `shot${String(index + 1).padStart(2, "0")}`),
+    toRequest: (b, facts) => {
+      const video = facts.video_url;
+      if (!video?.duration) {
+        throw new StepSetupError(
+          "The video's length could not be read, so it cannot be split into shots.",
+        );
+      }
+      const shots = shotPieces({
+        cuts: video.cuts ?? [],
+        length: video.duration,
+        shortest: b.shortest,
+        longest: Math.max(b.longest, b.shortest),
+        most: b.most,
+      });
+      return {
+        inputs: [{ file_url: b.video_url }],
+        filters: [],
+        // One file per shot. Cutting after decoding lands on the exact frame of the cut.
+        outputs: shots.map((shot) => ({
+          options: [
+            opt("-map", "0:v:0"),
+            opt("-map", "0:a:0?"),
+            opt("-ss", seconds(shot.from)),
+            opt("-to", seconds(shot.to)),
+            ...VIDEO_OUT,
+          ],
+        })),
+      };
+    },
+  }),
   editStep({
     id: BEAT_CUT_STEP,
     title: "Cut To The Beat",

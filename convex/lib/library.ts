@@ -55,8 +55,9 @@ type NewItem = {
 };
 
 /**
- * Adds a file to the library with its short ID. When the team has asked for every new file
- * to be searchable, a video or sound is sent to be transcribed straight away.
+ * Adds a file to the library with its short ID. Every video or sound someone brings in is
+ * sent to be transcribed straight away, once, so its words are there for search, subtitles
+ * and every step after. A file an automation made is too when the team has asked for it.
  */
 export async function addLibraryItem(ctx: MutationCtx, item: NewItem): Promise<Id<"libraryItems">> {
   const shortId = await nextShortId(
@@ -78,7 +79,8 @@ export async function addLibraryItem(ctx: MutationCtx, item: NewItem): Promise<I
     }),
   });
   const { searchNewFiles } = await librarySettingsOf(ctx, item.organizationId);
-  if (searchNewFiles && (item.kind === "video" || item.kind === "audio")) {
+  const transcribe = item.source === "upload" || searchNewFiles;
+  if (transcribe && (item.kind === "video" || item.kind === "audio")) {
     await ctx.scheduler.runAfter(0, internal.library.transcribe, { itemId });
   }
   // A new video is also looked at by the picture model, so it can be found as B-Roll.
