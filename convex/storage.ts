@@ -24,6 +24,7 @@ import {
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import {
   abortParts,
+  BucketError,
   bucketOf,
   completeParts,
   presign,
@@ -367,7 +368,15 @@ export const linkFor = action({
       organizationId: upload.organizationId,
     });
     if (!storage) throw new ConvexError({ code: "no_storage", message: NO_STORAGE });
-    return await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
+    try {
+      return await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
+    } catch (error) {
+      // The link is made by the toolkit, so a toolkit that is down stops a run here. Say so.
+      if (error instanceof BucketError) {
+        throw new ConvexError({ code: "toolkit", message: error.message });
+      }
+      throw error;
+    }
   },
 });
 
