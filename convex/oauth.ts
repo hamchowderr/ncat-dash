@@ -1,4 +1,5 @@
 import { PRODUCT_NAME } from "@ncat-dash/automation-core";
+import { outboundProblem } from "./lib/outbound";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -173,6 +174,9 @@ async function findClient(
   clientId: string,
 ): Promise<{ ok: true; client: ClientInfo } | { ok: false; message: string }> {
   if (isMetadataClientId(clientId)) {
+    if (outboundProblem(clientId)) {
+      return { ok: false, message: "The client's metadata document could not be read." };
+    }
     try {
       const response = await fetch(clientId, {
         headers: { accept: "application/json" },

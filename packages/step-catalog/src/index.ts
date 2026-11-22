@@ -9,6 +9,7 @@ import { type SavedTeamStep, teamStepDefinition } from "./team-steps";
 
 export * from "./define";
 export * from "./client";
+export * from "./compose-guard";
 export * from "./editing";
 export * from "./recipes";
 export * from "./steps";

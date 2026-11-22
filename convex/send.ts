@@ -1,4 +1,5 @@
 // Makes the post for a Send to a URL step (lib/send.ts starts and ends the step).
+import { outboundProblem } from "./lib/outbound";
 import { type AutomationNode } from "@ncat-dash/automation-core";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -46,6 +47,12 @@ export const post = internalAction({
     const loaded = await ctx.runQuery(internal.send.load, { runStepId: args.runStepId });
     if (!loaded) return;
     const body = JSON.stringify(loaded.body);
+    // A copy strangers sign up to never posts inside its own network (lib/outbound.ts).
+    const refused = outboundProblem(loaded.url);
+    if (refused) {
+      await ctx.runMutation(internal.send.done, { runStepId: args.runStepId, error: refused });
+      return;
+    }
     let problem: string | null = null;
     try {
       const response = await fetch(loaded.url, {

@@ -220,6 +220,7 @@ Settings on Convex take effect at once; settings on the agent server need a rest
 | `SIGN_UPS`                                                                            | recommended          | `invite-only`: the first account, then only invited addresses. `open` (the default): anyone who reaches the address.     |
 | `NCAT_EDITION`                                                                        | no                   | `self-hosted` (the default) or `hosted`. Only the hosted edition has trials and sign-up limits.                          |
 | `HOSTED_TOOLKIT_URL`, `HOSTED_TOOLKIT_API_KEY`                                        | no                   | A toolkit you lend to teams. Teams on it do not see the Toolkit page, and setting up offers "Just use ours for now".     |
+| `OUTBOUND_PRIVATE`                                                                    | no                   | `block` refuses addresses on a private network (`http://n8n:5678`, `10.0.0.5`) for toolkits, Send to a URL and callbacks; `allow` permits them. Blocked by default on the hosted edition and when `HOSTED_TOOLKIT_URL` is set. |
 | `HOSTED_TOOLKIT_JOBS_AT_ONCE`                                                         | no                   | Overrides the most jobs all teams on that toolkit may have there at once. Unset: the number of workers the toolkit reports. Waiting teams take turns. |
 | `TRIAL_DAYS`, `TRIALS_PER_NETWORK`, `BUY_URL`, `BLOCKED_EMAIL_DOMAINS`                | hosted edition       | Free trial length (3), trials per network in 30 days (2), where "Buy" goes, extra email domains refused at sign-up.      |
 | `TOSEND_API_KEY`, `EMAIL_FROM`, `EMAIL_FROM_NAME`, `REQUIRE_EMAIL_VERIFICATION`       | no                   | Email, as above.                                                                                                         |
@@ -263,6 +264,7 @@ In `deploy/compose.yml` the web app takes these from `deploy/.env` (`CONVEX_URL`
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`                                 | Telegram         |                                                                                                            |
 | `TEAMS_APP_ID`, `TEAMS_APP_PASSWORD`, `TEAMS_APP_TENANT_ID`, `TEAMS_APP_NAME` | Microsoft Teams  |                                                                                                            |
 | `TURSO_DATABASE_URL`                                                          | no               | Where the agent keeps its memory. The image uses `file:/data/mastra.db`, so keep `/data` on a volume.      |
+| `WORKSPACE_SANDBOX`                                                           | no               | Lets the agent run shell commands on its own server. Off, and keep it off when more than one team uses it. |
 
 The agent server takes many more optional settings from the chat kit it is built on; they are listed with their defaults in [`packages/agent/.env.example`](../packages/agent/.env.example).
 
