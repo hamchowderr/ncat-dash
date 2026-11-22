@@ -177,12 +177,32 @@ export function readBeats(raw: unknown): Beats | undefined {
   const beats = times(answer.beats);
   if (!tempo || beats.length < 2) return undefined;
   const steadiness = number(answer.steadiness);
-  return {
+  const found: Beats = {
     tempo,
     steadiness: steadiness === undefined ? 1 : Math.min(1, steadiness),
     beats,
     downbeats: times(answer.downbeats),
   };
+  // Loudness lines up with the beats as sent, so it is kept only when every pair is sound.
+  const rawBeats = Array.isArray(answer.beats) ? answer.beats : [];
+  const loudness = Array.isArray(answer.loudness) ? answer.loudness : [];
+  const pairs = rawBeats.map((time, index) => [time, loudness[index]]);
+  if (
+    loudness.length === rawBeats.length &&
+    pairs.every(
+      ([time, level]) =>
+        typeof time === "number" &&
+        Number.isFinite(time) &&
+        time >= 0 &&
+        typeof level === "number" &&
+        Number.isFinite(level),
+    )
+  ) {
+    found.loudness = (pairs as [number, number][])
+      .sort((a, b) => a[0] - b[0])
+      .map(([, level]) => Math.min(0, level));
+  }
+  return found;
 }
 
 /** The camera cuts in a /v1/media/look answer, in order. Undefined when cuts were not found. */

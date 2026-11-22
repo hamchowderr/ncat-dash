@@ -99,11 +99,12 @@ describe("Cut To The Beat among the ready-mades", () => {
         trigger: { kind: "upload", fileType: "video" },
         nodes: [
           expect.objectContaining({ id: "split_shots_1", stepId: "recipe-split-shots" }),
-          // Mixed up, so pieces split from one long shot never play back to back.
+          // Mixed up, so pieces split from one long shot never play back to back, and cut
+          // faster where the music gets loud.
           expect.objectContaining({
             id: "beat_cut_1",
             stepId: "recipe-beat-cut",
-            input: { order: "mixed up" },
+            input: { order: "mixed up", cut_every: "with the music's energy" },
           }),
         ],
         edges: [expect.objectContaining({ source: "split_shots_1", target: "beat_cut_1" })],

@@ -16,8 +16,17 @@ const { opt, VIDEO_OUT, url, number, whole, choice, seconds, editStep, SHAPES, S
 export const BEAT_CUT_STEP = "recipe-beat-cut";
 export const SPLIT_SHOTS_STEP = "recipe-split-shots";
 
-/** How often the picture changes, from every beat to every two bars. */
-export const CUT_EVERY = ["every beat", "every 2 beats", "every bar", "every 2 bars"] as const;
+/**
+ * How often the picture changes, from every beat to every two bars, or with the music's
+ * energy: every beat where it is loud, every bar where it is quiet.
+ */
+export const CUT_EVERY = [
+  "every beat",
+  "every 2 beats",
+  "every bar",
+  "every 2 bars",
+  "with the music's energy",
+] as const;
 export type CutEvery = (typeof CUT_EVERY)[number];
 
 /** Below this the sound does not keep a beat (speech, free-time music), so cuts would wander. */
@@ -55,7 +64,64 @@ export function beatGrid(found: Beats, every: CutEvery, from = 0): number[] {
       return bars;
     case "every 2 bars":
       return everyOther(bars);
+    case "with the music's energy":
+      return energyGrid(found, beats, bars);
   }
+}
+
+/** How a bar is cut, by how loud it is next to the rest of the song. */
+export type BarEnergy = "loud" | "middle" | "quiet";
+
+/** Within this many dB of the song's loud bars, a bar is loud. */
+const LOUD_WITHIN = 2;
+/** More than this many dB below them, a bar is quiet. */
+const QUIET_BELOW = 6;
+/** A song whose bars stay within this many dB of each other has no loud or quiet parts. */
+const FLAT_SPREAD = 3;
+
+const percentile = (sorted: number[], share: number) =>
+  sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(share * (sorted.length - 1))))];
+
+/**
+ * Each bar of the whole song (one for each of `found.downbeats`) as loud, middle or quiet,
+ * next to the song's loud bars (its 90th percentile). Undefined without loudness; all
+ * middle when the song barely changes in loudness.
+ */
+export function barEnergy(found: Beats): BarEnergy[] | undefined {
+  const { beats, loudness } = found;
+  if (!loudness || loudness.length !== beats.length || found.downbeats.length < 2) return undefined;
+  const bars = found.downbeats;
+  const levels = bars.map((start, index) => {
+    const end = bars[index + 1] ?? Infinity;
+    const inside = beats.flatMap((time, at) =>
+      time >= start - 0.001 && time < end - 0.001 ? [loudness[at]] : [],
+    );
+    return inside.length ? inside.reduce((sum, level) => sum + level, 0) / inside.length : -60;
+  });
+  const sorted = [...levels].sort((a, b) => a - b);
+  const top = percentile(sorted, 0.9);
+  if (top - percentile(sorted, 0.1) < FLAT_SPREAD) return levels.map(() => "middle");
+  return levels.map((level) =>
+    level >= top - LOUD_WITHIN ? "loud" : level < top - QUIET_BELOW ? "quiet" : "middle",
+  );
+}
+
+/**
+ * Cuts that follow the music: every beat in a loud bar, every two beats in a middle one and
+ * once in a quiet one, always on the bar's first beat. Without loudness (an older toolkit)
+ * or bars, every two beats.
+ */
+function energyGrid(found: Beats, beats: number[], bars: number[]): number[] {
+  const energy = barEnergy(found);
+  if (!energy) return beatGrid(found, "every 2 beats", beats[0] ?? 0);
+  const all = found.downbeats;
+  return bars.flatMap((start) => {
+    const index = all.indexOf(start);
+    const end = all[index + 1] ?? Infinity;
+    const inside = beats.filter((time) => time >= start - 0.001 && time < end - 0.001);
+    const keep = energy[index] === "loud" ? 1 : energy[index] === "middle" ? 2 : inside.length;
+    return inside.filter((_, at) => at % keep === 0);
+  });
 }
 
 /** The order clips take turns in: as listed, or mixed up so neighbours in the list never follow each other. */
@@ -262,7 +328,7 @@ export const beatRecipes: StepDefinition[] = [
     id: BEAT_CUT_STEP,
     title: "Cut To The Beat",
     description:
-      "Cuts your clips and pictures together so the picture changes on the beat of the music: every beat, every two beats, every bar or every two bars. The beat is found in the music itself with plain sound analysis, no AI. Clips take turns, each carrying on from where it last left off and looping if it runs out; pictures hold still. Clips take turns in the order listed, or mixed up so neighbours in the list are kept apart. The music plays under it and fades out on the last cut. With no music picked it uses your team's first music track from Settings.",
+      "Cuts your clips and pictures together so the picture changes on the beat of the music: every beat, every two beats, every bar or every two bars, or with the music's energy: every beat where it gets loud and once a bar where it is quiet. The beat is found in the music itself with plain sound analysis, no AI. Clips take turns, each carrying on from where it last left off and looping if it runs out; pictures hold still. Clips take turns in the order listed, or mixed up so neighbours in the list are kept apart. The music plays under it and fades out on the last cut. With no music picked it uses your team's first music track from Settings.",
     primaryInput: null,
     listInput: { field: "video_urls", itemKey: "video_url" },
     brandInputs: { music_url: "music" },

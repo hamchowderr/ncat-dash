@@ -150,6 +150,8 @@ export interface Beats {
   beats: number[];
   /** The first beat of each bar. */
   downbeats: number[];
+  /** How loud each beat is, in dB below the song's loudest beat; one for each of `beats`. */
+  loudness?: number[];
 }
 
 /** A stretch of silence, from and to, in seconds. */
