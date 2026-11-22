@@ -242,6 +242,9 @@ export const stepLog = query({
       tries: step.tries ?? [],
       jobs: jobs.slice(0, LOG_JOBS).map(loggedJob),
       more: jobs.length > LOG_JOBS,
+      // The files it handed on, each with the file it was made from and the one the run
+      // started with. Steps that finished before these were kept have none.
+      files: (step.items ?? []).slice(0, LOG_JOBS),
     };
   },
 });

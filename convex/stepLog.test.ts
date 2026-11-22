@@ -101,6 +101,10 @@ describe("a step's log", () => {
     expect(worked.sentAt).toBeGreaterThanOrEqual(worked.queuedAt);
     expect(worked.finishedAt).toBeGreaterThanOrEqual(worked.sentAt!);
     expect(log.more).toBe(false);
+    // The file it made, traced back to the file the run started with.
+    expect(log.files).toEqual([
+      expect.objectContaining({ url: step.outputs[0], from: FILE, source: FILE, kind: "video" }),
+    ]);
     // Nobody outside the team reads it.
     expect(await stranger.as.query(api.runs.stepLog, { runStepId: step._id })).toBeNull();
   });

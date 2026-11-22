@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 import { answerQuery } from "@/test/convex";
 import { renderInApp } from "@/test/render";
 
-import { jobTiming, StepLog } from "./step-log";
+import { cameFrom, jobTiming, StepLog } from "./step-log";
 
 const FILE = "https://files.example/in/episode-4.mp4";
 const AT = Date.UTC(2026, 10, 22, 22, 14, 0);
@@ -44,6 +44,7 @@ describe("a step's log on the run page", () => {
         job,
       ],
       more: false,
+      files: [],
     });
     const user = userEvent.setup();
     renderInApp(<StepLog runStepId={"s1" as never} title="Trim video" />);
@@ -63,6 +64,36 @@ describe("a step's log on the run page", () => {
     expect(jobs[1]).toHaveTextContent('"api_key": "hidden"');
     await user.click(screen.getByRole("button", { name: "Hide what was sent" }));
     expect(screen.queryByRole("region", { name: "What Trim video sent" })).toBeNull();
+  });
+
+  test("lists the files a step handed on and where each came from", async () => {
+    const CUT = "https://files.example/out/episode-4-trimmed.mp4";
+    const BURNED = "https://files.example/out/episode-4-captioned.mp4";
+    answerQuery(api.runs.stepLog, {
+      tries: [],
+      jobs: [job],
+      more: false,
+      files: [{ url: BURNED, from: CUT, source: FILE, kind: "video" }],
+    });
+    const user = userEvent.setup();
+    renderInApp(<StepLog runStepId={"s1" as never} title="Caption video" />);
+    await user.click(screen.getByRole("button", { name: "Show what was sent" }));
+    expect(screen.getByRole("list", { name: "Files it handed on" })).toHaveTextContent(
+      "episode-4-captioned.mp4 · made from episode-4-trimmed.mp4, which started as episode-4.mp4",
+    );
+  });
+
+  test("says where a file came from in plain words", () => {
+    const name = (url: string) => url.split("/").pop()!;
+    expect(cameFrom({ url: FILE, from: null, source: FILE }, name)).toBe(
+      "the file the run started with",
+    );
+    expect(cameFrom({ url: "https://x/a.mp4", from: FILE, source: FILE }, name)).toBe(
+      "made from episode-4.mp4",
+    );
+    expect(cameFrom({ url: "https://x/a.mp4", from: null, source: null }, name)).toBe(
+      "made from files that started in different places",
+    );
   });
 
   test("says how long a job waited for a slot and how long the toolkit took", () => {
