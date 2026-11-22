@@ -9,7 +9,11 @@
 # ones in when the container starts, from:
 #   NEXT_PUBLIC_CONVEX_URL, NEXT_PUBLIC_CONVEX_SITE_URL   (required)
 #   MASTRA_SERVER_URL, MASTRA_JWT_SECRET                  (for the agent)
-FROM node:22-bookworm-slim AS build
+#
+# The `setup` stage is a second image, ghcr.io/hamchowderr/ncat-dash-setup: it pushes the
+# backend (convex/) to a copy's Convex, so the machine needs no Node or clone of its own
+# (deploy/setup/setup.sh). Build it with --target setup.
+FROM node:22-bookworm-slim AS source
 RUN corepack enable
 ENV npm_config_store_dir=/pnpm/store \
     CI=true \
@@ -27,12 +31,20 @@ COPY packages/agent/package.json packages/agent/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --filter "ncat-dash..."
 COPY . .
+
+FROM source AS build
 ENV NEXT_OUTPUT=standalone \
     NEXT_PUBLIC_CONVEX_URL=https://convex-url.takewon.invalid \
     NEXT_PUBLIC_CONVEX_SITE_URL=https://convex-site-url.takewon.invalid
 RUN pnpm build
 
-FROM node:22-bookworm-slim
+FROM source AS setup
+COPY deploy/setup/setup.sh /usr/local/bin/takewon-setup
+RUN chmod +x /usr/local/bin/takewon-setup
+ENV CONVEX_SELF_HOSTED_URL=http://convex:3210
+CMD ["takewon-setup"]
+
+FROM node:22-bookworm-slim AS web
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
