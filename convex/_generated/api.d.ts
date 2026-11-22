@@ -89,6 +89,7 @@ import type * as lib_moments from "../lib/moments.js";
 import type * as lib_motion from "../lib/motion.js";
 import type * as lib_notifications from "../lib/notifications.js";
 import type * as lib_oauth from "../lib/oauth.js";
+import type * as lib_outbound from "../lib/outbound.js";
 import type * as lib_outputs from "../lib/outputs.js";
 import type * as lib_packages from "../lib/packages.js";
 import type * as lib_pickUp from "../lib/pickUp.js";
@@ -258,6 +259,7 @@ declare const fullApi: ApiFromModules<{
   "lib/motion": typeof lib_motion;
   "lib/notifications": typeof lib_notifications;
   "lib/oauth": typeof lib_oauth;
+  "lib/outbound": typeof lib_outbound;
   "lib/outputs": typeof lib_outputs;
   "lib/packages": typeof lib_packages;
   "lib/pickUp": typeof lib_pickUp;
