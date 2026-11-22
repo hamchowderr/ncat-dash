@@ -729,6 +729,9 @@ export default defineSchema({
     // and places what goes on it ("place"), then draws on it ("render"). A "cleanup" step
     // does the same, also hearing each video's pauses, and "render" cuts the cleaned files.
     // A step keeping a paid-ad disclosure in every cut first transcribes its videos ("hear").
+    // "Caption video" with a caption language hears its videos too, then has the words
+    // translated and timed and the caption files written ("translate"), then burns them in
+    // ("render").
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -746,6 +749,22 @@ export default defineSchema({
         // A "footage-check" step waiting for the toolkit to measure each file.
         v.literal("footage"),
         v.literal("hear"),
+        v.literal("translate"),
+      ),
+    ),
+    // For "Caption video" with a caption language: its videos have been heard ("hear").
+    heardWords: v.optional(v.boolean()),
+    // For "Caption video" with a caption language: each video, the language, and the look
+    // and size its caption file is drawn with, in the order of the step's jobs.
+    captionPlan: v.optional(
+      v.array(
+        v.object({
+          video: v.string(),
+          language: v.string(),
+          look: v.record(v.string(), v.union(v.string(), v.number(), v.boolean())),
+          width: v.number(),
+          height: v.number(),
+        }),
       ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
@@ -2165,6 +2184,19 @@ export default defineSchema({
   })
     .index("by_item_and_language", ["itemId", "language"])
     .index("by_organization", ["organizationId"]),
+
+  // A video's words translated for captions in another language (captionTranslation.ts),
+  // each translated word timed from the spoken words it stands for, one list per spoken
+  // line. Kept so a video is never translated twice into the same language.
+  captionTranslations: defineTable({
+    organizationId: v.string(),
+    // The video, as spokenWords keys it (lib/moments.ts sourceKey).
+    source: v.string(),
+    language: v.string(),
+    lines: v.array(v.array(v.object({ t: v.string(), s: v.number(), e: v.number() }))),
+    aiSpent: v.number(),
+    savedAt: v.number(),
+  }).index("by_source_and_language", ["organizationId", "source", "language"]),
 
   // Frames of a library video (or the one picture), as the picture model sees them, so
   // footage can be found by what it shows. `vector` is CLIP ViT-B/32, length 1.
