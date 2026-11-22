@@ -2,8 +2,9 @@
  * The bridge to the desktop app (apps/desktop). In a browser none of this exists and
  * every call does nothing. Inside the app, the dashboard may ask for a few things only:
  * show an alert as a system notification, show how many alerts are unseen on the tray
- * and the Dock or taskbar, and save a run's files for an editor into a folder of the
- * app's, then open or show what it saved. The app refuses everything else from these pages.
+ * and the Dock or taskbar, save a run's files for an editor into a folder of the app's,
+ * then open or show what it saved, and send files chosen in the app's own file picker
+ * straight from disk. The app refuses everything else from these pages.
  */
 
 type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -92,5 +93,96 @@ export async function showOnDesktop(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** A file chosen in the app's file picker. The page never holds its bytes. */
+export type DiskFile = { path: string; name: string; size: number; contentType: string };
+
+/** An upload going up in parts from this computer, as the app wrote it down. */
+export type DiskUpload = {
+  uploadId: string;
+  path: string;
+  name: string;
+  size: number;
+  contentType: string;
+  plan: { partSize: number; partCount: number };
+  /** The parts the bucket already took. */
+  parts: { partNumber: number; etag: string }[];
+};
+
+/**
+ * Opens the computer's own file picker. Null outside the app, or in an app too old to
+ * have it, so the page uses its own file input; an empty list when nothing was chosen.
+ */
+export async function chooseFilesOnDesktop(): Promise<DiskFile[] | null> {
+  const invoke = bridge();
+  if (!invoke) return null;
+  try {
+    return (await invoke("choose_files")) as DiskFile[];
+  } catch {
+    return null;
+  }
+}
+
+function need(): Invoke {
+  const invoke = bridge();
+  if (!invoke) throw new Error("This only works in the desktop app.");
+  return invoke;
+}
+
+/** The app's refusals come back as plain text. */
+function asError(caught: unknown): Error {
+  return caught instanceof Error ? caught : new Error(String(caught));
+}
+
+async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return (await need()(command, args)) as T;
+  } catch (caught) {
+    throw asError(caught);
+  }
+}
+
+/** Sends a chosen file whole to one signed link. */
+export function sendFileFromDisk(file: DiskFile, url: string): Promise<void> {
+  return call("send_file", { path: file.path, url, contentType: file.contentType });
+}
+
+/** Writes down an upload in parts, or finds it again to carry on; says what was sent. */
+export function beginDiskUpload(
+  uploadId: string,
+  path: string,
+  plan: DiskUpload["plan"],
+): Promise<DiskUpload> {
+  return call("begin_upload", { uploadId, path, plan });
+}
+
+/** Sends one part, read from the file by the app. Resolves with the bucket's ETag. */
+export function sendPartFromDisk(
+  uploadId: string,
+  partNumber: number,
+  url: string,
+): Promise<string | null> {
+  return call("send_part", { uploadId, partNumber, url });
+}
+
+/** This dashboard's uploads that stopped part way, to carry on from. Empty outside the app. */
+export async function stoppedDiskUploads(): Promise<DiskUpload[]> {
+  if (!bridge()) return [];
+  try {
+    return await call<DiskUpload[]>("stopped_uploads");
+  } catch {
+    return [];
+  }
+}
+
+/** Forgets an upload that finished or was dropped. */
+export async function forgetDiskUpload(uploadId: string): Promise<void> {
+  if (!bridge()) return;
+  try {
+    await call("forget_upload", { uploadId });
+  } catch {
+    // Nothing to forget.
   }
 }

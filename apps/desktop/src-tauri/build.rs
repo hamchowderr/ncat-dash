@@ -22,6 +22,12 @@ fn main() {
             "save_export",
             "open_export",
             "show_export",
+            "choose_files",
+            "send_file",
+            "begin_upload",
+            "send_part",
+            "stopped_uploads",
+            "forget_upload",
         ]),
     ))
     .expect("failed to build the desktop app");
