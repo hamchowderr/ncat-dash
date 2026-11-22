@@ -3,12 +3,13 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { threadComments } from "@ncat-dash/review-core";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Check, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
+import { type Agency, AgencyMark, brandStyle } from "@/components/portal/agency-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,7 +119,21 @@ function useGuestPresence(token: string, guest: Guest | null): Here[] {
   return here ?? [];
 }
 
-function NameForm({ teamName }: { teamName: string | null }) {
+/** The team's mark, its uploaded logo asked for with the share link's secret. */
+function RoomMark({ token, agency, small }: { token: string; agency: Agency; small?: boolean }) {
+  const logoLink = useAction(api.sharedReview.logoLink);
+  return <AgencyMark agency={agency} small={small} getLink={() => logoLink({ token })} />;
+}
+
+function NameForm({
+  token,
+  teamName,
+  brand,
+}: {
+  token: string;
+  teamName: string | null;
+  brand: { logo: string | null; color: string | null };
+}) {
   const [name, setName] = useState("");
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -130,6 +145,11 @@ function NameForm({ teamName }: { teamName: string | null }) {
       onSubmit={submit}
       className="bg-card mx-auto mt-[12svh] flex w-full max-w-sm flex-col gap-4 rounded-xl border p-6"
     >
+      {teamName && (
+        <div style={brandStyle(brand.color)}>
+          <RoomMark token={token} agency={{ name: teamName, ...brand }} />
+        </div>
+      )}
       <div className="grid gap-1">
         <h1 className="text-lg font-semibold">Before you start</h1>
         <p className="text-muted-foreground text-sm">
@@ -440,7 +460,7 @@ export function SharedReview({ token, backHref }: { token: string; backHref?: st
       </div>
     );
   }
-  if (!guest) return <NameForm teamName={room.teamName} />;
+  if (!guest) return <NameForm token={token} teamName={room.teamName} brand={room.brand} />;
 
   const index = Math.max(
     0,
@@ -455,7 +475,14 @@ export function SharedReview({ token, backHref }: { token: string; backHref?: st
   return (
     // The whole window, so on a phone the room scrolls inside it and the decision stays put
     // under the thumb, without covering anything.
-    <div className="flex h-dvh flex-col gap-3 p-3 sm:p-4 lg:h-svh lg:min-h-[36rem]">
+    <div
+      style={brandStyle(room.brand.color)}
+      className="flex h-dvh flex-col gap-3 p-3 sm:p-4 lg:h-svh lg:min-h-[36rem]"
+    >
+      <div
+        aria-hidden="true"
+        className="-mx-3 -mt-3 h-1 shrink-0 bg-[var(--brand,var(--primary))] sm:-mx-4 sm:-mt-4"
+      />
       <div
         data-room-scroll
         className="-mx-3 min-h-0 flex-1 overflow-y-auto px-3 max-lg:space-y-3 sm:-mx-4 sm:px-4 lg:contents"
@@ -469,10 +496,10 @@ export function SharedReview({ token, backHref }: { token: string; backHref?: st
               </Link>
             </Button>
           )}
+          {room.teamName && (
+            <RoomMark token={token} agency={{ name: room.teamName, ...room.brand }} small />
+          )}
           <div className="min-w-0 flex-1">
-            {room.teamName && (
-              <p className="text-muted-foreground truncate text-xs">From {room.teamName}</p>
-            )}
             <h1 className="truncate font-medium">{room.title}</h1>
           </div>
           <div className={cn("flex items-center gap-x-4 gap-y-2", narrow && "basis-full")}>

@@ -7,6 +7,7 @@ import { MANAGER_ROLES, isMember, requireMember } from "./lib/authz";
 import { checkedBrand, checkedMusic } from "./lib/brand";
 import { brandAndMusicOf } from "./lib/queue";
 import { brandValidator, musicValidator } from "./schema";
+import { removePortal } from "./portal";
 
 /** The most clients one team keeps, and the longest name one can have. */
 export const MAX_CLIENTS = 200;
@@ -236,12 +237,12 @@ export const remove = mutation({
         .take(2000);
       for (const row of rows) await ctx.db.patch(row._id, { clientId: undefined });
     }
-    // Its portal link stops working.
+    // Its portal link stops working, and so do the review rooms it opened.
     const portals = await ctx.db
       .query("clientPortals")
       .withIndex("by_client", (q) => q.eq("clientId", client._id))
       .take(10);
-    for (const portal of portals) await ctx.db.delete(portal._id);
+    for (const portal of portals) await removePortal(ctx, portal);
     await ctx.db.delete(client._id);
   },
 });

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { answerQuery, mutationOf } from "@/test/convex";
+import { actionOf, answerQuery, mutationOf } from "@/test/convex";
 
 import { SharedReview } from "./shared-review";
 
@@ -14,6 +14,7 @@ const KEY = "ncat-dash:share-guest";
 const room = (over: Record<string, unknown> = {}) => ({
   title: "Weekly clips",
   teamName: "Salt House",
+  brand: { logo: null, color: null },
   status: "open",
   allowVerdict: true,
   verdict: null,
@@ -114,7 +115,7 @@ describe("a review shared with a client", () => {
     signedAs();
     const { user, container } = open();
     expect(screen.getByRole("heading", { name: "Weekly clips" })).toBeVisible();
-    expect(screen.getByText("From Salt House")).toBeVisible();
+    expect(screen.getByText("Salt House")).toBeVisible();
     const player = container.querySelector("video")!;
     Object.defineProperty(player, "currentTime", { value: 4.5, writable: true });
     const box = screen.getByRole("textbox", { name: "Comment at this moment" });
@@ -186,6 +187,30 @@ describe("a review shared with a client", () => {
     open(room({ status: "approved" }));
     expect(screen.getByText("Approved by the team")).toBeVisible();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+  });
+});
+
+describe("a shared review in the team's look", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  test("wears the team's colour and shows its uploaded logo, asked for with the link", async () => {
+    signedAs();
+    const logoLink = actionOf(api.sharedReview.logoLink).mockResolvedValue(
+      "https://files.example/salt-house.png?signed",
+    );
+    const { container } = open(room({ brand: { logo: "upload:u1", color: "#FFCC00" } }));
+    const logo = await screen.findByRole("img", { name: "Salt House" });
+    expect(logo).toHaveAttribute("src", "https://files.example/salt-house.png?signed");
+    expect(logoLink).toHaveBeenCalledWith({ token: TOKEN });
+    const frame = container.querySelector("[style]") as HTMLElement;
+    expect(frame.style.getPropertyValue("--brand")).toBe("#FFCC00");
+  });
+
+  test("shows the team's logo on the name step too", async () => {
+    actionOf(api.sharedReview.logoLink).mockResolvedValue("https://files.example/s.png");
+    open(room({ brand: { logo: "upload:u1", color: null } }));
+    expect(screen.getByRole("heading", { name: "Before you start" })).toBeVisible();
+    expect(await screen.findByRole("img", { name: "Salt House" })).toBeVisible();
   });
 });
 

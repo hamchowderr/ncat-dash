@@ -2,75 +2,24 @@
 
 import { api } from "@convex/_generated/api";
 import type { DeliverableStatus } from "@convex/lib/packages";
-import { readUploadRef } from "@ncat-dash/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ArrowLeft, ChevronRight, MessagesSquare } from "lucide-react";
+import { ArrowLeft, ChevronRight, Download, MessagesSquare } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
+import { type Agency, AgencyMark, brandStyle } from "@/components/portal/agency-mark";
 import { SlotFile } from "@/components/projects/slot-panel";
 import { KindIcon } from "@/components/projects/slot-status";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 
-type Agency = { name: string; logo: string | null; color: string | null };
-
-/** Black or white, whichever reads better on the brand colour. */
-function inkOn(hex: string): string {
-  const [r, g, b] = [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16) / 255);
-  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  const light = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-  return light > 0.4 ? "#000000" : "#ffffff";
-}
-
-/** The agency's colour as CSS variables, so its buttons and marks wear it. */
-function brandStyle(color: string | null): CSSProperties | undefined {
-  if (!color || !/^#[0-9A-Fa-f]{6}$/.test(color)) return undefined;
-  return { "--brand": color, "--brand-ink": inkOn(color) } as CSSProperties;
-}
-
-/**
- * Where the agency's logo shows from: its address, or for an uploaded logo a link the
- * portal's secret opens, since nobody here is signed in. Null until there is one.
- */
-function useLogoLink(token: string, logo: string | null): string | null {
+/** The agency's mark, asking for an uploaded logo with the portal's secret. */
+function PortalMark({ token, agency }: { token: string; agency: Agency }) {
   const logoLink = useAction(api.portal.logoLink);
-  const uploaded = readUploadRef(logo ?? undefined) !== null;
-  const [link, setLink] = useState<{ for: string; url: string | null } | null>(null);
-  useEffect(() => {
-    if (!uploaded || !logo) return;
-    let live = true;
-    logoLink({ token })
-      .then((url) => live && setLink({ for: logo, url }))
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [token, logo, uploaded, logoLink]);
-  if (uploaded) return link?.for === logo ? link.url : null;
-  return logo && /^https?:\/\/\S+$/.test(logo) ? logo : null;
-}
-
-function AgencyMark({ token, agency }: { token: string; agency: Agency }) {
-  const link = useLogoLink(token, agency.logo);
-  if (link) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={link} alt={agency.name} className="h-9 max-w-40 object-contain" />;
-  }
-  return (
-    <span className="flex items-center gap-2.5">
-      <span
-        aria-hidden="true"
-        className="flex size-9 items-center justify-center rounded-lg bg-[var(--brand,var(--primary))] text-sm font-semibold text-[var(--brand-ink,var(--primary-foreground))]"
-      >
-        {agency.name.slice(0, 1).toUpperCase()}
-      </span>
-      <span className="font-semibold">{agency.name}</span>
-    </span>
-  );
+  return <AgencyMark agency={agency} getLink={() => logoLink({ token })} />;
 }
 
 /** The portal's frame: the agency's mark on top, in its colour, around one page. */
@@ -87,7 +36,7 @@ function Frame({
     <div style={brandStyle(agency.color)} className="flex min-h-svh flex-col">
       <div aria-hidden="true" className="h-1 bg-[var(--brand,var(--primary))]" />
       <header className="mx-auto flex w-full max-w-5xl items-center px-4 py-5 sm:px-6">
-        <AgencyMark token={token} agency={agency} />
+        <PortalMark token={token} agency={agency} />
       </header>
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 pb-16 sm:px-6">
         {children}
@@ -190,6 +139,56 @@ const CLIENT_WORDS: Record<DeliverableStatus, string> = {
   published: "Published",
 };
 
+/** Downloads one approved or published piece, under its own name where the file allows. */
+function DownloadPiece({
+  token,
+  projectId,
+  slotId,
+  label,
+}: {
+  token: string;
+  projectId: string;
+  slotId: string;
+  label: string;
+}) {
+  const downloadLink = useAction(api.portal.downloadLink);
+  const [pending, setPending] = useState(false);
+
+  async function onDownload() {
+    setPending(true);
+    try {
+      const link = await downloadLink({ token, projectId, slotId });
+      if (!link) {
+        toast.error("This piece can't be downloaded right now. Try again in a moment.");
+        return;
+      }
+      const anchor = document.createElement("a");
+      anchor.href = link;
+      anchor.target = "_blank";
+      anchor.rel = "noopener";
+      anchor.click();
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The download did not start. Try again."));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="-ml-2 self-start"
+      aria-label={`Download ${label}`}
+      disabled={pending}
+      onClick={() => void onDownload()}
+    >
+      <Download />
+      Download
+    </Button>
+  );
+}
+
 /** One project in a client's portal: every piece, and the way into its review room. */
 export function PortalProject({ token, projectId }: { token: string; projectId: string }) {
   const router = useRouter();
@@ -266,6 +265,14 @@ export function PortalProject({ token, projectId }: { token: string; projectId: 
                     {CLIENT_WORDS[slot.status]}
                   </span>
                 </span>
+                {slot.url && (slot.status === "approved" || slot.status === "published") && (
+                  <DownloadPiece
+                    token={token}
+                    projectId={projectId}
+                    slotId={slot._id}
+                    label={slot.label}
+                  />
+                )}
               </li>
             ))}
           </ul>

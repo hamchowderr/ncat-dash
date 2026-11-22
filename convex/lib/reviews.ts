@@ -114,8 +114,13 @@ export async function closeReviewForStep(
 
 /** A review's share link, if it has one switched on. */
 export async function shareOf(ctx: QueryCtx | MutationCtx, reviewId: Id<"reviews">) {
+  return (await sharesOf(ctx, reviewId)).find((share) => share.portalId === undefined) ?? null;
+}
+
+/** Every share link of a review: the team's own and the ones clients' portals opened. */
+export async function sharesOf(ctx: QueryCtx | MutationCtx, reviewId: Id<"reviews">) {
   return await ctx.db
     .query("reviewShares")
     .withIndex("by_review", (q) => q.eq("reviewId", reviewId))
-    .first();
+    .take(50);
 }

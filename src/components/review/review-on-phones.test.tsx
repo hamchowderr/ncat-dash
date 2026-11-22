@@ -134,6 +134,7 @@ describe("a shared review on a client's phone", () => {
   const shared = (over: Record<string, unknown> = {}) => ({
     title: "Weekly clips",
     teamName: "Salt House",
+    brand: { logo: null, color: null },
     status: "open",
     allowVerdict: true,
     verdict: null,
