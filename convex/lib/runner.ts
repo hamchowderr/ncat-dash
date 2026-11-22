@@ -78,7 +78,7 @@ import { finishCheck, knownDetails, startIf, startWait } from "./logic";
 import { finishListening, listenRequest, startListening, wordsFor } from "./moments";
 import { type DisclosureNote, hearFirst } from "./disclosure";
 import { finishLaying, finishLooking } from "./broll";
-import { finishMotionListening, isPlaceKind } from "./motion";
+import { finishMotionListening, isMotionKind, isPlaceKind } from "./motion";
 import { finishFootageCheck, startFootageCheck } from "./footage";
 import { startSubtitles } from "./subtitles";
 import { fillProjectSlots } from "./projects";
@@ -1363,9 +1363,13 @@ export async function onJobFinished(ctx: MutationCtx, runStepId: Id<"runSteps">)
     );
   } else {
     const labels = await variantLabels(ctx, run, step, jobs);
+    const kind = (run.nodes as AutomationNode[]).find((other) => other.id === step.nodeId)?.kind;
+    // Add Motion Graphics and Add Sound Effects keep the videos that had nothing to draw,
+    // unchanged, in `outputs` while the rest render.
+    const keptAsIs = kind && isMotionKind(kind) && step.stage === "render" ? step.outputs : [];
     await ctx.db.patch(runStepId, {
       status: "done",
-      outputs: jobs.flatMap((job) => job.outputs),
+      outputs: [...keptAsIs, ...jobs.flatMap((job) => job.outputs)],
       finishedAt: Date.now(),
       retryError: undefined,
       ...(labels.length > 0 ? { labels } : {}),

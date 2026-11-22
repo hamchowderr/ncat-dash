@@ -233,6 +233,23 @@ export function wrongKindOfFile(
   return null;
 }
 
+/**
+ * The motion render's checks of the request itself, such as "Nothing to add: no motion
+ * pieces or sound effects fall inside the video": the same request fails the same way
+ * every time, so it is not sent again.
+ */
+const MOTION_REQUEST_FAULT =
+  /^(Nothing to add\b|A [a-z ]+ piece needs\b|At most \d+ (motion pieces|sound effects)\b|There is no sound called\b)/;
+
+/** Whether a failed job would fail the same way if sent again unchanged. */
+export function failsTheSameEveryTime(
+  stepId: string | null | undefined,
+  text: string | null | undefined,
+): boolean {
+  if (wrongKindOfFile(stepId, text) !== null) return true;
+  return stepId === "video-motion" && MOTION_REQUEST_FAULT.test((text ?? "").trim());
+}
+
 export function explainFailure(text: string | null | undefined): ExplainedFailure {
   const full = (text ?? "").trim();
   if (!full) return { reason: "The step failed.", details: null };

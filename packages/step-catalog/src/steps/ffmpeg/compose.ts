@@ -9,9 +9,9 @@ export const ffmpegOption = z.object({
 export const ffmpegCompose = defineStep({
   id: "ffmpeg-compose",
   category: "ffmpeg",
-  title: "FFmpeg compose",
+  title: "Custom edit",
   description:
-    "Direct FFmpeg interface for complex custom media operations not covered by other endpoints. Supports transcoding, concatenation, filtering, overlays, and any FFmpeg-supported operation. Video output opens inline in browser.",
+    "A custom edit for what no other step does: change a file's format, join files, filter them or lay one over another, all in one request. A video it makes plays right in the browser.",
   endpoint: "/v1/ffmpeg/compose",
   method: "POST",
   output: "files",

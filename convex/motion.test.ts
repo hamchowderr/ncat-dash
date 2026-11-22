@@ -251,8 +251,58 @@ describe("Add Motion Graphics", () => {
     const { t, start, runOf } = await setUp([{ id: "motion", kind: "motion", input: {} }]);
     const runId = await start();
     await settled(t);
-    expect((await runOf(runId))!.status).toBe("done");
-    expect(sent.some((one) => one.url.endsWith("/v1/video/motion"))).toBe(true);
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    // The default style is a name card and a follow card, and neither has words yet, so
+    // the video goes on as it is and the step says what to fill in.
+    expect(sent.some((one) => one.url.endsWith("/v1/video/motion"))).toBe(false);
+    const step = run.steps.find((one) => one.nodeId === "motion")!;
+    expect(step.outputs).toEqual([FILE]);
+    expect(step.pickNote).toMatch(/Add a speaker name and a handle in Settings, under Motion/);
+  });
+});
+
+describe("Add Motion Graphics with nothing to draw", () => {
+  const NAME_AND_FOLLOW_ONLY = {
+    ...TEAM_MOTION,
+    style: {
+      ...TEAM_MOTION.style,
+      pieces: ["lower_third", "follow"],
+      opening: "none",
+      sound: "off",
+    },
+    hostName: "",
+    hostRole: "",
+    handle: "",
+  };
+
+  test("hands the video on unchanged, says why, and the steps after it still run", async () => {
+    const sent = fakeToolkit();
+    const { t, start, runOf } = await setUp(
+      [
+        { id: "motion", kind: "motion", input: {} },
+        { id: "sounds", kind: "sound-effects", input: {} },
+      ],
+      NAME_AND_FOLLOW_ONLY,
+    );
+    const runId = await start();
+    await settled(t);
+
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    const step = run.steps.find((one) => one.nodeId === "motion")!;
+    expect(step.status).toBe("done");
+    expect(step.error).toBeNull();
+    expect(step.outputs).toEqual([FILE]);
+    expect(step.pickNote).toBe(
+      "Nothing to draw on the video, so it went on unchanged. Add a speaker name and a handle in Settings, under Motion, for the name and follow cards to show.",
+    );
+    // No render was sent for a video with nothing on it. The one render is Add Sound
+    // Effects after it, given the untouched video.
+    const renders = sent.filter((one) => one.url.endsWith("/v1/video/motion"));
+    expect(renders).toHaveLength(1);
+    expect(renders[0].body).toMatchObject({ video_url: FILE, pieces: [] });
+    expect(run.steps.find((one) => one.nodeId === "sounds")!.status).toBe("done");
   });
 });
 

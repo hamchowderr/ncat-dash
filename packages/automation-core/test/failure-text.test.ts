@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { CAPTIONS_NEED_VIDEO, explainFailure, wrongKindOfFile } from "../src/failure-text";
+import {
+  CAPTIONS_NEED_VIDEO,
+  explainFailure,
+  failsTheSameEveryTime,
+  wrongKindOfFile,
+} from "../src/failure-text";
 
 const fixture = (name: string) => readFileSync(join(__dirname, "fixtures", name), "utf8");
 
@@ -185,5 +190,29 @@ describe("wrongKindOfFile", () => {
     expect(wrongKindOfFile("video-caption", "connect ECONNREFUSED 10.0.0.5:8080")).toBeNull();
     expect(wrongKindOfFile("video-caption", "")).toBeNull();
     expect(wrongKindOfFile("video-caption", null)).toBeNull();
+  });
+});
+
+describe("failsTheSameEveryTime", () => {
+  test("motion with nothing to draw, or a request it cannot take, is not sent again", () => {
+    for (const text of [
+      "Nothing to add: no motion pieces or sound effects fall inside the video.",
+      "A lower third piece needs its words.",
+      "At most 120 motion pieces can go on one video.",
+      "There is no sound called boing. Pick one of: click, ding.",
+    ]) {
+      expect(failsTheSameEveryTime("video-motion", text)).toBe(true);
+    }
+  });
+
+  test("a picture given to Caption video is not sent again either", () => {
+    expect(failsTheSameEveryTime("video-caption", "IndexError: tuple index out of range")).toBe(
+      true,
+    );
+  });
+
+  test("anything else may work on another try", () => {
+    expect(failsTheSameEveryTime("video-motion", "The toolkit could not be reached.")).toBe(false);
+    expect(failsTheSameEveryTime("video-trim", "Nothing to add: no motion pieces")).toBe(false);
   });
 });

@@ -137,14 +137,6 @@ function ClientVerdict({ verdict }: { verdict: { name: string; approved: boolean
   );
 }
 
-/**
- * A step run by hand, outside an automation, named for people: the toolkit's own request
- * names (such as its free-form edit) are not shown.
- */
-function plainStepTitle(stepId: string): string {
-  return stepId === "ffmpeg-compose" ? "Custom edit" : stepTitle(stepId);
-}
-
 /** Picks one of the team's recent result files as the clip's next version. */
 function AddVersion({ clip, organizationId }: { clip: Clip; organizationId: string }) {
   const [open, setOpen] = useState(false);
@@ -161,7 +153,7 @@ function AddVersion({ clip, organizationId }: { clip: Clip; organizationId: stri
       files.push({
         url,
         name: group.names?.[url] ?? fileNameOf(url),
-        step: group.stepName ?? plainStepTitle(group.stepId),
+        step: group.stepName ?? stepTitle(group.stepId),
         finishedAt: group.finishedAt,
       });
     }

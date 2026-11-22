@@ -150,7 +150,7 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
     case "try_team_step": {
       const step = (given?.step ?? {}) as { title?: unknown };
       return {
-        title: "Trying a new FFmpeg step",
+        title: "Trying a new step",
         question: "Try this step on a file?",
         lines: [
           isText(step.title) ? `"${step.title}"` : "A step written for you",
@@ -171,7 +171,7 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
         lines: [
           isText(step.title) ? `"${step.title}"` : "A step written for you",
           settings.length ? `Settings: ${settings.join(", ")}` : "No settings to fill in",
-          "It runs as plain FFmpeg, with no AI each time.",
+          "It runs on your toolkit by plain rules, with no AI each time.",
         ],
       };
     }

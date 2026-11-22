@@ -168,7 +168,7 @@ export const savedLookStep: StepDefinition = defineStep({
   category: "recipe",
   title: "Match A Saved Look",
   description:
-    "Puts the video into one of your saved looks: the same shape, the same way of filling it and the same colour as the video the look was copied from. Plain FFmpeg every time, no AI.",
+    "Puts the video into one of your saved looks: the same shape, the same way of filling it and the same colour as the video the look was copied from. The same plain rules every time, no AI.",
   endpoint: "/v1/ffmpeg/compose",
   method: "POST",
   output: "files",

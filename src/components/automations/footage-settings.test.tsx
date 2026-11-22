@@ -48,7 +48,9 @@ describe("the Check Footage step", () => {
     );
     expect(screen.getByText(/Nothing is edited until better footage lands/)).toBeInTheDocument();
     // What the step finds for itself.
-    expect(screen.getByText(/each hook and ending take, measured by FFmpeg/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/each hook and ending take, measured by your toolkit/),
+    ).toBeInTheDocument();
   });
 
   test("saves a shape, a size and telling instead of stopping", async () => {

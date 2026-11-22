@@ -268,3 +268,12 @@ describe("Caption video given a picture", () => {
     ).toBeNull();
   });
 });
+
+describe("step names people read", () => {
+  it("no step is named or described after the tool the toolkit uses underneath", async () => {
+    const { allSteps } = await import("../src");
+    const named = allSteps.filter((step) => /ffmpeg/i.test(`${step.title} ${step.description}`));
+    expect(named.map((step) => step.id)).toEqual([]);
+    expect(getStep("ffmpeg-compose")?.title).toBe("Custom edit");
+  });
+});
