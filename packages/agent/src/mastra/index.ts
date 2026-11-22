@@ -34,6 +34,7 @@ import { features } from './lib/features';
 import { getImage } from './lib/image-store';
 import { createMcpServer } from './lib/mcp';
 import { getSharedStore, getSharedVector, MESSAGE_VECTOR_INDEX } from './lib/memory';
+import { workspaceRootFor } from './lib/workspace';
 import { readWorkspaceFile, readWorkspaceTree } from './lib/workspace-files';
 import { createNcatRoutes } from './ncat/routes';
 import { scheduleHooks } from './ncat/schedule-gate';
@@ -114,6 +115,7 @@ const chatServerDeps: ChatServerDeps = {
   agentId: 'chat',
   workspace: {
     root: WORKSPACE_ROOT,
+    rootFor: (resourceId) => workspaceRootFor(resourceId),
     readTree: readWorkspaceTree,
     readFile: readWorkspaceFile,
   },
