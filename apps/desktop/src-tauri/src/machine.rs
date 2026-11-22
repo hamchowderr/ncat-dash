@@ -4,7 +4,8 @@
 //! screen shows; finding it is kept apart so `judge` can be tested on any machine.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
@@ -228,8 +229,28 @@ fn docker_candidates(os: &str, home: Option<&Path>) -> Vec<PathBuf> {
     found
 }
 
+/// How long a Docker command may take before it counts as not answering.
+const WAIT: Duration = Duration::from_secs(20);
+
 fn run(program: &Path, args: &[&str]) -> Option<Result<String, String>> {
-    let output = Command::new(program).args(args).output().ok()?;
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .ok()?;
+    let until = Instant::now() + WAIT;
+    // A Docker that hangs (starting up, stuck) must not hold the screen forever.
+    while child.try_wait().ok()?.is_none() {
+        if Instant::now() > until {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Some(Err("Docker didn't answer.".into()));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let output = child.wait_with_output().ok()?;
     let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).trim().to_string();
     Some(if output.status.success() {
         Ok(text(&output.stdout))

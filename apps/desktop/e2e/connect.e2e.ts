@@ -158,8 +158,12 @@ describe("connecting the desktop app to a dashboard", () => {
       // Running it here starts with a real look at this computer, then comes back.
       await app.click(await app.find(".run-here-button"));
       await app.waitFor("h1", (text) => text === `Run ${NAME} on this computer`);
-      await app.waitFor("[data-id=docker]", (text) => text.includes("Docker"));
-      await app.waitFor("[data-id=memory]", (text) => text.includes("of memory"));
+      // Docker can be slow to answer (Windows), so allow it time, and show what it said.
+      const looked = await app.text(
+        await app.waitFor(".check .items", (text) => !text.includes("Looking"), 90000),
+      );
+      expect(looked).toContain("of memory");
+      expect(looked).toContain("Docker");
       await app.click(await app.find(".back"));
       await app.waitFor("h1", (text) => text === `Connect to your ${NAME}`);
 
@@ -187,7 +191,7 @@ describe("connecting the desktop app to a dashboard", () => {
     } finally {
       await app.end();
     }
-  }, 60000);
+  }, 150000);
 
   test("opens the same dashboard straight away on the next start", async () => {
     const app = await Session.start(driverUrl, application);
