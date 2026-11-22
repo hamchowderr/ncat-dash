@@ -14,6 +14,7 @@ import {
   submitBatch,
 } from "./moments-batch";
 import { reviewPrompt, reviewQuestion } from "./review";
+import { translateAgent, translateModel, translatePrompt, translateRequest } from "./translate";
 import { TEAM_KEY, teamKey } from "./team-key";
 import { rememberSession } from "./session-store";
 
@@ -133,6 +134,41 @@ export const createNcatRoutes = () => [
         return c.json({
           answer,
           model: env.CHAT_MODEL,
+          usage: dashboardUsage(result.usage, result.providerMetadata),
+        });
+      } catch {
+        return c.json({ error: "The model did not answer." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/translate: Convex asks for a batch of a video's subtitle lines in another
+  // language, once per video and language. The lines go back as the model wrote them;
+  // the dashboard checks there is one for each line it sent.
+  registerApiRoute("/ncat/translate", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const body = await c.req.json().catch(() => undefined);
+      const parsed = translateRequest.safeParse(body);
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        const requestContext = new RequestContext();
+        const key = await teamKey(organizationOf(body));
+        if (key) requestContext.set(TEAM_KEY, key);
+        const result = await translateAgent.generate(
+          [{ role: "user", content: translatePrompt(parsed.data) }],
+          { requestContext },
+        );
+        const answer = result.text.trim();
+        if (!answer) return c.json({ error: "empty answer" }, 502);
+        return c.json({
+          answer,
+          model: translateModel(),
           usage: dashboardUsage(result.usage, result.providerMetadata),
         });
       } catch {

@@ -2135,6 +2135,30 @@ export default defineSchema({
     .index("by_item_and_start", ["itemId", "start"])
     .searchIndex("search_speech", { searchField: "text", filterFields: ["organizationId"] }),
 
+  // What was said in a library file in another language (translations.ts): its subtitle
+  // cues, each on the original cue's times, translated once and kept, so captions,
+  // downloads and later automations never pay for the same language twice. Made from the
+  // file's transcript, so a new transcript drops them (deletePieces).
+  translations: defineTable({
+    organizationId: v.string(),
+    itemId: v.id("libraryItems"),
+    // The language's code (automation-core LANGUAGES), such as "es" or "pt-BR".
+    language: v.string(),
+    status: v.union(v.literal("working"), v.literal("ready"), v.literal("failed")),
+    error: v.optional(v.string()),
+    // The cues translated so far, in order: s start, e end (seconds), t the words.
+    cues: v.array(v.object({ s: v.number(), e: v.number(), t: v.string() })),
+    // How many cues there are to translate in all.
+    total: v.number(),
+    // What asking the model cost, in millionths of a dollar.
+    aiSpent: v.number(),
+    // Who asked, so the agent server knows who it is answering.
+    requestedBy: v.string(),
+    at: v.number(),
+  })
+    .index("by_item_and_language", ["itemId", "language"])
+    .index("by_organization", ["organizationId"]),
+
   // Frames of a library video (or the one picture), as the picture model sees them, so
   // footage can be found by what it shows. `vector` is CLIP ViT-B/32, length 1.
   libraryFrames: defineTable({

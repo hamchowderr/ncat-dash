@@ -33,6 +33,7 @@ import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import { SubtitleText, TranscriptDownload } from "./transcript-files";
+import { LanguagePicker, ORIGINAL, TranslatedWords } from "./translations";
 import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "./library-media";
 import { PickList } from "@/components/ui/pick-list";
 import { Segmented } from "@/components/ui/segmented";
@@ -274,6 +275,11 @@ export function LibraryItemView({
   const [find, setFind] = useState(search ?? "");
   // Read the transcript line by line, or as the SRT or WebVTT file it makes.
   const [shown, setShown] = useState<"read" | "srt" | "vtt">("read");
+  // The original words, or a translation of them by its language's code.
+  const [language, setLanguage] = useState(ORIGINAL);
+  const translations = useQuery(api.translations.list, { itemId }) ?? [];
+  const translation =
+    language === ORIGINAL ? null : (translations.find((one) => one.language === language) ?? null);
 
   const self = useMemo(() => (item ? [{ _id: item._id, kind: item.kind }] : undefined), [item]);
   const links = useLibraryLinks(team.id, self);
@@ -415,6 +421,12 @@ export function LibraryItemView({
                 </div>
                 {item.searchable === "ready" && pieces.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
+                    <LanguagePicker
+                      itemId={item._id}
+                      translations={translations}
+                      value={translation ? translation.language : ORIGINAL}
+                      onValueChange={setLanguage}
+                    />
                     <Segmented
                       aria-label="Show the words as"
                       className="w-auto"
@@ -426,20 +438,46 @@ export function LibraryItemView({
                         { value: "vtt", label: "VTT" },
                       ]}
                     />
-                    <TranscriptDownload pieces={pieces} title={item.title} />
+                    {translation ? (
+                      translation.status === "ready" && (
+                        <TranscriptDownload
+                          pieces={translation.cues}
+                          title={item.title}
+                          language={translation.language}
+                        />
+                      )
+                    ) : (
+                      <TranscriptDownload pieces={pieces} title={item.title} />
+                    )}
                   </div>
                 )}
               </div>
-              {item.searchable === "ready" && pieces.length > 0 && shown === "read" && (
-                <Input
-                  value={find}
-                  onChange={(event) => setFind(event.target.value)}
-                  placeholder="Find in this file"
-                  aria-label="Find in what was said"
-                  className="h-8 w-full sm:w-64"
+              {item.searchable === "ready" && pieces.length > 0 && translation && (
+                <TranslatedWords
+                  itemId={item._id}
+                  translation={translation}
+                  shown={shown}
+                  now={now}
+                  onSeek={captions ? undefined : seek}
+                  onRemoved={() => setLanguage(ORIGINAL)}
                 />
               )}
-              {item.searchable === "ready" && pieces.length > 0 && shown !== "read" ? (
+              {translation
+                ? null
+                : item.searchable === "ready" &&
+                  pieces.length > 0 &&
+                  shown === "read" && (
+                    <Input
+                      value={find}
+                      onChange={(event) => setFind(event.target.value)}
+                      placeholder="Find in this file"
+                      aria-label="Find in what was said"
+                      className="h-8 w-full sm:w-64"
+                    />
+                  )}
+              {translation ? null : item.searchable === "ready" &&
+                pieces.length > 0 &&
+                shown !== "read" ? (
                 <SubtitleText pieces={pieces} format={shown} />
               ) : item.searchable === "ready" ? (
                 shownPieces.length === 0 ? (

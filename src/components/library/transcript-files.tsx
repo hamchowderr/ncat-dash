@@ -6,6 +6,7 @@ import {
   toSrt,
   toVtt,
   transcriptFileName,
+  translationFileName,
   type TimedPiece,
 } from "@ncat-dash/automation-core";
 import { Copy, Download } from "lucide-react";
@@ -28,10 +29,21 @@ const FORMATS: { format: TranscriptFormat; label: string; type: string }[] = [
   { format: "txt", label: "Plain text (.txt)", type: "text/plain" },
 ];
 
-/** The transcript written out in one format, as the file would hold it. */
-export function transcriptText(pieces: TimedPiece[], format: TranscriptFormat): string {
-  if (format === "txt") return toPlainTranscript(pieces);
-  const cues = captionCues(pieces);
+/**
+ * The transcript written out in one format, as the file would hold it. `cued`: the pieces
+ * are already subtitle cues (a translation), kept as they are.
+ */
+export function transcriptText(
+  pieces: TimedPiece[],
+  format: TranscriptFormat,
+  cued = false,
+): string {
+  if (format === "txt") {
+    return toPlainTranscript(
+      cued ? pieces.map((piece) => ({ ...piece, text: piece.text.replace(/\n/g, " ") })) : pieces,
+    );
+  }
+  const cues = cued ? pieces : captionCues(pieces);
   return format === "srt" ? toSrt(cues) : toVtt(cues);
 }
 
@@ -47,7 +59,16 @@ function save(text: string, name: string, type: string) {
 }
 
 /** Saves the transcript as SRT, WebVTT or plain text, named after the file. */
-export function TranscriptDownload({ pieces, title }: { pieces: TimedPiece[]; title: string }) {
+export function TranscriptDownload({
+  pieces,
+  title,
+  language,
+}: {
+  pieces: TimedPiece[];
+  title: string;
+  /** A translation's language: its lines are already cues, and the name says the language. */
+  language?: string;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -62,8 +83,10 @@ export function TranscriptDownload({ pieces, title }: { pieces: TimedPiece[]; ti
             key={one.format}
             onSelect={() =>
               save(
-                transcriptText(pieces, one.format),
-                transcriptFileName(title, one.format),
+                transcriptText(pieces, one.format, language !== undefined),
+                language
+                  ? translationFileName(title, language, one.format)
+                  : transcriptFileName(title, one.format),
                 one.type,
               )
             }
@@ -77,8 +100,16 @@ export function TranscriptDownload({ pieces, title }: { pieces: TimedPiece[]; ti
 }
 
 /** The SRT or WebVTT file to read, cue by cue, with a button to copy all of it. */
-export function SubtitleText({ pieces, format }: { pieces: TimedPiece[]; format: "srt" | "vtt" }) {
-  const text = useMemo(() => transcriptText(pieces, format), [pieces, format]);
+export function SubtitleText({
+  pieces,
+  format,
+  cued = false,
+}: {
+  pieces: TimedPiece[];
+  format: "srt" | "vtt";
+  cued?: boolean;
+}) {
+  const text = useMemo(() => transcriptText(pieces, format, cued), [pieces, format, cued]);
   const name = format === "srt" ? "SRT" : "WebVTT";
   async function copy() {
     try {

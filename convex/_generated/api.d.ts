@@ -145,6 +145,7 @@ import type * as telegramReview from "../telegramReview.js";
 import type * as toolkitConnections from "../toolkitConnections.js";
 import type * as toolkitHealth from "../toolkitHealth.js";
 import type * as tours from "../tours.js";
+import type * as translations from "../translations.js";
 import type * as trial from "../trial.js";
 import type * as versions from "../versions.js";
 import type * as videoCookies from "../videoCookies.js";
@@ -297,6 +298,7 @@ declare const fullApi: ApiFromModules<{
   toolkitConnections: typeof toolkitConnections;
   toolkitHealth: typeof toolkitHealth;
   tours: typeof tours;
+  translations: typeof translations;
   trial: typeof trial;
   versions: typeof versions;
   videoCookies: typeof videoCookies;
