@@ -167,7 +167,7 @@ describe("the Cut To The Beat ready-made, from an upload", () => {
   test("splits the upload at its camera cuts, then cuts those shots to the beat", async () => {
     const ready = await setUp([
       { id: "split_shots_1", stepId: "recipe-split-shots" },
-      { id: "beat_cut_1", stepId: "recipe-beat-cut", input: { length: 8 } },
+      { id: "beat_cut_1", stepId: "recipe-beat-cut", input: { length: 8, order: "mixed up" } },
     ]);
     await withMusic(ready);
     const calls = toolkit();
@@ -190,6 +190,7 @@ describe("the Cut To The Beat ready-made, from an upload", () => {
     expect(beat).toHaveLength(1);
     expect(beat[0].input).toMatchObject({
       music_url: SONG,
+      order: "mixed up",
       video_urls: shots.map((video_url) => ({ video_url })),
     });
     const run = await ready.maya.as.query(api.runs.get, { runId });
