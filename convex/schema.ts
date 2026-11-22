@@ -383,7 +383,9 @@ export default defineSchema({
     .index("by_organization_and_status", ["organizationId", "status"])
     .index("by_status", ["status"])
     // Jobs handed to be sent, by when: finds a send that broke without reading the queue.
-    .index("by_status_and_dispatchedAt", ["status", "dispatchedAt"]),
+    .index("by_status_and_dispatchedAt", ["status", "dispatchedAt"])
+    // Every job a step in a run sent, earlier tries too, for the step's log.
+    .index("by_runStep", ["runStepId"]),
 
   // Per-team settings. A team without a row uses the defaults.
   teamSettings: defineTable({
@@ -985,6 +987,8 @@ export default defineSchema({
     // last one failed.
     retryAt: v.optional(v.number()),
     retryError: v.optional(v.string()),
+    // Each try that failed and was tried again: when, and why. The newest last.
+    tries: v.optional(v.array(v.object({ at: v.number(), error: v.string() }))),
     startedAt: v.union(v.null(), v.number()),
     finishedAt: v.union(v.null(), v.number()),
     // An AI step: what it spent, and what it holds against the run's limit while it waits

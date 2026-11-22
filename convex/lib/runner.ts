@@ -1065,6 +1065,14 @@ export async function retriesFor(ctx: QueryCtx, organizationId: string): Promise
   return retryLimit(settings?.stepRetries);
 }
 
+/** The most failed tries a step keeps in its log. */
+const MAX_TRIES_KEPT = 20;
+
+/** A step's log of failed tries with one more on the end. */
+function withTry(step: Doc<"runSteps">, error: string): { at: number; error: string }[] {
+  return [...(step.tries ?? []), { at: Date.now(), error }].slice(-MAX_TRIES_KEPT);
+}
+
 /**
  * Books another try for a step whose jobs failed, after a wait that grows with each
  * try. Returns false when the step has no tries left or the failure is one another try
@@ -1080,10 +1088,12 @@ async function bookRetry(
   if (!shouldRetry(used, await retriesFor(ctx, run.organizationId), failures)) return false;
   const retry = used + 1;
   const delay = retryDelayMs(retry);
+  const error = failures[0].error ?? "The step failed.";
   await ctx.db.patch(step._id, {
     retries: retry,
     retryAt: Date.now() + delay,
-    retryError: failures[0].error ?? "The step failed.",
+    retryError: error,
+    tries: withTry(step, error),
   });
   await ctx.db.patch(run._id, { retries: (run.retries ?? 0) + 1 });
   await ctx.scheduler.runAfter(delay, internal.runs.retryStep, { runStepId: step._id, retry });
@@ -1111,6 +1121,7 @@ export async function bookAgentRetry(
     retries: retry,
     retryAt: Date.now() + delay,
     retryError: error,
+    tries: withTry(step, error),
   });
   await ctx.db.patch(run._id, { retries: (run.retries ?? 0) + 1 });
   await ctx.scheduler.runAfter(delay, internal.runs.retryAgentStep, {

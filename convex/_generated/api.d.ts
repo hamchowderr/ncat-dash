@@ -101,6 +101,7 @@ import type * as lib_signUps from "../lib/signUps.js";
 import type * as lib_slackApi from "../lib/slackApi.js";
 import type * as lib_slackPosts from "../lib/slackPosts.js";
 import type * as lib_slackSignature from "../lib/slackSignature.js";
+import type * as lib_stepLog from "../lib/stepLog.js";
 import type * as lib_storyboard from "../lib/storyboard.js";
 import type * as lib_storyboards from "../lib/storyboards.js";
 import type * as lib_subtitles from "../lib/subtitles.js";
@@ -265,6 +266,7 @@ declare const fullApi: ApiFromModules<{
   "lib/slackApi": typeof lib_slackApi;
   "lib/slackPosts": typeof lib_slackPosts;
   "lib/slackSignature": typeof lib_slackSignature;
+  "lib/stepLog": typeof lib_stepLog;
   "lib/storyboard": typeof lib_storyboard;
   "lib/storyboards": typeof lib_storyboards;
   "lib/subtitles": typeof lib_subtitles;
