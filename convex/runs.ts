@@ -9,7 +9,12 @@ import { factsOf } from "./lib/facts";
 import { finishWait } from "./lib/logic";
 import { pickUp as pickUpRun, pickUpCheck, stepsOf } from "./lib/pickUp";
 import { pump } from "./lib/queue";
-import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
+import {
+  EDITORS,
+  editorFiles as filesForEditors,
+  fileNameOf,
+  sourcesOf,
+} from "@ncat-dash/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
 import { outputNamesOf, startingFileName } from "./lib/outputs";
 import { aiLimitOf } from "./aiSpend";
@@ -235,6 +240,14 @@ export const editorFiles = query({
       clips: finishedFiles(run, steps),
       // Readable names for the clips, by link, to save them under.
       clipNames: outputNamesOf(run, steps),
+      // The folder the desktop app saves everything into: the automation and the day it ran.
+      folder: `${run.automationName} ${new Date(run._creationTime).toISOString().slice(0, 10)}`,
+      // The recordings the timelines point at, under the file names the timelines use, so
+      // the desktop app can save them next to the timelines.
+      recordings: sourcesOf(cuts).map((source) => ({
+        url: source.url,
+        name: fileNameOf(source.url),
+      })),
     };
   },
 });

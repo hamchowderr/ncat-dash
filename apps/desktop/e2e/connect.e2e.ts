@@ -5,7 +5,7 @@
 //   pnpm test:e2e            (Linux needs webkit2gtk-driver and a display, e.g. xvfb-run)
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,7 +24,8 @@ const DRIVER_PORT = 4444;
 const driverUrl = `http://127.0.0.1:${DRIVER_PORT}`;
 
 // The stand-in dashboard's page. Like the real one (src/lib/desktop.ts), it asks the app
-// to show the unseen count and a notification, and writes down whether the app allowed it.
+// to show the unseen count and a notification and to save a run for an editor, and writes
+// down whether the app allowed it.
 const STAND_IN_PAGE = `<!doctype html><title>Stand-in dashboard</title>
 <h1 id=signed-in>Your automations</h1><p id=bridge>waiting</p>
 <script>
@@ -34,8 +35,24 @@ const STAND_IN_PAGE = `<!doctype html><title>Stand-in dashboard</title>
   else
     invoke("set_unseen", { count: 3 })
       .then(() => invoke("notify", { title: "Weekly clips failed", body: "Captions: the toolkit is offline" }))
-      .then((shown) => say("allowed, notification " + (shown ? "shown" : "skipped")))
-      .catch((error) => say("refused: " + error));
+      .then((shown) => {
+        const note = "allowed, notification " + (shown ? "shown" : "skipped");
+        // Open in your editor: a timeline and the recording it points at, into one folder.
+        return invoke("save_export", {
+          folder: "Weekly clips 2026-11-22",
+          files: [{ name: "Weekly clips.xml", text: "<xmeml/>" }],
+          downloads: [{ name: "talk.mp4", url: location.origin + "/media/talk.mp4" }],
+        })
+          .then((saved) =>
+            // Nothing outside the app's exports folder can be opened or shown.
+            invoke("show_export", { path: "/etc/hosts" }).then(
+              () => note + ", shows anything",
+              () => note + ", saved " + saved.files.length + " to " + saved.folder,
+            ),
+          );
+      })
+      .catch((error) => say("refused: " + error))
+      .then((text) => text && say(text));
 </script>`;
 
 let driver: ChildProcess;
@@ -73,6 +90,8 @@ beforeAll(async () => {
   [server, serverAddress] = await listen((req, res) => {
     if (req.url === "/api/desktop") {
       res.writeHead(200, { "content-type": "application/json" }).end('{"app":"ncat-dash"}');
+    } else if (req.url === "/media/talk.mp4") {
+      res.writeHead(200, { "content-type": "video/mp4" }).end("video bytes");
     } else {
       res.writeHead(200, { "content-type": "text/html" }).end(STAND_IN_PAGE);
     }
@@ -118,8 +137,16 @@ describe("connecting the desktop app to a dashboard", () => {
       await app.waitFor("#signed-in", (text) => text === "Your automations");
       expect(await app.title()).toBe("Stand-in dashboard");
       expect(await app.url()).toBe(`http://${serverAddress}/`);
-      // The dashboard may ask for the unseen count and notifications, and nothing else.
-      await app.waitFor("#bridge", (text) => text.startsWith("allowed"));
+      // The dashboard may ask for the unseen count, notifications and saving for an editor.
+      const said = await app.text(
+        await app.waitFor("#bridge", (text) => text.startsWith("allowed")),
+      );
+      const folder = /saved 2 to (.+)$/.exec(said)?.[1];
+      expect(folder, said).toBeTruthy();
+      expect(path.basename(folder!)).toBe("Weekly clips 2026-11-22");
+      expect(path.basename(path.dirname(folder!))).toBe(NAME);
+      expect(readFileSync(path.join(folder!, "Weekly clips.xml"), "utf8")).toBe("<xmeml/>");
+      expect(readFileSync(path.join(folder!, "talk.mp4"), "utf8")).toBe("video bytes");
     } finally {
       await app.end();
     }
