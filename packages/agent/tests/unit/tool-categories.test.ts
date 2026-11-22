@@ -81,6 +81,10 @@ function exposedToolNames(): Set<string> {
     ...Object.keys(chatTools(full)),
     // The chat agent's Knowledge tools, attached through its `knowledge` option.
     ...Object.keys(chatKnowledge.createTools()),
+    // The tools Mastra adds for the chat agent's `skills` (lib/agent-skills.ts).
+    'skill',
+    'skill_search',
+    'skill_read',
     ...firecrawlNames,
     ...browserNames,
   ]);
