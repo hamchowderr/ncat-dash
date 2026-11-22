@@ -161,6 +161,7 @@ export async function recordItems(
             });
       items = await itemsFor(ctx, step, incoming, known);
       await ctx.db.patch(step._id, { items });
+      byNode.set(nodeId, { ...step, items });
     }
     for (const item of items ?? []) if (!known.has(item.url)) known.set(item.url, item);
     settled.set(nodeId, items);

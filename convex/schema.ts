@@ -38,6 +38,10 @@ export const nodeValidator = v.object({
   label: v.optional(v.string()),
   // Turned off: runs hand its files straight on without doing its work.
   off: v.optional(v.boolean()),
+  // How it treats files when two or more lines meet at it (automation-core join.ts).
+  join: v.optional(
+    v.union(v.literal("all"), v.literal("source"), v.literal("position"), v.literal("first")),
+  ),
   input: v.record(v.string(), v.any()),
   position: v.object({ x: v.number(), y: v.number() }),
 });
