@@ -72,6 +72,7 @@ import {
   operationValidator,
   triggerValidator,
 } from "./schema";
+import { HOOK_KEY_MS, hookTrigger, readHookCall, sameSecret } from "./lib/hooks";
 import {
   dueSchedules,
   multiTriggerOf,
@@ -1367,31 +1368,55 @@ export function standAlone(input: Record<string, unknown>): Record<string, unkno
 
 // Internal: the triggers that start runs with nobody logged in.
 
-/** Called from the webhook address. Says why when it cannot start a run. */
+/**
+ * Called from the webhook address. Says why when it cannot start a run. A call that sent
+ * an Idempotency-Key it already sent in the last day answers with the run it started then.
+ */
 export const startFromHook = internalMutation({
-  args: { automationId: v.string(), token: v.string(), body: v.any() },
+  args: {
+    automationId: v.string(),
+    token: v.string(),
+    body: v.any(),
+    key: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const id = ctx.db.normalizeId("automations", args.automationId);
     const automation = id ? await ctx.db.get(id) : null;
     if (!automation) return { outcome: "not_found" as const };
-    if (automation.hookToken !== args.token) return { outcome: "forbidden" as const };
+    if (!sameSecret(args.token, automation.hookToken)) return { outcome: "forbidden" as const };
     const hook = triggersOfKind(automation, "webhook")[0];
     if (!automation.enabled || !hook) {
       return { outcome: "off" as const };
     }
-    const body = args.body as Record<string, unknown> | null;
-    const fileUrl = [body?.file_url, body?.url].find(
-      (value): value is string => typeof value === "string" && /^https?:\/\//.test(value),
-    );
-    const started = await startRun(
-      ctx,
-      automation,
-      "webhook",
-      { ...(fileUrl ? { file_url: fileUrl } : {}), body: body ?? {} },
-      null,
-      { triggerId: hook.id },
-    );
+    const now = Date.now();
+    if (args.key !== undefined) {
+      const earlier = await ctx.db
+        .query("hookCalls")
+        .withIndex("by_automation_and_key", (q) =>
+          q.eq("automationId", automation._id).eq("key", args.key!),
+        )
+        .first();
+      if (earlier && earlier.at > now - HOOK_KEY_MS) {
+        return { outcome: "repeat" as const, runId: earlier.runId };
+      }
+      if (earlier) await ctx.db.delete(earlier._id);
+    }
+    const body = (args.body ?? {}) as Record<string, unknown>;
+    const read = readHookCall(body);
+    if (!read.ok) return { outcome: "invalid" as const, message: read.message };
+    const started = await startRun(ctx, automation, "webhook", hookTrigger(read.call, body), null, {
+      triggerId: hook.id,
+      ...(read.call.callbackUrl ? { callbackUrl: read.call.callbackUrl } : {}),
+    });
     if (!started.ok) return { outcome: "invalid" as const, message: started.message };
+    if (args.key !== undefined) {
+      await ctx.db.insert("hookCalls", {
+        automationId: automation._id,
+        key: args.key,
+        runId: started.runId,
+        at: now,
+      });
+    }
     return { outcome: "started" as const, runId: started.runId };
   },
 });

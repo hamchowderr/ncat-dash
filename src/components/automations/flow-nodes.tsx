@@ -18,6 +18,7 @@ import {
   type NodeGroup,
   nodeTypeOf,
   passedOverWithout,
+  sendSentence,
   subtitleLanguagesSentence,
   waitSentence,
   approvalShort,
@@ -56,6 +57,7 @@ import {
   Scissors,
   ScissorsLineDashed,
   ScanSearch,
+  Send,
   Shapes,
   Signpost,
   Bot,
@@ -260,6 +262,9 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
   }
   if (node.kind === "wait") {
     return { icon: Clock, tint: LOGIC_TINT, kind: waitSentence(node.input) };
+  }
+  if (node.kind === "send") {
+    return { icon: Send, tint: LOGIC_TINT, kind: sendSentence(node.input) };
   }
   if (node.kind === "automation") {
     return {

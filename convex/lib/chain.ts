@@ -12,6 +12,7 @@ import {
 } from "@ncat-dash/automation-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { reportRunEnd } from "./hooks";
 import { advance, failStep, startRun } from "./runner";
 import { teamEnabledWithTrigger, triggersOfKind } from "./triggers";
 
@@ -181,6 +182,8 @@ export async function runEnded(
   const files = finishedFilesOf(run, steps);
 
   if (run.parentRunStepId) await finishWaitingStep(ctx, run, status, error, files);
+  // A webhook that asked to hear how the run went is told.
+  await reportRunEnd(ctx, run);
 
   if (status === "cancelled" || run.test) return;
   const followers = await teamEnabledWithTrigger(ctx, run.organizationId, "finished");

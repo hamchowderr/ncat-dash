@@ -31,6 +31,8 @@ export const nodeValidator = v.object({
     v.literal("footage-check"),
     // Writes each video's subtitles in other languages.
     v.literal("subtitles"),
+    // Posts the files that reach it, with the run's details, to an address.
+    v.literal("send"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
@@ -717,11 +719,24 @@ export default defineSchema({
     // against the team's limit, in millionths of a dollar (convex/lib/aiSpend.ts).
     aiSpent: v.optional(v.number()),
     aiHeld: v.optional(v.number()),
+    // For a run its webhook started with a callback_url: where its end is reported.
+    callbackUrl: v.optional(v.string()),
   })
     .index("by_automation", ["automationId"])
     .index("by_parentRun", ["parentRunId"])
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
+
+  // Webhook calls that sent an Idempotency-Key, so the same call sent again within a day
+  // answers with the run it already started instead of starting another.
+  hookCalls: defineTable({
+    automationId: v.id("automations"),
+    key: v.string(),
+    runId: v.id("runs"),
+    at: v.number(),
+  })
+    .index("by_automation_and_key", ["automationId", "key"])
+    .index("by_at", ["at"]),
 
   // The live state of one step within one run.
   runSteps: defineTable({
@@ -776,6 +791,8 @@ export default defineSchema({
         v.literal("render"),
         // A "footage-check" step waiting for the toolkit to measure each file.
         v.literal("footage"),
+        // A "send" step posting its files to an address.
+        v.literal("send"),
         v.literal("hear"),
         v.literal("translate"),
       ),
