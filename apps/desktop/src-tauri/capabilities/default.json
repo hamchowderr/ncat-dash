@@ -10,6 +10,8 @@
     "allow-open-server",
     "allow-check-machine",
     "allow-stack-saved",
+    "allow-cloudflare-domains",
+    "allow-make-tunnel",
     "allow-save-stack",
     "allow-run-stack-step"
   ]

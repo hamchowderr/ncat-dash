@@ -19,6 +19,7 @@ pub mod links;
 pub mod machine;
 pub mod saved;
 pub mod stack;
+pub mod tunnel;
 pub mod uploads;
 pub mod watches;
 
@@ -737,6 +738,9 @@ struct StackSaved {
     bucket_endpoint: String,
     bucket_name: String,
     has_admin_key: bool,
+    /// The Cloudflare Tunnel made for it, if any, and whether the stack uses it.
+    tunnel: Option<tunnel::Saved>,
+    uses_tunnel: bool,
 }
 
 #[tauri::command]
@@ -746,7 +750,8 @@ fn stack_saved(
     places: State<'_, Places>,
 ) -> Result<StackSaved, String> {
     from_home(&window, &places)?;
-    let values = stack::Stack::new(&stack_folder(&app)?, "docker".into()).values();
+    let folder = stack_folder(&app)?;
+    let values = stack::Stack::new(&folder, "docker".into()).values();
     let get = |name: &str| values.get(name).cloned().unwrap_or_default();
     Ok(StackSaved {
         saved: !values.is_empty(),
@@ -760,7 +765,45 @@ fn stack_saved(
         bucket_endpoint: get("S3_ENDPOINT_URL"),
         bucket_name: get("S3_BUCKET_NAME"),
         has_admin_key: !get("CONVEX_ADMIN_KEY").is_empty(),
+        tunnel: tunnel::load(&folder),
+        uses_tunnel: get("COMPOSE_PROFILES")
+            .split(',')
+            .any(|name| name == "tunnel"),
     })
+}
+
+/// The domains a Cloudflare token can give addresses on.
+#[tauri::command]
+async fn cloudflare_domains(
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    token: String,
+) -> Result<Vec<tunnel::Domain>, String> {
+    from_home(&window, &places)?;
+    tunnel::Cloudflare::new(tunnel::API, &token)?
+        .domains()
+        .await
+}
+
+/// Makes the Cloudflare Tunnel and the names for this copy, keeps its token in the stack's
+/// settings, and gives back the addresses it made.
+#[tauri::command]
+async fn make_tunnel(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    token: String,
+    domain: tunnel::Domain,
+    name: String,
+) -> Result<stack::Addresses, String> {
+    from_home(&window, &places)?;
+    let folder = stack_folder(&app)?;
+    let cloudflare = tunnel::Cloudflare::new(tunnel::API, &token)?;
+    let before = tunnel::load(&folder);
+    let (saved, run_token) = tunnel::make(&cloudflare, &domain, &name, before.as_ref()).await?;
+    stack::Stack::new(&folder, "docker".into()).keep_tunnel_token(&run_token)?;
+    tunnel::keep(&folder, &saved)?;
+    Ok(tunnel::addresses(&saved.name, &saved.domain.name))
 }
 
 /// Writes the stack's settings, sizing the toolkit to this machine.
@@ -875,6 +918,8 @@ pub fn run() {
             landed_sent,
             check_machine,
             stack_saved,
+            cloudflare_domains,
+            make_tunnel,
             save_stack,
             run_stack_step
         ])

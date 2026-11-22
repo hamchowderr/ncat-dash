@@ -59,6 +59,10 @@ pub struct Settings {
     /// The Anthropic key the agent uses.
     pub model_key: String,
     pub addresses: Addresses,
+    /// Reached through the Cloudflare Tunnel the app made (tunnel.rs), rather than the
+    /// person's own reverse proxy.
+    #[serde(default)]
+    pub tunnel: bool,
 }
 
 /// How much of the machine the toolkit may take, leaving the rest for everything else.
@@ -177,6 +181,20 @@ pub fn render(
             .cloned();
         values.push((name, kept.unwrap_or_else(&mut make_secret)));
     }
+    // Made by the app with Cloudflare (tunnel.rs) before this is saved. COMPOSE_PROFILES
+    // starts the `tunnel` service with the rest.
+    let tunnel_token = existing
+        .get("TUNNEL_TOKEN")
+        .filter(|token| !token.is_empty())
+        .cloned();
+    match (settings.tunnel, tunnel_token) {
+        (true, Some(token)) => {
+            values.push(("TUNNEL_TOKEN", token));
+            values.push(("COMPOSE_PROFILES", "tunnel".into()));
+        }
+        (true, None) => return Err("Make the Cloudflare Tunnel first.".into()),
+        (false, _) => {}
+    }
     // Made after the first start (generate_admin_key.sh); kept once there.
     values.push((
         "CONVEX_ADMIN_KEY",
@@ -194,6 +212,18 @@ pub fn render(
         text.push_str(&format!("{name}={value}\n"));
     }
     Ok(text)
+}
+
+/// The settings file with `name` set to `value`, every other line as it was.
+fn replace(text: &str, name: &str, value: &str) -> String {
+    let start = format!("{name}=");
+    let mut lines: Vec<String> = text
+        .lines()
+        .filter(|line| !line.starts_with(&start))
+        .map(String::from)
+        .collect();
+    lines.push(format!("{start}{value}"));
+    lines.join("\n") + "\n"
 }
 
 /// A new secret: 32 random bytes as hex, like `openssl rand -hex 32`.
@@ -261,13 +291,14 @@ impl Stack {
         }
         let text = fs::read_to_string(self.env_path())
             .map_err(|_| "No settings saved yet.".to_string())?;
-        let mut lines: Vec<String> = text
-            .lines()
-            .filter(|line| !line.starts_with("CONVEX_ADMIN_KEY="))
-            .map(String::from)
-            .collect();
-        lines.push(format!("CONVEX_ADMIN_KEY={key}"));
-        self.write(&(lines.join("\n") + "\n"))
+        self.write(&replace(&text, "CONVEX_ADMIN_KEY", key))
+    }
+
+    /// Keeps the token cloudflared runs the tunnel with, before the rest is saved.
+    pub fn keep_tunnel_token(&self, token: &str) -> Result<(), String> {
+        let token = needed("tunnel token", token)?;
+        let text = fs::read_to_string(self.env_path()).unwrap_or_default();
+        self.write(&replace(&text, "TUNNEL_TOKEN", &token))
     }
 
     /// `docker compose` for this stack, with these arguments after it.
@@ -321,6 +352,7 @@ mod tests {
                 agent: "https://agent.example.com".into(),
                 toolkit: "https://toolkit.example.com".into(),
             },
+            tunnel: false,
         }
     }
 
@@ -490,6 +522,53 @@ mod tests {
                 "setup"
             ]
         );
+    }
+
+    #[test]
+    fn starts_the_tunnel_only_when_it_is_used_and_made() {
+        let share = Share {
+            cpus: 2,
+            memory_gb: 4,
+        };
+        let made: BTreeMap<String, String> =
+            [("TUNNEL_TOKEN".to_string(), "run-token".to_string())].into();
+        let off = parse(&render(&settings(), share, &made, counter()).unwrap());
+        assert!(!off.contains_key("TUNNEL_TOKEN"));
+        assert!(!off.contains_key("COMPOSE_PROFILES"));
+
+        let on = Settings {
+            tunnel: true,
+            ..settings()
+        };
+        let values = parse(&render(&on, share, &made, counter()).unwrap());
+        assert_eq!(values["TUNNEL_TOKEN"], "run-token");
+        assert_eq!(values["COMPOSE_PROFILES"], "tunnel");
+        assert!(render(&on, share, &BTreeMap::new(), counter())
+            .unwrap_err()
+            .contains("Cloudflare Tunnel"));
+    }
+
+    #[test]
+    fn keeps_the_tunnel_token_before_and_after_saving() {
+        let folder = tempfile::tempdir().unwrap();
+        let stack = Stack::new(folder.path(), "docker".into());
+        stack.keep_tunnel_token("run-token").unwrap();
+        stack.keep_tunnel_token("newer-token").unwrap();
+        assert_eq!(stack.values()["TUNNEL_TOKEN"], "newer-token");
+        stack
+            .save(
+                &Settings {
+                    tunnel: true,
+                    ..settings()
+                },
+                Share {
+                    cpus: 2,
+                    memory_gb: 4,
+                },
+            )
+            .unwrap();
+        assert_eq!(stack.values()["TUNNEL_TOKEN"], "newer-token");
+        assert!(stack.keep_tunnel_token("bad token").is_err());
     }
 
     #[test]

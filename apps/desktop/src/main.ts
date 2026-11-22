@@ -13,6 +13,8 @@ const runApi: RunApi = {
   check: () => invoke("check_machine"),
   saved: () => invoke("stack_saved"),
   save: (settings) => invoke("save_stack", { settings }),
+  domains: (token) => invoke("cloudflare_domains", { token }),
+  tunnel: (token, domain, name) => invoke("make_tunnel", { token, domain, name }),
   step: (step) => invoke("run_stack_step", { step }),
   open: api.open,
 };

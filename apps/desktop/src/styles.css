@@ -78,7 +78,8 @@ h1 {
   gap: 8px;
 }
 
-input {
+input,
+select {
   flex: 1;
   min-width: 0;
   height: 36px;
@@ -89,7 +90,8 @@ input {
   color: inherit;
   font: inherit;
 }
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: none;
   border-color: var(--ring);
   box-shadow: 0 0 0 3px oklch(0.708 0 0 / 0.3);
@@ -241,6 +243,45 @@ button:focus-visible {
 }
 .field small {
   color: var(--muted-foreground);
+}
+.ways {
+  border: 0;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.ways legend {
+  padding: 0;
+  margin-bottom: 8px;
+}
+.way {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+.way:has(input:checked) {
+  background: var(--selected);
+}
+.way input {
+  flex: none;
+  height: auto;
+  margin: 3px 0 0;
+  accent-color: var(--primary);
+}
+.way small {
+  color: var(--muted-foreground);
+}
+.cloudflare .find-domains {
+  margin: 0 0 12px;
+}
+.field a {
+  color: inherit;
+  text-underline-offset: 2px;
 }
 .steps li {
   color: var(--muted-foreground);
