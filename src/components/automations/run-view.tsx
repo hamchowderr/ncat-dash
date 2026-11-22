@@ -5,6 +5,7 @@ import "@xyflow/react/style.css";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
+  atATime,
   type AutomationEdge,
   type AutomationNode,
   failsOver,
@@ -236,6 +237,13 @@ export function RunView({
           )}
         </div>
       </div>
+
+      {run.waitingForTurn != null && (
+        <p className="text-muted-foreground text-sm text-pretty">
+          Waiting for its turn. {run.automationName} runs {atATime(run.waitingForTurn)}, so this run
+          starts when an earlier one ends.
+        </p>
+      )}
 
       {(run.startedByRun || followed.length > 0) && (
         <nav aria-label="Linked runs" className="flex flex-wrap items-center gap-x-6 gap-y-1">

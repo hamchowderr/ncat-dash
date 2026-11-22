@@ -1,6 +1,7 @@
 // Runs that start other runs: the "Run an automation" step, and automations whose trigger
 // follows another one. The rules for what may start what are in automation-core's
 // chain.ts; this is where runs are started, waited on and finished.
+import { startWaitingRuns } from "./runLimit";
 import {
   type AutomationEdge,
   type AutomationNode,
@@ -182,6 +183,8 @@ export async function runEnded(
   const files = finishedFilesOf(run, steps);
 
   if (run.parentRunStepId) await finishWaitingStep(ctx, run, status, error, files);
+  // A run of the same automation waiting for its turn can start now.
+  await startWaitingRuns(ctx, run.automationId);
   // A webhook that asked to hear how the run went is told.
   await reportRunEnd(ctx, run);
 

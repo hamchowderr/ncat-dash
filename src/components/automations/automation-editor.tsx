@@ -1322,6 +1322,7 @@ function Editor({ automation }: { automation: Loaded }) {
                         automationId={automation._id}
                         automationName={automation.name}
                         hookToken={automation.hookToken}
+                        runsAtOnce={automation.runsAtOnce ?? null}
                         // Only one webhook (one address) and one Run now per automation.
                         taken={triggersOf(triggers)
                           .filter((each) => each.id !== selected.id)
