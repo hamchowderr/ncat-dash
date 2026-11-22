@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import { teamsCard } from "./lib/chatAlerts/teams";
 import { notify } from "./lib/alerts";
+import { unzipSync } from "fflate";
 import { teamsAppPackage, teamsManifest, zip } from "./lib/teamsApp";
 import { settingsUrl, tenantOfIdToken } from "./microsoftTeams";
 import { startRun } from "./lib/runner";
@@ -674,6 +675,18 @@ describe("the Teams app a team uploads", () => {
     expect(text.startsWith("PK\u0003\u0004")).toBe(true);
     for (const name of ["manifest.json", "color.png", "outline.png"]) expect(text).toContain(name);
     expect(zip([]).length).toBe(22);
+    // It opens as a real zip, and the manifest inside is the one Teams is given.
+    const opened = unzipSync(bytes);
+    expect(Object.keys(opened).sort()).toEqual(["color.png", "manifest.json", "outline.png"]);
+    const inside = JSON.parse(new TextDecoder().decode(opened["manifest.json"]));
+    expect(inside).toEqual(
+      teamsManifest({ botId: "b", name: "Takewon", siteUrl: "https://dash.test" }),
+    );
+    expect(opened["color.png"].slice(0, 4)).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    // The same package every time, so Teams does not see a new upload when nothing changed.
+    expect(teamsAppPackage({ botId: "b", name: "Takewon", siteUrl: "https://dash.test" })).toEqual(
+      bytes,
+    );
 
     const { t } = await setUp();
     const served = await t.fetch("/teams/app.zip", { method: "GET" });
