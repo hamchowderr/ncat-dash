@@ -10,6 +10,7 @@ import {
   type RunApi,
   type StackSaved,
   type Step,
+  whenBackedUp,
 } from "./run";
 
 const READY: Check = {
@@ -32,6 +33,8 @@ const NOTHING: StackSaved = {
   bucketEndpoint: "",
   bucketName: "",
   hasAdminKey: false,
+  lastBackup: null,
+  backupsFolder: "/Users/me/Documents/Backups",
   tunnel: null,
   usesTunnel: false,
 };
@@ -52,6 +55,7 @@ function fakeApi(over: Partial<RunApi> = {}) {
     save: vi.fn(async () => {}),
     domains: vi.fn(async () => [DOMAIN, { id: "zone2", name: "other.org", account: "acct1" }]),
     tunnel: vi.fn(async () => MADE),
+    backUp: vi.fn(async () => "/Users/me/Documents/Backups/2026-11-22 0518"),
     step: vi.fn(async (step: Step) => {
       ran.push(step);
     }),
@@ -207,7 +211,9 @@ describe("running it on this computer", () => {
       },
       bucketEndpoint: "https://acct.r2.cloudflarestorage.com",
       bucketName: "videos",
-      hasAdminKey: true,
+      hasAdminKey: false,
+      lastBackup: null,
+      backupsFolder: "",
       tunnel: null,
       usesTunnel: false,
     };
@@ -338,6 +344,71 @@ describe("running it on this computer", () => {
     expect(api.save).toHaveBeenCalledWith(
       expect.objectContaining({ addresses: MADE, tunnel: true }),
     );
+  });
+
+  test("a copy running here offers opening, updating and backing up, its settings on asking", async () => {
+    const saved: StackSaved = {
+      ...NOTHING,
+      saved: true,
+      addresses: MADE,
+      hasAdminKey: true,
+      lastBackup: "2026-11-21 0300",
+      tunnel: { domain: DOMAIN, name: "studio", tunnel: "t1" },
+      usesTunnel: true,
+    };
+    const { api, ran } = fakeApi({ saved: async () => saved });
+    const { root } = await render(api);
+    expect($<HTMLElement>(root, ".here").hidden).toBe(false);
+    expect($<HTMLFormElement>(root, ".settings").hidden).toBe(true);
+    const status = $(root, ".here-status").textContent!;
+    expect(status).toContain(`runs here at ${MADE.dashboard}`);
+    expect(status).toContain("/Users/me/Documents/Backups");
+    expect(status).not.toContain("none yet");
+
+    $<HTMLButtonElement>(root, ".open-here").click();
+    expect(api.open).toHaveBeenCalledWith(MADE.dashboard);
+
+    $<HTMLButtonElement>(root, ".back-up").click();
+    await vi.waitFor(() =>
+      expect($(root, ".backup-result").textContent).toBe(
+        "Backed up to /Users/me/Documents/Backups/2026-11-22 0518.",
+      ),
+    );
+
+    $<HTMLButtonElement>(root, ".change").click();
+    await vi.waitFor(() => expect($<HTMLFormElement>(root, ".settings").hidden).toBe(false));
+
+    $<HTMLButtonElement>(root, ".update").click();
+    await vi.waitFor(() => expect(api.open).toHaveBeenCalledTimes(2));
+    expect(api.save).not.toHaveBeenCalled();
+    expect(ran).toEqual(STEPS.map(({ step }) => step));
+  });
+
+  test("says why a backup failed", async () => {
+    const { api } = fakeApi({
+      saved: async () => ({ ...NOTHING, saved: true, addresses: MADE, hasAdminKey: true }),
+      backUp: vi.fn(async () => {
+        throw "The backup stopped with: Docker isn't running";
+      }),
+    });
+    const { root } = await render(api);
+    expect($(root, ".here-status").textContent).toContain("Last backup: none yet.");
+    $<HTMLButtonElement>(root, ".back-up").click();
+    await vi.waitFor(() =>
+      expect($(root, ".backup-result").textContent).toContain("Docker isn't running"),
+    );
+    expect($(root, ".backup-result").className).toContain("error");
+  });
+
+  test("shows a backup's time in the person's own time", () => {
+    const shown = whenBackedUp("2026-11-22 0518");
+    expect(shown).toBe(
+      new Date("2026-11-22T05:18:00Z").toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }),
+    );
+    expect(whenBackedUp("odd")).toBe("odd");
   });
 
   test("goes back to Connect", async () => {

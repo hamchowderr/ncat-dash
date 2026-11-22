@@ -15,6 +15,9 @@ export type StackSaved = {
   bucketEndpoint: string;
   bucketName: string;
   hasAdminKey: boolean;
+  /** The newest backup's folder name ("2026-11-22 0518", in UTC), and where backups go. */
+  lastBackup: string | null;
+  backupsFolder: string;
   /** The Cloudflare Tunnel made for it, and whether the stack uses it. */
   tunnel: { domain: Domain; name: string; tunnel: string } | null;
   usesTunnel: boolean;
@@ -47,6 +50,8 @@ export type RunApi = {
   /** Makes the tunnel and the names, and gives back the addresses. */
   tunnel: (token: string, domain: Domain, name: string) => Promise<Settings["addresses"]>;
   step: (step: Step) => Promise<void>;
+  /** Backs up the copy here now and gives back the backup's folder. */
+  backUp: () => Promise<string>;
   /** Opens the dashboard in the window, as Connect does. */
   open: (address: string) => Promise<void>;
 };
@@ -72,6 +77,14 @@ const DEFAULT_NAME = NAME.toLowerCase().replace(/[^a-z0-9-]/g, "") || "studio";
 const TOKEN_PAGE = "https://dash.cloudflare.com/profile/api-tokens";
 
 const MARKS = { ok: "✓", warn: "!", fail: "✕" } as const;
+
+/** A backup's folder name (its time in UTC) in the person's own time. */
+export function whenBackedUp(name: string): string {
+  const match = /^(\d{4}-\d{2}-\d{2}) (\d{2})(\d{2})$/.exec(name);
+  if (!match) return name;
+  const time = new Date(`${match[1]}T${match[2]}:${match[3]}:00Z`);
+  return time.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
 
 function field(name: string, label: string, hint = "", type = "text") {
   return html`
@@ -102,6 +115,18 @@ export async function startRun(
         so for a team an always-on computer, such as a Mac Mini, or a rented server is the better
         home.
       </p>
+
+      <section class="here" hidden aria-labelledby="here-title">
+        <h2 id="here-title">On this computer</h2>
+        <p class="hint here-status"></p>
+        <div class="actions">
+          <button type="button" class="primary open-here">Open it</button>
+          <button type="button" class="secondary update">Update</button>
+          <button type="button" class="secondary back-up">Back up now</button>
+        </div>
+        <p class="hint backup-result" aria-live="polite"></p>
+        <button type="button" class="link change">Change its settings</button>
+      </section>
 
       <section class="check" aria-labelledby="check-title">
         <h2 id="check-title">This computer</h2>
@@ -193,6 +218,11 @@ export async function startRun(
 
   const items = root.querySelector<HTMLElement>(".items")!;
   const checkAgain = root.querySelector<HTMLButtonElement>(".check-again")!;
+  const here = root.querySelector<HTMLElement>(".here")!;
+  const backUp = root.querySelector<HTMLButtonElement>(".back-up")!;
+  const backupResult = root.querySelector<HTMLElement>(".backup-result")!;
+  // A copy already running here shows what can be done with it; its settings only on asking.
+  let wantForm = true;
   const form = root.querySelector<HTMLFormElement>(".settings")!;
   const formError = form.querySelector<HTMLElement>(".error")!;
   const save = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
@@ -265,7 +295,7 @@ export async function startRun(
           return row;
         }),
       );
-      form.hidden = !result.ready;
+      form.hidden = !result.ready || !wantForm;
     } catch (problem) {
       items.replaceChildren(
         Object.assign(document.createElement("li"), {
@@ -439,6 +469,34 @@ export async function startRun(
   for (const radio of form.querySelectorAll("[name=way]")) {
     radio.addEventListener("change", showWay);
   }
+  root.querySelector(".open-here")!.addEventListener("click", () => {
+    if (saved) void api.open(saved.addresses.dashboard);
+  });
+  root.querySelector(".update")!.addEventListener("click", () => {
+    if (!saved) return;
+    dashboard = saved.addresses.dashboard;
+    here.hidden = true;
+    form.hidden = true;
+    void run();
+  });
+  backUp.addEventListener("click", async () => {
+    backUp.disabled = true;
+    backUp.textContent = "Backing up…";
+    backupResult.classList.remove("error");
+    try {
+      backupResult.textContent = `Backed up to ${await api.backUp()}.`;
+    } catch (problem) {
+      backupResult.textContent = message(problem);
+      backupResult.classList.add("error");
+    } finally {
+      backUp.disabled = false;
+      backUp.textContent = "Back up now";
+    }
+  });
+  root.querySelector(".change")!.addEventListener("click", () => {
+    wantForm = true;
+    void check();
+  });
   tryAgain.addEventListener("click", () => {
     void run();
   });
@@ -458,6 +516,14 @@ export async function startRun(
       for (const [name, value] of Object.entries(saved.addresses)) input(name).value = value;
       form.querySelector<HTMLInputElement>("[name=way][value=own]")!.checked = true;
     }
+  }
+  if (saved?.saved && saved.hasAdminKey) {
+    wantForm = false;
+    here.hidden = false;
+    const last = saved.lastBackup ? whenBackedUp(saved.lastBackup) : "none yet";
+    root.querySelector(".here-status")!.textContent =
+      `${NAME} runs here at ${saved.addresses.dashboard}. It backs itself up every day while ` +
+      `${NAME} is open, keeping the newest 14 in ${saved.backupsFolder}. Last backup: ${last}.`;
   }
   showWay();
   await check();

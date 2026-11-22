@@ -38,6 +38,7 @@ fn main() {
             "stack_saved",
             "cloudflare_domains",
             "make_tunnel",
+            "back_up_stack",
             "save_stack",
             "run_stack_step",
         ]),
