@@ -117,6 +117,8 @@ export async function startRun(
       deliverableId?: Id<"deliverables">;
       clientId?: Id<"clients">;
     };
+    /** Where the run's end is reported, for a webhook call that asked. */
+    callbackUrl?: string;
   } = {},
 ): Promise<{ ok: true; runId: Id<"runs"> } | { ok: false; message: string }> {
   const problem = graphProblem(automation.nodes, automation.edges);
@@ -157,6 +159,7 @@ export async function startRun(
     ...(options.test ? { test: options.test } : {}),
     ...(clientId ? { clientId } : {}),
     ...(graph.workflowId ? { workflowId: graph.workflowId } : {}),
+    ...(options.callbackUrl ? { callbackUrl: options.callbackUrl } : {}),
     ...(project
       ? {
           projectId: project.projectId,

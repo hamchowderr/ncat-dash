@@ -169,8 +169,15 @@ export function TriggerPanel({
           </div>
           <FieldDescription>
             Send a POST here to start a run once the automation is switched on. To hand it a file,
-            send JSON with the file&apos;s link as <code>file_url</code>. Anything else you send is
-            kept with the run. Treat the address like a password.
+            send JSON with the file&apos;s link as <code>file_url</code>, or several links as{" "}
+            <code>files</code>. Anything else you send is kept with the run. Treat the address like
+            a password.
+          </FieldDescription>
+          <FieldDescription>
+            The answer says where to read how the run went. Add <code>callback_url</code> to be sent
+            its end when it finishes, signed with the token. Send the same{" "}
+            <code>Idempotency-Key</code> header again and no second run starts. The token can go in
+            an <code>X-Takewon-Token</code> header instead of the address.
           </FieldDescription>
         </Field>
       )}
