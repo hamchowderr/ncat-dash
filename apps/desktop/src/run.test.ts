@@ -169,6 +169,8 @@ describe("running it on this computer", () => {
     );
     expect(ran).toEqual(STEPS.map(({ step }) => step));
     expect([...root.querySelectorAll(".steps li.done")]).toHaveLength(STEPS.length);
+    expect($(root, ".start .awake").textContent).toContain("keeps this computer awake");
+    expect($(root, ".start .awake").textContent).toContain("lid closed still sleeps");
   });
 
   test("a step that fails says why, and trying again goes on", async () => {
