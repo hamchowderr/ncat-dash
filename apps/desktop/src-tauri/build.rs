@@ -36,6 +36,8 @@ fn main() {
             "landed_sent",
             "check_machine",
             "stack_saved",
+            "cloudflare_domains",
+            "make_tunnel",
             "save_stack",
             "run_stack_step",
         ]),

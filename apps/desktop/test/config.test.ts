@@ -24,6 +24,8 @@ describe("what the dashboard's pages may do inside the app", () => {
       "allow-open-server",
       "allow-check-machine",
       "allow-stack-saved",
+      "allow-cloudflare-domains",
+      "allow-make-tunnel",
       "allow-save-stack",
       "allow-run-stack-step",
     ]);
@@ -34,7 +36,14 @@ describe("what the dashboard's pages may do inside the app", () => {
       fileURLToPath(new URL("../src-tauri/src/dashboard.rs", import.meta.url)),
       "utf8",
     );
-    for (const command of ["check-machine", "stack-saved", "save-stack", "run-stack-step"]) {
+    for (const command of [
+      "check-machine",
+      "stack-saved",
+      "cloudflare-domains",
+      "make-tunnel",
+      "save-stack",
+      "run-stack-step",
+    ]) {
       expect(dashboard).not.toContain(command);
     }
   });

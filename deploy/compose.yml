@@ -153,6 +153,19 @@ services:
       convex:
         condition: service_healthy
 
+  # Another way in instead of a reverse proxy: a Cloudflare Tunnel, so no ports are opened
+  # on the router (what the desktop app sets up for a copy on a computer at home). Started
+  # with the rest only when COMPOSE_PROFILES=tunnel. Each address goes to its piece by
+  # name on Docker's network (web:3000, convex:3210, convex:3211, agent:4111,
+  # toolkit:8080); the routes are kept in Cloudflare, so only the token is needed here.
+  tunnel:
+    image: ${TUNNEL_IMAGE:-cloudflare/cloudflared:latest}
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+
 volumes:
   toolkit-work:
   redis-data:

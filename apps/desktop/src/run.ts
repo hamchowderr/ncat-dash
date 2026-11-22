@@ -5,6 +5,9 @@ import { NAME } from "./product";
 export type Item = { id: string; status: "ok" | "warn" | "fail"; title: string; detail: string };
 export type Check = { items: Item[]; ready: boolean };
 
+/** A domain on the person's Cloudflare account (tunnel.rs). */
+export type Domain = { id: string; name: string; account: string };
+
 /** What the app has saved for the stack on this computer, without its secrets. */
 export type StackSaved = {
   saved: boolean;
@@ -12,6 +15,9 @@ export type StackSaved = {
   bucketEndpoint: string;
   bucketName: string;
   hasAdminKey: boolean;
+  /** The Cloudflare Tunnel made for it, and whether the stack uses it. */
+  tunnel: { domain: Domain; name: string; tunnel: string } | null;
+  usesTunnel: boolean;
 };
 
 export type Settings = {
@@ -25,6 +31,8 @@ export type Settings = {
   };
   modelKey: string;
   addresses: { dashboard: string; api: string; site: string; agent: string; toolkit: string };
+  /** Reached through the Cloudflare Tunnel the app made. */
+  tunnel: boolean;
 };
 
 export type Step = "pull" | "start" | "adminKey" | "setup";
@@ -34,6 +42,10 @@ export type RunApi = {
   check: () => Promise<Check>;
   saved: () => Promise<StackSaved>;
   save: (settings: Settings) => Promise<void>;
+  /** The domains a Cloudflare token can give addresses on. */
+  domains: (token: string) => Promise<Domain[]>;
+  /** Makes the tunnel and the names, and gives back the addresses. */
+  tunnel: (token: string, domain: Domain, name: string) => Promise<Settings["addresses"]>;
   step: (step: Step) => Promise<void>;
   /** Opens the dashboard in the window, as Connect does. */
   open: (address: string) => Promise<void>;
@@ -53,6 +65,11 @@ function message(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return "Something went wrong. Try again.";
 }
+
+/** The name the addresses start with unless the person picks another. */
+const DEFAULT_NAME = NAME.toLowerCase().replace(/[^a-z0-9-]/g, "") || "studio";
+
+const TOKEN_PAGE = "https://dash.cloudflare.com/profile/api-tokens";
 
 const MARKS = { ok: "✓", warn: "!", fail: "✕" } as const;
 
@@ -98,7 +115,7 @@ export async function startRun(
           Videos are kept in your own bucket: Cloudflare R2, AWS S3, Backblaze B2 or any S3-style
           storage. Only this computer holds its keys.
         </p>
-        ${field("endpoint", "Bucket endpoint", "For R2: https://<account id>.r2.cloudflarestorage.com")}
+        ${field("endpoint", "Bucket endpoint", "For R2: https://&lt;account id&gt;.r2.cloudflarestorage.com")}
         ${field("name", "Bucket name")} ${field("accessKey", "Access key")}
         ${field("secretKey", "Secret key", "", "password")}
         ${field("region", "Region", "Leave empty for R2.")}
@@ -106,14 +123,54 @@ export async function startRun(
         ${field("modelKey", "Anthropic key", "The agent's model. From console.anthropic.com.", "password")}
         <h2>Addresses</h2>
         <p class="hint">
-          Each piece needs an https address that points at this computer, through a tunnel or a
-          reverse proxy.
+          Teammates, phones and webhooks reach this computer at https addresses on your own domain.
         </p>
-        ${field("dashboard", "Dashboard", "Such as https://app.example.com, to port 3000")}
-        ${field("api", "Convex API", "To port 3210")}
-        ${field("site", "Convex HTTP actions", "To port 3211")}
-        ${field("agent", "Agent server", "To port 4111")}
-        ${field("toolkit", "Toolkit", "To port 8080")}
+        <fieldset class="ways">
+          <legend>How they're made</legend>
+          <label class="way">
+            <input type="radio" name="way" value="cloudflare" checked />
+            <span
+              ><strong>Make them with Cloudflare</strong><br /><small
+                >A free Cloudflare Tunnel. Nothing to open on your router.</small
+              ></span
+            >
+          </label>
+          <label class="way">
+            <input type="radio" name="way" value="own" />
+            <span
+              ><strong>I have my own</strong><br /><small
+                >A tunnel or reverse proxy you set up yourself.</small
+              ></span
+            >
+          </label>
+        </fieldset>
+        <div class="cloudflare">
+          ${field(
+            "cfToken",
+            "Cloudflare token",
+            html`Make one at
+              <a href="${TOKEN_PAGE}" target="_blank" rel="noreferrer">dash.cloudflare.com</a>
+              with Zone: Read, DNS: Edit and Cloudflare Tunnel: Edit. ${NAME} uses it once and
+              doesn't keep it.`,
+            "password",
+          )}
+          <button type="button" class="secondary find-domains">Find my domains</button>
+          <label class="field">
+            <span>Domain</span>
+            <select name="domain" disabled>
+              <option value="">Find your domains first</option>
+            </select>
+          </label>
+          ${field("tunnelName", "Name", "The first part of every address.")}
+          <p class="hint preview" aria-live="polite"></p>
+        </div>
+        <div class="own" hidden>
+          ${field("dashboard", "Dashboard", "Such as https://app.example.com, to port 3000")}
+          ${field("api", "Convex API", "To port 3210")}
+          ${field("site", "Convex HTTP actions", "To port 3211")}
+          ${field("agent", "Agent server", "To port 4111")}
+          ${field("toolkit", "Toolkit", "To port 8080")}
+        </div>
         <p class="error" role="alert" hidden></p>
         <button type="submit" class="primary">Save and start</button>
       </form>
@@ -141,6 +198,46 @@ export async function startRun(
   root.querySelector<HTMLButtonElement>(".back")!.addEventListener("click", back);
 
   const input = (name: string) => form.querySelector<HTMLInputElement>(`[name=${name}]`)!;
+  const cloudflare = form.querySelector<HTMLElement>(".cloudflare")!;
+  const own = form.querySelector<HTMLElement>(".own")!;
+  const findDomains = form.querySelector<HTMLButtonElement>(".find-domains")!;
+  const domainSelect = form.querySelector<HTMLSelectElement>("[name=domain]")!;
+  const preview = form.querySelector<HTMLElement>(".preview")!;
+  let domains: Domain[] = [];
+  let saved: StackSaved | null = null;
+  let dashboard = "";
+
+  const way = () =>
+    form.querySelector<HTMLInputElement>("[name=way]:checked")?.value === "own"
+      ? "own"
+      : "cloudflare";
+  function showWay() {
+    cloudflare.hidden = way() !== "cloudflare";
+    own.hidden = way() !== "own";
+  }
+  const chosenDomain = () => domains.find((domain) => domain.id === domainSelect.value);
+  function showPreview() {
+    const name = input("tunnelName").value.trim().toLowerCase();
+    const domain = chosenDomain();
+    preview.textContent =
+      name && domain
+        ? `${name}.${domain.name} for the dashboard, and ${name}-api, ${name}-actions, ${name}-agent and ${name}-toolkit for the rest.`
+        : "";
+  }
+  function listDomains(list: Domain[], pick?: string) {
+    domains = list;
+    domainSelect.replaceChildren(
+      ...list.map((domain) =>
+        Object.assign(document.createElement("option"), {
+          value: domain.id,
+          textContent: domain.name,
+        }),
+      ),
+    );
+    domainSelect.disabled = false;
+    if (pick) domainSelect.value = pick;
+    showPreview();
+  }
   const showError = (where: HTMLElement, text: string | null) => {
     where.textContent = text ?? "";
     where.hidden = !text;
@@ -196,10 +293,66 @@ export async function startRun(
         agent: value("agent"),
         toolkit: value("toolkit"),
       },
+      tunnel: way() === "cloudflare",
     };
   }
 
-  async function run(dashboard: string) {
+  /** The addresses for the way chosen, making the tunnel when it's needed. */
+  async function addresses(typed: Settings): Promise<Settings["addresses"] | null> {
+    if (way() === "own") {
+      const missing = (
+        [
+          ["dashboard", "the dashboard's address"],
+          ["api", "the Convex API address"],
+          ["site", "the Convex HTTP actions address"],
+          ["agent", "the agent server's address"],
+          ["toolkit", "the toolkit's address"],
+        ] as const
+      ).find(([name]) => !input(name).value.trim());
+      if (missing) {
+        showError(formError, `Enter ${missing[1]}.`);
+        input(missing[0]).focus();
+        return null;
+      }
+      return typed.addresses;
+    }
+    const token = input("cfToken").value.trim();
+    const name = input("tunnelName").value.trim();
+    const domain = chosenDomain();
+    // Made before and unchanged: no token needed to start it again.
+    if (
+      !token &&
+      saved?.usesTunnel &&
+      saved.tunnel &&
+      domain?.id === saved.tunnel.domain.id &&
+      name.toLowerCase() === saved.tunnel.name
+    ) {
+      return saved.addresses;
+    }
+    if (!token) {
+      showError(formError, "Enter your Cloudflare token.");
+      input("cfToken").focus();
+      return null;
+    }
+    if (!domain) {
+      showError(formError, "Find your domains and pick one.");
+      findDomains.focus();
+      return null;
+    }
+    if (!name) {
+      showError(formError, `Enter a name for the addresses, such as ${DEFAULT_NAME}.`);
+      input("tunnelName").focus();
+      return null;
+    }
+    save.textContent = "Making the addresses…";
+    try {
+      return await api.tunnel(token, domain, name);
+    } finally {
+      save.textContent = "Save and start";
+    }
+  }
+
+  async function run() {
     start.hidden = false;
     tryAgain.hidden = true;
     showError(startError, null);
@@ -240,11 +393,6 @@ export async function startRun(
         ["accessKey", "the access key"],
         ["secretKey", "the secret key"],
         ["modelKey", "the Anthropic key"],
-        ["dashboard", "the dashboard's address"],
-        ["api", "the Convex API address"],
-        ["site", "the Convex HTTP actions address"],
-        ["agent", "the agent server's address"],
-        ["toolkit", "the toolkit's address"],
       ] as const
     ).find(([name]) => !input(name).value.trim());
     if (missing) {
@@ -254,31 +402,58 @@ export async function startRun(
     }
     save.disabled = true;
     try {
-      await api.save(typed);
+      const made = await addresses(typed);
+      if (!made) {
+        save.disabled = false;
+        return;
+      }
+      await api.save({ ...typed, addresses: made });
+      dashboard = made.dashboard;
     } catch (problem) {
       showError(formError, message(problem));
       save.disabled = false;
       return;
     }
     form.hidden = true;
-    await run(typed.addresses.dashboard);
+    await run();
   });
 
+  findDomains.addEventListener("click", async () => {
+    showError(formError, null);
+    findDomains.disabled = true;
+    try {
+      listDomains(await api.domains(input("cfToken").value.trim()));
+    } catch (problem) {
+      showError(formError, message(problem));
+    } finally {
+      findDomains.disabled = false;
+    }
+  });
+  domainSelect.addEventListener("change", showPreview);
+  input("tunnelName").addEventListener("input", showPreview);
+  for (const radio of form.querySelectorAll("[name=way]")) {
+    radio.addEventListener("change", showWay);
+  }
   tryAgain.addEventListener("click", () => {
-    void run(settings().addresses.dashboard);
+    void run();
   });
   checkAgain.addEventListener("click", () => void check());
 
-  let saved: StackSaved | null = null;
   try {
     saved = await api.saved();
   } catch {
     saved = null;
   }
+  input("tunnelName").value = saved?.tunnel?.name ?? DEFAULT_NAME;
+  if (saved?.tunnel) listDomains([saved.tunnel.domain], saved.tunnel.domain.id);
   if (saved?.saved) {
     input("endpoint").value = saved.bucketEndpoint;
     input("name").value = saved.bucketName;
-    for (const [name, value] of Object.entries(saved.addresses)) input(name).value = value;
+    if (!saved.usesTunnel) {
+      for (const [name, value] of Object.entries(saved.addresses)) input(name).value = value;
+      form.querySelector<HTMLInputElement>("[name=way][value=own]")!.checked = true;
+    }
   }
+  showWay();
   await check();
 }
