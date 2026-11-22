@@ -340,6 +340,13 @@ export default defineSchema({
     createdBy: v.string(),
   }).index("by_organization", ["organizationId"]),
 
+  // How many workers the operator's toolkit that teams share reported at its last check.
+  // It is the total of jobs at once there, unless HOSTED_TOOLKIT_JOBS_AT_ONCE sets one.
+  sharedToolkitWorkers: defineTable({
+    workers: v.union(v.null(), v.number()),
+    checkedAt: v.number(),
+  }),
+
   // Teams waiting for room at the operator's toolkit that teams share. The team served
   // longest ago goes next, so each waiting team gets a turn in order.
   toolkitTurns: defineTable({

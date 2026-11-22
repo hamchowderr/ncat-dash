@@ -153,14 +153,35 @@ export async function enqueueJob(
   return { ok: true, jobId };
 }
 
+// A worker count read from the toolkit longer ago than this is not trusted.
+const WORKERS_FRESH_FOR_MS = 30 * 60 * 1000;
+
 /**
- * The most jobs all teams on the operator's toolkit may have there at once
- * (HOSTED_TOOLKIT_JOBS_AT_ONCE), or null when there is no such total. Each team's own
- * limit on jobs at once still applies under it.
+ * The most jobs all teams on the operator's toolkit may have there at once, or null when
+ * there is no such total. It is the number of workers the toolkit reports (checked every
+ * few minutes), unless HOSTED_TOOLKIT_JOBS_AT_ONCE sets it. Each team's own limit on
+ * jobs at once still applies under it.
  */
-export function sharedLimit(): number | null {
-  const raw = Number(process.env.HOSTED_TOOLKIT_JOBS_AT_ONCE?.trim());
-  return Number.isInteger(raw) && raw > 0 ? raw : null;
+export async function sharedLimit(ctx: QueryCtx): Promise<number | null> {
+  const raw = Number(process.env.HOSTED_TOOLKIT_JOBS_AT_ONCE?.trim() || NaN);
+  if (Number.isInteger(raw) && raw > 0) return raw;
+  const known = await ctx.db.query("sharedToolkitWorkers").first();
+  if (!known || known.workers === null || known.workers <= 0) return null;
+  if (Date.now() - known.checkedAt > WORKERS_FRESH_FOR_MS) return null;
+  return known.workers;
+}
+
+/**
+ * Keeps the operator toolkit's worker count, and sends waiting jobs at once when it has
+ * grown. Null when the toolkit could not say.
+ */
+export async function recordSharedWorkers(ctx: MutationCtx, workers: number | null): Promise<void> {
+  const known = await ctx.db.query("sharedToolkitWorkers").first();
+  const checkedAt = Date.now();
+  if (known) await ctx.db.patch(known._id, { workers, checkedAt });
+  else await ctx.db.insert("sharedToolkitWorkers", { workers, checkedAt });
+  const cap = await sharedLimit(ctx);
+  if (cap !== null) await takeTurns(ctx, cap);
 }
 
 /** Whether the team sends its jobs to the operator's toolkit, shared with other teams. */
@@ -278,7 +299,7 @@ async function takeTurns(ctx: MutationCtx, cap: number): Promise<void> {
  * turn among every team using it. Called whenever a job is added or finishes.
  */
 export async function pump(ctx: MutationCtx, organizationId: string): Promise<void> {
-  const cap = sharedLimit();
+  const cap = await sharedLimit(ctx);
   if (cap !== null && (await onSharedToolkit(ctx, organizationId))) {
     const { waiting } = await teamQueue(ctx, organizationId);
     if (waiting.length > 0) {

@@ -163,3 +163,96 @@ describe("the toolkit teams share", () => {
     expect(await t.run((ctx) => ctx.db.query("toolkitTurns").collect())).toHaveLength(0);
   });
 });
+
+// With no total set, the toolkit's own count of workers is the total.
+describe("the total taken from the toolkit's workers", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubEnv("HOSTED_TOOLKIT_URL", SHARED);
+    vi.stubEnv("HOSTED_TOOLKIT_JOBS_AT_ONCE", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
+  async function shop(t: ReturnType<typeof backend>, count: number) {
+    const organizationId = await addTeam(t, "Small Shop");
+    const person = await addPerson(t, "Small Shop Owner", [organizationId]);
+    const connectionId = await t.run((ctx) =>
+      ctx.db.insert("toolkitConnections", {
+        organizationId,
+        baseUrl: SHARED,
+        apiKeyCipher: "x",
+        apiKeyHint: "abcd",
+        status: "ok",
+        buildNumber: null,
+        lastCheckedAt: 0,
+        lastError: null,
+        createdBy: person.id,
+      }),
+    );
+    for (let i = 0; i < count; i++) {
+      await t.run((ctx) =>
+        ctx.db.insert("jobs", {
+          organizationId,
+          connectionId,
+          stepId: "media-metadata",
+          input: { media_url: `https://files.example/${i}.mp4` },
+          status: "queued",
+          webhookToken: "token",
+          toolkitJobId: null,
+          outputs: [],
+          error: null,
+          createdBy: person.id,
+          startedAt: null,
+          finishedAt: null,
+        }),
+      );
+    }
+    const sent = () =>
+      t.run(
+        async (ctx) =>
+          (await ctx.db.query("jobs").collect()).filter(
+            (job) => job.dispatchedAt !== undefined && job.status === "queued",
+          ).length,
+      );
+    return { organizationId, sent };
+  }
+
+  test("uses the number of workers the toolkit reports", async () => {
+    const t = backend();
+    await t.mutation(internal.toolkitHealth.recordShared, { workers: 1 });
+    const { organizationId, sent } = await shop(t, 3);
+    await t.mutation(internal.jobs.pumpTeam, { organizationId });
+    expect(await sent()).toBe(1);
+  });
+
+  test("sends waiting jobs at once when the toolkit gains workers", async () => {
+    const t = backend();
+    await t.mutation(internal.toolkitHealth.recordShared, { workers: 1 });
+    const { organizationId, sent } = await shop(t, 3);
+    await t.mutation(internal.jobs.pumpTeam, { organizationId });
+    await t.mutation(internal.toolkitHealth.recordShared, { workers: 2 });
+    expect(await sent()).toBe(2);
+  });
+
+  test("stops trusting a count that is old", async () => {
+    const t = backend();
+    await t.mutation(internal.toolkitHealth.recordShared, { workers: 1 });
+    vi.advanceTimersByTime(31 * 60 * 1000);
+    const { organizationId, sent } = await shop(t, 4);
+    await t.mutation(internal.jobs.pumpTeam, { organizationId });
+    // Back to the team's own limit of 3.
+    expect(await sent()).toBe(3);
+  });
+
+  test("lets the setting override the count", async () => {
+    vi.stubEnv("HOSTED_TOOLKIT_JOBS_AT_ONCE", "2");
+    const t = backend();
+    await t.mutation(internal.toolkitHealth.recordShared, { workers: 1 });
+    const { organizationId, sent } = await shop(t, 3);
+    await t.mutation(internal.jobs.pumpTeam, { organizationId });
+    expect(await sent()).toBe(2);
+  });
+});
