@@ -185,6 +185,12 @@ export async function deletePieces(ctx: MutationCtx, itemId: Id<"libraryItems">)
     .withIndex("by_item_and_start", (q) => q.eq("itemId", itemId))
     .take(4000);
   for (const piece of pieces) await ctx.db.delete(piece._id);
+  // Translations are made from what was said, so they go with it.
+  const translations = await ctx.db
+    .query("translations")
+    .withIndex("by_item_and_language", (q) => q.eq("itemId", itemId))
+    .take(100);
+  for (const translation of translations) await ctx.db.delete(translation._id);
 }
 
 /** Follows a file renamed or moved on the Files page; a deleted file leaves the library. */

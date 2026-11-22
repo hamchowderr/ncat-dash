@@ -2,6 +2,15 @@
   "fixtures": [
     {
       "match": {
+        "userMessage": "Translate these subtitle lines into Spanish."
+      },
+      "response": {
+        "content": "[\"Abrimos la cafetería la primavera pasada.\", \"Nadie vino la primera semana.\"]"
+      },
+      "_comment": "NCAT TRANSLATE SUBTITLES (src/mastra/ncat/translate.ts). The dashboard sends a video's subtitle lines, once per language."
+    },
+    {
+      "match": {
         "userMessage": "Storyboard: Drafted from scenes-lesson.mp4"
       },
       "response": {
