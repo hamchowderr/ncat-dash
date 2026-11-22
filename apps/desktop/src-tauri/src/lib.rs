@@ -825,8 +825,10 @@ struct StackSaved {
     bucket_endpoint: String,
     bucket_name: String,
     has_admin_key: bool,
-    /// The newest backup's folder name, and where backups go.
+    /// The newest backup's folder name, every backup there (newest first), and where
+    /// backups go.
     last_backup: Option<String>,
+    backups: Vec<String>,
     backups_folder: String,
     /// The Cloudflare Tunnel made for it, if any, and whether the stack uses it.
     tunnel: Option<tunnel::Saved>,
@@ -843,6 +845,9 @@ fn stack_saved(
     let folder = stack_folder(&app)?;
     let values = stack::Stack::new(&folder, "docker".into()).values();
     let get = |name: &str| values.get(name).cloned().unwrap_or_default();
+    let backups = backups_folder(&app)
+        .map(|root| backups::list(&root))
+        .unwrap_or_default();
     Ok(StackSaved {
         saved: !values.is_empty(),
         addresses: stack::Addresses {
@@ -855,9 +860,8 @@ fn stack_saved(
         bucket_endpoint: get("S3_ENDPOINT_URL"),
         bucket_name: get("S3_BUCKET_NAME"),
         has_admin_key: !get("CONVEX_ADMIN_KEY").is_empty(),
-        last_backup: backups_folder(&app)
-            .ok()
-            .and_then(|root| backups::list(&root).into_iter().next()),
+        last_backup: backups.first().cloned(),
+        backups,
         backups_folder: backups_folder(&app)
             .map(|root| root.display().to_string())
             .unwrap_or_default(),
@@ -904,6 +908,24 @@ async fn back_up_stack(
     from_home(&window, &places)?;
     back_up(&app)
         .await
+        .map(|folder| folder.display().to_string())
+}
+
+/// Brings back the backup called `name` (a folder in the backups folder) and gives back the
+/// folder that what was there before was backed up to.
+#[tauri::command]
+async fn restore_stack(
+    app: AppHandle,
+    window: WebviewWindow,
+    places: State<'_, Places>,
+    name: String,
+) -> Result<String, String> {
+    from_home(&window, &places)?;
+    let stack = this_stack(&app)?;
+    let root = backups_folder(&app)?;
+    tauri::async_runtime::spawn_blocking(move || backups::restore(&stack, &root, &name))
+        .await
+        .map_err(|_| "Bringing it back stopped part way. Try again.".to_string())?
         .map(|folder| folder.display().to_string())
 }
 
@@ -1099,6 +1121,7 @@ pub fn run() {
             cloudflare_domains,
             make_tunnel,
             back_up_stack,
+            restore_stack,
             save_stack,
             run_stack_step
         ])

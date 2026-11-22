@@ -17,6 +17,7 @@ const runApi: RunApi = {
   tunnel: (token, domain, name) => invoke("make_tunnel", { token, domain, name }),
   step: (step) => invoke("run_stack_step", { step }),
   backUp: () => invoke("back_up_stack"),
+  restore: (name) => invoke("restore_stack", { name }),
   open: api.open,
 };
 

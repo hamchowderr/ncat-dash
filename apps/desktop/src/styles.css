@@ -250,8 +250,27 @@ button:focus-visible {
   gap: 8px;
   margin-bottom: 8px;
 }
-.backup-result.error {
+.backup-result.error,
+.restore-result.error {
   color: var(--destructive);
+}
+.restore {
+  margin-top: 16px;
+}
+.restore label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.restore-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.restore-pick select {
+  flex: 1 1 200px;
+  width: auto;
 }
 .ways {
   border: 0;
