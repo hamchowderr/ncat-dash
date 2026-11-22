@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
+import { TabsContent } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -35,7 +36,7 @@ import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import { CaptionPreview } from "./caption-preview";
-import { SettingRow, SettingsSection } from "./settings-shell";
+import { SettingRow, SettingsSection, SettingsTabs } from "./settings-shell";
 
 function same(a: CaptionSetup, b: CaptionSetup) {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -145,170 +146,192 @@ export function CaptionsCard({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-12">
-      <SettingsSection
-        title="Word fixes"
-        description="Words the transcript gets wrong, and how to write them. One word each."
-        aria-label="Word fixes"
+    <form onSubmit={onSubmit} className="flex flex-col gap-10">
+      <SettingsTabs
+        label="Captions"
+        tabs={[
+          { id: "styles", label: "Styles" },
+          { id: "shapes", label: "Style For Each Shape" },
+          { id: "words", label: "Word Fixes" },
+        ]}
       >
-        {shown.fixes.length > 0 ? (
-          <ul className="flex flex-col gap-2">
-            {shown.fixes.map((fix, index) => (
-              <li key={index} className="grid grid-cols-[1fr_1rem_1fr_2.25rem] items-center gap-2">
-                <Input
-                  aria-label={`Word ${index + 1} heard as`}
-                  value={fix.find}
-                  placeholder="Heard as"
-                  maxLength={60}
-                  disabled={!canEdit}
-                  autoComplete="off"
-                  onChange={(event) => setFix(index, "find", event.target.value)}
-                />
-                <ArrowRight className="text-muted-foreground size-4" aria-hidden="true" />
-                <Input
-                  aria-label={`Word ${index + 1} written as`}
-                  value={fix.replace}
-                  placeholder="Written as"
-                  maxLength={60}
-                  disabled={!canEdit}
-                  autoComplete="off"
-                  onChange={(event) => setFix(index, "replace", event.target.value)}
-                />
-                {canEdit && (
-                  <Button
+        <TabsContent value="styles">
+          <SettingsSection
+            description="Pick one to see it. Copy a built-in one to make your own."
+            aria-label="Styles"
+          >
+            <div className="flex flex-wrap gap-1">
+              {all.map((style) => {
+                const own = shown.styles.includes(style);
+                const active = style.name === open;
+                return (
+                  <button
+                    key={`${own ? "own" : "built"}:${style.name}`}
                     type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground"
-                    title="Remove"
-                    onClick={() => change({ fixes: shown.fixes.filter((_, at) => at !== index) })}
+                    aria-pressed={active}
+                    aria-label={`${style.name}${own ? "" : ", built in"}`}
+                    onClick={() => setOpen(active ? null : style.name)}
+                    className={cn(
+                      "choice-tile focus-visible:ring-ring/50 flex w-24 flex-col gap-1.5 rounded-xl p-1.5 text-left focus-visible:ring-3",
+                    )}
                   >
-                    <X />
-                    <span className="sr-only">Remove word {index + 1}</span>
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-muted-foreground text-sm">No word fixes yet.</p>
-        )}
-        {canEdit && (
-          <div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground -ml-2"
-              onClick={() => change({ fixes: [...shown.fixes, { find: "", replace: "" }] })}
-            >
-              <Plus />
-              Add a word
-            </Button>
-          </div>
-        )}
-      </SettingsSection>
-
-      <SettingsSection
-        title="Styles"
-        description="Pick one to see it. Copy a built-in one to make your own."
-        aria-label="Styles"
-      >
-        <div className="flex flex-wrap gap-1">
-          {all.map((style) => {
-            const own = shown.styles.includes(style);
-            const active = style.name === open;
-            return (
-              <button
-                key={`${own ? "own" : "built"}:${style.name}`}
-                type="button"
-                aria-pressed={active}
-                aria-label={`${style.name}${own ? "" : ", built in"}`}
-                onClick={() => setOpen(active ? null : style.name)}
-                className={cn(
-                  "choice-tile focus-visible:ring-ring/50 flex w-24 flex-col gap-1.5 rounded-xl p-1.5 text-left focus-visible:ring-3",
-                )}
-              >
-                <CaptionPreview look={style.look} font={font} zoom={0.75} />
-                <span className="truncate px-0.5 text-xs font-medium">{style.name}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {opened &&
-          (ownIndex >= 0 ? (
-            <StyleEditor
-              key={ownIndex}
-              style={opened}
-              font={font}
-              taken={all.map((style) => style.name).filter((name) => name !== opened.name)}
-              canEdit={canEdit}
-              onChange={updateStyle}
-              onRemove={removeStyle}
-            />
-          ) : (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <p className="text-muted-foreground text-sm text-pretty">
-                {opened.name}: {LOOK_WORDS[opened.look.style ?? "classic"].text.toLowerCase()}.
-                Built in, so it stays as it is.
-              </p>
-              {canEdit && (
-                <Button type="button" variant="outline" size="sm" onClick={() => addStyle(opened)}>
-                  <Copy />
-                  Make a copy to change
-                </Button>
-              )}
+                    <CaptionPreview look={style.look} font={font} zoom={0.75} />
+                    <span className="truncate px-0.5 text-xs font-medium">{style.name}</span>
+                  </button>
+                );
+              })}
             </div>
-          ))}
-      </SettingsSection>
 
-      <SettingsSection
-        title="Style for each shape"
-        description="Used by a caption step that does not pick its own style."
-        aria-label="Style for each shape"
-      >
-        <div className="flex flex-col gap-4">
-          {CAPTION_SHAPES.map(({ shape, label, example }) => (
-            <SettingRow
-              key={shape}
-              label={label}
-              htmlFor={`caption-shape-${shape}`}
-              description={example}
-            >
-              <Select
-                value={shapeStyle(shape)}
-                disabled={!canEdit}
-                onValueChange={(name) => change({ byShape: { ...shown.byShape, [shape]: name } })}
-              >
-                <SelectTrigger id={`caption-shape-${shape}`} className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {shown.styles.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>Yours</SelectLabel>
-                      {shown.styles.map((style) => (
-                        <SelectItem key={style.name} value={style.name}>
-                          {style.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
+            {opened &&
+              (ownIndex >= 0 ? (
+                <StyleEditor
+                  key={ownIndex}
+                  style={opened}
+                  font={font}
+                  taken={all.map((style) => style.name).filter((name) => name !== opened.name)}
+                  canEdit={canEdit}
+                  onChange={updateStyle}
+                  onRemove={removeStyle}
+                />
+              ) : (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <p className="text-muted-foreground text-sm text-pretty">
+                    {opened.name}: {LOOK_WORDS[opened.look.style ?? "classic"].text.toLowerCase()}.
+                    Built in, so it stays as it is.
+                  </p>
+                  {canEdit && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addStyle(opened)}
+                    >
+                      <Copy />
+                      Make a copy to change
+                    </Button>
                   )}
-                  <SelectGroup>
-                    <SelectLabel>Built in</SelectLabel>
-                    {builtIn.map((style) => (
-                      <SelectItem key={style.name} value={style.name}>
-                        {style.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </SettingRow>
-          ))}
-        </div>
-      </SettingsSection>
+                </div>
+              ))}
+          </SettingsSection>
+        </TabsContent>
+        <TabsContent value="shapes">
+          <SettingsSection
+            description="Used by a caption step that does not pick its own style."
+            aria-label="Style for each shape"
+          >
+            <div className="flex flex-col gap-4">
+              {CAPTION_SHAPES.map(({ shape, label, example }) => (
+                <SettingRow
+                  key={shape}
+                  label={label}
+                  htmlFor={`caption-shape-${shape}`}
+                  description={example}
+                >
+                  <Select
+                    value={shapeStyle(shape)}
+                    disabled={!canEdit}
+                    onValueChange={(name) =>
+                      change({ byShape: { ...shown.byShape, [shape]: name } })
+                    }
+                  >
+                    <SelectTrigger id={`caption-shape-${shape}`} className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {shown.styles.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>Yours</SelectLabel>
+                          {shown.styles.map((style) => (
+                            <SelectItem key={style.name} value={style.name}>
+                              {style.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      <SelectGroup>
+                        <SelectLabel>Built in</SelectLabel>
+                        {builtIn.map((style) => (
+                          <SelectItem key={style.name} value={style.name}>
+                            {style.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+              ))}
+            </div>
+          </SettingsSection>
+        </TabsContent>
+        <TabsContent value="words">
+          <SettingsSection
+            description="Words the transcript gets wrong, and how to write them. One word each."
+            aria-label="Word fixes"
+          >
+            {shown.fixes.length > 0 ? (
+              <ul className="flex flex-col gap-2">
+                {shown.fixes.map((fix, index) => (
+                  <li
+                    key={index}
+                    className="grid grid-cols-[1fr_1rem_1fr_2.25rem] items-center gap-2"
+                  >
+                    <Input
+                      aria-label={`Word ${index + 1} heard as`}
+                      value={fix.find}
+                      placeholder="Heard as"
+                      maxLength={60}
+                      disabled={!canEdit}
+                      autoComplete="off"
+                      onChange={(event) => setFix(index, "find", event.target.value)}
+                    />
+                    <ArrowRight className="text-muted-foreground size-4" aria-hidden="true" />
+                    <Input
+                      aria-label={`Word ${index + 1} written as`}
+                      value={fix.replace}
+                      placeholder="Written as"
+                      maxLength={60}
+                      disabled={!canEdit}
+                      autoComplete="off"
+                      onChange={(event) => setFix(index, "replace", event.target.value)}
+                    />
+                    {canEdit && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-muted-foreground"
+                        title="Remove"
+                        onClick={() =>
+                          change({ fixes: shown.fixes.filter((_, at) => at !== index) })
+                        }
+                      >
+                        <X />
+                        <span className="sr-only">Remove word {index + 1}</span>
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted-foreground text-sm">No word fixes yet.</p>
+            )}
+            {canEdit && (
+              <div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground -ml-2"
+                  onClick={() => change({ fixes: [...shown.fixes, { find: "", replace: "" }] })}
+                >
+                  <Plus />
+                  Add a word
+                </Button>
+              </div>
+            )}
+          </SettingsSection>
+        </TabsContent>
+      </SettingsTabs>
 
       {canEdit ? (
         <div className="flex items-center gap-2">

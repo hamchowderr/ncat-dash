@@ -76,7 +76,7 @@ function botReady(): boolean {
 
 /** Back to Settings, saying how the Microsoft sign-in went. */
 export function settingsUrl(result: string): string {
-  return `${site()}/settings/teams?teams=${encodeURIComponent(result)}`;
+  return `${site()}/settings/integrations/teams?teams=${encodeURIComponent(result)}`;
 }
 
 /** Where a team downloads the dashboard's Teams app to upload to its Teams. */

@@ -281,10 +281,15 @@ describe("the agent in Discord once nothing new can start", () => {
     );
     expect(
       await (await askPerson(t, { guildId: SERVER.id, discordUserId: JORDAN.id })).json(),
-    ).toMatchObject({ ok: false, reason: "refused", message: expect.stringMatching(/trial has ended/) });
+    ).toMatchObject({
+      ok: false,
+      reason: "refused",
+      message: expect.stringMatching(/trial has ended/),
+    });
 
     await t.run(async (ctx) => {
-      for (const trial of await ctx.db.query("teamTrials").collect()) await ctx.db.delete(trial._id);
+      for (const trial of await ctx.db.query("teamTrials").collect())
+        await ctx.db.delete(trial._id);
     });
     await t.mutation(internal.blocks.blockTeam, { organizationId: team });
     expect(
@@ -296,9 +301,11 @@ describe("the agent in Discord once nothing new can start", () => {
 describe("after the Discord sign-in", () => {
   test("it returns to the Discord settings page, saying how it went", () => {
     vi.stubEnv("SITE_URL", "https://dash.example.test/");
-    expect(settingsUrl("linked")).toBe("https://dash.example.test/settings/discord?discord=linked");
+    expect(settingsUrl("linked")).toBe(
+      "https://dash.example.test/settings/integrations/discord?discord=linked",
+    );
     expect(settingsUrl("not yours")).toBe(
-      "https://dash.example.test/settings/discord?discord=not%20yours",
+      "https://dash.example.test/settings/integrations/discord?discord=not%20yours",
     );
     vi.unstubAllEnvs();
   });

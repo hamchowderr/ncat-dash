@@ -2,16 +2,19 @@
 
 import { api } from "@convex/_generated/api";
 import { useQuery } from "convex/react";
+import { ChevronLeft } from "lucide-react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { type ReactNode, useSyncExternalStore } from "react";
 
 import { AppTile, type ConnectedApp, EditorTiles } from "@/components/brand-logos";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageTourButton } from "@/components/tours/page-tour";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
-import { settingsPage } from "./settings-pages";
+import { settingsLocation } from "./settings-pages";
 
 export function useTeamSettings() {
   const team = useActiveTeam();
@@ -45,11 +48,22 @@ const APP_PAGES = new Set<string>([
 
 export function SettingsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const slug = pathname.split("/")[2] ?? "";
-  const page = settingsPage(slug);
+  const where = settingsLocation(pathname);
+  const page = where?.page;
+  const slug: string = page?.slug ?? "";
 
   return (
     <div data-settings className="mx-auto flex w-full max-w-2xl flex-col gap-10 pt-6 pb-16">
+      {where?.app && (
+        // An app's page sits under Integrations, and says so, the way Linear's do.
+        <Link
+          href="/settings/integrations"
+          className="text-muted-foreground hover:text-foreground -mb-6 flex w-fit items-center gap-1 text-sm transition-colors"
+        >
+          <ChevronLeft className="size-4" aria-hidden="true" />
+          Integrations
+        </Link>
+      )}
       {page && (
         <header
           className={cn(
@@ -145,5 +159,68 @@ export function SettingRow({
       </div>
       {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
     </div>
+  );
+}
+
+/** Told whenever a settings tab changes the address, so every reader of it looks again. */
+const TAB_CHANGED = "ncat:settings-tab";
+
+function watchAddress(onChange: () => void) {
+  window.addEventListener(TAB_CHANGED, onChange);
+  window.addEventListener("popstate", onChange);
+  return () => {
+    window.removeEventListener(TAB_CHANGED, onChange);
+    window.removeEventListener("popstate", onChange);
+  };
+}
+
+/** The tab the address names (`?tab=…`), or none. The server has no address to read. */
+const tabInAddress = () => new URLSearchParams(window.location.search).get("tab");
+
+/**
+ * Tabs across the top of a settings page that holds more than one job, so each shows on
+ * its own. The open tab is kept in the address (`?tab=styles`), so a link or a reload
+ * lands on it; the first tab leaves the address alone. Underlined, not boxed. A tab the
+ * address names that is not there (yet) opens the first one.
+ */
+export function SettingsTabs({
+  tabs,
+  children,
+  label,
+}: {
+  tabs: readonly { id: string; label: string }[];
+  children: ReactNode;
+  label: string;
+}) {
+  const named = useSyncExternalStore(watchAddress, tabInAddress, () => null);
+  const open = tabs.find((tab) => tab.id === named)?.id ?? tabs[0].id;
+
+  function choose(id: string) {
+    const url = new URL(window.location.href);
+    if (id === tabs[0].id) url.searchParams.delete("tab");
+    else url.searchParams.set("tab", id);
+    window.history.replaceState(window.history.state, "", url);
+    window.dispatchEvent(new Event(TAB_CHANGED));
+  }
+
+  return (
+    <Tabs value={open} onValueChange={choose} className="gap-8">
+      {/* One tab has nothing to switch to, so it shows no tabs at all. */}
+      {tabs.length > 1 && (
+        <TabsList variant="line" aria-label={label} className="-ml-3">
+          {tabs.map((tab) => (
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              // No box around a focused tab: the underline and darker text show it instead.
+              className="focus-visible:text-foreground flex-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-none focus-visible:after:opacity-100"
+            >
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      )}
+      {children}
+    </Tabs>
   );
 }

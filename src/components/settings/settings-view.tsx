@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TabsContent } from "@/components/ui/tabs";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
@@ -18,7 +19,13 @@ import { EditorsCard } from "./editors-card";
 import { EmailCard } from "./email-card";
 import { MotionCard } from "./motion-card";
 import { NotificationsCard } from "./notifications-card";
-import { SettingRow, SettingsLoading, SettingsSection, useTeamSettings } from "./settings-shell";
+import {
+  SettingRow,
+  SettingsLoading,
+  SettingsSection,
+  SettingsTabs,
+  useTeamSettings,
+} from "./settings-shell";
 import { DiscordCard } from "./discord-card";
 import { SlackCard } from "./slack-card";
 import { TeamCard } from "./team-card";
@@ -72,15 +79,25 @@ export function AgentSettings() {
   const settings = useTeamSettings();
   if (!settings) return <SettingsLoading />;
   return (
-    <div className="flex flex-col gap-12">
-      <AgentCard
-        agent={settings.agent}
-        models={settings.agentModels}
-        mostHouseRules={settings.mostHouseRules}
-        canEdit={settings.canEdit}
-      />
-      <AnthropicKeyCard anthropicKey={settings.anthropicKey} canEdit={settings.canEdit} />
-    </div>
+    <SettingsTabs
+      label="Agent"
+      tabs={[
+        { id: "rules", label: "Model And Rules" },
+        { id: "key", label: "Your Anthropic Key" },
+      ]}
+    >
+      <TabsContent value="rules">
+        <AgentCard
+          agent={settings.agent}
+          models={settings.agentModels}
+          mostHouseRules={settings.mostHouseRules}
+          canEdit={settings.canEdit}
+        />
+      </TabsContent>
+      <TabsContent value="key">
+        <AnthropicKeyCard anthropicKey={settings.anthropicKey} canEdit={settings.canEdit} />
+      </TabsContent>
+    </SettingsTabs>
   );
 }
 

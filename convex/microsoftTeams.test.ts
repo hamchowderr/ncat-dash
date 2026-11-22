@@ -130,7 +130,7 @@ async function comeBack(
   const back = await t.fetch(`/microsoft/callback?code=${code}&state=${state}`, { method: "GET" });
   expect(back.status).toBe(302);
   const location = new URL(back.headers.get("location") ?? "");
-  expect(location.pathname).toBe("/settings/teams");
+  expect(location.pathname).toBe("/settings/integrations/teams");
   return location.searchParams.get("teams");
 }
 
@@ -246,12 +246,12 @@ describe("linking a team's Microsoft organization", () => {
       method: "GET",
     });
     expect(closed.headers.get("location")).toBe(
-      "http://localhost:3000/settings/teams?teams=cancelled",
+      "http://localhost:3000/settings/integrations/teams?teams=cancelled",
     );
     const microsoft = await setup.t.fetch("/microsoft/callback?error=access_denied", {
       method: "GET",
     });
-    expect(microsoft.headers.get("location")).toContain("/settings/microsoft?");
+    expect(microsoft.headers.get("location")).toContain("/settings/integrations/microsoft?");
   });
 
   test("without a bot set up, Settings says so and nothing starts", async () => {
@@ -685,7 +685,9 @@ describe("the Teams app a team uploads", () => {
 
 describe("after the Microsoft sign-in", () => {
   test("it returns to the Teams settings page, and reads the organization from the id token", () => {
-    expect(settingsUrl("linked")).toBe("http://localhost:3000/settings/teams?teams=linked");
+    expect(settingsUrl("linked")).toBe(
+      "http://localhost:3000/settings/integrations/teams?teams=linked",
+    );
     expect(tenantOfIdToken(idToken({ tid: TENANT }))).toBe(TENANT);
     expect(tenantOfIdToken("not-a-token")).toBeNull();
   });
