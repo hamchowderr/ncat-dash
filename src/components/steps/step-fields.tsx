@@ -66,9 +66,12 @@ export function UploadPicker({
   onPick,
   lasting = false,
   label = "Use an upload",
+  ariaLabel,
 }: {
   onPick: (url: string) => void;
   label?: string;
+  /** What the button fills, for screen readers, when the label alone does not say. */
+  ariaLabel?: string;
   /**
    * Hand back a lasting pointer to the upload instead of a link. A link stops working
    * after a week, so anything that is saved and used again later needs the pointer.
@@ -84,7 +87,7 @@ export function UploadPicker({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
+        <Button type="button" variant="outline" size="sm" aria-label={ariaLabel}>
           <Upload />
           {label}
         </Button>
@@ -489,6 +492,13 @@ export function StepFields({
                 value={values[name] ?? ""}
                 onChange={(next) => onChange(name, next)}
                 id={id}
+                pickFile={
+                  automatic
+                    ? undefined
+                    : ({ onPick, label, text }) => (
+                        <UploadPicker onPick={onPick} ariaLabel={label} label={text} />
+                      )
+                }
               />
             ) : (
               <Input

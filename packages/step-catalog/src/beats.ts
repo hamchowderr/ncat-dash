@@ -106,10 +106,41 @@ export interface Shot {
   to: number;
 }
 
+/** Which pieces are kept when there are more than wanted. */
+export const KEEP_SHOTS = [
+  "spread through the video",
+  "the longest shots",
+  "from the start",
+] as const;
+export type KeepShots = (typeof KEEP_SHOTS)[number];
+
+/** `count` of `shots`, picked the `keep` way, back in the order they come in the video. */
+export function keepShots(shots: Shot[], count: number, keep: KeepShots): Shot[] {
+  if (shots.length <= count) return shots;
+  if (keep === "from the start") return shots.slice(0, count);
+  if (keep === "the longest shots") {
+    const kept = new Set(
+      shots
+        .map((shot, index) => ({ index, size: shot.to - shot.from }))
+        // Longest first; of two the same length, the earlier one.
+        .sort((a, b) => b.size - a.size || a.index - b.index)
+        .slice(0, count)
+        .map((one) => one.index),
+    );
+    return shots.filter((_, index) => kept.has(index));
+  }
+  // One from each of `count` even stretches of the list, the middle of it.
+  return Array.from(
+    { length: count },
+    (_, part) => shots[Math.floor(((part + 0.5) * shots.length) / count)],
+  );
+}
+
 /**
  * The pieces of a video between its camera cuts. A shot shorter than `shortest` joins the
  * one after it (the last joins the one before), a shot longer than `longest` is split
- * evenly, and only the first `most` are kept. With no cuts the whole video is split evenly.
+ * evenly, and at most `most` are kept, picked the `keep` way (spread through the video
+ * unless said). With no cuts the whole video is split evenly.
  */
 export function shotPieces(args: {
   cuts: number[];
@@ -117,6 +148,7 @@ export function shotPieces(args: {
   shortest: number;
   longest: number;
   most: number;
+  keep?: KeepShots;
 }): Shot[] {
   const { length, shortest, longest, most } = args;
   const inside = [...new Set(args.cuts)]
@@ -145,7 +177,7 @@ export function shotPieces(args: {
       to: part === parts - 1 ? shot.to : shot.from + (part + 1) * size,
     }));
   });
-  return even.slice(0, most);
+  return keepShots(even, most, args.keep ?? "spread through the video");
 }
 
 export const beatRecipes: StepDefinition[] = [
@@ -153,7 +185,7 @@ export const beatRecipes: StepDefinition[] = [
     id: SPLIT_SHOTS_STEP,
     title: "Split Into Shots",
     description:
-      "Splits a video into its shots, cutting where the camera cuts. The cuts are found in the picture itself with plain image comparison, no AI. Shots shorter than you set join the next one, and long shots are split into even pieces, so a video with no cuts at all is split evenly. Put Cut To The Beat after it to cut the shots to music.",
+      "Splits a video into its shots, cutting where the camera cuts. The cuts are found in the picture itself with plain image comparison, no AI. Shots shorter than you set join the next one, and long shots are split into even pieces, so a video with no cuts at all is split evenly. When there are more shots than you want, it keeps ones spread through the whole video, the longest, or the first. Put Cut To The Beat after it to cut the shots to music.",
     primaryInput: "video_url",
     readsFirst: ["video_url"],
     readsCuts: ["video_url"],
@@ -164,7 +196,10 @@ export const beatRecipes: StepDefinition[] = [
         1,
       ),
       longest: number("Shots longer than this many seconds are split evenly", 1, 60).default(4),
-      most: whole("How many pieces at most, from the start", 1, 30).default(30),
+      most: whole("How many pieces at most", 1, 30).default(30),
+      keep: choice(KEEP_SHOTS, "Which pieces to keep when there are more than that")
+        .default("spread through the video")
+        .meta({ title: "Keep" }),
     },
     outputLabels: (_b, count) =>
       Array.from({ length: count }, (_, index) => `shot${String(index + 1).padStart(2, "0")}`),
@@ -181,6 +216,7 @@ export const beatRecipes: StepDefinition[] = [
         shortest: b.shortest,
         longest: Math.max(b.longest, b.shortest),
         most: b.most,
+        keep: b.keep,
       });
       return {
         inputs: [{ file_url: b.video_url }],
