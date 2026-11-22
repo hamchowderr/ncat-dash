@@ -22,6 +22,7 @@ pub mod machine;
 pub mod saved;
 pub mod stack;
 pub mod tunnel;
+pub mod updates;
 pub mod uploads;
 pub mod watches;
 
@@ -47,6 +48,7 @@ const KEEP_AWAKE: &str = "keep-awake";
 const OPEN_AT_LOGIN: &str = "open-at-login";
 const BACK_UP: &str = "back-up";
 const SHOW_BACKUPS: &str = "show-backups";
+const UPDATE: &str = "update";
 /// Opening at sign-in starts the app in the tray, without the window.
 const HIDDEN: &str = "--hidden";
 const TRAY: &str = "tray";
@@ -564,6 +566,18 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let switch = MenuItem::with_id(app, SWITCH, format!("Switch {NAME}…"), true, None::<&str>)?;
     let quit = PredefinedMenuItem::quit(app, Some(&format!("Quit {NAME}")))?;
     let menu = Menu::with_items(app, &[&show, &switch])?;
+    if let Some(version) = app.state::<updates::Ready>().version() {
+        menu.insert(
+            &MenuItem::with_id(
+                app,
+                UPDATE,
+                updates::restart_label(&version),
+                true,
+                None::<&str>,
+            )?,
+            0,
+        )?;
+    }
     if let Some(prefs) = stack_folder(app)
         .ok()
         .and_then(|folder| awake::load(&folder))
@@ -617,9 +631,30 @@ fn apply(app: &AppHandle, prefs: awake::Prefs, login_too: bool) {
             launcher.disable()
         };
     }
+    refresh_tray(app);
+}
+
+fn refresh_tray(app: &AppHandle) {
     if let (Some(tray), Ok(menu)) = (app.tray_by_id(TRAY), tray_menu(app)) {
         let _ = tray.set_menu(Some(menu));
     }
+}
+
+/// Looks for a new version of the app soon after it opens and every few hours after, and
+/// says once when one is ready.
+fn keep_up_to_date(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(updates::FIRST).await;
+        loop {
+            // A failed check (offline, feed not there yet) just waits for the next one.
+            if let Ok(Some(version)) = updates::check(&app).await {
+                refresh_tray(&app);
+                let (title, body) = updates::ready_note(NAME, &version);
+                let _ = app.notification().builder().title(title).body(body).show();
+            }
+            tokio::time::sleep(updates::EVERY).await;
+        }
+    });
 }
 
 /// Flips one of the two switches from the tray.
@@ -1089,12 +1124,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![HIDDEN]),
         ))
         .manage(uploads::Allowed::default())
         .manage(ChosenFolders::default())
+        .manage(updates::Ready::default())
         .invoke_handler(tauri::generate_handler![
             saved_servers,
             forget_server,
@@ -1132,6 +1169,17 @@ pub fn run() {
                 SWITCH => go_home(app),
                 SHOW => show_window(app),
                 KEEP_AWAKE | OPEN_AT_LOGIN => toggle(app, event.id().as_ref()),
+                UPDATE => {
+                    if let Err(why) = updates::install(app) {
+                        let _ = app
+                            .notification()
+                            .builder()
+                            .title(format!("{NAME} couldn't update"))
+                            .body(why)
+                            .show();
+                        refresh_tray(app);
+                    }
+                }
                 BACK_UP => {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
@@ -1177,6 +1225,7 @@ pub fn run() {
             }
             tray(&handle)?;
             back_up_daily(handle.clone());
+            keep_up_to_date(handle.clone());
             let mut home = window.url()?;
             home.set_fragment(None);
             app.manage(Places {
