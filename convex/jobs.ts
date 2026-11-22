@@ -27,7 +27,7 @@ import {
 import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
 import { collectUrls, handOutputNames, outputNamesOf } from "./lib/outputs";
-import { brandOf, enqueueJob, pump } from "./lib/queue";
+import { brandOf, enqueueJob, pump, waitReason } from "./lib/queue";
 import { onJobFinished } from "./lib/runner";
 import { onLinkJobFinished } from "./links";
 import { onLookJobFinished } from "./looks";
@@ -51,8 +51,12 @@ import { downloadHeadersFor, onZoomJobFinished, ZoomSignInError } from "./zoom";
 const MAX_RESULT_CHARS = 700_000;
 
 /** What the browser may see: everything except the webhook token. */
-function toPublic(job: Doc<"jobs">) {
+type Wait = Awaited<ReturnType<typeof waitReason>>;
+
+function toPublic(job: Doc<"jobs">, wait: Wait = null) {
   return {
+    // Why a job not yet sent is still waiting, when it is.
+    waiting: job.status === "queued" && job.dispatchedAt === undefined ? wait : null,
     _id: job._id,
     _creationTime: job._creationTime,
     stepId: job.stepId,
@@ -104,6 +108,9 @@ export const list = query({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .order("desc")
       .take(100);
+    const wait = jobs.some((job) => job.status === "queued" && job.dispatchedAt === undefined)
+      ? await waitReason(ctx, args.organizationId)
+      : null;
     // Meeting recordings being brought in show in Settings and Uploads, not with step jobs.
     return jobs
       .filter(
@@ -114,7 +121,7 @@ export const list = query({
           !job.dropboxImportId &&
           !job.linkImportId,
       )
-      .map(toPublic);
+      .map((job) => toPublic(job, wait));
   },
 });
 
@@ -124,7 +131,8 @@ export const get = query({
     const job = await ctx.db.get(args.jobId);
     if (!job) return null;
     await requireMember(ctx, job.organizationId);
-    return toPublic(job);
+    const waiting = job.status === "queued" && job.dispatchedAt === undefined;
+    return toPublic(job, waiting ? await waitReason(ctx, job.organizationId) : null);
   },
 });
 
@@ -459,6 +467,33 @@ export const finish = internalMutation({
       organizationId: job.organizationId,
     });
     return "recorded";
+  },
+});
+
+// A job that has waited this long without being sent is stopped, so old work cannot block
+// the line after an outage. A step that tries again joins the back of the line.
+const WAIT_AT_MOST_MS = 6 * 60 * 60 * 1000;
+
+/** Stops jobs that waited too long to be sent. Runs every few minutes. */
+export const ageOut = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const oldest = await ctx.db
+      .query("jobs")
+      .withIndex("by_status_and_dispatchedAt", (q) =>
+        q.eq("status", "queued").eq("dispatchedAt", undefined),
+      )
+      .take(50);
+    const cutoff = Date.now() - WAIT_AT_MOST_MS;
+    for (const job of oldest) {
+      if (job._creationTime > cutoff) break;
+      await ctx.scheduler.runAfter(0, internal.jobs.finish, {
+        jobId: job._id,
+        ok: false,
+        error:
+          "This job waited more than 6 hours without starting, so it was stopped to keep newer work moving. If the step tries again, it goes to the back of the line.",
+      });
+    }
   },
 });
 

@@ -331,7 +331,7 @@ test("a teammate shares the room, and a client opens it with no account", async 
   ).toBeVisible();
   await client.getByLabel("Your name").fill("Riley Client");
   await client.getByRole("button", { name: "Continue" }).click();
-  await expect(client.getByText("From Salt House")).toBeVisible();
+  await expect(client.getByText("Salt House", { exact: true })).toBeVisible();
   await expect(client.getByText("Reviewing as Riley Client")).toBeVisible();
   await expect(
     client.getByRole("navigation", { name: "Clips in this review" }).getByRole("button"),
