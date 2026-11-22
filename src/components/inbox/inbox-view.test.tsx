@@ -295,3 +295,41 @@ describe("the pop-up notice", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 });
+
+describe("alerts in the desktop app", () => {
+  const invoke = vi.fn<(command: string, args?: unknown) => Promise<boolean>>(async () => true);
+  beforeEach(() => {
+    invoke.mockClear();
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = { invoke };
+  });
+  afterEach(() => {
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  });
+
+  test("each new alert is a system notification, and the unseen count goes to the app", async () => {
+    answerQuery(api.alerts.list, MIXED);
+    const { rerender } = renderInApp(<AlertNotices />);
+    // Alerts already there are not notified again, but the count is shown.
+    expect(invoke.mock.calls.filter(([command]) => command === "notify")).toHaveLength(0);
+    expect(invoke).toHaveBeenCalledWith("set_unseen", { count: MIXED.unseen });
+
+    const news = alert({ _id: "new1", message: "Error: connect ECONNREFUSED 127.0.0.1:8080" });
+    answerQuery(api.alerts.list, { unseen: MIXED.unseen + 1, alerts: [news, ...MIXED.alerts] });
+    rerender(<AlertNotices />);
+    expect(invoke).toHaveBeenCalledWith("notify", {
+      title: alertTitle(news as Parameters<typeof alertTitle>[0]),
+      body: alertDetail(news as Parameters<typeof alertDetail>[0]),
+    });
+    expect(invoke).toHaveBeenCalledWith("set_unseen", { count: MIXED.unseen + 1 });
+  });
+
+  test("still notifies while the Inbox page is open, since the window may be hidden", () => {
+    place.pathname = "/inbox";
+    answerQuery(api.alerts.list, { unseen: 0, alerts: [] });
+    const { rerender } = renderInApp(<AlertNotices />);
+    answerQuery(api.alerts.list, { unseen: 1, alerts: [alert({})] });
+    rerender(<AlertNotices />);
+    expect(invoke.mock.calls.filter(([command]) => command === "notify")).toHaveLength(1);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+});

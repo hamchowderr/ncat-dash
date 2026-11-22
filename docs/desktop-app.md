@@ -1,16 +1,18 @@
-# The Kontifi Desktop App
+# The Takewon Desktop App
 
-Kontifi in its own window on Mac, Windows and Linux. The app opens your Kontifi, hosted or on your own server, and you sign in inside it as you would in a browser. Automations still run on the server (a rented one, or your own machine that stays on); the app is a way in, not a replacement for it.
+Takewon in its own window on Mac, Windows and Linux. The app opens your Takewon, hosted or on your own server, and you sign in inside it as you would in a browser. Automations still run on the server (a rented one, or your own machine that stays on); the app is a way in, not a replacement for it.
 
 ## What it does today
 
-- **Connect.** The first start asks for the address you sign in to Kontifi at. The app checks that a Kontifi answers there before opening it, and says plainly when the address is wrong, unreachable or another site.
-- **Comes back to it.** The next start opens the same Kontifi straight away. **Switch** in the app's menu (Cmd or Ctrl + Shift + K) goes back to the list, which remembers up to ten addresses for people who use more than one.
-- **Links.** Kontifi's own pages stay in the window. Other sites open in your browser.
+- **Connect.** The first start asks for the address you sign in to Takewon at. The app checks that a Takewon answers there before opening it, and says plainly when the address is wrong, unreachable or another site.
+- **Comes back to it.** The next start opens the same Takewon straight away. **Switch** in the app's menu (Cmd or Ctrl + Shift + K) goes back to the list, which remembers up to ten addresses for people who use more than one.
+- **Alerts.** A failed run, an approval waiting for you or a mention shows as a system notification while the window is in the background or hidden. The number of unseen alerts shows on the Dock (Mac) or launcher (Linux) and in the tray icon's tooltip. Clicking a notification brings attention to the app; the alert itself is in the Inbox.
+- **The tray.** Closing the window keeps the app running in the tray (the menu bar on a Mac), so alerts keep coming. Click the tray icon to open the window again; **Quit** is in its menu and in the app's menu.
+- **Links.** Takewon's own pages stay in the window. Other sites open in your browser.
 
 Addresses use HTTPS. Plain `http://` is allowed only for this computer, a home or office network address (such as `192.168.1.20:3000`) and `.local` names (such as `mac-mini.local:3000`).
 
-Coming next, in this order: alerts and a tray badge for waiting reviews and failed runs, Open in your editor saved straight to disk, big uploads from disk, and a folder on this computer as a trigger. After that, setting up and running a self-hosted Kontifi on an always-on machine from the app.
+Coming next, in this order: Open in your editor saved straight to disk, big uploads from disk, and a folder on this computer as a trigger. After that, setting up and running a self-hosted Takewon on an always-on machine from the app.
 
 ## Installing
 
@@ -29,7 +31,7 @@ The builds are not signed yet, so the first open needs one extra step:
 - `apps/desktop/src-tauri/` is the app (Rust, [Tauri 2](https://v2.tauri.app)). It uses each system's own web view, so the download is small.
 - `apps/desktop/src/` is the Connect screen, the app's only page of its own.
 - The web app answers `GET /api/desktop` with `{"app":"ncat-dash"}` (`src/app/api/desktop/route.ts`). That is how the app tells the dashboard from another site; it names the codebase, not the product, so a rename doesn't break it. A self-hosted copy needs a web image from this change or later.
-- Kontifi's pages are a remote site inside the window, so they get no access to the app's commands. `capabilities/default.json` covers only the Connect screen; a test keeps it that way.
+- The dashboard's pages are a remote site inside the window. `capabilities/default.json` covers only the Connect screen (a test keeps it that way). On connecting, the app gives that one dashboard's origin two commands, `notify` and `set_unseen`, and each checks the caller is the dashboard open now. The web app calls them from `src/lib/desktop.ts`; in a browser those calls do nothing.
 - The saved addresses are in `servers.json` in the app's settings folder (for example `~/Library/Application Support/io.otakusolutions.desktop/` on a Mac).
 
 ## Working on it
@@ -44,4 +46,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 pnpm tauri build --debug --no-bundle && pnpm test:e2e   # drives the built app (Linux or Windows)
 ```
 
-`pnpm test:e2e` drives the real app through `tauri-driver` (`cargo install tauri-driver --locked`). On Linux it also needs `webkit2gtk-driver` and a display (`xvfb-run -a pnpm test:e2e`). The tests start a stand-in Kontifi on this computer, so they need no server.
+`pnpm test:e2e` drives the real app through `tauri-driver` (`cargo install tauri-driver --locked`). On Linux it also needs `webkit2gtk-driver` and a display (`xvfb-run -a pnpm test:e2e`). On Windows it needs the Edge driver that matches WebView2 (`msedgedriver-tool` fetches it) named in `NATIVE_DRIVER`. CI runs both; Apple has no driver for app web views, so the Mac build is checked by hand. The tests start a stand-in dashboard on this computer, so they need no server.
