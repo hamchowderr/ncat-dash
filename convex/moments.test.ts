@@ -294,6 +294,49 @@ describe("Best moments", () => {
     );
   });
 
+  test("tries again later when the agent does not answer, then picks", async () => {
+    // The first ask gets no answer at all; the next one picks.
+    fakeServers([{}, answerWith("Never quote a price on the first call")]);
+    const { t, start, runOf } = await setUp([momentsNode()]);
+    const runId = await start();
+    await settled(t, 20);
+    const waiting = (await runOf(runId))!;
+    expect(waiting.status).toBe("running");
+    expect(waiting.steps[0]).toMatchObject({
+      retries: 1,
+      retryError: "The agent did not answer when asked to pick.",
+    });
+    expect(waiting.steps[0].retryAt).toBeGreaterThan(0);
+    // The first wait is 30 seconds.
+    await settled(t, 40);
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    expect(run.steps[0].moments).toHaveLength(1);
+    expect(run.steps[0].retries).toBe(1);
+  });
+
+  test("fails once its tries are used up when the agent never answers", async () => {
+    fakeServers([{}]);
+    const { t, start, runOf } = await setUp([momentsNode()]);
+    const runId = await start();
+    // Two tries by default: 30 seconds, then 2 minutes.
+    await settled(t, 200);
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("failed");
+    expect(run.steps[0]).toMatchObject({
+      retries: 2,
+      error: "The agent did not answer when asked to pick.",
+    });
+  });
+
+  test("a pick that can never work is not tried again", async () => {
+    fakeServers([answerWith("words that were never said at all")]);
+    const { t, start, runOf } = await setUp([momentsNode()]);
+    const runId = await start();
+    await settled(t);
+    expect((await runOf(runId))!.steps[0].retries).toBe(0);
+  });
+
   test("says what to set when the agent is not set up", async () => {
     fakeServers([]);
     const { t, start, runOf } = await setUp([momentsNode()], false);

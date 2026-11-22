@@ -504,11 +504,40 @@ export const LOST_AFTER_MS = 5 * 60 * 1000;
 export const LOST_JOB_ERROR =
   "The toolkit lost this job before it finished, most likely because it restarted.";
 
-/** Every minute: books a question to the toolkit for each running job that is late. */
+/**
+ * A job handed to be sent this long ago that is still waiting was never sent: sending
+ * gives up on the toolkit after two minutes, so the send itself broke. It is failed so it
+ * can be tried again, instead of holding one of the team's places for hours.
+ */
+export const NOT_SENT_AFTER_MS = 10 * 60 * 1000;
+
+export const NOT_SENT_ERROR = "The job could not be sent to the toolkit.";
+
+/**
+ * Every minute: books a question to the toolkit for each running job that is late, and
+ * fails each job whose sending broke.
+ */
 export const checkLate = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
+    const notSent = await ctx.db
+      .query("jobs")
+      .withIndex("by_status_and_dispatchedAt", (q) =>
+        q
+          .eq("status", "queued")
+          .gt("dispatchedAt", 0)
+          .lte("dispatchedAt", now - NOT_SENT_AFTER_MS),
+      )
+      .take(100);
+    for (const job of notSent) {
+      // Not permanent: sending the same job again may well work.
+      await ctx.scheduler.runAfter(0, internal.jobs.finish, {
+        jobId: job._id,
+        ok: false,
+        error: NOT_SENT_ERROR,
+      });
+    }
     const running = await ctx.db
       .query("jobs")
       .withIndex("by_status", (q) => q.eq("status", "running"))
