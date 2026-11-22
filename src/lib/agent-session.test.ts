@@ -47,11 +47,21 @@ describe("reading what is on screen from the cookie", () => {
     expect(readAgentContext(cookie({ organizationId: "team_1", automationId: "a1" }))).toEqual({
       organizationId: "team_1",
       automationId: "a1",
+      screen: null,
     });
   });
 
+  test("takes the one thing on screen, when it is a kind the agent knows", () => {
+    const read = (screen: unknown) =>
+      readAgentContext(cookie({ organizationId: "team_1", automationId: null, screen })).screen;
+    expect(read({ kind: "library", id: "item7" })).toEqual({ kind: "library", id: "item7" });
+    expect(read({ kind: "settings", id: "agent" })).toBeNull();
+    expect(read({ kind: "run", id: "x".repeat(300) })).toBeNull();
+    expect(read("run")).toBeNull();
+  });
+
   test("is empty for a missing, broken or oversized cookie", () => {
-    const empty = { organizationId: null, automationId: null };
+    const empty = { organizationId: null, automationId: null, screen: null };
     expect(readAgentContext(null)).toEqual(empty);
     expect(readAgentContext("ncat_agent_context=not-json")).toEqual(empty);
     expect(readAgentContext(cookie({ organizationId: 7, automationId: "x".repeat(300) }))).toEqual(
@@ -87,6 +97,7 @@ describe("who a chat request is for", () => {
       convexToken: token,
       organizationId: "team_1",
       automationId: "a1",
+      screen: null,
     });
     // Signed for that person with the shared secret, so the agent server can trust it.
     const [head, payload, signature] = (posts[0]?.headers.get("authorization") ?? "")

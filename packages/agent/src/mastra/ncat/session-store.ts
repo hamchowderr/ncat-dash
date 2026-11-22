@@ -7,10 +7,26 @@
  * here. Nothing is written to disk: a token lives a few minutes and a restart only means
  * the next chat request sends it again.
  */
+/** The kinds of thing a dashboard page can be about (convex/agentScreen.ts). */
+export const SCREEN_KINDS = [
+  "automation",
+  "run",
+  "library",
+  "project",
+  "client",
+  "review",
+  "creator",
+] as const;
+
+/** The one thing the page on the person's screen is about, when it is about one. */
+export type DashScreen = { kind: (typeof SCREEN_KINDS)[number]; id: string };
+
 export type DashSession = {
   convexToken: string;
   organizationId: string | null;
   automationId: string | null;
+  /** Left out by callers that only know the automation (the chat apps, older tests). */
+  screen?: DashScreen | null;
   /** The automation the agent last made for them, used when none is on their screen. */
   madeAutomationId: string | null;
   at: number;

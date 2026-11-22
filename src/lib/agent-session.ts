@@ -4,7 +4,24 @@ import { signServerToken } from "@/lib/mastra-proxy";
 /** The cookie the browser keeps up to date with the team and automation on screen. */
 export const AGENT_CONTEXT_COOKIE = "ncat_agent_context";
 
-export type AgentContext = { organizationId: string | null; automationId: string | null };
+/** The one thing the page on screen is about (src/components/agent/agent-context.ts). */
+export type AgentScreen = { kind: string; id: string };
+
+export type AgentContext = {
+  organizationId: string | null;
+  automationId: string | null;
+  screen: AgentScreen | null;
+};
+
+const SCREEN_KINDS = new Set([
+  "automation",
+  "run",
+  "library",
+  "project",
+  "client",
+  "review",
+  "creator",
+]);
 
 const SERVER_URL = process.env.MASTRA_SERVER_URL ?? "http://localhost:4111";
 /** How long a hand-over is trusted before it is sent again. The agent keeps it far longer. */
@@ -43,7 +60,7 @@ export function chatOwnerId(userId: string, organizationId: string | null): stri
 }
 
 export function readAgentContext(cookieHeader: string | null): AgentContext {
-  const empty = { organizationId: null, automationId: null };
+  const empty = { organizationId: null, automationId: null, screen: null };
   const raw = cookieHeader
     ?.split(";")
     .map((part) => part.trim())
@@ -53,7 +70,14 @@ export function readAgentContext(cookieHeader: string | null): AgentContext {
     const value = JSON.parse(decodeURIComponent(raw.slice(AGENT_CONTEXT_COOKIE.length + 1)));
     const text = (field: unknown) =>
       typeof field === "string" && field.length > 0 && field.length <= 200 ? field : null;
-    return { organizationId: text(value.organizationId), automationId: text(value.automationId) };
+    const kind = value.screen?.kind;
+    const id = text(value.screen?.id);
+    const screen = typeof kind === "string" && SCREEN_KINDS.has(kind) && id ? { kind, id } : null;
+    return {
+      organizationId: text(value.organizationId),
+      automationId: text(value.automationId),
+      screen,
+    };
   } catch {
     return empty;
   }
