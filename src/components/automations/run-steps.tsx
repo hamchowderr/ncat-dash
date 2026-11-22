@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { ApprovalWaitingNote, decidedSentence } from "./approval-status";
 import { nodeLook, RUN_TRIGGER_ICONS, TRIGGER_ID, TRIGGER_TINT } from "./flow-nodes";
 import { RunStatusBadge, shownStatus } from "./run-status";
+import { StepLog } from "./step-log";
 
 export type RunDetails = NonNullable<FunctionReturnType<typeof api.runs.get>>;
 type RunStep = RunDetails["steps"][number];
@@ -578,6 +579,9 @@ export function RunSteps({
                 {/* A logic step reads its files only to decide; that is not news to anyone. */}
                 {node.kind === "step" && <StepFacts facts={step.facts} />}
                 <StepFiles label={`Files from ${nodeTitle(node)}`} files={files} />
+                {(step.jobs.length > 0 || step.retries > 0) && (
+                  <StepLog runStepId={step._id} title={nodeTitle(node)} />
+                )}
               </Row>
             );
           })}
