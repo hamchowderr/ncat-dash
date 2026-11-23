@@ -223,3 +223,25 @@ export const scheduledTurn = internalMutation({
     };
   },
 });
+
+/**
+ * For the operator, once, when an existing copy turns email confirmation on (switching to
+ * the hosted edition does by itself): everyone who already has an account is marked
+ * confirmed, so nobody is locked out. New sign-ups still confirm theirs.
+ * `npx convex run access:confirmExistingEmails` until it answers `done: true`.
+ */
+export const confirmExistingEmails = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  returns: v.object({ done: v.boolean(), cursor: v.union(v.string(), v.null()) }),
+  handler: async (ctx, args) => {
+    const page = await ctx.runMutation(components.betterAuth.adapter.updateMany, {
+      input: {
+        model: "user",
+        where: [{ field: "emailVerified", value: false }],
+        update: { emailVerified: true },
+      },
+      paginationOpts: { numItems: 200, cursor: args.cursor ?? null },
+    });
+    return { done: page.isDone, cursor: page.isDone ? null : page.continueCursor };
+  },
+});
