@@ -217,6 +217,27 @@ describe("the MCP server", () => {
       ["set_up_workflow", false],
       ["switch_workflow", false],
     ]);
+    // Directories ask for explicit hints: anything that changes, stops or sends counts as
+    // destructive; only adding a new draft is not.
+    const hints = (
+      listed.body.result.tools as {
+        name: string;
+        annotations: Record<string, boolean>;
+      }[]
+    ).map(({ name, annotations }) => [
+      name,
+      annotations.readOnlyHint,
+      annotations.destructiveHint,
+      annotations.openWorldHint,
+    ]);
+    for (const [, readOnly, destructive, openWorld] of hints) {
+      expect(typeof destructive).toBe("boolean");
+      expect(openWorld).toBe(false);
+      if (readOnly) expect(destructive).toBe(false);
+    }
+    expect(
+      hints.filter(([, readOnly, destructive]) => !readOnly && !destructive).map(([name]) => name),
+    ).toEqual(["create_automation", "set_up_follow_on"]);
     expect(hello.body.result.capabilities.extensions).toEqual({
       "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] },
       "io.modelcontextprotocol/skills": {},

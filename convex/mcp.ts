@@ -148,6 +148,7 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: false,
+    destructive: false,
     icons: icon("plus"),
     outputSchema: shape({ automation_id: { type: "string" }, address: { type: "string" } }),
   },
@@ -169,6 +170,7 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: false,
+    destructive: false,
     icons: icon("git-branch-plus"),
   },
   {

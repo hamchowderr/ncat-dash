@@ -37,6 +37,12 @@ export type McpTool = {
   readOnly: boolean;
   /** Whether running it twice with the same arguments does nothing more. */
   idempotent?: boolean;
+  /**
+   * For a tool that acts: false when it only adds things (a new draft, a new run) and changes or
+   * stops nothing that is there already. Left out, a tool that acts counts as changing things, so
+   * chat apps ask before running it.
+   */
+  destructive?: boolean;
   /** The `ui://` page that shows the tool's result, for clients with MCP Apps. */
   appUri?: string;
   /** The shape of what it returns (as `structuredContent`); a list is sent as `{ items }`. */
@@ -275,7 +281,7 @@ function toolEntry(tool: McpTool, apps: boolean) {
     annotations: {
       title: tool.title,
       readOnlyHint: tool.readOnly,
-      destructiveHint: false,
+      destructiveHint: !tool.readOnly && tool.destructive !== false,
       idempotentHint: tool.idempotent ?? tool.readOnly,
       openWorldHint: false,
     },
