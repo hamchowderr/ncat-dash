@@ -802,3 +802,32 @@ describe("approvals over MCP", () => {
     expect((await t.run((ctx) => ctx.db.get(runId as Id<"runs">)))?.status).toBe("done");
   });
 });
+
+describe("clips playing in the chat", () => {
+  test("lets the run page load media from the team's storage, and nothing else", async () => {
+    const { t, team, key } = await setUp();
+    const before = await modern(t, key, "resources/read", { uri: "ui://ncat-dash/run.html" });
+    expect(before.body.result.contents[0]._meta.ui.csp.resourceDomains).toBeUndefined();
+
+    await t.run(async (ctx) => {
+      const connection = await ctx.db
+        .query("toolkitConnections")
+        .withIndex("by_organization", (q) => q.eq("organizationId", team))
+        .first();
+      await ctx.db.patch(connection!._id, {
+        storage: {
+          bucket: "media",
+          endpoint: "https://abc.r2.cloudflarestorage.com/media",
+          publicUrl: "https://media.saltho.use/files",
+        },
+      });
+    });
+    const page = await modern(t, key, "resources/read", { uri: "ui://ncat-dash/run.html" });
+    expect(page.body.result.contents[0]._meta.ui.csp.resourceDomains).toEqual([
+      "https://media.saltho.use",
+      "https://abc.r2.cloudflarestorage.com",
+    ]);
+    // Only the team's own storage: another team's is not added.
+    expect(JSON.stringify(page.body.result)).not.toContain("toolkit.example");
+  });
+});

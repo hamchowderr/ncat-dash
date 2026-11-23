@@ -107,7 +107,8 @@ export const RUN_APP_URI = "ui://ncat-dash/run.html";
  * A run's progress, shown in the chat by hosts with MCP Apps. It reads the tool result it
  * was opened with (start_automation or check_run), then asks check_run again every few
  * seconds until the run ends. While it goes it shows the steps; once done, the finished files,
- * which open through the chat (ui/open-link). A run waiting at an approval shows the files
+ * playing in place when the chat allows the team's storage (its resource CSP), else opening
+ * through the chat (ui/open-link). A run waiting at an approval shows the files
  * to look at and, for whoever may decide, Approve and Send back (decide_approval). Opened
  * from list_approvals, it lists every approval waiting instead. Plain HTML and script, nothing loaded from
  * elsewhere, and it takes the chat's own colours and fonts when the chat hands them over.
@@ -157,6 +158,12 @@ const RUN_APP_HTML = `<!doctype html>
   .file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .open { font-size: 13px; color: var(--muted); }
   .more { padding: 4px 0 0; font-size: 13px; color: var(--muted); }
+  .clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 8px 0 0; padding: 0; }
+  .clips li { display: block; padding: 0; min-width: 0; }
+  .clips video { display: block; width: 100%; aspect-ratio: 9 / 16; object-fit: contain; background: #000; border-radius: var(--radius); }
+  .clips.wide video { aspect-ratio: 16 / 9; }
+  .clips a { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .clips a:hover, .clips a:focus-visible { color: var(--text); }
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
   .button { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border: 0; border-radius: var(--radius); font: 500 13px/1 var(--font);
     color: var(--text); background: var(--hover); text-decoration: none; cursor: pointer; }
@@ -179,7 +186,7 @@ const RUN_APP_HTML = `<!doctype html>
 <div class="bar" id="bar" hidden><span></span></div>
 <ol id="steps"></ol>
 <p class="label" id="files-label" hidden>Finished files</p>
-<ul id="files" class="files" hidden></ul>
+<div id="files" hidden></div>
 <div id="review" hidden></div>
 <div class="actions" id="footer" hidden><a id="open" class="button" href="#" target="_blank" rel="noopener">Open in Takewon</a></div>
 </div>
@@ -227,19 +234,45 @@ const RUN_APP_HTML = `<!doctype html>
       request("ui/open-link", { url: url }).catch(function () { window.open(url, "_blank", "noopener"); });
     };
   }
+  function fileRow(url) {
+    var item = el("li"), a = el("a");
+    a.appendChild(icon("file"));
+    a.appendChild(el("span", "file", fileName(url)));
+    a.appendChild(el("span", "open", "Open"));
+    link(a, url);
+    item.appendChild(a);
+    return item;
+  }
+  var VIDEO = /\\.(mp4|m4v|mov|webm)$/i;
+  function isVideo(url) { return VIDEO.test(String(url).split("?")[0].split("#")[0]); }
+  // Videos play right here, when the chat lets the page load them from the team's storage;
+  // other files, and any video the chat will not load, are a row that opens it.
   function fileList(urls, most, moreText) {
-    var list = el("ul", "files");
-    urls.slice(0, most).forEach(function (url) {
-      var item = el("li"), a = el("a");
-      a.appendChild(icon("file"));
-      a.appendChild(el("span", "file", fileName(url)));
-      a.appendChild(el("span", "open", "Open"));
+    var box = el("div"), shown = urls.slice(0, most);
+    var clips = el("ul", "clips"), rows = el("ul", "files");
+    shown.forEach(function (url) {
+      if (!isVideo(url)) { rows.appendChild(fileRow(url)); return; }
+      var item = el("li"), video = el("video"), a = el("a", null, fileName(url));
+      video.controls = true; video.preload = "metadata"; video.playsInline = true; video.src = url;
+      video.setAttribute("aria-label", fileName(url));
+      video.addEventListener("loadedmetadata", function () {
+        if (video.videoWidth > video.videoHeight) clips.classList.add("wide");
+        size();
+      });
+      video.addEventListener("error", function () {
+        item.remove();
+        rows.appendChild(fileRow(url));
+        if (!clips.childNodes.length) clips.remove();
+        size();
+      });
       link(a, url);
-      item.appendChild(a);
-      list.appendChild(item);
+      item.appendChild(video); item.appendChild(a);
+      clips.appendChild(item);
     });
-    if (urls.length > most) list.appendChild(el("li", "more", "And " + (urls.length - most) + " more " + moreText));
-    return list;
+    if (clips.childNodes.length) box.appendChild(clips);
+    box.appendChild(rows);
+    if (urls.length > most) rows.appendChild(el("li", "more", "And " + (urls.length - most) + " more " + moreText));
+    return box;
   }
   function who(approval) {
     var asked = approval.asked;
