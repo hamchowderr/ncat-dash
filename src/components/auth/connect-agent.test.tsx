@@ -54,8 +54,9 @@ describe("letting an AI agent in", () => {
     expect(screen.getByRole("img", { name: "Claude" })).toBeTruthy();
     expect(screen.getByText("maya@salthouse.test")).toBeTruthy();
     const can = screen.getByRole("list", { name: "What it can do" }).textContent ?? "";
-    expect(can).toContain("Build and change automations as drafts");
-    expect(can).toContain("cannot publish drafts");
+    expect(can).toContain("Build, change and publish automations");
+    expect(can).toContain("Approve or send back runs waiting for a review");
+    expect(can).toContain("only what you can on this team");
     expect(screen.getByText(/Allowing sends you back to/).textContent).toContain("claude.ai");
     expect((screen.getByRole("button", { name: "Allow" }) as HTMLButtonElement).disabled).toBe(
       true,
