@@ -14,5 +14,6 @@ app.use(rateLimiter);
 app.use(workpool, { name: "outboundPool" });
 app.use(workpool, { name: "toolkitPool" });
 app.use(workpool, { name: "backgroundPool" });
+app.use(workpool, { name: "chatPool" });
 
 export default app;
