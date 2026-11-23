@@ -619,7 +619,7 @@ describe("publishing and switching on over MCP", () => {
     const { t, automationId, key } = await setUp();
     // It starts on a new upload, and the team has no storage for uploads yet.
     const on = await call(t, key, "switch_automation", { automation_id: automationId, on: true });
-    expect(on).toMatchObject({ isError: true, text: "Connect your toolkit from Home first." });
+    expect(on).toMatchObject({ isError: true, text: "Connect a toolkit in Settings, under Toolkit, first." });
     expect((await t.run((ctx) => ctx.db.get(automationId)))?.enabled).toBe(false);
   });
 });

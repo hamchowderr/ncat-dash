@@ -62,12 +62,13 @@ test.beforeAll(async ({ browser }) => {
   jordan = await signUp(browser, "Jordan Lee", jordanEmail);
   await jordan.getByPlaceholder("Your company or channel").fill("Salt House");
   await jordan.getByRole("button", { name: "Create team" }).click();
-  await jordan.getByRole("button", { name: /Yes, I Have One/ }).click();
+  await expect(jordan.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await jordan.goto("/settings/toolkit");
   await jordan.locator("#baseUrl").fill(TOOLKIT);
   await jordan.locator("#apiKey").fill("stand-in-key-1234");
   await jordan.getByRole("button", { name: "Test and connect" }).click();
   // Files go to the toolkit's storage; the brand can wait. The dashboard opens now.
-  await expect(jordan.getByText(/Your toolkit answered/)).toBeVisible();
+  await expect(jordan.getByText("Your own toolkit", { exact: true })).toBeVisible();
   await jordan.goto("/");
   await expect(jordan.getByRole("link", { name: "Review" })).toBeVisible();
 
@@ -452,12 +453,13 @@ test("someone on another team cannot open the room", async ({ browser }) => {
   const outsider = await signUp(browser, "Someone Else", `outsider.${stamp}@example.test`);
   await outsider.getByPlaceholder("Your company or channel").fill("Other Team");
   await outsider.getByRole("button", { name: "Create team" }).click();
-  await outsider.getByRole("button", { name: /Yes, I Have One/ }).click();
+  await expect(outsider.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await outsider.goto("/settings/toolkit");
   await outsider.locator("#baseUrl").fill(TOOLKIT);
   await outsider.locator("#apiKey").fill("stand-in-key-1234");
   await outsider.getByRole("button", { name: "Test and connect" }).click();
   // Files go to the toolkit's storage; the brand can wait. The dashboard opens now.
-  await expect(outsider.getByText(/Your toolkit answered/)).toBeVisible();
+  await expect(outsider.getByText("Your own toolkit", { exact: true })).toBeVisible();
   await outsider.goto("/");
   await expect(outsider.getByRole("link", { name: "Review" })).toBeVisible();
 

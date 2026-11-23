@@ -18,6 +18,7 @@ import {
   FolderOutput,
   FolderTree,
   Gauge,
+  Server,
   History,
   Home,
   Inbox,
@@ -120,6 +121,7 @@ const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: str
   integrations: Blocks,
   agent: MessagesSquare,
   runs: RotateCcw,
+  toolkit: Server,
   broll: Clapperboard,
   editors: Film,
 };

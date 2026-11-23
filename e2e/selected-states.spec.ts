@@ -25,7 +25,7 @@ test("the Schedule trigger's options are laid out as clear choices", async ({ pa
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Moss Media");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
 
   await page.goto("/automations");
   await page.getByRole("link", { name: "New automation", exact: true }).click();
@@ -108,11 +108,12 @@ test("picked things look the same across the app", async ({ page }) => {
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Moss Media");
   await page.getByRole("button", { name: "Create team" }).click();
-  await page.getByRole("button", { name: /Yes, I Have One/ }).click();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill("http://127.0.0.1:8767");
   await page.locator("#apiKey").fill("stand-in-key-1234");
   await page.getByRole("button", { name: "Test and connect" }).click();
-  await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
+  await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
   // A picked tile lifts to white and wears the selection ring.
   await page.goto("/settings/motion");

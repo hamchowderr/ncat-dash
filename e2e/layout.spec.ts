@@ -68,7 +68,7 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Layout Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
 
   await page.goto("/automations");
   await page
@@ -180,7 +180,7 @@ test("settings open from the team menu and swap the sidebar for their own menu, 
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Wide Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
 
   // Old addresses still land on the right page.
   await page.goto("/settings");
@@ -254,7 +254,7 @@ test("the first-step hint and the On switches stay clear at a small laptop size"
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Small Screen Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
 
   // A trigger and no steps: the hint sits under the canvas, wherever the trigger lands, so it
   // never covers the trigger's caption. Adding a second trigger puts one low on the canvas.

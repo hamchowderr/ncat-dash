@@ -372,7 +372,7 @@ function GettingStarted({ setup }: { setup: Summary["setup"] }) {
       done: setup.toolkit,
       label: "Connect your toolkit",
       detail: "Its address and API key.",
-      href: "/onboarding?toolkit=connect",
+      href: "/settings/toolkit",
     },
     {
       done: setup.bucket,
@@ -429,6 +429,7 @@ function GettingStarted({ setup }: { setup: Summary["setup"] }) {
 
 type Connection = {
   _id: Id<"toolkitConnections">;
+  ours: boolean;
   baseUrl: string;
   apiKeyHint: string;
   status: "ok" | "failing";
@@ -450,11 +451,21 @@ function ToolkitStatus({ connections }: { connections: Connection[] | undefined 
   if (!connection) {
     return (
       <Button asChild size="sm">
-        <Link href="/onboarding?toolkit=connect">Connect your toolkit</Link>
+        <Link href="/settings/toolkit">Connect your toolkit</Link>
       </Button>
     );
   }
   const ok = connection.status === "ok";
+  // Ours is looked after for the team: nothing to show while it works, and no details when
+  // it doesn't.
+  if (connection.ours) {
+    return ok ? null : (
+      <span className="text-destructive flex items-center gap-2 text-sm">
+        <CircleAlert className="size-4" aria-hidden="true" />
+        <span data-testid="connection-status">Our toolkit is not answering. We&apos;re on it.</span>
+      </span>
+    );
+  }
 
   async function onRecheck() {
     setChecking(true);

@@ -147,7 +147,7 @@ export async function storageProblem(
 ): Promise<string | null> {
   if (trigger.kind !== "folder" && trigger.kind !== "upload") return null;
   const storage = await storageConnection(ctx, organizationId);
-  return storage ? null : "Connect your toolkit from Home first.";
+  return storage ? null : "Connect a toolkit in Settings, under Toolkit, first.";
 }
 
 /** Whether any of the version's triggers needs the team's storage, and it is not there. */

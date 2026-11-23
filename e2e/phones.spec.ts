@@ -42,11 +42,12 @@ test.beforeAll(async ({ browser }) => {
   await expect(owner).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await owner.getByPlaceholder("Your company or channel").fill("Duarte Media");
   await owner.getByRole("button", { name: "Create team" }).click();
-  await owner.getByRole("button", { name: /Yes, I Have One/ }).click();
+  await expect(owner.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await owner.goto("/settings/toolkit");
   await owner.locator("#baseUrl").fill(TOOLKIT);
   await owner.locator("#apiKey").fill("stand-in-key-1234");
   await owner.getByRole("button", { name: "Test and connect" }).click();
-  await expect(owner.getByText(/Your toolkit answered/)).toBeVisible();
+  await expect(owner.getByText("Your own toolkit", { exact: true })).toBeVisible();
 });
 
 test.afterAll(async () => {

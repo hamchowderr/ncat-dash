@@ -3,38 +3,35 @@
 import { api } from "@convex/_generated/api";
 import { useAction, useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import { FullPageLoader } from "@/components/full-page-loader";
+import { TOOLKIT_SETTINGS } from "@/components/settings/settings-pages";
 import { START_TOUR_SEARCH } from "@/components/app-shell/dashboard-tour";
-import { ConnectToolkitForm } from "@/components/onboarding/connect-toolkit-form";
 import { ContentGoalsFlow } from "@/components/onboarding/content-goals-flow";
 import { CreateTeamForm } from "@/components/onboarding/create-team-form";
-import { HaveToolkitQuestion } from "@/components/onboarding/have-toolkit-question";
 import { BrandForm } from "@/components/settings/brand-form";
 import { Button } from "@/components/ui/button";
 import { TeamContext } from "@/lib/team-context";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
 
-// Name, toolkit and brand, then the four content goals screens (content-goals-flow.tsx).
-const STEPS = 7;
+// Name and brand, then the four content goals screens (content-goals-flow.tsx).
+const STEPS = 6;
 
-type Stage = "ask" | "connect" | "connected" | "brand" | "goals";
+type Stage = "brand" | "goals";
 
 /**
- * Setting up, in order: name the team, say whether there is a toolkit and connect it if so,
- * the brand every automation uses, then what the team makes: where it posts, the ready-made
- * automations that fit, and a first upload. Someone without a toolkit skips every toolkit
- * field: they are put on ours when the operator lends one, and otherwise the last screen
- * tells them their automations run once one is connected.
- * `/onboarding?toolkit=connect` (the "Connect your toolkit" links) opens the form directly
- * and goes back home once connected. The brand and the first upload can be skipped.
+ * Setting up, in order: name the team, the brand every automation uses, then what the team
+ * makes: where it posts, the ready-made automations that fit, and a first upload. Nobody
+ * is asked about a toolkit: a new team is put on the one the operator lends (when there is
+ * one), and a team that wants its own sets it in Settings, under Toolkit. On a copy that
+ * lends none, the last screen says automations start once a toolkit is connected there.
+ * `/onboarding?toolkit=connect` (old "Connect your toolkit" links) goes to that page.
  */
 function Onboarding() {
   const router = useRouter();
-  const connectOnly = useSearchParams().get("toolkit") === "connect";
+  const oldConnectLink = useSearchParams().get("toolkit") === "connect";
   const state = useTeam();
   const teamId = state.status === "ready" ? state.team.id : null;
   const connections = useQuery(
@@ -42,67 +39,60 @@ function Onboarding() {
     teamId ? { organizationId: teamId } : "skip",
   );
   const settings = useQuery(api.teamSettings.get, teamId ? { organizationId: teamId } : "skip");
-  const [stage, setStage] = useState<Stage | null>(null);
-  const [hasToolkit, setHasToolkit] = useState(true);
+  const goals = useQuery(api.contentGoals.get, teamId ? { organizationId: teamId } : "skip");
   const offersOurs = useQuery(
     api.toolkitConnections.offersOurs,
     teamId ? { organizationId: teamId } : "skip",
   );
   const connectOurs = useAction(api.toolkitConnections.connectOurs);
-  const [joining, setJoining] = useState(false);
+  const [stage, setStage] = useState<Stage | null>(null);
+  const asked = useRef(false);
 
   const signedOut = state.status === "signed-out";
-  // Someone already connected on an earlier visit goes straight to the dashboard.
-  const alreadySetUp = stage === null && connections !== undefined && connections.length > 0;
+  // A team that answered what it makes has set up already.
+  const alreadySetUp = stage === null && goals?.answered === true;
   useGuardRedirect(signedOut ? "/sign-in" : null);
   useEffect(() => {
-    if (alreadySetUp) router.replace("/");
-  }, [alreadySetUp, router]);
+    if (oldConnectLink && teamId) router.replace(TOOLKIT_SETTINGS);
+    else if (alreadySetUp) router.replace("/");
+  }, [alreadySetUp, oldConnectLink, teamId, router]);
 
-  if (state.status === "loading" || signedOut || alreadySetUp) return <FullPageLoader />;
+  // The team is put on our toolkit when it is made. Should that not have happened yet
+  // (the toolkit was slow to answer), ask once more here, quietly: setting up carries on.
+  const lendNow = offersOurs === true && connections !== undefined && connections.length === 0;
+  useEffect(() => {
+    if (!lendNow || !teamId || asked.current) return;
+    asked.current = true;
+    connectOurs({ organizationId: teamId }).catch(() => undefined);
+  }, [lendNow, teamId, connectOurs]);
+
+  if (state.status === "loading" || signedOut || alreadySetUp || (oldConnectLink && teamId)) {
+    return <FullPageLoader />;
+  }
   if (
     state.status === "ready" &&
-    (connections === undefined || settings === undefined || offersOurs === undefined)
+    (connections === undefined ||
+      settings === undefined ||
+      goals === undefined ||
+      offersOurs === undefined)
   ) {
     return <FullPageLoader />;
   }
 
-  const current: Stage | "team" =
-    state.status === "no-team" ? "team" : (stage ?? (connectOnly ? "connect" : "ask"));
-  const step = current === "team" ? 1 : current === "brand" ? 3 : current === "goals" ? 4 : 2;
-  const finish = () => router.replace("/");
+  const current: Stage | "team" = state.status === "no-team" ? "team" : (stage ?? "brand");
+  const step = current === "team" ? 1 : current === "brand" ? 2 : 3;
   // Once setting up is done, Home starts the tour of the dashboard for someone who has not
-  // had it. Connecting a toolkit later from Home goes back without it.
+  // had it.
   const finishSetup = () => router.replace(`/${START_TOUR_SEARCH}`);
   const toGoals = () => setStage("goals");
-  // No: on ours when the operator lends one, otherwise on without a toolkit for now.
-  const withoutToolkit = async () => {
-    if (offersOurs && teamId) {
-      setJoining(true);
-      try {
-        const joined = await connectOurs({ organizationId: teamId });
-        if (joined.ok) {
-          setHasToolkit(true);
-          setStage("brand");
-          return;
-        }
-      } catch {
-        // Told below, then setting up carries on without one.
-      } finally {
-        setJoining(false);
-      }
-      toast.error(
-        "Our toolkit did not answer just now. Carry on, and connect one from Home later.",
-      );
-    }
-    setHasToolkit(false);
-    setStage("brand");
-  };
+  // Uploads go to the toolkit's storage, so the first upload needs one: ours (being
+  // connected now) or the team's own.
+  const hasToolkit = (connections?.length ?? 0) > 0 || offersOurs === true;
 
   return (
     <section className="flex min-h-screen w-full items-center justify-center px-4 py-10">
-      <div className={step === 4 ? "w-full max-w-2xl" : "w-full max-w-md space-y-6"}>
-        {step < 4 && !connectOnly && (
+      <div className={step === 3 ? "w-full max-w-2xl" : "w-full max-w-md space-y-6"}>
+        {step < 3 && (
           <p className="text-muted-foreground text-sm">
             Step {step} of {STEPS}
           </p>
@@ -112,53 +102,10 @@ function Onboarding() {
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Name your team</h1>
               <p className="text-muted-foreground">
-                A team holds your toolkit connection, your media and your automations.
+                A team holds your media, your brand and your automations.
               </p>
             </div>
             <CreateTeamForm />
-          </>
-        )}
-        {current === "ask" && (
-          <HaveToolkitQuestion
-            onYes={() => setStage("connect")}
-            onNo={() => void withoutToolkit()}
-            offersOurs={offersOurs === true}
-            pending={joining}
-          />
-        )}
-        {(current === "connect" || current === "connected") && state.status === "ready" && (
-          <>
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold">Connect your toolkit</h1>
-              <p className="text-muted-foreground">
-                Point the dashboard at your own NCA Toolkit. Your files go to the toolkit&apos;s own
-                storage, so this is the only connection to make. We test it before saving anything.
-              </p>
-            </div>
-            <ConnectToolkitForm
-              organizationId={state.team.id}
-              onConnected={() => setStage("connected")}
-            />
-            {current === "connected" ? (
-              <Button
-                className="w-full"
-                onClick={() => {
-                  setHasToolkit(true);
-                  if (connectOnly) finish();
-                  else setStage("brand");
-                }}
-              >
-                Continue
-              </Button>
-            ) : connectOnly ? (
-              <Button variant="ghost" className="w-full" onClick={finish}>
-                Not now
-              </Button>
-            ) : (
-              <Button variant="ghost" className="w-full" onClick={() => setStage("ask")}>
-                Back
-              </Button>
-            )}
           </>
         )}
         {current === "brand" && state.status === "ready" && settings && (
@@ -190,7 +137,7 @@ function Onboarding() {
         {current === "goals" && state.status === "ready" && (
           <ContentGoalsFlow
             organizationId={state.team.id}
-            stepsBefore={3}
+            stepsBefore={2}
             stepsTotal={STEPS}
             hasToolkit={hasToolkit}
             onFinish={finishSetup}
@@ -203,7 +150,7 @@ function Onboarding() {
 
 /**
  * Pages are kept alive between visits, so each address gets its own copy of the screens:
- * opening the toolkit form from Home starts there, not where an earlier visit left off.
+ * an old toolkit link goes to Settings, not to where an earlier visit left off.
  */
 function ByAddress() {
   return <Onboarding key={useSearchParams().toString()} />;
