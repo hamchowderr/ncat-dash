@@ -6,8 +6,9 @@ import { components } from "./_generated/api";
 import authSchema from "./betterAuth/schema";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/!(*.*.*)*.*s");
-const authModules = import.meta.glob("./betterAuth/**/!(*.*.*)*.*s");
+// Every function file, without tests and other dotted files (foo.test.ts).
+const modules = import.meta.glob(["./**/*.*s", "!./**/*.*.*s"]);
+const authModules = import.meta.glob(["./betterAuth/**/*.*s", "!./betterAuth/**/*.*.*s"]);
 
 /** A fresh in-memory backend with the auth, presence and rate limiter components installed. */
 export function backend() {
