@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { ChevronDownIcon, ExternalLinkIcon, MessageCircleIcon } from "lucide-react";
 import { type ComponentProps, createContext, useContext } from "react";
 
-const providers = {
+export const providers = {
   github: {
     title: "Open in GitHub",
     createUrl: (url: string) => url,

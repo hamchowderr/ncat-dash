@@ -14,14 +14,6 @@ import {
   CodeBlockHeader,
   CodeBlockTitle,
 } from "@/components/ai-elements/code-block";
-import {
-  OpenIn,
-  OpenInChatGPT,
-  OpenInClaude,
-  OpenInContent,
-  OpenInCursor,
-  OpenInTrigger,
-} from "@/components/ai-elements/open-in-chat";
 import { ConnectToolkitForm, FORK_REPO } from "@/components/onboarding/connect-toolkit-form";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,6 +21,7 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { RECOMMENDED_SETUP, TOOLKIT_IMAGE, toolkitAgentPrompt } from "@/lib/toolkit-agent-prompt";
 
+import { OpenInAiApps } from "./ai-apps";
 import { SettingRow, SettingsSection } from "./settings-shell";
 
 const COMPOSE_GUIDE = `${FORK_REPO}/blob/main/docker-compose.md`;
@@ -304,8 +297,8 @@ function AgentPrompt() {
         <h3 className="text-sm font-medium">Have your AI agent do it</h3>
         <p className="text-muted-foreground text-sm">
           Copy it into Claude Code, Codex or any agent that can reach your server or computer, or
-          open it in Cursor, Claude or ChatGPT. It installs the toolkit, updates the one you run, or
-          replaces one that is not ours, then gives you the address and key to put below.
+          open it in any AI app. It installs the toolkit, updates the one you run, or replaces one
+          that is not ours, then gives you the address and key to put below.
         </p>
       </div>
       <CodeBlock
@@ -316,19 +309,15 @@ function AgentPrompt() {
         <CodeBlockHeader>
           <CodeBlockTitle>Prompt for your AI agent</CodeBlockTitle>
           <CodeBlockActions>
-            <OpenIn query={prompt}>
-              <OpenInTrigger>
+            <OpenInAiApps
+              prompt={prompt}
+              trigger={
                 <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs">
                   Open in
                   <ChevronDown className="size-3.5" aria-hidden="true" />
                 </Button>
-              </OpenInTrigger>
-              <OpenInContent align="end">
-                <OpenInCursor />
-                <OpenInClaude />
-                <OpenInChatGPT />
-              </OpenInContent>
-            </OpenIn>
+              }
+            />
             <CodeBlockCopyButton
               aria-label="Copy prompt"
               onError={() => toast.error("Copy the prompt by hand: the browser did not allow it.")}

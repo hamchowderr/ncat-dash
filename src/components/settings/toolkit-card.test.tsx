@@ -90,12 +90,11 @@ describe("Settings, Toolkit", () => {
     expect(
       within(prompt).getByText(/Ask me before you delete or stop anything/),
     ).toBeInTheDocument();
-    // Or opened straight in an AI app, each with its own logo, carrying the prompt.
+    // Or opened straight in any AI app, each with its own logo, carrying the prompt.
     await user.click(within(prompt).getByRole("button", { name: /Open in/ }));
-    const claude = await screen.findByRole("menuitem", { name: /Open in Claude/ });
-    expect(new URL(claude.closest("a")!.href).searchParams.get("q")).toBe(copied);
-    expect(screen.getByRole("menuitem", { name: /Open in Cursor/ })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /Open in ChatGPT/ })).toBeInTheDocument();
+    const chatgpt = await screen.findByRole("menuitem", { name: "ChatGPT" });
+    expect(new URL(chatgpt.getAttribute("href")!).searchParams.get("q")).toBe(copied);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(16);
     await user.keyboard("{Escape}");
     // And the setup ours runs on, named.
     const section = screen.getByTestId("own-toolkit");
