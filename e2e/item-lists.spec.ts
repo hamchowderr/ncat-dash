@@ -23,9 +23,7 @@ async function importAutomation(page: Page) {
   await expect(page).toHaveURL(/\/automations\/[a-z0-9]+$/, { timeout: 30_000 });
 }
 
-test("automations, runs and jobs are rows, and New folder groups automations", async ({
-  page,
-}) => {
+test("automations, runs and jobs are rows, and New folder groups automations", async ({ page }) => {
   await page.goto("/sign-up");
   await page.locator("#name").fill("Lee Park");
   await page.locator("#email").fill(`lee.lists.${stamp}@example.test`);
@@ -34,7 +32,7 @@ test("automations, runs and jobs are rows, and New folder groups automations", a
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Row House");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
 
   await importAutomation(page);
   await importAutomation(page);

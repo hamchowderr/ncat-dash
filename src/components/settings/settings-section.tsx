@@ -3,6 +3,7 @@
 import { AccountCard } from "./account-card";
 import { BrollCard } from "./broll-card";
 import { McpSettings } from "./mcp-settings";
+import { ToolkitCard } from "./toolkit-card";
 import { IntegrationsList } from "./integrations-list";
 import type { IntegrationSlug, SettingsSlug } from "./settings-pages";
 import {
@@ -35,6 +36,7 @@ const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
   editors: EditorsSettings,
   agent: AgentSettings,
   runs: RunsSettings,
+  toolkit: ToolkitCard,
   notifications: NotificationsSettings,
   team: TeamSettings,
   integrations: IntegrationsList,

@@ -20,7 +20,7 @@ test("creating an account, signing out, and signing back in to the page you were
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Vale Studio");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("button", { name: /Yes, I Have One/ })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
     timeout: 30_000,
   });
 
@@ -73,7 +73,7 @@ test("the Account page changes your name and password and signs out your other d
   await expect(first).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await first.getByPlaceholder("Your company or channel").fill("Vale Studio");
   await first.getByRole("button", { name: "Create team" }).click();
-  await expect(first.getByRole("button", { name: /Yes, I Have One/ })).toBeVisible({
+  await expect(first.getByRole("heading", { name: "Add your brand" })).toBeVisible({
     timeout: 30_000,
   });
 

@@ -217,7 +217,7 @@ describe("turning on the ready-made automations that fit", () => {
       starterIds: ["podcast-master"],
     });
     expect(made.on).toBe(false);
-    expect(made.problem).toBe("Connect your toolkit from Home first.");
+    expect(made.problem).toBe("Connect a toolkit in Settings, under Toolkit, first.");
   });
 
   test("does not make one the team already has", async () => {

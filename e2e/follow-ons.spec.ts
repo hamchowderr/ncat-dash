@@ -21,7 +21,7 @@ test("suggests what goes after an automation and builds it in one click", async 
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Follow Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
 
   // The list has them in their own category, each saying what it runs after.
   await page.goto("/automations/new");

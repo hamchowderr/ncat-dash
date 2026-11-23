@@ -6,7 +6,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useTour } from "@/components/ui/tour";
 import { TeamContext } from "@/lib/team-context";
-import { answerQuery, mutationOf, toastSuccess } from "@/test/convex";
+import { answerQuery, mutationOf, place, toastSuccess } from "@/test/convex";
 import { TEAM } from "@/test/render";
 
 import { AppSidebar } from "./app-sidebar";
@@ -18,7 +18,7 @@ function StartButton() {
 }
 
 function renderTour({ withMenu = false } = {}) {
-  render(
+  const ui = (
     <TeamContext.Provider value={TEAM}>
       <TooltipProvider>
         <SidebarProvider>
@@ -38,8 +38,9 @@ function renderTour({ withMenu = false } = {}) {
           </DashboardTour>
         </SidebarProvider>
       </TooltipProvider>
-    </TeamContext.Provider>,
+    </TeamContext.Provider>
   );
+  return { ...render(ui), ui };
 }
 
 const card = () => screen.queryByRole("dialog");
@@ -108,6 +109,7 @@ describe("the tour of the dashboard", () => {
 
   test("starts by itself when setting up sends someone new to Home, and tidies the address", async () => {
     window.history.replaceState(null, "", "/?tour=start");
+    place.search = "?tour=start";
     renderTour();
     await act(async () => {});
     expect(card()).toHaveTextContent("Welcome to Takewon");
@@ -116,6 +118,7 @@ describe("the tour of the dashboard", () => {
 
   test("does not start by itself for someone who has had it already", async () => {
     window.history.replaceState(null, "", "/?tour=start");
+    place.search = "?tour=start";
     answerQuery(api.tours.ended, true);
     renderTour();
     await act(async () => {});

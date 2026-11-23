@@ -42,6 +42,7 @@ function summary(overrides: Record<string, unknown> = {}) {
 
 const CONNECTION = {
   _id: "c1",
+  ours: false,
   baseUrl: "https://toolkit.example",
   apiKeyHint: "1234",
   status: "ok",
@@ -184,7 +185,7 @@ describe("the home page", () => {
     expect(screen.queryByRole("region", { name: /Getting started/ })).toBeNull();
   });
 
-  test("Connect your toolkit opens the toolkit form, not the start of setting up", () => {
+  test("Connect your toolkit opens Settings, under Toolkit", () => {
     answerQuery(api.home.summary, summary({ setup: { ...SETUP_DONE, toolkit: false } }));
     renderInApp(<HomeView />);
     const setup = screen.getByRole("region", { name: /Getting started/ });
@@ -192,7 +193,7 @@ describe("the home page", () => {
       within(setup)
         .getByRole("link", { name: /Connect your toolkit/ })
         .getAttribute("href"),
-    ).toBe("/onboarding?toolkit=connect");
+    ).toBe("/settings/toolkit");
   });
 
   test("asks what the team makes until it is answered", () => {
@@ -244,5 +245,25 @@ describe("the home page", () => {
     renderInApp(<HomeView />);
     expect(screen.getByText("https://toolkit.example")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "See how busy it is" })).toBeNull();
+  });
+
+  test("our toolkit is looked after for the team: nothing to show while it works", () => {
+    answerQuery(api.home.summary, summary());
+    answerQuery(api.toolkitConnections.list, [{ ...CONNECTION, ours: true, apiKeyHint: "" }]);
+    renderInApp(<HomeView />);
+    expect(screen.queryByTestId("connection-status")).toBeNull();
+    expect(screen.queryByText("https://toolkit.example")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Check again/ })).toBeNull();
+  });
+
+  test("when our toolkit stops answering, it says so without its details", () => {
+    answerQuery(api.home.summary, summary());
+    answerQuery(api.toolkitConnections.list, [
+      { ...CONNECTION, ours: true, apiKeyHint: "", status: "failing", lastError: "Refused." },
+    ]);
+    renderInApp(<HomeView />);
+    expect(screen.getByTestId("connection-status").textContent).toMatch(/not answering/);
+    expect(screen.queryByText("https://toolkit.example")).toBeNull();
+    expect(screen.queryByText("Refused.")).toBeNull();
   });
 });

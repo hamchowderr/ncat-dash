@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FORK_REPO } from "@/lib/toolkit-agent-prompt";
 
 const failureTitles = {
   invalid_url: "That address does not look right",
@@ -17,6 +18,7 @@ const failureTitles = {
   not_a_toolkit: "Something answered, but it is not the NCA Toolkit",
   not_fork: "This is the original NCA Toolkit",
   storage: "Your toolkit's storage is not working",
+  busy: "Jobs are still running",
 } as const;
 
 const failureHelp = {
@@ -27,9 +29,10 @@ const failureHelp = {
   not_fork: "",
   storage:
     "Your files go to the toolkit's own bucket. Check the S3 settings on your toolkit (S3_ENDPOINT_URL, S3_BUCKET_NAME and both keys), then try again.",
+  busy: "",
 } as const;
 
-export const FORK_REPO = "https://github.com/hamchowderr/no-code-architects-toolkit";
+export { FORK_REPO };
 
 /**
  * How to move from Stephen's original toolkit to the Otaku Solutions version. Its settings
@@ -155,7 +158,13 @@ export function ConnectToolkitForm({
         <Alert variant="destructive">
           <AlertTitle>{failureTitles[failure.reason]}</AlertTitle>
           <AlertDescription>
-            {failure.reason === "not_fork" ? <SwitchToFork /> : failureHelp[failure.reason]}
+            {failure.reason === "not_fork" ? (
+              <SwitchToFork />
+            ) : failure.reason === "busy" ? (
+              failure.detail
+            ) : (
+              failureHelp[failure.reason]
+            )}
             {failure.reason === "storage" && (
               <p className="text-xs" data-testid="storage-detail">
                 {failure.detail}

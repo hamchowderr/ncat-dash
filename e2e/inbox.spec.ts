@@ -55,11 +55,12 @@ test.beforeAll(async ({ browser }) => {
   jordan = await signUp(browser, "Jordan Lee", emailOf("jordan"));
   await jordan.getByPlaceholder("Your company or channel").fill("Salt House");
   await jordan.getByRole("button", { name: "Create team" }).click();
-  await jordan.getByRole("button", { name: /Yes, I Have One/ }).click();
+  await expect(jordan.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await jordan.goto("/settings/toolkit");
   await jordan.locator("#baseUrl").fill(TOOLKIT);
   await jordan.locator("#apiKey").fill("stand-in-key-1234");
   await jordan.getByRole("button", { name: "Test and connect" }).click();
-  await expect(jordan.getByText(/Your toolkit answered/)).toBeVisible();
+  await expect(jordan.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
   const [team] = await auth<{ id: string }[]>(jordan, "organization/list");
   maya = await signUp(browser, "Maya Ortiz", emailOf("maya"));
