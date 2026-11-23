@@ -32,6 +32,7 @@ import {
 import { callStep, getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
+import { backgroundPool } from "./lib/pools";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
@@ -190,8 +191,8 @@ export const list = action({
         )
         .map(({ key, etag }) => ({ key, etag })),
     });
-    for (const [index, file] of outside.fresh.entries()) {
-      await ctx.scheduler.runAfter(index * 250, internal.files.readOutside, {
+    for (const file of outside.fresh) {
+      await backgroundPool.enqueueAction(ctx, internal.files.readOutside, {
         organizationId: args.organizationId,
         ...file,
       });

@@ -329,8 +329,16 @@ describe("searching", () => {
     const setup = await studio();
     const { t, upload, itemOf } = setup;
     const episode = await itemOf(await upload("episode.mp4"));
-    // Brought in, so it is sent to be transcribed straight away.
-    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(10));
+    // Brought in, so it is sent to be transcribed straight away. The toolkit queues it.
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === "https://toolkit.example/v1/media/transcribe"
+        ? new Response(JSON.stringify({ code: 202, job_id: "tk-transcribe" }), { status: 202 })
+        : realFetch(input, init),
+    );
+    // A second at a time: the pools (lib/pools.ts) take a few to hand work on.
+    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000));
+    vi.stubGlobal("fetch", realFetch);
     vi.useRealTimers();
     const job = (await t.run((ctx) =>
       ctx.db
@@ -575,6 +583,12 @@ describe("catching up files brought in before every upload was transcribed", () 
     // Already on their way: a second visit sends nothing more.
     expect(await maya.as.mutation(api.library.catchUpTranscripts, { organizationId: team })).toBe(
       0,
+    );
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === "https://toolkit.example/v1/media/transcribe"
+        ? new Response(JSON.stringify({ code: 202, job_id: "tk-transcribe" }), { status: 202 })
+        : realFetch(input, init),
     );
     await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(5_000));
 

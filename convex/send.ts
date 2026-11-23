@@ -1,10 +1,12 @@
 // Makes the post for a Send to a URL step (lib/send.ts starts and ends the step).
 import { outboundProblem } from "./lib/outbound";
 import { type AutomationNode } from "@ncat-dash/automation-core";
+import { vOnCompleteArgs } from "@convex-dev/workpool";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
-import { CALLBACK_WAITS_MS, signCallback } from "./lib/hooks";
+import { signCallback } from "./lib/hooks";
+import { OUTBOUND_TRIES } from "./lib/pools";
 import { finishSend } from "./lib/send";
 
 /** What a Send to a URL step posts: the run, the step, and the files that reached it. */
@@ -40,52 +42,58 @@ export const load = internalQuery({
   },
 });
 
-/** Posts a Send to a URL step's files, tries again when the address does not answer. */
+/** The post one try made: why it did not work, or null when the address took it. */
+async function postOnce(url: string, token: string, body: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-takewon-signature": `sha256=${await signCallback(body, token)}`,
+      },
+      body,
+      signal: AbortSignal.timeout(30_000),
+    });
+    return response.ok ? null : `The address answered ${response.status}.`;
+  } catch {
+    return "The address could not be reached.";
+  }
+}
+
+/**
+ * Posts a Send to a URL step's files. Run by the outbound pool (lib/pools.ts): a post the
+ * address does not take throws, so the pool tries it again later; `done` ends the step.
+ */
 export const post = internalAction({
-  args: { runStepId: v.id("runSteps"), attempt: v.number() },
-  handler: async (ctx, args) => {
+  args: { runStepId: v.id("runSteps") },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args): Promise<string | null> => {
     const loaded = await ctx.runQuery(internal.send.load, { runStepId: args.runStepId });
-    if (!loaded) return;
-    const body = JSON.stringify(loaded.body);
+    if (!loaded) return null;
     // A copy strangers sign up to never posts inside its own network (lib/outbound.ts).
     const refused = outboundProblem(loaded.url);
-    if (refused) {
-      await ctx.runMutation(internal.send.done, { runStepId: args.runStepId, error: refused });
-      return;
-    }
-    let problem: string | null = null;
-    try {
-      const response = await fetch(loaded.url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-takewon-signature": `sha256=${await signCallback(body, loaded.token)}`,
-        },
-        body,
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!response.ok) problem = `The address answered ${response.status}.`;
-    } catch {
-      problem = "The address could not be reached.";
-    }
-    const wait = CALLBACK_WAITS_MS[args.attempt];
-    if (problem && wait !== undefined) {
-      await ctx.scheduler.runAfter(wait, internal.send.post, {
-        runStepId: args.runStepId,
-        attempt: args.attempt + 1,
-      });
-      return;
-    }
-    await ctx.runMutation(internal.send.done, {
-      runStepId: args.runStepId,
-      error: problem && `${problem} It was tried ${args.attempt + 1} times.`,
-    });
+    if (refused) return refused;
+    const problem = await postOnce(loaded.url, loaded.token, JSON.stringify(loaded.body));
+    if (problem) throw new Error(problem);
+    return null;
   },
 });
 
+/** Ends the step once its post was taken, refused, or the last try failed. */
 export const done = internalMutation({
-  args: { runStepId: v.id("runSteps"), error: v.union(v.string(), v.null()) },
-  handler: async (ctx, args) => {
-    await finishSend(ctx, args.runStepId, args.error);
+  args: vOnCompleteArgs(v.object({ runStepId: v.id("runSteps") })),
+  handler: async (ctx, { context, result }) => {
+    const error =
+      result.kind === "success"
+        ? ((result.returnValue as string | null) ?? null)
+        : result.kind === "failed"
+          ? `${plainError(result.error)} It was tried ${OUTBOUND_TRIES} times.`
+          : "The post was stopped.";
+    await finishSend(ctx, context.runStepId, error);
   },
 });
+
+/** Workpool hands back a thrown error as its text, sometimes with "Error: " in front. */
+export function plainError(error: string): string {
+  return error.replace(/^(Uncaught )?Error: /, "").split("\n")[0];
+}

@@ -1,6 +1,7 @@
 import { teamFolder } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
+import { backgroundPool } from "./lib/pools";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
@@ -1187,12 +1188,12 @@ export const checkAll = internalMutation({
   args: {},
   handler: async (ctx) => {
     const rows = await ctx.db.query("googleMeetConnections").take(2000);
-    let at = 0;
     for (const row of rows) {
       if (!row.autoImport || row.signInLostAt !== undefined) continue;
-      // Spread out a little, so many accounts do not all ask Google at once.
-      await ctx.scheduler.runAfter(at, internal.googleMeet.checkOne, { connectionId: row._id });
-      at += 250;
+      // A few at a time (lib/pools.ts), so many accounts do not all ask Google at once.
+      await backgroundPool.enqueueAction(ctx, internal.googleMeet.checkOne, {
+        connectionId: row._id,
+      });
     }
   },
 });
