@@ -4,7 +4,7 @@ import { anyApi } from "convex/server";
 import type { ToolkitState } from "./history";
 import type { RunView } from "./timings";
 
-/** What the test needs from a Kontifi copy. Tests pass a stand-in. */
+/** What the test needs from a Takewon copy. Tests pass a stand-in. */
 export interface Backend {
   /** The automation the test keeps for a ready-made, made from it the first time. */
   automationFor(readyMadeId: string, name: string): Promise<string>;
@@ -71,7 +71,7 @@ export async function signIn(options: SignIn): Promise<string> {
   return body.token;
 }
 
-export interface KontifiOptions {
+export interface TakewonOptions {
   convexUrl: string;
   /** A fresh Convex token each time it is asked. */
   token: () => Promise<string>;
@@ -82,8 +82,8 @@ export interface KontifiOptions {
   fetch?: Fetch;
 }
 
-/** Talks to a Kontifi copy as a signed-in member of the team. */
-export async function kontifiBackend(options: KontifiOptions): Promise<Backend> {
+/** Talks to a Takewon copy as a signed-in member of the team. */
+export async function takewonBackend(options: TakewonOptions): Promise<Backend> {
   const client = new ConvexHttpClient(options.convexUrl);
   const api = anyApi;
   let tokenAt = 0;
@@ -107,7 +107,7 @@ export async function kontifiBackend(options: KontifiOptions): Promise<Backend> 
     throw new Error(
       teams.length === 0
         ? "The account is on no team. Sign in once in the dashboard and make one."
-        : `Say which team to use (KONTIFI_TEAM). This account is on: ${teams.map((t) => t.name).join(", ")}.`,
+        : `Say which team to use (TAKEWON_TEAM). This account is on: ${teams.map((t) => t.name).join(", ")}.`,
     );
   }
   const organizationId = team.id;

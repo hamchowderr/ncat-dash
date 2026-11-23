@@ -1,7 +1,7 @@
 # Speed Test
 
 How long does a video take? `pnpm speed-test` answers that with real numbers. It runs the
-same videos through the main ready-mades on a Kontifi copy, times every run and every step
+same videos through the main ready-mades on a Takewon copy, times every run and every step
 from what the dashboard records, and keeps each time in a history file. Run it after a
 change to the toolkit, the server or the steps, and a run that got slower shows at once.
 
@@ -28,15 +28,15 @@ is in `packages/speed-test/src/plan.ts`.
 Make an account and a team on the copy you want to test, connect its toolkit, then:
 
 ```bash
-export KONTIFI_URL=https://your-dashboard.example          # the dashboard's own address
-export KONTIFI_CONVEX_URL=https://your-convex.example      # Convex's API (port 3210)
-export KONTIFI_CONVEX_SITE_URL=https://your-site.example   # Convex's HTTP actions (port 3211)
-export KONTIFI_EMAIL=speed-test@example.com
-export KONTIFI_PASSWORD=...
-export KONTIFI_TEAM="Speed Tests"                          # needed when the account has several teams
+export TAKEWON_URL=https://your-dashboard.example          # the dashboard's own address
+export TAKEWON_CONVEX_URL=https://your-convex.example      # Convex's API (port 3210)
+export TAKEWON_CONVEX_SITE_URL=https://your-site.example   # Convex's HTTP actions (port 3211)
+export TAKEWON_EMAIL=speed-test@example.com
+export TAKEWON_PASSWORD=...
+export TAKEWON_TEAM="Speed Tests"                          # needed when the account has several teams
 # Optional: the toolkit itself, so the test waits for it to be quiet and notes how busy it was.
-export KONTIFI_TOOLKIT_URL=https://your-toolkit.example
-export KONTIFI_TOOLKIT_API_KEY=...
+export TAKEWON_TOOLKIT_URL=https://your-toolkit.example
+export TAKEWON_TOOLKIT_API_KEY=...
 
 pnpm speed-test                                   # everything, about an hour
 pnpm speed-test --videos talking-head-40s-vertical # one video
