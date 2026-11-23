@@ -596,11 +596,11 @@ function ToolkitNext({ made, onFinish }: { made: Made[]; onFinish: () => void })
         one is connected.
         {made.some((each) => each.on) &&
           " The automations you switched on then start on them by themselves."}{" "}
-        Connect it any time from Home.
+        Connect it any time in Settings, under Toolkit.
       </Heading>
       <MadeList made={made} />
       <div className="flex flex-wrap justify-end gap-3">
-        <Button variant="ghost" onClick={() => router.replace("/onboarding?toolkit=connect")}>
+        <Button variant="ghost" onClick={() => router.replace("/settings/toolkit")}>
           Connect A Toolkit
         </Button>
         <Button onClick={onFinish}>

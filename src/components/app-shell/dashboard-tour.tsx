@@ -3,8 +3,9 @@
 import { api } from "@convex/_generated/api";
 import { PRODUCT_NAME } from "@takewon/automation-core";
 import { useMutation, useQuery } from "convex/react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef } from "react";
 
 import { EDITOR_TOUR } from "@/components/automations/editor-tour";
 import { NEW_AUTOMATION_TOUR } from "@/components/automations/new-automation-tour";
@@ -172,17 +173,19 @@ export function DashboardTour({ children }: { children: ReactNode }) {
 
 function StartWhenAsked() {
   const tour = useTour();
-  // Read once, on arrival: the address is tidied straight after.
-  const [asked] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("tour") === "start",
-  );
+  // Read from the router, not once on arrival: Home can be drawn ahead of time while
+  // setting up is still on screen, and is then shown when setting up sends someone there.
+  // The address is tidied straight after.
+  const asked = useSearchParams().get("tour") === "start";
   const ended = useQuery(api.tours.ended, asked ? { tourId: DASHBOARD_TOUR_ID } : "skip");
   const handled = useRef(false);
 
   useEffect(() => {
-    if (!asked || handled.current || ended === undefined) return;
+    if (!asked) {
+      handled.current = false;
+      return;
+    }
+    if (handled.current || ended === undefined) return;
     handled.current = true;
     const url = new URL(window.location.href);
     url.searchParams.delete("tour");

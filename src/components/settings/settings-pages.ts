@@ -60,6 +60,12 @@ export const SETTINGS_GROUPS = [
     label: "Automations",
     pages: [
       {
+        slug: "toolkit",
+        title: "Toolkit",
+        description:
+          "What does the media work and keeps your files. Ours by default; your own any time.",
+      },
+      {
         slug: "agent",
         title: "Agent",
         description: "How the agent builds automations for your team, in every chat.",
@@ -188,6 +194,9 @@ export type IntegrationSlug = Integration["slug"];
 
 export const settingsPage = (slug: string) => SETTINGS_PAGES.find((page) => page.slug === slug);
 export const integration = (slug: string) => INTEGRATIONS.find((app) => app.slug === slug);
+
+/** Where a team points at its own toolkit, or goes back to ours. */
+export const TOOLKIT_SETTINGS = "/settings/toolkit";
 
 /** Where a settings page or an app's page lives. */
 export const settingsHref = (slug: SettingsSlug | IntegrationSlug) =>

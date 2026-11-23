@@ -171,7 +171,7 @@ describe("when the trial is over", () => {
 });
 
 describe("making a team", () => {
-  test("the new team's trial and welcome are set off by the team being made", async () => {
+  test("the new team's trial, its place on our toolkit and its welcome are set off by the team being made", async () => {
     const { createAuthOptions } = await import("./auth");
     const scheduled: unknown[] = [];
     const ctx = {
@@ -203,6 +203,7 @@ describe("making a team", () => {
         internal.trial.begin,
         { organizationId: "team_9", ownerId: "user_1", ownerEmail: "maya@example.com" },
       ],
+      [0, internal.toolkitConnections.lendOurs, { organizationId: "team_9", userId: "user_1" }],
       // And a welcome, once the trial has started.
       [5_000, internal.email.sendWelcome, { organizationId: "team_9", userId: "user_1" }],
     ]);

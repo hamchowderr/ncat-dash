@@ -58,7 +58,7 @@ test("one automation runs another, links the runs, refuses a loop, and starts a 
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Chain Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
 
   await newAutomation(page, "Make captions");
   await addQuickStep(page);

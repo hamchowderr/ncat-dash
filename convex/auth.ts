@@ -318,6 +318,12 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
               ownerId: user.id,
               ownerEmail: user.email,
             });
+            // Every new team starts on the toolkit the operator lends, when there is one,
+            // so setting up never asks about a toolkit. Its own can be set in Settings.
+            await ctx.scheduler.runAfter(0, internal.toolkitConnections.lendOurs, {
+              organizationId: organization.id,
+              userId: user.id,
+            });
             // A welcome for someone's first team, a few seconds on so it can say how long
             // the trial (started just above) runs.
             await ctx.scheduler.runAfter(5_000, internal.email.sendWelcome, {

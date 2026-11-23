@@ -6,6 +6,7 @@ import type { Doc } from "./_generated/dataModel";
 import {
   action,
   type ActionCtx,
+  internalAction,
   internalMutation,
   internalQuery,
   mutation,
@@ -28,10 +29,14 @@ const testResult = v.union(
       v.literal("not_fork"),
       // The toolkit answers but its own bucket does not.
       v.literal("storage"),
+      // Jobs are still out on the team's current toolkit, so it can't switch yet.
+      v.literal("busy"),
     ),
     detail: v.string(),
   }),
 );
+
+type TestResult = typeof testResult.type;
 
 const CHECK_FAILURES = {
   unreachable: "The toolkit did not answer at this address.",
@@ -64,8 +69,11 @@ async function checkToolkit(target: { baseUrl: string; apiKey: string }) {
 function toPublic(connection: Doc<"toolkitConnections">) {
   return {
     _id: connection._id,
+    // The toolkit the operator lends (HOSTED_TOOLKIT_URL), rather than the team's own.
+    ours: isOurs(connection.baseUrl),
     baseUrl: connection.baseUrl,
-    apiKeyHint: connection.apiKeyHint,
+    // The lent toolkit's key is the operator's, so not even its ending is shown.
+    apiKeyHint: isOurs(connection.baseUrl) ? "" : connection.apiKeyHint,
     status: connection.status,
     buildNumber: connection.buildNumber,
     bucket: connection.storage?.bucket ?? null,
@@ -114,6 +122,21 @@ function ourToolkit(): { baseUrl: string; apiKey: string } | null {
   return baseUrl && apiKey ? { baseUrl, apiKey } : null;
 }
 
+/** Whether an address is the lent toolkit's (same origin as HOSTED_TOOLKIT_URL). */
+export function isOurs(baseUrl: string): boolean {
+  const ours = process.env.HOSTED_TOOLKIT_URL?.trim();
+  if (!ours) return false;
+  try {
+    return new URL(ours).origin === new URL(baseUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+// A new team tries the lent toolkit this many times (1, 2, 4, 8 minutes apart) before it is
+// left for the team to connect from Settings.
+const LEND_TRIES = 5;
+
 /** Whether setting up can offer "just use ours" for a team without its own toolkit. */
 export const offersOurs = query({
   args: { organizationId: v.string() },
@@ -147,13 +170,68 @@ export const connectOurs = action({
   },
 });
 
+/**
+ * Puts a new team on the lent toolkit, so nobody setting up is asked about a toolkit.
+ * Scheduled when a team is made (auth.ts). Does nothing without HOSTED_TOOLKIT_URL and
+ * HOSTED_TOOLKIT_API_KEY, or once the team has a toolkit; tries again a few times when the
+ * toolkit does not answer.
+ */
+export const lendOurs = internalAction({
+  args: { organizationId: v.string(), userId: v.string(), attempt: v.optional(v.number()) },
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const ours = ourToolkit();
+    if (!ours) return null;
+    const has: boolean = await ctx.runQuery(internal.toolkitConnections.hasAny, {
+      organizationId: args.organizationId,
+    });
+    if (has) return null;
+    const result = await saveIfWorking(ctx, {
+      organizationId: args.organizationId,
+      createdBy: args.userId,
+      ...ours,
+    });
+    const attempt = args.attempt ?? 1;
+    if (!result.ok && attempt < LEND_TRIES) {
+      await ctx.scheduler.runAfter(
+        2 ** (attempt - 1) * 60_000,
+        internal.toolkitConnections.lendOurs,
+        {
+          ...args,
+          attempt: attempt + 1,
+        },
+      );
+    }
+    return null;
+  },
+});
+
 async function connectTeam(
   ctx: ActionCtx,
   args: { organizationId: string; baseUrl: string; apiKey: string },
-) {
-  const { userId } = await ctx.runQuery(internal.toolkitConnections.authorize, {
+): Promise<TestResult> {
+  const { userId }: { userId: string } = await ctx.runQuery(internal.toolkitConnections.authorize, {
     organizationId: args.organizationId,
   });
+  // A team has one toolkit at a time, so switching waits for jobs out on the old one.
+  const busy: number = await ctx.runQuery(internal.toolkitConnections.jobsOut, {
+    organizationId: args.organizationId,
+  });
+  if (busy > 0) {
+    return {
+      ok: false as const,
+      reason: "busy" as const,
+      detail: `${busy} ${busy === 1 ? "job is" : "jobs are"} still out on your current toolkit. Switch once ${busy === 1 ? "it finishes" : "they finish"}.`,
+    };
+  }
+  return saveIfWorking(ctx, { ...args, createdBy: userId });
+}
+
+/** Tests a toolkit and saves it as the team's one toolkit when the test passes. */
+async function saveIfWorking(
+  ctx: ActionCtx,
+  args: { organizationId: string; baseUrl: string; apiKey: string; createdBy: string },
+): Promise<TestResult> {
   const baseUrl = normaliseBaseUrl(args.baseUrl);
   const apiKey = args.apiKey.trim();
   if (!baseUrl) {
@@ -182,7 +260,7 @@ async function connectTeam(
     apiKeyHint: apiKey.slice(-4),
     buildNumber: result.buildNumber,
     storage,
-    createdBy: userId,
+    createdBy: args.createdBy,
   });
   // The team's own folder in the bucket, ready for Files (see lib/bucket.ts).
   await ctx.scheduler.runAfter(0, internal.files.settleTeamFolder, {
@@ -230,6 +308,37 @@ export const remove = mutation({
 
 // Internal: only reachable from the actions above.
 
+export const hasAny = internalQuery({
+  args: { organizationId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const first = await ctx.db
+      .query("toolkitConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    return first !== null;
+  },
+});
+
+/** How many of the team's jobs are queued or running, up to 100. */
+export const jobsOut = internalQuery({
+  args: { organizationId: v.string() },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    let count = 0;
+    for (const status of ["queued", "running"] as const) {
+      const jobs = await ctx.db
+        .query("jobs")
+        .withIndex("by_organization_and_status", (q) =>
+          q.eq("organizationId", args.organizationId).eq("status", status),
+        )
+        .take(100);
+      count += jobs.length;
+    }
+    return count;
+  },
+});
+
 export const authorize = internalQuery({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
@@ -259,12 +368,16 @@ export const save = internalMutation({
   },
   handler: async (ctx, args) => {
     const fields = { ...args, status: "ok" as const, lastCheckedAt: Date.now(), lastError: null };
-    // Connecting the same address again replaces its key instead of adding a duplicate.
+    // A team has one toolkit: connecting the same address again replaces its key, and
+    // connecting another one (its own, or ours again) replaces the old connection.
     const existing = await ctx.db
       .query("toolkitConnections")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .take(50);
     const same = existing.find((connection) => connection.baseUrl === args.baseUrl);
+    for (const other of existing) {
+      if (other._id !== same?._id) await ctx.db.delete(other._id);
+    }
     if (same) {
       await ctx.db.patch(same._id, fields);
       return same._id;

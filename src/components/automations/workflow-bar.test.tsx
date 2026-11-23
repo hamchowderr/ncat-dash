@@ -107,11 +107,11 @@ describe("the workflow bar on the Chain tab", () => {
 
   test("says which automation stops it switching on", async () => {
     mutationOf(api.workflows.setOn).mockRejectedValue({
-      data: { message: "Captions: Connect your toolkit from Home first." },
+      data: { message: "Captions: Connect a toolkit in Settings, under Toolkit, first." },
     });
     show({ workflow, proposal });
     await userEvent.click(screen.getByRole("switch"));
-    expect(toastError).toHaveBeenCalledWith("Captions: Connect your toolkit from Home first.");
+    expect(toastError).toHaveBeenCalledWith("Captions: Connect a toolkit in Settings, under Toolkit, first.");
   });
 
   test("changes its settings and client, or takes it away", async () => {

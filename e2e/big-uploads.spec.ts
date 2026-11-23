@@ -24,11 +24,12 @@ test("a 150 MB file is sent in parts and shows up ready", async ({ page, request
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Park Studio");
   await page.getByRole("button", { name: "Create team" }).click();
-  await page.getByRole("button", { name: /Yes, I Have One/ }).click();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
   await page.getByRole("button", { name: "Test and connect" }).click();
-  await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
+  await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
   await page.goto("/uploads");
   await page.getByLabel("Choose files to upload").setInputFiles(file);

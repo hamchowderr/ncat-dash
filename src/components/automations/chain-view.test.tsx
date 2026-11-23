@@ -113,7 +113,7 @@ describe("the chain view", () => {
     mutationOf(api.automations.setUpFollowOn).mockResolvedValue({
       automationId: "auto_post",
       on: false,
-      problem: "Connect your toolkit from Home first.",
+      problem: "Connect a toolkit in Settings, under Toolkit, first.",
     });
     renderInApp(
       <ReactFlowProvider>
@@ -128,7 +128,7 @@ describe("the chain view", () => {
       starterId: "ready-to-post",
     });
     expect(toastInfo).toHaveBeenCalledWith(
-      "Ready To Post is built but off for now. Connect your toolkit from Home first.",
+      "Ready To Post is built but off for now. Connect a toolkit in Settings, under Toolkit, first.",
     );
     expect(pushed).not.toHaveBeenCalled();
   });

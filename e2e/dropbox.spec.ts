@@ -25,11 +25,12 @@ test("connects Dropbox, ticks folders to bring in, and sends clips back", async 
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill(`Harbour Films ${stamp}`);
   await page.getByRole("button", { name: "Create team" }).click();
-  await page.getByRole("button", { name: /Yes, I Have One/ }).click();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
   await page.getByRole("button", { name: "Test and connect" }).click();
-  await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
+  await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
   // Settings > Dropbox: connect, and Dropbox sends us back here. Each run signs in as its
   // own account, since one Dropbox can be connected to only one team.
