@@ -41,7 +41,7 @@ describe("letting an AI agent in", () => {
     answerQuery(api.oauth.request, { status: "signed-out" });
     render(<ConnectAgent />);
     expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe(
-      "/sign-in?next=%2Fconnect%2Fr1",
+      "/sign-in?redirectTo=%2Fconnect%2Fr1",
     );
   });
 

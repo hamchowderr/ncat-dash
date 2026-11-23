@@ -1,4 +1,6 @@
 import { components } from "./_generated/api";
+import { requireEmailVerification, socialProviders } from "./lib/signInOptions";
+import { emailConfigured } from "./email";
 import { query } from "./_generated/server";
 import { getEdition } from "./lib/edition";
 import { signUpsMode } from "./lib/signUps";
@@ -14,6 +16,15 @@ export const get = query({
     const inviteOnly =
       signUpsMode() === "invite-only" &&
       (await ctx.runQuery(components.betterAuth.members.signUpCheck, { email: "" })).hasAccounts;
-    return { edition: getEdition(), trialDays: trialDays(), inviteOnly };
+    // How people can sign in, for the sign-in screens: Google once its keys are set, a
+    // password reset once email can be sent, and whether an address must be confirmed.
+    return {
+      edition: getEdition(),
+      trialDays: trialDays(),
+      inviteOnly,
+      signInWith: { google: "google" in socialProviders() },
+      emailConfigured: await emailConfigured(ctx),
+      emailVerification: requireEmailVerification(),
+    };
   },
 });

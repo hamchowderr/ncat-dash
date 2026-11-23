@@ -1,5 +1,6 @@
 "use client";
 
+import { AccountCard } from "./account-card";
 import { BrollCard } from "./broll-card";
 import { McpSettings } from "./mcp-settings";
 import { IntegrationsList } from "./integrations-list";
@@ -26,6 +27,7 @@ import { VideoLinksCard } from "./video-links-card";
 import { ZoomCard } from "./zoom-card";
 
 const SECTIONS: Record<SettingsSlug, () => React.ReactNode> = {
+  account: AccountCard,
   brand: BrandSettings,
   captions: CaptionsSettings,
   broll: BrollCard,
