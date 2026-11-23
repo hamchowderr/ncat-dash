@@ -1282,7 +1282,13 @@
                 "big_text",
                 "graph",
                 "doodle",
-                "checklist"
+                "checklist",
+                "cards",
+                "wall",
+                "phone",
+                "orbit",
+                "ransom",
+                "waveform"
               ]
             },
             "start": {
@@ -1304,6 +1310,15 @@
             "image": {
               "type": "string",
               "format": "uri"
+            },
+            "images": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 9,
+              "items": {
+                "type": "string",
+                "format": "uri"
+              }
             },
             "sound": {
               "type": [
@@ -1347,6 +1362,13 @@
                 "arrow",
                 "burst",
                 "circle"
+              ]
+            },
+            "look": {
+              "type": "string",
+              "enum": [
+                "masthead",
+                "glass"
               ]
             },
             "x": {
@@ -1449,6 +1471,13 @@
               "type": "number",
               "exclusiveMinimum": 0
             },
+            "style": {
+              "type": "string",
+              "enum": [
+                "sketch",
+                "sticker"
+              ]
+            },
             "color": {
               "type": "string",
               "pattern": "^#[0-9a-fA-F]{6}$"
@@ -1476,15 +1505,31 @@
               "type": "number",
               "exclusiveMinimum": 0
             },
+            "style": {
+              "type": "string",
+              "enum": [
+                "punch",
+                "through",
+                "dolly",
+                "pop",
+                "inset",
+                "paper",
+                "pullout"
+              ]
+            },
             "scale": {
               "type": "number",
-              "minimum": 1.02,
+              "minimum": 0.25,
               "maximum": 2.5
             },
             "focus_y": {
               "type": "number",
               "minimum": 0,
               "maximum": 1
+            },
+            "image": {
+              "type": "string",
+              "format": "uri"
             }
           },
           "required": [

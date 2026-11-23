@@ -27,6 +27,12 @@ export const MOTION_PIECE_TYPES = [
   "graph",
   "doodle",
   "checklist",
+  "cards",
+  "wall",
+  "phone",
+  "orbit",
+  "ransom",
+  "waveform",
 ] as const;
 export type MotionPieceType = (typeof MOTION_PIECE_TYPES)[number];
 
@@ -52,7 +58,8 @@ export interface MotionPieceInfo {
   description: string;
   /** Seconds it shows for when nothing else is said. */
   seconds: number;
-  sound: MotionSound;
+  /** Its own sound; null for a piece that stays quiet (a sound wave sits under speech). */
+  sound: MotionSound | null;
   /** Where it sits, so two pieces in one place never show at once. */
   place: "middle" | "bottom" | "side" | "corner" | "top";
 }
@@ -170,6 +177,56 @@ export const MOTION_EXTRA_PIECES: MotionPieceInfo[] = [
     seconds: 4,
     sound: "tick",
     place: "bottom",
+  },
+  {
+    type: "cards",
+    title: "Comment cards",
+    description:
+      "Up to six short lines, such as comments, popping in as white cards down the sides.",
+    seconds: 3,
+    sound: "pop",
+    place: "side",
+  },
+  {
+    type: "wall",
+    title: "Photo wall",
+    description:
+      "Up to nine pictures landing one by one as a wall of tiles, best behind the speaker.",
+    seconds: 3,
+    sound: "pop",
+    place: "middle",
+  },
+  {
+    type: "phone",
+    title: "Phone",
+    description: "One picture, such as a screenshot, on a phone that slides up.",
+    seconds: 3,
+    sound: "slide",
+    place: "side",
+  },
+  {
+    type: "orbit",
+    title: "Orbiting pictures",
+    description: "Up to six pictures circling the speaker, passing behind and in front of them.",
+    seconds: 3.5,
+    sound: "whoosh",
+    place: "middle",
+  },
+  {
+    type: "ransom",
+    title: "Cut-out letters",
+    description: "A few words, such as 100%, in letters cut from paper scraps.",
+    seconds: 2.5,
+    sound: "click",
+    place: "middle",
+  },
+  {
+    type: "waveform",
+    title: "Sound wave",
+    description: "A sound wave in the brand colour across the frame, with no sound of its own.",
+    seconds: 3,
+    sound: null,
+    place: "middle",
   },
 ];
 
@@ -699,23 +756,60 @@ export interface PlacedPiece {
   items?: string[];
   /** The doodle's shape. */
   shape?: DoodleShape;
+  /** Pictures for a photo wall, a phone or orbiting pictures (links). */
+  images?: string[];
+  /** Big words: a tall serif masthead (left out) or chrome letters. */
+  look?: "masthead" | "glass";
 }
 
 export const DOODLE_SHAPES = ["crown", "star", "heart", "arrow", "burst", "circle"] as const;
 export type DoodleShape = (typeof DOODLE_SHAPES)[number];
 
-/** A sticker outline around the speaker, from and to, in seconds. */
+export const OUTLINE_STYLES = ["sketch", "sticker"] as const;
+export type OutlineStyle = (typeof OUTLINE_STYLES)[number];
+export const OUTLINE_STYLE_LABELS: Record<OutlineStyle, string> = {
+  sketch: "Hand-drawn line",
+  sticker: "Sticker",
+};
+
+/** An outline around the speaker, from and to, in seconds. */
 export interface PlacedOutline {
   start: number;
   duration: number;
+  /** A hand-drawn line (the toolkit's default) or a thick sticker ring. */
+  style?: OutlineStyle;
   color?: string;
 }
 
-/** A punch-in on the picture. */
+/** The camera moves the toolkit makes (its zooms). */
+export const ZOOM_STYLES = [
+  "punch",
+  "through",
+  "dolly",
+  "pop",
+  "inset",
+  "paper",
+  "pullout",
+] as const;
+export type ZoomStyle = (typeof ZOOM_STYLES)[number];
+/** The moves the step's punch-ins can use; the rest need a picture or change the whole frame. */
+export const PUNCH_STYLES = ["punch", "through", "dolly"] as const;
+export type PunchStyle = (typeof PUNCH_STYLES)[number];
+export const PUNCH_STYLE_LABELS: Record<PunchStyle, string> = {
+  punch: "Punch in",
+  through: "Push through with a blur",
+  dolly: "Room pushes in behind you",
+};
+
+/** A camera move on the picture. */
 export interface PlacedZoom {
   start: number;
   duration: number;
   scale: number;
+  /** Left out: a punch-in. */
+  style?: ZoomStyle;
+  /** The picture an inset or pull-out sits on. */
+  image?: string;
 }
 
 export interface PlacedSound {
@@ -1061,10 +1155,12 @@ export interface MotionStepSettings {
   sounds: typeof STYLE_SOUNDS | SoundLevel;
   /** The opening title as big words behind the speaker's head, and keywords behind them too. */
   behind: boolean;
-  /** A sticker outline around the speaker while pieces sit behind them, or as it opens. */
+  /** An outline around the speaker while pieces sit behind them, or as it opens. */
   outline: boolean;
-  /** A punch-in on the picture as each keyword or number lands. */
+  outlineStyle: OutlineStyle;
+  /** A camera move as each keyword or number lands. */
   punchIns: boolean;
+  punchStyle: PunchStyle;
 }
 
 export function motionStepSettings(input: Record<string, unknown>): MotionStepSettings {
@@ -1077,12 +1173,16 @@ export function motionStepSettings(input: Record<string, unknown>): MotionStepSe
     sounds,
     behind: input.behind === true,
     outline: input.outline === true,
+    outlineStyle: oneOf(OUTLINE_STYLES, input.outlineStyle, "sketch"),
     punchIns: input.punchIns === true,
+    punchStyle: oneOf(PUNCH_STYLES, input.punchStyle, "punch"),
   };
 }
 
 /** How long a punch-in holds, and how far in it goes. */
 export const PUNCH_IN = { seconds: 1.2, scale: 1.2 };
+/** How far each step move goes in: a push-through goes into the face, the room pushes in a little. */
+const PUNCH_SCALE: Record<PunchStyle, number> = { punch: PUNCH_IN.scale, through: 2.4, dolly: 1.3 };
 /** How long the outline shows as the video opens when nothing sits behind the speaker. */
 const OUTLINE_OPENING = 3;
 
@@ -1093,7 +1193,8 @@ const OUTLINE_OPENING = 3;
  */
 export function withStepEffects(
   plan: MotionPlan,
-  settings: Pick<MotionStepSettings, "behind" | "outline" | "punchIns">,
+  settings: Pick<MotionStepSettings, "behind" | "outline" | "punchIns"> &
+    Partial<Pick<MotionStepSettings, "outlineStyle" | "punchStyle">>,
   duration: number,
 ): MotionPlan {
   const pieces = plan.pieces.map((piece): PlacedPiece => {
@@ -1104,15 +1205,17 @@ export function withStepEffects(
   });
   const outlines: PlacedOutline[] = [];
   if (settings.outline) {
+    const style = settings.outlineStyle ?? "sketch";
     const behind = pieces.filter((piece) => piece.layer === "behind");
     if (behind.length > 0) {
       for (const piece of behind) {
-        outlines.push({ start: piece.start, duration: piece.duration });
+        outlines.push({ start: piece.start, duration: piece.duration, style });
       }
     } else if (duration > 1) {
-      outlines.push({ start: 0, duration: round2(Math.min(OUTLINE_OPENING, duration)) });
+      outlines.push({ start: 0, duration: round2(Math.min(OUTLINE_OPENING, duration)), style });
     }
   }
+  const move = settings.punchStyle ?? "punch";
   const zooms: PlacedZoom[] = [];
   if (settings.punchIns) {
     let free = 0;
@@ -1121,7 +1224,12 @@ export function withStepEffects(
       if (piece.start < free) continue;
       const length = Math.min(PUNCH_IN.seconds, duration - piece.start);
       if (length < 0.3) continue;
-      zooms.push({ start: piece.start, duration: round2(length), scale: PUNCH_IN.scale });
+      zooms.push({
+        start: piece.start,
+        duration: round2(length),
+        scale: PUNCH_SCALE[move],
+        ...(move === "punch" ? {} : { style: move }),
+      });
       free = piece.start + length + 0.3;
     }
   }
