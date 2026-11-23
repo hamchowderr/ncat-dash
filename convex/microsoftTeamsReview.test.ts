@@ -21,6 +21,7 @@ let posted: Posted[] = [];
 let nextId = 1000;
 
 beforeEach(() => {
+  vi.useFakeTimers();
   process.env.MASTRA_JWT_SECRET = SECRET;
   process.env.TEAMS_APP_ID = "c4d4ec4e-0000-0000-0000-000000000001";
   process.env.TEAMS_APP_PASSWORD = "a-bot-password";
@@ -48,6 +49,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   for (const key of [
     "MASTRA_JWT_SECRET",
@@ -59,13 +61,10 @@ afterEach(() => {
   }
 });
 
+// The clock is the test's own from the start, so work scheduled for later (the chat
+// pool's next round) always runs when the test waits for it.
 async function settled(t: ReturnType<typeof backend>) {
-  vi.useFakeTimers();
-  try {
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-  } finally {
-    vi.useRealTimers();
-  }
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
 /** A team whose Microsoft organization is linked, with alerts going to the Edits channel. */

@@ -158,6 +158,8 @@ export const post = internalAction({
   handler: async (ctx, args) => {
     const context = await ctx.runQuery(internal.telegramReview.postContext, args);
     if (!context) return;
+    // A teammate's plain reply only goes into a conversation the group already has.
+    if (args.post.kind === "team_reply" && context.replyTo === null) return;
     const link = postLink(args.post, context);
     let text = postText(args.post, context);
     // Telegram only opens web addresses it can reach as buttons; a local one goes in the text.

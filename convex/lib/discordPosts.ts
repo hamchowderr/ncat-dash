@@ -1,11 +1,11 @@
-import { internal } from "../_generated/api";
 import type { MutationCtx } from "../_generated/server";
-import type { ReviewPost } from "./slackPosts";
+import { queueReviewPost, threadOnItsWay } from "./reviewChatQueue";
+import type { ReviewPost } from "./reviewPost";
 
 /**
  * Posts review activity to the team's Discord channel, when the team picked one. Like
  * Slack, a teammate's plain reply only goes into a thread that is already in Discord.
- * Posting is an action of its own, so Discord being slow or down never touches the review.
+ * Posting is an action of its own, sent in order after the team's earlier posts, so Discord being slow or down never touches the review.
  */
 export async function toDiscord(
   ctx: MutationCtx,
@@ -22,7 +22,7 @@ export async function toDiscord(
       .query("discordReviewThreads")
       .withIndex("by_comment", (q) => q.eq("commentId", post.commentId))
       .first();
-    if (!thread) return;
+    if (!thread && !(await threadOnItsWay(ctx, "discord", post.commentId))) return;
   }
-  await ctx.scheduler.runAfter(0, internal.discordReview.post, { organizationId, post });
+  await queueReviewPost(ctx, "discord", organizationId, post);
 }
