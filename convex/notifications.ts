@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { linkedChatApps } from "./lib/chatAlerts";
@@ -37,7 +37,20 @@ export const get = query({
     const emailReady =
       Boolean(process.env.TOSEND_API_KEY?.trim() && process.env.EMAIL_FROM?.trim()) ||
       (await ctx.db.query("emailConnections").first()) !== null;
+    // Whether emails to this person's address bounce or were marked as spam, as toSend
+    // reported (email.recordProblem), so they know why nothing arrives.
+    const me = await ctx.runQuery(components.betterAuth.members.contact, { userId });
+    const problem = me
+      ? await ctx.db
+          .query("emailProblems")
+          .withIndex("by_email", (q) => q.eq("email", me.email.trim().toLowerCase()))
+          .first()
+      : null;
     return {
+      emailProblem:
+        problem && (problem.kind === "complaint" || problem.permanent)
+          ? { email: problem.email, kind: problem.kind, at: problem.at }
+          : null,
       kinds: NOTIFICATION_KINDS.map((entry) => ({
         kind: entry.kind,
         title: entry.title,

@@ -1807,6 +1807,18 @@ export default defineSchema({
     .index("by_alert", ["alertId"])
     .index("by_runStep", ["runStepId"]),
 
+  // Addresses toSend reported back: a bounce or a spam complaint (POST /email/events).
+  // toSend already stops sending to them; this is so the app can say why someone hears
+  // nothing. One row per address, the latest report.
+  emailProblems: defineTable({
+    email: v.string(),
+    kind: v.union(v.literal("bounced"), v.literal("complaint")),
+    // A bounce that will keep happening (the mailbox does not exist), not a full inbox.
+    permanent: v.boolean(),
+    reason: v.string(),
+    at: v.number(),
+  }).index("by_email", ["email"]),
+
   notificationPreferences: defineTable({
     organizationId: v.string(),
     userId: v.string(),

@@ -22,6 +22,7 @@ import {
   trialEndedEmail,
   trialEndingEmail,
   welcomeEmail,
+  withUnsubscribe,
   testEmail,
 } from "../src";
 
@@ -439,5 +440,29 @@ describe("first days", () => {
     expect(ended.subject).toBe("Your Takewon trial has ended");
     expect(ended.text).toContain("Everything you made is kept");
     expect(ended.text).toContain("Open Takewon: https://d/");
+  });
+});
+
+describe("unsubscribe", () => {
+  it("adds the one-click headers, a footer link and a text line", () => {
+    const failed = runFailedEmail(
+      {
+        automationName: "Clips",
+        message: "No reply.",
+        retries: 0,
+        runUrl: "https://d/runs/1",
+        settingsUrl: "https://d/settings/notifications",
+      },
+      branding,
+    );
+    const url = "https://api.example/email/unsubscribe?token=a.b";
+    const out = withUnsubscribe(failed, url);
+    expect(out.headers).toEqual({
+      "List-Unsubscribe": `<${url}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+    expect(out.html).toContain(">Unsubscribe</a>");
+    expect(out.html).not.toContain("<!--unsubscribe-->");
+    expect(out.text).toContain(`Unsubscribe: ${url}`);
   });
 });

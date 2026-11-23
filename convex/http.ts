@@ -822,4 +822,113 @@ for (const path of [
   http.route({ path, method: "OPTIONS", handler: preflight });
 }
 
+// One-click unsubscribe (email.unsubscribe). Opening the link shows a page with one
+// button, so a mail scanner that follows links changes nothing; the button, and a mail
+// app's own Unsubscribe button (RFC 8058, a POST), switch the email off.
+function unsubscribePage(title: string, body: string, form?: string): Response {
+  const escape = (text: string) =>
+    text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)}</title></head><body style="margin:0;padding:48px 16px;background:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0b0b12;"><div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;"><h1 style="margin:0 0 12px;font-size:22px;">${escape(title)}</h1><p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#4f5260;">${escape(body)}</p>${form ?? ""}</div></body></html>`;
+  return new Response(html, {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
+http.route({
+  path: "/email/unsubscribe",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const token = new URL(request.url).searchParams.get("token") ?? "";
+    const value = token.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    return unsubscribePage(
+      "Unsubscribe",
+      "Stop getting these emails? You still see this news under the bell in the app, and you can switch emails back on in your notification settings.",
+      `<form method="post"><input type="hidden" name="token" value="${value}"><button type="submit" style="background:#5b3df5;color:#fff;border:0;border-radius:10px;padding:12px 20px;font-size:15px;font-weight:600;cursor:pointer;">Unsubscribe</button></form>`,
+    );
+  }),
+});
+
+http.route({
+  path: "/email/unsubscribe",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    let token = url.searchParams.get("token") ?? "";
+    const type = request.headers.get("content-type") ?? "";
+    let oneClick = false;
+    if (type.includes("form")) {
+      const form = await request.formData();
+      oneClick = form.get("List-Unsubscribe") === "One-Click";
+      const fromForm = form.get("token");
+      if (typeof fromForm === "string" && fromForm) token = fromForm;
+    }
+    const done = await ctx.runMutation(internal.email.unsubscribe, { token });
+    if (oneClick)
+      return new Response(done ? "Unsubscribed" : "Unknown link", { status: done ? 200 : 400 });
+    if (!done) {
+      return unsubscribePage(
+        "That link didn't work",
+        "Change which emails you get in the app, under Settings, Notifications.",
+      );
+    }
+    return unsubscribePage(
+      "You're unsubscribed",
+      done.title
+        ? `You won't get emails for "${done.title}" any more. Switch them back on any time in your notification settings.`
+        : "You won't get any more alert or summary emails from this team. Switch them back on any time in your notification settings.",
+    );
+  }),
+});
+
+// toSend tells us when an email bounces or is marked as spam (https://tosend.com/docs/guide/webhooks/).
+// Signed with TOSEND_WEBHOOK_SECRET: X-ToSend-Signature is sha256=<hex HMAC of the body>.
+http.route({
+  path: "/email/events",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.TOSEND_WEBHOOK_SECRET?.trim();
+    if (!secret) return new Response("Not set up", { status: 404 });
+    const body = await request.text();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const signed = new Uint8Array(
+      await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body)),
+    );
+    const expected = `sha256=${Array.from(signed, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+    if ((request.headers.get("x-tosend-signature") ?? "").trim().toLowerCase() !== expected) {
+      return new Response("Bad signature", { status: 401 });
+    }
+    let event: {
+      type?: unknown;
+      test?: unknown;
+      data?: Record<string, unknown>;
+    };
+    try {
+      event = JSON.parse(body);
+    } catch {
+      return new Response("Not JSON", { status: 400 });
+    }
+    const data = event.data ?? {};
+    const email = typeof data.email === "string" ? data.email : "";
+    if (event.test === true || !email || (event.type !== "bounced" && event.type !== "complaint")) {
+      return new Response("OK", { status: 200 });
+    }
+    const when = Date.parse(typeof data.timestamp === "string" ? data.timestamp : "");
+    await ctx.runMutation(internal.email.recordProblem, {
+      email,
+      kind: event.type,
+      permanent: event.type === "complaint" || data.is_hard_bounce === true,
+      reason: typeof data.reason === "string" ? data.reason : String(event.type),
+      at: Number.isFinite(when) ? when : Date.now(),
+    });
+    return new Response("OK", { status: 200 });
+  }),
+});
+
 export default http;

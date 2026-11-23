@@ -14,6 +14,8 @@ export type EmailMessage = {
   subject: string;
   text: string;
   html: string;
+  /** Extra headers, such as List-Unsubscribe. */
+  headers?: Record<string, string>;
 };
 
 export type SendResult =
@@ -104,6 +106,7 @@ export async function sendEmail(
       subject: message.subject,
       html: message.html,
       text: message.text,
+      ...(message.headers ? { headers: message.headers } : {}),
     });
     return {
       ok: true,

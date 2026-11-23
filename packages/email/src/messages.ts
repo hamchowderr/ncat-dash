@@ -1,7 +1,16 @@
 // The emails this app sends, written once as plain data: a subject, a text version and
 // an HTML version. Nothing here sends anything.
 
-export type Composed = { subject: string; text: string; html: string };
+export type Composed = {
+  subject: string;
+  text: string;
+  html: string;
+  /** Extra headers to send with it, such as one-click unsubscribe. */
+  headers?: Record<string, string>;
+};
+
+/** Where `withUnsubscribe` puts its link in an email's footer. */
+const UNSUBSCRIBE_SLOT = "<!--unsubscribe-->";
 
 export type Branding = {
   /** Shown as the sender's name and in the footer. */
@@ -129,7 +138,7 @@ function compose(subject: string, layout: Layout, branding: Branding): Composed 
     `<div style="padding:20px 4px 0;font-size:12px;line-height:1.6;color:${MUTE};">`,
     ...(reason || settingsUrl
       ? [
-          `<p style="margin:0 0 8px;">${reason ? `${escapeHtml(reason)} ` : ""}${settingsUrl ? link(settingsUrl, "Change your notification settings") : ""}</p>`,
+          `<p style="margin:0 0 8px;">${reason ? `${escapeHtml(reason)} ` : ""}${settingsUrl ? link(settingsUrl, "Change your notification settings") : ""}${UNSUBSCRIBE_SLOT}</p>`,
         ]
       : []),
     ours
@@ -635,4 +644,28 @@ export function trialEndedEmail(
     },
     branding,
   );
+}
+
+/**
+ * Adds one-click unsubscribe to an email people can opt out of: the List-Unsubscribe and
+ * List-Unsubscribe-Post headers Gmail and Yahoo show as an Unsubscribe button (RFC 8058),
+ * and a plain link in the footer. The link alone switches the email off, no sign-in.
+ */
+export function withUnsubscribe(email: Composed, url: string): Composed {
+  const link = ` <a href="${escapeHtml(url)}" style="color:${MUTE};text-decoration:underline;">Unsubscribe</a>`;
+  return {
+    ...email,
+    html: email.html.includes(UNSUBSCRIBE_SLOT)
+      ? email.html.replace(UNSUBSCRIBE_SLOT, ` &middot;${link}`)
+      : email.html.replace(
+          "</body>",
+          `<p style="text-align:center;font-size:12px;">${link}</p></body>`,
+        ),
+    text: `${email.text}\nUnsubscribe: ${url}`,
+    headers: {
+      ...email.headers,
+      "List-Unsubscribe": `<${url}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    },
+  };
 }
