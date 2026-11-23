@@ -66,6 +66,19 @@ describe("a review shared with a client", () => {
     expect(screen.getByRole("heading", { name: "This review is no longer shared" })).toBeVisible();
   });
 
+  test("says a link ran out after 30 days and can be renewed", () => {
+    answerQuery(api.sharedReview.ended, "expired");
+    open(null);
+    expect(screen.getByRole("heading", { name: "This review is no longer shared" })).toBeVisible();
+    expect(screen.getByText(/Review links stop working after 30 days/)).toBeVisible();
+  });
+
+  test("says the review is approved when that closed the link", () => {
+    answerQuery(api.sharedReview.ended, "approved");
+    open(null);
+    expect(screen.getByRole("heading", { name: "This review is approved" })).toBeVisible();
+  });
+
   test("asks for a name first, and keeps it for next time", async () => {
     const { user } = open();
     expect(screen.getByText("Salt House will see this name beside your comments.")).toBeVisible();

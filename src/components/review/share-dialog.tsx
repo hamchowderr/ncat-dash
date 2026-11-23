@@ -3,7 +3,7 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
-import { Check, Copy, Link2, Link2Off } from "lucide-react";
+import { Check, Copy, Link2, Link2Off, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { errorMessage } from "@/lib/catalog";
+import { dayOf } from "@/lib/when";
 
 /** The address a client opens. */
 export function shareUrl(token: string): string {
@@ -69,6 +70,7 @@ export function ShareDialog({
   const share = useQuery(api.reviewShares.forReview, open ? { reviewId } : "skip");
   const set = useMutation(api.reviewShares.set);
   const stop = useMutation(api.reviewShares.stop);
+  const renew = useMutation(api.reviewShares.renew);
   // Before the link exists, the choices are only kept here.
   const [draft, setDraft] = useState({ allowVerdict: true, showTeamComments: false });
   const [busy, setBusy] = useState(false);
@@ -136,7 +138,8 @@ export function ShareDialog({
           <DialogTitle>Share with a client</DialogTitle>
           <DialogDescription>
             Anyone with the link can watch these clips and leave comments, without an account. They
-            give their name the first time.
+            give their name the first time. The link works for 30 days and pauses once the review is
+            approved.
           </DialogDescription>
         </DialogHeader>
 
@@ -155,6 +158,35 @@ export function ShareDialog({
                   {copied ? <Check /> : <Copy />}
                   {copied ? "Copied" : "Copy"}
                 </Button>
+              </div>
+            )}
+            {share && (
+              <div className="-mt-2 flex flex-wrap items-center justify-between gap-2">
+                <p
+                  className={
+                    share.ended ? "text-destructive text-sm" : "text-muted-foreground text-sm"
+                  }
+                >
+                  {share.ended === "approved"
+                    ? "The link is paused while the review is approved. Reopening the review brings it back."
+                    : share.ended === "expired"
+                      ? `The link stopped working on ${dayOf(share.expiresAt ?? 0)}.`
+                      : `The link works until ${dayOf(share.expiresAt ?? 0)}.`}
+                </p>
+                {share.ended !== "approved" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      void renew({ reviewId }).catch((error) =>
+                        toast.error(errorMessage(error, "The link could not be renewed.")),
+                      )
+                    }
+                  >
+                    <RefreshCw />
+                    {share.ended ? "Make it work again" : "Add 30 days"}
+                  </Button>
+                )}
               </div>
             )}
             <Choice

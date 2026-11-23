@@ -137,6 +137,65 @@ describe("a client's portal", () => {
     expect(await t.mutation(api.portal.openReview, { token, projectId: episode })).toBe(shareToken);
   });
 
+  test("a portal's review rooms never run out and stay open once approved", async () => {
+    const { t, owner, acme, episode } = await agency();
+    const token = await owner.as.mutation(api.portal.set, {
+      clientId: acme,
+      allowVerdict: true,
+      showTeamComments: false,
+    });
+    const project = (await owner.as.query(api.projects.get, { projectId: episode }))!;
+    await owner.as.mutation(api.projects.addVersion, {
+      deliverableId: project.slots[0]._id,
+      url: VIDEO,
+    });
+    const shareToken = await t.mutation(api.portal.openReview, { token, projectId: episode });
+    const share = (await t.run((ctx) => ctx.db.query("reviewShares").first()))!;
+    expect(share.expiresAt).toBeUndefined();
+    await owner.as.mutation(api.reviews.decide, { reviewId: share.reviewId, approved: true });
+    expect(await t.query(api.sharedReview.room, { token: shareToken })).not.toBeNull();
+    expect(await t.query(api.sharedReview.ended, { token: shareToken })).toBeNull();
+  });
+
+  test("a new link turns the old one off straight away, with the rooms it opened", async () => {
+    const { t, owner, outsider, acme, episode } = await agency();
+    const old = await owner.as.mutation(api.portal.set, {
+      clientId: acme,
+      allowVerdict: true,
+      showTeamComments: false,
+    });
+    const project = (await owner.as.query(api.projects.get, { projectId: episode }))!;
+    await owner.as.mutation(api.projects.addVersion, {
+      deliverableId: project.slots[0]._id,
+      url: VIDEO,
+    });
+    const oldRoom = await t.mutation(api.portal.openReview, { token: old, projectId: episode });
+    await expect(outsider.as.mutation(api.portal.newLink, { clientId: acme })).rejects.toThrow();
+
+    const fresh = await owner.as.mutation(api.portal.newLink, { clientId: acme });
+    expect(fresh).toMatch(/^[a-f0-9]{64}$/);
+    expect(fresh).not.toBe(old);
+    expect(await t.query(api.portal.view, { token: old })).toBeNull();
+    expect(await t.query(api.sharedReview.room, { token: oldRoom })).toBeNull();
+    expect((await t.query(api.portal.view, { token: fresh }))!.projects).toHaveLength(1);
+    // The settings stay as they were.
+    expect(await owner.as.query(api.portal.forClient, { clientId: acme })).toEqual({
+      token: fresh,
+      allowVerdict: true,
+      showTeamComments: false,
+    });
+    const newRoom = await t.mutation(api.portal.openReview, { token: fresh, projectId: episode });
+    expect(newRoom).not.toBe(oldRoom);
+    expect(await t.query(api.sharedReview.room, { token: newRoom })).not.toBeNull();
+  });
+
+  test("a new link needs a portal that is on", async () => {
+    const { owner, acme } = await agency();
+    await expect(owner.as.mutation(api.portal.newLink, { clientId: acme })).rejects.toThrow(
+      /no portal/,
+    );
+  });
+
   test("deleting the client stops its portal", async () => {
     const { t, owner, acme } = await agency();
     const token = await owner.as.mutation(api.portal.set, {
