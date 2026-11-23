@@ -12,7 +12,9 @@ import {
 } from "@ncat-dash/email";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
-import { organization } from "better-auth/plugins";
+import { cimd } from "@better-auth/cimd";
+import { mcp } from "@better-auth/mcp";
+import { jwt, organization } from "better-auth/plugins";
 import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
@@ -21,6 +23,15 @@ import { networkKey } from "./lib/clientIp";
 import { getEdition } from "./lib/edition";
 import { requireEmailVerification, socialProviders } from "./lib/signInOptions";
 import { isThrowawayEmail } from "./lib/emailKey";
+import {
+  ACCESS_TOKEN_SECONDS,
+  AGENT_SCOPES,
+  agentIssuer,
+  fetchClientMetadata,
+  mcpResource,
+  REFRESH_TOKEN_SECONDS,
+  TEAM_CLAIM,
+} from "./lib/agentSignIn";
 import authSchema from "./betterAuth/schema";
 
 // Better Auth runs inside this Convex deployment, so a self-hosted owner needs no
@@ -150,6 +161,9 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   return {
     baseURL: process.env.SITE_URL,
     trustedOrigins: trustedOrigins(),
+    // The jwt plugin is here for agents' access tokens only (mcp() below): its own
+    // session-token route is off, so a signed-in person's token can't pass for one.
+    disabledPaths: ["/token"],
     database: database(ctx),
     emailAndPassword: {
       enabled: true,
@@ -321,6 +335,71 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
             ),
           );
         },
+      }),
+      // Signs agents' access tokens (mcp() below), and publishes their keys at /jwks.
+      jwt({ disableSettingJwtHeader: true, jwt: { issuer: agentIssuer() } }),
+      // Sign-in for AI agents (MCP clients): OAuth 2.1 with PKCE, for the MCP server at
+      // CONVEX_SITE_URL/mcp. lib/agentSignIn.ts explains the pieces.
+      mcp({
+        // Signed out, the person signs in from the team page and comes back to it.
+        loginPage: "/connect/team",
+        consentPage: "/connect",
+        resource: mcpResource(),
+        scopes: AGENT_SCOPES,
+        accessTokenExpiresIn: ACCESS_TOKEN_SECONDS,
+        refreshTokenExpiresIn: REFRESH_TOKEN_SECONDS,
+        // A refresh token works once. A second use means someone holds a copy, and stops
+        // every token from that sign-in: the agent has to sign in again.
+        refreshTokenReuseInterval: 0,
+        // Agents that can't name themselves with a metadata document (ChatGPT, many
+        // desktop apps) register on the spot, as they could before.
+        allowDynamicClientRegistration: true,
+        allowUnauthenticatedClientRegistration: true,
+        clientRegistrationDefaultApplicationType: "infer",
+        clientRegistrationDefaultScopes: AGENT_SCOPES,
+        // A token works on one team. The person picks it at /connect/team each time an
+        // agent connects; the choice is the consent's reference.
+        postLogin: {
+          page: "/connect/team",
+          shouldRedirect: async ({ user, session, isContinuation }) => {
+            const run = runner(ctx);
+            const team = session.activeOrganizationId as string | null | undefined;
+            const onIt =
+              team && run
+                ? await run.runQuery(components.betterAuth.members.roleFor, {
+                    userId: user.id,
+                    organizationId: team,
+                  })
+                : null;
+            return !onIt || !isContinuation;
+          },
+          consentReferenceId: ({ session }) => {
+            const team = session.activeOrganizationId as string | null | undefined;
+            if (!team) throw new APIError("BAD_REQUEST", { message: "Pick a team first." });
+            return team;
+          },
+        },
+        // Every token, new or refreshed, names its team, and only while the person is
+        // still on it: someone who left the team gets no more tokens for it.
+        customAccessTokenClaims: async ({ user, referenceId }) => {
+          if (!user || !referenceId) return {};
+          const run = runner(ctx);
+          if (run) {
+            const role = await run.runQuery(components.betterAuth.members.roleFor, {
+              userId: user.id,
+              organizationId: referenceId,
+            });
+            if (!role) {
+              throw new APIError("FORBIDDEN", { message: "You are no longer on this team." });
+            }
+          }
+          return { [TEAM_CLAIM]: referenceId };
+        },
+      }),
+      // Agents named by the address of their own metadata document (claude.ai, VS Code).
+      cimd({
+        fetchClientMetadataResource: fetchClientMetadata,
+        metadataProfile: "mcp-2026-07-28",
       }),
       // Required for Convex compatibility.
       convex({ authConfig }),

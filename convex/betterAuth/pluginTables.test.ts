@@ -10,7 +10,10 @@ const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 test("the adapter's copy of the plugin tables matches the real auth options", () => {
   const options = createAuthOptions({} as never);
-  const real = (options.plugins ?? []).map((plugin) => ({ id: plugin.id, schema: plugin.schema }));
+  const real = (options.plugins ?? []).map((plugin) => ({
+    id: plugin.id,
+    schema: "schema" in plugin ? plugin.schema : undefined,
+  }));
   if (process.env.UPDATE_PLUGIN_TABLES) {
     const path = join(__dirname, "pluginTables.ts");
     const header = readFileSync(path, "utf8").split("export const")[0];

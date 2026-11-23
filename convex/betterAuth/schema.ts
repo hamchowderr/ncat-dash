@@ -6,7 +6,11 @@ import { tables } from "./generatedSchema";
 // Custom indexes live here so regenerating never overwrites them.
 const schema = defineSchema({
   ...tables,
-  member: tables.member.index("userId_organizationId", ["userId", "organizationId"]),
+  member: tables.member
+    .index("userId_organizationId", ["userId", "organizationId"])
+    .index("organizationId_userId", ["organizationId", "userId"]),
+  // The agents connected to a team (Settings > MCP), by the team each consent is for.
+  oauthConsent: tables.oauthConsent.index("referenceId", ["referenceId"]),
 });
 
 export default schema;
