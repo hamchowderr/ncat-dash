@@ -172,7 +172,7 @@ describe("steps that read their files first", () => {
   });
 
   test("reads the video, then sends a request sized to it", async () => {
-    const { t, team, maya, start, jobsOf } = await setUp([
+    const { team, maya, start, jobsOf } = await setUp([
       { id: "card_1", stepId: "recipe-video-card", input: { text: "Follow for part 2" } },
     ]);
     await maya.as.mutation(api.teamSettings.setBrand, {
