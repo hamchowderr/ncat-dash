@@ -11,7 +11,6 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { APPS, OPERATION_SCHEMA, RUN_APP_URI, SKILLS } from "./lib/mcpContent";
-import { bearerKey, hashMcpKey } from "./lib/mcpKeys";
 import { icon } from "./lib/mcpIcons";
 import {
   EventRefused,
@@ -613,32 +612,6 @@ async function ownAutomation(ctx: QueryCtx, organizationId: string, automationId
   }
   return automation;
 }
-
-/** The team a key belongs to, by the key's hash. */
-export const keyFor = internalQuery({
-  args: { hash: v.string() },
-  handler: async (ctx, args) => {
-    const key = await ctx.db
-      .query("mcpKeys")
-      .withIndex("by_hash", (q) => q.eq("hash", args.hash))
-      .unique();
-    return key
-      ? {
-          keyId: key._id,
-          organizationId: key.organizationId,
-          createdBy: key.createdBy,
-          lastUsedAt: key.lastUsedAt,
-        }
-      : null;
-  },
-});
-
-export const touchKey = internalMutation({
-  args: { keyId: v.id("mcpKeys") },
-  handler: async (ctx, args) => {
-    if (await ctx.db.get(args.keyId)) await ctx.db.patch(args.keyId, { lastUsedAt: Date.now() });
-  },
-});
 
 export const automations = internalQuery({
   args: { organizationId: v.string() },
@@ -1407,22 +1380,6 @@ export const CORS = {
 };
 
 export type { Caller };
-
-/** The team key a request sends, as "Authorization: Bearer ncat_...", and who it acts for. */
-export async function keyCallerOf(
-  ctx: ActionCtx,
-  request: Request,
-): Promise<Caller | "none" | "invalid"> {
-  const presented = bearerKey(request);
-  if (!presented) return "none";
-  const key = await ctx.runQuery(internal.mcp.keyFor, { hash: await hashMcpKey(presented) });
-  if (!key) return "invalid";
-  // Noted at most once a minute, so a busy agent does not write on every call.
-  if (!key.lastUsedAt || Date.now() - key.lastUsedAt > 60_000) {
-    await ctx.runMutation(internal.mcp.touchKey, { keyId: key.keyId as Id<"mcpKeys"> });
-  }
-  return { organizationId: key.organizationId, userId: key.createdBy };
-}
 
 type RunView = {
   run_id: string;
