@@ -26,9 +26,9 @@ function fakeFetch(status: number, body: unknown) {
 }
 
 describe("catalog", () => {
-  it("has 22 steps with unique ids and endpoints under /v1", () => {
-    expect(steps).toHaveLength(22);
-    expect(new Set(steps.map((s) => s.id)).size).toBe(22);
+  it("has 23 steps with unique ids and endpoints under /v1", () => {
+    expect(steps).toHaveLength(23);
+    expect(new Set(steps.map((s) => s.id)).size).toBe(23);
     for (const step of steps) expect(step.endpoint).toMatch(/^\/v1\//);
   });
 
@@ -51,6 +51,42 @@ describe("catalog", () => {
         expect(json.properties?.[field]).toBeUndefined();
       }
     }
+  });
+});
+
+describe("new background", () => {
+  it("keeps the speaker's cut-out out of the form but sends it", () => {
+    const step = getStep("video-background")!;
+    const json = userInputJsonSchema(step) as { properties: Record<string, unknown> };
+    expect(json.properties.mask_url).toBeUndefined();
+    expect(Object.keys(json.properties)).toEqual(
+      expect.arrayContaining(["video_url", "background", "color", "background_url", "blur"]),
+    );
+    const blanks = userInputSchema(step).parse({
+      video_url: "https://x.test/a.mp4",
+      mask_url: "https://x.test/m.mp4",
+    });
+    expect(step.toRequest!(blanks as never, {})).toEqual({
+      video_url: "https://x.test/a.mp4",
+      background: { type: "blur", blur: 24 },
+      mask_url: "https://x.test/m.mp4",
+    });
+    const picture = userInputSchema(step).parse({
+      video_url: "https://x.test/a.mp4",
+      background: "image",
+      background_url: "https://x.test/b.jpg",
+    });
+    expect(step.toRequest!(picture as never, {})).toEqual({
+      video_url: "https://x.test/a.mp4",
+      background: { type: "image", url: "https://x.test/b.jpg" },
+    });
+  });
+
+  it("hides the motion step's cut-out from the agent too", () => {
+    const motion = getStep("video-motion")!;
+    const json = userInputJsonSchema(motion) as { properties: Record<string, unknown> };
+    expect(json.properties.mask_url).toBeUndefined();
+    expect(json.properties.zooms).toBeDefined();
   });
 });
 

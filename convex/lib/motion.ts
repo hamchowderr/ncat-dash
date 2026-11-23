@@ -8,6 +8,7 @@ import {
   motionSetupFor,
   motionStepLevel,
   motionStepSettings,
+  withStepEffects,
   NO_MOTION_SETUP,
   nearestUpstreamOfKind,
   nothingToDrawNote,
@@ -195,6 +196,7 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
         // A Plan Motion Graphics step before this one chose the beats; the rules add the rest.
         ...(planned ? { beats: planned.get(heard.url) ?? [] } : {}),
       });
+      plan = withStepEffects(plan, settings, duration);
       const level = motionStepLevel(setup, settings);
       request = motionRequest(heard.url, plan, setup, brand, {
         level,
