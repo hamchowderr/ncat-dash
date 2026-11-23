@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { startRun } from "./lib/runner";
@@ -1484,5 +1484,20 @@ describe("autocomplete, attachable automations and runs, events and the server c
       ],
     });
     expect(card.name).toMatch(/^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/);
+  });
+
+  test("serves ChatGPT's domain challenge only once its token is set", async () => {
+    const { t } = await setUp();
+    const before = await t.fetch("/.well-known/openai-apps-challenge", { method: "GET" });
+    expect(before.status).toBe(404);
+    vi.stubEnv("OPENAI_APPS_CHALLENGE", " token-123\n");
+    try {
+      const after = await t.fetch("/.well-known/openai-apps-challenge", { method: "GET" });
+      expect(after.status).toBe(200);
+      expect(after.headers.get("content-type")).toMatch(/^text\/plain/);
+      expect(await after.text()).toBe("token-123");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

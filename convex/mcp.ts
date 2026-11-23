@@ -1852,6 +1852,18 @@ export const serverCard = httpAction(async () => {
   });
 });
 
+/**
+ * GET /.well-known/openai-apps-challenge: the token ChatGPT's app directory asks for to prove the
+ * MCP address is ours. Nothing is served until OPENAI_APPS_CHALLENGE is set.
+ */
+export const openaiAppsChallenge = httpAction(async () => {
+  const token = (process.env.OPENAI_APPS_CHALLENGE ?? "").trim();
+  if (!token) return new Response("Not found", { status: 404 });
+  return new Response(token, {
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+  });
+});
+
 /** POST /mcp: one JSON-RPC message in, one answer out. */
 export const serve = httpAction(async (ctx, request) => {
   const caller = await callerOf(ctx, request);
