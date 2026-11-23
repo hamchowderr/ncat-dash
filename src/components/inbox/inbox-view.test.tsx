@@ -85,6 +85,32 @@ describe("alert titles", () => {
     expect(
       alertTitle({ kind: "mention", automationName: "Cut review", retries: 0, from: "Maya" }),
     ).toBe("Maya mentioned you in Cut review");
+    expect(
+      alertTitle({ kind: "agent_answer", automationName: "Cut review", retries: 0, from: "Agent" }),
+    ).toBe("The agent answered you in Cut review");
+  });
+
+  test("an agent's answer sits with mentions and opens the thread", () => {
+    answerQuery(api.alerts.list, {
+      unseen: 1,
+      alerts: [
+        alert({
+          _id: "b1",
+          kind: "agent_answer",
+          automationName: "Cut review",
+          from: "Agent",
+          stepName: null,
+          message: "Trim a second at 0:02.",
+          href: "/review/r1?clip=c1&comment=m1",
+        }),
+      ],
+    });
+    renderInApp(<InboxView />);
+    fireEvent.click(screen.getByRole("tab", { name: /^Mentions and feedback\W+1 new$/ }));
+    const link = screen.getByRole("link", { name: /The agent answered you in Cut review/ });
+    expect(link).toHaveAttribute("href", "/review/r1?clip=c1&comment=m1");
+    expect(link).toHaveTextContent("Trim a second at 0:02.");
+    expect(link).toHaveTextContent("Open review");
   });
 });
 

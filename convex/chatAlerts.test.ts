@@ -216,6 +216,7 @@ describe("chat app notification settings", () => {
       expect(wants(null, "approval_waiting", app)).toBe(true);
       expect(wants(null, "run_failed", app)).toBe(true);
       expect(wants(null, "mention", app)).toBe(true);
+      expect(wants(null, "agent_answer", app)).toBe(true);
       expect(wants(null, "clip_finished", app)).toBe(true);
       expect(wants(null, "client_feedback", app)).toBe(false);
     }

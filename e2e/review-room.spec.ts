@@ -269,6 +269,26 @@ test("tagging @Agent gets the agent's answer in the thread, for everyone", async
   // Only Maya, who asked, can delete the answer.
   await expect(seen.getByRole("button", { name: "Delete this answer" })).toHaveCount(0);
   await expect(thread.getByRole("button", { name: "Delete this answer" })).toHaveCount(1);
+
+  // Maya, who asked, hears the answer is in; Jordan does not. Both look in a new tab so
+  // the room stays open for the tests below.
+  const mayaInbox = await maya.context().newPage();
+  await mayaInbox.goto("/inbox");
+  const heard = mayaInbox.locator("[data-alert-kind=agent_answer]");
+  await expect(heard).toContainText(/The agent answered you in/, { timeout: 30_000 });
+  await expect(heard).toContainText(/one continuous shot with no cuts/);
+  await heard.click();
+  await expect(mayaInbox).toHaveURL(/\/review\/.+\?clip=.+&comment=.+/);
+  await expect(comments(mayaInbox).getByRole("listitem").first()).toContainText(
+    /one continuous shot with no cuts/,
+  );
+  await mayaInbox.close();
+
+  const jordanInbox = await jordan.context().newPage();
+  await jordanInbox.goto("/inbox");
+  await expect(jordanInbox.getByRole("heading", { name: "Inbox" })).toBeVisible();
+  await expect(jordanInbox.locator("[data-alert-kind=agent_answer]")).toHaveCount(0);
+  await jordanInbox.close();
 });
 
 test("a drawing on the paused frame goes with the comment and shows for the team", async () => {

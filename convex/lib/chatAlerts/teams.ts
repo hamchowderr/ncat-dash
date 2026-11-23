@@ -120,7 +120,13 @@ export const teamsSender: ChatSender = {
   async send(ctx, alert, target) {
     // Mentions and client feedback are review activity: they are posted to the channel as
     // the comment's own thread (convex/lib/teamsPosts.ts), where replies go back to the review.
-    if (alert.kind === "mention" || alert.kind === "client_feedback") return null;
+    // An agent's answer is for the one person who asked, never the whole channel.
+    if (
+      alert.kind === "mention" ||
+      alert.kind === "client_feedback" ||
+      alert.kind === "agent_answer"
+    )
+      return null;
     const token = await botToken();
     if (!token) return null;
     const address = JSON.parse(target.address) as Address;

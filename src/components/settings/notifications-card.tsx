@@ -27,6 +27,7 @@ type Kind =
   | "approval_waiting"
   | "approval_timed_out"
   | "mention"
+  | "agent_answer"
   | "client_feedback"
   | "ready_for_review"
   | "clip_finished"
