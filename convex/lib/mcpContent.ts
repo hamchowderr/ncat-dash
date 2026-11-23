@@ -39,7 +39,7 @@ export const OPERATION_SCHEMA = {
 
 const SKILL_MD = `---
 name: content-automations
-description: Build, try and run the team's content automations in Takewon (clips, captions, reframing and other FFmpeg steps that run on the team's own toolkit). Use when asked to make or change an automation, run one on a file, or check how a run went.
+description: Build, try, publish and run the team's content automations in Takewon (clips, captions, reframing and other FFmpeg steps that run on the team's own toolkit). Use when asked to make or change an automation, switch one on, run one on a file, check how a run went, or approve one.
 ---
 
 # Content automations
@@ -58,7 +58,7 @@ When the automation makes clips or reshapes video, ask which platforms it is for
 ## Build
 
 - \`create_automation\` makes a new, empty one (switched off). \`change_automation\` sends every change for one request together; they are made in order and all are kept or none.
-- Your changes are kept as a draft. Someone on the team publishes it in the dashboard; the published version keeps running until then. Say so, with the address you were given.
+- Your changes are kept as a draft; the published version keeps running until the draft is published. Try it, then \`publish_automation\` when the person is happy with it, or leave it for them to publish in the dashboard, with the address you were given.
 - Leave file settings empty: each step takes the nearest fitting file before it by itself. Logo, colour, font and music come from the team's brand in Settings. Never ask the person to type file links or placeholders.
 - For several platforms, give each its own "Clips for a platform" step from the same start, with its own steps after it.
 - An Approval step asks anyone on the team unless reviewers are named; it waits until someone decides.
@@ -70,7 +70,15 @@ When \`change_automation\` reports no problems, try the draft: \`start_automatio
 
 ## Report
 
-Say in plain words what starts it and what each step does, and for a run, what it made (how many clips) and any step that failed and why. No ids or JSON unless asked. You cannot switch an automation on or publish a draft: people do that in the dashboard.
+Say in plain words what starts it and what each step does, and for a run, what it made (how many clips) and any step that failed and why. No ids or JSON unless asked.
+
+## Switch on
+
+\`switch_automation\` with \`on: true\` makes it run by itself whenever what starts it happens. Do it when the person asks, or offer it once a published automation works. If it refuses, say why in plain words.
+
+## Approvals
+
+A run can stop at an Approval step or a workflow's review until someone decides. \`check_run\` shows it under \`approval\` and \`list_approvals\` lists every one waiting, with the files to look at. Show the person the files and let them decide: \`decide_approval\` with \`approve\` (the run carries on) or \`send_back\` (it stops there), only once they have said which. Never decide an approval by yourself.
 
 You do not post to social platforms, generate video from text, dub voices or make avatars.
 `;
@@ -98,7 +106,11 @@ export const RUN_APP_URI = "ui://ncat-dash/run.html";
 /**
  * A run's progress, shown in the chat by hosts with MCP Apps. It reads the tool result it
  * was opened with (start_automation or check_run), then asks check_run again every few
- * seconds until the run ends. Plain HTML and script, nothing loaded from elsewhere.
+ * seconds until the run ends. While it goes it shows the steps; once done, the finished files,
+ * which open through the chat (ui/open-link). A run waiting at an approval shows the files
+ * to look at and, for whoever may decide, Approve and Send back (decide_approval). Opened
+ * from list_approvals, it lists every approval waiting instead. Plain HTML and script, nothing loaded from
+ * elsewhere, and it takes the chat's own colours and fonts when the chat hands them over.
  */
 const RUN_APP_HTML = `<!doctype html>
 <html lang="en">
@@ -107,77 +119,279 @@ const RUN_APP_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Run</title>
 <style>
-  :root { color-scheme: light; --text: var(--color-text-primary, #18181b); --muted: var(--color-text-secondary, #71717a);
-    --line: var(--color-border-tertiary, #e4e4e7); --good: var(--color-text-success, #15803d); --bad: var(--color-text-danger, #b91c1c);
-    --font: var(--font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif); }
+  :root { color-scheme: light;
+    --text: var(--color-text-primary, #18181b); --muted: var(--color-text-secondary, #71717a); --faint: var(--color-text-tertiary, #a1a1aa);
+    --track: var(--color-background-tertiary, #f0f0f1); --hover: var(--color-background-secondary, #f6f6f7);
+    --accent: #4f46e5; --good: var(--color-text-success, #15803d); --bad: var(--color-text-danger, #b91c1c); --wait: var(--color-text-warning, #b45309);
+    --font: var(--font-sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif); --radius: var(--border-radius-md, 8px); }
+  :root[data-theme="dark"] { color-scheme: dark;
+    --text: var(--color-text-primary, #f4f4f5); --muted: var(--color-text-secondary, #a1a1aa); --faint: var(--color-text-tertiary, #71717a);
+    --track: var(--color-background-tertiary, #2a2a2e); --hover: var(--color-background-secondary, #232326);
+    --accent: #818cf8; --good: var(--color-text-success, #4ade80); --bad: var(--color-text-danger, #f87171); --wait: var(--color-text-warning, #fbbf24); }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 14px 16px; font: 14px/1.45 var(--font); color: var(--text); background: transparent; }
-  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  body { margin: 0; padding: 16px 18px; font: 14px/1.45 var(--font); color: var(--text); background: transparent; -webkit-font-smoothing: antialiased; }
   h1 { font-size: 15px; font-weight: 600; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .status { font-size: 13px; color: var(--muted); white-space: nowrap; }
-  .status.done { color: var(--good); } .status.failed { color: var(--bad); }
-  ol { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
-  li:first-child { border-top: 0; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
-  .running .dot { background: #2563eb; animation: pulse 1.2s ease-in-out infinite; }
-  .done .dot { background: var(--good); } .failed .dot { background: var(--bad); }
-  .name { flex: 1; min-width: 0; } .note { color: var(--muted); font-size: 13px; }
-  .error { color: var(--bad); font-size: 13px; margin-top: 2px; }
-  .files { margin-top: 10px; font-size: 13px; color: var(--muted); }
-  a { color: inherit; }
-  @keyframes pulse { 50% { opacity: .35; } }
-  @media (prefers-reduced-motion: reduce) { .running .dot { animation: none; } }
+  h2 { font-size: 14px; font-weight: 600; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta { margin-top: 2px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .status { font-weight: 500; }
+  .status.running { color: var(--accent); } .status.done, .status.approved { color: var(--good); }
+  .status.failed, .status.cancelled, .status.sent { color: var(--bad); } .status.waiting { color: var(--wait); }
+  .bar { height: 3px; margin-top: 12px; border-radius: 3px; background: var(--track); overflow: hidden; }
+  .bar span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width .4s ease; }
+  ol, ul { list-style: none; margin: 14px 0 0; padding: 0; }
+  li { display: flex; align-items: flex-start; gap: 10px; padding: 3px 0; }
+  .icon { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+  .pending .name, .skipped .name { color: var(--faint); }
+  .done .icon { color: var(--good); } .failed .icon { color: var(--bad); } .waiting_approval .icon { color: var(--wait); }
+  .running .icon { color: var(--accent); animation: spin 1s linear infinite; } .pending .icon, .skipped .icon { color: var(--faint); }
+  .name { flex: 1; min-width: 0; }
+  .note { display: block; margin-top: 1px; font-size: 13px; color: var(--muted); }
+  .failed .note { color: var(--bad); }
+  .label { margin: 16px 0 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+  ul.files { margin-top: 6px; }
+  ul.files li { padding: 0; }
+  ul.files a { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius);
+    color: inherit; text-decoration: none; min-width: 0; }
+  ul.files a:hover, ul.files a:focus-visible { background: var(--hover); outline: none; }
+  ul.files .icon { margin: 0; color: var(--muted); }
+  .file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .open { font-size: 13px; color: var(--muted); }
+  .more { padding: 4px 0 0; font-size: 13px; color: var(--muted); }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+  .button { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border: 0; border-radius: var(--radius); font: 500 13px/1 var(--font);
+    color: var(--text); background: var(--hover); text-decoration: none; cursor: pointer; }
+  .button:hover, .button:focus-visible { background: var(--track); outline: none; }
+  .button.primary { color: #fff; background: var(--accent); }
+  .button.primary:hover, .button.primary:focus-visible { filter: brightness(1.08); }
+  .button:disabled { opacity: .55; cursor: default; }
+  .said { font-size: 13px; color: var(--muted); }
+  .said.bad { color: var(--bad); }
+  .approval + .approval { margin-top: 22px; }
+  [hidden] { display: none !important; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .running .icon { animation: none; } .bar span { transition: none; } }
 </style>
 </head>
 <body>
-<header><h1 id="title">Run</h1><span id="status" class="status">Waiting for the run</span></header>
+<div id="run">
+<h1 id="title">Run</h1>
+<div class="meta"><span id="status" class="status">Starting</span><span id="detail"></span></div>
+<div class="bar" id="bar" hidden><span></span></div>
 <ol id="steps"></ol>
-<p id="files" class="files" hidden></p>
+<p class="label" id="files-label" hidden>Finished files</p>
+<ul id="files" class="files" hidden></ul>
+<div id="review" hidden></div>
+<div class="actions" id="footer" hidden><a id="open" class="button" href="#" target="_blank" rel="noopener">Open in Takewon</a></div>
+</div>
+<div id="list" hidden></div>
 <script>
 (function () {
-  var nextId = 1, pending = {}, runId = null, timer = null;
-  var WORDS = { running: "Running", waiting: "Waiting for an approval", done: "Done", failed: "Failed", cancelled: "Cancelled", pending: "Not started", skipped: "Skipped" };
+  var nextId = 1, pending = {}, runId = null, timer = null, seenAt = Date.now(), clock = null, last = null;
+  var WORDS = { running: "Running", waiting: "Waiting for an approval", done: "Done", failed: "Failed", cancelled: "Cancelled" };
+  var ICONS = {
+    done: '<circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+    running: '<circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 1 6.2 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+    pending: '<circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2.4 2.4"/>',
+    waiting: '<circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M6.3 5.2v5.6M9.7 5.2v5.6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
+    failed: '<circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
+    file: '<rect x="2.5" y="3" width="11" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M7 6.2v3.6l3-1.8z" fill="currentColor"/>'
+  };
+  ICONS.skipped = ICONS.pending; ICONS.cancelled = ICONS.failed; ICONS.waiting_approval = ICONS.waiting;
   function send(message) { window.parent.postMessage(message, "*"); }
   function request(method, params) {
     var id = nextId++;
     send({ jsonrpc: "2.0", id: id, method: method, params: params || {} });
     return new Promise(function (resolve, reject) { pending[id] = { resolve: resolve, reject: reject }; });
   }
+  function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) { var node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; }
-  function size() { send({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { height: Math.ceil(document.body.getBoundingClientRect().height) } }); }
-  function show(run) {
-    if (!run || typeof run !== "object") return;
-    if (run.run_id) runId = run.run_id;
-    document.getElementById("title").textContent = run.automation || "Run";
-    var status = document.getElementById("status");
-    status.textContent = WORDS[run.status] || run.status || "";
-    status.className = "status " + (run.status || "");
-    var list = document.getElementById("steps");
-    list.textContent = "";
-    if (!(run.steps || []).length && (run.status === "running" || run.status === "waiting")) {
-      var first = el("li", "running");
-      first.appendChild(el("span", "dot"));
-      first.appendChild(el("div", "name", "Starting the first step"));
-      list.appendChild(first);
-    }
-    (run.steps || []).forEach(function (step) {
-      var item = el("li", step.status);
-      item.appendChild(el("span", "dot"));
-      var name = el("div", "name", step.step);
-      if (step.error) name.appendChild(el("div", "error", step.error));
-      item.appendChild(name);
-      item.appendChild(el("span", "note", step.files ? step.files + (step.files === 1 ? " file" : " files") : WORDS[step.status] || ""));
+  function icon(kind) {
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("class", "icon"); svg.setAttribute("aria-hidden", "true");
+    svg.innerHTML = ICONS[kind] || ICONS.pending;
+    return svg;
+  }
+  function size() { send({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { height: Math.ceil(document.documentElement.getBoundingClientRect().height) } }); }
+  function took(ms) {
+    var s = Math.max(0, Math.round(ms / 1000));
+    return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m " + (s % 60) + "s" : Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
+  }
+  function fileName(url) {
+    var name = String(url).split("?")[0].split("#")[0].split("/").pop() || String(url);
+    try { return decodeURIComponent(name); } catch (e) { return name; }
+  }
+  function link(node, url) {
+    node.href = url;
+    node.onclick = function (event) {
+      event.preventDefault();
+      request("ui/open-link", { url: url }).catch(function () { window.open(url, "_blank", "noopener"); });
+    };
+  }
+  function fileList(urls, most, moreText) {
+    var list = el("ul", "files");
+    urls.slice(0, most).forEach(function (url) {
+      var item = el("li"), a = el("a");
+      a.appendChild(icon("file"));
+      a.appendChild(el("span", "file", fileName(url)));
+      a.appendChild(el("span", "open", "Open"));
+      link(a, url);
+      item.appendChild(a);
       list.appendChild(item);
     });
-    var files = document.getElementById("files");
-    if (run.files && run.files.length) {
-      files.hidden = false;
-      files.textContent = run.files.length + (run.files.length === 1 ? " finished file" : " finished files");
-    } else files.hidden = true;
+    if (urls.length > most) list.appendChild(el("li", "more", "And " + (urls.length - most) + " more " + moreText));
+    return list;
+  }
+  function who(approval) {
+    var asked = approval.asked;
+    return typeof asked === "string" ? asked : asked.join(" or ");
+  }
+  function waitingNote(approval) {
+    if (!approval) return "Waiting for someone to approve it";
+    return approval.you_may_decide ? "Waiting for your decision" : "Waiting for " + who(approval) + " to decide";
+  }
+  // Approve and Send back, for the person who may decide. After a decision, done() runs.
+  function decideButtons(approval, done) {
+    var row = el("div", "actions");
+    var yes = el("button", "button primary", "Approve"), no = el("button", "button", "Send back");
+    yes.type = no.type = "button";
+    var said = el("span", "said");
+    function decide(decision) {
+      yes.disabled = no.disabled = true;
+      said.className = "said"; said.textContent = "";
+      request("tools/call", { name: "decide_approval", arguments: { approval_id: approval.approval_id, decision: decision } })
+        .then(function (result) {
+          if (result && result.isError) throw new Error(result.content && result.content[0] ? result.content[0].text : "That did not work.");
+          done(decision);
+        })
+        .catch(function (error) {
+          yes.disabled = no.disabled = false;
+          said.className = "said bad";
+          said.textContent = (error && (error.message || error.text)) || "That did not work. Try again.";
+          size();
+        });
+    }
+    yes.onclick = function () { decide("approve"); };
+    no.onclick = function () { decide("send_back"); };
+    row.appendChild(yes); row.appendChild(no); row.appendChild(said);
+    return row;
+  }
+  function live(run) { return run.status === "running" || run.status === "waiting"; }
+  function detail(run) {
+    var steps = run.steps || [];
+    var done = steps.filter(function (s) { return s.status === "done" || s.status === "skipped"; }).length;
+    var start = run.started_at ? Date.parse(run.started_at) : seenAt;
+    var end = run.finished_at ? Date.parse(run.finished_at) : Date.now();
+    var parts = [];
+    if (run.status === "done") parts.push(steps.length + (steps.length === 1 ? " step" : " steps"));
+    else if (live(run) && steps.length) parts.push("step " + Math.min(done + 1, steps.length) + " of " + steps.length);
+    if (run.status !== "waiting") parts.push(took(end - start));
+    return parts.length ? " · " + parts.join(" · ") : "";
+  }
+  function show(run) {
+    if (!run || typeof run !== "object") return;
+    if (Array.isArray(run.approvals)) return showList(run.approvals);
+    last = run;
+    if (run.run_id) runId = run.run_id;
+    var steps = run.steps || [], approval = run.status === "waiting" ? run.approval : null;
+    $("run").hidden = false; $("list").hidden = true;
+    $("title").textContent = run.automation || "Run";
+    var status = $("status");
+    status.textContent = WORDS[run.status] || run.status || "";
+    status.className = "status " + (run.status || "");
+    $("detail").textContent = detail(run);
+
+    var bar = $("bar");
+    bar.hidden = !live(run);
+    var finished = steps.filter(function (s) { return s.status === "done" || s.status === "skipped"; }).length;
+    bar.firstChild.style.width = (steps.length ? Math.max(4, (finished / steps.length) * 100) : 4) + "%";
+
+    // A finished run shows what it made; the steps only matter while it goes or when one fails.
+    var list = $("steps");
+    list.textContent = "";
+    var rows = run.status === "done" ? [] : steps.length ? steps : live(run) ? [{ step: "Starting the first step", status: "running" }] : [];
+    rows.forEach(function (step) {
+      var item = el("li", step.status);
+      item.appendChild(icon(step.status));
+      var name = el("div", "name", step.step);
+      var note = step.error || (step.status === "waiting_approval" ? waitingNote(approval) : step.status === "skipped" ? "Skipped" : "");
+      if (note) name.appendChild(el("span", "note", note));
+      item.appendChild(name);
+      list.appendChild(item);
+    });
+    list.hidden = !rows.length;
+
+    var urls = run.files || [];
+    var files = $("files");
+    files.replaceWith(Object.assign(fileList(urls, 6, "in Takewon"), { id: "files", hidden: !urls.length }));
+    $("files-label").hidden = !urls.length;
+
+    // Waiting at an approval: the files to look at, and the decision for whoever may make it.
+    var review = $("review");
+    review.textContent = "";
+    var deciding = !!(approval && approval.you_may_decide);
+    if (approval) {
+      if ((approval.files || []).length) {
+        review.appendChild(el("p", "label", "To review"));
+        review.appendChild(fileList(approval.files, 6, "in Takewon"));
+      }
+      if (deciding) {
+        review.appendChild(decideButtons(approval, function () { clearTimeout(timer); poll(); }));
+      }
+    }
+    review.hidden = !review.childNodes.length;
+
+    var open = $("open");
+    $("footer").hidden = !run.address || deciding;
+    if (run.address) {
+      link(open, run.address);
+      open.textContent = approval ? "Review in Takewon" : "Open in Takewon";
+    }
     size();
-    clearTimeout(timer);
-    if (runId && (run.status === "running" || run.status === "waiting")) timer = setTimeout(poll, (run.steps || []).length ? 4000 : 1500);
+    clearTimeout(timer); clearInterval(clock);
+    if (runId && live(run)) {
+      timer = setTimeout(poll, steps.length ? 4000 : 1500);
+      clock = setInterval(function () { $("detail").textContent = detail(last); }, 1000);
+    }
+  }
+  function showList(approvals) {
+    clearTimeout(timer); clearInterval(clock);
+    $("run").hidden = true;
+    var box = $("list");
+    box.hidden = false;
+    box.textContent = "";
+    var head = el("div");
+    head.appendChild(el("h1", null, "Waiting for approval"));
+    head.appendChild(el("div", "meta", approvals.length ? approvals.length + (approvals.length === 1 ? " run" : " runs") : "Nothing is waiting."));
+    box.appendChild(head);
+    approvals.forEach(function (approval) {
+      var block = el("section", "approval");
+      block.style.marginTop = "18px";
+      block.appendChild(el("h2", null, approval.automation || "Run"));
+      var mins = approval.waiting_since ? Math.max(1, Math.round((Date.now() - Date.parse(approval.waiting_since)) / 60000)) : 0;
+      var since = !mins ? "" : mins < 60 ? mins + "m" : Math.floor(mins / 60) + "h " + (mins % 60) + "m";
+      var meta = el("div", "meta");
+      var status = el("span", "status waiting", approval.you_may_decide ? "Asks you" : "Asks " + who(approval));
+      meta.appendChild(status);
+      meta.appendChild(document.createTextNode(" · " + (approval.step || "Approval") + (since ? " · waiting " + since : "")));
+      block.appendChild(meta);
+      if ((approval.files || []).length) block.appendChild(fileList(approval.files, 3, "to look at in Takewon"));
+      if (approval.you_may_decide) {
+        var buttons = decideButtons(approval, function (decision) {
+          status.textContent = decision === "approve" ? "Approved" : "Sent back";
+          status.className = "status " + (decision === "approve" ? "approved" : "sent");
+          buttons.remove();
+          size();
+        });
+        block.appendChild(buttons);
+      } else if (approval.address) {
+        var row = el("div", "actions"), a = el("a", "button", "Open in Takewon");
+        link(a, approval.address);
+        row.appendChild(a);
+        block.appendChild(row);
+      }
+      box.appendChild(block);
+    });
+    size();
   }
   function fromResult(result) {
     if (!result) return null;
@@ -186,8 +400,14 @@ const RUN_APP_HTML = `<!doctype html>
   }
   function poll() {
     request("tools/call", { name: "check_run", arguments: { run_id: runId } })
-      .then(function (result) { show(fromResult(result)); })
+      .then(function (result) { var run = fromResult(result); if (run) { run.address = run.address || (last && last.address); } show(run); })
       .catch(function () { timer = setTimeout(poll, 10000); });
+  }
+  function theme(context) {
+    if (!context) return;
+    if (context.theme) document.documentElement.setAttribute("data-theme", context.theme);
+    var vars = context.styles && context.styles.variables;
+    if (vars) Object.keys(vars).forEach(function (key) { if (/^--[A-Za-z0-9_-]+$/.test(key) && vars[key]) document.documentElement.style.setProperty(key, String(vars[key])); });
   }
   window.addEventListener("message", function (event) {
     var message = event.data;
@@ -198,16 +418,21 @@ const RUN_APP_HTML = `<!doctype html>
       return;
     }
     if (message.method === "ui/notifications/tool-result") show(fromResult(message.params));
+    if (message.method === "ui/notifications/host-context-changed") theme(message.params);
     if (message.method === "ui/resource-teardown" && message.id != null) {
-      clearTimeout(timer);
+      clearTimeout(timer); clearInterval(clock);
       send({ jsonrpc: "2.0", id: message.id, result: {} });
     }
   });
   request("ui/initialize", {
-    appInfo: { name: "Run progress", version: "1.0.0" },
+    appInfo: { name: "Run progress", version: "1.2.0" },
     appCapabilities: {},
     protocolVersion: "2026-01-26"
-  }).then(function () { send({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} }); size(); });
+  }).then(function (result) {
+    theme(result && result.hostContext);
+    send({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
+    size();
+  });
 })();
 </script>
 </body>

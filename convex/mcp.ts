@@ -15,19 +15,21 @@ import { bearerKey, hashMcpKey } from "./lib/mcpKeys";
 import { handleMcp, type McpTool, ToolSaid } from "./lib/mcpServer";
 import { ACCESS_TOKEN_PREFIX } from "./lib/oauth";
 import { signInChallenge } from "./oauth";
-import { startRun } from "./lib/runner";
+import { approvalView, membersOf, type TeamMembers } from "./lib/approvals";
+import { decideApproval, incomingFiles, startRun } from "./lib/runner";
+import { publishDraft, switchAutomation } from "./automations";
 import { withTeamSteps } from "./lib/teamSteps";
 
 /**
  * The dashboard as an MCP server, at <Convex site>/mcp. An agent signs in with OAuth as a
  * person on one team (claude.ai connectors, Claude Code, Cursor), or sends one of the
- * team's keys (Settings, "AI agents"). It can list the team's automations and uploads,
- * build and change automations (always as a draft that someone publishes in the
- * dashboard), run one on a file and follow the run.
+ * team's keys (Settings, MCP). It can do what that person can in the dashboard for
+ * automations: list them, build and change them (changes wait as a draft until published),
+ * publish, switch them on or off, run one on a file, follow the run, and decide approvals.
  */
 
 const INSTRUCTIONS =
-  "This is Takewon, a content automation dashboard. Each automation is a set of plain steps (cut clips, add captions, reframe, and so on) that runs by itself on the team's own toolkit, with no AI per video. Read the content-automations skill before building. list_automations and describe_automation show what the team has; create_automation and change_automation build (changes are kept as a draft that someone publishes in the dashboard); start_automation runs one on an upload or a file link; check_run shows how a run is going and the files it made. A chain of linked automations can be one workflow (set_up_workflow) with a single review before its files go out.";
+  "This is Takewon, a content automation dashboard. Each automation is a set of plain steps (cut clips, add captions, reframe, and so on) that runs by itself on the team's own toolkit, with no AI per video. Read the content-automations skill before building. list_automations and describe_automation show what the team has; create_automation and change_automation build (changes are kept as a draft until publish_automation makes them live); switch_automation switches one on or off; start_automation runs one on an upload or a file link; check_run shows how a run is going and the files it made. list_approvals shows what waits for someone to approve, and decide_approval approves it or sends it back when the person asks you to. A chain of linked automations can be one workflow (set_up_workflow) with a single review before its files go out.";
 
 const SERVER_INFO = { name: "takewon", title: PRODUCT_NAME, version: "2.0.0" };
 
@@ -103,7 +105,7 @@ const TOOLS: McpTool[] = [
     name: "change_automation",
     title: "Change an automation",
     description:
-      "Adds, removes, connects or re-sets steps, changes what starts it, or renames it. Send every change for one request together: they are made in order and all are kept or none. Changes are kept as a draft; the published version keeps running until someone publishes the draft in the dashboard. Leave file settings empty: each step takes the nearest fitting file before it, and brand settings come from the team. Returns the automation as it now reads and what still stops it running.",
+      "Adds, removes, connects or re-sets steps, changes what starts it, or renames it. Send every change for one request together: they are made in order and all are kept or none. Changes are kept as a draft; the published version keeps running until publish_automation (or someone in the dashboard) publishes the draft. Leave file settings empty: each step takes the nearest fitting file before it, and brand settings come from the team. Returns the automation as it now reads and what still stops it running.",
     inputSchema: {
       type: "object",
       properties: {
@@ -111,6 +113,32 @@ const TOOLS: McpTool[] = [
         operations: { type: "array", minItems: 1, maxItems: 100, items: OPERATION_SCHEMA },
       },
       required: ["automation_id", "operations"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+  },
+  {
+    name: "publish_automation",
+    title: "Publish an automation",
+    description:
+      'Makes an automation\'s draft its live version, so its next runs use the changes. An automation that is on stays on; a draft that could not run is refused and the live version carries on. Try the draft first (start_automation with version "draft") and publish when the person is happy with it.',
+    inputSchema: {
+      type: "object",
+      properties: { automation_id: automationId },
+      required: ["automation_id"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+  },
+  {
+    name: "switch_automation",
+    title: "Switch an automation on or off",
+    description:
+      "Switches an automation on, so what starts it (an upload, a folder, a schedule and so on) runs it by itself, or off. Switching on refuses, saying why, while something stops it running.",
+    inputSchema: {
+      type: "object",
+      properties: { automation_id: automationId, on: { type: "boolean" } },
+      required: ["automation_id", "on"],
       additionalProperties: false,
     },
     readOnly: false,
@@ -172,6 +200,31 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: true,
+  },
+  {
+    name: "list_approvals",
+    title: "List approvals",
+    description:
+      "Runs waiting at an Approval step or a workflow's review: which automation, since when, who is asked, whether the person you act for may decide, and the files to look at.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    readOnly: true,
+    appUri: RUN_APP_URI,
+  },
+  {
+    name: "decide_approval",
+    title: "Approve or send back",
+    description:
+      "Approves a waiting approval, so the run carries on with those files, or sends it back, which stops it there. Only when the person has said which: an approval is their check, so never decide one by yourself. The same people may decide as in the dashboard.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        approval_id: { type: "string", description: "From list_approvals or check_run." },
+        decision: { type: "string", enum: ["approve", "send_back"] },
+      },
+      required: ["approval_id", "decision"],
+      additionalProperties: false,
+    },
+    readOnly: false,
   },
   {
     name: "list_workflows",
@@ -428,7 +481,7 @@ export const start = internalMutation({
 });
 
 export const run = internalQuery({
-  args: { organizationId: v.string(), runId: v.string() },
+  args: { organizationId: v.string(), runId: v.string(), userId: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const id = ctx.db.normalizeId("runs", args.runId);
     const found = id ? await ctx.db.get(id) : null;
@@ -460,7 +513,123 @@ export const run = internalQuery({
         };
       }),
       files: [...new Set(files)].slice(0, 100),
+      approval: await waitingApproval(ctx, found, steps, args.userId ?? ""),
     };
+  },
+});
+
+/** An approval as an agent sees it: who decides, whether its person may, what to look at. */
+function approvalLine(
+  step: Doc<"runSteps">,
+  run: Doc<"runs">,
+  byNode: Map<string, Doc<"runSteps">>,
+  members: TeamMembers,
+  userId: string,
+) {
+  const view = approvalView(step, run, members, userId);
+  const node = run.nodes.find((each) => each.id === step.nodeId);
+  return {
+    approval_id: step._id,
+    step: node ? stepName(node) : "Approval",
+    waiting_since: new Date(step.startedAt ?? step._creationTime).toISOString(),
+    asked: view.asked.length ? view.asked : "anyone on the team",
+    you_may_decide: view.mayDecide,
+    decide_by: view.decideBy ? new Date(view.decideBy).toISOString() : null,
+    when_time_up: view.decideBy ? view.whenTimeUp : null,
+    files: node ? [...new Set(incomingFiles(node, run, byNode))].slice(0, 50) : [],
+  };
+}
+
+/** The approval a run is waiting at, if it is waiting at one. */
+async function waitingApproval(
+  ctx: QueryCtx,
+  run: Doc<"runs">,
+  steps: Doc<"runSteps">[],
+  userId: string,
+) {
+  const step = steps.find((each) => each.status === "waiting_approval");
+  if (!step) return null;
+  const byNode = new Map(steps.map((each) => [each.nodeId, each]));
+  return approvalLine(step, run, byNode, await membersOf(ctx, run.organizationId), userId);
+}
+
+export const approvals = internalQuery({
+  args: { organizationId: v.string(), userId: v.string() },
+  handler: async (ctx, args) => {
+    const waiting = await ctx.db
+      .query("runSteps")
+      .withIndex("by_organization_and_status", (q) =>
+        q.eq("organizationId", args.organizationId).eq("status", "waiting_approval"),
+      )
+      .take(50);
+    if (waiting.length === 0) return { approvals: [] };
+    const members = await membersOf(ctx, args.organizationId);
+    const found = [];
+    for (const step of waiting) {
+      const run = await ctx.db.get(step.runId);
+      if (!run || (run.status !== "running" && run.status !== "waiting")) continue;
+      const steps = await ctx.db
+        .query("runSteps")
+        .withIndex("by_run", (q) => q.eq("runId", run._id))
+        .take(200);
+      const byNode = new Map(steps.map((each) => [each.nodeId, each]));
+      found.push({
+        ...approvalLine(step, run, byNode, members, args.userId),
+        run_id: run._id,
+        automation: run.automationName,
+        address: runLink(run.automationId, run._id),
+      });
+    }
+    return { approvals: found };
+  },
+});
+
+export const decide = internalMutation({
+  args: {
+    organizationId: v.string(),
+    userId: v.string(),
+    approvalId: v.string(),
+    approve: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const id = ctx.db.normalizeId("runSteps", args.approvalId);
+    const step = id ? await ctx.db.get(id) : null;
+    if (!step || step.organizationId !== args.organizationId) {
+      said("There is no approval with that id on this team. list_approvals gives the ids.");
+    }
+    if (step.status !== "waiting_approval") said("Someone has already decided this.");
+    await decideApproval(ctx, step, args.approve, args.userId);
+    return {
+      approval_id: step._id,
+      run_id: step.runId,
+      decided: args.approve ? "approved" : "sent back",
+    };
+  },
+});
+
+export const publish = internalMutation({
+  args: { organizationId: v.string(), userId: v.string(), automationId: v.string() },
+  handler: async (ctx, args) => {
+    const automation = await ownAutomation(ctx, args.organizationId, args.automationId);
+    if (!automation.draft) said("This automation has no draft to publish.");
+    await withTeamSteps(ctx, args.organizationId);
+    await publishDraft(ctx, automation, args.userId);
+    return {
+      automation_id: automation._id,
+      published: true,
+      on: automation.enabled,
+      address: automationLink(automation._id),
+    };
+  },
+});
+
+export const setOn = internalMutation({
+  args: { organizationId: v.string(), automationId: v.string(), on: v.boolean() },
+  handler: async (ctx, args) => {
+    const automation = await ownAutomation(ctx, args.organizationId, args.automationId);
+    await withTeamSteps(ctx, args.organizationId);
+    await switchAutomation(ctx, automation, args.on);
+    return { automation_id: automation._id, on: args.on, address: automationLink(automation._id) };
   },
 });
 
@@ -559,6 +728,34 @@ async function callTool(
         });
         return { automation_id: id, address: automationLink(id), ...changed };
       }
+      case "publish_automation":
+        return await ctx.runMutation(internal.mcp.publish, {
+          organizationId,
+          userId,
+          automationId: automation(),
+        });
+      case "switch_automation":
+        if (typeof args.on !== "boolean") throw new ToolSaid("on is needed: true or false.");
+        return await ctx.runMutation(internal.mcp.setOn, {
+          organizationId,
+          automationId: automation(),
+          on: args.on,
+        });
+      case "list_approvals":
+        return await ctx.runQuery(internal.mcp.approvals, { organizationId, userId });
+      case "decide_approval": {
+        const approvalId = text(args.approval_id);
+        if (!approvalId) throw new ToolSaid("approval_id is needed. list_approvals gives the ids.");
+        if (args.decision !== "approve" && args.decision !== "send_back") {
+          throw new ToolSaid('decision is needed: "approve" or "send_back".');
+        }
+        return await ctx.runMutation(internal.mcp.decide, {
+          organizationId,
+          userId,
+          approvalId,
+          approve: args.decision === "approve",
+        });
+      }
       case "list_uploads":
         return await ctx.runQuery(internal.mcp.uploads, {
           organizationId,
@@ -576,7 +773,7 @@ async function callTool(
       case "check_run": {
         const runId = text(args.run_id);
         if (!runId) throw new ToolSaid("run_id is needed.");
-        return await ctx.runQuery(internal.mcp.run, { organizationId, runId });
+        return await ctx.runQuery(internal.mcp.run, { organizationId, runId, userId });
       }
       case "list_runs":
         return await ctx.runQuery(internal.mcp.runs, {
