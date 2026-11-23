@@ -485,53 +485,12 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_hash", ["hash"]),
 
-  // AI agents that registered themselves to sign in with OAuth (RFC 7591). Agents that
-  // name themselves by a metadata document address are not stored here.
-  oauthClients: defineTable({
-    clientId: v.string(),
-    name: v.string(),
-    uri: v.union(v.null(), v.string()),
-    redirectUris: v.array(v.string()),
-    createdAt: v.number(),
-  }).index("by_client", ["clientId"]),
-
-  // An agent asking to sign in: shown to the person on /connect/<id>. Once they allow it,
-  // it holds the code the agent swaps for tokens (stored as a hash), used once.
-  oauthRequests: defineTable({
-    clientId: v.string(),
-    clientName: v.string(),
-    clientUri: v.union(v.null(), v.string()),
-    redirectUri: v.string(),
-    state: v.union(v.null(), v.string()),
-    codeChallenge: v.string(),
-    expiresAt: v.number(),
-    userId: v.optional(v.string()),
-    organizationId: v.optional(v.string()),
-    codeHash: v.optional(v.string()),
-    codeExpiresAt: v.optional(v.number()),
-  }).index("by_code", ["codeHash"]),
-
-  // An agent someone let in: it acts as that person, on one team, with their role there.
-  // Tokens are stored as hashes; the refresh token changes each time it is used.
-  oauthGrants: defineTable({
-    organizationId: v.string(),
-    userId: v.string(),
-    clientId: v.string(),
-    clientName: v.string(),
-    accessHash: v.string(),
-    accessExpiresAt: v.number(),
-    refreshHash: v.string(),
-    refreshExpiresAt: v.number(),
-    // The refresh token this grant's current one replaced. Seeing it again means a copy
-    // was taken, so the whole grant is revoked (RFC 9700, refresh token rotation).
-    previousRefreshHash: v.optional(v.string()),
-    createdAt: v.number(),
-    lastUsedAt: v.union(v.null(), v.number()),
-  })
-    .index("by_access", ["accessHash"])
-    .index("by_refresh", ["refreshHash"])
-    .index("by_previous_refresh", ["previousRefreshHash"])
-    .index("by_organization", ["organizationId"]),
+  // When an AI agent connection (a Better Auth OAuth consent, convex/oauth.ts) was last
+  // used, for Settings. Noted at most once a minute.
+  agentConnectionUse: defineTable({
+    consentId: v.string(),
+    lastUsedAt: v.number(),
+  }).index("by_consent", ["consentId"]),
 
   // A team's own FFmpeg steps, written by the agent (or a person) when no ready-made step
   // fits: a compose request with {{name}} blanks. See step-catalog's team-steps.ts.

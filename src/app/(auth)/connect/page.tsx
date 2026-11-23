@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Connect an AI agent" };
 export default function Page() {
   return (
     <Suspense fallback={<FullPageLoader />}>
-      <ConnectAgent />
+      <ConnectAgent step="consent" />
     </Suspense>
   );
 }
