@@ -220,8 +220,8 @@ const PLATFORMS: Platform[] = [
         <Step>
           <p>
             Set <Menu>Authentication</Menu> to <Menu>MCP OAuth2</Menu> and make a new{" "}
-            <Menu>MCP OAuth2 API</Menu> credential, leaving{" "}
-            <Menu>Register Client Automatically</Menu> on.
+            <Menu>MCP OAuth2 API</Menu> credential. Leave <Menu>Register Client Automatically</Menu>{" "}
+            on and paste the server address into <Menu>Server URL</Menu>.
           </p>
         </Step>
         <Step>

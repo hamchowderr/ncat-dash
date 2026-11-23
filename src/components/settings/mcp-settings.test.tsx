@@ -35,6 +35,7 @@ describe("the MCP settings", () => {
     const n8n = screen.getByRole("tabpanel").textContent ?? "";
     expect(n8n).toContain("MCP OAuth2");
     expect(n8n).toContain("Register Client Automatically");
+    expect(n8n).toContain("Server URL");
     expect(n8n).toContain("sign in and pick the team");
     fireEvent.click(screen.getByRole("tab", { name: /Other apps/ }));
     expect(screen.getByRole("tabpanel").textContent).toContain("sign in and pick the team");
