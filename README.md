@@ -133,12 +133,13 @@ Two things in toSend's own rules matter here: it is for email people expect (ale
 
 Everything the dashboard tells people about goes through one helper, `notify` in `convex/lib/alerts.ts`, which writes an `alerts` row and books its email. There are four kinds (`NOTIFICATION_KINDS` in `convex/lib/notifications.ts`):
 
-| Kind                            | Who                                                | Raised by                                                                                                         |
-| ------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| A run fails                     | everyone on the team                               | `alertTeam` in the runner, once a step has used all its tries                                                     |
-| An approval is waiting for me   | the reviewers named on the step, or the whole team | `startApproval` in the runner                                                                                     |
-| An approval ran out of time     | the same people as the approval                    | `decideApproval` when its time limit decides; this replaces the failed-run alert a timed-out reject used to raise |
-| Someone mentions me in a review | the people named after "@", not the author         | `reviews.comment`; links to `/review/<id>?clip=<clip>&comment=<thread>`                                           |
+| Kind                                      | Who                                                | Raised by                                                                                                                            |
+| ----------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| A run fails                               | everyone on the team                               | `alertTeam` in the runner, once a step has used all its tries                                                                        |
+| An approval is waiting for me             | the reviewers named on the step, or the whole team | `startApproval` in the runner                                                                                                        |
+| An approval ran out of time               | the same people as the approval                    | `decideApproval` when its time limit decides; this replaces the failed-run alert a timed-out reject used to raise                    |
+| Someone mentions me in a review           | the people named after "@", not the author         | `reviews.comment`; links to `/review/<id>?clip=<clip>&comment=<thread>`                                                              |
+| The agent answers my question in a review | the person who tagged @Agent                       | `reviewAgent.settle` once the answer is in (not when it failed); links to the thread like a mention; never posted to a Teams channel |
 
 Settings, Notifications lets each member choose, for themselves and per team, whether each kind shows under the bell and whether it is emailed (`convex/notifications.ts`, table `notificationPreferences`). Everything starts on. A kind switched off for the bell is left out of that person's bell, count and pop-up notices (`alerts.list`); the row stays, so switching it back on shows it again. Emails can come as they happen, or as one summary a day at an hour the member picks in their own time zone (taken from the browser): an hourly cron (`notifications.bookDigests`) books `email.sendDigest` for each member whose hour it is. Approvals waiting are always emailed at once, because they have a deadline.
 

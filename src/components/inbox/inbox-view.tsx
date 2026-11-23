@@ -25,7 +25,7 @@ export const VIEWS = [
   {
     id: "mentions",
     label: "Mentions and feedback",
-    kinds: ["mention", "client_feedback", "ready_for_review"],
+    kinds: ["mention", "agent_answer", "client_feedback", "ready_for_review"],
   },
 ] as const satisfies readonly { id: string; label: string; kinds: readonly Kind[] | null }[];
 

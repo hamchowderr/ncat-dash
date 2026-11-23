@@ -12,6 +12,7 @@ import {
   clientFeedbackEmail,
   digestEmail,
   mentionEmail,
+  agentAnswerEmail,
   readyForReviewEmail,
   clipFinishedEmail,
   rightsEndingEmail,
@@ -345,6 +346,25 @@ describe("messages", () => {
     expect(mention.text).toContain('"@Dev Patel <b>tighten</b> the cut"');
     expect(mention.html).toContain("&lt;b&gt;tighten&lt;/b&gt;");
     expect(mention.html).toContain("Open the review");
+  });
+
+  it("tells the person who asked that the agent answered, quoting the answer, escaped", () => {
+    const sent = agentAnswerEmail(
+      {
+        teamName: "Salt House",
+        reviewTitle: "Weekly clips",
+        answer: "Trim <i>one</i> second at 0:02.",
+        reviewUrl: "https://dash.example.com/review/r?clip=c&comment=m",
+        settingsUrl: "https://dash.example.com/settings#notifications",
+      },
+      branding,
+    );
+    expect(sent.subject).toBe("The agent answered you in Weekly clips");
+    expect(sent.text).toContain('In the review "Weekly clips" in Salt House:');
+    expect(sent.text).toContain('"Trim <i>one</i> second at 0:02."');
+    expect(sent.html).toContain("&lt;i&gt;one&lt;/i&gt;");
+    expect(sent.html).toContain("https://dash.example.com/review/r?clip=c&amp;comment=m");
+    expect(sent.text).toContain("notification settings");
   });
 
   it("gathers a day's news into one summary", () => {

@@ -2,6 +2,7 @@ import { explainFailure } from "@ncat-dash/automation-core";
 import {
   AtSign,
   Bell,
+  Bot,
   CalendarClock,
   CircleAlert,
   CircleCheck,
@@ -23,6 +24,7 @@ export type Kind =
   | "approval_waiting"
   | "approval_timed_out"
   | "mention"
+  | "agent_answer"
   | "client_feedback"
   | "ready_for_review"
   | "clip_finished"
@@ -45,6 +47,8 @@ export function alertTitle(alert: Shown): string {
       return `${alert.automationName}: an approval ran out of time`;
     case "mention":
       return `${alert.from ?? "Someone"} mentioned you in ${alert.automationName}`;
+    case "agent_answer":
+      return `The agent answered you in ${alert.automationName}`;
     case "client_feedback":
       return `${alert.from ?? "A client"} left feedback on ${alert.automationName}`;
     case "ready_for_review":
@@ -94,6 +98,12 @@ export const LOOK: Record<Kind, { icon: typeof Bell; tint: string; wash: string;
       action: "View run",
     },
     mention: { icon: AtSign, tint: "text-primary", wash: "bg-primary/5", action: "Open review" },
+    agent_answer: {
+      icon: Bot,
+      tint: "text-primary",
+      wash: "bg-primary/5",
+      action: "Open review",
+    },
     client_feedback: {
       icon: MessageSquareQuote,
       tint: "text-primary",

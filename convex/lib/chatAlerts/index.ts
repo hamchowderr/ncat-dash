@@ -106,6 +106,13 @@ export function wordAlert(alert: Doc<"alerts">, link: string): ChatAlert {
         lines: [alert.message],
         linkLabel: "Open the review",
       };
+    case "agent_answer":
+      return {
+        ...base,
+        title: `The agent answered you in ${alert.automationName}`,
+        lines: [alert.message],
+        linkLabel: "Open the review",
+      };
     case "client_feedback":
       return {
         ...base,

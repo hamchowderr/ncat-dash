@@ -362,6 +362,33 @@ export function mentionEmail(
   );
 }
 
+/** The agent answered the question the person tagged it with in a review comment. */
+export function agentAnswerEmail(
+  args: {
+    teamName?: string;
+    reviewTitle: string;
+    answer: string;
+    reviewUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const review = oneLine(args.reviewTitle, 80);
+  return compose(
+    `The agent answered you in ${review}`,
+    {
+      heading: "The agent answered your question",
+      paragraphs: [
+        `In the review "${review}"${args.teamName ? ` in ${oneLine(args.teamName, 60)}` : ""}:`,
+        `"${oneLine(args.answer, 600)}"`,
+      ],
+      button: { label: "Open the review", url: args.reviewUrl },
+      footnote: `To stop these emails, change your notification settings: ${args.settingsUrl}`,
+    },
+    branding,
+  );
+}
+
 /** A client said something through a review's share link: a comment or their verdict. */
 export function clientFeedbackEmail(
   args: {

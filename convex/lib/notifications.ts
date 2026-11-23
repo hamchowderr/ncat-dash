@@ -43,6 +43,14 @@ export const NOTIFICATION_KINDS = [
     chat: true,
   },
   {
+    kind: "agent_answer",
+    title: "The agent answers my question in a review",
+    description: "You tagged @Agent in a review comment and its answer is now in the thread.",
+    bell: true,
+    email: true,
+    chat: true,
+  },
+  {
     kind: "client_feedback",
     title: "A client comments or approves",
     description:
@@ -181,6 +189,7 @@ export function alertHref(
 ): string {
   if (
     (alert.kind === "mention" ||
+      alert.kind === "agent_answer" ||
       alert.kind === "client_feedback" ||
       alert.kind === "ready_for_review") &&
     alert.reviewId
