@@ -15,7 +15,7 @@
   },
   "devDependencies": {
     "typescript": "^5",
-    "vitest": "^3.2.0"
+    "vitest": "^4.1.12"
   },
   "dependencies": {
     "tosend": "1.2.0"
