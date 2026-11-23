@@ -22,9 +22,9 @@ jobs:
       NEXT_PUBLIC_CONVEX_SITE_URL: https://example.convex.site
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -34,7 +34,7 @@ jobs:
       # them alone used up the job's 15 minutes.
       - name: Restore the FFmpeg packages
         id: apt-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/apt-archives
           key: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-v1
@@ -50,7 +50,7 @@ jobs:
           sudo chown -R "$USER" ~/apt-archives
       - name: Keep the FFmpeg packages
         if: steps.apt-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/apt-archives
           key: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-v1
@@ -62,7 +62,7 @@ jobs:
       # fetch fails the tests still run, since none of them depends on the embeddings.
       - name: Restore the embedding model
         id: fastembed-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/mastra/fastembed-models
           key: fastembed-${{ runner.os }}-bge-small-en-v1.5-hf-v3
@@ -81,7 +81,7 @@ jobs:
           "
       - name: Keep the embedding model
         if: steps.fastembed-warm.outcome == 'success' && steps.fastembed-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/mastra/fastembed-models
           key: fastembed-${{ runner.os }}-bge-small-en-v1.5-hf-v3
@@ -96,9 +96,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -107,7 +107,7 @@ jobs:
       # The stand-in toolkit runs a real FFmpeg for the steps a test checks the picture of,
       # such as the sheet of frames a look is copied from. The check job keeps the packages.
       - name: Restore the FFmpeg packages
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/apt-archives
           key: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-v1
@@ -121,7 +121,7 @@ jobs:
             ffmpeg || (sudo apt-get update && sudo apt-get install -y --no-install-recommends \
             -o Dir::Cache::Archives="$HOME/apt-archives" -o Acquire::Retries=3 ffmpeg)
       - run: pnpm test:e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
           name: playwright-report

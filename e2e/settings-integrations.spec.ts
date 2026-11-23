@@ -34,6 +34,7 @@ test("the settings menu is short, and every app lives under Integrations", async
   await page.goto("/settings/brand");
   const menu = page.getByRole("navigation", { name: "Settings" });
   await expect(menu.getByRole("link")).toHaveText([
+    "Account",
     "Notifications",
     "Members",
     "Integrations",

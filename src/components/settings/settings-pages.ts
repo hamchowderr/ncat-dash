@@ -9,6 +9,11 @@ export const SETTINGS_GROUPS = [
     label: "You",
     pages: [
       {
+        slug: "account",
+        title: "Account",
+        description: "Your name, email address and password, and where you are signed in.",
+      },
+      {
         slug: "notifications",
         title: "Notifications",
         description: "What you hear about, and how. Everyone on the team picks their own.",
