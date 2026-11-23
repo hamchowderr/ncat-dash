@@ -110,6 +110,46 @@ export const takeSignUp = internalMutation({
   },
 });
 
+/**
+ * Takes one try from the allowances of the network and of the account it is for: a
+ * password sign-in, or an email sent on request (a password reset or a confirmation
+ * link). Every edition, since guessing passwords is a risk on a self-hosted copy too.
+ * Returns what to tell the person when there is none left, or null.
+ */
+export const takeAuthAttempt = internalMutation({
+  args: {
+    kind: v.union(v.literal("signIn"), v.literal("email")),
+    networkKey: v.string(),
+    email: v.optional(v.string()),
+  },
+  returns: v.union(v.null(), v.string()),
+  handler: async (ctx, args) => {
+    const unknown = args.networkKey === UNKNOWN_NETWORK;
+    const account = args.email ? emailKey(args.email) || args.email.trim().toLowerCase() : "";
+    const checks =
+      args.kind === "signIn"
+        ? [
+            unknown
+              ? () => limiter.limit(ctx, "signInFromUnknown")
+              : () => limiter.limit(ctx, "signInFromNetwork", { key: args.networkKey }),
+            ...(account ? [() => limiter.limit(ctx, "signInToAccount", { key: account })] : []),
+          ]
+        : [
+            () => limiter.limit(ctx, "authEmailFromNetwork", { key: args.networkKey }),
+            ...(account ? [() => limiter.limit(ctx, "authEmailToAddress", { key: account })] : []),
+          ];
+    for (const check of checks) {
+      const status = await check();
+      if (status.ok) continue;
+      const wait = waitLabel(status.retryAfter ?? 60_000);
+      return args.kind === "signIn"
+        ? `Too many sign-in attempts. Try again ${wait}.`
+        : `Too many emails have been asked for. Try again ${wait}.`;
+    }
+    return null;
+  },
+});
+
 /** Notes where a new person signed up from, so a later team of theirs finds their trial. */
 export const recordSignUp = internalMutation({
   args: { userId: v.string(), email: v.string(), networkKey: v.string() },
