@@ -139,6 +139,8 @@ export const post = internalAction({
   handler: async (ctx, args) => {
     const context = await ctx.runQuery(internal.microsoftTeamsReview.postContext, args);
     if (!context) return;
+    // A teammate's plain reply only goes into a thread the channel already has.
+    if (args.post.kind === "team_reply" && !context.rootActivityId) return;
     const token = await botToken();
     if (!token) return;
     // Someone whose Microsoft account is known is tagged, so Teams tells them.

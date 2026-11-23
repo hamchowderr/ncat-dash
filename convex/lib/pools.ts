@@ -38,3 +38,14 @@ export const backgroundPool = new Workpool(components.backgroundPool, {
   maxParallelism: 4,
   retryActionsByDefault: false,
 });
+
+/**
+ * Review activity posted to a team's chat apps (Slack, Discord, Teams, Telegram). Each
+ * team's posts to one app go one at a time, in order (lib/reviewChatQueue.ts); this caps
+ * how many teams' posts are sent at once. Not tried again: a post that might have reached
+ * the chat would show twice.
+ */
+export const chatPool = new Workpool(components.chatPool, {
+  maxParallelism: 10,
+  retryActionsByDefault: false,
+});

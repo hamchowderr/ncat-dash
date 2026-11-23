@@ -287,6 +287,8 @@ export const post = internalAction({
   handler: async (ctx, args) => {
     const context = await ctx.runQuery(internal.discordReview.postContext, args);
     if (!context || !discordBotReady()) return;
+    // A teammate's plain reply only goes into a thread the channel already has.
+    if (args.post.kind === "team_reply" && !context.threadId) return;
     const ping = context.mentioned.flatMap((one) => (one.discordUserId ? [one.discordUserId] : []));
     const tags = context.mentioned.map((one) =>
       one.discordUserId ? `<@${one.discordUserId}>` : `@${discordEscape(one.name)}`,

@@ -25,6 +25,7 @@ let sent: Sent[] = [];
 let next = 500;
 
 beforeEach(() => {
+  vi.useFakeTimers();
   process.env.TELEGRAM_BOT_TOKEN = "123:secret";
   process.env.TELEGRAM_BOT_USERNAME = "SaltHouseBot";
   process.env.TELEGRAM_API_URL = "https://telegram.stand-in";
@@ -54,19 +55,17 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   delete process.env.TELEGRAM_BOT_TOKEN;
   delete process.env.TELEGRAM_BOT_USERNAME;
   delete process.env.TELEGRAM_API_URL;
 });
 
+// The clock is the test's own from the start, so work scheduled for later (the chat
+// pool's next round) always runs when the test waits for it.
 async function settled(t: ReturnType<typeof backend>) {
-  vi.useFakeTimers();
-  try {
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-  } finally {
-    vi.useRealTimers();
-  }
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
 /** What went to the group (alerts to people's own chats are left out). */

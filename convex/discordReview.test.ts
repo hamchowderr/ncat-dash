@@ -23,6 +23,7 @@ type AsWriter = { thread: string | null; content: string; name: string; users: s
 let asWriters: AsWriter[] = [];
 
 beforeEach(() => {
+  vi.useFakeTimers();
   process.env.DISCORD_API_URL = "https://discord.test/api";
   process.env.DISCORD_BOT_TOKEN = "discord-bot";
   process.env.MASTRA_JWT_SECRET = SECRET;
@@ -86,18 +87,16 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   delete process.env.DISCORD_API_URL;
   delete process.env.DISCORD_BOT_TOKEN;
 });
 
+// The clock is the test's own from the start, so work scheduled for later (the chat
+// pool's next round) always runs when the test waits for it.
 async function settled(t: ReturnType<typeof backend>) {
-  vi.useFakeTimers();
-  try {
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-  } finally {
-    vi.useRealTimers();
-  }
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
 /** A team with the bot in its Discord server, Jordan and Dev linked, Sam not. */
