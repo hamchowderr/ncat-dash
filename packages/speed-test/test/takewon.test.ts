@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { signIn } from "../src/kontifi";
+import { signIn } from "../src/takewon";
 
 describe("signIn", () => {
   it("signs in from the dashboard's address and swaps the session cookie for a Convex token", async () => {
@@ -16,14 +16,14 @@ describe("signIn", () => {
     }) as typeof globalThis.fetch;
     const token = await signIn({
       siteUrl: "https://site.example/",
-      dashboardUrl: "https://kontifi.example/home",
+      dashboardUrl: "https://takewon.example/home",
       email: "a@b.c",
       password: "pw",
       fetch,
     });
     expect(token).toBe("jwt-123");
     expect(seen[0].url).toBe("https://site.example/api/auth/sign-in/email");
-    expect(new Headers(seen[0].init!.headers).get("Origin")).toBe("https://kontifi.example");
+    expect(new Headers(seen[0].init!.headers).get("Origin")).toBe("https://takewon.example");
     expect(JSON.parse(String(seen[0].init!.body))).toEqual({ email: "a@b.c", password: "pw" });
     expect(seen[1].url).toBe("https://site.example/api/auth/convex/token");
     expect(new Headers(seen[1].init!.headers).get("Cookie")).toBe(

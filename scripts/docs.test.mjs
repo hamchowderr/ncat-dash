@@ -163,7 +163,7 @@ test("the docs keep to the product's wording", () => {
       /\bzapier\b|\bmake\.com\b|\bintegromat\b/i,
       `${file}: these cannot be used with the toolkit`,
     );
-    assert.doesNotMatch(text, /\bNCA Dashboard\b/, `${file}: the product is Takewon`);
+    assert.doesNotMatch(text, /\bNCAT?[-_ ]?Dashboard\b/i, `${file}: the product is Takewon`);
     for (const m of text.matchAll(/[^.\n]*social media ready[^\n]*/gi)) {
       assert.ok(
         m[0].includes("Your content, social media ready."),

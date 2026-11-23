@@ -173,8 +173,8 @@ describe("how the run went", () => {
     });
     const { t, call } = await setUp();
     await call({ file_url: FILE, callback_url: "https://n8n.example/webhook/done" });
-    vi.advanceTimersByTime(1);
-    await t.finishInProgressScheduledFunctions();
+    // The post goes through the outbound pool (lib/pools.ts).
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(posted).toHaveLength(1);
     expect(posted[0].url).toBe("https://n8n.example/webhook/done");
     expect(JSON.parse(posted[0].body)).toMatchObject({ status: "done", files: [FILE] });

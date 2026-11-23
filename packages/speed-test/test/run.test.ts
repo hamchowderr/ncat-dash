@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ToolkitState } from "../src/history";
-import type { Backend } from "../src/kontifi";
+import type { Backend } from "../src/takewon";
 import { planRuns } from "../src/plan";
 import { runSpeedTest } from "../src/run";
 import type { RunView } from "../src/timings";
@@ -78,7 +78,7 @@ describe("runSpeedTest", () => {
     const results = await runSpeedTest({
       ...fake,
       plan: [...plan, plan[0]],
-      dashboard: "https://kontifi.example",
+      dashboard: "https://takewon.example",
       batch: "b1",
       onResult: (result) => {
         saved.push(result.runId);
@@ -98,7 +98,7 @@ describe("runSpeedTest", () => {
       clipSeconds: 40,
       readyMadeName: "Caption every new upload",
       toolkit: quiet,
-      dashboard: "https://kontifi.example",
+      dashboard: "https://takewon.example",
     });
     expect(results[0].note).toBeUndefined();
   });

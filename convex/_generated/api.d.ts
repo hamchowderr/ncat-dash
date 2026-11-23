@@ -93,6 +93,7 @@ import type * as lib_outbound from "../lib/outbound.js";
 import type * as lib_outputs from "../lib/outputs.js";
 import type * as lib_packages from "../lib/packages.js";
 import type * as lib_pickUp from "../lib/pickUp.js";
+import type * as lib_pools from "../lib/pools.js";
 import type * as lib_projects from "../lib/projects.js";
 import type * as lib_queue from "../lib/queue.js";
 import type * as lib_reviewChannels from "../lib/reviewChannels.js";
@@ -263,6 +264,7 @@ declare const fullApi: ApiFromModules<{
   "lib/outputs": typeof lib_outputs;
   "lib/packages": typeof lib_packages;
   "lib/pickUp": typeof lib_pickUp;
+  "lib/pools": typeof lib_pools;
   "lib/projects": typeof lib_projects;
   "lib/queue": typeof lib_queue;
   "lib/reviewChannels": typeof lib_reviewChannels;
@@ -372,4 +374,7 @@ export declare const components: {
   betterAuth: import("../betterAuth/_generated/component.js").ComponentApi<"betterAuth">;
   presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+  outboundPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"outboundPool">;
+  toolkitPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"toolkitPool">;
+  backgroundPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"backgroundPool">;
 };

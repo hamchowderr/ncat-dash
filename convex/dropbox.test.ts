@@ -275,7 +275,9 @@ async function connect(setup: SetUp, person: Person = setup.owner, account = JOR
 
 /** Runs what is due now, but not the check, hours later, for jobs that never report. */
 async function runScheduled(t: SetUp["t"]) {
-  await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000));
+  // A second at a time, up to about three hours: the pools (lib/pools.ts) check on their
+  // work every minute or so, well before the six-hour give-up.
+  await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000), 10_000);
 }
 
 async function notify(t: SetUp["t"], accounts: string[], secret = SECRET) {

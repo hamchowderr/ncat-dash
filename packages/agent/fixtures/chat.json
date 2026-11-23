@@ -84,7 +84,7 @@
           }
         ]
       },
-      "_comment": "NCAT DASHBOARD (src/mastra/ncat). The agent's own tools: look, read, change, make. Everything below this block is the kit's own demo and test script."
+      "_comment": "TAKEWON (src/mastra/ncat). The agent's own tools: look, read, change, make. Everything below this block is the kit's own demo and test script."
     },
     {
       "match": {

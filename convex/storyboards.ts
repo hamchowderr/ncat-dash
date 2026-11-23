@@ -9,6 +9,7 @@ import {
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
+import { backgroundPool } from "./lib/pools";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
@@ -747,8 +748,8 @@ export const catchUpDrafts = mutation({
     const waiting = items
       .filter((item) => draftable(item) && !drafted.has(item._id))
       .slice(0, DRAFT_CATCH_UP);
-    for (const [index, item] of waiting.entries()) {
-      await ctx.scheduler.runAfter(index * 500, internal.storyboards.draftForUpload, {
+    for (const item of waiting) {
+      await backgroundPool.enqueueMutation(ctx, internal.storyboards.draftForUpload, {
         itemId: item._id,
       });
     }

@@ -28,7 +28,7 @@ export function result(overrides: Partial<SpeedResult> = {}): SpeedResult {
     error: null,
     toolkit: { build: "219", cpus: 6, cpuPercent: 2, jobsRunning: 0 },
     runId: `run${n}`,
-    dashboard: "https://kontifi.example",
+    dashboard: "https://takewon.example",
     ...overrides,
   };
 }

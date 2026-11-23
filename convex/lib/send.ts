@@ -1,10 +1,12 @@
 // The Send to a URL step (automation-core send.ts): posts the files that reach it, with
 // the run's details, to an address, then hands the same files on. The post is made by
-// convex/send.ts, tried again on CALLBACK_WAITS_MS when the address does not answer.
+// convex/send.ts through the outbound pool (lib/pools.ts), which tries again when the
+// address does not answer.
 import { type AutomationNode, sendProblem } from "@ncat-dash/automation-core";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { outboundPool } from "./pools";
 import { advance, failStep, incomingFiles } from "./runner";
 
 type StepsByNode = Map<string, Doc<"runSteps">>;
@@ -28,7 +30,12 @@ export async function startSend(
     startedAt: Date.now(),
     outputs: incomingFiles(node, run, byNode),
   });
-  await ctx.scheduler.runAfter(0, internal.send.post, { runStepId: step._id, attempt: 0 });
+  await outboundPool.enqueueAction(
+    ctx,
+    internal.send.post,
+    { runStepId: step._id },
+    { onComplete: internal.send.done, context: { runStepId: step._id } },
+  );
 }
 
 /**
