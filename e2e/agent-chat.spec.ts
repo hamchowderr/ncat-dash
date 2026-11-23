@@ -102,8 +102,9 @@ test("a sent message shows at once, and the chat is still there after closing th
   await expect(agent.getByText(PROMPT)).toHaveCount(1);
 
   // So does a reload, and New chat starts a fresh one.
+  // (The agent stays open across a reload, as it was left.)
   await page.reload();
-  await page.locator("header").getByRole("button", { name: "Open the agent" }).click();
+  await expect(agent).toBeVisible();
   await expect(agent.getByText(REPLY)).toBeVisible();
   await agent.getByRole("button", { name: "New chat" }).click();
   await expect(agent.getByText(REPLY)).toHaveCount(0);
