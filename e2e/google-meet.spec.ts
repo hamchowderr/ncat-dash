@@ -91,7 +91,10 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
   await past.getByRole("tab", { name: "All" }).click();
   await expect(past.getByText("All 4 picked")).toBeVisible();
   await past.getByRole("button", { name: "Bring over 4 recordings" }).click();
-  await expect(page.getByText("4 recordings on the way to Uploads")).toBeVisible();
+  // Answered once Drive has listed and started all four, which takes a while on a busy runner.
+  await expect(page.getByText("4 recordings on the way to Uploads")).toBeVisible({
+    timeout: 45_000,
+  });
   await expect(
     past.getByText("4 recordings in your Drive, 1 shared with you. All of them are in Uploads."),
   ).toBeVisible();
