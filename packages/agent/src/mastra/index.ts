@@ -28,6 +28,7 @@ import {
   WORKSPACE_ROOT,
 } from './lib/agent-controller';
 import { createServerAuth } from './lib/auth';
+import { hideWelcomePage } from './lib/public-pages';
 import { chatKnowledge, syncChatKnowledge } from './lib/chat-knowledge';
 import { doltConfigured, ensureDatabase } from './lib/dolt';
 import { features } from './lib/features';
@@ -160,6 +161,8 @@ const serverConfig = {
   // anyway, so each one reads the whole instance. Without auth the routes read
   // everything regardless (local dev only).
   middleware: [
+    // Studio isn't served here, so on a signed-in server nothing outside /api is a page.
+    ...(auth ? [hideWelcomePage] : []),
     {
       path: '/api/knowledge/*',
       handler: async (c: KnowledgeRouteContext, next: () => Promise<void>) => {
