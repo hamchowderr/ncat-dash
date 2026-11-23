@@ -1,3 +1,5 @@
+import { PRODUCT_NAME } from "@ncat-dash/automation-core";
+
 /** Where a team's Slack app sends everything: the dashboard's own address. */
 export function slackEventsUrl(origin: string): string {
   return `${origin.replace(/\/$/, "")}/api/slack/events`;
@@ -7,9 +9,10 @@ export function slackEventsUrl(origin: string): string {
  * The Slack app manifest for a team's own agent app: the bot, what it may read and post,
  * and where Slack sends events and button presses. Nothing in it is secret.
  */
-export function slackManifest(origin: string, teamName: string) {
+export function slackManifest(origin: string) {
   const url = slackEventsUrl(origin);
-  const name = `${teamName} Agent`.slice(0, 35);
+  // The app and its bot carry the product's name, whichever team makes it.
+  const name = PRODUCT_NAME;
   return {
     display_information: {
       name,
@@ -63,7 +66,7 @@ export function slackManifest(origin: string, teamName: string) {
 }
 
 /** Opens Slack's "create an app" page with the manifest filled in. */
-export function createSlackAppUrl(origin: string, teamName: string): string {
-  const manifest = JSON.stringify(slackManifest(origin, teamName));
+export function createSlackAppUrl(origin: string): string {
+  const manifest = JSON.stringify(slackManifest(origin));
   return `https://api.slack.com/apps?new_app=1&manifest_json=${encodeURIComponent(manifest)}`;
 }
