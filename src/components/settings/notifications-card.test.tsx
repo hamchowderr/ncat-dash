@@ -32,6 +32,7 @@ function settings(over: Record<string, unknown> = {}) {
     digestHour: 8,
     timeZone: null,
     emailReady: true,
+    emailProblem: null,
     chatApps: [],
     ...over,
   };
@@ -136,6 +137,22 @@ describe("notification settings", () => {
     answerQuery(api.notifications.get, settings({ emailReady: false }));
     renderInApp(<NotificationsCard />);
     expect(screen.getByText(/Email is not set up for this dashboard yet/)).toBeInTheDocument();
+  });
+
+  test("says when emails to the person bounce or were marked as spam", () => {
+    answerQuery(
+      api.notifications.get,
+      settings({ emailProblem: { email: "maya@old.test", kind: "bounced", at: 1 } }),
+    );
+    const { unmount } = renderInApp(<NotificationsCard />);
+    expect(screen.getByText(/Emails to maya@old.test bounce/)).toBeInTheDocument();
+    unmount();
+    answerQuery(
+      api.notifications.get,
+      settings({ emailProblem: { email: "maya@old.test", kind: "complaint", at: 1 } }),
+    );
+    renderInApp(<NotificationsCard />);
+    expect(screen.getByText(/was marked as spam/)).toBeInTheDocument();
   });
 
   test("with every email off, the summary choice is greyed out", () => {

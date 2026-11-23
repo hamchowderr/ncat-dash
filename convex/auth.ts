@@ -318,6 +318,12 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
               ownerId: user.id,
               ownerEmail: user.email,
             });
+            // A welcome for someone's first team, a few seconds on so it can say how long
+            // the trial (started just above) runs.
+            await ctx.scheduler.runAfter(5_000, internal.email.sendWelcome, {
+              organizationId: organization.id,
+              userId: user.id,
+            });
           },
         },
         sendInvitationEmail: async (data) => {

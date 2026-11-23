@@ -20,6 +20,11 @@ import {
   sendEmail,
   senderProblem,
   verificationEmail,
+  trialEndedEmail,
+  trialEndingEmail,
+  welcomeEmail,
+  withUnsubscribe,
+  testEmail,
 } from "../src";
 
 const branding = { appName: "Takewon" };
@@ -377,5 +382,107 @@ describe("messages", () => {
     expect(digest.subject).toBe("Your daily summary: 2 things to know in Acme");
     expect(digest.text).toContain("Clips failed: Captions: no reply (https://d/runs/1)");
     expect(digest.text).toContain("Maya mentioned you in Weekly clips (https://d/review/2)");
+  });
+});
+
+describe("the look", () => {
+  it("carries Takewon's mark, motto and maker, and a link to change notifications", () => {
+    const failed = runFailedEmail(
+      {
+        automationName: "Clips",
+        message: "No reply.",
+        retries: 0,
+        runUrl: "https://d/runs/1",
+        settingsUrl: "https://d/settings/notifications",
+      },
+      { appName: "Takewon" },
+    );
+    expect(failed.html).toContain("Your content, social media ready.");
+    expect(failed.html).toContain("Made by Otaku Solutions.");
+    expect(failed.html).toContain('href="https://d/settings/notifications"');
+    expect(failed.html).toContain("Change your notification settings");
+    expect(failed.text).toContain("Notification settings: https://d/settings/notifications");
+  });
+
+  it("keeps another name's emails plain", () => {
+    const own = testEmail({}, { appName: "Acme Clips" });
+    expect(own.html).toContain("Sent by Acme Clips.");
+    expect(own.html).not.toContain("Otaku Solutions");
+    expect(own.html).not.toContain("social media ready");
+  });
+
+  it("links each line of a daily summary", () => {
+    const digest = digestEmail(
+      {
+        items: [{ title: "Clips failed", detail: "No reply", url: "https://d/runs/1" }],
+        settingsUrl: "https://d/settings/notifications",
+      },
+      branding,
+    );
+    expect(digest.html).toContain('<a href="https://d/runs/1"');
+    expect(digest.html).toContain(">Clips failed</a>");
+  });
+});
+
+describe("first days", () => {
+  const links = {
+    homeUrl: "https://d/",
+    uploadsUrl: "https://d/uploads",
+    readyMadeUrl: "https://d/automations/new",
+    brandUrl: "https://d/settings/brand",
+  };
+
+  it("welcomes someone with three first steps and the trial's length", () => {
+    const welcome = welcomeEmail(
+      { name: "Maya", teamName: "Salt <House>", trialDays: 3, ...links },
+      { appName: "Takewon" },
+    );
+    expect(welcome.subject).toBe("Welcome to Takewon");
+    expect(welcome.text).toContain("Your team Salt <House> is ready.");
+    expect(welcome.text).toContain("free trial runs for 3 days, and no card is needed");
+    expect(welcome.html).toContain("Salt &lt;House&gt;");
+    for (const url of Object.values(links)) expect(welcome.text).toContain(url);
+    const noTrial = welcomeEmail({ teamName: "Salt House", trialDays: null, ...links }, branding);
+    expect(noTrial.text).not.toContain("trial");
+  });
+
+  it("warns a day before a trial ends, then says it has, pointing at where to buy", () => {
+    const ending = trialEndingEmail(
+      { teamName: "Salt House", buyUrl: "https://takewon.com/pricing", homeUrl: "https://d/" },
+      { appName: "Takewon" },
+    );
+    expect(ending.subject).toBe("Your Takewon trial ends tomorrow");
+    expect(ending.text).toContain("Get Takewon: https://takewon.com/pricing");
+    const ended = trialEndedEmail(
+      { name: "Maya", teamName: "Salt House", buyUrl: null, homeUrl: "https://d/" },
+      { appName: "Takewon" },
+    );
+    expect(ended.subject).toBe("Your Takewon trial has ended");
+    expect(ended.text).toContain("Everything you made is kept");
+    expect(ended.text).toContain("Open Takewon: https://d/");
+  });
+});
+
+describe("unsubscribe", () => {
+  it("adds the one-click headers, a footer link and a text line", () => {
+    const failed = runFailedEmail(
+      {
+        automationName: "Clips",
+        message: "No reply.",
+        retries: 0,
+        runUrl: "https://d/runs/1",
+        settingsUrl: "https://d/settings/notifications",
+      },
+      branding,
+    );
+    const url = "https://api.example/email/unsubscribe?token=a.b";
+    const out = withUnsubscribe(failed, url);
+    expect(out.headers).toEqual({
+      "List-Unsubscribe": `<${url}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+    expect(out.html).toContain(">Unsubscribe</a>");
+    expect(out.html).not.toContain("<!--unsubscribe-->");
+    expect(out.text).toContain(`Unsubscribe: ${url}`);
   });
 });

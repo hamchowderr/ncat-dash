@@ -27,6 +27,7 @@ import {
   withinLength,
   missingSettings,
   platformGuideText,
+  motionGuideText,
   nodeTypeIndex,
   nodeTypeOf,
   OperationError,
@@ -1604,5 +1605,19 @@ export const platformGuide = query({
     const user = await getCaller(ctx);
     if (!user) fail("unauthenticated", "Sign in first.");
     return platformGuideText(args.platforms?.slice(0, 30));
+  },
+});
+
+/**
+ * What the agent knows about motion graphics (automation-core's motion guide): the preset
+ * styles a Motion Graphics step can pick by id, and the pieces they draw.
+ */
+export const motionGuide = query({
+  args: {},
+  returns: v.object({ text: v.string() }),
+  handler: async (ctx) => {
+    const user = await getCaller(ctx);
+    if (!user) fail("unauthenticated", "Sign in first.");
+    return { text: motionGuideText() };
   },
 });
