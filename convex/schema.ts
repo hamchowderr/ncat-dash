@@ -1104,12 +1104,14 @@ export default defineSchema({
     // approval step and waits for the people in `recipients` to decide.
     // "approval_timed_out": nobody decided in time, so the step decided by itself.
     // "mention": someone wrote @ and a member's name in a review comment.
+    // "agent_answer": the agent answered the "@Agent" question of the member in `recipients`.
     // "client_feedback": a client commented or gave their verdict through a share link.
     kind: v.union(
       v.literal("run_failed"),
       v.literal("approval_waiting"),
       v.literal("approval_timed_out"),
       v.literal("mention"),
+      v.literal("agent_answer"),
       v.literal("client_feedback"),
       // "ready_for_review": a new version went into a project's slot and waits for review.
       v.literal("ready_for_review"),
@@ -1831,6 +1833,7 @@ export default defineSchema({
         approval_waiting: v.optional(kindChannels),
         approval_timed_out: v.optional(kindChannels),
         mention: v.optional(kindChannels),
+        agent_answer: v.optional(kindChannels),
         client_feedback: v.optional(kindChannels),
         ready_for_review: v.optional(kindChannels),
         clip_finished: v.optional(kindChannels),

@@ -1,5 +1,6 @@
 import { type AutomationDraft, outline } from "@ncat-dash/automation-core";
 import {
+  AGENT,
   AGENT_ANSWER_LIMIT,
   type ClipSense,
   FRAMES_GRID,
@@ -19,6 +20,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { notify } from "./lib/alerts";
 import { decryptSecret } from "./lib/crypto";
 import { brandOf } from "./lib/queue";
 
@@ -154,9 +156,29 @@ export const settle = internalMutation({
     const answer = await ctx.db.get(args.answerId);
     // Deleted while the agent was thinking, or already settled by an earlier try.
     if (!answer?.agent || answer.agent.state !== "thinking") return;
+    const body = args.body.trim().slice(0, AGENT_ANSWER_LIMIT);
     await ctx.db.patch(answer._id, {
-      body: args.body.trim().slice(0, AGENT_ANSWER_LIMIT),
+      body,
       agent: { askedBy: answer.agent.askedBy, state: args.ok ? "answered" : "failed" },
+    });
+    // The person who asked hears that the answer is in, wherever they chose to. A failed
+    // try says so in the thread, where they can ask again.
+    if (!args.ok) return;
+    const [review, clip] = await Promise.all([
+      ctx.db.get(answer.reviewId),
+      ctx.db.get(answer.clipId),
+    ]);
+    await notify(ctx, {
+      organizationId: answer.organizationId,
+      kind: "agent_answer",
+      recipients: [answer.agent.askedBy],
+      automationName: review?.title || clip?.title || "A review",
+      message: body,
+      retries: 0,
+      reviewId: answer.reviewId,
+      clipId: answer.clipId,
+      commentId: answer.parentId ?? answer._id,
+      from: AGENT.name,
     });
   },
 });

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
+import { wordAlert } from "./lib/chatAlerts";
 import { encryptSecret } from "./lib/crypto";
 import { startRun } from "./lib/runner";
 import { signAgentToken } from "./reviewAgent";
@@ -419,5 +420,104 @@ describe("tagging the agent", () => {
       transcript: null,
     });
     delete process.env.CONNECTIONS_SECRET;
+  });
+});
+
+describe("when the agent's answer lands", () => {
+  const alertsOf = (t: ReturnType<typeof backend>) =>
+    t.run((ctx) => ctx.db.query("alerts").collect());
+
+  test("tells only the person who asked, in the Inbox, linked to the thread", async () => {
+    const { t, team, maya, dev, clipId, ask } = await room();
+    agentServer(() => Response.json({ answer: "  The logo is too small at 0:02.  " }));
+    const rootId = await ask(maya, "@Agent is the logo too small here?");
+    // Nothing yet while it is thinking.
+    expect(await alertsOf(t)).toEqual([]);
+
+    await settled(t);
+    const [alert, ...others] = await alertsOf(t);
+    expect(others).toEqual([]);
+    expect(alert).toMatchObject({
+      kind: "agent_answer",
+      recipients: [maya.id],
+      from: "Agent",
+      automationName: "Weekly clips",
+      message: "The logo is too small at 0:02.",
+      commentId: rootId,
+      clipId,
+    });
+    const mayas = await maya.as.query(api.alerts.list, { organizationId: team });
+    expect(mayas.alerts[0].href).toBe(`/review/${alert.reviewId}?clip=${clipId}&comment=${rootId}`);
+    expect((await dev.as.query(api.alerts.list, { organizationId: team })).alerts).toEqual([]);
+  });
+
+  test("a question asked in a reply is answered to whoever asked it, linked to the thread", async () => {
+    const { t, maya, dev, ask } = await room();
+    agentServer(() => Response.json({ answer: "Yes, trim a second." }));
+    const rootId = await ask(maya, "Opening feels slow.");
+    await ask(dev, "@Agent should we trim it?", rootId);
+    await settled(t);
+    const answers = (await alertsOf(t)).filter((alert) => alert.kind === "agent_answer");
+    expect(answers).toHaveLength(1);
+    expect(answers[0]).toMatchObject({ recipients: [dev.id], commentId: rootId });
+  });
+
+  test("is emailed unless the person switched those emails off", async () => {
+    const { t, team, maya, dev, ask } = await room();
+    agentServer(() => Response.json({ answer: "Looks fine." }));
+    await ask(maya, "@Agent ok?");
+    await ask(dev, "@Agent and this?");
+    await dev.as.mutation(api.notifications.set, {
+      organizationId: team,
+      kind: "agent_answer",
+      channel: "email",
+      enabled: false,
+    });
+    await settled(t);
+    const alerts = await alertsOf(t);
+    const forMaya = alerts.find((alert) => alert.recipients?.includes(maya.id))!;
+    const forDev = alerts.find((alert) => alert.recipients?.includes(dev.id))!;
+    expect(
+      (await t.query(internal.email.alertRecipients, { alertId: forMaya._id }))?.recipients,
+    ).toEqual(["maya.ortiz@example.test"]);
+    expect(
+      (await t.query(internal.email.alertRecipients, { alertId: forDev._id }))?.recipients ?? [],
+    ).toEqual([]);
+  });
+
+  test("switched off for the Inbox is not shown there", async () => {
+    const { t, team, maya, ask } = await room();
+    await maya.as.mutation(api.notifications.set, {
+      organizationId: team,
+      kind: "agent_answer",
+      channel: "bell",
+      enabled: false,
+    });
+    agentServer(() => Response.json({ answer: "Fine." }));
+    await ask(maya, "@Agent ok?");
+    await settled(t);
+    expect(await alertsOf(t)).toHaveLength(1);
+    expect((await maya.as.query(api.alerts.list, { organizationId: team })).alerts).toEqual([]);
+  });
+
+  test("a failed try tells nobody; the thread already says so", async () => {
+    const { t, maya, ask } = await room();
+    agentServer(() => new Response("boom", { status: 502 }));
+    await ask(maya, "@Agent one");
+    await settled(t);
+    expect(await alertsOf(t)).toEqual([]);
+  });
+
+  test("reads the same in the chat apps", async () => {
+    const { t, maya, ask } = await room();
+    agentServer(() => Response.json({ answer: "Cut at 0:03." }));
+    await ask(maya, "@Agent where should I cut?");
+    await settled(t);
+    const [alert] = await alertsOf(t);
+    expect(wordAlert(alert, "https://dash.example/review")).toMatchObject({
+      title: "The agent answered you in Weekly clips",
+      lines: ["Cut at 0:03."],
+      linkLabel: "Open the review",
+    });
   });
 });

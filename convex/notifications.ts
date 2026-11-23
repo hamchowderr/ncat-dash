@@ -21,6 +21,7 @@ const kind = v.union(
   v.literal("approval_waiting"),
   v.literal("approval_timed_out"),
   v.literal("mention"),
+  v.literal("agent_answer"),
   v.literal("client_feedback"),
   v.literal("ready_for_review"),
   v.literal("clip_finished"),

@@ -15,6 +15,7 @@ import {
   rightsEndingEmail,
   readyForReviewEmail,
   mentionEmail,
+  agentAnswerEmail,
   sendEmail,
   senderProblem,
   testEmail,
@@ -309,76 +310,87 @@ export const sendAlert = internalAction({
                 },
                 branding,
               )
-            : alert.kind === "ready_for_review"
-              ? readyForReviewEmail(
+            : alert.kind === "agent_answer"
+              ? agentAnswerEmail(
                   {
                     teamName,
-                    from: alert.from ?? "Someone",
-                    projectName: alert.automationName,
-                    slot: alert.stepName ?? "A deliverable",
+                    reviewTitle: alert.automationName,
+                    answer: alert.message,
                     reviewUrl: link,
                     settingsUrl,
                   },
                   branding,
                 )
-              : alert.kind === "footage_problem"
-                ? footageProblemEmail(
+              : alert.kind === "ready_for_review"
+                ? readyForReviewEmail(
                     {
                       teamName,
-                      automationName: alert.automationName,
-                      message: alert.message,
-                      runUrl: link,
+                      from: alert.from ?? "Someone",
+                      projectName: alert.automationName,
+                      slot: alert.stepName ?? "A deliverable",
+                      reviewUrl: link,
                       settingsUrl,
                     },
                     branding,
                   )
-                : alert.kind === "rights_ending"
-                  ? rightsEndingEmail(
+                : alert.kind === "footage_problem"
+                  ? footageProblemEmail(
                       {
                         teamName,
-                        creator: alert.automationName,
-                        client: alert.stepName,
-                        summary: alert.message,
-                        creatorsUrl: link,
+                        automationName: alert.automationName,
+                        message: alert.message,
+                        runUrl: link,
                         settingsUrl,
                       },
                       branding,
                     )
-                  : alert.kind === "clip_finished"
-                    ? clipFinishedEmail(
+                  : alert.kind === "rights_ending"
+                    ? rightsEndingEmail(
                         {
                           teamName,
-                          automationName: alert.automationName,
+                          creator: alert.automationName,
+                          client: alert.stepName,
                           summary: alert.message,
-                          runUrl: link,
+                          creatorsUrl: link,
                           settingsUrl,
                         },
                         branding,
                       )
-                    : alert.kind === "client_feedback"
-                      ? clientFeedbackEmail(
-                          {
-                            teamName,
-                            from: alert.from ?? "A client",
-                            reviewTitle: alert.automationName,
-                            feedback: alert.message,
-                            reviewUrl: link,
-                            settingsUrl,
-                          },
-                          branding,
-                        )
-                      : runFailedEmail(
+                    : alert.kind === "clip_finished"
+                      ? clipFinishedEmail(
                           {
                             teamName,
                             automationName: alert.automationName,
-                            stepName: alert.stepName,
-                            message: explainFailure(alert.message).reason,
-                            retries: alert.retries,
+                            summary: alert.message,
                             runUrl: link,
                             settingsUrl,
                           },
                           branding,
-                        );
+                        )
+                      : alert.kind === "client_feedback"
+                        ? clientFeedbackEmail(
+                            {
+                              teamName,
+                              from: alert.from ?? "A client",
+                              reviewTitle: alert.automationName,
+                              feedback: alert.message,
+                              reviewUrl: link,
+                              settingsUrl,
+                            },
+                            branding,
+                          )
+                        : runFailedEmail(
+                            {
+                              teamName,
+                              automationName: alert.automationName,
+                              stepName: alert.stepName,
+                              message: explainFailure(alert.message).reason,
+                              retries: alert.retries,
+                              runUrl: link,
+                              settingsUrl,
+                            },
+                            branding,
+                          );
     for (const person of found.people) {
       const result = await deliver(ctx, sending, {
         to: person.email,
@@ -627,6 +639,11 @@ function digestLine(alert: Doc<"alerts">): Omit<DigestItem, "url"> {
     case "mention":
       return {
         title: `${alert.from ?? "Someone"} mentioned you in ${alert.automationName}`,
+        detail: alert.message,
+      };
+    case "agent_answer":
+      return {
+        title: `The agent answered you in ${alert.automationName}`,
         detail: alert.message,
       };
     case "ready_for_review":
