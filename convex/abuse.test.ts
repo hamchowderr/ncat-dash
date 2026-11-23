@@ -72,7 +72,9 @@ describe("one mailbox, however it is written", () => {
     expect(isThrowawayEmail("someone@sub.mailinator.com")).toBe(true);
     expect(isThrowawayEmail("maya@gmail.com")).toBe(false);
     expect(isThrowawayEmail("maya@studio.example")).toBe(false);
-    expect(isThrowawayEmail("x@spam.example", { BLOCKED_EMAIL_DOMAINS: "spam.example, junk.test" })).toBe(true);
+    expect(
+      isThrowawayEmail("x@spam.example", { BLOCKED_EMAIL_DOMAINS: "spam.example, junk.test" }),
+    ).toBe(true);
   });
 });
 
@@ -109,9 +111,15 @@ describe("a trial is a person's, not a team's", () => {
 
   test("someone whose earlier team bought starts a new team fresh", async () => {
     const { t } = await setUp();
-    await t.mutation(internal.trial.begin, { organizationId: "team_a", ownerEmail: "maya@studio.example" });
+    await t.mutation(internal.trial.begin, {
+      organizationId: "team_a",
+      ownerEmail: "maya@studio.example",
+    });
     await t.mutation(internal.trial.markPaid, { organizationId: "team_a" });
-    await t.mutation(internal.trial.begin, { organizationId: "team_b", ownerEmail: "maya@studio.example" });
+    await t.mutation(internal.trial.begin, {
+      organizationId: "team_b",
+      ownerEmail: "maya@studio.example",
+    });
     const second = (await trialOf(t, "team_b"))!;
     expect(second.repeatOf).toBeUndefined();
     expect(second.endsAt - second.startedAt).toBe(3 * DAY);
@@ -166,7 +174,10 @@ describe("a trial is a person's, not a team's", () => {
         emailKey: "maya@studio.example",
       }),
     );
-    await t.mutation(internal.trial.begin, { organizationId: team, ownerEmail: "maya@studio.example" });
+    await t.mutation(internal.trial.begin, {
+      organizationId: team,
+      ownerEmail: "maya@studio.example",
+    });
     const status = await maya.as.query(api.trial.status, { organizationId: team });
     expect(status).toMatchObject({ kind: "ended", repeat: true });
   });
@@ -194,9 +205,9 @@ describe("a trial is a person's, not a team's", () => {
 describe("the operator blocks a team", () => {
   test("nothing new runs and the agent and MCP say why; unblocking undoes it", async () => {
     const { t, team, maya, start } = await setUp("self-hosted");
-    expect(await t.mutation(internal.blocks.blockTeam, { organizationId: team, reason: "Spam" })).toBe(
-      true,
-    );
+    expect(
+      await t.mutation(internal.blocks.blockTeam, { organizationId: team, reason: "Spam" }),
+    ).toBe(true);
     // Blocking twice changes nothing.
     expect(await t.mutation(internal.blocks.blockTeam, { organizationId: team })).toBe(false);
     expect(await start()).toEqual({ ok: false, message: TEAM_BLOCKED_MESSAGE });
@@ -229,9 +240,9 @@ describe("the operator blocks a team", () => {
     await expect(outsider.as.query(api.access.mine, { organizationId: team })).rejects.toThrow(
       /not on this team/,
     );
-    await expect(outsider.as.mutation(api.access.agentTurn, { organizationId: team })).rejects.toThrow(
-      /not on this team/,
-    );
+    await expect(
+      outsider.as.mutation(api.access.agentTurn, { organizationId: team }),
+    ).rejects.toThrow(/not on this team/);
   });
 });
 
@@ -307,7 +318,9 @@ describe("limits a real person never meets", () => {
     expect(over.ok === false && over.message).toMatch(/Try again in about \d+ minutes?/);
     // Someone else on the team still gets answers.
     const lee = await addPerson(t, "Lee Park", [team]);
-    expect(await lee.as.mutation(api.access.agentTurn, { organizationId: team })).toEqual({ ok: true });
+    expect(await lee.as.mutation(api.access.agentTurn, { organizationId: team })).toEqual({
+      ok: true,
+    });
   });
 
   test("sign-ups: five an hour from one network, ten shared by unknown ones", async () => {
@@ -320,7 +333,9 @@ describe("limits a real person never meets", () => {
     );
     expect(await t.mutation(internal.access.takeSignUp, { networkKey: "net_other" })).toBeNull();
     for (let i = 0; i < 10; i++) {
-      expect(await t.mutation(internal.access.takeSignUp, { networkKey: UNKNOWN_NETWORK })).toBeNull();
+      expect(
+        await t.mutation(internal.access.takeSignUp, { networkKey: UNKNOWN_NETWORK }),
+      ).toBeNull();
     }
     expect(await t.mutation(internal.access.takeSignUp, { networkKey: UNKNOWN_NETWORK })).toMatch(
       /Too many accounts/,
@@ -417,7 +432,9 @@ describe("signing up on the hosted edition", () => {
       }),
     ).toBe(false);
     process.env.NCAT_EDITION = "self-hosted";
-    expect(requireEmailVerification({ TOSEND_API_KEY: "k", EMAIL_FROM: "a@b.example" })).toBe(false);
+    expect(requireEmailVerification({ TOSEND_API_KEY: "k", EMAIL_FROM: "a@b.example" })).toBe(
+      false,
+    );
     expect(requireEmailVerification({ REQUIRE_EMAIL_VERIFICATION: "true" })).toBe(true);
   });
 });
@@ -428,7 +445,7 @@ describe("the agent's own schedules", () => {
     const b64 = (value: string) => Buffer.from(value).toString("base64url");
     const iat = Math.floor(Date.now() / 1000);
     const body = `${b64(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${b64(
-      JSON.stringify({ sub: "agent-server", aud: "ncat-dashboard", iat, exp: iat + 300 }),
+      JSON.stringify({ sub: "agent-server", aud: "takewon-dashboard", iat, exp: iat + 300 }),
     )}`;
     return `${body}.${createHmac("sha256", secret).update(body).digest("base64url")}`;
   }

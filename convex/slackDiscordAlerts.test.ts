@@ -168,7 +168,7 @@ function agentToken() {
   const b = (value: string) => Buffer.from(value).toString("base64url");
   const iat = Math.floor(Date.now() / 1000);
   const body = `${b(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${b(
-    JSON.stringify({ sub: "agent-server", aud: "ncat-dashboard", iat, exp: iat + 300 }),
+    JSON.stringify({ sub: "agent-server", aud: "takewon-dashboard", iat, exp: iat + 300 }),
   )}`;
   return `${body}.${createHmac("sha256", SECRET).update(body).digest("base64url")}`;
 }

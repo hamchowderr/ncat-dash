@@ -143,7 +143,7 @@ describe("the agent server's address for voice notes", () => {
     const iat = Math.floor(Date.now() / 1000);
     const part = (value: string) => Buffer.from(value).toString("base64url");
     const body = `${part(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${part(
-      JSON.stringify({ sub: "agent-server", aud: "ncat-dashboard", iat, exp: iat + 300 }),
+      JSON.stringify({ sub: "agent-server", aud: "takewon-dashboard", iat, exp: iat + 300 }),
     )}`;
     const { createHmac } = await import("node:crypto");
     return `${body}.${createHmac("sha256", secret).update(body).digest("base64url")}`;

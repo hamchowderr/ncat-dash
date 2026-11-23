@@ -1,9 +1,9 @@
 // Checks a request from the agent server: an HS256 JWT for this backend (aud
-// "ncat-dashboard"), signed with AGENT_CONVEX_SECRET, which only the agent server and Convex
+// "takewon-dashboard"), signed with AGENT_CONVEX_SECRET, which only the agent server and Convex
 // hold. Until that is set, MASTRA_JWT_SECRET (which the web app holds too) is used.
-// A token the web app or Convex signs for the agent (aud "ncat-agent") is refused here.
+// A token the web app or Convex signs for the agent (aud "takewon-agent") is refused here.
 
-export const DASHBOARD_AUDIENCE = "ncat-dashboard";
+export const DASHBOARD_AUDIENCE = "takewon-dashboard";
 
 /** The secret agent-server calls are signed with. */
 export function agentCallSecret(): string | undefined {

@@ -68,7 +68,7 @@ function base64url(value: string | Uint8Array) {
 async function agentToken(secret = SECRET, expiresIn = 300) {
   const iat = Math.floor(Date.now() / 1000);
   const body = `${base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${base64url(
-    JSON.stringify({ sub: "agent-server", aud: "ncat-dashboard", iat, exp: iat + expiresIn }),
+    JSON.stringify({ sub: "agent-server", aud: "takewon-dashboard", iat, exp: iat + expiresIn }),
   )}`;
   const { createHmac } = await import("node:crypto");
   return `${body}.${createHmac("sha256", secret).update(body).digest("base64url")}`;

@@ -23,8 +23,8 @@ function base64url(value: Buffer | string): string {
  * refused by the agent server, and the other way round. Kept in step with
  * convex/lib/agentToken.ts and src/lib/mastra-proxy.ts.
  */
-export const DASHBOARD_AUDIENCE = "ncat-dashboard";
-export const AGENT_AUDIENCE = "ncat-agent";
+export const DASHBOARD_AUDIENCE = "takewon-dashboard";
+export const AGENT_AUDIENCE = "takewon-agent";
 
 /**
  * The secret for calls from here to the dashboard's backend: AGENT_CONVEX_SECRET, which

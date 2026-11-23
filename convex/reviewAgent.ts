@@ -162,7 +162,7 @@ export const settle = internalMutation({
 });
 
 /** The agent server only takes tokens with this audience (packages/agent lib/auth.ts). */
-export const AGENT_AUDIENCE = "ncat-agent";
+export const AGENT_AUDIENCE = "takewon-agent";
 
 function base64url(bytes: Uint8Array | string): string {
   const raw = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
