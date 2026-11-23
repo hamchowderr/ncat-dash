@@ -228,7 +228,7 @@ export function SlackCard() {
 
   async function copyManifest() {
     try {
-      await navigator.clipboard.writeText(JSON.stringify(slackManifest(here, team.name), null, 2));
+      await navigator.clipboard.writeText(JSON.stringify(slackManifest(here), null, 2));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -295,7 +295,7 @@ export function SlackCard() {
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button asChild size="sm">
-                  <a href={createSlackAppUrl(here, team.name)} target="_blank" rel="noreferrer">
+                  <a href={createSlackAppUrl(here)} target="_blank" rel="noreferrer">
                     <ExternalLink />
                     Create the Slack app
                   </a>

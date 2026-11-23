@@ -30,7 +30,7 @@ describe("the Slack card", () => {
     const manifest = JSON.parse(
       new URL(create.getAttribute("href") ?? "").searchParams.get("manifest_json") ?? "",
     );
-    expect(manifest.display_information.name).toBe(`${TEAM.name} Agent`);
+    expect(manifest.display_information.name).toBe("Takewon");
     expect(manifest.settings.event_subscriptions.request_url).toMatch(/\/api\/slack\/events$/);
     expect(screen.getByLabelText("Bot User OAuth Token")).toHaveAttribute("type", "password");
     expect(screen.getByLabelText("Signing Secret")).toHaveAttribute("type", "password");
