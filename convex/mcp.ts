@@ -14,8 +14,13 @@ import { APPS, OPERATION_SCHEMA, RUN_APP_URI, SKILLS } from "./lib/mcpContent";
 import { bearerKey, hashMcpKey } from "./lib/mcpKeys";
 import { icon } from "./lib/mcpIcons";
 import {
+  EventRefused,
   handleMcp,
   type McpCallContext,
+  type McpComplete,
+  type McpData,
+  type McpEventOccurrence,
+  type McpEvents,
   type McpForm,
   type McpLink,
   type McpPrompt,
@@ -25,9 +30,11 @@ import {
   NeedsInput,
   StartedTask,
   ToolSaid,
+  LEGACY_VERSIONS,
+  MODERN_VERSIONS,
 } from "./lib/mcpServer";
 import { ACCESS_TOKEN_PREFIX } from "./lib/oauth";
-import { signInChallenge } from "./oauth";
+import { mcpResource, signInChallenge } from "./oauth";
 import { approvalView, membersOf, type TeamMembers } from "./lib/approvals";
 import { decideApproval, incomingFiles, startRun } from "./lib/runner";
 import { publishDraft, switchAutomation } from "./automations";
@@ -949,6 +956,92 @@ export const cancel = internalMutation({
   },
 });
 
+/** The team's automations, as resources an app can attach to the chat. */
+export const automationEntries = internalQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    const list = await ctx.db
+      .query("automations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .take(200);
+    return list.map((automation) => ({
+      automation_id: automation._id as string,
+      name: automation.name,
+      starts_with: [
+        automation.trigger,
+        ...(automation.moreTriggers ?? []).map((each) => each.trigger),
+      ]
+        .map((trigger) => STARTS[trigger.kind] ?? trigger.kind)
+        .join(", or "),
+    }));
+  },
+});
+
+/** Names to suggest as someone types: the team's automations, uploads or latest runs. */
+export const suggestions = internalQuery({
+  args: { organizationId: v.string(), of: v.union(v.literal("uploads"), v.literal("runs")) },
+  handler: async (ctx, args) => {
+    if (args.of === "uploads") {
+      const uploads = await ctx.db
+        .query("uploads")
+        .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+        .order("desc")
+        .take(200);
+      return uploads
+        .filter((upload) => upload.status === "ready" && !upload.purpose)
+        .map((upload) => upload.fileName);
+    }
+    const runs = await ctx.db
+      .query("runs")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .order("desc")
+      .take(100);
+    return runs.map((run) => run._id as string);
+  },
+});
+
+/** Runs that ended after a moment, oldest first, as run.finished events. */
+export const finishedRuns = internalQuery({
+  args: {
+    organizationId: v.string(),
+    after: v.number(),
+    automationId: v.optional(v.string()),
+    most: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ended = await ctx.db
+      .query("runs")
+      .withIndex("by_organization_and_finishedAt", (q) =>
+        q.eq("organizationId", args.organizationId).gt("finishedAt", args.after),
+      )
+      .take(500);
+    const wanted = ended
+      .filter((run) => !run.test && (!args.automationId || run.automationId === args.automationId))
+      .slice(0, args.most + 1);
+    return await Promise.all(
+      wanted.map(async (run) => {
+        const steps = await ctx.db
+          .query("runSteps")
+          .withIndex("by_run", (q) => q.eq("runId", run._id))
+          .take(200);
+        const byNode = new Map(steps.map((step) => [step.nodeId, step]));
+        const leads = new Set(run.edges.map((edge) => edge.source));
+        const files = run.nodes
+          .filter((node) => !leads.has(node.id))
+          .flatMap((node) => {
+            const step = byNode.get(node.id);
+            return step?.status === "done" ? step.outputs : [];
+          });
+        return {
+          ...runLine(run),
+          finished: run.finishedAt ?? 0,
+          files: [...new Set(files)].slice(0, 50),
+        };
+      }),
+    );
+  },
+});
+
 export const runs = internalQuery({
   args: { organizationId: v.string(), automationId: v.optional(v.string()), limit: v.number() },
   handler: async (ctx, args) => {
@@ -1473,6 +1566,290 @@ function tasksFor(ctx: ActionCtx, caller: Caller): McpTasks {
   };
 }
 
+const AUTOMATION_URI = "takewon://automations/";
+const RUN_URI = "takewon://runs/";
+
+/** The team's automations and runs as resources an app can attach to the chat. */
+function dataFor(ctx: ActionCtx, caller: Caller): McpData {
+  const { organizationId, userId } = caller;
+  const json = (uri: string, value: unknown) => ({
+    uri,
+    name: uri,
+    mimeType: "application/json",
+    text: JSON.stringify(value, null, 2),
+  });
+  return {
+    list: async () => {
+      const automations = await ctx.runQuery(internal.mcp.automationEntries, { organizationId });
+      return automations.map((automation) => ({
+        uri: `${AUTOMATION_URI}${automation.automation_id}`,
+        name: automation.name,
+        title: automation.name,
+        description: `Automation. Starts with: ${automation.starts_with.toLowerCase()}.`,
+        mimeType: "application/json",
+      }));
+    },
+    templates: [
+      {
+        uriTemplate: `${AUTOMATION_URI}{automation_id}`,
+        name: "automation",
+        title: "An automation",
+        description:
+          "One of the team's automations: what starts it, its steps and what stops it running.",
+        mimeType: "application/json",
+      },
+      {
+        uriTemplate: `${RUN_URI}{run_id}`,
+        name: "run",
+        title: "A run",
+        description:
+          "How one run went: each step, errors, the files it made and any approval it waits at.",
+        mimeType: "application/json",
+      },
+    ],
+    read: async (uri) => {
+      try {
+        if (uri.startsWith(AUTOMATION_URI)) {
+          const automationId = decodeURIComponent(uri.slice(AUTOMATION_URI.length));
+          const described = await ctx.runQuery(internal.automations.describeAs, {
+            organizationId,
+            automationId,
+          });
+          return json(uri, described);
+        }
+        if (uri.startsWith(RUN_URI)) {
+          const runId = decodeURIComponent(uri.slice(RUN_URI.length));
+          return json(uri, await ctx.runQuery(internal.mcp.run, { organizationId, runId, userId }));
+        }
+      } catch (caught) {
+        // Not on this team, or no such thing: the protocol answers "not found".
+        if (caught instanceof ConvexError) return null;
+        throw caught;
+      }
+      return null;
+    },
+  };
+}
+
+/** Best matches first: names that start with what was typed, then names that contain it. */
+export function matching(values: string[], typed: string): string[] {
+  const wanted = typed.trim().toLowerCase();
+  const unique = [...new Set(values)];
+  if (!wanted) return unique;
+  const starts = unique.filter((value) => value.toLowerCase().startsWith(wanted));
+  const contains = unique.filter(
+    (value) => !value.toLowerCase().startsWith(wanted) && value.toLowerCase().includes(wanted),
+  );
+  return [...starts, ...contains];
+}
+
+/** Suggestions as the person fills in a prompt or an address. */
+function completeFor(ctx: ActionCtx, caller: Caller): McpComplete {
+  const { organizationId } = caller;
+  const automationNames = async () =>
+    (await ctx.runQuery(internal.mcp.automationEntries, { organizationId })).map(
+      (each) => each.name,
+    );
+  return async (ref, argument) => {
+    if (ref.type === "ref/prompt") {
+      if (
+        argument.name === "automation" &&
+        (ref.name === "run_automation" || ref.name === "how_runs_went")
+      ) {
+        return matching(await automationNames(), argument.value);
+      }
+      if (argument.name === "file" && ref.name === "run_automation") {
+        return matching(
+          await ctx.runQuery(internal.mcp.suggestions, { organizationId, of: "uploads" }),
+          argument.value,
+        );
+      }
+      return [];
+    }
+    if (ref.uri === `${AUTOMATION_URI}{automation_id}` && argument.name === "automation_id") {
+      const automations = await ctx.runQuery(internal.mcp.automationEntries, { organizationId });
+      const typed = argument.value.trim().toLowerCase();
+      return automations
+        .filter(
+          (each) =>
+            !typed ||
+            each.automation_id.toLowerCase().startsWith(typed) ||
+            each.name.toLowerCase().includes(typed),
+        )
+        .map((each) => each.automation_id);
+    }
+    if (ref.uri === `${RUN_URI}{run_id}` && argument.name === "run_id") {
+      return matching(
+        await ctx.runQuery(internal.mcp.suggestions, { organizationId, of: "runs" }),
+        argument.value,
+      );
+    }
+    return [];
+  };
+}
+
+const RUN_PAYLOAD = {
+  type: "object",
+  properties: {
+    run_id: { type: "string" },
+    automation_id: { type: "string" },
+    automation: { type: "string" },
+    status: { type: "string", enum: ["done", "failed", "cancelled"] },
+    finished_at: { type: "string", format: "date-time" },
+    error: { type: ["string", "null"] },
+    files: { type: "array", items: { type: "string" } },
+    address: { type: "string" },
+  },
+};
+
+const APPROVAL_PAYLOAD = {
+  type: "object",
+  properties: {
+    approval_id: { type: "string" },
+    run_id: { type: "string" },
+    automation: { type: "string" },
+    step: { type: "string" },
+    asked: { type: ["string", "array"], items: { type: "string" } },
+    you_may_decide: { type: "boolean" },
+    files: { type: "array", items: { type: "string" } },
+    address: { type: "string" },
+  },
+};
+
+/** A poll cursor is the moment of the last event handed out. */
+const cursorAt = (cursor: string | null): number | null => {
+  const at = cursor ? /^t:(\d+)$/.exec(cursor) : null;
+  return at ? Number(at[1]) : null;
+};
+
+/** Run and approval events, polled: nothing is held per client, the cursor is a moment. */
+function eventsFor(ctx: ActionCtx, caller: Caller): McpEvents {
+  const { organizationId, userId } = caller;
+  return {
+    types: [
+      {
+        name: "run.finished",
+        description: "A run of one of the team's automations ended: done, failed or stopped.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            automation_id: { type: "string", description: "Only this automation's runs." },
+          },
+        },
+        payloadSchema: RUN_PAYLOAD,
+      },
+      {
+        name: "approval.waiting",
+        description:
+          "A run reached an Approval step or a workflow's review and waits for someone to decide.",
+        inputSchema: { type: "object", properties: {} },
+        payloadSchema: APPROVAL_PAYLOAD,
+      },
+    ],
+    poll: async ({ name, args, cursor, maxAgeMs, most }) => {
+      const now = Date.now();
+      const from = cursorAt(cursor);
+      if (cursor !== null && from === null) {
+        throw new EventRefused(
+          -32602,
+          "That cursor did not come from this server. Poll with null to start from now.",
+        );
+      }
+      // A null cursor starts from now: nothing is replayed.
+      if (from === null)
+        return { events: [], cursor: `t:${now}`, truncated: false, hasMore: false };
+      const floor = maxAgeMs !== null ? Math.max(from, now - maxAgeMs) : from;
+      let found: { at: number; event: McpEventOccurrence }[];
+      if (name === "run.finished") {
+        const automationId =
+          typeof args.automation_id === "string" ? args.automation_id : undefined;
+        const ended = await ctx.runQuery(internal.mcp.finishedRuns, {
+          organizationId,
+          after: floor,
+          automationId,
+          most,
+        });
+        found = ended.map(({ finished, ...run }) => ({
+          at: finished,
+          event: {
+            eventId: `${run.run_id}:${run.status}`,
+            name,
+            timestamp: new Date(finished).toISOString(),
+            data: run,
+          },
+        }));
+      } else {
+        const { approvals } = await ctx.runQuery(internal.mcp.approvals, {
+          organizationId,
+          userId,
+        });
+        found = approvals
+          .map((approval) => ({ at: Date.parse(approval.waiting_since), approval }))
+          .filter((each) => each.at > floor)
+          .sort((a, b) => a.at - b.at)
+          .map(({ at, approval }) => ({
+            at,
+            event: {
+              eventId: approval.approval_id,
+              name,
+              timestamp: approval.waiting_since,
+              data: {
+                approval_id: approval.approval_id,
+                run_id: approval.run_id,
+                automation: approval.automation,
+                step: approval.step,
+                asked: approval.asked,
+                you_may_decide: approval.you_may_decide,
+                files: approval.files,
+                address: approval.address,
+              },
+            },
+          }));
+      }
+      const batch = found.slice(0, most);
+      const hasMore = found.length > most;
+      const last = batch.at(-1)?.at;
+      return {
+        events: batch.map((each) => each.event),
+        // With more to come, the next poll carries on from the last one handed out.
+        cursor: `t:${hasMore && last !== undefined ? last : Math.max(floor, last ?? 0, hasMore ? 0 : now)}`,
+        truncated: floor > from,
+        hasMore,
+      };
+    },
+  };
+}
+
+/** GET /mcp/server-card: who this server is and where to reach it, for directories. */
+export const serverCard = httpAction(async () => {
+  const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
+  const card = {
+    $schema: "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+    name: "com.takewon/takewon",
+    title: PRODUCT_NAME,
+    version: SERVER_INFO.version,
+    description:
+      "Your content, social media ready. Build, run and follow your team's content automations (clips, captions, reframing and more) from any AI chat app, and approve what waits for review.",
+    ...(site ? { websiteUrl: site } : {}),
+    remotes: [
+      {
+        type: "streamable-http",
+        url: mcpResource(),
+        supportedProtocolVersions: [...MODERN_VERSIONS, ...LEGACY_VERSIONS],
+      },
+    ],
+  };
+  return new Response(JSON.stringify(card, null, 2), {
+    headers: {
+      "content-type": "application/mcp-server-card+json",
+      "cache-control": "public, max-age=3600",
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-allow-headers": "Content-Type, If-None-Match",
+    },
+  });
+});
+
 /** POST /mcp: one JSON-RPC message in, one answer out. */
 export const serve = httpAction(async (ctx, request) => {
   const caller = await callerOf(ctx, request);
@@ -1518,6 +1895,9 @@ export const serve = httpAction(async (ctx, request) => {
     call: (name, args, context) => callTool(ctx, caller, name, args, context),
     links: linksOf,
     tasks: tasksFor(ctx, caller),
+    data: dataFor(ctx, caller),
+    complete: completeFor(ctx, caller),
+    events: eventsFor(ctx, caller),
   });
   if (!reply.body) return new Response(null, { status: 202, headers: CORS });
   return Response.json(reply.body, { status: reply.status, headers: CORS });

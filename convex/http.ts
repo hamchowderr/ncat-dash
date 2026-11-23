@@ -8,7 +8,7 @@ import { fromAgent } from "./lib/agentToken";
 import { decryptSecret } from "./lib/crypto";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { hookTokenOf, MAX_HOOK_KEY } from "./lib/hooks";
-import { noStream, serve } from "./mcp";
+import { noStream, serve, serverCard } from "./mcp";
 import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
 import { settingsUrl as microsoftSettingsUrl } from "./microsoft";
 import { settingsUrl as teamsSettingsUrl, TEAMS_STATE_PREFIX } from "./microsoftTeams";
@@ -799,6 +799,8 @@ http.route({
 // The dashboard as an MCP server, for Claude and other AI agents (mcp.ts).
 http.route({ path: "/mcp", method: "POST", handler: serve });
 http.route({ path: "/mcp", method: "GET", handler: noStream });
+// Who the server is and where to reach it, for directories and apps (MCP Server Cards).
+http.route({ path: "/mcp/server-card", method: "GET", handler: serverCard });
 http.route({ path: "/mcp", method: "DELETE", handler: noStream });
 
 // Agents sign in with OAuth (oauth.ts). They find how from the MCP address's metadata.

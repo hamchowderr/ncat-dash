@@ -1231,3 +1231,237 @@ describe("approvals asked in the chat, and runs as tasks", () => {
     expect(withPage.body.result).toMatchObject({ resultType: "complete", isError: false });
   });
 });
+
+describe("autocomplete, attachable automations and runs, events and the server card", () => {
+  test("suggests the team's automation names and uploads as a prompt is filled in", async () => {
+    const { t, key } = await setUp();
+    const discovered = await asClient(t, key, {}, "server/discover");
+    expect(discovered.body.result.capabilities.completions).toEqual({});
+    const named = await asClient(t, key, {}, "completion/complete", {
+      ref: { type: "ref/prompt", name: "run_automation" },
+      argument: { name: "automation", value: "week" },
+    });
+    expect(named.body.result.completion).toEqual({
+      values: ["Weekly clips"],
+      total: 1,
+      hasMore: false,
+    });
+    const file = await asClient(t, key, {}, "completion/complete", {
+      ref: { type: "ref/prompt", name: "run_automation" },
+      argument: { name: "file", value: "12" },
+    });
+    expect(file.body.result.completion.values).toEqual(["episode 12.mp4"]);
+    const none = await asClient(t, key, {}, "completion/complete", {
+      ref: { type: "ref/prompt", name: "whats_waiting" },
+      argument: { name: "anything", value: "" },
+    });
+    expect(none.body.result.completion.values).toEqual([]);
+  });
+
+  test("lists the team's automations to attach, and reads an automation or a run", async () => {
+    const { t, key, automationId, uploadId, other, otherTeam } = await setUp();
+    const listed = await asClient(t, key, {}, "resources/list");
+    expect(listed.body.result.resources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          uri: `takewon://automations/${automationId}`,
+          name: "Weekly clips",
+          description: "Automation. Starts with: a new upload.",
+        }),
+      ]),
+    );
+    expect(listed.body.result.ttlMs).toBe(0);
+    const templates = await asClient(t, key, {}, "resources/templates/list");
+    expect(
+      templates.body.result.resourceTemplates.map(
+        (each: { uriTemplate: string }) => each.uriTemplate,
+      ),
+    ).toEqual(["takewon://automations/{automation_id}", "takewon://runs/{run_id}"]);
+
+    const read = await asClient(t, key, {}, "resources/read", {
+      uri: `takewon://automations/${automationId}`,
+    });
+    expect(JSON.parse(read.body.result.contents[0].text)).toMatchObject({
+      automation_id: automationId,
+      name: "Weekly clips",
+    });
+    const started = await call(t, key, "start_automation", {
+      automation_id: automationId,
+      upload_id: uploadId,
+    });
+    const run = await asClient(t, key, {}, "resources/read", {
+      uri: `takewon://runs/${started.data.run_id}`,
+    });
+    expect(JSON.parse(run.body.result.contents[0].text)).toMatchObject({ status: "running" });
+    const ids = await asClient(t, key, {}, "completion/complete", {
+      ref: { type: "ref/resource", uri: "takewon://automations/{automation_id}" },
+      argument: { name: "automation_id", value: "weekly" },
+    });
+    expect(ids.body.result.completion.values).toEqual([automationId]);
+
+    // Another team's key reads nothing of this team's.
+    const theirs = await other.as.mutation(api.mcpKeys.create, {
+      organizationId: otherTeam,
+      name: "Their agent",
+    });
+    const refused = await asClient(t, theirs.key, {}, "resources/read", {
+      uri: `takewon://automations/${automationId}`,
+    });
+    expect(refused.body.error).toMatchObject({ code: -32602 });
+  });
+
+  test("polls for finished runs and waiting approvals from a cursor, for the team only", async () => {
+    const { t, key, automationId, uploadId, other, otherTeam } = await setUp();
+    const discovered = await asClient(t, key, {}, "server/discover");
+    expect(
+      discovered.body.result.capabilities.extensions["io.modelcontextprotocol/events"],
+    ).toEqual({});
+    const types = await asClient(t, key, {}, "events/list");
+    expect(types.body.result.events).toEqual([
+      expect.objectContaining({ name: "run.finished", delivery: ["poll"] }),
+      expect.objectContaining({ name: "approval.waiting", delivery: ["poll"] }),
+    ]);
+
+    const start = await asClient(t, key, {}, "events/poll", { name: "run.finished", cursor: null });
+    expect(start.body.result).toMatchObject({
+      events: [],
+      cursor: expect.stringMatching(/^t:\d+$/),
+      hasMore: false,
+      truncated: false,
+      nextPollMs: 30000,
+    });
+    const started = await call(t, key, "start_automation", {
+      automation_id: automationId,
+      upload_id: uploadId,
+    });
+    const runId = started.data.run_id as Id<"runs">;
+    await t.run(async (ctx) => {
+      const steps = await ctx.db
+        .query("runSteps")
+        .withIndex("by_run", (q) => q.eq("runId", runId))
+        .collect();
+      for (const step of steps) {
+        await ctx.db.patch(step._id, {
+          status: "done",
+          outputs: [`https://files.example/${step.nodeId}.mp4`],
+        });
+      }
+      await ctx.db.patch(runId, { status: "done", finishedAt: Date.now() + 5 });
+    });
+    const polled = await asClient(t, key, {}, "events/poll", {
+      name: "run.finished",
+      cursor: start.body.result.cursor,
+    });
+    expect(polled.body.result.events).toEqual([
+      expect.objectContaining({
+        eventId: `${runId}:done`,
+        name: "run.finished",
+        data: expect.objectContaining({
+          run_id: runId,
+          status: "done",
+          files: ["https://files.example/caption.mp4"],
+        }),
+      }),
+    ]);
+    const again = await asClient(t, key, {}, "events/poll", {
+      name: "run.finished",
+      cursor: polled.body.result.cursor,
+    });
+    expect(again.body.result.events).toEqual([]);
+
+    // Another team polling from the same moment sees none of it.
+    const theirs = await other.as.mutation(api.mcpKeys.create, {
+      organizationId: otherTeam,
+      name: "Their agent",
+    });
+    const elsewhere = await asClient(t, theirs.key, {}, "events/poll", {
+      name: "run.finished",
+      cursor: start.body.result.cursor,
+    });
+    expect(elsewhere.body.result.events).toEqual([]);
+
+    const unknown = await asClient(t, key, {}, "events/poll", { name: "nope", cursor: null });
+    expect(unknown.body.error.code).toBe(-32023);
+    const webhook = await asClient(t, key, {}, "events/subscribe", { name: "run.finished" });
+    expect(webhook.body.error.code).toBe(-32026);
+    const forged = await asClient(t, key, {}, "events/poll", {
+      name: "run.finished",
+      cursor: "anything",
+    });
+    expect(forged.body.error.code).toBe(-32602);
+  });
+
+  test("tells who should decide when a run starts waiting for an approval", async () => {
+    const { t, key, owner, team } = await setUp();
+    const start = await asClient(t, key, {}, "events/poll", {
+      name: "approval.waiting",
+      cursor: null,
+    });
+    await t.run(async (ctx) => {
+      const id = await ctx.db.insert("automations", {
+        organizationId: team,
+        name: "Client ads",
+        enabled: true,
+        trigger: { kind: "webhook" },
+        nodes: [{ id: "approval", kind: "approval", input: {}, position: { x: 0, y: 0 } }],
+        edges: [],
+        hookToken: "token-3",
+        nextRunAt: null,
+        createdBy: owner.id,
+        updatedAt: Date.now(),
+      });
+      const automation = await ctx.db.get(id);
+      const started = await startRun(
+        ctx,
+        automation!,
+        "webhook",
+        { file_url: "https://files.example/ad.mp4" },
+        null,
+      );
+      if (!started.ok) throw new Error(started.message);
+      const [step] = await ctx.db
+        .query("runSteps")
+        .withIndex("by_run", (q) => q.eq("runId", started.runId))
+        .collect();
+      await ctx.db.patch(step._id, { startedAt: Date.now() + 5 });
+    });
+    const polled = await asClient(t, key, {}, "events/poll", {
+      name: "approval.waiting",
+      cursor: start.body.result.cursor,
+    });
+    expect(polled.body.result.events).toEqual([
+      expect.objectContaining({
+        name: "approval.waiting",
+        data: expect.objectContaining({
+          automation: "Client ads",
+          you_may_decide: true,
+          files: ["https://files.example/ad.mp4"],
+        }),
+      }),
+    ]);
+  });
+
+  test("serves a public server card that names the server and where to reach it", async () => {
+    const { t } = await setUp();
+    const response = await t.fetch("/mcp/server-card", { method: "GET" });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/mcp-server-card+json");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    const card = await response.json();
+    expect(card).toMatchObject({
+      $schema: "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+      name: "com.takewon/takewon",
+      title: "Takewon",
+      version: expect.any(String),
+      description: expect.stringContaining("Your content, social media ready."),
+      remotes: [
+        {
+          type: "streamable-http",
+          url: expect.stringMatching(/\/mcp$/),
+          supportedProtocolVersions: expect.arrayContaining(["2026-07-28"]),
+        },
+      ],
+    });
+    expect(card.name).toMatch(/^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/);
+  });
+});

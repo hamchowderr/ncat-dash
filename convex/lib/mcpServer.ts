@@ -6,7 +6,8 @@
  * and client capabilities in `_meta` and there is no handshake, and it still answers
  * older clients that start with `initialize` (2025-11-25 and before). Three extensions are
  * offered: MCP Apps (a tool can show a small page in the chat), Skills (instructions an
- * agent can load, as `skill://` resources) and Tasks (a long job the chat app follows).
+ * agent can load, as `skill://` resources), Tasks (a long job the chat app follows) and
+ * Events (things that happened, which the chat app polls for).
  *
  * A tool can also ask the person something in the middle (elicitation): it answers
  * `input_required` with a form, and the chat app shows it and calls again with the
@@ -20,6 +21,7 @@ export const LEGACY_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-
 export const APPS_EXTENSION = "io.modelcontextprotocol/ui";
 export const SKILLS_EXTENSION = "io.modelcontextprotocol/skills";
 export const TASKS_EXTENSION = "io.modelcontextprotocol/tasks";
+export const EVENTS_EXTENSION = "io.modelcontextprotocol/events";
 export const APP_MIME_TYPE = "text/html;profile=mcp-app";
 
 const META_VERSION = "io.modelcontextprotocol/protocolVersion";
@@ -112,6 +114,69 @@ export class StartedTask {
   constructor(readonly task: McpTask) {}
 }
 
+/** Team data an app can attach to the chat: listed entries, templates, and reading one. */
+export type McpData = {
+  list: () => Promise<Omit<McpResource, "text">[]>;
+  templates: {
+    uriTemplate: string;
+    name: string;
+    title: string;
+    description: string;
+    mimeType: string;
+  }[];
+  /** null when there is nothing at that address for this caller. */
+  read: (uri: string) => Promise<McpResource | null>;
+};
+
+/** What to suggest for one argument of a prompt or a resource template. */
+export type McpComplete = (
+  ref: { type: "ref/prompt"; name: string } | { type: "ref/resource"; uri: string },
+  argument: { name: string; value: string },
+  known: Record<string, string>,
+) => Promise<string[]>;
+
+/** One kind of event, as events/list describes it. Only polling is offered. */
+export type McpEventType = {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  payloadSchema: Record<string, unknown>;
+};
+
+export type McpEventOccurrence = {
+  eventId: string;
+  name: string;
+  timestamp: string;
+  data: Record<string, unknown>;
+};
+
+/** An events/* refusal with its own code (NotFound -32023, Forbidden -32024 and so on). */
+export class EventRefused extends Error {
+  constructor(
+    readonly code: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export type McpEvents = {
+  types: McpEventType[];
+  /** Events after the cursor (null: start from now), oldest first, at most `most`. */
+  poll: (request: {
+    name: string;
+    args: Record<string, unknown>;
+    cursor: string | null;
+    maxAgeMs: number | null;
+    most: number;
+  }) => Promise<{
+    events: McpEventOccurrence[];
+    cursor: string;
+    truncated: boolean;
+    hasMore: boolean;
+  }>;
+};
+
 /** The server's side of tasks. Each throws ToolSaid when the task is not this caller's. */
 export type McpTasks = {
   get: (taskId: string, context: McpCallContext) => Promise<McpTask | null>;
@@ -153,6 +218,9 @@ export type McpServer = {
   /** The files a tool's result links to, sent beside it as resource links. */
   links?: (result: unknown) => McpLink[];
   tasks?: McpTasks;
+  data?: McpData;
+  complete?: McpComplete;
+  events?: McpEvents;
 };
 
 /** A tool's own error, said to the agent in plain words rather than as a protocol error. */
@@ -165,6 +233,9 @@ type Params = Record<string, unknown>;
 
 const LIST_CACHE = { ttlMs: 300_000, cacheScope: "private" } as const;
 const TASK_POLL_MS = 5_000;
+const EVENT_POLL_MS = 30_000;
+/** Team data changes all the time, so a client reads it again rather than keep it. */
+const NO_CACHE = { ttlMs: 0, cacheScope: "private" } as const;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -212,7 +283,7 @@ function toolEntry(tool: McpTool, apps: boolean) {
   };
 }
 
-const resourceEntry = (resource: McpResource) => ({
+const resourceEntry = (resource: Omit<McpResource, "text">) => ({
   uri: resource.uri,
   name: resource.name,
   ...(resource.title ? { title: resource.title } : {}),
@@ -263,11 +334,13 @@ function capabilities(server: McpServer, modern: boolean) {
     tools: { listChanged: false },
     resources: { subscribe: false, listChanged: false },
     ...(server.prompts?.length ? { prompts: { listChanged: false } } : {}),
+    ...(server.complete ? { completions: {} } : {}),
     extensions: {
       [APPS_EXTENSION]: { mimeTypes: [APP_MIME_TYPE] },
       ...(server.skills.length > 0 ? { [SKILLS_EXTENSION]: {} } : {}),
       // Tasks as 2026-07-28 has them; older clients knew an earlier, different kind.
       ...(server.tasks && modern ? { [TASKS_EXTENSION]: {} } : {}),
+      ...(server.events && modern ? { [EVENTS_EXTENSION]: {} } : {}),
     },
   };
 }
@@ -491,20 +564,34 @@ export async function handleMcp(
         return failure(id, -32602, caught.message, 400);
       }
     }
-    case "resources/list":
-      return cached({
-        resources: [...server.apps, ...server.skills.flatMap((skill) => skill.files)].map(
-          resourceEntry,
-        ),
-      });
+    case "resources/list": {
+      const fixed = [...server.apps, ...server.skills.flatMap((skill) => skill.files)];
+      const data = server.data ? await server.data.list() : [];
+      const listed = { resources: [...fixed, ...data].map(resourceEntry) };
+      return answer(modern ? { ...listed, ...(data.length ? NO_CACHE : LIST_CACHE) } : listed);
+    }
     case "resources/templates/list":
-      return cached({ resourceTemplates: [] });
+      return cached({ resourceTemplates: server.data?.templates ?? [] });
     case "resources/read": {
       const uri = typeof given.uri === "string" ? given.uri : "";
       const found = [...server.apps, ...server.skills.flatMap((skill) => skill.files)].find(
         (resource) => resource.uri === uri,
       );
-      if (!found) return failure(id, -32602, `There is no resource at ${uri || "(none)"}.`, 400);
+      if (!found) {
+        let read: McpResource | null = null;
+        try {
+          read = server.data ? await server.data.read(uri) : null;
+        } catch (caught) {
+          if (!(caught instanceof ToolSaid)) throw caught;
+        }
+        if (!read) {
+          return failure(id, -32602, `There is no resource at ${uri || "(none)"}.`, 400, { uri });
+        }
+        const contents = {
+          contents: [{ uri: read.uri, mimeType: read.mimeType, text: read.text }],
+        };
+        return answer(modern ? { ...contents, ...NO_CACHE } : contents);
+      }
       return cached({
         contents: [
           {
@@ -543,6 +630,69 @@ export async function handleMcp(
         messages: [{ role: "user", content: { type: "text", text: prompt.text(args) } }],
       });
     }
+    case "completion/complete": {
+      if (!server.complete) break;
+      const ref = isObject(given.ref) ? given.ref : {};
+      const argument = isObject(given.argument) ? given.argument : {};
+      const name = typeof argument.name === "string" ? argument.name : "";
+      const value = typeof argument.value === "string" ? argument.value : "";
+      const context =
+        isObject(given.context) && isObject(given.context.arguments) ? given.context.arguments : {};
+      const known: Record<string, string> = {};
+      for (const [key, each] of Object.entries(context))
+        if (typeof each === "string") known[key] = each;
+      let target: Parameters<McpComplete>[0] | null = null;
+      if (ref.type === "ref/prompt" && typeof ref.name === "string") {
+        target = { type: "ref/prompt", name: ref.name };
+      } else if (ref.type === "ref/resource" && typeof ref.uri === "string") {
+        target = { type: "ref/resource", uri: ref.uri };
+      }
+      if (!target || !name) return failure(id, -32602, "Send ref and argument.name.", 400);
+      const values = await server.complete(target, { name, value }, known);
+      return answer({
+        completion: {
+          values: values.slice(0, 100),
+          total: values.length,
+          hasMore: values.length > 100,
+        },
+      });
+    }
+    case "events/list":
+      if (!server.events || !modern) break;
+      return answer({
+        events: server.events.types.map((type) => ({ ...type, delivery: ["poll"] })),
+      });
+    case "events/poll": {
+      if (!server.events || !modern) break;
+      const name = typeof given.name === "string" ? given.name : "";
+      if (!server.events.types.some((type) => type.name === name)) {
+        return failure(id, -32023, "NotFound", 400, { kind: "event", name });
+      }
+      const most =
+        typeof given.maxEvents === "number" && given.maxEvents >= 1
+          ? Math.min(100, Math.floor(given.maxEvents))
+          : 50;
+      try {
+        const polled = await server.events.poll({
+          name,
+          args: isObject(given.arguments) ? given.arguments : {},
+          cursor: typeof given.cursor === "string" ? given.cursor : null,
+          maxAgeMs:
+            typeof given.maxAgeMs === "number" && given.maxAgeMs > 0 ? given.maxAgeMs : null,
+          most,
+        });
+        return answer({ ...polled, nextPollMs: EVENT_POLL_MS });
+      } catch (caught) {
+        if (caught instanceof EventRefused) return failure(id, caught.code, caught.message, 400);
+        throw caught;
+      }
+    }
+    case "events/stream":
+    case "events/subscribe":
+    case "events/unsubscribe":
+      if (!server.events || !modern) break;
+      // Every event here is offered by polling only, which needs no stream or callback.
+      return failure(id, -32026, "Unsupported", 400, { feature: "delivery", reason: "poll only" });
     case "skills/list":
       return cached({ skills: await Promise.all(server.skills.map(skillEntry)) });
     case "skills/get": {
