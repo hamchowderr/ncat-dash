@@ -28,8 +28,14 @@ let joined: string[] = [];
 let calls: string[] = [];
 let slackUsers: Record<string, { email?: string; name: string }> = {};
 let nextTs = 1_700_000_000;
+// Posts Slack is slow to answer, by a word in their text, as when Slack is busy.
+let slowFor: string[] = [];
+// Posts Slack cannot be reached for, by a word in their text.
+let downFor: string[] = [];
+const realSetTimeout = globalThis.setTimeout;
 
 beforeEach(() => {
+  vi.useFakeTimers();
   process.env.CONNECTIONS_SECRET = "a-connections-secret-of-at-least-32-chars";
   process.env.SLACK_API_URL = "https://slack.test/api/";
   posted = [];
@@ -37,6 +43,8 @@ beforeEach(() => {
   calls = [];
   slackUsers = {};
   customize = false;
+  slowFor = [];
+  downFor = [];
   vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
     const method = String(input).replace("https://slack.test/api/", "");
     const params = new URLSearchParams(String(init?.body ?? ""));
@@ -65,6 +73,12 @@ beforeEach(() => {
         return Response.json({ ok: true });
       case "chat.postMessage":
       case "chat.postEphemeral": {
+        if (downFor.some((word) => params.get("text")?.includes(word))) {
+          throw new TypeError("fetch failed");
+        }
+        if (slowFor.some((word) => params.get("text")?.includes(word))) {
+          await new Promise((resolve) => realSetTimeout(resolve, 50));
+        }
         const ts = `${++nextTs}.000100`;
         posted.push({
           method,
@@ -107,18 +121,16 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   delete process.env.CONNECTIONS_SECRET;
   delete process.env.SLACK_API_URL;
 });
 
+// The clock is the test's own from the start, so work scheduled for later (the chat
+// pool's next round) always runs when the test waits for it.
 async function settled(t: ReturnType<typeof backend>) {
-  vi.useFakeTimers();
-  try {
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-  } finally {
-    vi.useRealTimers();
-  }
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
 
 async function setUp({ channel = true } = {}) {
@@ -284,9 +296,6 @@ describe("what the channel hears", () => {
       version: 1,
       parentId: rootId,
     });
-    // Each comment's post is sent in the background; let the first go before the second,
-    // as it does when people type, so the test does not depend on which job runs first.
-    await settled(t);
     await t.mutation(api.sharedReview.comment, {
       token,
       guestId: "riley-browser-0001",
@@ -315,6 +324,90 @@ describe("what the channel hears", () => {
     expect(posted.at(-1)?.text).toMatch(
       /^\*Riley\* \(client\) on <.*\|Weekly clips>: Approved the review\.$/,
     );
+  });
+
+  test("posts reach Slack in the order they were written, even when Slack is slow to answer one", async () => {
+    const setup = await setUp();
+    const { t, jordan } = setup;
+    const { reviewId, clipId } = await openRoom(setup);
+    await settled(t);
+    const token = await jordan.as.mutation(api.reviewShares.set, {
+      reviewId,
+      allowVerdict: false,
+      showTeamComments: false,
+    });
+    // Slack takes its time over the client's comment, which starts the thread.
+    slowFor = ["Can the end card", "Sure, two more"];
+    const rootId = await t.mutation(api.sharedReview.comment, {
+      token,
+      guestId: "riley-browser-0001",
+      name: "Riley",
+      clipId,
+      body: "Can the end card stay up longer?",
+      time: 62,
+      version: 1,
+    });
+    // Both reply before Slack has answered either post.
+    const reply = { clipId, time: 0, version: 1, parentId: rootId };
+    await t.mutation(api.sharedReview.comment, {
+      ...reply,
+      token,
+      guestId: "riley-browser-0001",
+      name: "Riley",
+      body: "And the music a bit lower.",
+    });
+    await jordan.as.mutation(api.reviews.comment, { ...reply, body: "Sure, two more seconds." });
+    await t.mutation(api.sharedReview.comment, {
+      ...reply,
+      token,
+      guestId: "riley-browser-0001",
+      name: "Riley",
+      body: "Thanks!",
+    });
+    await settled(t);
+    const [root, ...replies] = posted.slice(1);
+    expect(root).toMatchObject({ thread_ts: null });
+    expect(root.text).toMatch(/^\*Riley\* \(client\) commented on /);
+    // One Slack thread, holding every reply in the order it was written.
+    expect(replies.map((one) => [one.thread_ts, one.text])).toEqual([
+      [root.ts, "*Riley* (client): And the music a bit lower."],
+      [root.ts, "*Jordan Lee*: Sure, two more seconds."],
+      [root.ts, "*Riley* (client): Thanks!"],
+    ]);
+    expect(await t.run((ctx) => ctx.db.query("slackThreads").collect())).toMatchObject([
+      { commentId: rootId, threadTs: root.ts },
+    ]);
+    // Nothing is left waiting to be sent.
+    expect(await t.run((ctx) => ctx.db.query("reviewChatPosts").collect())).toEqual([]);
+  });
+
+  test("a post Slack could not be reached for does not hold up the ones after it", async () => {
+    const setup = await setUp();
+    const { t, jordan } = setup;
+    const { clipId } = await openRoom(setup);
+    downFor = ["Weekly clips"];
+    await jordan.as.mutation(api.reviews.comment, {
+      clipId,
+      body: "@Dev Patel is the logo too small?",
+      time: 4,
+      version: 1,
+    });
+    await settled(t);
+    downFor = [];
+    await jordan.as.mutation(api.reviews.comment, {
+      clipId,
+      body: "@Dev Patel and the music?",
+      time: 5,
+      version: 1,
+    });
+    await settled(t);
+    // The review's news and the first mention never reached Slack; the next one did.
+    expect(posted.filter((one) => one.channel === "C0VIDEO").map((one) => one.text)).toEqual([
+      expect.stringMatching(
+        /^\*Jordan Lee\* mentioned <@U0DEV> on .*\n> @Dev Patel and the music\?$/,
+      ),
+    ]);
+    expect(await t.run((ctx) => ctx.db.query("reviewChatPosts").collect())).toEqual([]);
   });
 
   test("with chat:write.customize, replies go under the writer's own name", async () => {
@@ -388,7 +481,6 @@ describe("what the channel hears", () => {
     const setup = await setUp();
     const { t, jordan } = setup;
     const { reviewId, clipId } = await openRoom(setup);
-    // Only what the client's comment posts is looked at, whatever order posts land in.
     await settled(t);
     posted = [];
     const token = await jordan.as.mutation(api.reviewShares.set, {

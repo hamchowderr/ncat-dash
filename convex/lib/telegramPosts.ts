@@ -1,6 +1,6 @@
-import { internal } from "../_generated/api";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import type { ReviewPost } from "./slackPosts";
+import { queueReviewPost, threadOnItsWay } from "./reviewChatQueue";
+import type { ReviewPost } from "./reviewPost";
 import { telegramReady } from "./chatAlerts/telegram";
 
 /** The team's Telegram group that hears review activity, if it picked one. */
@@ -31,7 +31,10 @@ export async function toTelegram(
       .query("telegramReviewPosts")
       .withIndex("by_comment", (q) => q.eq("commentId", post.commentId))
       .first();
-    if (!thread || thread.chatId !== group.chatId) return;
+    const missing = thread
+      ? thread.chatId !== group.chatId
+      : !(await threadOnItsWay(ctx, "telegram", post.commentId));
+    if (missing) return;
   }
-  await ctx.scheduler.runAfter(0, internal.telegramReview.post, { organizationId, post });
+  await queueReviewPost(ctx, "telegram", organizationId, post);
 }

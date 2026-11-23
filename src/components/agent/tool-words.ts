@@ -117,6 +117,8 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
         lines: [],
       };
     }
+    case "motion_guide":
+      return { title: "Checking the motion graphics styles", question: "", lines: [] };
     case "change_automation": {
       const changes = Array.isArray(given?.operations) ? given.operations : [];
       const lines = changes
@@ -330,6 +332,7 @@ export function resultWords(name: string | undefined, result: unknown): string[]
     const unknown = Array.isArray(value.unknown) ? value.unknown.filter(isText) : [];
     return unknown.length ? [`Not in the guide: ${unknown.join(", ")}`] : [];
   }
+  if (name === "motion_guide") return [];
   if (name === "list_folder") {
     const folders = Array.isArray(value.folders) ? value.folders.length : 0;
     const files = Array.isArray(value.files) ? value.files.length : 0;

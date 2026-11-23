@@ -21,7 +21,8 @@ export function backend() {
   t.registerComponent("betterAuth", authSchema, authModules);
   presence.register(t, "presence");
   rateLimiter.register(t, "rateLimiter");
-  for (const name of ["outboundPool", "toolkitPool", "backgroundPool"]) workpool.register(t, name);
+  for (const name of ["outboundPool", "toolkitPool", "backgroundPool", "chatPool"])
+    workpool.register(t, name);
   return t;
 }
 

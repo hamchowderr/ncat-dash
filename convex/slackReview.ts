@@ -251,6 +251,8 @@ export const post = internalAction({
   handler: async (ctx, args) => {
     const context = await ctx.runQuery(internal.slackReview.postContext, args);
     if (!context) return;
+    // A teammate's plain reply only goes into a thread the channel already has.
+    if (args.post.kind === "team_reply" && !context.threadTs) return;
     const token = await decryptSecret(context.tokenCipher);
     const tags: string[] = [];
     for (const person of context.mentionedEmails) {

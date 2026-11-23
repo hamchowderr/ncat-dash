@@ -1,17 +1,11 @@
 import { v } from "convex/values";
 
+import { internal } from "./_generated/api";
 import { internalMutation, query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { UNKNOWN_NETWORK } from "./lib/clientIp";
 import { emailKey } from "./lib/emailKey";
-import {
-  buyUrl,
-  daysLeft,
-  trialDays,
-  trialEnd,
-  trialOf,
-  trialsPerNetwork,
-} from "./lib/trial";
+import { buyUrl, daysLeft, trialDays, trialEnd, trialOf, trialsPerNetwork } from "./lib/trial";
 
 /**
  * A team's free trial, for the bar along the top and the agent: whether it has one, how
@@ -45,7 +39,8 @@ export const status = query({
   },
 });
 
-const NETWORK_WINDOW = 30 * 24 * 60 * 60 * 1000;
+const DAY = 24 * 60 * 60 * 1000;
+const NETWORK_WINDOW = 30 * DAY;
 
 /**
  * Starts a new team's trial. Called when the team is made (see `organizationHooks` in
@@ -80,8 +75,7 @@ export const begin = internalMutation({
           .first()
       : null;
     const mailbox = signUp?.emailKey ?? (args.ownerEmail ? emailKey(args.ownerEmail) : null);
-    const network =
-      signUp && signUp.networkKey !== UNKNOWN_NETWORK ? signUp.networkKey : undefined;
+    const network = signUp && signUp.networkKey !== UNKNOWN_NETWORK ? signUp.networkKey : undefined;
 
     let endsAt = trialEnd(startedAt, days);
     let repeatOf: "email" | "network" | undefined;
@@ -117,6 +111,21 @@ export const begin = internalMutation({
       ...(network ? { networkKey: network } : {}),
       ...(repeatOf ? { repeatOf } : {}),
     });
+    // A fresh trial's owner hears a day before it ends, and again when it has. A shared
+    // or used-up trial was told about already, under the team that started it.
+    if (!repeatOf) {
+      const reminder = { organizationId: args.organizationId, endsAt };
+      if (endsAt - DAY > startedAt) {
+        await ctx.scheduler.runAt(endsAt - DAY, internal.email.sendTrialReminder, {
+          ...reminder,
+          kind: "ending" as const,
+        });
+      }
+      await ctx.scheduler.runAt(endsAt, internal.email.sendTrialReminder, {
+        ...reminder,
+        kind: "ended" as const,
+      });
+    }
     return null;
   },
 });
