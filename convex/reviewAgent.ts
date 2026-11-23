@@ -161,6 +161,9 @@ export const settle = internalMutation({
   },
 });
 
+/** The agent server only takes tokens with this audience (packages/agent lib/auth.ts). */
+export const AGENT_AUDIENCE = "takewon-agent";
+
 function base64url(bytes: Uint8Array | string): string {
   const raw = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
   let text = "";
@@ -172,7 +175,7 @@ function base64url(bytes: Uint8Array | string): string {
 export async function signAgentToken(secret: string, sub: string, now = Date.now()) {
   const iat = Math.floor(now / 1000);
   const body = `${base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${base64url(
-    JSON.stringify({ sub, iat, exp: iat + 300 }),
+    JSON.stringify({ sub, aud: AGENT_AUDIENCE, iat, exp: iat + 300 }),
   )}`;
   const key = await crypto.subtle.importKey(
     "raw",

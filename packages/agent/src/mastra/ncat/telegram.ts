@@ -5,7 +5,7 @@ import { env } from '../../lib/env';
 import { LONG_CACHE_KEY } from '../lib/cost';
 import { TURN_USER_KEY } from '../lib/turn-user';
 import { rememberSession } from './session-store';
-import { convexSiteUrl, signForDashboard } from './slack';
+import { convexSiteUrl, dashboardSecret, signForDashboard } from './slack';
 import { hearVoiceNotes } from './voice-notes';
 
 /**
@@ -38,7 +38,7 @@ type Ask = <T>(path: string, body: Record<string, string>) => Promise<T | null>;
 
 const askDashboard: Ask = async <T>(path: string, body: Record<string, string>) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   if (!site || !secret) return null;
   try {
     const response = await fetch(`${site}${path}`, {
@@ -247,7 +247,7 @@ export const onTelegramAction: ActionChannelHandler = async (event, defaultHandl
 
 /** Whether this server has the dashboard's Telegram bot set up. */
 export function telegramReady(): boolean {
-  return Boolean(env.TELEGRAM_BOT_TOKEN && env.MASTRA_JWT_SECRET && convexSiteUrl());
+  return Boolean(env.TELEGRAM_BOT_TOKEN && dashboardSecret() && convexSiteUrl());
 }
 
 /** The Telegram adapter entry for the agent controller, or none without a bot. */

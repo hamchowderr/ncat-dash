@@ -114,7 +114,7 @@ async function openRoom(setup: Awaited<ReturnType<typeof setUp>>) {
 function agentToken() {
   const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const iat = Math.floor(Date.now() / 1000);
-  const body = `${part({ alg: "HS256", typ: "JWT" })}.${part({ sub: "agent-server", iat, exp: iat + 300 })}`;
+  const body = `${part({ alg: "HS256", typ: "JWT" })}.${part({ sub: "agent-server", aud: "takewon-dashboard", iat, exp: iat + 300 })}`;
   return `${body}.${createHmac("sha256", SECRET).update(body).digest("base64url")}`;
 }
 

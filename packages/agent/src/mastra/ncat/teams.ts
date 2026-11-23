@@ -5,7 +5,7 @@ import { env } from "../../lib/env";
 import { LONG_CACHE_KEY } from "../lib/cost";
 import { TURN_USER_KEY } from "../lib/turn-user";
 import { rememberSession } from "./session-store";
-import { convexSiteUrl, signForDashboard } from "./slack";
+import { convexSiteUrl, dashboardSecret, signForDashboard } from "./slack";
 import { hearVoiceNotes } from "./voice-notes";
 
 /**
@@ -29,7 +29,7 @@ type Ask = (body: Record<string, string>) => Promise<TeamsPerson | null>;
 
 const askDashboard: Ask = async (body) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   if (!site || !secret) return null;
   try {
     const response = await fetch(`${site}/teams/person`, {
@@ -100,7 +100,7 @@ type AskReview = (body: Record<string, string>) => Promise<ReviewAnswer | null>;
 
 const askReviewOfDashboard: AskReview = async (body) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   if (!site || !secret) return null;
   try {
     const response = await fetch(`${site}/teams/review-reply`, {
@@ -214,7 +214,7 @@ export const asTheTeamsWriter: ChannelHandler = async (thread, message: Message,
 /** Whether this server has the dashboard's Teams bot set up. */
 export function teamsReady(): boolean {
   return Boolean(
-    env.TEAMS_APP_ID && env.TEAMS_APP_PASSWORD && env.MASTRA_JWT_SECRET && convexSiteUrl(),
+    env.TEAMS_APP_ID && env.TEAMS_APP_PASSWORD && dashboardSecret() && convexSiteUrl(),
   );
 }
 
@@ -249,7 +249,7 @@ type AskPress = (body: Record<string, string>) => Promise<PressAnswer | null>;
 
 const askPressDashboard: AskPress = async (body) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   if (!site || !secret) return null;
   try {
     const response = await fetch(`${site}/teams/alert-action`, {

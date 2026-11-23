@@ -1,6 +1,29 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
-import { signAgentToken } from "./reviewAgent";
+import { DASHBOARD_AUDIENCE } from "./lib/agentToken";
+
+/** A token as the agent server signs its calls to this backend. */
+async function signAgentToken(secret: string, sub: string) {
+  const b64 = (bytes: Uint8Array | string) => {
+    const raw = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
+    let text = "";
+    for (const byte of raw) text += String.fromCharCode(byte);
+    return btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  };
+  const iat = Math.floor(Date.now() / 1000);
+  const body = `${b64(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${b64(
+    JSON.stringify({ sub, aud: DASHBOARD_AUDIENCE, iat, exp: iat + 300 }),
+  )}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  return `${body}.${b64(new Uint8Array(signature))}`;
+}
 import { addPerson, addTeam, backend } from "./test.setup";
 
 /** A team's own Anthropic key (anthropicKey.ts): added, shown by its end, read by the agent. */

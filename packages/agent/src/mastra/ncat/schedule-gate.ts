@@ -1,6 +1,6 @@
 import { env } from '../../lib/env';
 import { personOf, sessionOf } from './session-store';
-import { convexSiteUrl, signForDashboard } from './slack';
+import { convexSiteUrl, dashboardSecret, signForDashboard } from './slack';
 
 /**
  * The agent's own schedules ("every morning, check my uploads") fire with nobody
@@ -27,7 +27,7 @@ type Ask = (owner: ScheduleOwner) => Promise<Answer | null>;
 
 const askDashboard: Ask = async (owner) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   if (!site || !secret) return null;
   try {
     const response = await fetch(`${site}/agent/scheduled-turn`, {
