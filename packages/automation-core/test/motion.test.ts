@@ -51,7 +51,11 @@ describe("pieces and presets", () => {
     expect([...MOTION_PIECES, ...MOTION_EXTRA_PIECES].map((piece) => piece.type)).toEqual([
       ...MOTION_PIECE_TYPES,
     ]);
-    for (const piece of MOTION_EXTRA_PIECES) expect(MOTION_SOUNDS).toContain(piece.sound);
+    // A sound wave sits under speech, so it has no sound of its own.
+    for (const piece of MOTION_EXTRA_PIECES) {
+      if (piece.type === "waveform") expect(piece.sound).toBeNull();
+      else expect(MOTION_SOUNDS).toContain(piece.sound);
+    }
     for (const piece of MOTION_PIECES) expect(MOTION_SOUNDS).toContain(piece.sound);
   });
 
@@ -501,15 +505,34 @@ describe("the Add Motion Graphics switches", () => {
     expect(changed.pieces[1].layer).toBe("behind");
     expect(changed.pieces.slice(2).every((piece) => piece.layer === undefined)).toBe(true);
     expect(changed.outlines).toEqual([
-      { start: 0.2, duration: 2.8 },
-      { start: 5, duration: 1.2 },
+      { start: 0.2, duration: 2.8, style: "sketch" },
+      { start: 5, duration: 1.2, style: "sketch" },
     ]);
     expect(changed.zooms).toBeUndefined();
   });
 
   it("outline the opening when nothing sits behind the speaker", () => {
     const changed = withStepEffects(plan, { behind: false, outline: true, punchIns: false }, 30);
-    expect(changed.outlines).toEqual([{ start: 0, duration: 3 }]);
+    expect(changed.outlines).toEqual([{ start: 0, duration: 3, style: "sketch" }]);
+  });
+
+  it("draw the outline as a sticker and move the camera another way when asked", () => {
+    const settings = motionStepSettings({
+      outline: true,
+      outlineStyle: "sticker",
+      punchIns: true,
+      punchStyle: "dolly",
+    });
+    expect(settings).toMatchObject({ outlineStyle: "sticker", punchStyle: "dolly" });
+    expect(motionStepSettings({ outlineStyle: "glow", punchStyle: "spin" })).toMatchObject({
+      outlineStyle: "sketch",
+      punchStyle: "punch",
+    });
+    const changed = withStepEffects(plan, settings, 9.2);
+    expect(changed.outlines).toEqual([{ start: 0, duration: 3, style: "sticker" }]);
+    expect(changed.zooms).toEqual([{ start: 5, duration: 1.2, scale: 1.3, style: "dolly" }]);
+    const through = withStepEffects(plan, { ...settings, punchStyle: "through" }, 9.2);
+    expect(through.zooms).toEqual([{ start: 5, duration: 1.2, scale: 2.4, style: "through" }]);
   });
 
   it("punch in on keywords and numbers without two punch-ins overlapping", () => {
