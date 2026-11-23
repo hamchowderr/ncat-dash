@@ -34,15 +34,12 @@ describe("private addresses", () => {
     expect(isPrivateHost(host)).toBe(true);
   });
 
-  test.each([
-    "n8n.example.com",
-    "8.8.8.8",
-    "191.101.15.236",
-    "ncatdash-api.191.101.15.236.sslip.io",
-    "[2606:4700::1]",
-  ])("%s is public", (host) => {
-    expect(isPrivateHost(host)).toBe(false);
-  });
+  test.each(["n8n.example.com", "8.8.8.8", "191.101.15.236", "ncatdash-api.191.101.15.236.sslip.io", "[2606:4700::1]"])(
+    "%s is public",
+    (host) => {
+      expect(isPrivateHost(host)).toBe(false);
+    },
+  );
 
   test("WHATWG URLs turn other ways of writing an address into the usual one", () => {
     // 2130706433 and 0x7f000001 are 127.0.0.1.

@@ -71,7 +71,9 @@ describe("a team's own FFmpeg steps", () => {
     expect(listed).toHaveLength(1);
     expect(listed[0]).toMatchObject({ stepId: saved.stepId, primary: "video_url" });
     expect(await outsider.as.query(api.teamSteps.list, { organizationId: otherTeam })).toEqual([]);
-    await expect(outsider.as.query(api.teamSteps.list, { organizationId: team })).rejects.toThrow();
+    await expect(
+      outsider.as.query(api.teamSteps.list, { organizationId: team }),
+    ).rejects.toThrow();
   });
 
   test("shows in the team's step types for the canvas and the agent", async () => {
@@ -208,7 +210,9 @@ describe("a team's own FFmpeg steps", () => {
     await expect(
       maya.as.mutation(api.teamSteps.remove, { organizationId: team, stepId }),
     ).rejects.toThrow(/Vertical podcast still uses this step/);
-    await t.run((ctx) => ctx.db.patch(automationId as Id<"automations">, { nodes: [] }));
+    await t.run((ctx) =>
+      ctx.db.patch(automationId as Id<"automations">, { nodes: [] }),
+    );
     await maya.as.mutation(api.teamSteps.remove, { organizationId: team, stepId });
     expect(await maya.as.query(api.teamSteps.list, { organizationId: team })).toEqual([]);
   });

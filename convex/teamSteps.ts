@@ -1,4 +1,6 @@
-import { type AutomationNode } from "@ncat-dash/automation-core";
+import {
+  type AutomationNode,
+} from "@ncat-dash/automation-core";
 import {
   isTeamStepId,
   TEAM_STEP_PREFIX,
@@ -195,3 +197,4 @@ export const tryOut = mutation({
     return { jobId: queued.jobId };
   },
 });
+
