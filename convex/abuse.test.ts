@@ -428,7 +428,7 @@ describe("the agent's own schedules", () => {
     const b64 = (value: string) => Buffer.from(value).toString("base64url");
     const iat = Math.floor(Date.now() / 1000);
     const body = `${b64(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${b64(
-      JSON.stringify({ sub: "agent-server", iat, exp: iat + 300 }),
+      JSON.stringify({ sub: "agent-server", aud: "ncat-dashboard", iat, exp: iat + 300 }),
     )}`;
     return `${body}.${createHmac("sha256", secret).update(body).digest("base64url")}`;
   }

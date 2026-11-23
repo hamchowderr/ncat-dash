@@ -38,11 +38,14 @@ function proxyConfig(): ChatKitProxyConfig {
 
 const b64url = (v: string | Buffer) => Buffer.from(v).toString('base64url');
 
+/** The agent server only takes tokens with this audience (packages/agent lib/auth.ts). */
+export const AGENT_AUDIENCE = 'ncat-agent';
+
 /** A short-lived HS256 JWT for the Mastra server's MastraJwtAuth. */
 export function signServerToken(secret: string, sub: string, now = Date.now()): string {
   const iat = Math.floor(now / 1000);
   const body = `${b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${b64url(
-    JSON.stringify({ sub, iat, exp: iat + 300 }),
+    JSON.stringify({ sub, aud: AGENT_AUDIENCE, iat, exp: iat + 300 }),
   )}`;
   return `${body}.${createHmac('sha256', secret).update(body).digest('base64url')}`;
 }

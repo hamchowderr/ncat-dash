@@ -1,6 +1,6 @@
 import type { Attachment, Message } from 'chat';
 import { env } from '../../lib/env';
-import { convexSiteUrl, signForDashboard } from './slack';
+import { convexSiteUrl, dashboardSecret, signForDashboard } from './slack';
 
 /**
  * Voice notes sent to the agent in Slack or Discord. Before the agent reads a message, any
@@ -20,7 +20,7 @@ type Transcribe = (organizationId: string, audio: Uint8Array, mimeType: string) 
 
 const askDashboard: Transcribe = async (organizationId, audio, mimeType) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   if (!site || !secret) return { ok: false, reason: "the dashboard can't be reached" };
   try {
     const response = await fetch(

@@ -1,5 +1,14 @@
-// Checks a request from the agent server: an HS256 JWT signed with MASTRA_JWT_SECRET, the
-// same shared secret the dashboard signs its own calls to the agent with.
+// Checks a request from the agent server: an HS256 JWT for this backend (aud
+// "ncat-dashboard"), signed with AGENT_CONVEX_SECRET, which only the agent server and Convex
+// hold. Until that is set, MASTRA_JWT_SECRET (which the web app holds too) is used.
+// A token the web app or Convex signs for the agent (aud "ncat-agent") is refused here.
+
+export const DASHBOARD_AUDIENCE = "ncat-dashboard";
+
+/** The secret agent-server calls are signed with. */
+export function agentCallSecret(): string | undefined {
+  return process.env.AGENT_CONVEX_SECRET || process.env.MASTRA_JWT_SECRET;
+}
 
 function fromBase64url(value: string): Uint8Array<ArrayBuffer> {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -11,7 +20,7 @@ function fromBase64url(value: string): Uint8Array<ArrayBuffer> {
 
 /** True when the request carries a live token signed with the shared secret. */
 export async function fromAgent(request: Request, now = Date.now()): Promise<boolean> {
-  const secret = process.env.MASTRA_JWT_SECRET;
+  const secret = agentCallSecret();
   if (!secret) return false;
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -34,8 +43,14 @@ export async function fromAgent(request: Request, now = Date.now()): Promise<boo
     if (!good) return false;
     const header = JSON.parse(new TextDecoder().decode(fromBase64url(head))) as { alg?: unknown };
     if (header.alg !== "HS256") return false;
-    const claims = JSON.parse(new TextDecoder().decode(fromBase64url(body))) as { exp?: unknown };
-    return typeof claims.exp === "number" && claims.exp * 1000 > now;
+    const claims = JSON.parse(new TextDecoder().decode(fromBase64url(body))) as {
+      exp?: unknown;
+      aud?: unknown;
+    };
+    const forUs =
+      claims.aud === DASHBOARD_AUDIENCE ||
+      (Array.isArray(claims.aud) && claims.aud.includes(DASHBOARD_AUDIENCE));
+    return forUs && typeof claims.exp === "number" && claims.exp * 1000 > now;
   } catch {
     return false;
   }

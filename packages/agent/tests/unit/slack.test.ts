@@ -108,6 +108,7 @@ describe('reaching the dashboard', () => {
     const [head, claims, signature] = token.split('.');
     expect(JSON.parse(Buffer.from(claims, 'base64url').toString())).toEqual({
       sub: 'agent-server',
+      aud: 'ncat-dashboard',
       iat: 1_700_000_000,
       exp: 1_700_000_300,
     });
