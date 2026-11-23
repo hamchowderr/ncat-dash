@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { startRun } from "./lib/runner";
+import { agentToken } from "./agentToken.testkit";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 type Backend = ReturnType<typeof backend>;
@@ -58,10 +59,7 @@ async function setUp() {
       createdBy: owner.id,
     }),
   );
-  const { key } = await owner.as.mutation(api.mcpKeys.create, {
-    organizationId: team,
-    name: "Claude on my laptop",
-  });
+  const key = await agentToken(t, owner, team);
   return { t, team, owner, member, otherTeam, other, automationId, uploadId, key };
 }
 
@@ -126,54 +124,15 @@ async function call(t: Backend, key: string, name: string, args: Record<string, 
   };
 }
 
-describe("team keys for other AI agents", () => {
-  test("an owner makes one, sees only its hint, and can remove it", async () => {
-    const { team, owner, key } = await setUp();
-    expect(key).toMatch(/^ncat_[A-Za-z0-9_-]{40,}$/);
-    const { keys, canEdit } = await owner.as.query(api.mcpKeys.list, { organizationId: team });
-    expect(canEdit).toBe(true);
-    expect(keys).toEqual([
-      expect.objectContaining({
-        name: "Claude on my laptop",
-        hint: key.slice(-4),
-        lastUsedAt: null,
-      }),
-    ]);
-    expect(JSON.stringify(keys)).not.toContain(key);
-    await owner.as.mutation(api.mcpKeys.remove, { organizationId: team, keyId: keys[0].keyId });
-    expect((await owner.as.query(api.mcpKeys.list, { organizationId: team })).keys).toEqual([]);
-  });
-
-  test("a member who is not an owner or admin cannot make or see keys", async () => {
-    const { team, member } = await setUp();
-    await expect(
-      member.as.mutation(api.mcpKeys.create, { organizationId: team, name: "Mine" }),
-    ).rejects.toThrow(/owner or admin/);
-    expect(await member.as.query(api.mcpKeys.list, { organizationId: team })).toEqual({
-      canEdit: false,
-      keys: [],
-    });
-  });
-
-  test("another team cannot remove a team's key", async () => {
-    const { team, owner, other, otherTeam } = await setUp();
-    const { keys } = await owner.as.query(api.mcpKeys.list, { organizationId: team });
-    await other.as.mutation(api.mcpKeys.remove, {
-      organizationId: otherTeam,
-      keyId: keys[0].keyId as Id<"mcpKeys">,
-    });
-    expect((await owner.as.query(api.mcpKeys.list, { organizationId: team })).keys).toHaveLength(1);
-  });
-});
-
 describe("the MCP server", () => {
-  test("turns away a request without a key, or with a wrong or removed one", async () => {
-    const { t, team, owner, key } = await setUp();
-    expect((await rpc(t, null, "tools/list")).status).toBe(401);
-    expect((await rpc(t, "ncat_madeup", "tools/list")).status).toBe(401);
-    const { keys } = await owner.as.query(api.mcpKeys.list, { organizationId: team });
-    await owner.as.mutation(api.mcpKeys.remove, { organizationId: team, keyId: keys[0].keyId });
-    expect((await rpc(t, key, "tools/list")).status).toBe(401);
+  test("answers only agents that signed in: no token, a made-up one or an old-style key is turned away", async () => {
+    const { t, key } = await setUp();
+    for (const sent of [null, "madeup", "ncat_0123456789abcdefghijklmnopqrstuvwxyzABCDEF"]) {
+      const turned = await rpc(t, sent, "tools/list");
+      expect(turned.status).toBe(401);
+      expect(JSON.stringify(turned.body)).not.toMatch(/key/i);
+    }
+    expect((await rpc(t, key, "tools/list")).status).toBe(200);
   });
 
   test("says hello in the protocol version the client asks for, and lists its tools", async () => {
@@ -244,13 +203,6 @@ describe("the MCP server", () => {
     });
   });
 
-  test("notes when a key was last used", async () => {
-    const { t, team, owner, key } = await setUp();
-    await rpc(t, key, "ping");
-    const { keys } = await owner.as.query(api.mcpKeys.list, { organizationId: team });
-    expect(keys[0].lastUsedAt).toEqual(expect.any(Number));
-  });
-
   test("lists the team's automations and uploads, and only the team's", async () => {
     const { t, other, otherTeam, automationId, uploadId, key } = await setUp();
     const automations = await call(t, key, "list_automations");
@@ -267,10 +219,7 @@ describe("the MCP server", () => {
     expect(uploads.data).toEqual([
       expect.objectContaining({ upload_id: uploadId, name: "episode 12.mp4" }),
     ]);
-    const { key: otherKey } = await other.as.mutation(api.mcpKeys.create, {
-      organizationId: otherTeam,
-      name: "Theirs",
-    });
+    const otherKey = await agentToken(t, other, otherTeam);
     expect((await call(t, otherKey, "list_automations")).data).toEqual([]);
     const reach = await call(t, otherKey, "start_automation", { automation_id: automationId });
     expect(reach).toMatchObject({
@@ -538,10 +487,7 @@ describe("building automations through MCP", () => {
       operations: [{ op: "add" }],
     });
     expect(badShape).toMatchObject({ isError: true });
-    const { key: otherKey } = await other.as.mutation(api.mcpKeys.create, {
-      organizationId: otherTeam,
-      name: "Theirs",
-    });
+    const otherKey = await agentToken(t, other, otherTeam);
     const reach = await call(t, otherKey, "change_automation", {
       automation_id: automationId,
       operations: [{ op: "name", name: "Mine now" }],
@@ -582,9 +528,17 @@ describe("the MCP server once nothing new can start", () => {
 
   test("an AI client stuck in a loop is slowed down", async () => {
     const { t, key } = await setUp();
-    let last = 0;
-    for (let i = 0; i < 61; i++) last = (await rpc(t, key, "tools/list")).status;
-    expect(last).toBe(429);
+    // The clock stands still, so the allowance does not refill while signed-in calls,
+    // which take longer to check than the old keys did, are made.
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      let last = 0;
+      for (let i = 0; i < 61; i++) last = (await rpc(t, key, "tools/list")).status;
+      expect(last).toBe(429);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
 
@@ -620,10 +574,7 @@ describe("workflows over the MCP server", () => {
     });
     expect(switched.data).toEqual({ workflow_id: made.data.workflow_id, on: false });
 
-    const { key: otherKey } = await other.as.mutation(api.mcpKeys.create, {
-      organizationId: otherTeam,
-      name: "Theirs",
-    });
+    const otherKey = await agentToken(t, other, otherTeam);
     expect((await call(t, otherKey, "list_workflows")).data).toEqual([]);
     expect(
       await call(t, otherKey, "switch_workflow", { workflow_id: made.data.workflow_id, on: true }),
@@ -804,10 +755,7 @@ describe("approvals over MCP", () => {
       }),
     ).rejects.toThrow(/Ana Reyes/);
 
-    const { key: otherKey } = await other.as.mutation(api.mcpKeys.create, {
-      organizationId: otherTeam,
-      name: "Theirs",
-    });
+    const otherKey = await agentToken(t, other, otherTeam);
     const reach = await call(t, otherKey, "decide_approval", {
       approval_id: approvals[0].approval_id,
       decision: "approve",
@@ -1225,10 +1173,7 @@ describe("approvals asked in the chat, and runs as tasks", () => {
 
   test("tasks keep to the team and to clients that follow them; the run page gets a plain result", async () => {
     const { t, key, other, otherTeam, runId, automationId, uploadId } = await waiting();
-    const theirs = await other.as.mutation(api.mcpKeys.create, {
-      organizationId: otherTeam,
-      name: "Their agent",
-    });
+    const theirs = { key: await agentToken(t, other, otherTeam) };
     const can = { tasks: true };
     expect(
       (await asClient(t, theirs.key, can, "tasks/get", { taskId: runId })).body.error.code,
@@ -1321,10 +1266,7 @@ describe("autocomplete, attachable automations and runs, events and the server c
     expect(ids.body.result.completion.values).toEqual([automationId]);
 
     // Another team's key reads nothing of this team's.
-    const theirs = await other.as.mutation(api.mcpKeys.create, {
-      organizationId: otherTeam,
-      name: "Their agent",
-    });
+    const theirs = { key: await agentToken(t, other, otherTeam) };
     const refused = await asClient(t, theirs.key, {}, "resources/read", {
       uri: `takewon://automations/${automationId}`,
     });
@@ -1391,10 +1333,7 @@ describe("autocomplete, attachable automations and runs, events and the server c
     expect(again.body.result.events).toEqual([]);
 
     // Another team polling from the same moment sees none of it.
-    const theirs = await other.as.mutation(api.mcpKeys.create, {
-      organizationId: otherTeam,
-      name: "Their agent",
-    });
+    const theirs = { key: await agentToken(t, other, otherTeam) };
     const elsewhere = await asClient(t, theirs.key, {}, "events/poll", {
       name: "run.finished",
       cursor: start.body.result.cursor,

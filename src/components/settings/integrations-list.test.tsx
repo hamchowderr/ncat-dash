@@ -22,7 +22,6 @@ function nothingConnected() {
   answerQuery(api.dropbox.forTeam, { ready: true, me: null });
   answerQuery(api.email.get, { configured: false, canEdit: true });
   answerQuery(api.oauth.connections, []);
-  answerQuery(api.mcpKeys.list, { canEdit: true, keys: [] });
 }
 
 const row = (name: string) => screen.getByRole("link", { name: new RegExp(`^${name}`) });
@@ -54,7 +53,7 @@ describe("the Integrations page", () => {
     answerQuery(api.slack.forTeam, { connected: true, canEdit: true });
     answerQuery(api.zoom.forTeam, { ready: true, wholeAccount: { zoomName: "Salt" }, me: null });
     answerQuery(api.dropbox.forTeam, { ready: true, me: { name: "Jordan" } });
-    answerQuery(api.mcpKeys.list, { canEdit: true, keys: [{ keyId: "k1" }] });
+    answerQuery(api.oauth.connections, [{ grantId: "g1" }]);
     renderInApp(<IntegrationsList />);
     for (const name of ["Slack", "Zoom", "Dropbox", "MCP"]) {
       expect(row(name)).toHaveTextContent("Connected");

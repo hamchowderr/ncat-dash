@@ -2,22 +2,13 @@ import { api } from "@convex/_generated/api";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
-import { answerQuery, mutationOf, toastSuccess } from "@/test/convex";
+import { answerQuery, mutationOf } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
 import { McpSettings, mcpUrl } from "./mcp-settings";
 
-const KEY = {
-  keyId: "k1",
-  name: "n8n",
-  hint: "x9Qz",
-  createdAt: Date.UTC(2026, 10, 2),
-  lastUsedAt: null,
-};
-
 describe("the MCP settings", () => {
   test("shows the server address and each app's own steps, Claude first", () => {
-    answerQuery(api.mcpKeys.list, { canEdit: true, keys: [] });
     answerQuery(api.oauth.connections, []);
     renderInApp(<McpSettings />);
     expect(screen.getByRole("button", { name: "Copy the MCP server address" })).toBeTruthy();
@@ -29,7 +20,6 @@ describe("the MCP settings", () => {
   });
 
   test("switches to another app's steps", () => {
-    answerQuery(api.mcpKeys.list, { canEdit: true, keys: [] });
     answerQuery(api.oauth.connections, []);
     renderInApp(<McpSettings />);
     fireEvent.click(screen.getByRole("tab", { name: /Claude Code/ }));
@@ -38,66 +28,26 @@ describe("the MCP settings", () => {
     expect(screen.getByRole("tabpanel").textContent).toContain('"mcpServers"');
   });
 
-  test("n8n gets a key named for it, shown once, with no name to type", async () => {
-    answerQuery(api.mcpKeys.list, { canEdit: true, keys: [] });
+  test("every app signs in, n8n too: there are no keys to make anywhere", () => {
     answerQuery(api.oauth.connections, []);
-    const create = mutationOf(api.mcpKeys.create);
-    create.mockResolvedValueOnce({ key: "ncat_secretsecret" });
-    const writeText = vi.fn(async () => undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
     renderInApp(<McpSettings />);
     fireEvent.click(screen.getByRole("tab", { name: /n8n/ }));
-    expect(screen.queryByRole("textbox")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Make a key for n8n" }));
-    await waitFor(() =>
-      expect(screen.getByRole("status").textContent).toMatch(/Copy the key for n8n now/),
-    );
-    expect(create).toHaveBeenCalledWith({ organizationId: TEAM.id, name: "n8n" });
-    fireEvent.click(screen.getByRole("button", { name: "Copy the new key" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("ncat_secretsecret"));
-  });
-
-  test("another app that cannot sign in gets a key named for it", async () => {
-    answerQuery(api.mcpKeys.list, { canEdit: true, keys: [] });
-    answerQuery(api.oauth.connections, []);
-    const create = mutationOf(api.mcpKeys.create);
-    create.mockResolvedValueOnce({ key: "ncat_other" });
-    renderInApp(<McpSettings />);
+    const n8n = screen.getByRole("tabpanel").textContent ?? "";
+    expect(n8n).toContain("MCP OAuth2");
+    expect(n8n).toContain("Register Client Automatically");
+    expect(n8n).toContain("Server URL");
+    expect(n8n).toContain("sign in and pick the team");
     fireEvent.click(screen.getByRole("tab", { name: /Other apps/ }));
-    fireEvent.change(screen.getByLabelText("Which app the key is for"), {
-      target: { value: "Render script" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Make a key" }));
-    await waitFor(() =>
-      expect(create).toHaveBeenCalledWith({ organizationId: TEAM.id, name: "Render script" }),
-    );
-  });
-
-  test("lists keys by name and hint, and removes one", async () => {
-    answerQuery(api.mcpKeys.list, { canEdit: true, keys: [KEY] });
-    answerQuery(api.oauth.connections, []);
-    const remove = mutationOf(api.mcpKeys.remove);
-    renderInApp(<McpSettings />);
-    const row = within(screen.getByRole("list", { name: "Connected apps" })).getByRole("listitem");
-    expect(row.textContent).toMatch(/n8n.*key ending in x9Qz.*never used/);
-    fireEvent.click(within(row).getByRole("button", { name: "Remove" }));
-    await waitFor(() =>
-      expect(remove).toHaveBeenCalledWith({ organizationId: TEAM.id, keyId: "k1" }),
-    );
-    expect(toastSuccess).toHaveBeenCalled();
-  });
-
-  test("a member is told to ask an owner or admin for a key", () => {
-    answerQuery(api.mcpKeys.list, { canEdit: false, keys: [] });
-    answerQuery(api.oauth.connections, []);
-    renderInApp(<McpSettings />);
-    fireEvent.click(screen.getByRole("tab", { name: /n8n/ }));
-    expect(screen.getByText("Ask a team owner or admin to make the key.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Make a key/ })).toBeNull();
+    expect(screen.getByRole("tabpanel").textContent).toContain("sign in and pick the team");
+    for (const tab of screen.getAllByRole("tab")) {
+      fireEvent.click(tab);
+      expect(screen.queryByRole("button", { name: /key/i })).toBeNull();
+      expect(screen.getByRole("tabpanel").textContent).not.toMatch(/Bearer/);
+    }
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 
   test("lists the apps that signed in, and disconnects one", async () => {
-    answerQuery(api.mcpKeys.list, { canEdit: true, keys: [] });
     answerQuery(api.oauth.connections, [
       {
         grantId: "g1",

@@ -284,6 +284,9 @@ describe("what the channel hears", () => {
       version: 1,
       parentId: rootId,
     });
+    // Each comment's post is sent in the background; let the first go before the second,
+    // as it does when people type, so the test does not depend on which job runs first.
+    await settled(t);
     await t.mutation(api.sharedReview.comment, {
       token,
       guestId: "riley-browser-0001",

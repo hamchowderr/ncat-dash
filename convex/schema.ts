@@ -470,21 +470,6 @@ export default defineSchema({
   // A saved automation: what starts it, and the steps it runs.
   // Sticky notes on an automation's canvas, for the team. Not part of its versions: they
   // explain the automation and never change what it does, so they save as they are typed.
-  // Keys that let Claude and other AI agents reach the team through the dashboard's MCP
-  // server (convex/mcp.ts). Only a hash of each key is kept; the key is shown once.
-  mcpKeys: defineTable({
-    organizationId: v.string(),
-    name: v.string(),
-    hash: v.string(),
-    // The key's last four characters, to tell keys apart.
-    hint: v.string(),
-    createdBy: v.string(),
-    createdAt: v.number(),
-    lastUsedAt: v.union(v.null(), v.number()),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_hash", ["hash"]),
-
   // When an AI agent connection (a Better Auth OAuth consent, convex/oauth.ts) was last
   // used, for Settings. Noted at most once a minute.
   agentConnectionUse: defineTable({

@@ -7,21 +7,16 @@ import { internal } from "./_generated/api";
 import { type ActionCtx, httpAction } from "./_generated/server";
 import { createAuth } from "./auth";
 import { AGENT_SCOPES, mcpOrigin, mcpResource, TEAM_CLAIM } from "./lib/agentSignIn";
-import { answerMcp, CORS, keyCallerOf } from "./mcp";
+import { answerMcp, CORS } from "./mcp";
 import { CORS as METADATA_CORS } from "./oauth";
 
 /**
- * POST /mcp. A request sends one of the team's keys (Settings > MCP), or an OAuth access
- * token from Better Auth's MCP plugin, which Better Auth checks (signature, issuer, this
- * server as its audience, expiry) before the connection itself is checked here. Kept
- * apart from mcp.ts, so only this route loads Better Auth.
+ * POST /mcp. Every agent signs in: a request sends an OAuth access token from Better
+ * Auth's MCP plugin, which Better Auth checks (signature, issuer, this server as its
+ * audience, expiry) before the connection itself is checked here. There are no API keys.
+ * Kept apart from mcp.ts, so only this route loads Better Auth.
  */
-export const serve = httpAction(async (ctx, request) => {
-  const keyed = await keyCallerOf(ctx, request);
-  if (keyed === "invalid") return withCors(invalidToken());
-  if (keyed !== "none") return answerMcp(ctx, keyed, request);
-  return withCors(await signedIn(ctx)(request));
-});
+export const serve = httpAction(async (ctx, request) => withCors(await signedIn(ctx)(request)));
 
 /**
  * RFC 8414 and OpenID discovery, also at this backend's root, for agents that look for
@@ -60,10 +55,8 @@ const signedIn = (ctx: ActionCtx) =>
     { resource: mcpResource(), challengeScopes: AGENT_SCOPES },
   );
 
-/** A 401 for a token or key that is not (or no longer) good, saying where to sign in. */
-function invalidToken(
-  message = "Sign in to use this server, or send one of your team's keys as Authorization: Bearer <key>.",
-): Response {
+/** A 401 for a token that is not (or no longer) good, saying where to sign in. */
+function invalidToken(message = "Sign in to use this server."): Response {
   const metadata = `${mcpOrigin()}/.well-known/oauth-protected-resource/mcp`;
   return new Response(JSON.stringify({ error: message }), {
     status: 401,
