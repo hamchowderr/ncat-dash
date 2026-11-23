@@ -75,10 +75,48 @@ export function verificationEmail(args: { name?: string; url: string }, branding
     {
       heading: "Confirm your email address",
       paragraphs: [
-        `${args.name ? `Hi ${oneLine(args.name, 60)}, t` : "T"}hanks for creating an account. Confirm this is your address so we can reach you about your automations.`,
+        `${args.name ? `Hi ${oneLine(args.name, 60)}, c` : "C"}onfirm this is your address so you can sign in and we can reach you about your automations.`,
       ],
       button: { label: "Confirm email address", url: args.url },
-      footnote: "If you did not create an account, you can ignore this email.",
+      footnote: "If you did not ask for this, you can ignore this email.",
+    },
+    branding,
+  );
+}
+
+/** Sent to the old address when someone asks to move their account to a new one. */
+export function emailChangeEmail(
+  args: { name?: string; newEmail: string; url: string },
+  branding: Branding,
+) {
+  const next = oneLine(args.newEmail, 120);
+  return compose(
+    "Approve your new email address",
+    {
+      heading: "Approve your new email address",
+      paragraphs: [
+        `${args.name ? `Hi ${oneLine(args.name, 60)}, s` : "S"}omeone asked to move this account to ${next}.`,
+        `Approve it here, then confirm from the email we send to ${next}. Until both are done, you keep signing in with this address.`,
+      ],
+      button: { label: "Approve the change", url: args.url },
+      footnote:
+        "If that was not you, ignore this email and change your password: nothing moves without this link.",
+    },
+    branding,
+  );
+}
+
+/** Sent after a password is changed or reset, so a change nobody asked for is noticed. */
+export function passwordChangedEmail(args: { name?: string; url: string }, branding: Branding) {
+  return compose(
+    "Your password was changed",
+    {
+      heading: "Your password was changed",
+      paragraphs: [
+        `${args.name ? `Hi ${oneLine(args.name, 60)}, t` : "T"}he password for this account was just changed.`,
+      ],
+      button: { label: "Reset it again", url: args.url },
+      footnote: "If that was you, there is nothing to do.",
     },
     branding,
   );

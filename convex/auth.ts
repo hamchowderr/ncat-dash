@@ -3,12 +3,14 @@ import { convex } from "@convex-dev/better-auth/plugins";
 import { isActionCtx, isMutationCtx } from "@convex-dev/better-auth/utils";
 import {
   DEFAULT_APP_NAME,
+  emailChangeEmail,
   invitationEmail,
+  passwordChangedEmail,
   passwordResetEmail,
   verificationEmail,
   type Composed,
 } from "@ncat-dash/email";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { organization } from "better-auth/plugins";
 import { components, internal } from "./_generated/api";
@@ -17,6 +19,7 @@ import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 import { networkKey } from "./lib/clientIp";
 import { getEdition } from "./lib/edition";
+import { requireEmailVerification, socialProviders } from "./lib/signInOptions";
 import { isThrowawayEmail } from "./lib/emailKey";
 import authSchema from "./betterAuth/schema";
 
@@ -119,21 +122,6 @@ export function trustedOrigins(env: Record<string, string | undefined> = process
   return [...new Set([site, ...extra].filter(Boolean))];
 }
 
-/**
- * Whether people must confirm their email address before they can sign in. Set with
- * REQUIRE_EMAIL_VERIFICATION. On the hosted edition it is on by itself once the deployment
- * can send email (TOSEND_API_KEY and EMAIL_FROM), since a free trial for any address
- * typed in is easy to repeat; REQUIRE_EMAIL_VERIFICATION=false turns it off there too.
- */
-export function requireEmailVerification(
-  env: Record<string, string | undefined> = process.env,
-): boolean {
-  const asked = env.REQUIRE_EMAIL_VERIFICATION?.trim();
-  if (asked === "true") return true;
-  if (asked === "false") return false;
-  return getEdition() === "hosted" && Boolean(env.TOSEND_API_KEY?.trim() && env.EMAIL_FROM?.trim());
-}
-
 type Runner = Pick<
   Extract<GenericCtx<DataModel>, { runMutation: unknown }>,
   "runMutation" | "runQuery"
@@ -159,13 +147,60 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
       sendResetPassword: async ({ user, url }) => {
         await queueEmail(ctx, user.email, passwordResetEmail({ name: user.name, url }, branding));
       },
+      // A reset signs every device out, in case the old password was known to someone else.
+      revokeSessionsOnPasswordReset: true,
+      onPasswordReset: async ({ user }) => {
+        await queueEmail(
+          ctx,
+          user.email,
+          passwordChangedEmail({ name: user.name, url: `${site}/forgot-password` }, branding),
+        );
+      },
     },
     emailVerification: {
       sendOnSignUp: true,
+      // Signing in before confirming sends a fresh link (only asked for when confirming is
+      // required), so an old, expired one never leaves someone stuck.
+      sendOnSignIn: true,
       autoSignInAfterVerification: true,
+      // A day, not the default hour: people often open these the next morning.
+      expiresIn: 60 * 60 * 24,
       sendVerificationEmail: async ({ user, url }) => {
         await queueEmail(ctx, user.email, verificationEmail({ name: user.name, url }, branding));
       },
+    },
+    // Sign in with Google, offered only once its keys are set (see socialProviders()).
+    socialProviders: socialProviders(),
+    user: {
+      // Moving an account to a new address: the old address approves first, then the new
+      // one confirms, so a stolen session alone can't take the account away.
+      changeEmail: {
+        enabled: true,
+        // An address nobody has confirmed (a copy that doesn't ask for confirmation) is
+        // simply replaced: there is nothing to approve it from, and with no email set up
+        // the new one could never be confirmed either.
+        updateEmailWithoutVerification: !requireEmailVerification(),
+        sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
+          await queueEmail(
+            ctx,
+            user.email,
+            emailChangeEmail({ name: user.name, newEmail, url }, branding),
+          );
+        },
+      },
+    },
+    hooks: {
+      // A changed password gets the same "was this you?" note a reset does.
+      after: createAuthMiddleware(async (hook) => {
+        if (hook.path !== "/change-password") return;
+        const user = hook.context.session?.user;
+        if (!user || hook.context.returned instanceof Error) return;
+        await queueEmail(
+          ctx,
+          user.email,
+          passwordChangedEmail({ name: user.name, url: `${site}/forgot-password` }, branding),
+        );
+      }),
     },
     databaseHooks: {
       user: {

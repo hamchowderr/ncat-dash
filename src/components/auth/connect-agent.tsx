@@ -53,10 +53,10 @@ export function ConnectAgent() {
       >
         <div className="flex flex-col gap-2">
           <Button asChild>
-            <Link href={`/sign-in?next=${here}`}>Sign in</Link>
+            <Link href={`/sign-in?redirectTo=${here}`}>Sign in</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href={`/sign-up?next=${here}`}>Create an account</Link>
+            <Link href={`/sign-up?redirectTo=${here}`}>Create an account</Link>
           </Button>
         </div>
       </AuthCard>
@@ -147,7 +147,7 @@ export function ConnectAgent() {
               className="hover:text-foreground underline underline-offset-4"
               onClick={async () => {
                 await authClient.signOut();
-                router.push(`/sign-in?next=${here}`);
+                router.push(`/sign-in?redirectTo=${here}`);
               }}
             >
               Not you?
