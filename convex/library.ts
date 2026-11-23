@@ -12,6 +12,7 @@ import {
 } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
+import { backgroundPool } from "./lib/pools";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
@@ -731,9 +732,9 @@ export const transcriptNotStarted = internalMutation({
 });
 
 // Files brought in before every upload was transcribed (2026-11-21) have no transcript.
-// The first time anyone on the team opens the dashboard they are sent, a few at a time.
+// The first time anyone on the team opens the dashboard they are sent, a few at a time
+// (the background pool, lib/pools.ts).
 const CATCH_UP_AT_ONCE = 100;
-const CATCH_UP_SPACING_MS = 2_000;
 
 /**
  * Sends each video and sound the team brought in that has no transcript yet to be
@@ -758,9 +759,9 @@ export const catchUpTranscripts = mutation({
         !captionFileFormat(item.key ?? item.url ?? ""),
     );
     const sent = missing.slice(0, CATCH_UP_AT_ONCE);
-    for (const [index, item] of sent.entries()) {
+    for (const item of sent) {
       await ctx.db.patch(item._id, { transcript: { status: "working", at: Date.now() } });
-      await ctx.scheduler.runAfter(index * CATCH_UP_SPACING_MS, internal.library.transcribe, {
+      await backgroundPool.enqueueAction(ctx, internal.library.transcribe, {
         itemId: item._id,
       });
     }

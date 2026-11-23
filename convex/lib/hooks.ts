@@ -1,3 +1,4 @@
+import { outboundPool } from "./pools";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
@@ -102,11 +103,8 @@ export async function signCallback(body: string, token: string): Promise<string>
   return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-/** Waits before each new try at reporting a run's end, in milliseconds. */
-export const CALLBACK_WAITS_MS = [30_000, 2 * 60_000, 10 * 60_000];
-
 /** When a run ends: books the report to its callback address, if its webhook gave one. */
 export async function reportRunEnd(ctx: MutationCtx, run: Doc<"runs">): Promise<void> {
   if (!run.callbackUrl || run.test) return;
-  await ctx.scheduler.runAfter(0, internal.hooks.sendCallback, { runId: run._id, attempt: 0 });
+  await outboundPool.enqueueAction(ctx, internal.hooks.sendCallback, { runId: run._id });
 }

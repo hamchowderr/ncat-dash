@@ -5,6 +5,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { onOperatorToolkit } from "./edition";
 import { lookSettingFor, teamLooksOf } from "./looks";
+import { toolkitPool } from "./pools";
 import { withTeamSteps } from "./teamSteps";
 
 export const DEFAULT_PARALLEL_JOBS = 3;
@@ -274,7 +275,13 @@ async function send(ctx: MutationCtx, job: Doc<"jobs">, shared: boolean): Promis
     dispatchedAt: Date.now(),
     ...(shared ? { sharedToolkit: true } : {}),
   });
-  await ctx.scheduler.runAfter(0, internal.jobs.dispatch, { jobId: job._id });
+  // The toolkit pool calls jobs.sent when sending ends, even if the send crashed.
+  await toolkitPool.enqueueAction(
+    ctx,
+    internal.jobs.dispatch,
+    { jobId: job._id },
+    { onComplete: internal.jobs.sent, context: { jobId: job._id } },
+  );
   await ctx.scheduler.runAfter(GIVE_UP_AFTER_MS, internal.jobs.giveUp, { jobId: job._id });
 }
 
