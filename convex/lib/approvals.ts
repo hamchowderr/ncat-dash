@@ -3,7 +3,7 @@ import {
   approvalSettings,
   askedToDecide,
   mayDecide,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { components } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";

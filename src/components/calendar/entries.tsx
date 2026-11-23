@@ -3,8 +3,8 @@
 import type { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { DeliverableStatus } from "@convex/lib/packages";
-import type { PostingAppId } from "@ncat-dash/automation-core";
-import { isCalendarPlatform, platformLabel } from "@ncat-dash/automation-core";
+import type { PostingAppId } from "@takewon/automation-core";
+import { isCalendarPlatform, platformLabel } from "@takewon/automation-core";
 import type { useQuery } from "convex/react";
 import { Check, Plus, Repeat, Workflow } from "lucide-react";
 import type { DragEvent, ReactNode } from "react";

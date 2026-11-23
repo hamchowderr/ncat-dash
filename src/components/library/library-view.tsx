@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { formatMoment } from "@ncat-dash/automation-core";
+import { formatMoment } from "@takewon/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Bot, Columns3, LayoutGrid, List, Search } from "lucide-react";
 import Link from "next/link";

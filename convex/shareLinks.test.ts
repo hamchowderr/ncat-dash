@@ -1,4 +1,4 @@
-import { driveDownloadUrl } from "@ncat-dash/automation-core";
+import { driveDownloadUrl } from "@takewon/automation-core";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";

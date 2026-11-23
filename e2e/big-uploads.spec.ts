@@ -13,7 +13,7 @@ const MIB = 1024 * 1024;
 
 test("a 150 MB file is sent in parts and shows up ready", async ({ page, request }) => {
   test.setTimeout(180_000);
-  const file = join(mkdtempSync(join(tmpdir(), "ncat-dash-big-")), "Full Shoot.mp4");
+  const file = join(mkdtempSync(join(tmpdir(), "takewon-big-")), "Full Shoot.mp4");
   writeFileSync(file, Buffer.alloc(150 * MIB, 7));
 
   await page.goto("/sign-up");

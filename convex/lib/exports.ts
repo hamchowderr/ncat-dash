@@ -3,7 +3,7 @@ import {
   frameSize,
   getPlatform,
   readFileDetails,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import {
   type Cue,
   type CutList,
@@ -15,7 +15,7 @@ import {
   isCuttingStep,
   parseSrt,
   stepTimelines,
-} from "@ncat-dash/timeline-export";
+} from "@takewon/timeline-export";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 

@@ -1,4 +1,4 @@
-import { getStep, userInputSchema } from "@ncat-dash/step-catalog";
+import { getStep, userInputSchema } from "@takewon/step-catalog";
 
 import { isTakeLabel } from "./cleanup";
 

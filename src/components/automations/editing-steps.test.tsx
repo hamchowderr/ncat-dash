@@ -1,5 +1,5 @@
-import { editingRecipes } from "@ncat-dash/step-catalog";
-import { STARTERS } from "@ncat-dash/automation-core";
+import { editingRecipes } from "@takewon/step-catalog";
+import { STARTERS } from "@takewon/automation-core";
 import { screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 

@@ -1,6 +1,7 @@
-import type { StepsOnClipboard } from "@ncat-dash/automation-core";
+import type { StepsOnClipboard } from "@takewon/automation-core";
+import { readStored, writeStored } from "@/lib/stored";
 
-const KEY = "ncat-dash:copied-steps";
+const KEY = "copied-steps";
 
 // Kept here too, for when the browser will not store it.
 let held: StepsOnClipboard | null = null;
@@ -11,7 +12,7 @@ let held: StepsOnClipboard | null = null;
  */
 export function copiedSteps(): StepsOnClipboard | null {
   try {
-    const stored = window.localStorage.getItem(KEY);
+    const stored = readStored(KEY);
     if (stored) return JSON.parse(stored) as StepsOnClipboard;
   } catch {
     // Storage is blocked or the value is not ours; use what this page holds.
@@ -22,7 +23,7 @@ export function copiedSteps(): StepsOnClipboard | null {
 export function holdSteps(steps: StepsOnClipboard): void {
   held = steps;
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(steps));
+    writeStored(KEY, JSON.stringify(steps));
   } catch {
     // Pasting still works on this page.
   }

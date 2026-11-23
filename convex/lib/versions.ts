@@ -1,4 +1,4 @@
-import { type AutomationDraft, draftChanges } from "@ncat-dash/automation-core";
+import { type AutomationDraft, draftChanges } from "@takewon/automation-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { getCaller } from "./caller";

@@ -10,8 +10,8 @@ import {
   getStep,
   isHiddenStep,
   userInputJsonSchema,
-} from "@ncat-dash/step-catalog";
-import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
+} from "@takewon/step-catalog";
+import type { StepCategory, StepDefinition } from "@takewon/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
 import { CAPTION_LANGUAGE_SETTING, CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";

@@ -3,7 +3,7 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import usePresence from "@convex-dev/presence/react";
-import { statusLabel, threadComments } from "@ncat-dash/review-core";
+import { statusLabel, threadComments } from "@takewon/review-core";
 import { useMutation, useQuery } from "convex/react";
 import {
   Check,

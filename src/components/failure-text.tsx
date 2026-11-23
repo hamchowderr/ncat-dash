@@ -1,6 +1,6 @@
 "use client";
 
-import { explainFailure } from "@ncat-dash/automation-core";
+import { explainFailure } from "@takewon/automation-core";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 

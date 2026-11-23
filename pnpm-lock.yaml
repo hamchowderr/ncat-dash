@@ -47,19 +47,19 @@ importers:
       '@convex-dev/workpool':
         specifier: 0.5.0
         version: 0.5.0(@standard-schema/spec@1.1.0)(convex-helpers@0.1.136(@standard-schema/spec@1.1.0)(convex@1.50.0(react@19.3.0))(hono@4.13.19)(prettier@3.10.1)(react@19.3.0)(typescript@5.9.3)(zod@4.6.7))(convex@1.50.0(react@19.3.0))(hono@4.13.19)(prettier@3.10.1)(react@19.3.0)(typescript@5.9.3)(zod@4.6.7)
-      '@ncat-dash/automation-core':
+      '@takewon/automation-core':
         specifier: workspace:*
         version: link:packages/automation-core
-      '@ncat-dash/email':
+      '@takewon/email':
         specifier: workspace:*
         version: link:packages/email
-      '@ncat-dash/review-core':
+      '@takewon/review-core':
         specifier: workspace:*
         version: link:packages/review-core
-      '@ncat-dash/step-catalog':
+      '@takewon/step-catalog':
         specifier: workspace:*
         version: link:packages/step-catalog
-      '@ncat-dash/timeline-export':
+      '@takewon/timeline-export':
         specifier: workspace:*
         version: link:packages/timeline-export
       '@radix-ui/react-use-controllable-state':
@@ -377,7 +377,7 @@ importers:
 
   packages/automation-core:
     devDependencies:
-      '@ncat-dash/step-catalog':
+      '@takewon/step-catalog':
         specifier: workspace:*
         version: link:../step-catalog
       typescript:
@@ -411,10 +411,10 @@ importers:
 
   packages/speed-test:
     dependencies:
-      '@ncat-dash/automation-core':
+      '@takewon/automation-core':
         specifier: workspace:*
         version: link:../automation-core
-      '@ncat-dash/step-catalog':
+      '@takewon/step-catalog':
         specifier: workspace:*
         version: link:../step-catalog
       convex:

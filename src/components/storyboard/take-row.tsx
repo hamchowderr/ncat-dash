@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { type Part, PARTS, type Scene, SCENES, sceneLabel } from "@convex/lib/storyboard";
-import { clock, readClipRef, readUploadRef, timeRangeOf } from "@ncat-dash/automation-core";
+import { clock, readClipRef, readUploadRef, timeRangeOf } from "@takewon/automation-core";
 import { useMutation } from "convex/react";
 import { ArrowDown, ArrowUp, Link2, Trash2, Upload, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";

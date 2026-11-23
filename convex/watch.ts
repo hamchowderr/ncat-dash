@@ -1,4 +1,4 @@
-import { creatorSets, fileFamily, withCreatorTakes } from "@ncat-dash/automation-core";
+import { creatorSets, fileFamily, withCreatorTakes } from "@takewon/automation-core";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -9,7 +9,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import type { FunctionReturnType } from "convex/server";
-import type { CreatorTakes } from "@ncat-dash/automation-core";
+import type { CreatorTakes } from "@takewon/automation-core";
 import { startRun } from "./lib/runner";
 import { enabledWithTriggerPage, triggersOfKind } from "./lib/triggers";
 import { bucketOf, listObjects, presign, storageConnection } from "./lib/bucket";

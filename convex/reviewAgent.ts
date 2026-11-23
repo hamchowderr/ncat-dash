@@ -1,4 +1,4 @@
-import { type AutomationDraft, outline } from "@ncat-dash/automation-core";
+import { type AutomationDraft, outline } from "@takewon/automation-core";
 import {
   AGENT,
   AGENT_ANSWER_LIMIT,
@@ -14,8 +14,8 @@ import {
   senseFrom,
   transcriptNear,
   windowAround,
-} from "@ncat-dash/review-core";
-import { callStep, getStep } from "@ncat-dash/step-catalog";
+} from "@takewon/review-core";
+import { callStep, getStep } from "@takewon/step-catalog";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";

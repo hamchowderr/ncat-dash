@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getStep, VARIANT_MUSIC_STEP } from "@ncat-dash/step-catalog";
+import { getStep, VARIANT_MUSIC_STEP } from "@takewon/step-catalog";
 
 import {
   draftProblems,

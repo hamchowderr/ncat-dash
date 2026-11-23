@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { baseName } from "@ncat-dash/automation-core";
+import { baseName } from "@takewon/automation-core";
 import { useQuery } from "convex/react";
 import { Folder, HardDrive } from "lucide-react";
 import Link from "next/link";

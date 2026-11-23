@@ -1,5 +1,5 @@
-import { type Brand, unusableShareLink, withDownloadLinks } from "@ncat-dash/automation-core";
-import { getStep, isTeamStepId, SAVED_LOOK_STEP, userInputSchema } from "@ncat-dash/step-catalog";
+import { type Brand, unusableShareLink, withDownloadLinks } from "@takewon/automation-core";
+import { getStep, isTeamStepId, SAVED_LOOK_STEP, userInputSchema } from "@takewon/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";

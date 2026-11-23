@@ -1,4 +1,4 @@
-import { nameProblem } from "@ncat-dash/automation-core";
+import { nameProblem } from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";

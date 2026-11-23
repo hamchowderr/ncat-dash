@@ -1,4 +1,4 @@
-import { STARTERS } from "@ncat-dash/automation-core";
+import { STARTERS } from "@takewon/automation-core";
 
 /** A video the speed test runs through ready-mades. Always the same file, so runs compare. */
 export interface Clip {

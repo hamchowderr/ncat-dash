@@ -11,8 +11,8 @@ This guide is for whoever runs a copy. It covers what to run, what machine to ru
 | Toolkit      | [The NCA Toolkit fork](https://github.com/hamchowderr/no-code-architects-toolkit), with Redis for its job queue. Takewon needs this fork; the original toolkit lacks the storage, health and look endpoints Takewon calls. | `ghcr.io/hamchowderr/no-code-architects-toolkit` |
 | Bucket       | Where every file lives: Cloudflare R2, AWS S3, DigitalOcean Spaces, Backblaze B2 or MinIO. Only the toolkit holds its keys.                                                                                                | Your storage account                             |
 | Convex       | The backend: database, sign-in, the automation runner, webhooks, the MCP server. Self-host it, or use a Convex Cloud project.                                                                                              | `ghcr.io/convex/convex-backend`                  |
-| Agent server | The Mastra server behind the agent, in the dashboard and in Slack, Discord, Telegram and Microsoft Teams.                                                                                                                  | `ghcr.io/hamchowderr/ncat-dash-agent`            |
-| Web app      | The Next.js dashboard people sign in to.                                                                                                                                                                                   | `ghcr.io/hamchowderr/ncat-dash-web`, or Vercel   |
+| Agent server | The Mastra server behind the agent, in the dashboard and in Slack, Discord, Telegram and Microsoft Teams.                                                                                                                  | `ghcr.io/hamchowderr/takewon-agent`              |
+| Web app      | The Next.js dashboard people sign in to.                                                                                                                                                                                   | `ghcr.io/hamchowderr/takewon-web`, or Vercel     |
 
 Every image is built by GitHub Actions and pulled ready-made, for both kinds of processor (see The Machine). Nothing is compiled on the machine that runs it, which matters: the toolkit's image compiles FFmpeg from source and takes 20 to 40 minutes to build.
 
@@ -115,7 +115,7 @@ On Convex Cloud instead, create a project at [convex.dev](https://www.convex.dev
 docker compose -f deploy/compose.yml --env-file deploy/.env run --rm setup
 ```
 
-The setup image (`ghcr.io/hamchowderr/ncat-dash-setup`) holds this version's backend. It gives Convex `SITE_URL`, `AGENT_URL` and `MASTRA_JWT_SECRET` from `deploy/.env`, makes `BETTER_AUTH_SECRET` and `CONNECTIONS_SECRET`, sets `SIGN_UPS` (`invite-only` unless `deploy/.env` says `open`), and pushes the functions. The machine needs nothing but Docker for it. Run it again after every update; it keeps the secrets and the sign-up choice Convex already has, and only writes the addresses again.
+The setup image (`ghcr.io/hamchowderr/takewon-setup`) holds this version's backend. It gives Convex `SITE_URL`, `AGENT_URL` and `MASTRA_JWT_SECRET` from `deploy/.env`, makes `BETTER_AUTH_SECRET` and `CONNECTIONS_SECRET`, sets `SIGN_UPS` (`invite-only` unless `deploy/.env` says `open`), and pushes the functions. The machine needs nothing but Docker for it. Run it again after every update; it keeps the secrets and the sign-up choice Convex already has, and only writes the addresses again.
 
 `CONNECTIONS_SECRET` encrypts every saved key (toolkit, Slack, Zoom and so on). The setup never replaces it: if it changed, every team would have to connect everything again.
 
@@ -285,6 +285,8 @@ The agent server takes many more optional settings from the chat kit it is built
 1. Pull the new images. On a server you rely on, pin the Takewon images to a `sha-<commit>` tag in `deploy/.env` (`TOOLKIT_IMAGE`, `AGENT_IMAGE`, `WEB_IMAGE`, and `SETUP_IMAGE` on the same commit as `WEB_IMAGE`) and move the tags on purpose. A commit's image appears once its GitHub Actions run has finished.
 2. `docker compose -f deploy/compose.yml --env-file deploy/.env pull`, then `... up -d`, which restarts only what changed.
 3. Push the backend from the same commit: `docker compose -f deploy/compose.yml --env-file deploy/.env run --rm setup` (or `npx convex deploy -y` from a clone at that commit). If the web app is on Vercel instead, deploy it from that commit too.
+
+A copy set up before the rename to Takewon names its images `ncat-dash-agent`, `ncat-dash-web` and `ncat-dash-setup`. New versions are published only as `takewon-agent`, `takewon-web` and `takewon-setup`, so change those names in `deploy/.env` (or pull a new `deploy/compose.yml`) on the next update.
 
 Never set a service to build its image on the machine that serves people. The toolkit's build takes 20 to 40 minutes of full CPU; if a restart falls back to building, the toolkit stays down that long.
 

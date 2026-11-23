@@ -1,4 +1,4 @@
-import { stepsByCategory } from "@ncat-dash/step-catalog";
+import { stepsByCategory } from "@takewon/step-catalog";
 import type { Metadata } from "next";
 import Link from "next/link";
 

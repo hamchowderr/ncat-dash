@@ -23,8 +23,8 @@ import {
   waitSentence,
   approvalShort,
   waitsForRun,
-} from "@ncat-dash/automation-core";
-import { getStep, type StepCategory } from "@ncat-dash/step-catalog";
+} from "@takewon/automation-core";
+import { getStep, type StepCategory } from "@takewon/step-catalog";
 import {
   BaseEdge,
   type Edge,

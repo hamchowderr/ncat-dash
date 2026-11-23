@@ -24,7 +24,7 @@ import {
   stockQuery,
   usesLibrary,
   usesStock,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";

@@ -1,6 +1,6 @@
 "use client";
 
-import { readUploadRef } from "@ncat-dash/automation-core";
+import { readUploadRef } from "@takewon/automation-core";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";

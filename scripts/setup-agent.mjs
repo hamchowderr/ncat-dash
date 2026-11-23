@@ -114,7 +114,7 @@ function main() {
   // starts. A key already in packages/agent/.env works too.
   if (!agent.ANTHROPIC_API_KEY && !agent.USE_AIMOCK) {
     console.log(
-      "Start the agent server through Infisical, which gives it ANTHROPIC_API_KEY:\n  infisical run --path=/shared -- pnpm --filter @ncat-dash/agent dev",
+      "Start the agent server through Infisical, which gives it ANTHROPIC_API_KEY:\n  infisical run --path=/shared -- pnpm --filter @takewon/agent dev",
     );
   }
 }

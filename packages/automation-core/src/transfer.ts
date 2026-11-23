@@ -11,7 +11,7 @@
  * checked and rebuilt, and what cannot be used is either left out with a note or stops
  * the import with a plain reason.
  */
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep } from "@takewon/step-catalog";
 
 import { readUploadRef } from "./brand";
 import { type AutomationEdge, type AutomationNode, graphProblem, MAX_NODES } from "./graph";
@@ -22,7 +22,9 @@ import { scheduleProblem } from "./schedule";
 import { MAX_TRIGGERS, type MoreTrigger, tidyTriggers } from "./triggers";
 import type { StarterTrigger } from "./starters";
 
-export const AUTOMATION_FILE_FORMAT = "ncat-dash-automation";
+export const AUTOMATION_FILE_FORMAT = "takewon-automation";
+/** What files exported before the rename to Takewon say. They still import. */
+export const OLD_AUTOMATION_FILE_FORMAT = "ncat-dash-automation";
 export const AUTOMATION_FILE_VERSION = 1;
 /** The ending of an exported file's name. */
 export const AUTOMATION_FILE_ENDING = ".automation.json";
@@ -387,7 +389,10 @@ function readEdges(value: unknown, nodes: AutomationNode[]): AutomationEdge[] | 
  * `notes` says, in plain words, what was changed or left out on the way.
  */
 export function readAutomationFile(value: unknown): ReadAutomationFile {
-  if (!isObject(value) || value.format !== AUTOMATION_FILE_FORMAT) {
+  if (
+    !isObject(value) ||
+    (value.format !== AUTOMATION_FILE_FORMAT && value.format !== OLD_AUTOMATION_FILE_FORMAT)
+  ) {
     return { ok: false, message: NOT_A_FILE };
   }
   if (typeof value.version !== "number" || value.version > AUTOMATION_FILE_VERSION) {

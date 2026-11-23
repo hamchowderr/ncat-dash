@@ -10,7 +10,7 @@ import {
   workflowMembers,
   workflowReview,
   withWorkflowReview,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
@@ -84,9 +84,7 @@ export async function workflowOf(
   team?: Doc<"automations">[],
 ): Promise<PlacedWorkflow | null> {
   const placed = await placedWorkflows(ctx, automation.organizationId, team);
-  return (
-    placed.find((each) => each.joinedTo === null && each.ids.includes(automation._id)) ?? null
-  );
+  return placed.find((each) => each.joinedTo === null && each.ids.includes(automation._id)) ?? null;
 }
 
 /**

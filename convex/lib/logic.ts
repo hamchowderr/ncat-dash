@@ -13,8 +13,8 @@ import {
   valueFrom,
   waitMs,
   waitProblem,
-} from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+} from "@takewon/automation-core";
+import { getStep } from "@takewon/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";

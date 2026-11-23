@@ -7,7 +7,7 @@ import {
   MAX_MOMENTS,
   MAX_PADDING,
   momentSettings,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { useState } from "react";
 
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";

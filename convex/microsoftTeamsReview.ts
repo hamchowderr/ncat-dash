@@ -1,4 +1,4 @@
-import { formatMoment } from "@ncat-dash/review-core";
+import { formatMoment } from "@takewon/review-core";
 import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";

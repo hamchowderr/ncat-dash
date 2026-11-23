@@ -1,4 +1,4 @@
-import type { AutomationEdge, AutomationNode } from "@ncat-dash/automation-core";
+import type { AutomationEdge, AutomationNode } from "@takewon/automation-core";
 import { Fragment } from "react";
 
 import { nodeTitle, type Trigger, TRIGGER_LABELS } from "@/lib/automations";

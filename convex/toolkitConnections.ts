@@ -1,4 +1,4 @@
-import { testConnection } from "@ncat-dash/step-catalog";
+import { testConnection } from "@takewon/step-catalog";
 import { outboundProblem } from "./lib/outbound";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";

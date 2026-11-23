@@ -188,7 +188,7 @@ describe("the Calendar", () => {
     renderInApp(<CalendarView now={NOW} />);
     await userEvent.click(screen.getByRole("button", { name: "Week" }));
     expect(screen.getByRole("button", { name: "Week" })).toHaveAttribute("aria-pressed", "true");
-    expect(window.localStorage.getItem("ncat-dash:calendar-view")).toBe("week");
+    expect(window.localStorage.getItem("takewon:calendar-view")).toBe("week");
     const chip = screen.getByRole("button", { name: /Episode 12 teaser/ });
     expect(chip.closest("[data-hour]")).toHaveAttribute("data-hour", "2026-11-20T15");
     fireEvent.dragStart(chip);

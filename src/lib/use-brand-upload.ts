@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { readClipRef, readUploadRef, uploadRef } from "@ncat-dash/automation-core";
+import { readClipRef, readUploadRef, uploadRef } from "@takewon/automation-core";
 import { useAction, useMutation } from "convex/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";

@@ -1,4 +1,4 @@
-import { getStep, type StepCategory } from "@ncat-dash/step-catalog";
+import { getStep, type StepCategory } from "@takewon/step-catalog";
 
 export const CATEGORY_LABELS: Record<StepCategory, string> = {
   video: "Video",

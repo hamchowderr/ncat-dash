@@ -20,7 +20,7 @@ import {
   retryLimit,
   savedLooksText,
   tidyMotionSetup,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";

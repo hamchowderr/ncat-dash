@@ -6,7 +6,7 @@ import {
   formatMoment,
   matchPeople,
   mentionQuery,
-} from "@ncat-dash/review-core";
+} from "@takewon/review-core";
 import { ArrowUp, AtSign, Clock } from "lucide-react";
 import { type ReactNode, useId, useRef, useState } from "react";
 

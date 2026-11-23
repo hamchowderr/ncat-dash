@@ -1,4 +1,4 @@
-import { type SavedTeamStep, setTeamSteps } from "@ncat-dash/step-catalog";
+import { type SavedTeamStep, setTeamSteps } from "@takewon/step-catalog";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 

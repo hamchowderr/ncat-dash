@@ -7,7 +7,7 @@ import {
   uploadKind,
   type LibraryKind,
   type LibrarySource,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";

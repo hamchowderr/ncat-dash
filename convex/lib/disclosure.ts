@@ -1,4 +1,4 @@
-import { findDisclosure, type StepDefinition, userInputSchema } from "@ncat-dash/step-catalog";
+import { findDisclosure, type StepDefinition, userInputSchema } from "@takewon/step-catalog";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { listenRequest, wordsFor } from "./moments";

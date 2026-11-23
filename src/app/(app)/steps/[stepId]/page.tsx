@@ -1,4 +1,4 @@
-import { allSteps, getStep } from "@ncat-dash/step-catalog";
+import { allSteps, getStep } from "@takewon/step-catalog";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";

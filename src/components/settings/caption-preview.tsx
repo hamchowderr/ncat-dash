@@ -1,6 +1,6 @@
 "use client";
 
-import { type CaptionLook, type CaptionShape, SHAPE_HEIGHT } from "@ncat-dash/automation-core";
+import { type CaptionLook, type CaptionShape, SHAPE_HEIGHT } from "@takewon/automation-core";
 import type { CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";

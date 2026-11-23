@@ -1,4 +1,4 @@
-import { STARTER_CATEGORIES, STARTERS } from "@ncat-dash/automation-core";
+import { STARTER_CATEGORIES, STARTERS } from "@takewon/automation-core";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 

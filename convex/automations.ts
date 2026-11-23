@@ -42,9 +42,9 @@ import {
   triggersOf,
   triggersProblem,
   triggerWithId,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { RUNS_AT_ONCE, startWaitingRuns } from "./lib/runLimit";
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep } from "@takewon/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { getCaller } from "./lib/caller";

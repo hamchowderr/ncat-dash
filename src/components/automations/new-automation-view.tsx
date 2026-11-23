@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import type { Starter } from "@ncat-dash/automation-core";
+import type { Starter } from "@takewon/automation-core";
 import { useMutation } from "convex/react";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";

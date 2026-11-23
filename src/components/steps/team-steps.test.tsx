@@ -1,6 +1,6 @@
 import { api } from "@convex/_generated/api";
-import { actionTypesByGroup } from "@ncat-dash/automation-core";
-import { getStep, setTeamSteps } from "@ncat-dash/step-catalog";
+import { actionTypesByGroup } from "@takewon/automation-core";
+import { getStep, setTeamSteps } from "@takewon/step-catalog";
 import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 

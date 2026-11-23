@@ -1,8 +1,8 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import type { Brand } from "@ncat-dash/automation-core";
-import { readUploadRef } from "@ncat-dash/automation-core";
+import type { Brand } from "@takewon/automation-core";
+import { readUploadRef } from "@takewon/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import { FileX, Music, Upload, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";

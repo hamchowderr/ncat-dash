@@ -150,7 +150,7 @@ describe("a shared review on a client's phone", () => {
 
   function openShared(value: unknown = shared()) {
     window.localStorage.setItem(
-      "ncat-dash:share-guest",
+      "takewon:share-guest",
       JSON.stringify({ id: "riley-browser-0001", name: "Riley" }),
     );
     answerQuery(api.sharedReview.room, value);

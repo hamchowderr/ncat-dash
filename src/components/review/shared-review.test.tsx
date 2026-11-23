@@ -9,7 +9,7 @@ import { actionOf, answerQuery, mutationOf } from "@/test/convex";
 import { SharedReview } from "./shared-review";
 
 const TOKEN = "a".repeat(64);
-const KEY = "ncat-dash:share-guest";
+const KEY = "takewon:share-guest";
 
 const room = (over: Record<string, unknown> = {}) => ({
   title: "Weekly clips",

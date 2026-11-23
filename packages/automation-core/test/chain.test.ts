@@ -130,7 +130,7 @@ describe("automations that start other automations", () => {
 
   it("leaves the other team's automation out when one is imported", () => {
     const file = {
-      format: "ncat-dash-automation",
+      format: "takewon-automation",
       version: 1,
       name: "Chain",
       trigger: { kind: "finished", automationId: "elsewhere", when: "done" },

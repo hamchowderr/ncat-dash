@@ -4,7 +4,7 @@ import {
   LOOK_FILLS,
   type LookFill,
   type LookShape,
-} from "@ncat-dash/step-catalog";
+} from "@takewon/step-catalog";
 
 import {
   CAPTION_LOOKS,

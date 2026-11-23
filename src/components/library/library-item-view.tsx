@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { describeFileDetails, formatMoment } from "@ncat-dash/automation-core";
+import { describeFileDetails, formatMoment } from "@takewon/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { ArrowLeft, AudioLines, Bot, Play, Trash2, X } from "lucide-react";
 import Link from "next/link";

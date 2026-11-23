@@ -1,5 +1,5 @@
 import { api } from "@convex/_generated/api";
-import { AGENT_MODELS, MAX_HOUSE_RULES_CHARS, NO_AGENT_SETTINGS } from "@ncat-dash/automation-core";
+import { AGENT_MODELS, MAX_HOUSE_RULES_CHARS, NO_AGENT_SETTINGS } from "@takewon/automation-core";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";

@@ -29,16 +29,17 @@ import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
 import { PickList } from "@/components/ui/pick-list";
 import { StoryboardView } from "@/components/storyboard/storyboard-view";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { readStored, writeStored } from "@/lib/stored";
 
 type Loaded = NonNullable<ReturnType<typeof useQuery<typeof api.projects.get>>>;
 type Layout = "list" | "board";
 
 const NEEDS_FILE: DeliverableStatus[] = ["review", "approved", "published"];
-const LAYOUT_KEY = "ncat-dash:project-layout";
+const LAYOUT_KEY = "project-layout";
 
 function savedLayout(): Layout {
   try {
-    return window.localStorage.getItem(LAYOUT_KEY) === "board" ? "board" : "list";
+    return readStored(LAYOUT_KEY) === "board" ? "board" : "list";
   } catch {
     return "list";
   }
@@ -367,7 +368,7 @@ function Project({ project }: { project: Loaded }) {
   function pickLayout(next: Layout) {
     setLayout(next);
     try {
-      window.localStorage.setItem(LAYOUT_KEY, next);
+      writeStored(LAYOUT_KEY, next);
     } catch {
       // Remembering the choice is a nicety; the page works without it.
     }

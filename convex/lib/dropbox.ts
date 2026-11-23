@@ -2,7 +2,7 @@
 // it checks that a notice really came from Dropbox, and how files are sent back in
 // pieces. No database or network here.
 
-import { PRODUCT_NAME } from "@ncat-dash/automation-core";
+import { PRODUCT_NAME } from "@takewon/automation-core";
 
 /** One entry in a Dropbox folder listing (files/list_folder). */
 export interface DropboxEntry {

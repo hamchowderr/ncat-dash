@@ -1,4 +1,4 @@
-import { MAX_HOUSE_RULES_CHARS } from "@ncat-dash/automation-core";
+import { MAX_HOUSE_RULES_CHARS } from "@takewon/automation-core";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import { addPerson, addTeam, backend } from "./test.setup";

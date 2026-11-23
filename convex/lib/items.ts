@@ -1,5 +1,5 @@
-import { type AutomationEdge, type AutomationNode, upstreamOf } from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+import { type AutomationEdge, type AutomationNode, upstreamOf } from "@takewon/automation-core";
+import { getStep } from "@takewon/step-catalog";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { earlierFiles, startingFiles } from "./chain";

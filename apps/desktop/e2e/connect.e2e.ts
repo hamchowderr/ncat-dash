@@ -18,7 +18,7 @@ import { Session } from "./webdriver";
 const application = path.resolve(
   __dirname,
   "../src-tauri/target/debug",
-  process.platform === "win32" ? "ncat-dash-desktop.exe" : "ncat-dash-desktop",
+  process.platform === "win32" ? "takewon-desktop.exe" : "takewon-desktop",
 );
 const DRIVER_PORT = 4444;
 const driverUrl = `http://127.0.0.1:${DRIVER_PORT}`;
@@ -132,7 +132,7 @@ beforeAll(async () => {
     res.writeHead(404).end("not found");
   });
   // A fresh settings folder, so the app starts as if newly installed.
-  const home = mkdtempSync(path.join(tmpdir(), "ncat-dash-desktop-"));
+  const home = mkdtempSync(path.join(tmpdir(), "takewon-desktop-"));
   // On Windows tauri-driver drives Edge's WebView2 through msedgedriver (see the workflow).
   const native = process.env.NATIVE_DRIVER ? ["--native-driver", process.env.NATIVE_DRIVER] : [];
   driver = spawn("tauri-driver", ["--port", String(DRIVER_PORT), ...native], {

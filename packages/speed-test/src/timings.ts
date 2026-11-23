@@ -1,4 +1,4 @@
-import { type AutomationNode, nodeTypeOf } from "@ncat-dash/automation-core";
+import { type AutomationNode, nodeTypeOf } from "@takewon/automation-core";
 
 /** The part of a run, as the dashboard's runs.get gives it, that the speed test reads. */
 export interface RunView {
