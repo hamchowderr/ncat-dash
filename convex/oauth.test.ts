@@ -229,6 +229,16 @@ describe("how an agent finds out how to sign in", () => {
   });
 });
 
+describe("a copy being set up", () => {
+  test("without SITE_URL yet, the backend still answers, and agents' sign-in names it", async () => {
+    const { t } = await setUp();
+    vi.stubEnv("SITE_URL", "");
+    expect((await t.fetch("/automations/hook", { method: "POST" })).status).toBe(400);
+    const server = await (await t.fetch("/.well-known/oauth-authorization-server")).json();
+    expect(server.issuer).toBe(`${SITE}/api/auth`);
+  });
+});
+
 describe("signing an agent in", () => {
   test("register, pick a team, allow, swap the code, and work as that person on that team", async () => {
     const setup = await setUp();

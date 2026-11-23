@@ -26,6 +26,7 @@ import { isThrowawayEmail } from "./lib/emailKey";
 import {
   ACCESS_TOKEN_SECONDS,
   AGENT_SCOPES,
+  agentIssuer,
   fetchClientMetadata,
   mcpResource,
   REFRESH_TOKEN_SECONDS,
@@ -308,7 +309,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
         },
       }),
       // Signs agents' access tokens (mcp() below), and publishes their keys at /jwks.
-      jwt({ disableSettingJwtHeader: true }),
+      jwt({ disableSettingJwtHeader: true, jwt: { issuer: agentIssuer() } }),
       // Sign-in for AI agents (MCP clients): OAuth 2.1 with PKCE, for the MCP server at
       // CONVEX_SITE_URL/mcp. lib/agentSignIn.ts explains the pieces.
       mcp({

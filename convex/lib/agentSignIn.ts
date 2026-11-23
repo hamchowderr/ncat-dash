@@ -38,8 +38,12 @@ export const backendUrl = () =>
   plain(process.env.CONVEX_SITE_URL ?? process.env.NEXT_PUBLIC_CONVEX_SITE_URL) ||
   "http://127.0.0.1:3211";
 
-/** The authorization server: Better Auth's own address under the dashboard. */
-export const agentIssuer = () => `${siteUrl()}/api/auth`;
+/**
+ * The authorization server: Better Auth's own address under the dashboard. A backend
+ * that has no SITE_URL yet (a copy being set up) names itself instead, so Better Auth
+ * still starts: its token signing refuses an issuer that is not a full address.
+ */
+export const agentIssuer = () => `${siteUrl() || backendUrl()}/api/auth`;
 
 /** The MCP server's address, the one resource access tokens are for. */
 export const mcpResource = () => `${backendUrl()}/mcp`;
@@ -73,7 +77,8 @@ export async function fetchClientMetadata(
   init?: RequestInit,
 ): Promise<Response> {
   const url = new URL(input instanceof Request ? input.url : String(input));
-  if (url.protocol !== "https:") throw new TypeError("Client metadata must be on an https address.");
+  if (url.protocol !== "https:")
+    throw new TypeError("Client metadata must be on an https address.");
   const refused = outboundProblem(url.toString());
   if (refused) throw new TypeError(refused);
   const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
