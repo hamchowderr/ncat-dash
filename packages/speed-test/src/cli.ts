@@ -1,11 +1,11 @@
 // `pnpm speed-test` from the repository: runs the same videos through the main ready-mades
-// on a Kontifi copy, one at a time, and keeps every time in a history file so a run that
+// on a Takewon copy, one at a time, and keeps every time in a history file so a run that
 // got slower shows. See docs/speed-test.md.
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { appendResult, readHistory } from "./history";
-import { kontifiBackend, signIn } from "./kontifi";
+import { takewonBackend, signIn } from "./takewon";
 import { DEFAULT_CLIPS, DEFAULT_PLAN, planRuns } from "./plan";
 import { batchReport, duration, trendReport } from "./report";
 import { runSpeedTest } from "./run";
@@ -52,20 +52,20 @@ async function main() {
     return;
   }
 
-  const dashboard = need("KONTIFI_URL");
-  const toolkitUrl = process.env.KONTIFI_TOOLKIT_URL?.trim();
-  const backend = await kontifiBackend({
-    convexUrl: need("KONTIFI_CONVEX_URL"),
-    team: process.env.KONTIFI_TEAM?.trim() || undefined,
+  const dashboard = need("TAKEWON_URL");
+  const toolkitUrl = process.env.TAKEWON_TOOLKIT_URL?.trim();
+  const backend = await takewonBackend({
+    convexUrl: need("TAKEWON_CONVEX_URL"),
+    team: process.env.TAKEWON_TEAM?.trim() || undefined,
     token: () =>
       signIn({
-        siteUrl: need("KONTIFI_CONVEX_SITE_URL"),
+        siteUrl: need("TAKEWON_CONVEX_SITE_URL"),
         dashboardUrl: dashboard,
-        email: need("KONTIFI_EMAIL"),
-        password: need("KONTIFI_PASSWORD"),
+        email: need("TAKEWON_EMAIL"),
+        password: need("TAKEWON_PASSWORD"),
       }),
     toolkit: toolkitUrl
-      ? { baseUrl: toolkitUrl, apiKey: need("KONTIFI_TOOLKIT_API_KEY") }
+      ? { baseUrl: toolkitUrl, apiKey: need("TAKEWON_TOOLKIT_API_KEY") }
       : undefined,
   });
 

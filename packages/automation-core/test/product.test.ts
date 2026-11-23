@@ -6,23 +6,42 @@ import { PRODUCT_NAME } from "../src";
 // The product is called Takewon. The engine underneath is still the NCA Toolkit, but the
 // old working names for the product itself must not show up anywhere people read.
 const ROOT = path.resolve(__dirname, "../../..");
-const PLACES = ["src", "convex", "e2e", "packages/agent/src", "packages/email/src"];
+// The whole repo is checked: code, docs, fixtures, the desktop app and deploy files.
+const PLACES = ["."];
 const OLD_NAMES = [
-  /NCA Toolkit Dashboard/,
-  /NCA Dashboard/,
+  /NCA Toolkit Dashboard/i,
+  /\bNCAT?[-_ ]?Dashboard\b/i,
   /Welcome to Your Dashboard/,
   /\bKontifi\b/i,
   /\bKontentifi\b/i,
 ];
-const SKIP = new Set(["node_modules", "_generated", ".next", ".mastra"]);
+const SKIP = new Set([
+  "node_modules",
+  "_generated",
+  ".next",
+  ".mastra",
+  ".git",
+  ".beads",
+  "target",
+  "dist",
+  "test-results",
+  "playwright-report",
+]);
+// These files hold the old names on purpose: they are the checks that keep them out.
+const CHECKS = new Set([
+  "packages/automation-core/test/product.test.ts",
+  "scripts/docs.test.mjs",
+  "apps/desktop/src/connect.test.ts",
+]);
 
 function filesUnder(dir: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
     if (SKIP.has(name)) continue;
     const full = path.join(dir, name);
+    if (CHECKS.has(path.relative(ROOT, full))) continue;
     if (statSync(full).isDirectory()) out.push(...filesUnder(full));
-    else if (/\.(tsx?|mjs|json|md)$/.test(name)) out.push(full);
+    else if (/\.(tsx?|mjs|json|md|ya?ml|toml|rs|html|example)$/.test(name)) out.push(full);
   }
   return out;
 }
@@ -32,7 +51,7 @@ describe("product name", () => {
     expect(PRODUCT_NAME).toBe("Takewon");
   });
 
-  it("leaves no old product name in the app, the agent or the emails", () => {
+  it("leaves no old product name anywhere in the repo", () => {
     const found: string[] = [];
     for (const place of PLACES) {
       for (const file of filesUnder(path.join(ROOT, place))) {
