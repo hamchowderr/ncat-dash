@@ -1616,7 +1616,7 @@ export const motionGuide = query({
   args: {},
   returns: v.object({ text: v.string() }),
   handler: async (ctx) => {
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     if (!user) fail("unauthenticated", "Sign in first.");
     return { text: motionGuideText() };
   },
