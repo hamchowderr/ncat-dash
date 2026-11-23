@@ -218,6 +218,13 @@ export function NotificationsCard() {
             </span>
           </div>
         )}
+        {settings.emailProblem && (
+          <p className="text-sm" data-email-problem={settings.emailProblem.kind}>
+            {settings.emailProblem.kind === "complaint"
+              ? `An email to ${settings.emailProblem.email} was marked as spam, so that address gets no more emails from us for now. To get them somewhere else, change your address in Account settings.`
+              : `Emails to ${settings.emailProblem.email} bounce: that mailbox doesn't seem to exist, so we stopped emailing it. Change your address in Account settings.`}
+          </p>
+        )}
         {!settings.emailReady && (
           <p className="text-muted-foreground text-sm">
             Email is not set up for this dashboard yet, so nothing is emailed until it is. Your
