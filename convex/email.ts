@@ -21,6 +21,8 @@ import {
   trialEndedEmail,
   trialEndingEmail,
   welcomeEmail,
+  withUnsubscribe,
+  type Composed,
   type SendResult,
 } from "@ncat-dash/email";
 import { ConvexError, v } from "convex/values";
@@ -41,7 +43,19 @@ import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { getEdition } from "./lib/edition";
 import { isFor } from "./lib/alerts";
 import { buyUrl } from "./lib/trial";
-import { alertHref, emailsRightAway, preferenceOf, wants } from "./lib/notifications";
+import {
+  readUnsubscribeToken,
+  unsubscribeToken,
+  unsubscribeUrl,
+  type UnsubscribeScope,
+} from "./lib/unsubscribe";
+import {
+  alertHref,
+  emailsRightAway,
+  NOTIFICATION_KINDS,
+  preferenceOf,
+  wants,
+} from "./lib/notifications";
 
 // Email goes out through toSend (https://tosend.com). There is one sending account for
 // the whole dashboard, because sign-in emails are sent before anyone is on a team. It is
@@ -365,8 +379,11 @@ export const sendAlert = internalAction({
                           },
                           branding,
                         );
-    for (const to of found.recipients) {
-      const result = await deliver(ctx, sending, { to, ...composed });
+    for (const person of found.people) {
+      const result = await deliver(ctx, sending, {
+        to: person.email,
+        ...(await optOut(composed, person.userId, alert.organizationId, alert.kind)),
+      });
       // A bad key, an unpaid account or an unverified domain fails for everyone alike.
       if (!result.ok && ["unauthorized", "billing", "domain"].includes(result.reason)) break;
     }
@@ -385,16 +402,17 @@ export const sendDigest = internalAction({
     if (!sending) return;
     const found = await ctx.runQuery(internal.email.digestFor, args);
     if (!found || found.items.length === 0) return;
+    const summary = digestEmail(
+      {
+        teamName: found.teamName ?? undefined,
+        items: found.items,
+        settingsUrl: siteUrl(SETTINGS_PATH),
+      },
+      { appName: sending.fromName },
+    );
     await deliver(ctx, sending, {
       to: found.email,
-      ...digestEmail(
-        {
-          teamName: found.teamName ?? undefined,
-          items: found.items,
-          settingsUrl: siteUrl(SETTINGS_PATH),
-        },
-        { appName: sending.fromName },
-      ),
+      ...(await optOut(summary, found.userId, found.organizationId, "all")),
     });
   },
 });
@@ -549,15 +567,20 @@ export const alertRecipients = internalQuery({
     const team = await ctx.runQuery(components.betterAuth.members.contactsFor, {
       organizationId: alert.organizationId,
     });
-    const recipients: string[] = [];
+    const people: { email: string; userId: string }[] = [];
     for (const member of team.members) {
       if (!isFor(alert, member.userId)) continue;
       const preference = await preferenceOf(ctx, alert.organizationId, member.userId);
       if (!wants(preference, alert.kind, "email")) continue;
       if (!emailsRightAway(preference, alert.kind)) continue;
-      recipients.push(member.email);
+      people.push({ email: member.email, userId: member.userId });
     }
-    return { alert, teamName: team.teamName, recipients };
+    return {
+      alert,
+      teamName: team.teamName,
+      recipients: people.map((person) => person.email),
+      people,
+    };
   },
 });
 
@@ -589,7 +612,13 @@ export const digestFor = internalQuery({
       if (emailsRightAway(preference, alert.kind)) continue;
       items.push({ ...digestLine(alert), url: siteUrl(alertHref(alert)) });
     }
-    return { email: member.email, teamName: team.teamName, items };
+    return {
+      email: member.email,
+      userId: member.userId,
+      organizationId: preference.organizationId,
+      teamName: team.teamName,
+      items,
+    };
   },
 });
 
@@ -682,11 +711,82 @@ async function loadSending(ctx: ActionCtx): Promise<Sending | null> {
   };
 }
 
+/** An email people can opt out of, with its one-click unsubscribe for this person. */
+async function optOut(
+  email: Composed,
+  userId: string,
+  organizationId: string,
+  scope: UnsubscribeScope,
+): Promise<Composed> {
+  if (!process.env.CONVEX_SITE_URL || !process.env.BETTER_AUTH_SECRET) return email;
+  const token = await unsubscribeToken({ userId, organizationId, scope });
+  return withUnsubscribe(email, unsubscribeUrl(token));
+}
+
+/**
+ * Switches off what an unsubscribe link names: one kind of email, or every alert email
+ * (the daily summary's link). Under the bell nothing changes. Returns what was switched
+ * off, or null for a link we did not sign.
+ */
+export const unsubscribe = internalMutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const target = await readUnsubscribeToken(args.token);
+    if (!target) return null;
+    const existing = await preferenceOf(ctx, target.organizationId, target.userId);
+    const kinds = { ...existing?.kinds };
+    const names =
+      target.scope === "all" ? NOTIFICATION_KINDS.map((entry) => entry.kind) : [target.scope];
+    for (const name of names) kinds[name] = { ...kinds[name], email: false };
+    if (existing) await ctx.db.patch(existing._id, { kinds });
+    else
+      await ctx.db.insert("notificationPreferences", {
+        organizationId: target.organizationId,
+        userId: target.userId,
+        kinds,
+      });
+    return {
+      scope: target.scope,
+      title:
+        target.scope === "all"
+          ? null
+          : (NOTIFICATION_KINDS.find((entry) => entry.kind === target.scope)?.title ?? null),
+    };
+  },
+});
+
+/** Keeps what toSend reported about an address: the latest bounce or spam complaint. */
+export const recordProblem = internalMutation({
+  args: {
+    email: v.string(),
+    kind: v.union(v.literal("bounced"), v.literal("complaint")),
+    permanent: v.boolean(),
+    reason: v.string(),
+    at: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    const fields = { ...args, email, reason: args.reason.slice(0, 300) };
+    const existing = await ctx.db
+      .query("emailProblems")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, fields);
+    else await ctx.db.insert("emailProblems", fields);
+  },
+});
+
 /** Sends, and keeps the saved connection's state in step so Settings can say what is wrong. */
 async function deliver(
   ctx: ActionCtx,
   sending: Sending,
-  message: { to: string; subject: string; text: string; html: string },
+  message: {
+    to: string;
+    subject: string;
+    text: string;
+    html: string;
+    headers?: Record<string, string>;
+  },
 ): Promise<SendResult> {
   const result = await sendEmail(
     sending.apiKey,
