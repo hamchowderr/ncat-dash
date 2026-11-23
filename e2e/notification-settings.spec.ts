@@ -77,9 +77,9 @@ test("each member sees every kind of news with a bell and an email switch", asyn
   await maya.goto("/settings/notifications");
   await expect(maya.getByRole("heading", { level: 1, name: "Notifications" })).toBeVisible();
   const rows = card(maya).locator("[data-notification]");
-  await expect(rows).toHaveCount(9);
-  await expect(card(maya).getByRole("switch", { name: /in the Inbox/ })).toHaveCount(9);
-  await expect(card(maya).getByRole("switch", { name: /by email/ })).toHaveCount(9);
+  await expect(rows).toHaveCount(10);
+  await expect(card(maya).getByRole("switch", { name: /in the Inbox/ })).toHaveCount(10);
+  await expect(card(maya).getByRole("switch", { name: /by email/ })).toHaveCount(10);
   // Every kind starts on, except finished runs, which start off for the bell and email.
   for (const name of [/: in the Inbox$/, /: by email$/]) {
     for (const toggle of await card(maya).getByRole("switch", { name }).all()) {
