@@ -1,7 +1,7 @@
 import { api } from "@convex/_generated/api";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { actionOf, answerQuery, toastError, toastSuccess } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
@@ -72,6 +72,41 @@ describe("Settings, Toolkit", () => {
       expect(toastSuccess).toHaveBeenCalledWith("You're on your own toolkit now."),
     );
     expect(screen.queryByLabelText("Toolkit address")).toBeNull();
+  });
+
+  test("hands over a prompt for any AI agent, with this dashboard's address, and our setup", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    renderInApp(<ToolkitCard />);
+    await user.click(screen.getByRole("button", { name: "Use your own toolkit" }));
+    const prompt = screen.getByTestId("agent-prompt");
+    await user.click(within(prompt).getByRole("button", { name: "Copy prompt" }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copied = writeText.mock.calls[0]![0];
+    expect(copied).toContain(`Takewon dashboard at ${window.location.origin}`);
+    expect(copied).toContain(`CORS on that bucket for ${window.location.origin}`);
+    expect(within(prompt).getByRole("button", { name: "Copied" })).toBeInTheDocument();
+    // The prompt can be read before it is copied.
+    await user.click(within(prompt).getByText("Show the prompt"));
+    expect(within(prompt).getByText(/Ask me before you delete or stop anything/)).toBeVisible();
+    // And the setup ours runs on, named.
+    const section = screen.getByTestId("own-toolkit");
+    expect(within(section).getByText("Recommended setup")).toBeInTheDocument();
+    expect(within(section).getByText("Cloudflare R2 for files")).toBeInTheDocument();
+    expect(within(section).getByText("Or do it yourself")).toBeInTheDocument();
+  });
+
+  test("says to copy the prompt by hand when the browser refuses", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("denied"));
+    renderInApp(<ToolkitCard />);
+    await user.click(screen.getByRole("button", { name: "Use your own toolkit" }));
+    await user.click(screen.getByRole("button", { name: "Copy prompt" }));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Copy the prompt by hand: the browser did not allow it.",
+      ),
+    );
   });
 
   test("can be closed again without changing anything", async () => {

@@ -3,8 +3,8 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useQuery } from "convex/react";
-import { ArrowUpRight } from "lucide-react";
-import { useState } from "react";
+import { ArrowUpRight, Check, Copy } from "lucide-react";
+import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
 import { ConnectToolkitForm, FORK_REPO } from "@/components/onboarding/connect-toolkit-form";
@@ -12,11 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
+import { RECOMMENDED_SETUP, TOOLKIT_IMAGE, toolkitAgentPrompt } from "@/lib/toolkit-agent-prompt";
 
 import { SettingRow, SettingsSection } from "./settings-shell";
 
 const COMPOSE_GUIDE = `${FORK_REPO}/blob/main/docker-compose.md`;
-const IMAGE = "ghcr.io/hamchowderr/no-code-architects-toolkit:latest";
 
 type Connection = {
   _id: Id<"toolkitConnections">;
@@ -204,48 +204,59 @@ function UseOurs({ label, manager }: { label: string; manager: boolean }) {
   );
 }
 
-/** What running your own takes, then its address and key, tested before it is saved. */
+/**
+ * Running your own: a prompt for the team's own AI agent to set it up, the setup we run
+ * ours on, the steps by hand, then its address and key, tested before it is saved.
+ */
 function OwnToolkit({ onDone, onCancel }: { onDone: () => void; onCancel?: () => void }) {
   const team = useActiveTeam();
   return (
-    <div className="flex flex-col gap-6">
-      <ol className="text-muted-foreground flex list-decimal flex-col gap-3 pl-5 text-sm">
-        <li>
-          <span className="text-foreground font-medium">Run the toolkit.</span> Use the Otaku
-          Solutions version of the NCA Toolkit, free and open source:{" "}
-          <a
-            className="text-foreground inline-flex items-center gap-0.5 underline underline-offset-4"
-            href={FORK_REPO}
-            target="_blank"
-            rel="noreferrer"
-          >
-            github.com/hamchowderr/no-code-architects-toolkit
-            <ArrowUpRight className="size-3.5" aria-hidden="true" />
-          </a>
-          . Its ready-built image is <span className="text-foreground font-mono">{IMAGE}</span>. Run
-          it with Docker or Coolify on a server, or on a computer that stays on, following{" "}
-          <a
-            className="text-foreground underline underline-offset-4"
-            href={COMPOSE_GUIDE}
-            target="_blank"
-            rel="noreferrer"
-          >
-            the Docker guide
-          </a>
-          .
-        </li>
-        <li>
-          <span className="text-foreground font-medium">Give it storage.</span> Uploads and finished
-          files go to the toolkit&apos;s own bucket. Any S3-style storage works, such as Cloudflare
-          R2, Backblaze B2, DigitalOcean Spaces or Amazon S3: set S3_ENDPOINT_URL, S3_BUCKET_NAME,
-          S3_ACCESS_KEY, S3_SECRET_KEY and S3_REGION on the toolkit.
-        </li>
-        <li>
-          <span className="text-foreground font-medium">Pick a key.</span> Set API_KEY on the
-          toolkit to a long random value, then put its address and that key below. We test both, and
-          its storage, before switching you over.
-        </li>
-      </ol>
+    <div className="flex flex-col gap-8">
+      <AgentPrompt />
+      <RecommendedSetup />
+      <div className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium">Or do it yourself</h3>
+        <ol className="text-muted-foreground flex list-decimal flex-col gap-3 pl-5 text-sm">
+          <li>
+            <span className="text-foreground font-medium">Run the toolkit.</span> Use the Otaku
+            Solutions version of the NCA Toolkit, free and open source:{" "}
+            <a
+              className="text-foreground inline-flex items-center gap-0.5 underline underline-offset-4"
+              href={FORK_REPO}
+              target="_blank"
+              rel="noreferrer"
+            >
+              github.com/hamchowderr/no-code-architects-toolkit
+              <ArrowUpRight className="size-3.5" aria-hidden="true" />
+            </a>
+            . Its ready-built image is{" "}
+            <span className="text-foreground font-mono">{TOOLKIT_IMAGE}</span>. Run it with Docker
+            or Coolify on a server, or on a computer that stays on, following{" "}
+            <a
+              className="text-foreground underline underline-offset-4"
+              href={COMPOSE_GUIDE}
+              target="_blank"
+              rel="noreferrer"
+            >
+              the Docker guide
+            </a>
+            .
+          </li>
+          <li>
+            <span className="text-foreground font-medium">Give it storage.</span> Uploads and
+            finished files go to the toolkit&apos;s own bucket. Any S3-style storage works, such as
+            Cloudflare R2, Backblaze B2, DigitalOcean Spaces or Amazon S3: set S3_ENDPOINT_URL,
+            S3_BUCKET_NAME, S3_ACCESS_KEY, S3_SECRET_KEY and S3_REGION on the toolkit, and let the
+            bucket take uploads from this dashboard (CORS for PUT, GET and HEAD with the
+            Content-Type header, exposing ETag).
+          </li>
+          <li>
+            <span className="text-foreground font-medium">Pick a key.</span> Set API_KEY on the
+            toolkit to a long random value, then put its address and that key below. We test both,
+            and its storage, before switching you over.
+          </li>
+        </ol>
+      </div>
       <ConnectToolkitForm organizationId={team.id} onConnected={onDone} />
       {onCancel && (
         <div>
@@ -254,6 +265,82 @@ function OwnToolkit({ onDone, onCancel }: { onDone: () => void; onCancel?: () =>
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+const noChange = () => () => {};
+
+/** This dashboard's address, which the bucket must accept uploads from. */
+function useDashboardAddress(): string {
+  return useSyncExternalStore(
+    noChange,
+    () => window.location.origin,
+    () => "",
+  );
+}
+
+/** One prompt for any AI agent: installs, updates or replaces the team's toolkit. */
+function AgentPrompt() {
+  const prompt = toolkitAgentPrompt(useDashboardAddress());
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Copy the prompt by hand: the browser did not allow it.");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="agent-prompt">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-sm font-medium">Have your AI agent do it</h3>
+        <p className="text-muted-foreground text-sm">
+          Paste this into Claude Code, Codex, Cursor or any agent that can reach your server or
+          computer. It installs the toolkit, updates the one you run, or replaces one that is not
+          ours, then gives you the address and key to put below.
+        </p>
+      </div>
+      <div>
+        <Button variant="outline" onClick={() => void copy()}>
+          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+          {copied ? "Copied" : "Copy prompt"}
+        </Button>
+      </div>
+      <details className="group text-sm">
+        <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer">
+          Show the prompt
+        </summary>
+        <pre className="bg-muted/60 text-muted-foreground mt-3 max-h-80 overflow-auto rounded-lg p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+          {prompt}
+        </pre>
+      </details>
+    </div>
+  );
+}
+
+/** What our own toolkit runs on, the setup we recommend. */
+function RecommendedSetup() {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-sm font-medium">Recommended setup</h3>
+        <p className="text-muted-foreground text-sm">
+          The same setup our own toolkit runs on. The prompt above uses it.
+        </p>
+      </div>
+      <dl className="flex flex-col gap-3 text-sm">
+        {RECOMMENDED_SETUP.map((item) => (
+          <div key={item.label} className="flex flex-col gap-0.5">
+            <dt className="font-medium">{item.label}</dt>
+            <dd className="text-muted-foreground break-words">{item.detail}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

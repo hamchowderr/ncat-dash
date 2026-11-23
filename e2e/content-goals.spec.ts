@@ -145,10 +145,16 @@ test("setting up never asks about a toolkit; a copy that lends none connects one
     .first()
     .click();
   await expect(page).toHaveURL(/\/settings\/toolkit$/);
-  await expect(page.getByText("No toolkit yet")).toBeVisible();
+  await expect(page.getByText("No toolkit yet", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("link", { name: /github\.com\/hamchowderr\/no-code-architects-toolkit/ }),
   ).toBeVisible();
+  // Or a prompt for their own AI agent, carrying this dashboard's address for the bucket.
+  await expect(page.getByRole("heading", { name: "Recommended setup" })).toBeVisible();
+  await page.getByText("Show the prompt").click();
+  await expect(page.getByTestId("agent-prompt").locator("pre")).toContainText(
+    "CORS on that bucket for http://localhost:3000",
+  );
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
   await page.getByRole("button", { name: "Test and connect" }).click();

@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FORK_REPO } from "@/lib/toolkit-agent-prompt";
 
 const failureTitles = {
   invalid_url: "That address does not look right",
@@ -31,7 +32,7 @@ const failureHelp = {
   busy: "",
 } as const;
 
-export const FORK_REPO = "https://github.com/hamchowderr/no-code-architects-toolkit";
+export { FORK_REPO };
 
 /**
  * How to move from Stephen's original toolkit to the Otaku Solutions version. Its settings
