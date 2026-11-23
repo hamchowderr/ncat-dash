@@ -19,7 +19,9 @@ import { SettingsSection } from "./settings-shell";
 
 /** Where apps reach the dashboard's MCP server. */
 export function mcpUrl(): string {
-  return `${process.env.NEXT_PUBLIC_CONVEX_SITE_URL ?? ""}/mcp`;
+  const origin =
+    process.env.NEXT_PUBLIC_MCP_ORIGIN || process.env.NEXT_PUBLIC_CONVEX_SITE_URL || "";
+  return `${origin.replace(/\/+$/, "")}/mcp`;
 }
 
 /** The name apps list the server under. */
