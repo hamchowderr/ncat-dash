@@ -94,8 +94,13 @@ describe("Settings, Toolkit", () => {
     await user.click(within(prompt).getByRole("button", { name: /Open in/ }));
     const chatgpt = await screen.findByRole("menuitem", { name: "ChatGPT" });
     expect(new URL(chatgpt.getAttribute("href")!).searchParams.get("q")).toBe(copied);
-    expect(screen.getAllByRole("menuitem")).toHaveLength(16);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(5);
     await user.keyboard("{Escape}");
+    // The providers' own connectors, so the agent does the work.
+    const connectors = screen.getByTestId("agent-connectors");
+    expect(within(connectors).getByText("https://mcp.cloudflare.com/mcp")).toBeInTheDocument();
+    expect(within(connectors).getByText("https://<your Coolify address>/mcp")).toBeInTheDocument();
+    expect(within(connectors).getByText("https://mcp.hostinger.com")).toBeInTheDocument();
     // And the setup ours runs on, named.
     const section = screen.getByTestId("own-toolkit");
     expect(within(section).getByText("Recommended setup")).toBeInTheDocument();

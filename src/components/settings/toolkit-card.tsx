@@ -5,6 +5,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useQuery } from "convex/react";
 import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
+import { siCloudflare, siCoolify, siHostinger } from "simple-icons";
 import { toast } from "sonner";
 
 import {
@@ -19,7 +20,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
-import { RECOMMENDED_SETUP, TOOLKIT_IMAGE, toolkitAgentPrompt } from "@/lib/toolkit-agent-prompt";
+import {
+  AGENT_CONNECTORS,
+  RECOMMENDED_SETUP,
+  TOOLKIT_IMAGE,
+  toolkitAgentPrompt,
+} from "@/lib/toolkit-agent-prompt";
 
 import { OpenInAiApps } from "./ai-apps";
 import { SettingRow, SettingsSection } from "./settings-shell";
@@ -221,6 +227,7 @@ function OwnToolkit({ onDone, onCancel }: { onDone: () => void; onCancel?: () =>
   return (
     <div className="flex flex-col gap-8">
       <AgentPrompt />
+      <AgentConnectors />
       <RecommendedSetup />
       <div className="flex flex-col gap-3">
         <h3 className="text-sm font-medium">Or do it yourself</h3>
@@ -296,8 +303,8 @@ function AgentPrompt() {
       <div className="flex flex-col gap-1">
         <h3 className="text-sm font-medium">Have your AI agent do it</h3>
         <p className="text-muted-foreground text-sm">
-          Copy it into Claude Code, Codex or any agent that can reach your server or computer, or
-          open it in any AI app. It installs the toolkit, updates the one you run, or replaces one
+          Run it in Claude Code, Codex or Cursor on a computer that can reach your server, or open
+          it in Claude or ChatGPT. It installs the toolkit, updates the one you run, or replaces one
           that is not ours, then gives you the address and key to put below.
         </p>
       </div>
@@ -325,6 +332,50 @@ function AgentPrompt() {
           </CodeBlockActions>
         </CodeBlockHeader>
       </CodeBlock>
+    </div>
+  );
+}
+
+const CONNECTOR_LOGOS = { cloudflare: siCloudflare, coolify: siCoolify, hostinger: siHostinger };
+
+/** The providers' own connectors, so the agent does the setup and the team only signs in. */
+function AgentConnectors() {
+  return (
+    <div className="flex flex-col gap-3" data-testid="agent-connectors">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-sm font-medium">Connectors that let your agent do it for you</h3>
+        <p className="text-muted-foreground text-sm">
+          Add these to your agent and it makes the bucket, the address and the toolkit itself. You
+          only sign in, approve, and pay for a server if you need one. The prompt asks your agent to
+          add them, and to tell you how when it can&apos;t.
+        </p>
+      </div>
+      <ul className="flex flex-col gap-4 text-sm">
+        {AGENT_CONNECTORS.map((connector) => {
+          const logo = CONNECTOR_LOGOS[connector.id];
+          return (
+            <li key={connector.id} className="flex gap-3">
+              <svg
+                viewBox="0 0 24 24"
+                fill={`#${logo.hex}`}
+                aria-hidden="true"
+                className="mt-0.5 size-4 shrink-0"
+              >
+                <path d={logo.path} />
+              </svg>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <p className="font-medium">
+                  {connector.name}
+                  <span className="text-muted-foreground font-normal"> · {connector.when}</span>
+                </p>
+                <p className="text-muted-foreground">{connector.does}</p>
+                <p className="text-muted-foreground">{connector.access}</p>
+                <code className="text-xs break-all">{connector.url}</code>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

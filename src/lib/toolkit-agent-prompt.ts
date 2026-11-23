@@ -33,6 +33,45 @@ export const RECOMMENDED_SETUP: { label: string; detail: string }[] = [
   },
 ];
 
+/**
+ * Connectors (MCP servers) that let the agent do the setup itself, so the team only signs
+ * in, approves and pays. Each is the provider's own.
+ */
+export const AGENT_CONNECTORS: {
+  id: "cloudflare" | "coolify" | "hostinger";
+  name: string;
+  url: string;
+  when: string;
+  does: string;
+  access: string;
+}[] = [
+  {
+    id: "cloudflare",
+    name: "Cloudflare",
+    url: "https://mcp.cloudflare.com/mcp",
+    when: "Always",
+    does: "Makes the R2 bucket, its CORS and its API token, and the DNS record or Cloudflare Tunnel.",
+    access: "You sign in to Cloudflare once and choose what it may change.",
+  },
+  {
+    id: "coolify",
+    name: "Coolify",
+    url: "https://<your Coolify address>/mcp",
+    when: "If you run Coolify",
+    does: "Creates the toolkit and Redis, sets their settings and deploys them.",
+    access:
+      "Switch it on in Coolify under Settings, Advanced, then make an API token with read, write and deploy under Keys & Tokens.",
+  },
+  {
+    id: "hostinger",
+    name: "Hostinger",
+    url: "https://mcp.hostinger.com",
+    when: "If your server is at Hostinger, or you need one",
+    does: "Finds your server and its address, or buys one once you say yes.",
+    access: "You sign in to Hostinger once.",
+  },
+];
+
 export function toolkitAgentPrompt(dashboard: string): string {
   const origin = dashboard || "this Takewon dashboard's address";
   return `Set up the NCA Toolkit (the Otaku Solutions fork) for my Takewon dashboard at ${origin}.
@@ -42,6 +81,13 @@ First find out what I have, tell me, then do the one that fits:
 - A toolkit already running from ${TOOLKIT_IMAGE.replace(":latest", "")}: update it to the latest image and keep its settings.
 - Any other toolkit, such as Stephen Pope's original: replace it with this fork, because Takewon only works with the fork. Reuse its bucket and settings where they fit.
 Ask me before you delete or stop anything.
+
+Do the work yourself through connectors, so I only do what only I can: signing in, approving a connector, paying for a server, and pasting a key. Check which of these you can use, and add the ones that fit:
+- Cloudflare's MCP server, https://mcp.cloudflare.com/mcp (I sign in once): for the R2 bucket, its CORS and API token, and the DNS record or Cloudflare Tunnel.
+- Coolify's MCP server, https://<my Coolify address>/mcp, if I run Coolify: I switch it on under Settings, Advanced, and make an API token with read, write and deploy under Keys & Tokens. For creating the toolkit and Redis, setting their settings and deploying them.
+- Hostinger's MCP server, https://mcp.hostinger.com (I sign in once), if my server is at Hostinger or I need one: to find the server, or buy one only after I say yes.
+- SSH to the server, when you run in a terminal.
+When one is missing, tell me exactly how to add it to the app you are running in, then wait for me.
 
 Read these before you start:
 - ${FORK_REPO}/blob/main/AGENTS.md

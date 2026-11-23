@@ -9,28 +9,17 @@ import { AI_APPS, OpenInAiApps } from "./ai-apps";
 const PROMPT = "Set up the toolkit & check it: 100% done?";
 
 describe("Open in any AI app", () => {
-  test("every app has its own name, logo and a way to get the prompt there", () => {
+  test("only agents that can do the setup, each with its logo and one way to get the prompt there", () => {
     expect(AI_APPS.map((app) => app.name)).toEqual([
+      "Claude Code",
+      "Codex",
       "Cursor",
       "ChatGPT",
-      "GitHub Copilot",
-      "Grok",
-      "Perplexity",
-      "Google AI Studio",
-      "Kagi Assistant",
-      "Duck.ai",
-      "v0",
-      "Scira",
       "Claude",
-      "Gemini",
-      "Mistral Le Chat",
-      "DeepSeek",
-      "HuggingChat",
-      "Phind",
     ]);
     for (const app of AI_APPS) {
       expect(app.logo, app.name).toBeTruthy();
-      expect(Boolean(app.withPrompt) !== Boolean(app.open), app.name).toBe(true);
+      expect([app.command, app.withPrompt, app.open].filter(Boolean), app.name).toHaveLength(1);
     }
   });
 
@@ -47,11 +36,13 @@ describe("Open in any AI app", () => {
     const user = userEvent.setup();
     render(<OpenInAiApps prompt={PROMPT} trigger={<button type="button">Open in</button>} />);
     await user.click(screen.getByRole("button", { name: "Open in" }));
-    expect(await screen.findByText("Opens with the prompt")).toBeInTheDocument();
+    expect(await screen.findByText("Copies the prompt for your terminal")).toBeInTheDocument();
+    expect(screen.getByText("Opens with the prompt")).toBeInTheDocument();
     expect(screen.getByText("Copies the prompt, then opens")).toBeInTheDocument();
-    const grok = screen.getByRole("menuitem", { name: "Grok" });
-    expect(grok.getAttribute("target")).toBe("_blank");
-    expect(grok.querySelector("svg")).not.toBeNull();
+    const cursor = screen.getByRole("menuitem", { name: "Cursor" });
+    expect(cursor.getAttribute("target")).toBe("_blank");
+    expect(cursor.querySelector("svg")).not.toBeNull();
+    expect(screen.getAllByRole("menuitem")).toHaveLength(5);
   });
 
   test("an app that can't take the prompt opens, with the prompt copied to paste", async () => {
@@ -64,5 +55,19 @@ describe("Open in any AI app", () => {
     expect(open).toHaveBeenCalledWith("https://claude.ai/new", "_blank", "noopener,noreferrer");
     expect(writeText).toHaveBeenCalledWith(PROMPT);
     expect(toastSuccess).toHaveBeenCalledWith("Prompt copied. Paste it into Claude.");
+  });
+
+  test("a terminal agent gets the prompt copied, with the command that starts it", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    render(<OpenInAiApps prompt={PROMPT} trigger={<button type="button">Open in</button>} />);
+    await user.click(screen.getByRole("button", { name: "Open in" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Codex" }));
+    expect(open).not.toHaveBeenCalled();
+    expect(writeText).toHaveBeenCalledWith(PROMPT);
+    expect(toastSuccess).toHaveBeenCalledWith(
+      "Prompt copied. Run codex in a terminal and paste it.",
+    );
   });
 });
