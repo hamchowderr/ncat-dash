@@ -4,7 +4,11 @@ import {
   type AutomationNode,
   MOTION_PRESETS,
   motionStepSettings,
+  OUTLINE_STYLE_LABELS,
+  OUTLINE_STYLES,
   PRESET_GROUPS,
+  PUNCH_STYLE_LABELS,
+  PUNCH_STYLES,
   SOUND_LEVEL_LABELS,
   SOUND_LEVELS,
   soundStepSettings,
@@ -67,15 +71,29 @@ const EFFECTS = [
   },
   {
     name: "outline",
-    label: "Sticker outline",
-    description: "A white outline around you while something sits behind you, or as it opens.",
+    label: "Outline",
+    description: "A line drawn around you while something sits behind you, or as it opens.",
   },
   {
     name: "punchIns",
     label: "Punch-ins",
-    description: "The picture punches in as each keyword or number lands.",
+    description: "The camera moves as each keyword or number lands.",
   },
 ] as const;
+
+/** The look each switch can take once it is on. */
+const EFFECT_STYLES = {
+  outline: {
+    name: "outlineStyle",
+    label: "Outline look",
+    options: OUTLINE_STYLES.map((value) => ({ value, label: OUTLINE_STYLE_LABELS[value] })),
+  },
+  punchIns: {
+    name: "punchStyle",
+    label: "How the camera moves",
+    options: PUNCH_STYLES.map((value) => ({ value, label: PUNCH_STYLE_LABELS[value] })),
+  },
+} as const;
 
 /** Add Motion Graphics: the style (the team's or a preset), the opening title, the sounds. */
 export function MotionMain({
@@ -160,10 +178,53 @@ export function MotionMain({
           <FieldContent>
             <FieldLabel htmlFor={`node-${node.id}-${effect.name}`}>{effect.label}</FieldLabel>
             <FieldDescription>{effect.description}</FieldDescription>
+            {effect.name !== "behind" && settings[effect.name] ? (
+              <EffectStyle
+                id={`node-${node.id}-${EFFECT_STYLES[effect.name].name}`}
+                label={EFFECT_STYLES[effect.name].label}
+                value={settings[EFFECT_STYLES[effect.name].name]}
+                options={EFFECT_STYLES[effect.name].options}
+                onChange={(value) => set(EFFECT_STYLES[effect.name].name, value)}
+              />
+            ) : null}
           </FieldContent>
         </Field>
       ))}
     </FieldGroup>
+  );
+}
+
+function EffectStyle({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  options: readonly { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      <FieldLabel htmlFor={id} className="text-muted-foreground text-xs">
+        {label}
+      </FieldLabel>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
