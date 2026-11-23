@@ -357,7 +357,7 @@ export const cancel = mutation({
  * Stops a run, and every run one of its "Run an automation" steps is waiting on. A step
  * waiting on this run is told it was stopped.
  */
-async function cancelRun(ctx: MutationCtx, run: Doc<"runs">): Promise<void> {
+export async function cancelRun(ctx: MutationCtx, run: Doc<"runs">): Promise<void> {
   if (run.status !== "running" && run.status !== "waiting") return;
   const now = Date.now();
   const steps = await ctx.db

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { startRun } from "./lib/runner";
@@ -217,6 +217,27 @@ describe("the MCP server", () => {
       ["set_up_workflow", false],
       ["switch_workflow", false],
     ]);
+    // Directories ask for explicit hints: anything that changes, stops or sends counts as
+    // destructive; only adding a new draft is not.
+    const hints = (
+      listed.body.result.tools as {
+        name: string;
+        annotations: Record<string, boolean>;
+      }[]
+    ).map(({ name, annotations }) => [
+      name,
+      annotations.readOnlyHint,
+      annotations.destructiveHint,
+      annotations.openWorldHint,
+    ]);
+    for (const [, readOnly, destructive, openWorld] of hints) {
+      expect(typeof destructive).toBe("boolean");
+      expect(openWorld).toBe(false);
+      if (readOnly) expect(destructive).toBe(false);
+    }
+    expect(
+      hints.filter(([, readOnly, destructive]) => !readOnly && !destructive).map(([name]) => name),
+    ).toEqual(["create_automation", "set_up_follow_on"]);
     expect(hello.body.result.capabilities.extensions).toEqual({
       "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] },
       "io.modelcontextprotocol/skills": {},
@@ -829,5 +850,654 @@ describe("clips playing in the chat", () => {
     ]);
     // Only the team's own storage: another team's is not added.
     expect(JSON.stringify(page.body.result)).not.toContain("toolkit.example");
+  });
+});
+
+/** A 2026-07-28 request from a client that says what it can do (forms, tasks, the run page). */
+async function asClient(
+  t: Backend,
+  key: string,
+  can: { forms?: boolean; tasks?: boolean; apps?: boolean },
+  method: string,
+  params: Record<string, unknown> = {},
+) {
+  const capabilities = {
+    ...(can.forms ? { elicitation: { form: {} } } : {}),
+    extensions: {
+      ...(can.apps
+        ? { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } }
+        : {}),
+      ...(can.tasks ? { "io.modelcontextprotocol/tasks": {} } : {}),
+    },
+  };
+  const response = await t.fetch("/mcp", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${key}`,
+      "mcp-protocol-version": "2026-07-28",
+      "mcp-method": method,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: next++,
+      method,
+      params: {
+        ...params,
+        _meta: {
+          ...MODERN_META,
+          "io.modelcontextprotocol/clientCapabilities": capabilities,
+        },
+      },
+    }),
+  });
+  return { status: response.status, body: await response.json() };
+}
+
+describe("prompts, file links, result shapes and icons", () => {
+  test("offers slash prompts, and fills one in from what the person gave", async () => {
+    const { t, key } = await setUp();
+    const discovered = await asClient(t, key, {}, "server/discover");
+    expect(discovered.body.result.capabilities.prompts).toEqual({ listChanged: false });
+    const listed = await asClient(t, key, {}, "prompts/list");
+    expect(listed.body.result.prompts.map((prompt: { name: string }) => prompt.name)).toEqual([
+      "whats_waiting",
+      "run_automation",
+      "build_automation",
+      "how_runs_went",
+    ]);
+    expect(listed.body.result).toMatchObject({ ttlMs: expect.any(Number), cacheScope: "private" });
+    expect(listed.body.result.prompts[0].icons[0].mimeType).toBe("image/svg+xml");
+
+    const got = await asClient(t, key, {}, "prompts/get", {
+      name: "run_automation",
+      arguments: { automation: "Weekly clips" },
+    });
+    expect(got.body.result.messages).toEqual([
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: expect.stringContaining('"Weekly clips" on a file: ask me which one'),
+        },
+      },
+    ]);
+    const missing = await asClient(t, key, {}, "prompts/get", { name: "build_automation" });
+    expect(missing.body.error).toMatchObject({
+      code: -32602,
+      message: "goal is needed for build_automation.",
+    });
+    const unknown = await asClient(t, key, {}, "prompts/get", { name: "nope" });
+    expect(unknown.body.error.code).toBe(-32602);
+  });
+
+  test("every tool has an icon, and the main ones say the shape of what they return", async () => {
+    const { t, key } = await setUp();
+    const { body } = await asClient(t, key, {}, "tools/list");
+    const tools = body.result.tools as {
+      name: string;
+      icons: { src: string; theme: string }[];
+      outputSchema?: { properties: Record<string, unknown> };
+    }[];
+    for (const tool of tools) {
+      expect(tool.icons.map((each) => each.theme)).toEqual(["light", "dark"]);
+      expect(atob(tool.icons[0].src.split(",")[1])).toMatch(/^<svg /);
+    }
+    const byName = new Map(tools.map((tool) => [tool.name, tool]));
+    expect(Object.keys(byName.get("check_run")!.outputSchema!.properties)).toEqual(
+      expect.arrayContaining(["run_id", "status", "steps", "files", "approval"]),
+    );
+    expect(byName.get("list_runs")!.outputSchema!.properties.items).toBeDefined();
+  });
+
+  test("a finished run's files come back as file links too", async () => {
+    const { t, automationId, uploadId, key } = await setUp();
+    const started = await call(t, key, "start_automation", {
+      automation_id: automationId,
+      upload_id: uploadId,
+    });
+    const runId = started.data.run_id as Id<"runs">;
+    await t.run(async (ctx) => {
+      const steps = await ctx.db
+        .query("runSteps")
+        .withIndex("by_run", (q) => q.eq("runId", runId))
+        .collect();
+      for (const step of steps) {
+        await ctx.db.patch(step._id, {
+          status: "done",
+          outputs: [`https://files.example/clips/episode%2012-${step.nodeId}.mp4`],
+        });
+      }
+      await ctx.db.patch(runId, { status: "done", finishedAt: Date.now() });
+    });
+    const { body } = await asClient(t, key, {}, "tools/call", {
+      name: "check_run",
+      arguments: { run_id: runId },
+    });
+    expect(body.result.content.slice(1)).toEqual([
+      {
+        type: "resource_link",
+        uri: "https://files.example/clips/episode%2012-caption.mp4",
+        name: "episode 12-caption.mp4",
+        mimeType: "video/mp4",
+      },
+    ]);
+    expect(body.result.structuredContent.files).toEqual([
+      "https://files.example/clips/episode%2012-caption.mp4",
+    ]);
+  });
+});
+
+describe("asking the person in the chat", () => {
+  test("asks which file to run on, and runs on the one picked", async () => {
+    const { t, automationId, uploadId, key } = await setUp();
+    const asked = await asClient(t, key, { forms: true }, "tools/call", {
+      name: "start_automation",
+      arguments: { automation_id: automationId },
+    });
+    expect(asked.body.result).toMatchObject({
+      resultType: "input_required",
+      inputRequests: {
+        file: {
+          method: "elicitation/create",
+          params: {
+            mode: "form",
+            message: expect.stringContaining('"Weekly clips"'),
+            requestedSchema: {
+              type: "object",
+              properties: {
+                upload_id: { oneOf: [{ const: uploadId, title: "episode 12.mp4" }] },
+                file_url: { type: "string", format: "uri" },
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(await t.run((ctx) => ctx.db.query("runs").collect())).toHaveLength(0);
+
+    const picked = await asClient(t, key, { forms: true }, "tools/call", {
+      name: "start_automation",
+      arguments: { automation_id: automationId },
+      inputResponses: { file: { action: "accept", content: { upload_id: uploadId } } },
+    });
+    expect(picked.body.result.resultType).toBe("complete");
+    const run = await t.run((ctx) =>
+      ctx.db.get(picked.body.result.structuredContent.run_id as Id<"runs">),
+    );
+    expect(run?.trigger).toEqual({ file_url: `upload:${uploadId}` });
+  });
+
+  test("starts nothing when the person closes the form, and older clients get no form", async () => {
+    const { t, automationId, key } = await setUp();
+    const closed = await asClient(t, key, { forms: true }, "tools/call", {
+      name: "start_automation",
+      arguments: { automation_id: automationId },
+      inputResponses: { file: { action: "cancel" } },
+    });
+    expect(closed.body.result).toMatchObject({
+      isError: true,
+      content: [{ text: "The person closed the form without choosing, so nothing was started." }],
+    });
+    expect(await t.run((ctx) => ctx.db.query("runs").collect())).toHaveLength(0);
+    // A client that cannot show forms runs it without a file, as before.
+    const plain = await call(t, key, "start_automation", { automation_id: automationId });
+    expect(plain.isError).toBe(false);
+  });
+
+  test("asks before switching an automation on, and leaves it off when told no", async () => {
+    const { t, automationId, key } = await setUp();
+    await call(t, key, "change_automation", {
+      automation_id: automationId,
+      operations: [{ op: "trigger", trigger: { kind: "trigger:webhook" } }],
+    });
+    await call(t, key, "publish_automation", { automation_id: automationId });
+    const args = { automation_id: automationId, on: true };
+    const asked = await asClient(t, key, { forms: true }, "tools/call", {
+      name: "switch_automation",
+      arguments: args,
+    });
+    expect(asked.body.result.inputRequests.switch_on.params.message).toBe(
+      'Switch on "Weekly clips"? From then on it runs by itself on: its webhook address.',
+    );
+    const no = await asClient(t, key, { forms: true }, "tools/call", {
+      name: "switch_automation",
+      arguments: args,
+      inputResponses: { switch_on: { action: "decline" } },
+    });
+    expect(no.body.result.isError).toBe(true);
+    expect((await t.run((ctx) => ctx.db.get(automationId)))?.enabled).toBe(false);
+    const yes = await asClient(t, key, { forms: true }, "tools/call", {
+      name: "switch_automation",
+      arguments: args,
+      inputResponses: { switch_on: { action: "accept", content: {} } },
+    });
+    expect(yes.body.result.structuredContent).toMatchObject({ on: true });
+    expect((await t.run((ctx) => ctx.db.get(automationId)))?.enabled).toBe(true);
+    // Switching off needs no question.
+    const off = await asClient(t, key, { forms: true }, "tools/call", {
+      name: "switch_automation",
+      arguments: { automation_id: automationId, on: false },
+    });
+    expect(off.body.result.structuredContent).toMatchObject({ on: false });
+  });
+});
+
+describe("approvals asked in the chat, and runs as tasks", () => {
+  const FILE = "https://files.example/station_interview.mp4";
+
+  async function waiting() {
+    const setup = await setUp();
+    const runId = await setup.t.run(async (ctx) => {
+      const id = await ctx.db.insert("automations", {
+        organizationId: setup.team,
+        name: "Client ads",
+        enabled: true,
+        trigger: { kind: "webhook" },
+        nodes: [{ id: "approval", kind: "approval", input: {}, position: { x: 0, y: 0 } }],
+        edges: [],
+        hookToken: "token-2",
+        nextRunAt: null,
+        createdBy: setup.owner.id,
+        updatedAt: Date.now(),
+      });
+      const automation = await ctx.db.get(id);
+      const started = await startRun(ctx, automation!, "webhook", { file_url: FILE }, null);
+      if (!started.ok) throw new Error(started.message);
+      return started.runId;
+    });
+    const [approval] = (await call(setup.t, setup.key, "list_approvals")).data.approvals;
+    return { ...setup, runId, approvalId: approval.approval_id as string };
+  }
+
+  const stepError = (t: Backend, runId: string) =>
+    t.run(async (ctx) => {
+      const [step] = await ctx.db
+        .query("runSteps")
+        .withIndex("by_run", (q) => q.eq("runId", runId as Id<"runs">))
+        .collect();
+      return step.error;
+    });
+
+  test("asks what should change when sending back, and shows it on the run", async () => {
+    const { t, key, runId, approvalId } = await waiting();
+    const args = { approval_id: approvalId, decision: "send_back" };
+    const asked = await asClient(t, key, { forms: true }, "tools/call", {
+      name: "decide_approval",
+      arguments: args,
+    });
+    expect(asked.body.result.inputRequests.send_back.params).toMatchObject({
+      message: 'Send back "Client ads" at Approval? The run stops there.',
+      requestedSchema: { properties: { reason: { type: "string" } } },
+    });
+    const sent = await asClient(t, key, { forms: true }, "tools/call", {
+      name: "decide_approval",
+      arguments: args,
+      inputResponses: { send_back: { action: "accept", content: { reason: "Louder music" } } },
+    });
+    expect(sent.body.result.structuredContent).toMatchObject({ decided: "sent back" });
+    expect(await stepError(t, runId)).toBe("Sent back: Louder music");
+  });
+
+  test("takes a reason given straight away, and the run page's button asks nothing", async () => {
+    const first = await waiting();
+    await asClient(first.t, first.key, { forms: true }, "tools/call", {
+      name: "decide_approval",
+      arguments: { approval_id: first.approvalId, decision: "send_back", reason: "Wrong logo" },
+    });
+    expect(await stepError(first.t, first.runId)).toBe("Sent back: Wrong logo");
+
+    const second = await waiting();
+    const pressed = await asClient(second.t, second.key, { forms: true }, "tools/call", {
+      name: "decide_approval",
+      arguments: { approval_id: second.approvalId, decision: "send_back", reason: "" },
+    });
+    expect(pressed.body.result.resultType).toBe("complete");
+    expect(await stepError(second.t, second.runId)).toBe("Rejected at the approval step.");
+  });
+
+  test("a chat app that follows tasks gets the run as one, and decides its review in a form", async () => {
+    const { t, key, automationId, uploadId, runId, approvalId } = await waiting();
+    const can = { forms: true, tasks: true };
+    const discovered = await asClient(t, key, can, "server/discover");
+    expect(discovered.body.result.capabilities.extensions["io.modelcontextprotocol/tasks"]).toEqual(
+      {},
+    );
+
+    const started = await asClient(t, key, can, "tools/call", {
+      name: "start_automation",
+      arguments: { automation_id: automationId, upload_id: uploadId },
+    });
+    expect(started.body.result).toMatchObject({
+      resultType: "task",
+      status: "working",
+      statusMessage: 'Running "Weekly clips".',
+      pollIntervalMs: 5000,
+      ttlMs: null,
+    });
+    const working = await asClient(t, key, can, "tasks/get", {
+      taskId: started.body.result.taskId,
+    });
+    expect(working.body.result).toMatchObject({
+      resultType: "complete",
+      status: "working",
+      statusMessage: "Step 1 of 2: Trim video.",
+    });
+    expect(
+      (await asClient(t, key, can, "tasks/cancel", { taskId: started.body.result.taskId })).body
+        .result,
+    ).toEqual(expect.objectContaining({ resultType: "complete" }));
+    const cancelled = await asClient(t, key, can, "tasks/get", {
+      taskId: started.body.result.taskId,
+    });
+    expect(cancelled.body.result.status).toBe("cancelled");
+
+    // The waiting run, as a task: its review is asked as a form, and answered by update.
+    const review = await asClient(t, key, can, "tasks/get", { taskId: runId });
+    expect(review.body.result).toMatchObject({
+      status: "input_required",
+      inputRequests: {
+        [`review:${approvalId}`]: {
+          method: "elicitation/create",
+          params: { message: expect.stringContaining(FILE) },
+        },
+      },
+    });
+    await asClient(t, key, can, "tasks/update", {
+      taskId: runId,
+      inputResponses: {
+        [`review:${approvalId}`]: { action: "accept", content: { decision: "approve" } },
+      },
+    });
+    const done = await asClient(t, key, can, "tasks/get", { taskId: runId });
+    expect(done.body.result).toMatchObject({
+      status: "completed",
+      result: {
+        isError: false,
+        structuredContent: { status: "done", files: [FILE] },
+        content: expect.arrayContaining([
+          expect.objectContaining({ type: "resource_link", uri: FILE }),
+        ]),
+      },
+    });
+  });
+
+  test("tasks keep to the team and to clients that follow them; the run page gets a plain result", async () => {
+    const { t, key, other, otherTeam, runId, automationId, uploadId } = await waiting();
+    const theirs = await other.as.mutation(api.mcpKeys.create, {
+      organizationId: otherTeam,
+      name: "Their agent",
+    });
+    const can = { tasks: true };
+    expect(
+      (await asClient(t, theirs.key, can, "tasks/get", { taskId: runId })).body.error.code,
+    ).toBe(-32602);
+    expect((await asClient(t, key, can, "tasks/get", { taskId: "nope" })).body.error.code).toBe(
+      -32602,
+    );
+    expect((await asClient(t, key, {}, "tasks/get", { taskId: runId })).body.error.code).toBe(
+      -32021,
+    );
+    // Someone not asked to decide, or an app without forms, just sees it waiting.
+    const plain = await asClient(t, key, can, "tasks/get", { taskId: runId });
+    expect(plain.body.result).toMatchObject({
+      status: "working",
+      statusMessage: "Waiting at Approval for someone on the team to decide.",
+    });
+    const withPage = await asClient(t, key, { tasks: true, apps: true }, "tools/call", {
+      name: "start_automation",
+      arguments: { automation_id: automationId, upload_id: uploadId },
+    });
+    expect(withPage.body.result).toMatchObject({ resultType: "complete", isError: false });
+  });
+});
+
+describe("autocomplete, attachable automations and runs, events and the server card", () => {
+  test("suggests the team's automation names and uploads as a prompt is filled in", async () => {
+    const { t, key } = await setUp();
+    const discovered = await asClient(t, key, {}, "server/discover");
+    expect(discovered.body.result.capabilities.completions).toEqual({});
+    const named = await asClient(t, key, {}, "completion/complete", {
+      ref: { type: "ref/prompt", name: "run_automation" },
+      argument: { name: "automation", value: "week" },
+    });
+    expect(named.body.result.completion).toEqual({
+      values: ["Weekly clips"],
+      total: 1,
+      hasMore: false,
+    });
+    const file = await asClient(t, key, {}, "completion/complete", {
+      ref: { type: "ref/prompt", name: "run_automation" },
+      argument: { name: "file", value: "12" },
+    });
+    expect(file.body.result.completion.values).toEqual(["episode 12.mp4"]);
+    const none = await asClient(t, key, {}, "completion/complete", {
+      ref: { type: "ref/prompt", name: "whats_waiting" },
+      argument: { name: "anything", value: "" },
+    });
+    expect(none.body.result.completion.values).toEqual([]);
+  });
+
+  test("lists the team's automations to attach, and reads an automation or a run", async () => {
+    const { t, key, automationId, uploadId, other, otherTeam } = await setUp();
+    const listed = await asClient(t, key, {}, "resources/list");
+    expect(listed.body.result.resources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          uri: `takewon://automations/${automationId}`,
+          name: "Weekly clips",
+          description: "Automation. Starts with: a new upload.",
+        }),
+      ]),
+    );
+    expect(listed.body.result.ttlMs).toBe(0);
+    const templates = await asClient(t, key, {}, "resources/templates/list");
+    expect(
+      templates.body.result.resourceTemplates.map(
+        (each: { uriTemplate: string }) => each.uriTemplate,
+      ),
+    ).toEqual(["takewon://automations/{automation_id}", "takewon://runs/{run_id}"]);
+
+    const read = await asClient(t, key, {}, "resources/read", {
+      uri: `takewon://automations/${automationId}`,
+    });
+    expect(JSON.parse(read.body.result.contents[0].text)).toMatchObject({
+      automation_id: automationId,
+      name: "Weekly clips",
+    });
+    const started = await call(t, key, "start_automation", {
+      automation_id: automationId,
+      upload_id: uploadId,
+    });
+    const run = await asClient(t, key, {}, "resources/read", {
+      uri: `takewon://runs/${started.data.run_id}`,
+    });
+    expect(JSON.parse(run.body.result.contents[0].text)).toMatchObject({ status: "running" });
+    const ids = await asClient(t, key, {}, "completion/complete", {
+      ref: { type: "ref/resource", uri: "takewon://automations/{automation_id}" },
+      argument: { name: "automation_id", value: "weekly" },
+    });
+    expect(ids.body.result.completion.values).toEqual([automationId]);
+
+    // Another team's key reads nothing of this team's.
+    const theirs = await other.as.mutation(api.mcpKeys.create, {
+      organizationId: otherTeam,
+      name: "Their agent",
+    });
+    const refused = await asClient(t, theirs.key, {}, "resources/read", {
+      uri: `takewon://automations/${automationId}`,
+    });
+    expect(refused.body.error).toMatchObject({ code: -32602 });
+  });
+
+  test("polls for finished runs and waiting approvals from a cursor, for the team only", async () => {
+    const { t, key, automationId, uploadId, other, otherTeam } = await setUp();
+    const discovered = await asClient(t, key, {}, "server/discover");
+    expect(
+      discovered.body.result.capabilities.extensions["io.modelcontextprotocol/events"],
+    ).toEqual({});
+    const types = await asClient(t, key, {}, "events/list");
+    expect(types.body.result.events).toEqual([
+      expect.objectContaining({ name: "run.finished", delivery: ["poll"] }),
+      expect.objectContaining({ name: "approval.waiting", delivery: ["poll"] }),
+    ]);
+
+    const start = await asClient(t, key, {}, "events/poll", { name: "run.finished", cursor: null });
+    expect(start.body.result).toMatchObject({
+      events: [],
+      cursor: expect.stringMatching(/^t:\d+$/),
+      hasMore: false,
+      truncated: false,
+      nextPollMs: 30000,
+    });
+    const started = await call(t, key, "start_automation", {
+      automation_id: automationId,
+      upload_id: uploadId,
+    });
+    const runId = started.data.run_id as Id<"runs">;
+    await t.run(async (ctx) => {
+      const steps = await ctx.db
+        .query("runSteps")
+        .withIndex("by_run", (q) => q.eq("runId", runId))
+        .collect();
+      for (const step of steps) {
+        await ctx.db.patch(step._id, {
+          status: "done",
+          outputs: [`https://files.example/${step.nodeId}.mp4`],
+        });
+      }
+      await ctx.db.patch(runId, { status: "done", finishedAt: Date.now() + 5 });
+    });
+    const polled = await asClient(t, key, {}, "events/poll", {
+      name: "run.finished",
+      cursor: start.body.result.cursor,
+    });
+    expect(polled.body.result.events).toEqual([
+      expect.objectContaining({
+        eventId: `${runId}:done`,
+        name: "run.finished",
+        data: expect.objectContaining({
+          run_id: runId,
+          status: "done",
+          files: ["https://files.example/caption.mp4"],
+        }),
+      }),
+    ]);
+    const again = await asClient(t, key, {}, "events/poll", {
+      name: "run.finished",
+      cursor: polled.body.result.cursor,
+    });
+    expect(again.body.result.events).toEqual([]);
+
+    // Another team polling from the same moment sees none of it.
+    const theirs = await other.as.mutation(api.mcpKeys.create, {
+      organizationId: otherTeam,
+      name: "Their agent",
+    });
+    const elsewhere = await asClient(t, theirs.key, {}, "events/poll", {
+      name: "run.finished",
+      cursor: start.body.result.cursor,
+    });
+    expect(elsewhere.body.result.events).toEqual([]);
+
+    const unknown = await asClient(t, key, {}, "events/poll", { name: "nope", cursor: null });
+    expect(unknown.body.error.code).toBe(-32023);
+    const webhook = await asClient(t, key, {}, "events/subscribe", { name: "run.finished" });
+    expect(webhook.body.error.code).toBe(-32026);
+    const forged = await asClient(t, key, {}, "events/poll", {
+      name: "run.finished",
+      cursor: "anything",
+    });
+    expect(forged.body.error.code).toBe(-32602);
+  });
+
+  test("tells who should decide when a run starts waiting for an approval", async () => {
+    const { t, key, owner, team } = await setUp();
+    const start = await asClient(t, key, {}, "events/poll", {
+      name: "approval.waiting",
+      cursor: null,
+    });
+    await t.run(async (ctx) => {
+      const id = await ctx.db.insert("automations", {
+        organizationId: team,
+        name: "Client ads",
+        enabled: true,
+        trigger: { kind: "webhook" },
+        nodes: [{ id: "approval", kind: "approval", input: {}, position: { x: 0, y: 0 } }],
+        edges: [],
+        hookToken: "token-3",
+        nextRunAt: null,
+        createdBy: owner.id,
+        updatedAt: Date.now(),
+      });
+      const automation = await ctx.db.get(id);
+      const started = await startRun(
+        ctx,
+        automation!,
+        "webhook",
+        { file_url: "https://files.example/ad.mp4" },
+        null,
+      );
+      if (!started.ok) throw new Error(started.message);
+      const [step] = await ctx.db
+        .query("runSteps")
+        .withIndex("by_run", (q) => q.eq("runId", started.runId))
+        .collect();
+      await ctx.db.patch(step._id, { startedAt: Date.now() + 5 });
+    });
+    const polled = await asClient(t, key, {}, "events/poll", {
+      name: "approval.waiting",
+      cursor: start.body.result.cursor,
+    });
+    expect(polled.body.result.events).toEqual([
+      expect.objectContaining({
+        name: "approval.waiting",
+        data: expect.objectContaining({
+          automation: "Client ads",
+          you_may_decide: true,
+          files: ["https://files.example/ad.mp4"],
+        }),
+      }),
+    ]);
+  });
+
+  test("serves a public server card that names the server and where to reach it", async () => {
+    const { t } = await setUp();
+    const response = await t.fetch("/mcp/server-card", { method: "GET" });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/mcp-server-card+json");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    const card = await response.json();
+    expect(card).toMatchObject({
+      $schema: "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+      name: "com.takewon/takewon",
+      title: "Takewon",
+      version: expect.any(String),
+      description: expect.stringContaining("Your content, social media ready."),
+      remotes: [
+        {
+          type: "streamable-http",
+          url: expect.stringMatching(/\/mcp$/),
+          supportedProtocolVersions: expect.arrayContaining(["2026-07-28"]),
+        },
+      ],
+    });
+    expect(card.name).toMatch(/^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/);
+  });
+
+  test("serves ChatGPT's domain challenge only once its token is set", async () => {
+    const { t } = await setUp();
+    const before = await t.fetch("/.well-known/openai-apps-challenge", { method: "GET" });
+    expect(before.status).toBe(404);
+    vi.stubEnv("OPENAI_APPS_CHALLENGE", " token-123\n");
+    try {
+      const after = await t.fetch("/.well-known/openai-apps-challenge", { method: "GET" });
+      expect(after.status).toBe(200);
+      expect(after.headers.get("content-type")).toMatch(/^text\/plain/);
+      expect(await after.text()).toBe("token-123");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

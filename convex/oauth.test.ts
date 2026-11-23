@@ -198,6 +198,25 @@ describe("how an agent finds out how to sign in", () => {
     );
   });
 
+  test("MCP_ORIGIN gives the MCP server its own domain in the challenge and the metadata", async () => {
+    const { t } = await setUp();
+    process.env.MCP_ORIGIN = "https://mcp.example.com/";
+    try {
+      const response = await t.fetch("/mcp", { method: "POST", body: "{}" });
+      expect(response.status).toBe(401);
+      expect(response.headers.get("www-authenticate")).toContain(
+        'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"',
+      );
+      const resource = await (await t.fetch("/.well-known/oauth-protected-resource/mcp")).json();
+      expect(resource).toMatchObject({
+        resource: "https://mcp.example.com/mcp",
+        authorization_servers: [ISSUER],
+      });
+    } finally {
+      delete process.env.MCP_ORIGIN;
+    }
+  });
+
   test("a token that is not a key or a good access token gets 401 too", async () => {
     const { t } = await setUp();
     expect((await listAutomations(t, "madeup")).status).toBe(401);
