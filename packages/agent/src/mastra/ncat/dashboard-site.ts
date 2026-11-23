@@ -18,11 +18,27 @@ function base64url(value: Buffer | string): string {
   return Buffer.from(value).toString("base64url");
 }
 
-/** A five-minute HS256 token, as the dashboard signs its own calls to us. */
+/**
+ * Audiences keep each direction's tokens apart: one signed for the dashboard's backend is
+ * refused by the agent server, and the other way round. Kept in step with
+ * convex/lib/agentToken.ts and src/lib/mastra-proxy.ts.
+ */
+export const DASHBOARD_AUDIENCE = "takewon-dashboard";
+export const AGENT_AUDIENCE = "takewon-agent";
+
+/**
+ * The secret for calls from here to the dashboard's backend: AGENT_CONVEX_SECRET, which
+ * only this server and Convex hold, or MASTRA_JWT_SECRET when it isn't set.
+ */
+export function dashboardSecret(): string | undefined {
+  return env.AGENT_CONVEX_SECRET || env.MASTRA_JWT_SECRET;
+}
+
+/** A five-minute HS256 token for the dashboard's backend, and only for it. */
 export function signForDashboard(secret: string, now = Date.now()): string {
   const iat = Math.floor(now / 1000);
   const body = `${base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${base64url(
-    JSON.stringify({ sub: "agent-server", iat, exp: iat + 300 }),
+    JSON.stringify({ sub: "agent-server", aud: DASHBOARD_AUDIENCE, iat, exp: iat + 300 }),
   )}`;
   return `${body}.${base64url(createHmac("sha256", secret).update(body).digest())}`;
 }

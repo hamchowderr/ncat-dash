@@ -10,9 +10,9 @@
 //   signed-in user becomes the JWT `sub`, so the server gives each user their own
 //   Session and threads. A request with no user gets 401 and never reaches the server.
 // Neither set: the open, single-user default.
-import { createHmac } from 'node:crypto';
+import { createHmac } from "node:crypto";
 
-const SERVER_URL = process.env.MASTRA_SERVER_URL ?? 'http://localhost:4111';
+const SERVER_URL = process.env.MASTRA_SERVER_URL ?? "http://localhost:4111";
 
 export type ChatKitProxyConfig = {
   /**
@@ -24,7 +24,7 @@ export type ChatKitProxyConfig = {
 
 // Kept on globalThis: route handlers and instrumentation.ts are bundled separately, so
 // a module-level variable would not be shared between them.
-const KEY = Symbol.for('mastra-chat-kit.proxy');
+const KEY = Symbol.for("mastra-chat-kit.proxy");
 type Holder = { [KEY]?: ChatKitProxyConfig };
 
 /** Set the proxy's host hooks. Call once at startup, from `instrumentation.ts`. */
@@ -36,19 +36,22 @@ function proxyConfig(): ChatKitProxyConfig {
   return (globalThis as Holder)[KEY] ?? {};
 }
 
-const b64url = (v: string | Buffer) => Buffer.from(v).toString('base64url');
+const b64url = (v: string | Buffer) => Buffer.from(v).toString("base64url");
+
+/** The agent server only takes tokens with this audience (packages/agent lib/auth.ts). */
+export const AGENT_AUDIENCE = "takewon-agent";
 
 /** A short-lived HS256 JWT for the Mastra server's MastraJwtAuth. */
 export function signServerToken(secret: string, sub: string, now = Date.now()): string {
   const iat = Math.floor(now / 1000);
-  const body = `${b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${b64url(
-    JSON.stringify({ sub, iat, exp: iat + 300 }),
+  const body = `${b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${b64url(
+    JSON.stringify({ sub, aud: AGENT_AUDIENCE, iat, exp: iat + 300 }),
   )}`;
-  return `${body}.${createHmac('sha256', secret).update(body).digest('base64url')}`;
+  return `${body}.${createHmac("sha256", secret).update(body).digest("base64url")}`;
 }
 
 /** The single-user id the server uses when no user is configured. */
-export const SHARED_USER = 'chat-kit-user';
+export const SHARED_USER = "chat-kit-user";
 
 /**
  * The headers that identify a request to the Mastra server, or a 401 Response when a
@@ -61,13 +64,13 @@ export async function serverHeaders(request: Request): Promise<Headers | Respons
   if (getUserId) {
     const id = await getUserId(request);
     if (!id) {
-      return Response.json({ error: 'not signed in' }, { status: 401 });
+      return Response.json({ error: "not signed in" }, { status: 401 });
     }
     user = id;
   }
   const secret = process.env.MASTRA_JWT_SECRET;
   if (secret) {
-    headers.set('authorization', `Bearer ${signServerToken(secret, user)}`);
+    headers.set("authorization", `Bearer ${signServerToken(secret, user)}`);
   }
   return headers;
 }
@@ -90,7 +93,7 @@ export async function forward(
   for (const [name, value] of auth) headers.set(name, value);
 
   const upstream = await fetch(`${SERVER_URL}${path}`, {
-    cache: 'no-store',
+    cache: "no-store",
     ...rest,
     headers,
     ...(stream ? { signal: request.signal } : {}),
@@ -98,9 +101,9 @@ export async function forward(
   return new Response(upstream.body, {
     status: upstream.status,
     headers: {
-      'content-type':
-        upstream.headers.get('content-type') ?? (stream ? 'text/event-stream' : 'application/json'),
-      'cache-control': stream ? 'no-cache, no-transform' : 'no-store',
+      "content-type":
+        upstream.headers.get("content-type") ?? (stream ? "text/event-stream" : "application/json"),
+      "cache-control": stream ? "no-cache, no-transform" : "no-store",
     },
   });
 }
