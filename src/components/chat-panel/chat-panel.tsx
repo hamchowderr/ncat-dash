@@ -28,6 +28,8 @@ import {
 import { useThreads } from "@/lib/agent-controller/use-threads";
 import { cn } from "@/lib/utils";
 
+import { forgetLastChat, useReopenLastChat } from "./last-chat";
+
 export type ChatPanelSuggestion = { label: string; prompt: string };
 
 export type ChatPanelProps = {
@@ -111,6 +113,7 @@ export function ChatPanel({
   const { threads } = useThreads({ refreshSignal: controller.refreshSignal });
   // Archived chats stay out of the menu, as they do in the full shell's sidebar.
   const recent = threads.filter((t) => !t.archived);
+  useReopenLastChat(controller, recent);
   const busy = status === "streaming";
   // Nothing to show yet. A parked approval or question is something to show, even with
   // no messages, so it is never hidden behind the greeting.
@@ -175,7 +178,10 @@ export function ChatPanel({
             size="icon"
             className="size-8"
             aria-label="New chat"
-            onClick={() => controller.reset()}
+            onClick={() => {
+              forgetLastChat();
+              controller.reset();
+            }}
           >
             <SquarePenIcon className="size-4" />
           </Button>
