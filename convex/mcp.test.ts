@@ -528,9 +528,17 @@ describe("the MCP server once nothing new can start", () => {
 
   test("an AI client stuck in a loop is slowed down", async () => {
     const { t, key } = await setUp();
-    let last = 0;
-    for (let i = 0; i < 61; i++) last = (await rpc(t, key, "tools/list")).status;
-    expect(last).toBe(429);
+    // The clock stands still, so the allowance does not refill while signed-in calls,
+    // which take longer to check than the old keys did, are made.
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      let last = 0;
+      for (let i = 0; i < 61; i++) last = (await rpc(t, key, "tools/list")).status;
+      expect(last).toBe(429);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
 
