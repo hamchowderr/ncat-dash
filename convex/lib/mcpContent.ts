@@ -39,7 +39,7 @@ export const OPERATION_SCHEMA = {
 
 const SKILL_MD = `---
 name: content-automations
-description: Build, try and run the team's content automations in Takewon (clips, captions, reframing and other FFmpeg steps that run on the team's own toolkit). Use when asked to make or change an automation, run one on a file, or check how a run went.
+description: Build, try, publish and run the team's content automations in Takewon (clips, captions, reframing and other FFmpeg steps that run on the team's own toolkit). Use when asked to make or change an automation, switch one on, run one on a file, check how a run went, or approve one.
 ---
 
 # Content automations
@@ -58,7 +58,7 @@ When the automation makes clips or reshapes video, ask which platforms it is for
 ## Build
 
 - \`create_automation\` makes a new, empty one (switched off). \`change_automation\` sends every change for one request together; they are made in order and all are kept or none.
-- Your changes are kept as a draft. Someone on the team publishes it in the dashboard; the published version keeps running until then. Say so, with the address you were given.
+- Your changes are kept as a draft; the published version keeps running until the draft is published. Try it, then \`publish_automation\` when the person is happy with it, or leave it for them to publish in the dashboard, with the address you were given.
 - Leave file settings empty: each step takes the nearest fitting file before it by itself. Logo, colour, font and music come from the team's brand in Settings. Never ask the person to type file links or placeholders.
 - For several platforms, give each its own "Clips for a platform" step from the same start, with its own steps after it.
 - An Approval step asks anyone on the team unless reviewers are named; it waits until someone decides.
@@ -70,7 +70,15 @@ When \`change_automation\` reports no problems, try the draft: \`start_automatio
 
 ## Report
 
-Say in plain words what starts it and what each step does, and for a run, what it made (how many clips) and any step that failed and why. No ids or JSON unless asked. You cannot switch an automation on or publish a draft: people do that in the dashboard.
+Say in plain words what starts it and what each step does, and for a run, what it made (how many clips) and any step that failed and why. No ids or JSON unless asked.
+
+## Switch on
+
+\`switch_automation\` with \`on: true\` makes it run by itself whenever what starts it happens. Do it when the person asks, or offer it once a published automation works. If it refuses, say why in plain words.
+
+## Approvals
+
+A run can stop at an Approval step or a workflow's review until someone decides. \`check_run\` shows it under \`approval\` and \`list_approvals\` lists every one waiting, with the files to look at. Show the person the files and let them decide: \`decide_approval\` with \`approve\` (the run carries on) or \`send_back\` (it stops there), only once they have said which. Never decide an approval by yourself.
 
 You do not post to social platforms, generate video from text, dub voices or make avatars.
 `;
@@ -99,7 +107,9 @@ export const RUN_APP_URI = "ui://ncat-dash/run.html";
  * A run's progress, shown in the chat by hosts with MCP Apps. It reads the tool result it
  * was opened with (start_automation or check_run), then asks check_run again every few
  * seconds until the run ends. While it goes it shows the steps; once done, the finished files,
- * which open through the chat (ui/open-link). Plain HTML and script, nothing loaded from
+ * which open through the chat (ui/open-link). A run waiting at an approval shows the files
+ * to look at and, for whoever may decide, Approve and Send back (decide_approval). Opened
+ * from list_approvals, it lists every approval waiting instead. Plain HTML and script, nothing loaded from
  * elsewhere, and it takes the chat's own colours and fonts when the chat hands them over.
  */
 const RUN_APP_HTML = `<!doctype html>
@@ -121,10 +131,11 @@ const RUN_APP_HTML = `<!doctype html>
   * { box-sizing: border-box; }
   body { margin: 0; padding: 16px 18px; font: 14px/1.45 var(--font); color: var(--text); background: transparent; -webkit-font-smoothing: antialiased; }
   h1 { font-size: 15px; font-weight: 600; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  h2 { font-size: 14px; font-weight: 600; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .meta { margin-top: 2px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .status { font-weight: 500; }
-  .status.running { color: var(--accent); } .status.done { color: var(--good); }
-  .status.failed, .status.cancelled { color: var(--bad); } .status.waiting { color: var(--wait); }
+  .status.running { color: var(--accent); } .status.done, .status.approved { color: var(--good); }
+  .status.failed, .status.cancelled, .status.sent { color: var(--bad); } .status.waiting { color: var(--wait); }
   .bar { height: 3px; margin-top: 12px; border-radius: 3px; background: var(--track); overflow: hidden; }
   .bar span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width .4s ease; }
   ol, ul { list-style: none; margin: 14px 0 0; padding: 0; }
@@ -137,39 +148,46 @@ const RUN_APP_HTML = `<!doctype html>
   .note { display: block; margin-top: 1px; font-size: 13px; color: var(--muted); }
   .failed .note { color: var(--bad); }
   .label { margin: 16px 0 0; font-size: 12px; font-weight: 500; color: var(--muted); }
-  #files { margin-top: 6px; }
-  #files li { padding: 0; }
-  #files a { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius);
+  ul.files { margin-top: 6px; }
+  ul.files li { padding: 0; }
+  ul.files a { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius);
     color: inherit; text-decoration: none; min-width: 0; }
-  #files a:hover, #files a:focus-visible { background: var(--hover); outline: none; }
-  #files .icon { margin: 0; color: var(--muted); }
+  ul.files a:hover, ul.files a:focus-visible { background: var(--hover); outline: none; }
+  ul.files .icon { margin: 0; color: var(--muted); }
   .file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .open { font-size: 13px; color: var(--muted); }
   .more { padding: 4px 0 0; font-size: 13px; color: var(--muted); }
-  footer { margin-top: 16px; }
-  .button { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: var(--radius); font: 500 13px/1 var(--font);
-    color: var(--text); background: var(--hover); text-decoration: none; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+  .button { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border: 0; border-radius: var(--radius); font: 500 13px/1 var(--font);
+    color: var(--text); background: var(--hover); text-decoration: none; cursor: pointer; }
   .button:hover, .button:focus-visible { background: var(--track); outline: none; }
   .button.primary { color: #fff; background: var(--accent); }
   .button.primary:hover, .button.primary:focus-visible { filter: brightness(1.08); }
+  .button:disabled { opacity: .55; cursor: default; }
+  .said { font-size: 13px; color: var(--muted); }
+  .said.bad { color: var(--bad); }
+  .approval + .approval { margin-top: 22px; }
   [hidden] { display: none !important; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .running .icon { animation: none; } .bar span { transition: none; } }
 </style>
 </head>
 <body>
+<div id="run">
 <h1 id="title">Run</h1>
 <div class="meta"><span id="status" class="status">Starting</span><span id="detail"></span></div>
 <div class="bar" id="bar" hidden><span></span></div>
 <ol id="steps"></ol>
 <p class="label" id="files-label" hidden>Finished files</p>
-<ul id="files" hidden></ul>
-<footer id="footer" hidden><a id="open" class="button" href="#" target="_blank" rel="noopener">Open in Takewon</a></footer>
+<ul id="files" class="files" hidden></ul>
+<div id="review" hidden></div>
+<div class="actions" id="footer" hidden><a id="open" class="button" href="#" target="_blank" rel="noopener">Open in Takewon</a></div>
+</div>
+<div id="list" hidden></div>
 <script>
 (function () {
   var nextId = 1, pending = {}, runId = null, timer = null, seenAt = Date.now(), clock = null, last = null;
   var WORDS = { running: "Running", waiting: "Waiting for an approval", done: "Done", failed: "Failed", cancelled: "Cancelled" };
-  var NOTES = { waiting_approval: "Waiting for someone to approve it in Takewon", skipped: "Skipped" };
   var ICONS = {
     done: '<circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M5 8.2l2 2 4-4.4" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
     running: '<circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 1 6.2 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
@@ -185,6 +203,7 @@ const RUN_APP_HTML = `<!doctype html>
     send({ jsonrpc: "2.0", id: id, method: method, params: params || {} });
     return new Promise(function (resolve, reject) { pending[id] = { resolve: resolve, reject: reject }; });
   }
+  function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) { var node = document.createElement(tag); if (cls) node.className = cls; if (text != null) node.textContent = text; return node; }
   function icon(kind) {
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -195,7 +214,7 @@ const RUN_APP_HTML = `<!doctype html>
   function size() { send({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { height: Math.ceil(document.documentElement.getBoundingClientRect().height) } }); }
   function took(ms) {
     var s = Math.max(0, Math.round(ms / 1000));
-    return s < 60 ? s + "s" : Math.floor(s / 60) + "m " + (s % 60) + "s";
+    return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m " + (s % 60) + "s" : Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m";
   }
   function fileName(url) {
     var name = String(url).split("?")[0].split("#")[0].split("/").pop() || String(url);
@@ -207,6 +226,54 @@ const RUN_APP_HTML = `<!doctype html>
       event.preventDefault();
       request("ui/open-link", { url: url }).catch(function () { window.open(url, "_blank", "noopener"); });
     };
+  }
+  function fileList(urls, most, moreText) {
+    var list = el("ul", "files");
+    urls.slice(0, most).forEach(function (url) {
+      var item = el("li"), a = el("a");
+      a.appendChild(icon("file"));
+      a.appendChild(el("span", "file", fileName(url)));
+      a.appendChild(el("span", "open", "Open"));
+      link(a, url);
+      item.appendChild(a);
+      list.appendChild(item);
+    });
+    if (urls.length > most) list.appendChild(el("li", "more", "And " + (urls.length - most) + " more " + moreText));
+    return list;
+  }
+  function who(approval) {
+    var asked = approval.asked;
+    return typeof asked === "string" ? asked : asked.join(" or ");
+  }
+  function waitingNote(approval) {
+    if (!approval) return "Waiting for someone to approve it";
+    return approval.you_may_decide ? "Waiting for your decision" : "Waiting for " + who(approval) + " to decide";
+  }
+  // Approve and Send back, for the person who may decide. After a decision, done() runs.
+  function decideButtons(approval, done) {
+    var row = el("div", "actions");
+    var yes = el("button", "button primary", "Approve"), no = el("button", "button", "Send back");
+    yes.type = no.type = "button";
+    var said = el("span", "said");
+    function decide(decision) {
+      yes.disabled = no.disabled = true;
+      said.className = "said"; said.textContent = "";
+      request("tools/call", { name: "decide_approval", arguments: { approval_id: approval.approval_id, decision: decision } })
+        .then(function (result) {
+          if (result && result.isError) throw new Error(result.content && result.content[0] ? result.content[0].text : "That did not work.");
+          done(decision);
+        })
+        .catch(function (error) {
+          yes.disabled = no.disabled = false;
+          said.className = "said bad";
+          said.textContent = (error && (error.message || error.text)) || "That did not work. Try again.";
+          size();
+        });
+    }
+    yes.onclick = function () { decide("approve"); };
+    no.onclick = function () { decide("send_back"); };
+    row.appendChild(yes); row.appendChild(no); row.appendChild(said);
+    return row;
   }
   function live(run) { return run.status === "running" || run.status === "waiting"; }
   function detail(run) {
@@ -222,63 +289,109 @@ const RUN_APP_HTML = `<!doctype html>
   }
   function show(run) {
     if (!run || typeof run !== "object") return;
+    if (Array.isArray(run.approvals)) return showList(run.approvals);
     last = run;
     if (run.run_id) runId = run.run_id;
-    var steps = run.steps || [];
-    document.getElementById("title").textContent = run.automation || "Run";
-    var status = document.getElementById("status");
+    var steps = run.steps || [], approval = run.status === "waiting" ? run.approval : null;
+    $("run").hidden = false; $("list").hidden = true;
+    $("title").textContent = run.automation || "Run";
+    var status = $("status");
     status.textContent = WORDS[run.status] || run.status || "";
     status.className = "status " + (run.status || "");
-    document.getElementById("detail").textContent = detail(run);
+    $("detail").textContent = detail(run);
 
-    var bar = document.getElementById("bar");
+    var bar = $("bar");
     bar.hidden = !live(run);
     var finished = steps.filter(function (s) { return s.status === "done" || s.status === "skipped"; }).length;
     bar.firstChild.style.width = (steps.length ? Math.max(4, (finished / steps.length) * 100) : 4) + "%";
 
     // A finished run shows what it made; the steps only matter while it goes or when one fails.
-    var list = document.getElementById("steps");
+    var list = $("steps");
     list.textContent = "";
     var rows = run.status === "done" ? [] : steps.length ? steps : live(run) ? [{ step: "Starting the first step", status: "running" }] : [];
     rows.forEach(function (step) {
       var item = el("li", step.status);
       item.appendChild(icon(step.status));
       var name = el("div", "name", step.step);
-      var note = step.error || NOTES[step.status];
+      var note = step.error || (step.status === "waiting_approval" ? waitingNote(approval) : step.status === "skipped" ? "Skipped" : "");
       if (note) name.appendChild(el("span", "note", note));
       item.appendChild(name);
       list.appendChild(item);
     });
     list.hidden = !rows.length;
 
-    var files = document.getElementById("files");
-    files.textContent = "";
     var urls = run.files || [];
-    urls.slice(0, 6).forEach(function (url) {
-      var item = el("li"), a = el("a");
-      a.appendChild(icon("file"));
-      a.appendChild(el("span", "file", fileName(url)));
-      a.appendChild(el("span", "open", "Open"));
-      link(a, url);
-      item.appendChild(a);
-      files.appendChild(item);
-    });
-    if (urls.length > 6) files.appendChild(el("li", "more", "And " + (urls.length - 6) + " more in Takewon"));
-    files.hidden = document.getElementById("files-label").hidden = !urls.length;
+    var files = $("files");
+    files.replaceWith(Object.assign(fileList(urls, 6, "in Takewon"), { id: "files", hidden: !urls.length }));
+    $("files-label").hidden = !urls.length;
 
-    var open = document.getElementById("open");
-    document.getElementById("footer").hidden = !run.address;
+    // Waiting at an approval: the files to look at, and the decision for whoever may make it.
+    var review = $("review");
+    review.textContent = "";
+    var deciding = !!(approval && approval.you_may_decide);
+    if (approval) {
+      if ((approval.files || []).length) {
+        review.appendChild(el("p", "label", "To review"));
+        review.appendChild(fileList(approval.files, 6, "in Takewon"));
+      }
+      if (deciding) {
+        review.appendChild(decideButtons(approval, function () { clearTimeout(timer); poll(); }));
+      }
+    }
+    review.hidden = !review.childNodes.length;
+
+    var open = $("open");
+    $("footer").hidden = !run.address || deciding;
     if (run.address) {
       link(open, run.address);
-      open.textContent = run.status === "waiting" ? "Review in Takewon" : "Open in Takewon";
-      open.className = "button" + (run.status === "waiting" ? " primary" : "");
+      open.textContent = approval ? "Review in Takewon" : "Open in Takewon";
     }
     size();
     clearTimeout(timer); clearInterval(clock);
     if (runId && live(run)) {
       timer = setTimeout(poll, steps.length ? 4000 : 1500);
-      clock = setInterval(function () { document.getElementById("detail").textContent = detail(last); }, 1000);
+      clock = setInterval(function () { $("detail").textContent = detail(last); }, 1000);
     }
+  }
+  function showList(approvals) {
+    clearTimeout(timer); clearInterval(clock);
+    $("run").hidden = true;
+    var box = $("list");
+    box.hidden = false;
+    box.textContent = "";
+    var head = el("div");
+    head.appendChild(el("h1", null, "Waiting for approval"));
+    head.appendChild(el("div", "meta", approvals.length ? approvals.length + (approvals.length === 1 ? " run" : " runs") : "Nothing is waiting."));
+    box.appendChild(head);
+    approvals.forEach(function (approval) {
+      var block = el("section", "approval");
+      block.style.marginTop = "18px";
+      block.appendChild(el("h2", null, approval.automation || "Run"));
+      var mins = approval.waiting_since ? Math.max(1, Math.round((Date.now() - Date.parse(approval.waiting_since)) / 60000)) : 0;
+      var since = !mins ? "" : mins < 60 ? mins + "m" : Math.floor(mins / 60) + "h " + (mins % 60) + "m";
+      var meta = el("div", "meta");
+      var status = el("span", "status waiting", approval.you_may_decide ? "Asks you" : "Asks " + who(approval));
+      meta.appendChild(status);
+      meta.appendChild(document.createTextNode(" · " + (approval.step || "Approval") + (since ? " · waiting " + since : "")));
+      block.appendChild(meta);
+      if ((approval.files || []).length) block.appendChild(fileList(approval.files, 3, "to look at in Takewon"));
+      if (approval.you_may_decide) {
+        var buttons = decideButtons(approval, function (decision) {
+          status.textContent = decision === "approve" ? "Approved" : "Sent back";
+          status.className = "status " + (decision === "approve" ? "approved" : "sent");
+          buttons.remove();
+          size();
+        });
+        block.appendChild(buttons);
+      } else if (approval.address) {
+        var row = el("div", "actions"), a = el("a", "button", "Open in Takewon");
+        link(a, approval.address);
+        row.appendChild(a);
+        block.appendChild(row);
+      }
+      box.appendChild(block);
+    });
+    size();
   }
   function fromResult(result) {
     if (!result) return null;
@@ -312,7 +425,7 @@ const RUN_APP_HTML = `<!doctype html>
     }
   });
   request("ui/initialize", {
-    appInfo: { name: "Run progress", version: "1.1.0" },
+    appInfo: { name: "Run progress", version: "1.2.0" },
     appCapabilities: {},
     protocolVersion: "2026-01-26"
   }).then(function (result) {
