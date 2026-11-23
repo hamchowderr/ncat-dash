@@ -16,6 +16,7 @@ const MAY_IMPORT_AUTH = new Set([
   "telegram.ts",
   "microsoftTeamsChat.ts",
   "blocks.ts",
+  "mcpHttp.ts",
   "betterAuth/auth.ts",
 ]);
 

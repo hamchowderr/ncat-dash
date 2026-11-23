@@ -8,22 +8,15 @@ import { fromAgent } from "./lib/agentToken";
 import { decryptSecret } from "./lib/crypto";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { hookTokenOf, MAX_HOOK_KEY } from "./lib/hooks";
-import { noStream, serve } from "./mcp";
+import { noStream } from "./mcp";
+import { authorizationServer, serve } from "./mcpHttp";
 import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
 import { settingsUrl as microsoftSettingsUrl } from "./microsoft";
 import { settingsUrl as teamsSettingsUrl, TEAMS_STATE_PREFIX } from "./microsoftTeams";
 import { DEFAULT_BOT_NAME, teamsAppPackage } from "./lib/teamsApp";
 import { settingsUrl as dropboxSettingsUrl } from "./dropbox";
 import { settingsUrl as zoomSettingsUrl } from "./zoom";
-import {
-  authorizationServer,
-  authorize,
-  preflight,
-  protectedResource,
-  register,
-  revoke,
-  token,
-} from "./oauth";
+import { preflight, protectedResource } from "./oauth";
 
 const http = httpRouter();
 
@@ -813,15 +806,8 @@ http.route({
   method: "GET",
   handler: authorizationServer,
 });
-http.route({ path: "/oauth/authorize", method: "GET", handler: authorize });
-http.route({ path: "/oauth/token", method: "POST", handler: token });
-http.route({ path: "/oauth/register", method: "POST", handler: register });
-http.route({ path: "/oauth/revoke", method: "POST", handler: revoke });
 for (const path of [
   "/mcp",
-  "/oauth/token",
-  "/oauth/register",
-  "/oauth/revoke",
   "/.well-known/oauth-protected-resource",
   "/.well-known/oauth-protected-resource/mcp",
   "/.well-known/oauth-authorization-server",
