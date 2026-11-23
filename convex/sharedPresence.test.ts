@@ -73,6 +73,13 @@ describe("who is here, through a share link", () => {
     await expect(join(RILEY)).rejects.toThrow(/no longer shared/);
   });
 
+  test("a link that stopped working shows nobody instead of failing the page", async () => {
+    const { maya, reviewId, clientSees } = await room();
+    expect(await clientSees()).not.toEqual([]);
+    await maya.as.mutation(api.reviews.decide, { reviewId, approved: true });
+    expect(await clientSees()).toEqual([]);
+  });
+
   test("another room's token shows the client nobody", async () => {
     const { t, token } = await room();
     const other = await room();

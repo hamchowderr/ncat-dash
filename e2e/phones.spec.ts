@@ -184,6 +184,7 @@ test("a client decides from their own phone", async ({ browser }) => {
   await owner.locator("[data-decision-bar]").getByRole("button", { name: "Approve" }).tap();
   await expect(owner.getByText(/Approved by Ines Duarte/)).toBeVisible();
   await expect(owner.locator("[data-decision-bar]")).toHaveCount(0);
-  await expect(client.getByText("Approved by the team")).toBeVisible();
+  // An approved review closes the link the team shared by hand.
+  await expect(client.getByRole("heading", { name: "This review is approved" })).toBeVisible();
   await client.context().close();
 });

@@ -870,20 +870,29 @@ export const publish = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { automation, userId } = await loadForMember(ctx, args.automationId);
-    if (!automation.draft) return null;
-    const version = checked(automation.draft);
-    if (automation.enabled) {
-      const problem = await problemOf(ctx, automation, version);
-      if (problem) fail("invalid_input", problem);
-    }
-    await storeLive(ctx, automation, version, {
-      userId,
-      source: "published",
-      restoredFrom: automation.draft.restoredFrom,
-    });
+    await publishDraft(ctx, automation, userId);
     return null;
   },
 });
+
+/** Makes an automation's draft its live version (publish, and MCP's publish_automation). */
+export async function publishDraft(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  userId: string,
+): Promise<void> {
+  if (!automation.draft) return;
+  const version = checked(automation.draft);
+  if (automation.enabled) {
+    const problem = await problemOf(ctx, automation, version);
+    if (problem) fail("invalid_input", problem);
+  }
+  await storeLive(ctx, automation, version, {
+    userId,
+    source: "published",
+    restoredFrom: automation.draft.restoredFrom,
+  });
+}
 
 /** Throws the draft away. The canvas goes back to the live version. */
 export const discardDraft = mutation({

@@ -4,7 +4,7 @@ import { components } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
 import { type RoomData, type Typing, typingValidator } from "./lib/typing";
-import { guestAuthor, guestName, requireShare } from "./sharedReview";
+import { findShare, guestAuthor, guestName, requireShare } from "./sharedReview";
 
 // A client's place in the review room, through the share link: they show up for the team
 // as "here now", see which teammates are here, and see who is typing where they could see
@@ -77,7 +77,10 @@ async function canSee(
 export const here = query({
   args: { token: v.string(), guestId: v.string(), roomToken: v.string() },
   handler: async (ctx, args) => {
-    const { share, review } = await requireShare(ctx, args.token);
+    // A link that stopped working shows nobody, so the page can say why instead of failing.
+    const found = await findShare(ctx, args.token);
+    if (!found) return [];
+    const { share, review } = found;
     const me = guestAuthor(args.guestId);
     const states = await presence.list(ctx, args.roomToken, 50);
     // The room token must be this review's: the client's own heartbeat put them in it.

@@ -27,6 +27,7 @@ import {
 } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
+import { keepMaskFrom } from "./lib/masks";
 import { collectUrls, handOutputNames, outputNamesOf } from "./lib/outputs";
 import { brandOf, enqueueJob, pump, waitReason } from "./lib/queue";
 import { toolkitPool } from "./lib/pools";
@@ -413,15 +414,19 @@ export const finish = internalMutation({
     const permanent = args.permanent || (!args.ok && failsTheSameEveryTime(job.stepId, args.error));
     // A Convex document holds at most 1 MB. A very long transcript is kept as its file
     // links only; the full data is still at the toolkit's own output URLs.
-    const tooLarge = args.ok && JSON.stringify(args.result ?? null).length > MAX_RESULT_CHARS;
+    // A new speaker cut-out is kept for its video and is not one of the job's files.
+    const result = args.ok
+      ? await keepMaskFrom(ctx, job.organizationId, job.input, args.result)
+      : args.result;
+    const tooLarge = args.ok && JSON.stringify(result ?? null).length > MAX_RESULT_CHARS;
     await ctx.db.patch(args.jobId, {
       status: args.ok ? "done" : "failed",
       result: !args.ok
         ? undefined
         : tooLarge
-          ? { note: "This result is too large to show here.", urls: collectUrls(args.result) }
-          : args.result,
-      outputs: args.ok ? collectUrls(args.result) : [],
+          ? { note: "This result is too large to show here.", urls: collectUrls(result) }
+          : result,
+      outputs: args.ok ? collectUrls(result) : [],
       error: args.ok ? null : (error ?? "The step failed."),
       startedAt: job.startedAt ?? now,
       finishedAt: now,

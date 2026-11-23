@@ -224,6 +224,7 @@ const envSchema = z
     // secret, and the token's `sub` (the signed-in user) picks that user's Session,
     // so each user gets their own threads. Unset = one shared Session.
     MASTRA_JWT_SECRET: z.string().min(32, 'MASTRA_JWT_SECRET must be at least 32 chars').optional(),
+    AGENT_CONVEX_SECRET: z.string().min(32, 'AGENT_CONVEX_SECRET must be at least 32 chars').optional(),
   })
   .refine(
     // Provider-agnostic. `CHAT_MODEL` is resolved by Mastra's model router, which derives

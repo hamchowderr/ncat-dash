@@ -27,7 +27,7 @@ if (process.env.RECORD_VIDEO === "1") {
 function agentToken() {
   const part = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const iat = Math.floor(Date.now() / 1000);
-  const body = `${part({ alg: "HS256", typ: "JWT" })}.${part({ sub: "agent-server", iat, exp: iat + 300 })}`;
+  const body = `${part({ alg: "HS256", typ: "JWT" })}.${part({ sub: "agent-server", aud: "takewon-dashboard", iat, exp: iat + 300 })}`;
   return `${body}.${createHmac("sha256", AGENT_SECRET).update(body).digest("base64url")}`;
 }
 
@@ -205,10 +205,15 @@ test("links the organization; alerts with Approve and review activity go both wa
   const link = dialog.getByRole("textbox", { name: "Share link" });
   await expect(link).toHaveValue(/\/share\/[a-f0-9]{64}$/);
   const shareUrl = await link.inputValue();
+  // Approving in Teams approved the review, so its link waits until it is back in review.
+  await expect(dialog.getByText(/The link is paused while the review is approved/)).toBeVisible();
   await page.keyboard.press("Escape");
 
   const client = await (await browser.newContext()).newPage();
   await client.goto(shareUrl);
+  await expect(client.getByRole("heading", { name: "This review is approved" })).toBeVisible();
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Put back in review" }).click();
   await client.getByLabel("Your name").fill("Riley Client");
   await client.getByRole("button", { name: "Continue" }).click();
   const box = client.getByRole("textbox", { name: /^Comment at this moment/ });

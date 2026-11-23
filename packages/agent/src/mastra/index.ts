@@ -145,24 +145,28 @@ type KnowledgeRouteContext = {
   get(key: 'requestContext'): { set(key: string, value: unknown): void } | undefined;
 };
 
+// The server's own routes. Mastra serves them at their own paths, outside /api.
+const apiRoutes = [
+  ...createThreadRoutes(chatServerDeps),
+  ...createControllerRoutes(chatServerDeps),
+  ...createWorkspaceRoutes(chatServerDeps),
+  ...createNcatRoutes(),
+  // Studio's Knowledge page: a read-only tree, graph and search over the pages, served
+  // under /api/knowledge and gated by the same auth as the rest of /api/*.
+  ...(features.knowledge ? KNOWLEDGE_ROUTES : []),
+];
+
 const serverConfig = {
-  apiRoutes: [
-    ...createThreadRoutes(chatServerDeps),
-    ...createControllerRoutes(chatServerDeps),
-    ...createWorkspaceRoutes(chatServerDeps),
-    ...createNcatRoutes(),
-    // Studio's Knowledge page: a read-only tree, graph and search over the pages, served
-    // under /api/knowledge and gated by the same auth as the rest of /api/*.
-    ...(features.knowledge ? KNOWLEDGE_ROUTES : []),
-  ],
+  apiRoutes,
   // With auth on, the Knowledge routes refuse a caller whose Knowledge principals aren't
   // set. The only callers holding a token are the web proxy, which forwards none of these
   // routes, and operators with the shared secret, who can mint a token for any user
   // anyway, so each one reads the whole instance. Without auth the routes read
   // everything regardless (local dev only).
   middleware: [
-    // Studio isn't served here, so on a signed-in server nothing outside /api is a page.
-    ...(auth ? [hideWelcomePage] : []),
+    // Studio isn't served here, so on a signed-in server nothing outside /api and our own
+    // routes is a page.
+    ...(auth ? [hideWelcomePage(apiRoutes.map((route) => route.path))] : []),
     {
       path: '/api/knowledge/*',
       handler: async (c: KnowledgeRouteContext, next: () => Promise<void>) => {

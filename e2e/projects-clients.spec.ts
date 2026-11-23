@@ -154,10 +154,26 @@ test("a client's project is laid out from a package and worked through", async (
     .toBeGreaterThan(0);
   const room = portal.url();
 
+  // A new portal link turns the old one off straight away, with the room it opened.
+  const portalLink = page.getByLabel("Portal link", { exact: true });
+  await page.getByRole("button", { name: "Make a new link" }).click();
+  await expect(portalLink).not.toHaveValue(link);
+  expect(await portalLink.inputValue()).toMatch(/\/portal\/[a-f0-9]{64}$/);
+  await portal.goto(link);
+  await expect(portal.getByRole("heading", { name: "This link no longer works" })).toBeVisible();
+  await portal.goto(room);
+  await expect(portal.getByText("This review is no longer shared")).toBeVisible();
+  await portal.goto(await portalLink.inputValue());
+  await portal.getByRole("link", { name: /Episode 12/ }).click();
+  await portal.getByRole("button", { name: "Review and comment" }).click();
+  await expect(portal).toHaveURL(/\/share\/[a-f0-9]{64}\?back=/);
+  const newRoom = portal.url();
+  expect(newRoom).not.toBe(room);
+
   // Switching the portal off closes the review room it opened too.
   await page.getByRole("button", { name: "Switch off the portal" }).click();
   await expect(page.getByRole("button", { name: "Make the portal link" })).toBeVisible();
-  await portal.goto(room);
+  await portal.goto(newRoom);
   await expect(portal.getByText("This review is no longer shared")).toBeVisible();
   await client.close();
 

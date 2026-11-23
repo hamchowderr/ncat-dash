@@ -442,6 +442,7 @@ function Verdict({
 /** A review as a client sees it through its share link, with no account. */
 export function SharedReview({ token, backHref }: { token: string; backHref?: string }) {
   const room = useQuery(api.sharedReview.room, { token });
+  const ended = useQuery(api.sharedReview.ended, room === null ? { token } : "skip");
   const guest = useGuest();
   const here = useGuestPresence(token, guest);
   const [clipId, setClipId] = useState<Id<"reviewClips"> | null>(null);
@@ -452,10 +453,15 @@ export function SharedReview({ token, backHref }: { token: string; backHref?: st
   if (room === null || room.clips.length === 0) {
     return (
       <div className="mx-auto mt-[12svh] flex max-w-sm flex-col gap-2 rounded-xl border p-6">
-        <h1 className="text-lg font-semibold">This review is no longer shared</h1>
+        <h1 className="text-lg font-semibold">
+          {ended === "approved" ? "This review is approved" : "This review is no longer shared"}
+        </h1>
         <p className="text-muted-foreground text-sm">
-          The link was switched off or the review was removed. Ask the person who sent it for a new
-          one.
+          {ended === "approved"
+            ? "The team has approved it, so the link is closed. Ask the person who sent it if you need to see it again."
+            : ended === "expired"
+              ? "Review links stop working after 30 days. Ask the person who sent it to renew it, and open this same link again."
+              : "The link was switched off or the review was removed. Ask the person who sent it for a new one."}
         </p>
       </div>
     );

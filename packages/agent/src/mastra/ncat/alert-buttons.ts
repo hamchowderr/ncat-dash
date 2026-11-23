@@ -1,6 +1,6 @@
 import type { ActionChannelHandler } from "@mastra/core/channels";
 import { env } from "../../lib/env";
-import { convexSiteUrl, signForDashboard } from "./dashboard-site";
+import { convexSiteUrl, dashboardSecret, signForDashboard } from "./dashboard-site";
 
 /**
  * Approve and Send back on an alert the dashboard sent someone in Discord. Discord only
@@ -20,7 +20,7 @@ type Ask = (body: Record<string, string>) => Promise<PressAnswer | null>;
 
 const askDashboard: Ask = async (body) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   if (!site || !secret) return null;
   try {
     const response = await fetch(`${site}/discord/alert-action`, {

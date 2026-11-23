@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { startRun } from "./lib/runner";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 type Backend = ReturnType<typeof backend>;
@@ -204,10 +205,14 @@ describe("the MCP server", () => {
       ["create_automation", false],
       ["set_up_follow_on", false],
       ["change_automation", false],
+      ["publish_automation", false],
+      ["switch_automation", false],
       ["list_uploads", true],
       ["start_automation", false],
       ["check_run", true],
       ["list_runs", true],
+      ["list_approvals", true],
+      ["decide_approval", false],
       ["list_workflows", true],
       ["set_up_workflow", false],
       ["switch_workflow", false],
@@ -376,7 +381,7 @@ describe("the 2026-07-28 protocol", () => {
       _meta?: { ui?: { resourceUri: string } };
     }[];
     const withPage = tools.filter((tool) => tool._meta?.ui).map((tool) => tool.name);
-    expect(withPage).toEqual(["start_automation", "check_run"]);
+    expect(withPage).toEqual(["start_automation", "check_run", "list_approvals"]);
     expect(listed.body.result).toMatchObject({ ttlMs: expect.any(Number), resultType: "complete" });
 
     const page = await modern(t, key, "resources/read", { uri: "ui://ncat-dash/run.html" });
@@ -607,5 +612,222 @@ describe("workflows over the MCP server", () => {
     ).toMatchObject({
       isError: true,
     });
+  });
+});
+
+describe("publishing and switching on over MCP", () => {
+  test("publishes the draft, then switches the automation on and off", async () => {
+    const { t, automationId, key } = await setUp();
+    const none = await call(t, key, "publish_automation", { automation_id: automationId });
+    expect(none).toMatchObject({ isError: true, text: expect.stringMatching(/no draft/) });
+
+    await call(t, key, "change_automation", {
+      automation_id: automationId,
+      operations: [
+        { op: "rename", id: "trim", label: "Shorten" },
+        { op: "trigger", trigger: { kind: "trigger:webhook" } },
+      ],
+    });
+    const published = await call(t, key, "publish_automation", { automation_id: automationId });
+    expect(published.data).toMatchObject({ published: true, on: false });
+    const stored = await t.run((ctx) => ctx.db.get(automationId));
+    expect(stored?.draft).toBeUndefined();
+    expect(stored?.nodes[0].label).toBe("Shorten");
+
+    const on = await call(t, key, "switch_automation", { automation_id: automationId, on: true });
+    expect(on.data).toMatchObject({ on: true });
+    expect((await t.run((ctx) => ctx.db.get(automationId)))?.enabled).toBe(true);
+    await call(t, key, "switch_automation", { automation_id: automationId, on: false });
+    expect((await t.run((ctx) => ctx.db.get(automationId)))?.enabled).toBe(false);
+    const missing = await call(t, key, "switch_automation", { automation_id: automationId });
+    expect(missing.isError).toBe(true);
+  });
+
+  test("refuses to switch on an automation that cannot run, saying why", async () => {
+    const { t, automationId, key } = await setUp();
+    // It starts on a new upload, and the team has no storage for uploads yet.
+    const on = await call(t, key, "switch_automation", { automation_id: automationId, on: true });
+    expect(on).toMatchObject({ isError: true, text: "Connect your toolkit from Home first." });
+    expect((await t.run((ctx) => ctx.db.get(automationId)))?.enabled).toBe(false);
+  });
+});
+
+describe("approvals over MCP", () => {
+  const FILE = "https://files.example/station_interview.mp4";
+
+  async function waiting(reviewers?: string[]) {
+    const setup = await setUp();
+    const runId = await setup.t.run(async (ctx) => {
+      const id = await ctx.db.insert("automations", {
+        organizationId: setup.team,
+        name: "Client ads",
+        enabled: true,
+        trigger: { kind: "webhook" },
+        nodes: [
+          {
+            id: "approval",
+            kind: "approval",
+            input: reviewers ? { reviewers } : {},
+            position: { x: 0, y: 0 },
+          },
+        ],
+        edges: [],
+        hookToken: "token-2",
+        nextRunAt: null,
+        createdBy: setup.owner.id,
+        updatedAt: Date.now(),
+      });
+      const automation = await ctx.db.get(id);
+      const started = await startRun(ctx, automation!, "webhook", { file_url: FILE }, null);
+      if (!started.ok) throw new Error(started.message);
+      return started.runId;
+    });
+    return { ...setup, runId };
+  }
+
+  test("lists what is waiting with the files to look at, and approves it", async () => {
+    const { t, key, runId } = await waiting();
+    const listed = await call(t, key, "list_approvals");
+    expect(listed.data.approvals).toEqual([
+      expect.objectContaining({
+        run_id: runId,
+        automation: "Client ads",
+        asked: "anyone on the team",
+        you_may_decide: true,
+        files: [FILE],
+        address: expect.stringContaining(`/runs/${runId}`),
+      }),
+    ]);
+    const checked = await call(t, key, "check_run", { run_id: runId });
+    expect(checked.data.approval).toMatchObject({
+      approval_id: listed.data.approvals[0].approval_id,
+      you_may_decide: true,
+    });
+
+    const decided = await call(t, key, "decide_approval", {
+      approval_id: listed.data.approvals[0].approval_id,
+      decision: "approve",
+    });
+    expect(decided.data).toMatchObject({ decided: "approved", run_id: runId });
+    const run = await t.run((ctx) => ctx.db.get(runId as Id<"runs">));
+    expect(run?.status).toBe("done");
+    expect((await call(t, key, "list_approvals")).data.approvals).toEqual([]);
+    const again = await call(t, key, "decide_approval", {
+      approval_id: listed.data.approvals[0].approval_id,
+      decision: "send_back",
+    });
+    expect(again).toMatchObject({ isError: true, text: "Someone has already decided this." });
+  });
+
+  test("sends one back, which stops the run", async () => {
+    const { t, key, runId } = await waiting();
+    const [approval] = (await call(t, key, "list_approvals")).data.approvals;
+    await call(t, key, "decide_approval", {
+      approval_id: approval.approval_id,
+      decision: "send_back",
+    });
+    const run = await t.run((ctx) => ctx.db.get(runId as Id<"runs">));
+    expect(run?.status).toBe("failed");
+  });
+
+  test("keeps to the reviewers it names, and to the team", async () => {
+    const setup = await setUp();
+    const ana = await addPerson(setup.t, "Ana Reyes", [setup.team]);
+    const { t, team, member, other, otherTeam } = setup;
+    const runId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("automations", {
+        organizationId: team,
+        name: "Client ads",
+        enabled: true,
+        trigger: { kind: "webhook" },
+        nodes: [
+          {
+            id: "approval",
+            kind: "approval",
+            input: { reviewers: [ana.id] },
+            position: { x: 0, y: 0 },
+          },
+        ],
+        edges: [],
+        hookToken: "token-3",
+        nextRunAt: null,
+        createdBy: setup.owner.id,
+        updatedAt: Date.now(),
+      });
+      const started = await startRun(
+        ctx,
+        (await ctx.db.get(id))!,
+        "webhook",
+        { file_url: FILE },
+        null,
+      );
+      if (!started.ok) throw new Error(started.message);
+      return started.runId;
+    });
+    // Theo is on the team but not named, so his agent sees it and cannot decide.
+    const { approvals } = await t.query(internal.mcp.approvals, {
+      organizationId: team,
+      userId: member.id,
+    });
+    expect(approvals[0]).toMatchObject({
+      run_id: runId,
+      you_may_decide: false,
+      asked: ["Ana Reyes"],
+    });
+    await expect(
+      t.mutation(internal.mcp.decide, {
+        organizationId: team,
+        userId: member.id,
+        approvalId: approvals[0].approval_id,
+        approve: true,
+      }),
+    ).rejects.toThrow(/Ana Reyes/);
+
+    const { key: otherKey } = await other.as.mutation(api.mcpKeys.create, {
+      organizationId: otherTeam,
+      name: "Theirs",
+    });
+    const reach = await call(t, otherKey, "decide_approval", {
+      approval_id: approvals[0].approval_id,
+      decision: "approve",
+    });
+    expect(reach).toMatchObject({ isError: true, text: expect.stringMatching(/no approval/) });
+
+    await t.mutation(internal.mcp.decide, {
+      organizationId: team,
+      userId: ana.id,
+      approvalId: approvals[0].approval_id,
+      approve: true,
+    });
+    expect((await t.run((ctx) => ctx.db.get(runId as Id<"runs">)))?.status).toBe("done");
+  });
+});
+
+describe("clips playing in the chat", () => {
+  test("lets the run page load media from the team's storage, and nothing else", async () => {
+    const { t, team, key } = await setUp();
+    const before = await modern(t, key, "resources/read", { uri: "ui://ncat-dash/run.html" });
+    expect(before.body.result.contents[0]._meta.ui.csp.resourceDomains).toBeUndefined();
+
+    await t.run(async (ctx) => {
+      const connection = await ctx.db
+        .query("toolkitConnections")
+        .withIndex("by_organization", (q) => q.eq("organizationId", team))
+        .first();
+      await ctx.db.patch(connection!._id, {
+        storage: {
+          bucket: "media",
+          endpoint: "https://abc.r2.cloudflarestorage.com/media",
+          publicUrl: "https://media.saltho.use/files",
+        },
+      });
+    });
+    const page = await modern(t, key, "resources/read", { uri: "ui://ncat-dash/run.html" });
+    expect(page.body.result.contents[0]._meta.ui.csp.resourceDomains).toEqual([
+      "https://media.saltho.use",
+      "https://abc.r2.cloudflarestorage.com",
+    ]);
+    // Only the team's own storage: another team's is not added.
+    expect(JSON.stringify(page.body.result)).not.toContain("toolkit.example");
   });
 });

@@ -13,7 +13,7 @@ import {
 import { notify } from "./lib/alerts";
 import { clientBrand, signLogo, teamLogoFile } from "./lib/clientLinks";
 import { drawingValidator } from "./lib/drawing";
-import { CLIP_LIMIT } from "./lib/reviews";
+import { CLIP_LIMIT, shareEnded } from "./lib/reviews";
 import { toReviewChannels } from "./lib/reviewChannels";
 
 // The client's side of a review's share link (/share/<token>). Nobody here is signed in:
@@ -28,7 +28,7 @@ export const GUEST_NAME_LIMIT = 60;
 const closed = () =>
   new ConvexError({ code: "not_found", message: "This review is no longer shared." });
 
-async function shareFor(ctx: QueryCtx | MutationCtx, token: string) {
+async function linkFor(ctx: QueryCtx | MutationCtx, token: string) {
   if (!/^[a-f0-9]{64}$/.test(token)) return null;
   const share = await ctx.db
     .query("reviewShares")
@@ -36,8 +36,17 @@ async function shareFor(ctx: QueryCtx | MutationCtx, token: string) {
     .first();
   if (!share) return null;
   const review = await ctx.db.get(share.reviewId);
-  if (!review) return null;
-  if (share.portalId === undefined) return { share, review };
+  return review ? { share, review } : null;
+}
+
+/** The share link behind a token and its review, or null when it does not open one. */
+export async function findShare(ctx: QueryCtx | MutationCtx, token: string) {
+  const link = await linkFor(ctx, token);
+  if (!link) return null;
+  const { share, review } = link;
+  if (share.portalId === undefined) {
+    return shareEnded(share, review, Date.now()) ? null : { share, review };
+  }
   // Opened from a client's portal: it works only while that portal is on, and the client
   // may do what the portal allows now, not what it allowed when the room was opened.
   const portal = await ctx.db.get(share.portalId);
@@ -53,7 +62,7 @@ async function shareFor(ctx: QueryCtx | MutationCtx, token: string) {
 }
 
 export async function requireShare(ctx: QueryCtx | MutationCtx, token: string) {
-  const found = await shareFor(ctx, token);
+  const found = await findShare(ctx, token);
   if (!found) throw closed();
   return found;
 }
@@ -83,11 +92,23 @@ function visible(
   return root?.client === true;
 }
 
+/**
+ * Why a link the team shared by hand no longer opens the review: it ran out ("expired")
+ * or the review was approved ("approved"). Null when it works, or was never a link.
+ */
+export const ended = query({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const link = await linkFor(ctx, args.token);
+    return link ? shareEnded(link.share, link.review, Date.now()) : null;
+  },
+});
+
 /** The shared review: its title, clips and what the client may do. Null when not shared. */
 export const room = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
-    const found = await shareFor(ctx, args.token);
+    const found = await findShare(ctx, args.token);
     if (!found) return null;
     const { share, review } = found;
     const clips = await ctx.db
@@ -121,7 +142,7 @@ export const room = query({
 export const comments = query({
   args: { token: v.string(), clipId: v.id("reviewClips"), guestId: v.string() },
   handler: async (ctx, args) => {
-    const found = await shareFor(ctx, args.token);
+    const found = await findShare(ctx, args.token);
     if (!found) return [];
     const clip = await ctx.db.get(args.clipId);
     if (!clip || clip.reviewId !== found.review._id) return [];
@@ -306,7 +327,7 @@ export const verdict = mutation({
 export const logoTarget = internalQuery({
   args: { token: v.string() },
   handler: async (ctx, args) => {
-    const found = await shareFor(ctx, args.token);
+    const found = await findShare(ctx, args.token);
     return found ? await teamLogoFile(ctx, found.review.organizationId) : null;
   },
 });

@@ -1,4 +1,4 @@
-import { MastraJwtAuth } from '@mastra/auth';
+import { MastraJwtAuth } from "@mastra/auth";
 
 /**
  * Auth for Studio, every /api/* route and the chat-kit contract routes: a Bearer JWT
@@ -9,15 +9,26 @@ import { MastraJwtAuth } from '@mastra/auth';
  * request's resource id, so the routes drive that user's own Session. A token with no
  * `sub` (a hand-made Studio token, say) maps to `defaultResourceId`, the shared user.
  */
+/** Tokens for this server say so in `aud`; a token signed for the dashboard is refused. */
+export const AGENT_AUDIENCE = "takewon-agent";
+
+class AgentJwtAuth extends MastraJwtAuth {
+  override async authorizeUser(user: Parameters<MastraJwtAuth["authorizeUser"]>[0]) {
+    const aud = user?.aud;
+    const forUs = aud === AGENT_AUDIENCE || (Array.isArray(aud) && aud.includes(AGENT_AUDIENCE));
+    return forUs && (await super.authorizeUser(user));
+  }
+}
+
 export function createServerAuth(
   secret: string | undefined,
-  defaultResourceId = 'chat-kit-user',
+  defaultResourceId = "chat-kit-user",
 ): MastraJwtAuth | undefined {
   return secret
-    ? new MastraJwtAuth({
+    ? new AgentJwtAuth({
         secret,
         mapUserToResourceId: (user) =>
-          typeof user?.sub === 'string' && user.sub.trim() ? user.sub.trim() : defaultResourceId,
+          typeof user?.sub === "string" && user.sub.trim() ? user.sub.trim() : defaultResourceId,
       })
     : undefined;
 }

@@ -88,6 +88,7 @@ const VIDEO_STEPS = new Set([
   "recipe-stack",
   "recipe-side-by-side",
   "recipe-green-screen",
+  "video-background",
   "recipe-web-ready",
   "recipe-loudness",
   "video-trim",

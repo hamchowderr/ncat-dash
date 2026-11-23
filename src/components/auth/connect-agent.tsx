@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Eye, Lock, Play, Workflow } from "lucide-react";
+import { Check, CircleCheck, Eye, Play, UserRound, Workflow } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { FullPageLoader } from "@/components/full-page-loader";
@@ -234,10 +234,11 @@ export function ConnectAgent({ step }: { step: "team" | "consent" }) {
             <p className="text-sm font-medium">{clientName} will be able to</p>
             <ul className="flex flex-col gap-3 text-sm" aria-label="What it can do">
               <Can icon={<Eye />}>See your automations, uploads and runs</Can>
-              <Can icon={<Workflow />}>Build and change automations as drafts</Can>
-              <Can icon={<Play />}>Start runs and follow them</Can>
-              <Can icon={<Lock />} muted>
-                It cannot publish drafts or switch automations on
+              <Can icon={<Workflow />}>Build, change and publish automations</Can>
+              <Can icon={<Play />}>Switch automations on or off, and start runs</Can>
+              <Can icon={<CircleCheck />}>Approve or send back runs waiting for a review</Can>
+              <Can icon={<UserRound />} muted>
+                It acts as you, so it can do only what you can on this team
               </Can>
             </ul>
           </div>

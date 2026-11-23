@@ -4,7 +4,7 @@ import type { Message } from 'chat';
 import { env } from '../../lib/env';
 import { TURN_USER_KEY } from '../lib/turn-user';
 import { rememberSession } from './session-store';
-import { convexSiteUrl, signForDashboard } from './slack';
+import { convexSiteUrl, dashboardSecret, signForDashboard } from './slack';
 import { hearVoiceNotes } from './voice-notes';
 import { LONG_CACHE_KEY } from '../lib/cost';
 
@@ -32,7 +32,7 @@ type Ask = (body: Record<string, string>) => Promise<DiscordPerson | null>;
 
 const askDashboard: Ask = async (body) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   if (!site || !secret) return null;
   try {
     const response = await fetch(`${site}/discord/person`, {
@@ -116,7 +116,7 @@ export function discordReady(): boolean {
     env.DISCORD_BOT_TOKEN &&
       env.DISCORD_APPLICATION_ID &&
       env.DISCORD_PUBLIC_KEY &&
-      env.MASTRA_JWT_SECRET &&
+      dashboardSecret() &&
       convexSiteUrl(),
   );
 }

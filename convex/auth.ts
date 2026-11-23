@@ -133,6 +133,18 @@ export function trustedOrigins(env: Record<string, string | undefined> = process
   return [...new Set([site, ...extra].filter(Boolean))];
 }
 
+/** Which allowance a Better Auth path takes from, or null for one that isn't limited. */
+export function authAttemptKind(path: string | undefined): "signIn" | "email" | null {
+  if (path === "/sign-in/email") return "signIn";
+  if (
+    path === "/request-password-reset" ||
+    path === "/forget-password" ||
+    path === "/send-verification-email"
+  )
+    return "email";
+  return null;
+}
+
 type Runner = Pick<
   Extract<GenericCtx<DataModel>, { runMutation: unknown }>,
   "runMutation" | "runQuery"
@@ -204,6 +216,22 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
       },
     },
     hooks: {
+      // Password sign-ins and emails sent on request are limited per network and per
+      // account (access.takeAuthAttempt), so passwords can't be guessed quickly and the
+      // dashboard can't flood someone's inbox. The network comes from the signed address
+      // the dashboard adds (lib/clientIp.ts), which a caller can't make up.
+      before: createAuthMiddleware(async (hook) => {
+        const kind = authAttemptKind(hook.path);
+        const run = runner(ctx);
+        if (!kind || !run) return;
+        const email = typeof hook.body?.email === "string" ? hook.body.email : undefined;
+        const refused = await run.runMutation(internal.access.takeAuthAttempt, {
+          kind,
+          networkKey: await networkKey(hook.headers ?? hook.request?.headers),
+          ...(email ? { email } : {}),
+        });
+        if (refused) throw new APIError("TOO_MANY_REQUESTS", { message: refused });
+      }),
       // A changed password gets the same "was this you?" note a reset does.
       after: createAuthMiddleware(async (hook) => {
         if (hook.path !== "/change-password") return;

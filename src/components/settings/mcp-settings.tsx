@@ -329,7 +329,7 @@ export function McpSettings() {
     <div className="flex flex-col gap-10">
       <SettingsSection
         title="Connect an app"
-        description="Through MCP, an AI app can see your automations, uploads and runs, build and change automations as drafts for you to publish, and start runs. It signs in as you, on the team you pick."
+        description="Through MCP, an AI app can see your automations, uploads and runs, build and publish automations, switch them on, start runs and approve them. It signs in as you, on the team you pick, and can do what you can."
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">

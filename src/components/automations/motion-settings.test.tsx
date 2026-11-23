@@ -46,6 +46,28 @@ describe("the Add Motion Graphics step", () => {
     expect(onChange).toHaveBeenLastCalledWith({ input: { title: "Big Year" } });
   });
 
+  test("switches the title behind the speaker, the outline and punch-ins on and off", async () => {
+    const user = userEvent.setup();
+    const onChange = panel({ id: "motion", kind: "motion", input: {} });
+    const behind = screen.getByRole("switch", { name: "Behind the speaker" });
+    expect(behind).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "Sticker outline" })).not.toBeChecked();
+    expect(screen.getByText(/no green screen/)).toBeInTheDocument();
+    await user.click(behind);
+    expect(onChange).toHaveBeenLastCalledWith({ input: { behind: true } });
+    await user.click(screen.getByRole("switch", { name: "Punch-ins" }));
+    expect(onChange).toHaveBeenLastCalledWith({ input: { punchIns: true } });
+  });
+
+  test("turning a switch off leaves no setting behind", async () => {
+    const user = userEvent.setup();
+    const onChange = panel({ id: "motion", kind: "motion", input: { outline: true } });
+    const outline = screen.getByRole("switch", { name: "Sticker outline" });
+    expect(outline).toBeChecked();
+    await user.click(outline);
+    expect(onChange).toHaveBeenLastCalledWith({ input: {} });
+  });
+
   test("shows the picked preset on the canvas", () => {
     expect(nodeLook({ kind: "motion", input: { style: "neon" } }).kind).toBe("Neon");
     expect(nodeLook({ kind: "motion", input: {} }).kind).toBe("Your team's style");

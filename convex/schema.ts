@@ -1036,6 +1036,16 @@ export default defineSchema({
     duration: v.number(),
   }).index("by_source", ["organizationId", "source"]),
 
+  // The speaker's cut-out of a video (the toolkit's /v1/video/cutout mask), kept so it is
+  // made once and reused by New Background and pieces behind the speaker (lib/masks.ts).
+  // `source` is the video's address without its query, as in spokenWords.
+  speakerMasks: defineTable({
+    organizationId: v.string(),
+    source: v.string(),
+    mask: v.string(),
+    savedAt: v.number(),
+  }).index("by_source", ["organizationId", "source"]),
+
   // The model's answer to a Best moments or Chapters question, kept so the same question
   // (the same transcript, settings and house rules) is not paid for twice. `question` is
   // the question's SHA-256. Forgotten after 30 days (crons.ts).
@@ -1923,6 +1933,9 @@ export default defineSchema({
     // Set when a client's portal opened this link. It then works only while that portal
     // is on, and takes what the client may do from the portal's settings as they are now.
     portalId: v.optional(v.id("clientPortals")),
+    // When a link the team shared by hand stops working. Missing on links made before
+    // links ran out: those last 30 days from when they were made. Portal links never do.
+    expiresAt: v.optional(v.number()),
   })
     .index("by_token", ["token"])
     .index("by_review", ["reviewId"])

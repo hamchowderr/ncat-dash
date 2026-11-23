@@ -7,7 +7,7 @@ import { TURN_USER_KEY } from '../lib/turn-user';
 import { rememberSession } from './session-store';
 import { hearVoiceNotes } from './voice-notes';
 import { LONG_CACHE_KEY } from '../lib/cost';
-import { convexSiteUrl, signForDashboard } from './dashboard-site';
+import { convexSiteUrl, dashboardSecret, signForDashboard } from './dashboard-site';
 
 /**
  * The agent in Slack, on each team's own Slack app: a regular self-managed Mastra
@@ -43,13 +43,13 @@ export type SlackPerson =
   // blocked, or they have sent a great many messages. `message` is what to tell them.
   | { ok: false; reason: 'refused'; email: null; message: string };
 
-export { convexSiteUrl, signForDashboard };
+export { convexSiteUrl, dashboardSecret, signForDashboard };
 
 type Ask = <T>(path: string, body: Record<string, string>) => Promise<T | null>;
 
 const askDashboard: Ask = async (path, body) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   if (!site || !secret) return null;
   try {
     const response = await fetch(`${site}${path}`, {
@@ -218,7 +218,7 @@ export const asTheWriter: ChannelHandler = async (thread, message, next, ctx) =>
 
 /** The Slack channel config for the agent controller, or none when the server cannot ask the dashboard. */
 export function slackChannels(): AgentControllerChannelsConfig | undefined {
-  if (!env.MASTRA_JWT_SECRET || !convexSiteUrl()) return undefined;
+  if (!dashboardSecret() || !convexSiteUrl()) return undefined;
   const adapter = createSlackAdapter({
     webhookVerifier: verifySlackRequest,
     installationProvider: {
