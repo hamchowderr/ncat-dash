@@ -188,10 +188,15 @@ describe("steps that read their files first", () => {
       has_audio: true,
     });
     const runId = await start({ file_url: VIDEO });
-    const [job] = await jobsOf(runId, "card_1");
-    await t.action(internal.jobs.dispatch, { jobId: job._id });
+    // The toolkit pool sends the job by itself, as it does for real. Sending it by hand as
+    // well raced that send, so the toolkit was sometimes asked twice.
     // Jobs left over from earlier tests may still be dispatching; keep this video's calls.
-    const mine = calls.filter((call) => JSON.stringify(call.body).includes(VIDEO));
+    const ofThisVideo = () => calls.filter((call) => JSON.stringify(call.body).includes(VIDEO));
+    await vi.waitFor(async () => {
+      expect(ofThisVideo()).toHaveLength(2);
+      expect((await jobsOf(runId, "card_1"))[0].status).toBe("running");
+    });
+    const mine = ofThisVideo();
     expect(mine.map((call) => call.path)).toEqual(["/v1/media/metadata", "/v1/ffmpeg/compose"]);
     expect(mine[0].body).toMatchObject({ media_url: VIDEO });
     // The card is fitted to the video's own 1080x1920 frame.
