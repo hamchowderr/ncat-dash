@@ -135,7 +135,7 @@ test("an owner makes the team's Slack app from a filled-in manifest and connects
   expect(manifest.settings.event_subscriptions.request_url).toBe(`${APP}/api/slack/events`);
   expect(manifest.settings.interactivity.request_url).toBe(`${APP}/api/slack/events`);
   expect(manifest.oauth_config.scopes.bot).toContain("users:read.email");
-  expect(manifest.display_information.name).toBe("Salt House Agent");
+  expect(manifest.display_information.name).toBe("Takewon");
 
   // A user token is not a bot token.
   await card(jordan).getByLabel("Bot User OAuth Token").fill("xoxp-a-user-token");

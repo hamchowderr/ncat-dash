@@ -26,7 +26,7 @@ export function teamOfToken(token) {
 }
 
 // The bot itself, as Slack knows it: no email address, so the dashboard never matches it.
-const users = new Map([[BOT_USER, { email: null, name: "Agent", bot: true }]]);
+const users = new Map([[BOT_USER, { email: null, name: "Takewon", bot: true }]]);
 let posted = [];
 // The channels the workspace has, and the ones the bot was asked to join.
 const CHANNELS = [
