@@ -1610,6 +1610,8 @@ export async function decideApproval(
   step: Doc<"runSteps">,
   approved: boolean,
   userId: string | null,
+  /** Why it was sent back, in the reviewer's words, shown as the step's error. */
+  reason?: string,
 ): Promise<void> {
   const run = await ctx.db.get(step.runId);
   if (!run) return;
@@ -1651,7 +1653,9 @@ export async function decideApproval(
       byNode,
       userId === null
         ? `Nobody decided${limit ? ` within ${limitWords(limit)}` : " in time"}, so it was rejected.`
-        : "Rejected at the approval step.",
+        : reason?.trim()
+          ? `Sent back: ${reason.trim().slice(0, 500)}`
+          : "Rejected at the approval step.",
     );
     await ctx.db.patch(step._id, decided);
   }
