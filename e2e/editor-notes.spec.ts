@@ -15,7 +15,7 @@ test("notes can be added, written, moved, kept and removed", async ({ page }) =>
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Note Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
 
   await page.goto("/automations");
   await page.getByRole("link", { name: "New automation", exact: true }).click();

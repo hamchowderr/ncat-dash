@@ -281,7 +281,7 @@ describe("setting up without a toolkit", () => {
     expect(screen.queryByLabelText("Choose a recording to upload")).toBeNull();
     expect(screen.getByText(/Coaching session pack/).closest("li")?.textContent).toContain("is on");
     fireEvent.click(screen.getByRole("button", { name: "Connect A Toolkit" }));
-    expect(replaced).toHaveBeenCalledWith("/onboarding?toolkit=connect");
+    expect(replaced).toHaveBeenCalledWith("/settings/toolkit");
     fireEvent.click(screen.getByRole("button", { name: /Go to the dashboard/ }));
     expect(onFinish).toHaveBeenCalled();
   });

@@ -50,7 +50,7 @@ test("a chain becomes one workflow with one review at the end", async ({ page })
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Ad Shop");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible();
 
   // Cut clips ends in an Approval step of its own.
   await newAutomation(page, "Cut clips");
@@ -77,8 +77,12 @@ test("a chain becomes one workflow with one review at the end", async ({ page })
   const dialog = page.getByRole("dialog", { name: "Make it a workflow" });
   await dialog.getByLabel("Name").fill("Weekly UGC");
   await dialog.getByRole("radio", { name: /UGC and ads/ }).click();
-  await expect(dialog.getByRole("switch", { name: "One review before the files go out" })).toBeChecked();
-  await expect(dialog.getByText(/The Approval steps in Cut clips are passed through/)).toBeVisible();
+  await expect(
+    dialog.getByRole("switch", { name: "One review before the files go out" }),
+  ).toBeChecked();
+  await expect(
+    dialog.getByText(/The Approval steps in Cut clips are passed through/),
+  ).toBeVisible();
   await page.waitForTimeout(800);
   await dialog.getByRole("button", { name: "Make workflow" }).click();
   await expect(bar).toContainText("Weekly UGC");
