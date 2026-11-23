@@ -12,10 +12,32 @@ import {
 } from "./_generated/server";
 import { APPS, OPERATION_SCHEMA, RUN_APP_URI, SKILLS } from "./lib/mcpContent";
 import { bearerKey, hashMcpKey } from "./lib/mcpKeys";
-import { handleMcp, type McpTool, ToolSaid } from "./lib/mcpServer";
+import { icon } from "./lib/mcpIcons";
+import {
+  EventRefused,
+  handleMcp,
+  type McpCallContext,
+  type McpComplete,
+  type McpData,
+  type McpEventOccurrence,
+  type McpEvents,
+  type McpForm,
+  type McpLink,
+  type McpPrompt,
+  type McpTask,
+  type McpTasks,
+  type McpTool,
+  NeedsInput,
+  StartedTask,
+  ToolSaid,
+  LEGACY_VERSIONS,
+  MODERN_VERSIONS,
+} from "./lib/mcpServer";
+import { mcpResource } from "./lib/agentSignIn";
 import { approvalView, membersOf, type TeamMembers } from "./lib/approvals";
 import { decideApproval, incomingFiles, startRun } from "./lib/runner";
 import { publishDraft, switchAutomation } from "./automations";
+import { cancelRun } from "./runs";
 import { withTeamSteps } from "./lib/teamSteps";
 
 /**
@@ -24,6 +46,11 @@ import { withTeamSteps } from "./lib/teamSteps";
  * team's keys (Settings, MCP). It can do what that person can in the dashboard for
  * automations: list them, build and change them (changes wait as a draft until published),
  * publish, switch them on or off, run one on a file, follow the run, and decide approvals.
+ *
+ * In chat apps that can show forms it asks the person directly where that helps: which
+ * file to run on, whether to switch an automation on, and what should change when sending
+ * an approval back. In apps that follow tasks (and do not show the run page), a run comes
+ * back as a task the app follows to the end, and a review it reaches is asked as a form.
  */
 
 const INSTRUCTIONS =
@@ -33,6 +60,32 @@ const SERVER_INFO = { name: "takewon", title: PRODUCT_NAME, version: "2.0.0" };
 
 const automationId = { type: "string", description: "From list_automations or create_automation." };
 
+/** An object's fields, for an output schema. Nothing is required, so extra fields still fit. */
+const shape = (properties: Record<string, unknown>) => ({ type: "object", properties });
+const list = (item: Record<string, unknown>) => shape({ items: { type: "array", items: item } });
+const textOrNull = { type: ["string", "null"] };
+const files = { type: "array", items: { type: "string" }, description: "Links to the files." };
+const RUN_LINE = shape({
+  run_id: { type: "string" },
+  automation_id: { type: "string" },
+  automation: { type: "string" },
+  status: { type: "string", enum: ["running", "waiting", "done", "failed", "cancelled"] },
+  started_at: { type: "string" },
+  finished_at: textOrNull,
+  error: { type: ["string", "null"] },
+  address: { type: "string", description: "The run in the dashboard." },
+});
+const APPROVAL = shape({
+  approval_id: { type: "string" },
+  step: { type: "string" },
+  waiting_since: { type: "string" },
+  asked: { type: ["string", "array"], items: { type: "string" } },
+  you_may_decide: { type: "boolean" },
+  decide_by: textOrNull,
+  when_time_up: textOrNull,
+  files,
+});
+
 const TOOLS: McpTool[] = [
   {
     name: "list_automations",
@@ -41,6 +94,19 @@ const TOOLS: McpTool[] = [
       "The team's automations: id, name, whether it is on, what usually starts it, whether it has an unpublished draft, and its latest run.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     readOnly: true,
+    icons: icon("workflow"),
+    outputSchema: list(
+      shape({
+        automation_id: { type: "string" },
+        name: { type: "string" },
+        on: { type: "boolean" },
+        starts_with: { type: "string" },
+        steps: { type: "integer" },
+        has_draft: { type: "boolean" },
+        address: { type: "string" },
+        latest_run: { anyOf: [RUN_LINE, { type: "null" }] },
+      }),
+    ),
   },
   {
     name: "describe_automation",
@@ -54,6 +120,7 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: true,
+    icons: icon("file-text"),
   },
   {
     name: "list_step_types",
@@ -66,6 +133,7 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: true,
+    icons: icon("blocks"),
   },
   {
     name: "create_automation",
@@ -79,6 +147,9 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: false,
+    destructive: false,
+    icons: icon("plus"),
+    outputSchema: shape({ automation_id: { type: "string" }, address: { type: "string" } }),
   },
   {
     name: "set_up_follow_on",
@@ -98,6 +169,8 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: false,
+    destructive: false,
+    icons: icon("git-branch-plus"),
   },
   {
     name: "change_automation",
@@ -114,6 +187,7 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: false,
+    icons: icon("pencil"),
   },
   {
     name: "publish_automation",
@@ -127,6 +201,13 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: false,
+    icons: icon("upload"),
+    outputSchema: shape({
+      automation_id: { type: "string" },
+      published: { type: "boolean" },
+      on: { type: "boolean" },
+      address: { type: "string" },
+    }),
   },
   {
     name: "switch_automation",
@@ -140,6 +221,12 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: false,
+    icons: icon("power"),
+    outputSchema: shape({
+      automation_id: { type: "string" },
+      on: { type: "boolean" },
+      address: { type: "string" },
+    }),
   },
   {
     name: "list_uploads",
@@ -151,12 +238,23 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: true,
+    icons: icon("folder-open"),
+    outputSchema: list(
+      shape({
+        upload_id: { type: "string" },
+        name: { type: "string" },
+        type: { type: "string" },
+        size_bytes: { type: "number" },
+        seconds: { type: ["number", "null"] },
+        uploaded_at: { type: "string" },
+      }),
+    ),
   },
   {
     name: "start_automation",
     title: "Start an automation",
     description:
-      'Runs one of the team\'s automations now, on an upload (upload_id from list_uploads) or a file link (file_url), whether it is on or off. It runs the published version; pass version "draft" to try unpublished changes. Returns the run, for check_run.',
+      'Runs one of the team\'s automations now, on an upload (upload_id from list_uploads) or a file link (file_url), whether it is on or off. Given neither, a chat app that shows forms asks the person which file. It runs the published version; pass version "draft" to try unpublished changes. Returns the run, for check_run.',
     inputSchema: {
       type: "object",
       properties: {
@@ -170,6 +268,13 @@ const TOOLS: McpTool[] = [
     },
     readOnly: false,
     appUri: RUN_APP_URI,
+    icons: icon("play"),
+    outputSchema: shape({
+      run_id: { type: "string" },
+      automation: { type: "string" },
+      status: { type: "string" },
+      address: { type: "string" },
+    }),
   },
   {
     name: "check_run",
@@ -184,6 +289,24 @@ const TOOLS: McpTool[] = [
     },
     readOnly: true,
     appUri: RUN_APP_URI,
+    icons: icon("activity"),
+    outputSchema: {
+      ...RUN_LINE,
+      properties: {
+        ...RUN_LINE.properties,
+        steps: {
+          type: "array",
+          items: shape({
+            step: { type: "string" },
+            status: { type: "string" },
+            error: textOrNull,
+            files: { type: "integer" },
+          }),
+        },
+        files,
+        approval: { anyOf: [APPROVAL, { type: "null" }] },
+      },
+    },
   },
   {
     name: "list_runs",
@@ -198,6 +321,8 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: true,
+    icons: icon("history"),
+    outputSchema: list(RUN_LINE),
   },
   {
     name: "list_approvals",
@@ -207,22 +332,49 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     readOnly: true,
     appUri: RUN_APP_URI,
+    icons: icon("list-checks"),
+    outputSchema: shape({
+      approvals: {
+        type: "array",
+        items: {
+          ...APPROVAL,
+          properties: {
+            ...APPROVAL.properties,
+            run_id: { type: "string" },
+            automation: { type: "string" },
+            address: { type: "string" },
+          },
+        },
+      },
+    }),
   },
   {
     name: "decide_approval",
     title: "Approve or send back",
     description:
-      "Approves a waiting approval, so the run carries on with those files, or sends it back, which stops it there. Only when the person has said which: an approval is their check, so never decide one by yourself. The same people may decide as in the dashboard.",
+      "Approves a waiting approval, so the run carries on with those files, or sends it back, which stops it there. Only when the person has said which: an approval is their check, so never decide one by yourself. The same people may decide as in the dashboard. A reason given when sending back shows on the run.",
     inputSchema: {
       type: "object",
       properties: {
         approval_id: { type: "string", description: "From list_approvals or check_run." },
         decision: { type: "string", enum: ["approve", "send_back"] },
+        reason: {
+          type: "string",
+          maxLength: 500,
+          description:
+            "When sending back: what should change, in the person's words. Left out, a chat app that shows forms asks the person.",
+        },
       },
       required: ["approval_id", "decision"],
       additionalProperties: false,
     },
     readOnly: false,
+    icons: icon("circle-check"),
+    outputSchema: shape({
+      approval_id: { type: "string" },
+      run_id: { type: "string" },
+      decided: { type: "string", enum: ["approved", "sent back"] },
+    }),
   },
   {
     name: "list_workflows",
@@ -231,6 +383,7 @@ const TOOLS: McpTool[] = [
       "The team's workflows: chains of linked automations with one review before their files go out. For each: its kind of work, client, whether it is on, who reviews and any time limit, and its automations, with where the review happens.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     readOnly: true,
+    icons: icon("git-fork"),
   },
   {
     name: "set_up_workflow",
@@ -276,6 +429,7 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: false,
+    icons: icon("settings-2"),
   },
   {
     name: "switch_workflow",
@@ -292,8 +446,120 @@ const TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     readOnly: false,
+    icons: icon("power"),
   },
 ];
+
+/** Slash commands: ready-made requests the person picks from the chat app's menu. */
+const PROMPTS: McpPrompt[] = [
+  {
+    name: "whats_waiting",
+    title: "What's waiting for me",
+    description: "Runs waiting for an approval, with the files to look at.",
+    icons: icon("inbox"),
+    text: () =>
+      "Show me what's waiting in Takewon for an approval. For each one, say which automation, since when, who is asked and what the files are. Don't decide any yourself: I'll say which to approve or send back.",
+  },
+  {
+    name: "run_automation",
+    title: "Run an automation",
+    description: "Runs one of the team's automations on a file and follows the run.",
+    arguments: [
+      { name: "automation", description: "Which automation, by name.", required: true },
+      { name: "file", description: "An upload's name or a link. Left out: ask me." },
+    ],
+    icons: icon("play"),
+    text: (args) =>
+      `Run my Takewon automation "${args.automation}" on ${
+        args.file ? `"${args.file}"` : "a file: ask me which one"
+      }. Then show me how the run goes and the files it makes.`,
+  },
+  {
+    name: "build_automation",
+    title: "Build an automation",
+    description: "Builds a new automation from what you want it to do, kept as a draft.",
+    arguments: [{ name: "goal", description: "What it should do, in your words.", required: true }],
+    icons: icon("layout-template"),
+    text: (args) =>
+      `Build me a Takewon automation that ${args.goal}. Read the content-automations skill first. Keep it as a draft, tell me in plain words what it will do and what starts it, and try it on a file before you publish it or switch it on.`,
+  },
+  {
+    name: "how_runs_went",
+    title: "How my runs went",
+    description: "The latest runs and how each went, with what to fix in any that failed.",
+    arguments: [{ name: "automation", description: "Only this automation, by name." }],
+    icons: icon("history"),
+    text: (args) =>
+      `Show my latest Takewon runs${
+        args.automation ? ` of "${args.automation}"` : ""
+      } and how each went. For any that failed, say which step, why, and what to change.`,
+  },
+];
+
+const MIME_TYPES: Record<string, string> = {
+  mp4: "video/mp4",
+  m4v: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  wav: "audio/wav",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  srt: "application/x-subrip",
+  vtt: "text/vtt",
+  txt: "text/plain",
+  json: "application/json",
+  zip: "application/zip",
+  pdf: "application/pdf",
+};
+
+/** A file link as a resource link: named after its last part, typed from its ending. */
+export function fileLink(address: string): McpLink | null {
+  let url: URL;
+  try {
+    url = new URL(address);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  const last = url.pathname.split("/").filter(Boolean).pop() ?? url.hostname;
+  let name = last;
+  try {
+    name = decodeURIComponent(last);
+  } catch {
+    // Keep it as written.
+  }
+  const ending = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase() ?? "";
+  return { uri: address, name, ...(MIME_TYPES[ending] ? { mimeType: MIME_TYPES[ending] } : {}) };
+}
+
+/** The files a tool's result names: a run's finished files, and those to review. */
+export function linksOf(result: unknown): McpLink[] {
+  if (!result || typeof result !== "object") return [];
+  const found: string[] = [];
+  const take = (value: unknown) => {
+    if (Array.isArray(value))
+      for (const each of value) if (typeof each === "string") found.push(each);
+  };
+  const record = result as { files?: unknown; approval?: unknown; approvals?: unknown };
+  take(record.files);
+  if (record.approval && typeof record.approval === "object") {
+    take((record.approval as { files?: unknown }).files);
+  }
+  if (Array.isArray(record.approvals)) {
+    for (const each of record.approvals) {
+      if (each && typeof each === "object") take((each as { files?: unknown }).files);
+    }
+  }
+  return [...new Set(found)]
+    .slice(0, 50)
+    .map(fileLink)
+    .filter((link): link is McpLink => link !== null);
+}
 
 const site = () => (process.env.SITE_URL ?? "").replace(/\/+$/, "");
 const automationLink = (id: string) => `${site()}/automations/${id}`;
@@ -588,6 +854,7 @@ export const decide = internalMutation({
     userId: v.string(),
     approvalId: v.string(),
     approve: v.boolean(),
+    reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const id = ctx.db.normalizeId("runSteps", args.approvalId);
@@ -596,7 +863,7 @@ export const decide = internalMutation({
       said("There is no approval with that id on this team. list_approvals gives the ids.");
     }
     if (step.status !== "waiting_approval") said("Someone has already decided this.");
-    await decideApproval(ctx, step, args.approve, args.userId);
+    await decideApproval(ctx, step, args.approve, args.userId, args.reason);
     return {
       approval_id: step._id,
       run_id: step.runId,
@@ -631,6 +898,151 @@ export const setOn = internalMutation({
   },
 });
 
+/** What a form about an automation shows: its name, what starts it, and the latest uploads. */
+export const brief = internalQuery({
+  args: { organizationId: v.string(), automationId: v.string() },
+  handler: async (ctx, args) => {
+    const automation = await ownAutomation(ctx, args.organizationId, args.automationId);
+    const uploads = await ctx.db
+      .query("uploads")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .order("desc")
+      .take(60);
+    return {
+      name: automation.name,
+      on: automation.enabled,
+      starts_with: [
+        automation.trigger,
+        ...(automation.moreTriggers ?? []).map((each) => each.trigger),
+      ]
+        .map((trigger) => STARTS[trigger.kind] ?? trigger.kind)
+        .join(", or "),
+      uploads: uploads
+        .filter((upload) => upload.status === "ready" && !upload.purpose)
+        .slice(0, 20)
+        .map((upload) => ({ id: upload._id as string, name: upload.fileName })),
+    };
+  },
+});
+
+/** Which approval, by name, for the form that asks why it is sent back. */
+export const approvalBrief = internalQuery({
+  args: { organizationId: v.string(), approvalId: v.string() },
+  handler: async (ctx, args) => {
+    const id = ctx.db.normalizeId("runSteps", args.approvalId);
+    const step = id ? await ctx.db.get(id) : null;
+    if (!step || step.organizationId !== args.organizationId) {
+      said("There is no approval with that id on this team. list_approvals gives the ids.");
+    }
+    if (step.status !== "waiting_approval") said("Someone has already decided this.");
+    const run = await ctx.db.get(step.runId);
+    const node = run?.nodes.find((each) => each.id === step.nodeId);
+    return {
+      automation: run?.automationName ?? "The run",
+      step: node ? stepName(node) : "Approval",
+    };
+  },
+});
+
+/** Stops one of the team's runs, for a chat app cancelling its task. */
+export const cancel = internalMutation({
+  args: { organizationId: v.string(), runId: v.string() },
+  handler: async (ctx, args) => {
+    const id = ctx.db.normalizeId("runs", args.runId);
+    const found = id ? await ctx.db.get(id) : null;
+    if (!found || found.organizationId !== args.organizationId) {
+      said("There is no run with that id on this team.");
+    }
+    await cancelRun(ctx, found);
+  },
+});
+
+/** The team's automations, as resources an app can attach to the chat. */
+export const automationEntries = internalQuery({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    const list = await ctx.db
+      .query("automations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .take(200);
+    return list.map((automation) => ({
+      automation_id: automation._id as string,
+      name: automation.name,
+      starts_with: [
+        automation.trigger,
+        ...(automation.moreTriggers ?? []).map((each) => each.trigger),
+      ]
+        .map((trigger) => STARTS[trigger.kind] ?? trigger.kind)
+        .join(", or "),
+    }));
+  },
+});
+
+/** Names to suggest as someone types: the team's automations, uploads or latest runs. */
+export const suggestions = internalQuery({
+  args: { organizationId: v.string(), of: v.union(v.literal("uploads"), v.literal("runs")) },
+  handler: async (ctx, args) => {
+    if (args.of === "uploads") {
+      const uploads = await ctx.db
+        .query("uploads")
+        .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+        .order("desc")
+        .take(200);
+      return uploads
+        .filter((upload) => upload.status === "ready" && !upload.purpose)
+        .map((upload) => upload.fileName);
+    }
+    const runs = await ctx.db
+      .query("runs")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .order("desc")
+      .take(100);
+    return runs.map((run) => run._id as string);
+  },
+});
+
+/** Runs that ended after a moment, oldest first, as run.finished events. */
+export const finishedRuns = internalQuery({
+  args: {
+    organizationId: v.string(),
+    after: v.number(),
+    automationId: v.optional(v.string()),
+    most: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const ended = await ctx.db
+      .query("runs")
+      .withIndex("by_organization_and_finishedAt", (q) =>
+        q.eq("organizationId", args.organizationId).gt("finishedAt", args.after),
+      )
+      .take(500);
+    const wanted = ended
+      .filter((run) => !run.test && (!args.automationId || run.automationId === args.automationId))
+      .slice(0, args.most + 1);
+    return await Promise.all(
+      wanted.map(async (run) => {
+        const steps = await ctx.db
+          .query("runSteps")
+          .withIndex("by_run", (q) => q.eq("runId", run._id))
+          .take(200);
+        const byNode = new Map(steps.map((step) => [step.nodeId, step]));
+        const leads = new Set(run.edges.map((edge) => edge.source));
+        const files = run.nodes
+          .filter((node) => !leads.has(node.id))
+          .flatMap((node) => {
+            const step = byNode.get(node.id);
+            return step?.status === "done" ? step.outputs : [];
+          });
+        return {
+          ...runLine(run),
+          finished: run.finishedAt ?? 0,
+          files: [...new Set(files)].slice(0, 50),
+        };
+      }),
+    );
+  },
+});
+
 export const runs = internalQuery({
   args: { organizationId: v.string(), automationId: v.optional(v.string()), limit: v.number() },
   handler: async (ctx, args) => {
@@ -662,11 +1074,70 @@ const count = (value: unknown, fallback: number, most: number) =>
 /** Who is asking: a person on a team (OAuth), or a team key acting as its maker. */
 type Caller = { organizationId: string; userId: string };
 
+type Brief = {
+  name: string;
+  on: boolean;
+  starts_with: string;
+  uploads: { id: string; name: string }[];
+};
+
+/** Which file to run on: one of the latest uploads, a link, or neither. */
+function fileForm(brief: Brief): McpForm {
+  return {
+    message: `Which file should "${brief.name}" run on? Pick an upload or paste a link. Leave both empty to run it without a file.`,
+    fields: {
+      ...(brief.uploads.length
+        ? {
+            upload_id: {
+              type: "string",
+              title: "An upload",
+              oneOf: brief.uploads.map((upload) => ({ const: upload.id, title: upload.name })),
+            },
+          }
+        : {}),
+      file_url: {
+        type: "string",
+        format: "uri",
+        title: brief.uploads.length ? "Or a link to a file" : "A link to a file",
+        description: "Starting with https://",
+      },
+    },
+  };
+}
+
+/** The decision on a review a run is waiting at, asked inside a task. */
+function reviewForm(approval: { step: string; files: string[] }, automation: string): McpForm {
+  const shown = approval.files.slice(0, 10);
+  return {
+    message: [
+      `"${automation}" is waiting at ${approval.step} for your decision.`,
+      shown.length ? `Files to look at:\n${shown.join("\n")}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    fields: {
+      decision: {
+        type: "string",
+        title: "Decision",
+        oneOf: [
+          { const: "approve", title: "Approve" },
+          { const: "send_back", title: "Send back" },
+        ],
+      },
+      reason: { type: "string", title: "If sending back, what should change", maxLength: 500 },
+    },
+    required: ["decision"],
+  };
+}
+
+const answerText = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+
 async function callTool(
   ctx: ActionCtx,
   caller: Caller,
   name: string,
   args: Record<string, unknown>,
+  context: McpCallContext,
 ): Promise<unknown> {
   const { organizationId, userId } = caller;
   const automation = () => {
@@ -732,13 +1203,35 @@ async function callTool(
           userId,
           automationId: automation(),
         });
-      case "switch_automation":
+      case "switch_automation": {
         if (typeof args.on !== "boolean") throw new ToolSaid("on is needed: true or false.");
+        const id = automation();
+        if (args.on && context.forms) {
+          // From then on it runs by itself, so the person says so in the chat first.
+          const answer = context.answers.switch_on;
+          if (!answer) {
+            const brief = await ctx.runQuery(internal.mcp.brief, {
+              organizationId,
+              automationId: id,
+            });
+            if (!brief.on) {
+              return new NeedsInput({
+                switch_on: {
+                  message: `Switch on "${brief.name}"? From then on it runs by itself on: ${brief.starts_with.toLowerCase()}.`,
+                  fields: {},
+                },
+              });
+            }
+          } else if (answer.action !== "accept") {
+            throw new ToolSaid("The person chose not to switch it on, so it stays off.");
+          }
+        }
         return await ctx.runMutation(internal.mcp.setOn, {
           organizationId,
-          automationId: automation(),
+          automationId: id,
           on: args.on,
         });
+      }
       case "list_approvals":
         return await ctx.runQuery(internal.mcp.approvals, { organizationId, userId });
       case "decide_approval": {
@@ -747,11 +1240,34 @@ async function callTool(
         if (args.decision !== "approve" && args.decision !== "send_back") {
           throw new ToolSaid('decision is needed: "approve" or "send_back".');
         }
+        let reason = typeof args.reason === "string" ? args.reason.trim() : undefined;
+        if (args.decision === "send_back" && reason === undefined && context.forms) {
+          const answer = context.answers.send_back;
+          if (!answer) {
+            const brief = await ctx.runQuery(internal.mcp.approvalBrief, {
+              organizationId,
+              approvalId,
+            });
+            return new NeedsInput({
+              send_back: {
+                message: `Send back "${brief.automation}" at ${brief.step}? The run stops there.`,
+                fields: {
+                  reason: { type: "string", title: "What should change", maxLength: 500 },
+                },
+              },
+            });
+          }
+          if (answer.action !== "accept") {
+            throw new ToolSaid("The person did not send it back, so it is still waiting.");
+          }
+          reason = answerText(answer.content.reason);
+        }
         return await ctx.runMutation(internal.mcp.decide, {
           organizationId,
           userId,
           approvalId,
           approve: args.decision === "approve",
+          ...(reason ? { reason } : {}),
         });
       }
       case "list_uploads":
@@ -759,15 +1275,48 @@ async function callTool(
           organizationId,
           limit: count(args.limit, 20, 50),
         });
-      case "start_automation":
-        return await ctx.runMutation(internal.mcp.start, {
+      case "start_automation": {
+        const id = automation();
+        let uploadId = text(args.upload_id);
+        let fileUrl = text(args.file_url);
+        if (!uploadId && !fileUrl && context.forms) {
+          const answer = context.answers.file;
+          if (!answer) {
+            const brief = await ctx.runQuery(internal.mcp.brief, {
+              organizationId,
+              automationId: id,
+            });
+            return new NeedsInput({ file: fileForm(brief) });
+          }
+          if (answer.action !== "accept") {
+            throw new ToolSaid(
+              "The person closed the form without choosing, so nothing was started.",
+            );
+          }
+          uploadId = text(answer.content.upload_id);
+          fileUrl = uploadId ? undefined : text(answer.content.file_url);
+        }
+        const started = await ctx.runMutation(internal.mcp.start, {
           organizationId,
           startedBy: userId,
-          automationId: automation(),
-          uploadId: text(args.upload_id),
-          fileUrl: text(args.file_url),
+          automationId: id,
+          uploadId,
+          fileUrl,
           draft: args.version === "draft",
         });
+        // An app showing the run page follows the run there; one that follows tasks gets one.
+        if (context.tasks && !context.apps) {
+          const now = new Date().toISOString();
+          return new StartedTask({
+            taskId: started.run_id,
+            status: "working",
+            statusMessage: `Running "${started.automation}".`,
+            createdAt: now,
+            lastUpdatedAt: now,
+          });
+        }
+        return started;
+      }
       case "check_run": {
         const runId = text(args.run_id);
         if (!runId) throw new ToolSaid("run_id is needed.");
@@ -875,6 +1424,423 @@ export async function keyCallerOf(
   return { organizationId: key.organizationId, userId: key.createdBy };
 }
 
+type RunView = {
+  run_id: string;
+  automation: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  error: string | null;
+  steps: { step: string; status: string }[];
+  approval: {
+    approval_id: string;
+    step: string;
+    asked: unknown;
+    you_may_decide: boolean;
+    files: string[];
+  } | null;
+};
+
+/** A run as a task: the chat app follows it, and is asked about a review it reaches. */
+export function taskOfRun(run: RunView, forms: boolean): McpTask {
+  const base = {
+    taskId: run.run_id,
+    createdAt: run.started_at,
+    lastUpdatedAt: run.finished_at ?? new Date().toISOString(),
+  };
+  switch (run.status) {
+    case "done":
+      return { ...base, status: "completed", result: run };
+    case "failed":
+      // The run went wrong, not the protocol: the task completes with an error result.
+      return { ...base, status: "completed", result: run, isError: true };
+    case "cancelled":
+      return { ...base, status: "cancelled", statusMessage: "The run was stopped." };
+  }
+  const approval = run.approval;
+  if (approval) {
+    if (approval.you_may_decide && forms) {
+      return {
+        ...base,
+        status: "input_required",
+        statusMessage: `Waiting at ${approval.step} for your decision.`,
+        forms: { [`review:${approval.approval_id}`]: reviewForm(approval, run.automation) },
+      };
+    }
+    const asked = Array.isArray(approval.asked)
+      ? approval.asked.join(" or ")
+      : "someone on the team";
+    return {
+      ...base,
+      status: "working",
+      statusMessage: `Waiting at ${approval.step} for ${asked} to decide.`,
+    };
+  }
+  const at = run.steps.findIndex((step) => step.status !== "done" && step.status !== "skipped");
+  return {
+    ...base,
+    status: "working",
+    statusMessage:
+      at >= 0 ? `Step ${at + 1} of ${run.steps.length}: ${run.steps[at].step}.` : "Finishing.",
+  };
+}
+
+/** The team's runs, as tasks for chat apps that follow tasks. */
+function tasksFor(ctx: ActionCtx, caller: Caller): McpTasks {
+  const { organizationId, userId } = caller;
+  const runOf = async (taskId: string) => {
+    try {
+      return (await ctx.runQuery(internal.mcp.run, {
+        organizationId,
+        runId: taskId,
+        userId,
+      })) as RunView;
+    } catch (caught) {
+      if (caught instanceof ConvexError) return null;
+      throw caught;
+    }
+  };
+  return {
+    get: async (taskId, context) => {
+      const run = await runOf(taskId);
+      return run ? taskOfRun(run, context.forms) : null;
+    },
+    update: async (taskId, answers) => {
+      const run = await runOf(taskId);
+      if (!run) throw new ToolSaid(`There is no task ${taskId || "(none)"}.`);
+      for (const [key, answer] of Object.entries(answers)) {
+        const approvalId = /^review:(.+)$/.exec(key)?.[1];
+        if (!approvalId || answer.action !== "accept") continue;
+        const decision = answerText(answer.content.decision);
+        if (decision !== "approve" && decision !== "send_back") continue;
+        const reason = answerText(answer.content.reason);
+        try {
+          await ctx.runMutation(internal.mcp.decide, {
+            organizationId,
+            userId,
+            approvalId,
+            approve: decision === "approve",
+            ...(decision === "send_back" && reason ? { reason } : {}),
+          });
+        } catch (caught) {
+          if (caught instanceof ConvexError) {
+            const data = caught.data as { message?: string } | string;
+            throw new ToolSaid(
+              typeof data === "string" ? data : (data.message ?? "That did not work."),
+            );
+          }
+          throw caught;
+        }
+      }
+    },
+    cancel: async (taskId) => {
+      try {
+        await ctx.runMutation(internal.mcp.cancel, { organizationId, runId: taskId });
+      } catch (caught) {
+        if (caught instanceof ConvexError)
+          throw new ToolSaid(`There is no task ${taskId || "(none)"}.`);
+        throw caught;
+      }
+    },
+  };
+}
+
+const AUTOMATION_URI = "takewon://automations/";
+const RUN_URI = "takewon://runs/";
+
+/** The team's automations and runs as resources an app can attach to the chat. */
+function dataFor(ctx: ActionCtx, caller: Caller): McpData {
+  const { organizationId, userId } = caller;
+  const json = (uri: string, value: unknown) => ({
+    uri,
+    name: uri,
+    mimeType: "application/json",
+    text: JSON.stringify(value, null, 2),
+  });
+  return {
+    list: async () => {
+      const automations = await ctx.runQuery(internal.mcp.automationEntries, { organizationId });
+      return automations.map((automation) => ({
+        uri: `${AUTOMATION_URI}${automation.automation_id}`,
+        name: automation.name,
+        title: automation.name,
+        description: `Automation. Starts with: ${automation.starts_with.toLowerCase()}.`,
+        mimeType: "application/json",
+      }));
+    },
+    templates: [
+      {
+        uriTemplate: `${AUTOMATION_URI}{automation_id}`,
+        name: "automation",
+        title: "An automation",
+        description:
+          "One of the team's automations: what starts it, its steps and what stops it running.",
+        mimeType: "application/json",
+      },
+      {
+        uriTemplate: `${RUN_URI}{run_id}`,
+        name: "run",
+        title: "A run",
+        description:
+          "How one run went: each step, errors, the files it made and any approval it waits at.",
+        mimeType: "application/json",
+      },
+    ],
+    read: async (uri) => {
+      try {
+        if (uri.startsWith(AUTOMATION_URI)) {
+          const automationId = decodeURIComponent(uri.slice(AUTOMATION_URI.length));
+          const described = await ctx.runQuery(internal.automations.describeAs, {
+            organizationId,
+            automationId,
+          });
+          return json(uri, described);
+        }
+        if (uri.startsWith(RUN_URI)) {
+          const runId = decodeURIComponent(uri.slice(RUN_URI.length));
+          return json(uri, await ctx.runQuery(internal.mcp.run, { organizationId, runId, userId }));
+        }
+      } catch (caught) {
+        // Not on this team, or no such thing: the protocol answers "not found".
+        if (caught instanceof ConvexError) return null;
+        throw caught;
+      }
+      return null;
+    },
+  };
+}
+
+/** Best matches first: names that start with what was typed, then names that contain it. */
+export function matching(values: string[], typed: string): string[] {
+  const wanted = typed.trim().toLowerCase();
+  const unique = [...new Set(values)];
+  if (!wanted) return unique;
+  const starts = unique.filter((value) => value.toLowerCase().startsWith(wanted));
+  const contains = unique.filter(
+    (value) => !value.toLowerCase().startsWith(wanted) && value.toLowerCase().includes(wanted),
+  );
+  return [...starts, ...contains];
+}
+
+/** Suggestions as the person fills in a prompt or an address. */
+function completeFor(ctx: ActionCtx, caller: Caller): McpComplete {
+  const { organizationId } = caller;
+  const automationNames = async () =>
+    (await ctx.runQuery(internal.mcp.automationEntries, { organizationId })).map(
+      (each) => each.name,
+    );
+  return async (ref, argument) => {
+    if (ref.type === "ref/prompt") {
+      if (
+        argument.name === "automation" &&
+        (ref.name === "run_automation" || ref.name === "how_runs_went")
+      ) {
+        return matching(await automationNames(), argument.value);
+      }
+      if (argument.name === "file" && ref.name === "run_automation") {
+        return matching(
+          await ctx.runQuery(internal.mcp.suggestions, { organizationId, of: "uploads" }),
+          argument.value,
+        );
+      }
+      return [];
+    }
+    if (ref.uri === `${AUTOMATION_URI}{automation_id}` && argument.name === "automation_id") {
+      const automations = await ctx.runQuery(internal.mcp.automationEntries, { organizationId });
+      const typed = argument.value.trim().toLowerCase();
+      return automations
+        .filter(
+          (each) =>
+            !typed ||
+            each.automation_id.toLowerCase().startsWith(typed) ||
+            each.name.toLowerCase().includes(typed),
+        )
+        .map((each) => each.automation_id);
+    }
+    if (ref.uri === `${RUN_URI}{run_id}` && argument.name === "run_id") {
+      return matching(
+        await ctx.runQuery(internal.mcp.suggestions, { organizationId, of: "runs" }),
+        argument.value,
+      );
+    }
+    return [];
+  };
+}
+
+const RUN_PAYLOAD = {
+  type: "object",
+  properties: {
+    run_id: { type: "string" },
+    automation_id: { type: "string" },
+    automation: { type: "string" },
+    status: { type: "string", enum: ["done", "failed", "cancelled"] },
+    finished_at: { type: "string", format: "date-time" },
+    error: { type: ["string", "null"] },
+    files: { type: "array", items: { type: "string" } },
+    address: { type: "string" },
+  },
+};
+
+const APPROVAL_PAYLOAD = {
+  type: "object",
+  properties: {
+    approval_id: { type: "string" },
+    run_id: { type: "string" },
+    automation: { type: "string" },
+    step: { type: "string" },
+    asked: { type: ["string", "array"], items: { type: "string" } },
+    you_may_decide: { type: "boolean" },
+    files: { type: "array", items: { type: "string" } },
+    address: { type: "string" },
+  },
+};
+
+/** A poll cursor is the moment of the last event handed out. */
+const cursorAt = (cursor: string | null): number | null => {
+  const at = cursor ? /^t:(\d+)$/.exec(cursor) : null;
+  return at ? Number(at[1]) : null;
+};
+
+/** Run and approval events, polled: nothing is held per client, the cursor is a moment. */
+function eventsFor(ctx: ActionCtx, caller: Caller): McpEvents {
+  const { organizationId, userId } = caller;
+  return {
+    types: [
+      {
+        name: "run.finished",
+        description: "A run of one of the team's automations ended: done, failed or stopped.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            automation_id: { type: "string", description: "Only this automation's runs." },
+          },
+        },
+        payloadSchema: RUN_PAYLOAD,
+      },
+      {
+        name: "approval.waiting",
+        description:
+          "A run reached an Approval step or a workflow's review and waits for someone to decide.",
+        inputSchema: { type: "object", properties: {} },
+        payloadSchema: APPROVAL_PAYLOAD,
+      },
+    ],
+    poll: async ({ name, args, cursor, maxAgeMs, most }) => {
+      const now = Date.now();
+      const from = cursorAt(cursor);
+      if (cursor !== null && from === null) {
+        throw new EventRefused(
+          -32602,
+          "That cursor did not come from this server. Poll with null to start from now.",
+        );
+      }
+      // A null cursor starts from now: nothing is replayed.
+      if (from === null)
+        return { events: [], cursor: `t:${now}`, truncated: false, hasMore: false };
+      const floor = maxAgeMs !== null ? Math.max(from, now - maxAgeMs) : from;
+      let found: { at: number; event: McpEventOccurrence }[];
+      if (name === "run.finished") {
+        const automationId =
+          typeof args.automation_id === "string" ? args.automation_id : undefined;
+        const ended = await ctx.runQuery(internal.mcp.finishedRuns, {
+          organizationId,
+          after: floor,
+          automationId,
+          most,
+        });
+        found = ended.map(({ finished, ...run }) => ({
+          at: finished,
+          event: {
+            eventId: `${run.run_id}:${run.status}`,
+            name,
+            timestamp: new Date(finished).toISOString(),
+            data: run,
+          },
+        }));
+      } else {
+        const { approvals } = await ctx.runQuery(internal.mcp.approvals, {
+          organizationId,
+          userId,
+        });
+        found = approvals
+          .map((approval) => ({ at: Date.parse(approval.waiting_since), approval }))
+          .filter((each) => each.at > floor)
+          .sort((a, b) => a.at - b.at)
+          .map(({ at, approval }) => ({
+            at,
+            event: {
+              eventId: approval.approval_id,
+              name,
+              timestamp: approval.waiting_since,
+              data: {
+                approval_id: approval.approval_id,
+                run_id: approval.run_id,
+                automation: approval.automation,
+                step: approval.step,
+                asked: approval.asked,
+                you_may_decide: approval.you_may_decide,
+                files: approval.files,
+                address: approval.address,
+              },
+            },
+          }));
+      }
+      const batch = found.slice(0, most);
+      const hasMore = found.length > most;
+      const last = batch.at(-1)?.at;
+      return {
+        events: batch.map((each) => each.event),
+        // With more to come, the next poll carries on from the last one handed out.
+        cursor: `t:${hasMore && last !== undefined ? last : Math.max(floor, last ?? 0, hasMore ? 0 : now)}`,
+        truncated: floor > from,
+        hasMore,
+      };
+    },
+  };
+}
+
+/** GET /mcp/server-card: who this server is and where to reach it, for directories. */
+export const serverCard = httpAction(async () => {
+  const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
+  const card = {
+    $schema: "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+    name: "com.takewon/takewon",
+    title: PRODUCT_NAME,
+    version: SERVER_INFO.version,
+    description:
+      "Your content, social media ready. Build, run and follow your team's content automations (clips, captions, reframing and more) from any AI chat app, and approve what waits for review.",
+    ...(site ? { websiteUrl: site } : {}),
+    remotes: [
+      {
+        type: "streamable-http",
+        url: mcpResource(),
+        supportedProtocolVersions: [...MODERN_VERSIONS, ...LEGACY_VERSIONS],
+      },
+    ],
+  };
+  return new Response(JSON.stringify(card, null, 2), {
+    headers: {
+      "content-type": "application/mcp-server-card+json",
+      "cache-control": "public, max-age=3600",
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-allow-headers": "Content-Type, If-None-Match",
+    },
+  });
+});
+
+/**
+ * GET /.well-known/openai-apps-challenge: the token ChatGPT's app directory asks for to prove the
+ * MCP address is ours. Nothing is served until OPENAI_APPS_CHALLENGE is set.
+ */
+export const openaiAppsChallenge = httpAction(async () => {
+  const token = (process.env.OPENAI_APPS_CHALLENGE ?? "").trim();
+  if (!token) return new Response("Not found", { status: 404 });
+  return new Response(token, {
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+  });
+});
+
 /**
  * One JSON-RPC message in, one answer out, for a caller already identified by its team
  * key or OAuth token (mcpHttp.ts serves POST /mcp).
@@ -920,7 +1886,13 @@ export async function answerMcp(
         ? appsFor(await ctx.runQuery(internal.mcp.fileOrigins, caller))
         : APPS,
     skills: SKILLS,
-    call: (name, args) => callTool(ctx, caller, name, args),
+    prompts: PROMPTS,
+    call: (name, args, context) => callTool(ctx, caller, name, args, context),
+    links: linksOf,
+    tasks: tasksFor(ctx, caller),
+    data: dataFor(ctx, caller),
+    complete: completeFor(ctx, caller),
+    events: eventsFor(ctx, caller),
   });
   if (!reply.body) return new Response(null, { status: 202, headers: CORS });
   return Response.json(reply.body, { status: reply.status, headers: CORS });

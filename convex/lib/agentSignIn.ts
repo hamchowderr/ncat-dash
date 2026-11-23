@@ -7,7 +7,7 @@
  *
  * - The authorization server is Better Auth itself, at SITE_URL/api/auth (the dashboard
  *   passes /api/auth on to this backend).
- * - The protected resource is the MCP server, at CONVEX_SITE_URL/mcp. Access tokens are
+ * - The protected resource is the MCP server, at MCP_ORIGIN/mcp (else CONVEX_SITE_URL/mcp). Access tokens are
  *   JWTs for exactly that address (their `aud`).
  * - A token works on one team: the person picks it at /connect/team, and it travels in
  *   the token as TEAM_CLAIM.
@@ -45,8 +45,14 @@ export const backendUrl = () =>
  */
 export const agentIssuer = () => `${siteUrl() || backendUrl()}/api/auth`;
 
+/**
+ * Where AI apps reach the MCP server. MCP_ORIGIN gives it a domain of its own (such as
+ * https://mcp.takewon.com) pointed at this same backend; without it, the backend's address.
+ */
+export const mcpOrigin = () => plain(process.env.MCP_ORIGIN) || backendUrl();
+
 /** The MCP server's address, the one resource access tokens are for. */
-export const mcpResource = () => `${backendUrl()}/mcp`;
+export const mcpResource = () => `${mcpOrigin()}/mcp`;
 
 /** The protected resource metadata (RFC 9728) for the MCP address. */
 export function protectedResourceMetadata(name: string) {

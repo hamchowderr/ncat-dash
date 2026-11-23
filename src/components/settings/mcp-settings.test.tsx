@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 import { answerQuery, mutationOf, toastSuccess } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
-import { McpSettings } from "./mcp-settings";
+import { McpSettings, mcpUrl } from "./mcp-settings";
 
 const KEY = {
   keyId: "k1",
@@ -116,5 +116,19 @@ describe("the MCP settings", () => {
     await waitFor(() =>
       expect(disconnect).toHaveBeenCalledWith({ organizationId: TEAM.id, grantId: "g1" }),
     );
+  });
+});
+
+describe("the MCP server address", () => {
+  test("is the MCP server's own domain when one is set, else the Convex site", () => {
+    vi.stubEnv("NEXT_PUBLIC_CONVEX_SITE_URL", "https://dash-site.example.com");
+    vi.stubEnv("NEXT_PUBLIC_MCP_ORIGIN", "");
+    try {
+      expect(mcpUrl()).toBe("https://dash-site.example.com/mcp");
+      vi.stubEnv("NEXT_PUBLIC_MCP_ORIGIN", "https://mcp.example.com/");
+      expect(mcpUrl()).toBe("https://mcp.example.com/mcp");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

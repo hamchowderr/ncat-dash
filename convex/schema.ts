@@ -730,7 +730,9 @@ export default defineSchema({
     .index("by_automation_and_status", ["automationId", "status"])
     .index("by_parentRun", ["parentRunId"])
     .index("by_organization", ["organizationId"])
-    .index("by_organization_and_status", ["organizationId", "status"]),
+    .index("by_organization_and_status", ["organizationId", "status"])
+    // Runs as they end, for the MCP server's run.finished events.
+    .index("by_organization_and_finishedAt", ["organizationId", "finishedAt"]),
 
   // Webhook calls that sent an Idempotency-Key, so the same call sent again within a day
   // answers with the run it already started instead of starting another.

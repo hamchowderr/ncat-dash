@@ -78,7 +78,7 @@ Say in plain words what starts it and what each step does, and for a run, what i
 
 ## Approvals
 
-A run can stop at an Approval step or a workflow's review until someone decides. \`check_run\` shows it under \`approval\` and \`list_approvals\` lists every one waiting, with the files to look at. Show the person the files and let them decide: \`decide_approval\` with \`approve\` (the run carries on) or \`send_back\` (it stops there), only once they have said which. Never decide an approval by yourself.
+A run can stop at an Approval step or a workflow's review until someone decides. \`check_run\` shows it under \`approval\` and \`list_approvals\` lists every one waiting, with the files to look at. Show the person the files and let them decide: \`decide_approval\` with \`approve\` (the run carries on) or \`send_back\` (it stops there), only once they have said which. When sending back, pass \`reason\` with what they said should change; it shows on the run. Never decide an approval by yourself.
 
 You do not post to social platforms, generate video from text, dub voices or make avatars.
 `;
@@ -291,8 +291,10 @@ const RUN_APP_HTML = `<!doctype html>
     function decide(decision) {
       yes.disabled = no.disabled = true;
       said.className = "said"; said.textContent = "";
-      request("tools/call", { name: "decide_approval", arguments: { approval_id: approval.approval_id, decision: decision } })
+      // The button is the person's decision, so no form follows it (reason is sent empty).
+      request("tools/call", { name: "decide_approval", arguments: { approval_id: approval.approval_id, decision: decision, reason: "" } })
         .then(function (result) {
+          if (result && result.resultType && result.resultType !== "complete") throw new Error("Decide in Takewon instead.");
           if (result && result.isError) throw new Error(result.content && result.content[0] ? result.content[0].text : "That did not work.");
           done(decision);
         })

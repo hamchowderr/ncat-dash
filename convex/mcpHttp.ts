@@ -6,7 +6,7 @@ import {
 import { internal } from "./_generated/api";
 import { type ActionCtx, httpAction } from "./_generated/server";
 import { createAuth } from "./auth";
-import { AGENT_SCOPES, backendUrl, mcpResource, TEAM_CLAIM } from "./lib/agentSignIn";
+import { AGENT_SCOPES, mcpOrigin, mcpResource, TEAM_CLAIM } from "./lib/agentSignIn";
 import { answerMcp, CORS, keyCallerOf } from "./mcp";
 import { CORS as METADATA_CORS } from "./oauth";
 
@@ -64,7 +64,7 @@ const signedIn = (ctx: ActionCtx) =>
 function invalidToken(
   message = "Sign in to use this server, or send one of your team's keys as Authorization: Bearer <key>.",
 ): Response {
-  const metadata = `${backendUrl()}/.well-known/oauth-protected-resource/mcp`;
+  const metadata = `${mcpOrigin()}/.well-known/oauth-protected-resource/mcp`;
   return new Response(JSON.stringify({ error: message }), {
     status: 401,
     headers: {
