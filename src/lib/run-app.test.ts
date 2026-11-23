@@ -26,7 +26,11 @@ function openPage() {
 }
 
 const steps = () => [...document.querySelectorAll("#steps li")].map((li) => li.textContent);
-const files = () => [...document.querySelectorAll("#files .file")].map((span) => span.textContent);
+const names = (scope: string) =>
+  [...document.querySelectorAll(`${scope} .file, ${scope} .clips a`)].map(
+    (node) => node.textContent,
+  );
+const files = () => names("#files");
 
 const listeners: EventListener[] = [];
 
@@ -222,7 +226,7 @@ describe("run page", () => {
       },
     });
     expect(steps()).toEqual(["ApprovalWaiting for your decision"]);
-    expect(document.querySelector("#review .file")!.textContent).toBe("clip-1.mp4");
+    expect(names("#review")).toEqual(["clip-1.mp4"]);
     // Deciding replaces the Open in Takewon button.
     expect(document.getElementById("footer")!.hidden).toBe(true);
     const approve = [...document.querySelectorAll("#review button")].find(
@@ -327,5 +331,41 @@ describe("run page", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(blocks[0].textContent).toContain("Approved");
     expect(blocks[0].querySelector("button")).toBeNull();
+  });
+
+  it("plays finished videos in place, and falls back to a row the chat will not load", () => {
+    const { chat } = openPage();
+    chat({
+      jsonrpc: "2.0",
+      method: "ui/notifications/tool-result",
+      params: {
+        structuredContent: {
+          run_id: "r7",
+          automation: "Clips",
+          status: "done",
+          steps: [],
+          files: [
+            "https://files.example.com/team/clip-1.mp4",
+            "https://files.example.com/team/clip-2.mp4?sig=x",
+            "https://files.example.com/team/captions.srt",
+          ],
+        },
+      },
+    });
+    const videos = [...document.querySelectorAll("#files video")] as HTMLVideoElement[];
+    expect(videos.map((video) => video.getAttribute("src"))).toEqual([
+      "https://files.example.com/team/clip-1.mp4",
+      "https://files.example.com/team/clip-2.mp4?sig=x",
+    ]);
+    expect(videos[0].controls).toBe(true);
+    expect([...document.querySelectorAll("#files .file")].map((n) => n.textContent)).toEqual([
+      "captions.srt",
+    ]);
+    videos[1].dispatchEvent(new Event("error"));
+    expect([...document.querySelectorAll("#files .file")].map((n) => n.textContent)).toEqual([
+      "captions.srt",
+      "clip-2.mp4",
+    ]);
+    expect(document.querySelectorAll("#files video")).toHaveLength(1);
   });
 });

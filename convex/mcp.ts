@@ -927,17 +927,69 @@ export const serve = httpAction(async (ctx, request) => {
       { status: allowed.reason === "rate_limited" ? 429 : 403, headers: CORS },
     );
   }
+  const method =
+    message && typeof message === "object" && "method" in message
+      ? (message as { method: unknown }).method
+      : null;
   const reply = await handleMcp(message, request.headers, {
     info: SERVER_INFO,
     instructions: INSTRUCTIONS,
     tools: TOOLS,
-    apps: APPS,
+    apps:
+      method === "resources/read" || method === "resources/list"
+        ? appsFor(await ctx.runQuery(internal.mcp.fileOrigins, caller))
+        : APPS,
     skills: SKILLS,
     call: (name, args) => callTool(ctx, caller, name, args),
   });
   if (!reply.body) return new Response(null, { status: 202, headers: CORS });
   return Response.json(reply.body, { status: reply.status, headers: CORS });
 });
+
+/**
+ * The addresses a team's finished files come from: its toolkit's storage, as the toolkit
+ * reported it. The run page may load media from these, so clips play in the chat.
+ */
+export const fileOrigins = internalQuery({
+  args: { organizationId: v.string(), userId: v.string() },
+  handler: async (ctx, args) => {
+    const connections = await ctx.db
+      .query("toolkitConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .take(10);
+    const origins = new Set<string>();
+    for (const connection of connections) {
+      for (const address of [connection.storage?.publicUrl, connection.storage?.endpoint]) {
+        const origin = httpsOrigin(address);
+        if (origin) origins.add(origin);
+      }
+    }
+    return [...origins];
+  },
+});
+
+/** The origin of an https address, or null for anything else. */
+export function httpsOrigin(address: string | null | undefined): string | null {
+  if (!address) return null;
+  try {
+    const url = new URL(address);
+    return url.protocol === "https:" ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The apps, each allowed to load media from the team's storage. */
+function appsFor(origins: string[]): typeof APPS {
+  if (origins.length === 0) return APPS;
+  return APPS.map((app) => {
+    const ui = (app._meta?.ui ?? {}) as { csp?: Record<string, unknown> };
+    return {
+      ...app,
+      _meta: { ...app._meta, ui: { ...ui, csp: { ...ui.csp, resourceDomains: origins } } },
+    };
+  });
+}
 
 /** GET /mcp: this server keeps no stream open, as the MCP spec allows. */
 export const noStream = httpAction(
