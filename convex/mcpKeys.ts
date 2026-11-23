@@ -45,7 +45,10 @@ export const create = mutation({
     const { userId } = await requireMember(ctx, args.organizationId, MANAGER_ROLES);
     const name = args.name.trim();
     if (name.length < 1 || name.length > 60) {
-      throw new ConvexError({ code: "invalid_input", message: "Name the key in 1 to 60 characters." });
+      throw new ConvexError({
+        code: "invalid_input",
+        message: "Name the key in 1 to 60 characters.",
+      });
     }
     const existing = await ctx.db
       .query("mcpKeys")

@@ -1964,6 +1964,9 @@ export default defineSchema({
     // Set when a client's portal opened this link. It then works only while that portal
     // is on, and takes what the client may do from the portal's settings as they are now.
     portalId: v.optional(v.id("clientPortals")),
+    // When a link the team shared by hand stops working. Missing on links made before
+    // links ran out: those last 30 days from when they were made. Portal links never do.
+    expiresAt: v.optional(v.number()),
   })
     .index("by_token", ["token"])
     .index("by_review", ["reviewId"])

@@ -258,7 +258,8 @@ async function checkedClient(
 ) {
   if (!clientId) return;
   const client = await ctx.db.get(clientId);
-  if (!client || client.organizationId !== organizationId) fail("not_found", "That client is gone.");
+  if (!client || client.organizationId !== organizationId)
+    fail("not_found", "That client is gone.");
 }
 
 /** Puts every automation of the workflow to work for its client, or for the team. */
@@ -293,7 +294,8 @@ export async function createWorkflow(
     fail("invalid_input", `A team can have at most ${MAX_WORKFLOWS} workflows.`);
   }
   const taken = placed.find((each) => !each.joinedTo && each.ids.includes(automationId));
-  if (taken) fail("invalid_input", `These automations are already the ${taken.workflow.name} workflow.`);
+  if (taken)
+    fail("invalid_input", `These automations are already the ${taken.workflow.name} workflow.`);
   const proposal = await proposalFor(ctx, automation, team);
   const clientId = change.clientId === undefined ? proposal.clientId : change.clientId;
   const kind = change.kind ?? (clientId ? "client" : proposal.kind);
@@ -363,7 +365,10 @@ export async function switchWorkflow(
       await switchAutomation(ctx, automation, on);
     } catch (caught) {
       const data = caught instanceof ConvexError ? (caught.data as { message?: string }) : null;
-      fail("invalid_input", `${automation.name}: ${data?.message ?? "it could not be switched on."}`);
+      fail(
+        "invalid_input",
+        `${automation.name}: ${data?.message ?? "it could not be switched on."}`,
+      );
     }
   }
 }

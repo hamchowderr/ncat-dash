@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { addPerson, addTeam, backend } from "./test.setup";
@@ -46,6 +46,8 @@ describe("a review's share link", () => {
       token,
       allowVerdict: true,
       showTeamComments: false,
+      expiresAt: expect.any(Number),
+      ended: null,
     });
     expect(await outsider.as.query(api.reviewShares.forReview, { reviewId })).toBeNull();
     await expect(
@@ -220,7 +222,7 @@ describe("a review's share link", () => {
         name: "Riley Client",
         approved: false,
       }),
-    ).rejects.toThrow(/already decided/);
+    ).rejects.toThrow(/no longer shared/);
     await maya.as.mutation(api.reviews.reopen, { reviewId });
     expect((await maya.as.query(api.reviews.get, { reviewId }))!.clientVerdict).toBeNull();
   });
@@ -242,5 +244,97 @@ describe("a review's share link", () => {
     await maya.as.mutation(api.reviews.remove, { reviewId });
     expect(await t.run((ctx) => ctx.db.query("reviewShares").collect())).toEqual([]);
     expect(await t.query(api.sharedReview.room, { token })).toBeNull();
+  });
+});
+
+describe("a link the team shares by hand", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  afterEach(() => vi.useRealTimers());
+
+  /** Moves the link's end to `at`, as if that much time had passed. */
+  const endAt = (t: ReturnType<typeof backend>, at: number) =>
+    t.run(async (ctx) => {
+      const share = (await ctx.db.query("reviewShares").first())!;
+      await ctx.db.patch(share._id, { expiresAt: at });
+    });
+
+  test("stops working 30 days after it is made, and renewing keeps the same address", async () => {
+    const before = Date.now();
+    const { t, maya, reviewId, token, client } = await shared();
+    const { expiresAt } = (await maya.as.query(api.reviewShares.forReview, { reviewId }))!;
+    expect(expiresAt! - 30 * DAY).toBeGreaterThanOrEqual(before);
+    expect(expiresAt! - 30 * DAY).toBeLessThanOrEqual(Date.now());
+
+    // A day before the end it still opens.
+    vi.useFakeTimers();
+    vi.setSystemTime(expiresAt! - DAY);
+    expect(await t.query(api.sharedReview.room, { token })).not.toBeNull();
+    expect(await t.query(api.sharedReview.ended, { token })).toBeNull();
+    vi.setSystemTime(expiresAt!);
+    expect(await t.query(api.sharedReview.room, { token })).toBeNull();
+    vi.useRealTimers();
+
+    await endAt(t, Date.now() - 1);
+    expect(await t.query(api.sharedReview.room, { token })).toBeNull();
+    expect(await t.query(api.sharedReview.ended, { token })).toBe("expired");
+    await expect(client().say("Still there?")).rejects.toThrow(/no longer shared/);
+    expect((await maya.as.query(api.reviewShares.forReview, { reviewId }))!.ended).toBe("expired");
+
+    const renewedAt = Date.now();
+    await maya.as.mutation(api.reviewShares.renew, { reviewId });
+    const renewed = (await maya.as.query(api.reviewShares.forReview, { reviewId }))!;
+    expect(renewed).toMatchObject({ token, ended: null });
+    expect(renewed.expiresAt! - 30 * DAY).toBeGreaterThanOrEqual(renewedAt);
+    expect(await t.query(api.sharedReview.room, { token })).not.toBeNull();
+    await client().say("Back again");
+  });
+
+  test("only a teammate can renew it", async () => {
+    const { outsider, reviewId } = await shared();
+    await expect(outsider.as.mutation(api.reviewShares.renew, { reviewId })).rejects.toThrow();
+  });
+
+  test("stops working while the review is approved, and reopening brings it back", async () => {
+    const { t, maya, reviewId, token, client } = await shared();
+    await maya.as.mutation(api.reviews.decide, { reviewId, approved: true });
+    expect(await t.query(api.sharedReview.room, { token })).toBeNull();
+    expect(await t.query(api.sharedReview.ended, { token })).toBe("approved");
+    await expect(client().say("One more thing")).rejects.toThrow(/no longer shared/);
+
+    await maya.as.mutation(api.reviews.reopen, { reviewId });
+    expect(await t.query(api.sharedReview.room, { token })).not.toBeNull();
+    await client().say("One more thing");
+  });
+
+  test("keeps working while the team asks for changes", async () => {
+    const { t, maya, reviewId, token } = await shared();
+    await maya.as.mutation(api.reviews.decide, { reviewId, approved: false });
+    expect((await t.query(api.sharedReview.room, { token }))!.status).toBe("rejected");
+  });
+
+  test("reopening a review gives its link another 30 days", async () => {
+    const { t, maya, reviewId, token } = await shared();
+    await maya.as.mutation(api.reviews.decide, { reviewId, approved: true });
+    await endAt(t, Date.now() - 1);
+    await maya.as.mutation(api.reviews.reopen, { reviewId });
+    expect(await t.query(api.sharedReview.room, { token })).not.toBeNull();
+  });
+
+  test("a link made before links ran out lasts 30 days from when it was made", async () => {
+    const { t, token } = await shared();
+    await t.run(async (ctx) => {
+      const share = (await ctx.db.query("reviewShares").first())!;
+      await ctx.db.patch(share._id, { expiresAt: undefined });
+    });
+    expect(await t.query(api.sharedReview.room, { token })).not.toBeNull();
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + 31 * DAY);
+    expect(await t.query(api.sharedReview.ended, { token })).toBe("expired");
+  });
+
+  test("a wrong link has no reason to give", async () => {
+    const { t } = await shared();
+    expect(await t.query(api.sharedReview.ended, { token: "f".repeat(64) })).toBeNull();
+    expect(await t.query(api.sharedReview.ended, { token: "nope" })).toBeNull();
   });
 });

@@ -72,7 +72,11 @@ async function setUp() {
 
   /** Cut, then (when Cut works) Captions with its own Approval step at the end. */
   const chain = async () => {
-    const cut = await add("Cut", [step("trim", "video-trim", 0), approval("check", 220)], line("trim", "check"));
+    const cut = await add(
+      "Cut",
+      [step("trim", "video-trim", 0), approval("check", 220)],
+      line("trim", "check"),
+    );
     const captions = await add(
       "Captions",
       [step("caption", "video-caption", 0), approval("approve", 220, { reviewers: [jon.id] })],
@@ -105,7 +109,9 @@ async function setUp() {
         .withIndex("by_run", (q) => q.eq("runId", runId))
         .collect();
       const byNode = Object.fromEntries(steps.map((one) => [one.nodeId, one]));
-      const jobs = await Promise.all(steps.flatMap((one) => one.jobIds).map((id) => ctx.db.get(id)));
+      const jobs = await Promise.all(
+        steps.flatMap((one) => one.jobIds).map((id) => ctx.db.get(id)),
+      );
       return { run, byNode, jobs: jobs.filter((job) => job !== null) };
     });
 
@@ -170,7 +176,13 @@ describe("making a workflow", () => {
       workflowId,
       name: "Weekly UGC",
       kind: "ugc",
-      review: { on: true, reviewers: [jon.id], timeLimit: 2, timeLimitUnit: "days", whenTimeUp: "approve" },
+      review: {
+        on: true,
+        reviewers: [jon.id],
+        timeLimit: 2,
+        timeLimitUnit: "days",
+        whenTimeUp: "approve",
+      },
       reviewWords: "Jon Bell, approves after 2 days",
       on: "off",
       joinedTo: null,
@@ -184,18 +196,31 @@ describe("making a workflow", () => {
   test("a quick personal job comes without a review, and changing the kind brings its default", async () => {
     const { maya, team, chain } = await setUp();
     const { cut } = await chain();
-    const workflowId = await maya.as.mutation(api.workflows.create, { automationId: cut, kind: "quick" });
+    const workflowId = await maya.as.mutation(api.workflows.create, {
+      automationId: cut,
+      kind: "quick",
+    });
     const read = async () => (await maya.as.query(api.workflows.list, { organizationId: team }))[0];
     expect((await read()).review.on).toBe(false);
     await maya.as.mutation(api.workflows.update, { workflowId, kind: "client" });
     expect((await read()).review.on).toBe(true);
     // Sent together, the person's own choice wins over the kind's default.
-    await maya.as.mutation(api.workflows.update, { workflowId, kind: "quick", review: { on: true } });
+    await maya.as.mutation(api.workflows.update, {
+      workflowId,
+      kind: "quick",
+      review: { on: true },
+    });
     expect((await read()).review.on).toBe(true);
     await expect(
-      maya.as.mutation(api.workflows.update, { workflowId, review: { timeLimit: 8, timeLimitUnit: "days" } }),
+      maya.as.mutation(api.workflows.update, {
+        workflowId,
+        review: { timeLimit: 8, timeLimitUnit: "days" },
+      }),
     ).rejects.toThrow("6 days at most");
-    await maya.as.mutation(api.workflows.update, { workflowId, review: { timeLimit: 3, timeLimitUnit: "hours" } });
+    await maya.as.mutation(api.workflows.update, {
+      workflowId,
+      review: { timeLimit: 3, timeLimitUnit: "hours" },
+    });
     expect((await read()).review.timeLimit).toBe(3);
     await maya.as.mutation(api.workflows.update, { workflowId, review: { timeLimit: 0 } });
     expect((await read()).review.timeLimit).toBeUndefined();
@@ -207,8 +232,12 @@ describe("making a workflow", () => {
     const client = await t.run((ctx) =>
       ctx.db.insert("clients", { organizationId: team, name: "Brightside", createdBy: maya.id }),
     );
-    const workflowId = await maya.as.mutation(api.workflows.create, { automationId: cut, clientId: client });
-    const clientOf = (id: Id<"automations">) => t.run(async (ctx) => (await ctx.db.get(id))?.clientId);
+    const workflowId = await maya.as.mutation(api.workflows.create, {
+      automationId: cut,
+      clientId: client,
+    });
+    const clientOf = (id: Id<"automations">) =>
+      t.run(async (ctx) => (await ctx.db.get(id))?.clientId);
     expect(await clientOf(cut)).toBe(client);
     expect(await clientOf(captions)).toBe(client);
     const [listed] = await maya.as.query(api.workflows.list, { organizationId: team });
@@ -222,9 +251,19 @@ describe("making a workflow", () => {
     const client = await t.run((ctx) =>
       ctx.db.insert("clients", { organizationId: team, name: "Brightside", createdBy: maya.id }),
     );
-    const only = await add("Ads", [step("trim", "video-trim", 0)], [], { kind: "manual" }, { clientId: client });
+    const only = await add(
+      "Ads",
+      [step("trim", "video-trim", 0)],
+      [],
+      { kind: "manual" },
+      { clientId: client },
+    );
     const seen = await maya.as.query(api.workflows.forAutomation, { automationId: only });
-    expect(seen?.proposal).toMatchObject({ kind: "client", clientId: client, review: { on: true } });
+    expect(seen?.proposal).toMatchObject({
+      kind: "client",
+      clientId: client,
+      review: { on: true },
+    });
   });
 
   test("switches every automation on or off together, or says which one cannot be", async () => {
@@ -232,24 +271,38 @@ describe("making a workflow", () => {
     const { cut, captions } = await chain();
     const workflowId = await maya.as.mutation(api.workflows.create, { automationId: cut });
     await maya.as.mutation(api.workflows.setOn, { workflowId, on: true });
-    const enabled = (id: Id<"automations">) => t.run(async (ctx) => (await ctx.db.get(id))?.enabled);
+    const enabled = (id: Id<"automations">) =>
+      t.run(async (ctx) => (await ctx.db.get(id))?.enabled);
     expect([await enabled(cut), await enabled(captions)]).toEqual([true, true]);
     expect((await maya.as.query(api.workflows.list, { organizationId: team }))[0].on).toBe("on");
 
     await maya.as.mutation(api.automations.setEnabled, { automationId: cut, enabled: false });
-    expect((await maya.as.query(api.workflows.list, { organizationId: team }))[0].on).toBe("partly");
+    expect((await maya.as.query(api.workflows.list, { organizationId: team }))[0].on).toBe(
+      "partly",
+    );
     await maya.as.mutation(api.workflows.setOn, { workflowId, on: false });
     expect([await enabled(cut), await enabled(captions)]).toEqual([false, false]);
 
     // A third automation joins by following Captions, but has a step with nothing picked.
-    const broken = await add("Thumbnail", [{ id: "x", kind: "step", input: {}, position: at(0) }], [], {
-      kind: "finished",
-      automationId: captions,
-      when: "done",
-    });
-    await expect(maya.as.mutation(api.workflows.setOn, { workflowId, on: true })).rejects.toThrow(/^.*Thumbnail: /);
+    const broken = await add(
+      "Thumbnail",
+      [{ id: "x", kind: "step", input: {}, position: at(0) }],
+      [],
+      {
+        kind: "finished",
+        automationId: captions,
+        when: "done",
+      },
+    );
+    await expect(maya.as.mutation(api.workflows.setOn, { workflowId, on: true })).rejects.toThrow(
+      /^.*Thumbnail: /,
+    );
     // All or nothing: the others stayed off.
-    expect([await enabled(cut), await enabled(captions), await enabled(broken)]).toEqual([false, false, false]);
+    expect([await enabled(cut), await enabled(captions), await enabled(broken)]).toEqual([
+      false,
+      false,
+      false,
+    ]);
   });
 
   test("taking it away leaves the automations as they are", async () => {
@@ -269,7 +322,9 @@ describe("making a workflow", () => {
     const other = await addTeam(t, "Elsewhere");
     const stranger = await addPerson(t, "Sam Stone", [other]);
     await expect(stranger.as.query(api.workflows.list, { organizationId: team })).rejects.toThrow();
-    await expect(stranger.as.mutation(api.workflows.setOn, { workflowId, on: true })).rejects.toThrow();
+    await expect(
+      stranger.as.mutation(api.workflows.setOn, { workflowId, on: true }),
+    ).rejects.toThrow();
     await expect(stranger.as.mutation(api.workflows.remove, { workflowId })).rejects.toThrow();
   });
 });
@@ -426,7 +481,11 @@ describe("workflows over MCP", () => {
     const [listed] = await t.query(internal.workflows.listAs, { organizationId: team });
     expect(listed.on).toBe("on");
     await expect(
-      t.mutation(internal.workflows.switchAs, { organizationId: "other", workflowId: made.workflow_id, on: false }),
+      t.mutation(internal.workflows.switchAs, {
+        organizationId: "other",
+        workflowId: made.workflow_id,
+        on: false,
+      }),
     ).rejects.toThrow("no workflow with that id");
   });
 });

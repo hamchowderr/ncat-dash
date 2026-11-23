@@ -293,7 +293,9 @@ export const person = internalAction({
         organizationId: connection.organizationId,
         userId,
       });
-      return answer.ok ? null : { ok: false, reason: "refused", email: null, message: answer.message };
+      return answer.ok
+        ? null
+        : { ok: false, reason: "refused", email: null, message: answer.message };
     };
     if (known && knownMember && known.sessionExpiresAt - Date.now() > RENEW_MS) {
       const refused = await turn(knownMember.userId);

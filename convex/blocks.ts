@@ -86,12 +86,20 @@ async function personId(
 }
 
 export const blockUser = internalAction({
-  args: { userId: v.optional(v.string()), email: v.optional(v.string()), reason: v.optional(v.string()) },
+  args: {
+    userId: v.optional(v.string()),
+    email: v.optional(v.string()),
+    reason: v.optional(v.string()),
+  },
   returns: v.union(v.null(), v.string()),
   handler: async (ctx, args): Promise<string | null> => {
     const userId = await personId(ctx, args);
     if (!userId) return null;
-    await ctx.runMutation(internal.blocks.put, { kind: "user", targetId: userId, reason: args.reason });
+    await ctx.runMutation(internal.blocks.put, {
+      kind: "user",
+      targetId: userId,
+      reason: args.reason,
+    });
     // Signed out everywhere: the dashboard, and the sign-ins Slack and Discord use.
     const auth = await createAuth(ctx).$context;
     await auth.internalAdapter.deleteUserSessions(userId);
@@ -113,7 +121,12 @@ export const unblockUser = internalAction({
 export const list = internalQuery({
   args: {},
   returns: v.array(
-    v.object({ kind, targetId: v.string(), reason: v.union(v.null(), v.string()), blockedAt: v.number() }),
+    v.object({
+      kind,
+      targetId: v.string(),
+      reason: v.union(v.null(), v.string()),
+      blockedAt: v.number(),
+    }),
   ),
   handler: async (ctx) =>
     (await ctx.db.query("blocks").order("desc").take(500)).map((block) => ({

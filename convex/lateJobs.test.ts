@@ -2,12 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type { WorkId } from "@convex-dev/workpool";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import {
-  ASK_AFTER_MS,
-  LOST_AFTER_MS,
-  LOST_JOB_ERROR,
-  NOT_SENT_ERROR,
-} from "./jobs";
+import { ASK_AFTER_MS, LOST_AFTER_MS, LOST_JOB_ERROR, NOT_SENT_ERROR } from "./jobs";
 import { encryptSecret } from "./lib/crypto";
 import { startRun } from "./lib/runner";
 import { addPerson, addTeam, backend } from "./test.setup";

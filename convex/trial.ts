@@ -4,14 +4,7 @@ import { internalMutation, query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { UNKNOWN_NETWORK } from "./lib/clientIp";
 import { emailKey } from "./lib/emailKey";
-import {
-  buyUrl,
-  daysLeft,
-  trialDays,
-  trialEnd,
-  trialOf,
-  trialsPerNetwork,
-} from "./lib/trial";
+import { buyUrl, daysLeft, trialDays, trialEnd, trialOf, trialsPerNetwork } from "./lib/trial";
 
 /**
  * A team's free trial, for the bar along the top and the agent: whether it has one, how
@@ -80,8 +73,7 @@ export const begin = internalMutation({
           .first()
       : null;
     const mailbox = signUp?.emailKey ?? (args.ownerEmail ? emailKey(args.ownerEmail) : null);
-    const network =
-      signUp && signUp.networkKey !== UNKNOWN_NETWORK ? signUp.networkKey : undefined;
+    const network = signUp && signUp.networkKey !== UNKNOWN_NETWORK ? signUp.networkKey : undefined;
 
     let endsAt = trialEnd(startedAt, days);
     let repeatOf: "email" | "network" | undefined;

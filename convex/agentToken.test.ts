@@ -35,7 +35,9 @@ async function token(secret: string, claims: Record<string, unknown>) {
 }
 
 const asked = (bearer: string) =>
-  new Request("https://site.example/agent/team-key", { headers: { authorization: `Bearer ${bearer}` } });
+  new Request("https://site.example/agent/team-key", {
+    headers: { authorization: `Bearer ${bearer}` },
+  });
 
 afterEach(() => {
   delete process.env.MASTRA_JWT_SECRET;
