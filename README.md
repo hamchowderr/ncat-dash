@@ -267,7 +267,7 @@ On first start the agent server downloads a small text-embedding model (fastembe
 
 ### MCP
 
-Any AI app that speaks MCP (ChatGPT, Claude, Cursor, VS Code, n8n and others) can list a team's automations and uploads, start an automation and check how a run went, and make or change automations as drafts that a person publishes. The server is `POST <Convex site URL>/mcp` (`convex/mcp.ts`), stateless JSON-RPC on MCP 2026-07-28 that still answers older clients. Apps that can sign in use OAuth 2.1: Better Auth's MCP plugin is the sign-in server (`convex/auth.ts`, `<dashboard>/api/auth/oauth2/*`, with client metadata documents and dynamic registration), the person picks the team at `/connect/team` and allows the app, and its access tokens are JWTs for `<Convex site URL>/mcp` that the server checks against the connection on every call (`convex/mcpHttp.ts`); the rest use a key an owner or admin makes under Settings, MCP, which is shown once and stored hashed (`convex/mcpKeys.ts`). The NCA Toolkit's own MCP server (`ncat-mcp`) is a different thing: raw toolkit tools for hands-on editing.
+Any AI app that speaks MCP (ChatGPT, Claude, Cursor, VS Code, n8n and others) can list a team's automations and uploads, start an automation and check how a run went, and make or change automations as drafts that a person publishes. The server is `POST <Convex site URL>/mcp` (`convex/mcp.ts`), stateless JSON-RPC on MCP 2026-07-28 that still answers older clients. Apps sign in with OAuth 2.1: Better Auth's MCP plugin is the sign-in server (`convex/auth.ts`, `<dashboard>/api/auth/oauth2/*`, with client metadata documents and dynamic registration), the person picks the team at `/connect/team` and allows the app, and its access tokens are JWTs for `<Convex site URL>/mcp` that the server checks against the connection on every call (`convex/mcpHttp.ts`). Every app signs in this way, n8n included (its MCP Client Tool has an "MCP OAuth2" credential that registers itself); there are no API keys. The NCA Toolkit's own MCP server (`ncat-mcp`) is a different thing: raw toolkit tools for hands-on editing.
 
 ### Editions
 
@@ -305,7 +305,7 @@ A trial is one person's, not one team's or one address's:
 - Throwaway email services are refused at sign-up (a list of about 10,000, refreshed with `node scripts/update-disposable-domains.mjs`), plus any in `BLOCKED_EMAIL_DOMAINS` (comma-separated).
 - Email confirmation turns on by itself once the deployment can send email (`TOSEND_API_KEY` and `EMAIL_FROM`). `REQUIRE_EMAIL_VERIFICATION=false` turns it off.
 
-The agent's own schedules ask the dashboard before each fire (`packages/agent/src/mastra/ncat/schedule-gate.ts`), so they stop too. Limits a real person never meets (`convex/lib/limits.ts`): sign-ups (5 an hour from one network, 10 an hour shared by unknown networks, a ceiling for everyone), 3 new teams a day per person, agent replies per person and per team, and MCP calls per key. Sign-up and new-team limits apply on the hosted edition only.
+The agent's own schedules ask the dashboard before each fire (`packages/agent/src/mastra/ncat/schedule-gate.ts`), so they stop too. Limits a real person never meets (`convex/lib/limits.ts`): sign-ups (5 an hour from one network, 10 an hour shared by unknown networks, a ceiling for everyone), 3 new teams a day per person, agent replies per person and per team, and MCP calls per sign-in. Sign-up and new-team limits apply on the hosted edition only.
 
 Operator commands:
 

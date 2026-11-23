@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useQuery } from "convex/react";
-import { ChevronRight, KeyRound, Link2, Mail } from "lucide-react";
+import { ChevronRight, Link2, Mail, Plug } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -25,7 +25,7 @@ const STATE_TEXT: Record<AppState, string | null> = {
 /** Apps without a logo of their own get a quiet icon on the same soft tile. */
 const PLAIN_ICONS: Partial<Record<IntegrationSlug, ReactNode>> = {
   "video-links": <Link2 className="size-4" />,
-  mcp: <KeyRound className="size-4" />,
+  mcp: <Plug className="size-4" />,
   email: <Mail className="size-4" />,
 };
 
@@ -61,7 +61,6 @@ export function useAppStates(): Partial<Record<IntegrationSlug, AppState>> {
   const dropbox = useQuery(api.dropbox.forTeam, args);
   const email = useQuery(api.email.get, args);
   const mcp = useQuery(api.oauth.connections, args);
-  const mcpKeys = useQuery(api.mcpKeys.list, args);
 
   const state = (ready: boolean, connected: boolean): AppState =>
     !ready ? "unavailable" : connected ? "connected" : "off";
@@ -78,7 +77,7 @@ export function useAppStates(): Partial<Record<IntegrationSlug, AppState>> {
     microsoft: microsoft ? state(microsoft.ready, microsoft.me !== null) : undefined,
     dropbox: dropbox ? state(dropbox.ready, dropbox.me !== null) : undefined,
     email: email ? state(true, email.configured) : undefined,
-    mcp: mcp && mcpKeys ? state(true, mcp.length > 0 || mcpKeys.keys.length > 0) : undefined,
+    mcp: mcp ? state(true, mcp.length > 0) : undefined,
   };
 }
 

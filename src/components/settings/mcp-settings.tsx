@@ -1,14 +1,12 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import type { Id } from "@convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { Check, Copy, Plug, SquareTerminal } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
@@ -96,76 +94,11 @@ const Menu = ({ children }: { children: ReactNode }) => (
   <span className="text-foreground font-medium">{children}</span>
 );
 
-/** Makes a key for an app that cannot sign in, and shows it once. */
-function KeyMaker({ forApp, canEdit, url }: { forApp?: string; canEdit: boolean; url: string }) {
-  const team = useActiveTeam();
-  const create = useMutation(api.mcpKeys.create);
-  const [name, setName] = useState("");
-  const [made, setMade] = useState<{ name: string; key: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  if (!canEdit) {
-    return <p className="text-muted-foreground">Ask a team owner or admin to make the key.</p>;
-  }
-
-  async function onCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const label = (forApp ?? name).trim();
-    setBusy(true);
-    try {
-      const { key } = await create({ organizationId: team.id, name: label });
-      setMade({ name: label, key });
-      setName("");
-    } catch (caught) {
-      toast.error(errorMessage(caught, "The key could not be made. Try again."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      <form onSubmit={onCreate} className="flex gap-2">
-        {!forApp && (
-          <Input
-            aria-label="Which app the key is for"
-            placeholder="Which app it is for"
-            className="max-w-60"
-            value={name}
-            maxLength={60}
-            onChange={(event) => setName(event.target.value)}
-            required
-          />
-        )}
-        <Button
-          type="submit"
-          variant="secondary"
-          size="sm"
-          className="self-center"
-          disabled={busy || (!forApp && !name.trim())}
-        >
-          {busy ? "Making" : forApp ? `Make a key for ${forApp}` : "Make a key"}
-        </Button>
-      </form>
-      {made && (
-        <div role="status" className="flex flex-col gap-2 rounded-lg bg-emerald-50 p-3">
-          <p className="font-medium">Copy the key for {made.name} now. It is not shown again.</p>
-          <Line text={made.key} label="Copy the new key" />
-          <p className="text-muted-foreground">
-            The app sends it with each request to {url} as{" "}
-            <code className="font-mono text-xs">Authorization: Bearer</code> and the key.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 type Platform = {
   id: string;
   name: string;
   logo: ReactNode;
-  steps: (url: string, canEdit: boolean) => ReactNode;
+  steps: (url: string) => ReactNode;
 };
 
 const PLATFORMS: Platform[] = [
@@ -274,20 +207,28 @@ const PLATFORMS: Platform[] = [
     id: "n8n",
     name: "n8n",
     logo: <N8nLogo className="size-4" />,
-    steps: (url, canEdit) => (
+    steps: (url) => (
       <Steps>
-        <Step>
-          <p>n8n connects with a key instead of signing in. Make one:</p>
-          <KeyMaker forApp="n8n" canEdit={canEdit} url={url} />
-        </Step>
         <Step>
           <p>
             In an <Menu>AI Agent</Menu> node, add the <Menu>MCP Client Tool</Menu>. Set{" "}
-            <Menu>Endpoint</Menu> to the server address, <Menu>Server Transport</Menu> to{" "}
-            <Menu>HTTP Streamable</Menu> and <Menu>Authentication</Menu> to <Menu>Bearer Auth</Menu>{" "}
-            with the key.
+            <Menu>Endpoint</Menu> to the server address and <Menu>Server Transport</Menu> to{" "}
+            <Menu>HTTP Streamable</Menu>:
           </p>
           <Line text={url} label="Copy the server address for n8n" />
+        </Step>
+        <Step>
+          <p>
+            Set <Menu>Authentication</Menu> to <Menu>MCP OAuth2</Menu> and make a new{" "}
+            <Menu>MCP OAuth2 API</Menu> credential. Leave <Menu>Register Client Automatically</Menu>{" "}
+            on and paste the server address into <Menu>Server URL</Menu>.
+          </p>
+        </Step>
+        <Step>
+          <p>
+            Choose <Menu>Connect my account</Menu>. n8n opens a page here to sign in and pick the
+            team.
+          </p>
         </Step>
       </Steps>
     ),
@@ -296,18 +237,20 @@ const PLATFORMS: Platform[] = [
     id: "other",
     name: "Other apps",
     logo: <Plug className="text-muted-foreground size-4" aria-hidden />,
-    steps: (url, canEdit) => (
+    steps: (url) => (
       <Steps>
         <Step>
           <p>
-            Most apps that support MCP connect the same way: add the server address as a remote
-            (HTTP) MCP server, and the app opens a page here to sign in and pick the team.
+            Add the server address as a remote (HTTP) MCP server. The app opens a page here to sign
+            in and pick the team.
           </p>
           <Line text={url} label="Copy the server address" />
         </Step>
         <Step>
-          <p>If an app cannot sign in, give it a key instead:</p>
-          <KeyMaker canEdit={canEdit} url={url} />
+          <p>
+            Every app signs in this way; there are no keys to make or look after. An app that cannot
+            sign in with OAuth cannot connect.
+          </p>
         </Step>
       </Steps>
     ),
@@ -319,11 +262,7 @@ const PLATFORMS: Platform[] = [
  * connected. Laid out like Linear's MCP page: pick your app, follow its steps.
  */
 export function McpSettings() {
-  const team = useActiveTeam();
-  const keys = useQuery(api.mcpKeys.list, { organizationId: team.id });
   const [platform, setPlatform] = useState(PLATFORMS[0].id);
-
-  if (keys === undefined) return <Skeleton className="h-60 rounded-lg" />;
   const url = mcpUrl();
   const chosen = PLATFORMS.find((each) => each.id === platform) ?? PLATFORMS[0];
 
@@ -362,28 +301,22 @@ export function McpSettings() {
               ))}
             </div>
             <div role="tabpanel" aria-label={chosen.name}>
-              {chosen.steps(url, keys.canEdit)}
+              {chosen.steps(url)}
             </div>
           </div>
         </div>
       </SettingsSection>
 
-      <Connected keys={keys} />
+      <Connected />
     </div>
   );
 }
 
-type Keys = NonNullable<ReturnType<typeof useQuery<typeof api.mcpKeys.list>>>;
-
-/**
- * Apps signed in to this team, and the keys made for apps that cannot sign in. Everyone
- * sees their own sign-ins; owners and admins see everyone's, and the keys.
- */
-function Connected({ keys }: { keys: Keys }) {
+/** Apps signed in to this team. Everyone sees their own; owners and admins see everyone's. */
+function Connected() {
   const team = useActiveTeam();
   const connections = useQuery(api.oauth.connections, { organizationId: team.id });
   const disconnect = useMutation(api.oauth.disconnect);
-  const remove = useMutation(api.mcpKeys.remove);
   const [busy, setBusy] = useState<string | null>(null);
 
   async function act(id: string, run: () => Promise<unknown>, done: string, failed: string) {
@@ -414,27 +347,12 @@ function Connected({ keys }: { keys: Keys }) {
           "It could not be disconnected. Try again.",
         ),
     })),
-    ...keys.keys.map((key) => ({
-      id: key.keyId as string,
-      name: key.name,
-      detail: `key ending in ${key.hint} · made ${day(key.createdAt)} · ${
-        key.lastUsedAt ? `last used ${day(key.lastUsedAt)}` : "never used"
-      }`,
-      action: keys.canEdit ? "Remove" : null,
-      run: () =>
-        act(
-          key.keyId,
-          () => remove({ organizationId: team.id, keyId: key.keyId as Id<"mcpKeys"> }),
-          `${key.name}'s key removed. Anything using it is turned away from now on.`,
-          "The key could not be removed. Try again.",
-        ),
-    })),
   ];
 
   return (
     <SettingsSection
       title="Connected"
-      description="Apps signed in to this team, and keys made for apps that cannot sign in. Removing one turns it away straight away."
+      description="Apps signed in to this team. Disconnecting one turns it away straight away."
     >
       {connections === undefined ? (
         <Skeleton className="h-16 rounded-lg" />

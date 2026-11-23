@@ -11,7 +11,13 @@ async function closeToursOn(page: Page) {
     // Dispatched, not clicked: a dialog the spec opened just before can sit over the card.
     // Found by its label, not its role: an open pick list hides the rest of the page from
     // the accessibility tree, card and all.
-    await card.locator("button[aria-label='Close the tour']").dispatchEvent("click");
+    // Briefly: a card that moves beside a new target is put back in a fresh one, and one
+    // that has already gone needs nothing. Waiting on either held the spec up to its end.
+    await card
+      .locator("button[aria-label='Close the tour']")
+      .first()
+      .dispatchEvent("click", undefined, { timeout: 2_000 })
+      .catch(() => {});
   });
 }
 

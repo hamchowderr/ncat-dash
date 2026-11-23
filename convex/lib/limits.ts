@@ -11,7 +11,7 @@ import { components } from "../_generated/api";
  * - New teams: three a day per person, so one account can't mint free trials.
  * - Agent replies: per person and per team, in the dashboard, Slack and Discord alike,
  *   since every reply spends AI tokens.
- * - MCP calls: per key or sign-in, for AI clients that loop.
+ * - MCP calls: per sign-in, for AI clients that loop.
  * - Password sign-ins (every edition): per network and per account, so nobody can guess
  *   passwords quickly. The account's allowance is the larger one, so someone guessing
  *   from elsewhere slows the account down without locking its owner out for long.

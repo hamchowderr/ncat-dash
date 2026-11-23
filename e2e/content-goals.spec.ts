@@ -71,7 +71,9 @@ test("a coach is asked what they make and their first upload starts the fitting 
   await expect(page).toHaveURL(/\/$/);
   // Setting up ends with the tour of the dashboard (e2e/tour.spec.ts walks it).
   await expect(page.getByRole("dialog")).toContainText("Welcome to Takewon");
-  await page.getByRole("button", { name: "Close the tour" }).click();
+  // Escape closes it wherever the card sits; it moves while Home settles on a slow machine.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-tour-card]")).toHaveCount(0);
   // Answered, so Home no longer asks; the agent now makes clips for these by default.
   await expect(page.getByRole("link", { name: /Tell us what you make/ })).toHaveCount(0);
   await page.goto("/settings/agent");
@@ -131,7 +133,9 @@ test("someone without a toolkit skips every toolkit field, sets up, and connects
   await page.getByRole("button", { name: /Go to the dashboard/ }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("dialog")).toContainText("Welcome to Takewon");
-  await page.getByRole("button", { name: "Close the tour" }).click();
+  // Escape closes it wherever the card sits; it moves while Home settles on a slow machine.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-tour-card]")).toHaveCount(0);
 
   // Home still offers the toolkit, and that link goes straight to the form.
   await page
