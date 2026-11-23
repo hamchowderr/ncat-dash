@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import type { WorkId } from "@convex-dev/workpool";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
   ASK_AFTER_MS,
   LOST_AFTER_MS,
   LOST_JOB_ERROR,
-  NOT_SENT_AFTER_MS,
   NOT_SENT_ERROR,
 } from "./jobs";
 import { encryptSecret } from "./lib/crypto";
@@ -130,12 +130,6 @@ async function setUp() {
         .collect();
       return { run, byNode: Object.fromEntries(steps.map((step) => [step.nodeId, step])) };
     });
-  const asks = () =>
-    t.run(async (ctx) =>
-      (await ctx.db.system.query("_scheduled_functions").collect()).filter(
-        (call) => call.name.includes("askToolkit") && call.state.kind === "pending",
-      ),
-    );
   // The job was handed to be sent `ago` milliseconds back, and the send never got anywhere.
   const sendBroke = async (ago: number) => {
     const job = await splitJob();
@@ -144,31 +138,38 @@ async function setUp() {
     );
     return job._id;
   };
-  return { t, splitJob, handedOver, sendBroke, look, asks };
+  return { t, splitJob, handedOver, sendBroke, look };
 }
 
 describe("a job whose result is late", () => {
   test("is not asked about while it is still young", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout"] });
-    const { t, handedOver, asks } = await setUp();
+    vi.useFakeTimers();
+    const { t, handedOver } = await setUp();
     await handedOver(ASK_AFTER_MS / 2);
+    const asked = toolkitKnows({ job_status: "running" });
     await t.mutation(internal.jobs.checkLate, {});
-    expect(await asks()).toHaveLength(0);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(asked).toHaveLength(0);
   });
 
   test("is asked about once it is late, and not again straight away", async () => {
-    // Held clocks keep the booked question from running, so it can be looked at.
-    vi.useFakeTimers({ toFake: ["setTimeout"] });
-    const { t, handedOver, splitJob, asks } = await setUp();
-    const jobId = await handedOver(ASK_AFTER_MS + 1000);
+    vi.useFakeTimers();
+    const { t, handedOver, splitJob } = await setUp();
+    await handedOver(ASK_AFTER_MS + 1000);
+    const asked = toolkitKnows({ job_status: "running" });
     await t.mutation(internal.jobs.checkLate, {});
-    const booked = await asks();
-    expect(booked).toHaveLength(1);
-    expect(booked[0].args[0]).toEqual({ jobId });
+    // The question goes through the toolkit pool (lib/pools.ts).
+    await vi.advanceTimersByTimeAsync(5_000);
+    await t.finishInProgressScheduledFunctions();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await t.finishInProgressScheduledFunctions();
+    expect(asked).toEqual(["tk-split"]);
     expect((await splitJob()).lastAskedAt).toBeGreaterThan(0);
 
     await t.mutation(internal.jobs.checkLate, {});
-    expect(await asks()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await t.finishInProgressScheduledFunctions();
+    expect(asked).toHaveLength(1);
   });
 
   test("takes the result the toolkit kept when its webhook never arrived, and the run moves on", async () => {
@@ -270,8 +271,13 @@ describe("a job whose sending broke", () => {
   test("is failed, so the step tries it again and the team gets its place back", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     const { t, sendBroke, splitJob, look } = await setUp();
-    await sendBroke(NOT_SENT_AFTER_MS + 1000);
-    await t.mutation(internal.jobs.checkLate, {});
+    const jobId = await sendBroke(0);
+    // What the toolkit pool reports when the send crashed or ran out of time.
+    await t.mutation(internal.jobs.sent, {
+      workId: "work-1" as WorkId,
+      context: { jobId },
+      result: { kind: "failed", error: "Your request timed out." },
+    });
     // Only the failing runs now; the try booked for later is left booked.
     vi.advanceTimersByTime(1);
     await t.finishInProgressScheduledFunctions();
@@ -281,11 +287,17 @@ describe("a job whose sending broke", () => {
     expect((await look()).byNode.split).toMatchObject({ retries: 1, retryError: NOT_SENT_ERROR });
   });
 
-  test("is left alone while it may still be on its way", async () => {
+  test("is left alone when the send went through", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     const { t, sendBroke, splitJob } = await setUp();
-    await sendBroke(NOT_SENT_AFTER_MS / 2);
-    await t.mutation(internal.jobs.checkLate, {});
+    const jobId = await sendBroke(0);
+    await t.mutation(internal.jobs.sent, {
+      workId: "work-1" as WorkId,
+      context: { jobId },
+      result: { kind: "success", returnValue: null },
+    });
+    vi.advanceTimersByTime(1);
+    await t.finishInProgressScheduledFunctions();
     expect((await splitJob()).status).toBe("queued");
   });
 });

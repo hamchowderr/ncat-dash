@@ -12,6 +12,7 @@ import {
   StepSetupError,
   ToolkitError,
 } from "@ncat-dash/step-catalog";
+import { vOnCompleteArgs } from "@convex-dev/workpool";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -28,6 +29,7 @@ import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
 import { collectUrls, handOutputNames, outputNamesOf } from "./lib/outputs";
 import { brandOf, enqueueJob, pump, waitReason } from "./lib/queue";
+import { toolkitPool } from "./lib/pools";
 import { onJobFinished } from "./lib/runner";
 import { onLinkJobFinished } from "./links";
 import { onLookJobFinished } from "./looks";
@@ -561,40 +563,32 @@ export const LOST_AFTER_MS = 5 * 60 * 1000;
 export const LOST_JOB_ERROR =
   "The toolkit lost this job before it finished, most likely because it restarted.";
 
-/**
- * A job handed to be sent this long ago that is still waiting was never sent: sending
- * gives up on the toolkit after two minutes, so the send itself broke. It is failed so it
- * can be tried again, instead of holding one of the team's places for hours.
- */
-export const NOT_SENT_AFTER_MS = 10 * 60 * 1000;
-
 export const NOT_SENT_ERROR = "The job could not be sent to the toolkit.";
 
 /**
- * Every minute: books a question to the toolkit for each running job that is late, and
- * fails each job whose sending broke.
+ * Called by the toolkit pool when sending a job ended. A send that crashed or ran out of
+ * time leaves the job waiting, holding one of the team's places: it is failed, not
+ * permanently, so its step can send it again.
  */
+export const sent = internalMutation({
+  args: vOnCompleteArgs(v.object({ jobId: v.id("jobs") })),
+  handler: async (ctx, { context, result }) => {
+    if (result.kind === "success") return;
+    const job = await ctx.db.get(context.jobId);
+    if (!job || job.status !== "queued") return;
+    await ctx.scheduler.runAfter(0, internal.jobs.finish, {
+      jobId: job._id,
+      ok: false,
+      error: NOT_SENT_ERROR,
+    });
+  },
+});
+
+/** Every minute: books a question to the toolkit for each running job that is late. */
 export const checkLate = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const notSent = await ctx.db
-      .query("jobs")
-      .withIndex("by_status_and_dispatchedAt", (q) =>
-        q
-          .eq("status", "queued")
-          .gt("dispatchedAt", 0)
-          .lte("dispatchedAt", now - NOT_SENT_AFTER_MS),
-      )
-      .take(100);
-    for (const job of notSent) {
-      // Not permanent: sending the same job again may well work.
-      await ctx.scheduler.runAfter(0, internal.jobs.finish, {
-        jobId: job._id,
-        ok: false,
-        error: NOT_SENT_ERROR,
-      });
-    }
     const running = await ctx.db
       .query("jobs")
       .withIndex("by_status", (q) => q.eq("status", "running"))
@@ -604,7 +598,7 @@ export const checkLate = internalMutation({
       if ((job.startedAt ?? now) > now - ASK_AFTER_MS) continue;
       if ((job.lastAskedAt ?? 0) > now - ASK_EVERY_MS) continue;
       await ctx.db.patch(job._id, { lastAskedAt: now });
-      await ctx.scheduler.runAfter(0, internal.jobs.askToolkit, { jobId: job._id });
+      await toolkitPool.enqueueAction(ctx, internal.jobs.askToolkit, { jobId: job._id });
     }
   },
 });

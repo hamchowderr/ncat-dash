@@ -12,7 +12,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { finishedFilesOf } from "./lib/chain";
-import { CALLBACK_WAITS_MS, HOOK_KEY_MS, sameSecret, signCallback } from "./lib/hooks";
+import { HOOK_KEY_MS, sameSecret, signCallback } from "./lib/hooks";
 
 /** What a caller is told about a run: its state, and its finished files once done. */
 export interface RunReport {
@@ -72,19 +72,20 @@ export const loadCallback = internalQuery({
 /**
  * Posts a run's end to its callback address, signed with the automation's token in
  * X-Takewon-Signature (sha256=<hex of the HMAC of the body>), so the caller can tell it
- * came from here. A caller that does not answer with a 2xx is tried again a few times.
+ * came from here. Run by the outbound pool (lib/pools.ts): a caller that does not answer
+ * with a 2xx makes this throw, and the pool tries again a few times.
  */
 export const sendCallback = internalAction({
-  args: { runId: v.id("runs"), attempt: v.number() },
+  args: { runId: v.id("runs") },
   handler: async (ctx, args) => {
     const loaded = await ctx.runQuery(internal.hooks.loadCallback, { runId: args.runId });
     if (!loaded) return;
     // A copy strangers sign up to never posts inside its own network (lib/outbound.ts).
     if (outboundProblem(loaded.url)) return;
     const body = JSON.stringify(loaded.report);
-    let ok = false;
+    let response: Response;
     try {
-      const response = await fetch(loaded.url, {
+      response = await fetch(loaded.url, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -93,17 +94,10 @@ export const sendCallback = internalAction({
         body,
         signal: AbortSignal.timeout(30_000),
       });
-      ok = response.ok;
     } catch {
-      ok = false;
+      throw new Error("The callback address could not be reached.");
     }
-    const wait = CALLBACK_WAITS_MS[args.attempt];
-    if (!ok && wait !== undefined) {
-      await ctx.scheduler.runAfter(wait, internal.hooks.sendCallback, {
-        runId: args.runId,
-        attempt: args.attempt + 1,
-      });
-    }
+    if (!response.ok) throw new Error(`The callback address answered ${response.status}.`);
   },
 });
 
