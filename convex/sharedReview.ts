@@ -39,7 +39,8 @@ async function linkFor(ctx: QueryCtx | MutationCtx, token: string) {
   return review ? { share, review } : null;
 }
 
-async function shareFor(ctx: QueryCtx | MutationCtx, token: string) {
+/** The share link behind a token and its review, or null when it does not open one. */
+export async function findShare(ctx: QueryCtx | MutationCtx, token: string) {
   const link = await linkFor(ctx, token);
   if (!link) return null;
   const { share, review } = link;
@@ -61,7 +62,7 @@ async function shareFor(ctx: QueryCtx | MutationCtx, token: string) {
 }
 
 export async function requireShare(ctx: QueryCtx | MutationCtx, token: string) {
-  const found = await shareFor(ctx, token);
+  const found = await findShare(ctx, token);
   if (!found) throw closed();
   return found;
 }
@@ -107,7 +108,7 @@ export const ended = query({
 export const room = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
-    const found = await shareFor(ctx, args.token);
+    const found = await findShare(ctx, args.token);
     if (!found) return null;
     const { share, review } = found;
     const clips = await ctx.db
@@ -141,7 +142,7 @@ export const room = query({
 export const comments = query({
   args: { token: v.string(), clipId: v.id("reviewClips"), guestId: v.string() },
   handler: async (ctx, args) => {
-    const found = await shareFor(ctx, args.token);
+    const found = await findShare(ctx, args.token);
     if (!found) return [];
     const clip = await ctx.db.get(args.clipId);
     if (!clip || clip.reviewId !== found.review._id) return [];
@@ -326,7 +327,7 @@ export const verdict = mutation({
 export const logoTarget = internalQuery({
   args: { token: v.string() },
   handler: async (ctx, args) => {
-    const found = await shareFor(ctx, args.token);
+    const found = await findShare(ctx, args.token);
     return found ? await teamLogoFile(ctx, found.review.organizationId) : null;
   },
 });
