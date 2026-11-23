@@ -3,10 +3,25 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useQuery } from "convex/react";
-import { ArrowUpRight, Check, Copy } from "lucide-react";
+import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
+import {
+  CodeBlock,
+  CodeBlockActions,
+  CodeBlockCopyButton,
+  CodeBlockHeader,
+  CodeBlockTitle,
+} from "@/components/ai-elements/code-block";
+import {
+  OpenIn,
+  OpenInChatGPT,
+  OpenInClaude,
+  OpenInContent,
+  OpenInCursor,
+  OpenInTrigger,
+} from "@/components/ai-elements/open-in-chat";
 import { ConnectToolkitForm, FORK_REPO } from "@/components/onboarding/connect-toolkit-form";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -283,42 +298,44 @@ function useDashboardAddress(): string {
 /** One prompt for any AI agent: installs, updates or replaces the team's toolkit. */
 function AgentPrompt() {
   const prompt = toolkitAgentPrompt(useDashboardAddress());
-  const [copied, setCopied] = useState(false);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(prompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast.error("Copy the prompt by hand: the browser did not allow it.");
-    }
-  }
-
   return (
     <div className="flex flex-col gap-3" data-testid="agent-prompt">
       <div className="flex flex-col gap-1">
         <h3 className="text-sm font-medium">Have your AI agent do it</h3>
         <p className="text-muted-foreground text-sm">
-          Paste this into Claude Code, Codex, Cursor or any agent that can reach your server or
-          computer. It installs the toolkit, updates the one you run, or replaces one that is not
-          ours, then gives you the address and key to put below.
+          Copy it into Claude Code, Codex or any agent that can reach your server or computer, or
+          open it in Cursor, Claude or ChatGPT. It installs the toolkit, updates the one you run, or
+          replaces one that is not ours, then gives you the address and key to put below.
         </p>
       </div>
-      <div>
-        <Button variant="outline" onClick={() => void copy()}>
-          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-          {copied ? "Copied" : "Copy prompt"}
-        </Button>
-      </div>
-      <details className="group text-sm">
-        <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer">
-          Show the prompt
-        </summary>
-        <pre className="bg-muted/60 text-muted-foreground mt-3 max-h-80 overflow-auto rounded-lg p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-          {prompt}
-        </pre>
-      </details>
+      <CodeBlock
+        code={prompt}
+        language="markdown"
+        className="[&_pre]:max-h-72 [&_pre]:overflow-auto [&_pre]:text-xs [&_pre]:leading-relaxed [&_pre]:whitespace-pre-wrap"
+      >
+        <CodeBlockHeader>
+          <CodeBlockTitle>Prompt for your AI agent</CodeBlockTitle>
+          <CodeBlockActions>
+            <OpenIn query={prompt}>
+              <OpenInTrigger>
+                <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs">
+                  Open in
+                  <ChevronDown className="size-3.5" aria-hidden="true" />
+                </Button>
+              </OpenInTrigger>
+              <OpenInContent align="end">
+                <OpenInCursor />
+                <OpenInClaude />
+                <OpenInChatGPT />
+              </OpenInContent>
+            </OpenIn>
+            <CodeBlockCopyButton
+              aria-label="Copy prompt"
+              onError={() => toast.error("Copy the prompt by hand: the browser did not allow it.")}
+            />
+          </CodeBlockActions>
+        </CodeBlockHeader>
+      </CodeBlock>
     </div>
   );
 }

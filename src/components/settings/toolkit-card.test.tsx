@@ -85,10 +85,18 @@ describe("Settings, Toolkit", () => {
     const copied = writeText.mock.calls[0]![0];
     expect(copied).toContain(`Takewon dashboard at ${window.location.origin}`);
     expect(copied).toContain(`CORS on that bucket for ${window.location.origin}`);
-    expect(within(prompt).getByRole("button", { name: "Copied" })).toBeInTheDocument();
     // The prompt can be read before it is copied.
-    await user.click(within(prompt).getByText("Show the prompt"));
-    expect(within(prompt).getByText(/Ask me before you delete or stop anything/)).toBeVisible();
+    expect(within(prompt).getByText("Prompt for your AI agent")).toBeInTheDocument();
+    expect(
+      within(prompt).getByText(/Ask me before you delete or stop anything/),
+    ).toBeInTheDocument();
+    // Or opened straight in an AI app, each with its own logo, carrying the prompt.
+    await user.click(within(prompt).getByRole("button", { name: /Open in/ }));
+    const claude = await screen.findByRole("menuitem", { name: /Open in Claude/ });
+    expect(new URL(claude.closest("a")!.href).searchParams.get("q")).toBe(copied);
+    expect(screen.getByRole("menuitem", { name: /Open in Cursor/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Open in ChatGPT/ })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
     // And the setup ours runs on, named.
     const section = screen.getByTestId("own-toolkit");
     expect(within(section).getByText("Recommended setup")).toBeInTheDocument();

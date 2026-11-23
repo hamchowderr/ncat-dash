@@ -18,7 +18,9 @@ test("a coach is asked what they make and their first upload starts the fitting 
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Reyes Coaching");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -151,7 +153,6 @@ test("setting up never asks about a toolkit; a copy that lends none connects one
   ).toBeVisible();
   // Or a prompt for their own AI agent, carrying this dashboard's address for the bucket.
   await expect(page.getByRole("heading", { name: "Recommended setup" })).toBeVisible();
-  await page.getByText("Show the prompt").click();
   await expect(page.getByTestId("agent-prompt").locator("pre")).toContainText(
     "CORS on that bucket for http://localhost:3000",
   );
