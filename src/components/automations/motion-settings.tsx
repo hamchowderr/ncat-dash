@@ -14,7 +14,13 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -26,13 +32,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 type NodeContent = Omit<AutomationNode, "position">;
 type Settings = Record<string, unknown>;
 
 function setOrClear(input: Settings, name: string, value: unknown): Settings {
   const next = { ...input };
-  if (value === undefined || value === "" || value === TEAM_STYLE || value === STYLE_SOUNDS) {
+  if (
+    value === undefined ||
+    value === "" ||
+    value === false ||
+    value === TEAM_STYLE ||
+    value === STYLE_SOUNDS
+  ) {
     delete next[name];
   } else next[name] = value;
   return next;
@@ -43,6 +56,26 @@ const SettingsLink = () => (
     Settings &gt; Motion
   </Link>
 );
+
+/** The Add Motion Graphics switches that need the speaker cut out, or punch in. */
+const EFFECTS = [
+  {
+    name: "behind",
+    label: "Behind the speaker",
+    description:
+      "The opening title becomes big words behind your head, and keywords sit behind you too. You are cut out once, with no green screen.",
+  },
+  {
+    name: "outline",
+    label: "Sticker outline",
+    description: "A white outline around you while something sits behind you, or as it opens.",
+  },
+  {
+    name: "punchIns",
+    label: "Punch-ins",
+    description: "The picture punches in as each keyword or number lands.",
+  },
+] as const;
 
 /** Add Motion Graphics: the style (the team's or a preset), the opening title, the sounds. */
 export function MotionMain({
@@ -117,6 +150,19 @@ export function MotionMain({
         </Select>
         <FieldDescription>Each piece comes in with its own sound.</FieldDescription>
       </Field>
+      {EFFECTS.map((effect) => (
+        <Field key={effect.name} orientation="horizontal">
+          <Switch
+            id={`node-${node.id}-${effect.name}`}
+            checked={settings[effect.name]}
+            onCheckedChange={(on) => set(effect.name, on)}
+          />
+          <FieldContent>
+            <FieldLabel htmlFor={`node-${node.id}-${effect.name}`}>{effect.label}</FieldLabel>
+            <FieldDescription>{effect.description}</FieldDescription>
+          </FieldContent>
+        </Field>
+      ))}
     </FieldGroup>
   );
 }

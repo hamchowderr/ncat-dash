@@ -76,7 +76,11 @@
             "type": "boolean"
           },
           "format": {
-            "enum": ["srt", "vtt", "json3"],
+            "enum": [
+              "srt",
+              "vtt",
+              "json3"
+            ],
             "type": "string"
           },
           "languages": {
@@ -116,7 +120,9 @@
         "type": "string"
       }
     },
-    "required": ["media_url"],
+    "required": [
+      "media_url"
+    ],
     "type": "object"
   },
   "/v1/audio/concatenate": {
@@ -130,7 +136,9 @@
               "type": "string"
             }
           },
-          "required": ["audio_url"],
+          "required": [
+            "audio_url"
+          ],
           "type": "object"
         },
         "minItems": 1,
@@ -144,7 +152,9 @@
         "type": "string"
       }
     },
-    "required": ["audio_urls"],
+    "required": [
+      "audio_urls"
+    ],
     "type": "object"
   },
   "/v1/code/execute/python": {
@@ -166,7 +176,9 @@
         "type": "string"
       }
     },
-    "required": ["code"],
+    "required": [
+      "code"
+    ],
     "type": "object"
   },
   "/v1/ffmpeg/compose": {
@@ -179,7 +191,9 @@
               "type": "string"
             }
           },
-          "required": ["filter"],
+          "required": [
+            "filter"
+          ],
           "type": "object"
         },
         "type": "array"
@@ -188,13 +202,19 @@
         "items": {
           "properties": {
             "argument": {
-              "type": ["string", "number", "null"]
+              "type": [
+                "string",
+                "number",
+                "null"
+              ]
             },
             "option": {
               "type": "string"
             }
           },
-          "required": ["option"],
+          "required": [
+            "option"
+          ],
           "type": "object"
         },
         "type": "array"
@@ -213,19 +233,27 @@
               "items": {
                 "properties": {
                   "argument": {
-                    "type": ["string", "number", "null"]
+                    "type": [
+                      "string",
+                      "number",
+                      "null"
+                    ]
                   },
                   "option": {
                     "type": "string"
                   }
                 },
-                "required": ["option"],
+                "required": [
+                  "option"
+                ],
                 "type": "object"
               },
               "type": "array"
             }
           },
-          "required": ["file_url"],
+          "required": [
+            "file_url"
+          ],
           "type": "object"
         },
         "minItems": 1,
@@ -258,19 +286,27 @@
               "items": {
                 "properties": {
                   "argument": {
-                    "type": ["string", "number", "null"]
+                    "type": [
+                      "string",
+                      "number",
+                      "null"
+                    ]
                   },
                   "option": {
                     "type": "string"
                   }
                 },
-                "required": ["option"],
+                "required": [
+                  "option"
+                ],
                 "type": "object"
               },
               "type": "array"
             }
           },
-          "required": ["options"],
+          "required": [
+            "options"
+          ],
           "type": "object"
         },
         "minItems": 1,
@@ -281,7 +317,10 @@
         "type": "string"
       }
     },
-    "required": ["inputs", "outputs"],
+    "required": [
+      "inputs",
+      "outputs"
+    ],
     "type": "object"
   },
   "/v1/gcp/upload": {
@@ -308,20 +347,29 @@
         "type": "string"
       }
     },
-    "required": ["file_url"],
+    "required": [
+      "file_url"
+    ],
     "type": "object"
   },
   "/v1/image/screenshot/webpage": {
     "additionalProperties": false,
     "not": {
-      "required": ["url", "html"]
+      "required": [
+        "url",
+        "html"
+      ]
     },
     "oneOf": [
       {
-        "required": ["url"]
+        "required": [
+          "url"
+        ]
       },
       {
-        "required": ["html"]
+        "required": [
+          "html"
+        ]
       }
     ],
     "properties": {
@@ -342,7 +390,12 @@
             "type": "number"
           }
         },
-        "required": ["x", "y", "width", "height"],
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
         "type": "object"
       },
       "cookies": {
@@ -363,7 +416,11 @@
               "type": "string"
             }
           },
-          "required": ["name", "value", "domain"],
+          "required": [
+            "name",
+            "value",
+            "domain"
+          ],
           "type": "object"
         },
         "type": "array"
@@ -382,7 +439,10 @@
       "emulate": {
         "properties": {
           "color_scheme": {
-            "enum": ["light", "dark"],
+            "enum": [
+              "light",
+              "dark"
+            ],
             "type": "string"
           }
         },
@@ -390,7 +450,10 @@
       },
       "format": {
         "default": "png",
-        "enum": ["png", "jpeg"],
+        "enum": [
+          "png",
+          "jpeg"
+        ],
         "type": "string"
       },
       "full_page": {
@@ -448,7 +511,12 @@
       },
       "wait_until": {
         "default": "load",
-        "enum": ["load", "domcontentloaded", "networkidle", "networkidle2"],
+        "enum": [
+          "load",
+          "domcontentloaded",
+          "networkidle",
+          "networkidle2"
+        ],
         "type": "string"
       },
       "webhook_url": {
@@ -488,7 +556,9 @@
         "type": "number"
       }
     },
-    "required": ["image_url"],
+    "required": [
+      "image_url"
+    ],
     "type": "object"
   },
   "/v1/media/convert": {
@@ -526,23 +596,33 @@
         "type": "string"
       }
     },
-    "required": ["media_url", "format"],
+    "required": [
+      "media_url",
+      "format"
+    ],
     "type": "object"
   },
   "/v1/media/generate/ass": {
     "additionalProperties": false,
     "oneOf": [
       {
-        "required": ["canvas_width", "canvas_height"]
+        "required": [
+          "canvas_width",
+          "canvas_height"
+        ]
       },
       {
         "not": {
           "anyOf": [
             {
-              "required": ["canvas_width"]
+              "required": [
+                "canvas_width"
+              ]
             },
             {
-              "required": ["canvas_height"]
+              "required": [
+                "canvas_height"
+              ]
             }
           ]
         }
@@ -568,7 +648,10 @@
               "type": "string"
             }
           },
-          "required": ["start", "end"],
+          "required": [
+            "start",
+            "end"
+          ],
           "type": "object"
         },
         "type": "array"
@@ -593,7 +676,10 @@
               "type": "string"
             }
           },
-          "required": ["find", "replace"],
+          "required": [
+            "find",
+            "replace"
+          ],
           "type": "object"
         },
         "type": "array"
@@ -633,12 +719,20 @@
                     "minimum": 0
                   }
                 },
-                "required": ["word", "start", "end"],
+                "required": [
+                  "word",
+                  "start",
+                  "end"
+                ],
                 "additionalProperties": false
               }
             }
           },
-          "required": ["start", "end", "words"],
+          "required": [
+            "start",
+            "end",
+            "words"
+          ],
           "additionalProperties": false
         }
       },
@@ -646,7 +740,11 @@
         "additionalProperties": false,
         "properties": {
           "alignment": {
-            "enum": ["left", "center", "right"],
+            "enum": [
+              "left",
+              "center",
+              "right"
+            ],
             "type": "string"
           },
           "all_caps": {
@@ -703,7 +801,13 @@
             "type": "boolean"
           },
           "style": {
-            "enum": ["classic", "karaoke", "highlight", "underline", "word_by_word"],
+            "enum": [
+              "classic",
+              "karaoke",
+              "highlight",
+              "underline",
+              "word_by_word"
+            ],
             "type": "string"
           },
           "underline": {
@@ -726,7 +830,9 @@
         "type": "string"
       }
     },
-    "required": ["media_url"],
+    "required": [
+      "media_url"
+    ],
     "type": "object"
   },
   "/v1/media/metadata": {
@@ -744,7 +850,9 @@
         "type": "string"
       }
     },
-    "required": ["media_url"],
+    "required": [
+      "media_url"
+    ],
     "type": "object"
   },
   "/v1/media/silence": {
@@ -778,7 +886,10 @@
         "type": "string"
       }
     },
-    "required": ["media_url", "duration"],
+    "required": [
+      "media_url",
+      "duration"
+    ],
     "type": "object"
   },
   "/v1/media/transcribe": {
@@ -804,11 +915,17 @@
         "type": "string"
       },
       "response_type": {
-        "enum": ["direct", "cloud"],
+        "enum": [
+          "direct",
+          "cloud"
+        ],
         "type": "string"
       },
       "task": {
-        "enum": ["transcribe", "translate"],
+        "enum": [
+          "transcribe",
+          "translate"
+        ],
         "type": "string"
       },
       "webhook_url": {
@@ -823,7 +940,9 @@
         "type": "integer"
       }
     },
-    "required": ["media_url"],
+    "required": [
+      "media_url"
+    ],
     "type": "object"
   },
   "/v1/media/transform/mp3": {
@@ -848,7 +967,9 @@
         "type": "string"
       }
     },
-    "required": ["media_url"],
+    "required": [
+      "media_url"
+    ],
     "type": "object"
   },
   "/v1/s3/upload": {
@@ -875,7 +996,9 @@
         "type": "string"
       }
     },
-    "required": ["file_url"],
+    "required": [
+      "file_url"
+    ],
     "type": "object"
   },
   "/v1/toolkit/job/status": {
@@ -884,7 +1007,9 @@
         "type": "string"
       }
     },
-    "required": ["job_id"],
+    "required": [
+      "job_id"
+    ],
     "type": "object"
   },
   "/v1/video/caption": {
@@ -904,7 +1029,10 @@
               "type": "string"
             }
           },
-          "required": ["start", "end"],
+          "required": [
+            "start",
+            "end"
+          ],
           "type": "object"
         },
         "type": "array"
@@ -925,7 +1053,10 @@
               "type": "string"
             }
           },
-          "required": ["find", "replace"],
+          "required": [
+            "find",
+            "replace"
+          ],
           "type": "object"
         },
         "type": "array"
@@ -934,7 +1065,11 @@
         "additionalProperties": false,
         "properties": {
           "alignment": {
-            "enum": ["left", "center", "right"],
+            "enum": [
+              "left",
+              "center",
+              "right"
+            ],
             "type": "string"
           },
           "all_caps": {
@@ -991,7 +1126,13 @@
             "type": "boolean"
           },
           "style": {
-            "enum": ["classic", "karaoke", "highlight", "underline", "word_by_word"],
+            "enum": [
+              "classic",
+              "karaoke",
+              "highlight",
+              "underline",
+              "word_by_word"
+            ],
             "type": "string"
           },
           "underline": {
@@ -1018,7 +1159,9 @@
         "type": "string"
       }
     },
-    "required": ["video_url"],
+    "required": [
+      "video_url"
+    ],
     "type": "object"
   },
   "/v1/video/concatenate": {
@@ -1035,7 +1178,9 @@
               "type": "string"
             }
           },
-          "required": ["video_url"],
+          "required": [
+            "video_url"
+          ],
           "type": "object"
         },
         "minItems": 1,
@@ -1046,7 +1191,9 @@
         "type": "string"
       }
     },
-    "required": ["video_urls"],
+    "required": [
+      "video_urls"
+    ],
     "type": "object"
   },
   "/v1/video/cut": {
@@ -1069,7 +1216,10 @@
               "type": "string"
             }
           },
-          "required": ["start", "end"],
+          "required": [
+            "start",
+            "end"
+          ],
           "type": "object"
         },
         "minItems": 1,
@@ -1098,7 +1248,10 @@
         "type": "string"
       }
     },
-    "required": ["video_url", "cuts"],
+    "required": [
+      "video_url",
+      "cuts"
+    ],
     "type": "object"
   },
   "/v1/video/motion": {
@@ -1125,7 +1278,11 @@
                 "follow",
                 "quote",
                 "transition",
-                "logo"
+                "logo",
+                "big_text",
+                "graph",
+                "doodle",
+                "checklist"
               ]
             },
             "start": {
@@ -1149,7 +1306,10 @@
               "format": "uri"
             },
             "sound": {
-              "type": ["string", "null"],
+              "type": [
+                "string",
+                "null"
+              ],
               "enum": [
                 "click",
                 "ding",
@@ -1162,9 +1322,48 @@
                 "whoosh",
                 null
               ]
+            },
+            "layer": {
+              "type": "string",
+              "enum": [
+                "front",
+                "behind"
+              ]
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 6,
+              "items": {
+                "type": "string",
+                "maxLength": 60
+              }
+            },
+            "shape": {
+              "type": "string",
+              "enum": [
+                "crown",
+                "star",
+                "heart",
+                "arrow",
+                "burst",
+                "circle"
+              ]
+            },
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
             }
           },
-          "required": ["type", "start"],
+          "required": [
+            "type",
+            "start"
+          ],
           "additionalProperties": false
         }
       },
@@ -1176,7 +1375,17 @@
           "properties": {
             "sound": {
               "type": "string",
-              "enum": ["click", "ding", "impact", "pop", "riser", "slide", "thud", "tick", "whoosh"]
+              "enum": [
+                "click",
+                "ding",
+                "impact",
+                "pop",
+                "riser",
+                "slide",
+                "thud",
+                "tick",
+                "whoosh"
+              ]
             },
             "at": {
               "type": "number",
@@ -1188,7 +1397,10 @@
               "maximum": 2
             }
           },
-          "required": ["sound", "at"],
+          "required": [
+            "sound",
+            "at"
+          ],
           "additionalProperties": false
         }
       },
@@ -1197,7 +1409,12 @@
         "properties": {
           "look": {
             "type": "string",
-            "enum": ["bold", "clean", "editorial", "neon"]
+            "enum": [
+              "bold",
+              "clean",
+              "editorial",
+              "neon"
+            ]
           },
           "accent": {
             "type": "string",
@@ -1213,6 +1430,69 @@
           }
         },
         "additionalProperties": false
+      },
+      "mask_url": {
+        "type": "string",
+        "format": "uri"
+      },
+      "outlines": {
+        "type": "array",
+        "maxItems": 50,
+        "items": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "duration": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "color": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "width": {
+              "type": "number",
+              "minimum": 0.3,
+              "maximum": 4
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "zooms": {
+        "type": "array",
+        "maxItems": 200,
+        "items": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "duration": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "scale": {
+              "type": "number",
+              "minimum": 1.02,
+              "maximum": 2.5
+            },
+            "focus_y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "required": [
+            "start",
+            "duration"
+          ],
+          "additionalProperties": false
+        }
       },
       "sound_volume": {
         "type": "number",
@@ -1230,7 +1510,9 @@
         "type": "string"
       }
     },
-    "required": ["video_url"],
+    "required": [
+      "video_url"
+    ],
     "additionalProperties": false
   },
   "/v1/video/reframe": {
@@ -1242,11 +1524,20 @@
       },
       "aspect": {
         "type": "string",
-        "enum": ["9:16", "1:1", "4:5", "16:9"]
+        "enum": [
+          "9:16",
+          "1:1",
+          "4:5",
+          "16:9"
+        ]
       },
       "follow": {
         "type": "string",
-        "enum": ["speaker", "largest_face", "center"]
+        "enum": [
+          "speaker",
+          "largest_face",
+          "center"
+        ]
       },
       "switch_after": {
         "type": "number",
@@ -1283,7 +1574,10 @@
               "minimum": 0
             }
           },
-          "required": ["time", "x"],
+          "required": [
+            "time",
+            "x"
+          ],
           "additionalProperties": false
         }
       },
@@ -1295,7 +1589,9 @@
         "type": "string"
       }
     },
-    "required": ["video_url"],
+    "required": [
+      "video_url"
+    ],
     "type": "object"
   },
   "/v1/video/split": {
@@ -1321,7 +1617,10 @@
               "type": "string"
             }
           },
-          "required": ["start", "end"],
+          "required": [
+            "start",
+            "end"
+          ],
           "type": "object"
         },
         "minItems": 1,
@@ -1347,7 +1646,10 @@
         "type": "string"
       }
     },
-    "required": ["video_url", "splits"],
+    "required": [
+      "video_url",
+      "splits"
+    ],
     "type": "object"
   },
   "/v1/video/thumbnail": {
@@ -1369,7 +1671,9 @@
         "type": "string"
       }
     },
-    "required": ["video_url"],
+    "required": [
+      "video_url"
+    ],
     "type": "object"
   },
   "/v1/video/trim": {
@@ -1410,7 +1714,9 @@
         "type": "string"
       }
     },
-    "required": ["video_url"],
+    "required": [
+      "video_url"
+    ],
     "type": "object"
   },
   "/v1/media/check": {
@@ -1433,20 +1739,28 @@
         "type": "string"
       }
     },
-    "required": ["media_url"],
+    "required": [
+      "media_url"
+    ],
     "type": "object"
   },
   "/v1/media/look": {
     "additionalProperties": false,
     "anyOf": [
       {
-        "required": ["media_url"]
+        "required": [
+          "media_url"
+        ]
       },
       {
-        "required": ["image_urls"]
+        "required": [
+          "image_urls"
+        ]
       },
       {
-        "required": ["texts"]
+        "required": [
+          "texts"
+        ]
       }
     ],
     "properties": {
@@ -1526,7 +1840,85 @@
         "type": "string"
       }
     },
-    "required": ["media_url"],
+    "required": [
+      "media_url"
+    ],
     "type": "object"
+  },
+  "/v1/video/cutout": {
+    "type": "object",
+    "properties": {
+      "video_url": {
+        "type": "string",
+        "format": "uri"
+      },
+      "webhook_url": {
+        "type": "string",
+        "format": "uri"
+      },
+      "id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "video_url"
+    ],
+    "additionalProperties": false
+  },
+  "/v1/video/background": {
+    "type": "object",
+    "properties": {
+      "video_url": {
+        "type": "string",
+        "format": "uri"
+      },
+      "mask_url": {
+        "type": "string",
+        "format": "uri"
+      },
+      "background": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "blur",
+              "color",
+              "image",
+              "video"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "blur": {
+            "type": "number",
+            "minimum": 2,
+            "maximum": 80
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "webhook_url": {
+        "type": "string",
+        "format": "uri"
+      },
+      "id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "video_url",
+      "background"
+    ],
+    "additionalProperties": false
   }
 }

@@ -1077,6 +1077,16 @@ export default defineSchema({
     duration: v.number(),
   }).index("by_source", ["organizationId", "source"]),
 
+  // The speaker's cut-out of a video (the toolkit's /v1/video/cutout mask), kept so it is
+  // made once and reused by New Background and pieces behind the speaker (lib/masks.ts).
+  // `source` is the video's address without its query, as in spokenWords.
+  speakerMasks: defineTable({
+    organizationId: v.string(),
+    source: v.string(),
+    mask: v.string(),
+    savedAt: v.number(),
+  }).index("by_source", ["organizationId", "source"]),
+
   // The model's answer to a Best moments or Chapters question, kept so the same question
   // (the same transcript, settings and house rules) is not paid for twice. `question` is
   // the question's SHA-256. Forgotten after 30 days (crons.ts).

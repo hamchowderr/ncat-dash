@@ -110,6 +110,11 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    * step over and makes nothing there, instead of failing or stopping the automation.
    */
   skipsWithout?: string;
+  /**
+   * Settings the runner fills in itself, such as the speaker's cut-out kept for a video.
+   * Sent to the toolkit but never shown in a form or to the agent.
+   */
+  keptFields?: string[];
   /** Builds the toolkit request from the filled-in blanks. Only recipes have one. */
   toRequest?: (input: z.output<TInput>, facts: FileFacts) => Record<string, unknown>;
 }
@@ -189,6 +194,8 @@ export function userInputSchema(step: StepDefinition): z.ZodObject {
 
 /** JSON Schema for building a form or describing the step to a model. */
 export function userInputJsonSchema(step: StepDefinition) {
+  const shape = { ...userInputSchema(step).shape };
+  for (const field of step.keptFields ?? []) delete shape[field];
   // "input" so a blank with a default is shown as optional, with its default.
-  return z.toJSONSchema(userInputSchema(step), { io: "input" });
+  return z.toJSONSchema(z.object(shape), { io: "input" });
 }

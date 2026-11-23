@@ -56,8 +56,13 @@ function fakeToolkit(duration = 30, agentAnswer?: unknown) {
         });
       }
       if (url.endsWith("/v1/video/motion")) {
+        // Pieces behind the speaker with no cut-out sent: the toolkit makes one and hands it back.
+        const behind = (body.pieces as { layer?: string }[] | undefined)?.some(
+          (piece) => piece.layer === "behind",
+        );
         return done({
           file_url: "https://files.example/out/with-motion.mp4",
+          ...(behind && !body.mask_url ? { mask_url: "https://files.example/out/mask.mp4" } : {}),
           pieces: 3,
           sounds: 0,
           seconds: 30,
@@ -229,6 +234,49 @@ describe("Add Motion Graphics", () => {
     expect(render.body).toMatchObject({ sound_volume: 0, piece_sounds: false });
     const pieces = render.body.pieces as { type: string; title?: string }[];
     expect(pieces.find((piece) => piece.type === "title")?.title).toBe("Big Year");
+  });
+
+  test("puts the title behind the speaker, outlines them, punches in, and keeps the cut-out", async () => {
+    const sent = fakeToolkit();
+    const { t, start, runOf } = await setUp(
+      [
+        {
+          id: "motion",
+          kind: "motion",
+          input: { title: "Big Year", behind: true, outline: true, punchIns: true },
+        },
+      ],
+      TEAM_MOTION,
+    );
+    const runId = await start();
+    await settled(t);
+    expect((await runOf(runId))!.status).toBe("done");
+    const render = sent.find((one) => one.url.endsWith("/v1/video/motion"))!;
+    const pieces = render.body.pieces as { type: string; title?: string; layer?: string }[];
+    expect(pieces.find((piece) => piece.title === "Big Year")).toMatchObject({
+      type: "big_text",
+      layer: "behind",
+    });
+    expect(render.body.outlines).toEqual([expect.objectContaining({ start: 0.2 })]);
+    expect(render.body).not.toHaveProperty("mask_url");
+    // The cut-out the toolkit made is kept for the video and is not a finished file.
+    const step = await t.run(
+      async (ctx) =>
+        (await ctx.db
+          .query("runSteps")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .first())!,
+    );
+    expect(step.outputs).toEqual(["https://files.example/out/with-motion.mp4"]);
+    const kept = await t.run((ctx) => ctx.db.query("speakerMasks").collect());
+    expect(kept.map((one) => one.mask)).toEqual(["https://files.example/out/mask.mp4"]);
+
+    // The next run on the same video sends it, so the speaker is not cut out again.
+    const again = await start();
+    await settled(t);
+    expect((await runOf(again))!.status).toBe("done");
+    const renders = sent.filter((one) => one.url.endsWith("/v1/video/motion"));
+    expect(renders.at(-1)!.body.mask_url).toBe("https://files.example/out/mask.mp4");
   });
 
   test("titles a run started by hand, which only has the file's link, from that link", async () => {

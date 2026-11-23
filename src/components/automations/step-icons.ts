@@ -56,6 +56,7 @@ import {
   VolumeX,
   Drum,
   Metronome,
+  SquareUser,
 } from "lucide-react";
 
 /**
@@ -78,6 +79,7 @@ export const STEP_ICONS: Record<string, LucideIcon> = {
   "media-transcribe": AudioLines,
   "storage-upload-gcp": CloudUpload,
   "storage-upload-s3": HardDriveUpload,
+  "video-background": SquareUser,
   "video-caption": Captions,
   "video-concatenate": ListVideo,
   "video-cut": ScissorsLineDashed,

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
-import { hiddenSteps, steps, userInputJsonSchema } from "../src";
+import { z } from "zod";
+import { hiddenSteps, steps, userInputSchema } from "../src";
 
 /**
  * toolkit-schemas.json is the request schema of every NCA Toolkit route, read out of the
@@ -65,12 +66,36 @@ function differences(mine: Schema, theirs: Schema, path: string, top = false): s
   return found;
 }
 
+/** What the step sends, with the fields the runner fills in itself (keptFields) left in. */
+const sentSchema = (step: (typeof steps)[number] | (typeof hiddenSteps)[number]) =>
+  z.toJSONSchema(userInputSchema(step), { io: "input" }) as Schema;
+
 describe("the catalog matches the toolkit", () => {
-  for (const step of [...steps, ...hiddenSteps]) {
+  // A step with toRequest sends what it builds from its blanks; checked below instead.
+  for (const step of [...steps, ...hiddenSteps].filter((one) => !("toRequest" in one))) {
     it(step.id, () => {
       const theirs = toolkit[step.endpoint];
       expect(theirs, `the toolkit has no route ${step.endpoint}`).toBeDefined();
-      expect(differences(userInputJsonSchema(step) as Schema, theirs, step.id, true)).toEqual([]);
+      expect(differences(sentSchema(step), theirs, step.id, true)).toEqual([]);
     });
   }
+
+  it("video-background builds only the toolkit's fields", () => {
+    const step = steps.find((one) => one.id === "video-background")!;
+    const theirs = toolkit[step.endpoint];
+    const background = theirs.properties!.background;
+    for (const kind of ["blur", "color", "image", "video"]) {
+      const blanks = userInputSchema(step).parse({
+        video_url: "https://x.example/a.mp4",
+        background: kind,
+        background_url: "https://x.example/b.jpg",
+        mask_url: "https://x.example/m.mp4",
+      });
+      const body = step.toRequest!(blanks as never, {}) as Record<string, Record<string, unknown>>;
+      for (const key of Object.keys(body)) expect(Object.keys(theirs.properties!)).toContain(key);
+      for (const key of Object.keys(body.background))
+        expect(Object.keys(background.properties!)).toContain(key);
+      expect(background.properties!.type.enum).toContain(body.background.type);
+    }
+  });
 });
