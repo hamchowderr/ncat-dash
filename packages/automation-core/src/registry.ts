@@ -609,7 +609,7 @@ const MOTION: NodeType = {
   group: "video",
   title: "Add Motion Graphics",
   description:
-    "Draws designed motion graphics onto each video in the team's style from Settings > Motion: an opening title, the speaker's name, the numbers that are said, a card at each chapter, a follow card at the end, each with its own sound. Placed by plain rules from the transcript, with no AI, unless a Plan Motion Graphics step comes before it. Put it after Chapters to get chapter cards.",
+    "Draws designed motion graphics onto each video in the team's style from Settings > Motion: an opening title, the speaker's name, the numbers that are said, a card at each chapter, a follow card at the end, each with its own sound. Placed by plain rules from the transcript, with no AI, unless a Plan Motion Graphics step comes before it. Can put the title and keywords behind the speaker, ring them with a sticker outline and punch in on keywords and numbers. Put it after Chapters to get chapter cards.",
   takes: "file",
   gives: "files",
   settings: {
@@ -631,6 +631,23 @@ const MOTION: NodeType = {
         enum: [STYLE_SOUNDS, ...SOUND_LEVELS],
         default: STYLE_SOUNDS,
         description: `How loud each piece's sound is. ${STYLE_SOUNDS}: as the style says. off, light or heavy.`,
+      },
+      behind: {
+        type: "boolean",
+        default: false,
+        description:
+          "Behind the speaker: the opening title becomes big words behind their head, and keyword slams sit behind them too. The speaker is cut out once, with no green screen, and the cut-out is kept with the video.",
+      },
+      outline: {
+        type: "boolean",
+        default: false,
+        description:
+          "A white sticker outline around the speaker while something sits behind them, or for the first seconds when nothing does.",
+      },
+      punchIns: {
+        type: "boolean",
+        default: false,
+        description: "A quick punch-in on the picture as each keyword or number lands.",
       },
     },
   },

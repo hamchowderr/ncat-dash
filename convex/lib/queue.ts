@@ -5,6 +5,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { onOperatorToolkit } from "./edition";
 import { lookSettingFor, teamLooksOf } from "./looks";
+import { withKeptMask } from "./masks";
 import { toolkitPool } from "./pools";
 import { withTeamSteps } from "./teamSteps";
 
@@ -136,11 +137,18 @@ export async function enqueueJob(
   const connection = connections.find((candidate) => candidate.status === "ok") ?? connections[0];
   if (!connection) return { ok: false, code: "no_toolkit", message: "Connect a toolkit first." };
 
+  // The speaker's cut-out made before for this video, so it is not made again.
+  const input = await withKeptMask(
+    ctx,
+    args.organizationId,
+    step.id,
+    parsed.data as Record<string, unknown>,
+  );
   const jobId = await ctx.db.insert("jobs", {
     organizationId: args.organizationId,
     connectionId: connection._id,
     stepId: step.id,
-    input: parsed.data,
+    input,
     status: "queued",
     webhookToken: randomToken(),
     toolkitJobId: null,

@@ -16,8 +16,10 @@ import { mediaTranscribe } from "./media/transcribe";
 import { storageUploadGcp } from "./storage/upload-gcp";
 import { storageUploadS3 } from "./storage/upload-s3";
 import { videoCaption } from "./video/caption";
+import { videoBackground } from "./video/background";
 import { videoConcatenate } from "./video/concatenate";
 import { videoCut } from "./video/cut";
+import { videoCutout } from "./video/cutout";
 import { videoMotion } from "./video/motion";
 import { videoReframe } from "./video/reframe";
 import { videoSplit } from "./video/split";
@@ -40,6 +42,7 @@ export const steps = [
   mediaTranscribe,
   storageUploadGcp,
   storageUploadS3,
+  videoBackground,
   videoCaption,
   videoConcatenate,
   videoCut,
@@ -50,7 +53,7 @@ export const steps = [
 ] as const;
 
 /** Steps the runner sends for other steps; never shown in a step list. */
-export const hiddenSteps = [mediaCheck, mediaLook, videoMotion] as const;
+export const hiddenSteps = [mediaCheck, mediaLook, videoCutout, videoMotion] as const;
 
 export {
   audioBeats,
@@ -70,9 +73,11 @@ export {
   mediaTranscribe,
   storageUploadGcp,
   storageUploadS3,
+  videoBackground,
   videoCaption,
   videoConcatenate,
   videoCut,
+  videoCutout,
   videoMotion,
   videoReframe,
   videoSplit,
