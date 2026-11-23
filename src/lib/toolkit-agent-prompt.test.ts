@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  AGENT_CONNECTORS,
   FORK_REPO,
   RECOMMENDED_SETUP,
   TOOLKIT_IMAGE,
@@ -51,6 +52,20 @@ describe("the prompt for a team's own AI agent", () => {
       "Coolify or Docker Compose, with HTTPS",
       "Cloudflare R2 for files",
       "Your own address through Cloudflare",
+    ]);
+  });
+
+  test("has the agent add the providers' own connectors, so the team only signs in and pays", () => {
+    for (const connector of AGENT_CONNECTORS) {
+      expect(prompt, connector.name).toContain(connector.url.replace("your", "my"));
+    }
+    expect(prompt).toContain("read, write and deploy");
+    expect(prompt).toContain("buy one only after I say yes");
+    expect(prompt).toContain("tell me exactly how to add it to the app you are running in");
+    expect(AGENT_CONNECTORS.map((connector) => connector.name)).toEqual([
+      "Cloudflare",
+      "Coolify",
+      "Hostinger",
     ]);
   });
 });

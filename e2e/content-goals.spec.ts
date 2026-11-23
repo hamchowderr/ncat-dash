@@ -153,6 +153,9 @@ test("setting up never asks about a toolkit; a copy that lends none connects one
   ).toBeVisible();
   // Or a prompt for their own AI agent, carrying this dashboard's address for the bucket.
   await expect(page.getByRole("heading", { name: "Recommended setup" })).toBeVisible();
+  await expect(page.getByTestId("agent-connectors")).toContainText(
+    "https://mcp.cloudflare.com/mcp",
+  );
   await expect(page.getByTestId("agent-prompt").locator("pre")).toContainText(
     "CORS on that bucket for http://localhost:3000",
   );
