@@ -8,6 +8,8 @@ import { expect, test } from "./test";
 
 const TOOLKIT = "http://127.0.0.1:8767";
 const SITE = "http://127.0.0.1:3211";
+// Better Auth is the sign-in server, under the dashboard's own address.
+const AUTH = "http://localhost:3000/api/auth";
 const FILES = "http://127.0.0.1:8766";
 const REDIRECT = "http://localhost:3000/agent-came-back";
 const stamp = Date.now().toString(36);
@@ -69,7 +71,7 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
   await expect(page.getByText(/Your toolkit answered/)).toBeVisible();
 
   // Settings > AI agents: the address to paste into Claude, and nothing connected yet.
-  await page.goto("/settings/mcp");
+  await page.goto("/settings/integrations/mcp");
   await expect(page.getByRole("tab", { name: /Claude Code/ })).toBeVisible();
   await expect(page.getByText("Nothing is connected yet.")).toBeVisible();
   await page.waitForTimeout(1500);
@@ -83,11 +85,22 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
   const challenge = await fetch(`${SITE}/mcp`, { method: "POST", body: "{}" });
   expect(challenge.status).toBe(401);
   expect(challenge.headers.get("www-authenticate")).toContain("resource_metadata=");
+  const resource = await (await fetch(`${SITE}/.well-known/oauth-protected-resource/mcp`)).json();
+  expect(resource.authorization_servers).toEqual([AUTH]);
+  const server = await (
+    await fetch("http://localhost:3000/.well-known/oauth-authorization-server/api/auth")
+  ).json();
+  expect(server.registration_endpoint).toBe(`${AUTH}/oauth2/register`);
   const registered = await (
-    await fetch(`${SITE}/oauth/register`, {
+    await fetch(server.registration_endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ client_name: "Claude", redirect_uris: [REDIRECT] }),
+      body: JSON.stringify({
+        client_name: "Claude",
+        redirect_uris: [REDIRECT],
+        token_endpoint_auth_method: "none",
+        grant_types: ["authorization_code", "refresh_token"],
+      }),
     })
   ).json();
   const verifier = randomBytes(32).toString("base64url");
@@ -98,6 +111,7 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
     code_challenge: createHash("sha256").update(verifier).digest("base64url"),
     code_challenge_method: "S256",
     state: "e2e",
+    scope: "openid offline_access automations",
     resource: `${SITE}/mcp`,
   });
   let back = "";
@@ -108,7 +122,7 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
       body: "<p>Connected. You can go back to Claude.</p>",
     });
   });
-  await page.goto(`${SITE}/oauth/authorize?${params}`);
+  await page.goto(`${server.authorization_endpoint}?${params}`);
   await expect(
     page.getByRole("heading", { name: "Claude wants to connect to Harbour Films" }),
   ).toBeVisible();
@@ -117,7 +131,7 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
   await expect(page.getByText("Connected. You can go back to Claude.")).toBeVisible();
   const code = new URL(back).searchParams.get("code")!;
   const tokens = await (
-    await fetch(`${SITE}/oauth/token`, {
+    await fetch(server.token_endpoint, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -126,6 +140,7 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
         code_verifier: verifier,
         client_id: registered.client_id,
         redirect_uri: REDIRECT,
+        resource: `${SITE}/mcp`,
       }).toString(),
     })
   ).json();
@@ -186,7 +201,7 @@ test("an agent signs in, builds a draft, and shows its run in the chat", async (
 
   // Settings lists it as connected; disconnecting turns it away.
   await page.unrouteAll();
-  await page.goto("/settings/mcp");
+  await page.goto("/settings/integrations/mcp");
   const connected = page.getByRole("list", { name: "Connected apps" });
   await expect(connected).toContainText("Claude");
   await page.waitForTimeout(1000);

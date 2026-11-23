@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { shapeCode } from "./codes";
 import { defineStep, type StepDefinition } from "./define";
 
 /**
@@ -16,8 +17,8 @@ const opt = (option: string, argument?: string | number): Option =>
 
 const X264: Option[] = [
   opt("-c:v", "libx264"),
-  opt("-crf", 23),
-  opt("-preset", "medium"),
+  opt("-crf", 21),
+  opt("-preset", "veryfast"),
   opt("-f", "mp4"),
 ];
 // The toolkit names an image2 output .png, so the picture is left as a PNG.
@@ -58,6 +59,9 @@ const font = z
   .string()
   .regex(/^[A-Za-z0-9 ._-]{1,80}$/)
   .describe("A font installed on your toolkit");
+
+// Top right first: it is where viewers expect a channel's logo, and the default.
+const LOGO_CORNERS = ["top right", "top left", "bottom left", "bottom right"] as const;
 
 const textBlanks = {
   video_url: url("The video to write on"),
@@ -106,6 +110,8 @@ function recipe<Shape extends z.ZodRawShape>(args: {
   primaryInput: (keyof Shape & string) | null;
   listInput?: { field: string; itemKey: string };
   brandInputs?: StepDefinition["brandInputs"];
+  /** Codes for its files when the file it works on has one; see StepDefinition. */
+  followLabels?: (blanks: z.output<z.ZodObject<Shape>>) => string[];
   blanks: Shape;
   toRequest: (blanks: z.output<z.ZodObject<Shape>>) => Record<string, unknown>;
 }): StepDefinition {
@@ -120,6 +126,12 @@ function recipe<Shape extends z.ZodRawShape>(args: {
     primaryInput: args.primaryInput,
     listInput: args.listInput,
     brandInputs: args.brandInputs,
+    ...(args.followLabels
+      ? {
+          outputLabels: args.followLabels as unknown as StepDefinition["outputLabels"],
+          labelsFollow: true,
+        }
+      : {}),
     input: z.object(args.blanks),
     toRequest: args.toRequest,
   }) as unknown as StepDefinition;
@@ -150,8 +162,8 @@ export const recipes: StepDefinition[] = [
           opt("-map", "[outv]"),
           opt("-map", "[outa]"),
           opt("-c:v", "libx264"),
-          opt("-crf", 23),
-          opt("-preset", "medium"),
+          opt("-crf", 21),
+          opt("-preset", "veryfast"),
           opt("-c:a", "aac"),
           opt("-b:a", "128k"),
         ],
@@ -174,7 +186,13 @@ export const recipes: StepDefinition[] = [
         [
           `[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[vout];[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[aout]`,
         ],
-        [opt("-map", "[vout]"), opt("-map", "[aout]"), opt("-c:v", "libx264"), opt("-c:a", "aac")],
+        [
+          opt("-map", "[vout]"),
+          opt("-map", "[aout]"),
+          opt("-c:v", "libx264"),
+          opt("-preset", "veryfast"),
+          opt("-c:a", "aac"),
+        ],
       ),
   }),
   recipe({
@@ -220,25 +238,30 @@ export const recipes: StepDefinition[] = [
   recipe({
     id: "recipe-logo",
     title: "Add a logo",
-    description: "Puts a logo in the bottom-left corner of a video for its whole length.",
+    description:
+      "Puts a logo in a corner of a video for its whole length. Top right unless you pick another corner.",
     primaryInput: "video_url",
     brandInputs: { logo_url: "logo" },
     blanks: {
       video_url: url("The video"),
       logo_url: url("The logo image, ideally a PNG with a clear background"),
       logo_size: whole("Logo size in pixels, along its longest side", 8, 4000).default(150),
+      corner: z.enum(LOGO_CORNERS).describe("Which corner the logo sits in").default("top right"),
       margin: whole("Gap from the edges in pixels", 0, 4000).default(50),
     },
-    toRequest: (b) =>
-      request(
+    toRequest: (b) => {
+      const x = b.corner.endsWith("right") ? `main_w-overlay_w-${b.margin}` : `${b.margin}`;
+      const y = b.corner.startsWith("bottom") ? `main_h-overlay_h-${b.margin}` : `${b.margin}`;
+      return request(
         [b.video_url, b.logo_url],
         [
           // Fits the logo in a square of that size and keeps its own shape, so a wide logo
           // is not squashed.
-          `[1:v]scale=w=${b.logo_size}:h=${b.logo_size}:force_original_aspect_ratio=decrease[logo];[0:v][logo]overlay=x=${b.margin}:y=main_h-overlay_h-${b.margin}`,
+          `[1:v]scale=w=${b.logo_size}:h=${b.logo_size}:force_original_aspect_ratio=decrease[logo];[0:v][logo]overlay=x=${x}:y=${y}`,
         ],
-        [opt("-f", "mp4"), opt("-c:v", "libx264")],
-      ),
+        [opt("-f", "mp4"), opt("-c:v", "libx264"), opt("-preset", "veryfast")],
+      );
+    },
   }),
   recipe({
     id: "recipe-picture-on-picture",
@@ -281,6 +304,7 @@ export const recipes: StepDefinition[] = [
           opt("-map", "[outv]"),
           opt("-map", "0:a"),
           opt("-c:v", "libx264"),
+          opt("-preset", "veryfast"),
           opt("-c:a", "aac"),
           opt("-f", "mp4"),
         ],
@@ -315,6 +339,7 @@ export const recipes: StepDefinition[] = [
           opt("-map", "[videoOut]"),
           opt("-map", "[audioOut]"),
           opt("-c:v", "libx264"),
+          opt("-preset", "veryfast"),
           opt("-c:a", "aac"),
           opt("-b:a", "192k"),
         ],
@@ -513,6 +538,7 @@ export const moreRecipes: StepDefinition[] = [
       height: even("Height of the finished video", 2, 8000).default(1920),
       blur: whole("How blurred the background is", 1, 100).default(20),
     },
+    followLabels: (b) => [shapeCode(b.width, b.height)],
     toRequest: (b) => {
       const size = `${b.width}:${b.height}`;
       // The blur's reach cannot be more than half the shorter side.
@@ -565,9 +591,9 @@ export const moreRecipes: StepDefinition[] = [
               opt("-map", "[v]"),
               opt("-map", "1:a"),
               opt("-c:v", "libx264"),
-              opt("-preset", "medium"),
+              opt("-preset", "veryfast"),
               opt("-tune", "stillimage"),
-              opt("-crf", 23),
+              opt("-crf", 21),
               opt("-c:a", "aac"),
               opt("-b:a", "192k"),
               opt("-shortest"),

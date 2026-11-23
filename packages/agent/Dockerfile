@@ -30,10 +30,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl wget ca-ce
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/packages/agent/.mastra/output ./
+# The Takewon guide, synced into Knowledge (docs:takewon) at boot. KNOWLEDGE_DIR defaults
+# to ./knowledge, which resolves against this WORKDIR (/app).
+COPY --from=build /app/packages/agent/knowledge ./knowledge
+# The agent's FFmpeg skills (lib/agent-skills.ts), found at ./skills against /app.
+COPY --from=build /app/packages/agent/skills ./skills
 ENV NODE_ENV=production \
     PORT=4111 \
     TURSO_DATABASE_URL=file:/data/mastra.db \
     WORKSPACE_ROOT=/data/workspace \
+    WORKSPACE_SANDBOX=false \
     WORKSPACE_BROWSER=false
 VOLUME /data
 EXPOSE 4111

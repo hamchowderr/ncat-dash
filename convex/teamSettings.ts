@@ -1,5 +1,9 @@
 import {
   AGENT_MODELS,
+  aiLimitProblem,
+  MAX_AI_LIMIT_DOLLARS,
+  MICROS_PER_DOLLAR,
+  MIN_AI_LIMIT_DOLLARS,
   agentSettingsProblem,
   agentSettingsText,
   BUILT_IN_BY_SHAPE,
@@ -14,6 +18,7 @@ import {
   type MotionSetup,
   motionSetupText,
   retryLimit,
+  savedLooksText,
   tidyMotionSetup,
 } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
@@ -27,6 +32,7 @@ import {
   pump,
 } from "./lib/queue";
 import { captionSetupOf } from "./lib/captions";
+import { teamLooksOf } from "./lib/looks";
 import { motionSetupOf } from "./lib/motion";
 import { checkedBrand, checkedMusic } from "./lib/brand";
 import { editorsOf } from "./lib/exports";
@@ -50,6 +56,9 @@ export const get = query({
     return {
       stepRetries: retryLimit(settings?.stepRetries),
       mostRetries: MAX_STEP_RETRIES,
+      // The most one run may spend on AI steps, in dollars; null for no limit.
+      aiLimit: settings?.aiLimit === undefined ? null : settings.aiLimit / MICROS_PER_DOLLAR,
+      aiLimitRange: { min: MIN_AI_LIMIT_DOLLARS, max: MAX_AI_LIMIT_DOLLARS },
       maxParallelJobs: await parallelLimit(ctx, args.organizationId),
       ...(await brandAndMusicOf(ctx, args.organizationId)),
       editors: await editorsOf(ctx, args.organizationId),
@@ -57,6 +66,10 @@ export const get = query({
       // The team's own Anthropic key, by its last characters only (anthropicKey.ts).
       anthropicKey: settings?.anthropicKey
         ? { hint: settings.anthropicKey.hint, setAt: settings.anthropicKey.setAt }
+        : null,
+      // The team's cookies for video sites, by the sites they are for only (videoCookies.ts).
+      videoCookies: settings?.videoCookies
+        ? { sites: settings.videoCookies.sites, setAt: settings.videoCookies.setAt }
         : null,
       captions: await captionSetupOf(ctx, args.organizationId),
       builtInCaptionStyles: BUILT_IN_STYLES,
@@ -154,6 +167,33 @@ export const setStepRetries = mutation({
 });
 
 /**
+ * Sets the most one run may spend on AI steps, in dollars, or null for no limit. Owners
+ * and admins only.
+ */
+export const setAiLimit = mutation({
+  args: { organizationId: v.string(), dollars: v.union(v.null(), v.number()) },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId, MANAGER_ROLES);
+    const problem = aiLimitProblem(args.dollars);
+    if (problem) throw new ConvexError({ code: "invalid_input", message: problem });
+    const aiLimit =
+      args.dollars === null ? undefined : Math.round(args.dollars * MICROS_PER_DOLLAR);
+    const existing = await ctx.db
+      .query("teamSettings")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, { aiLimit });
+    else {
+      await ctx.db.insert("teamSettings", {
+        organizationId: args.organizationId,
+        maxParallelJobs: DEFAULT_PARALLEL_JOBS,
+        ...(aiLimit === undefined ? {} : { aiLimit }),
+      });
+    }
+  },
+});
+
+/**
  * Sets the team's brand: the logo, colour and font every automation uses, and its music
  * library. An empty value clears that item. Owners and admins only.
  */
@@ -161,13 +201,13 @@ export const setBrand = mutation({
   args: { organizationId: v.string(), brand: brandValidator, music: v.optional(musicValidator) },
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId, MANAGER_ROLES);
-    const brand = await checkedBrand(ctx, args.organizationId, args.brand);
     const existing = await ctx.db
       .query("teamSettings")
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .first();
+    const brand = await checkedBrand(ctx, args.organizationId, args.brand, existing?.brand);
     const music = args.music
-      ? await checkedMusic(ctx, args.organizationId, args.music)
+      ? await checkedMusic(ctx, args.organizationId, args.music, existing?.music)
       : existing?.music;
     if (existing) await ctx.db.patch(existing._id, { brand, ...(music ? { music } : {}) });
     else {
@@ -286,7 +326,9 @@ export const agentBrief = query({
     const motion = settings?.motion
       ? motionSetupText(await motionSetupOf(ctx, args.organizationId))
       : null;
-    const text = [agentSettingsText(agent), captions, motion].filter(Boolean).join("\n\n");
+    // The team's saved looks, so the agent can put a video into one by name.
+    const looks = savedLooksText(await teamLooksOf(ctx, args.organizationId));
+    const text = [agentSettingsText(agent), captions, motion, looks].filter(Boolean).join("\n\n");
     return { model: agent.model, text: text || null };
   },
 });

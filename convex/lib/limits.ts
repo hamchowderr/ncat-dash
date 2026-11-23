@@ -11,7 +11,12 @@ import { components } from "../_generated/api";
  * - New teams: three a day per person, so one account can't mint free trials.
  * - Agent replies: per person and per team, in the dashboard, Slack and Discord alike,
  *   since every reply spends AI tokens.
- * - MCP calls: per key or sign-in, for AI clients that loop.
+ * - MCP calls: per sign-in, for AI clients that loop.
+ * - Password sign-ins (every edition): per network and per account, so nobody can guess
+ *   passwords quickly. The account's allowance is the larger one, so someone guessing
+ *   from elsewhere slows the account down without locking its owner out for long.
+ * - Emails sent on request (password resets, confirmation links): per address and per
+ *   network, so the dashboard can't be used to flood someone's inbox.
  */
 export const limiter = new RateLimiter(components.rateLimiter, {
   signUpFromNetwork: { kind: "fixed window", rate: 5, period: HOUR },
@@ -21,6 +26,11 @@ export const limiter = new RateLimiter(components.rateLimiter, {
   agentTurnPerson: { kind: "token bucket", rate: 60, period: HOUR, capacity: 15 },
   agentTurnTeam: { kind: "token bucket", rate: 240, period: HOUR, capacity: 40 },
   mcpCall: { kind: "token bucket", rate: 120, period: MINUTE, capacity: 60 },
+  signInFromNetwork: { kind: "token bucket", rate: 30, period: HOUR, capacity: 10 },
+  signInFromUnknown: { kind: "token bucket", rate: 60, period: HOUR, capacity: 20 },
+  signInToAccount: { kind: "token bucket", rate: 20, period: HOUR, capacity: 10 },
+  authEmailToAddress: { kind: "token bucket", rate: 5, period: HOUR, capacity: 3 },
+  authEmailFromNetwork: { kind: "token bucket", rate: 10, period: HOUR, capacity: 5 },
 });
 
 /** "in about 3 minutes", "in about an hour", for a wait in milliseconds. */

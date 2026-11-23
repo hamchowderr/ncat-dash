@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
-import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/catalog";
+import { CATEGORY_LABELS, CATEGORY_ORDER, stepHref } from "@/lib/catalog";
 
 export const metadata: Metadata = { title: "Steps" };
 export const instant = false;
@@ -29,7 +29,7 @@ export default function StepsPage() {
               {grouped[category].map((step) => (
                 <li key={step.id}>
                   <Link
-                    href={`/steps/${step.id}`}
+                    href={stepHref(step.id)}
                     className="bg-card hover:bg-accent/50 focus-visible:ring-ring/50 flex h-full flex-col gap-2 rounded-xl p-4 ring-1 ring-foreground/10 outline-none transition-colors focus-visible:ring-3"
                   >
                     <span className="flex items-start justify-between gap-2">

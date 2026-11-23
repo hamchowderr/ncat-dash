@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
 
 import { renderInApp } from "@/test/render";
@@ -8,16 +9,16 @@ import { type RunDetails, RunSteps } from "./run-steps";
 
 const JOIN = { id: "join", kind: "step" as const, stepId: "video-concatenate", input: {} };
 
-function panel(waitsFor: string[]) {
+function panel(waitsFor: string[], node: Record<string, unknown> = JOIN, onChange = vi.fn()) {
   renderInApp(
     <NodePanel
-      node={JOIN}
+      node={node as typeof JOIN}
       before={[]}
       startGivesFile
       filled={{}}
       brand={{}}
       music={[]}
-      onChange={vi.fn()}
+      onChange={onChange}
       onRemove={vi.fn()}
       waitsFor={waitsFor}
     />,
@@ -30,6 +31,35 @@ describe("a step that joins two sides", () => {
     expect(
       screen.getByText(/Waits for Caption video and Trim video to finish, then runs once/),
     ).toBeTruthy();
+  });
+
+  test("its files can be paired by upload, in order, or taken from the first side done", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    panel(["Trim video", "Caption video"], JOIN, onChange);
+    await user.click(screen.getByRole("combobox", { name: "When files meet" }));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Wait for all, then use every file",
+      "Pair files from the same upload",
+      "Pair files in order",
+      "Use whichever line finishes first",
+    ]);
+    await user.click(screen.getByRole("option", { name: "Pair files from the same upload" }));
+    expect(onChange).toHaveBeenCalledWith({ join: "source" });
+  });
+
+  test("says what the picked way does, and goes back to the default with nothing saved", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    panel(["Trim video", "Caption video"], { ...JOIN, join: "first" }, onChange);
+    expect(
+      screen.getByText(
+        "Starts as soon as one of Trim video and Caption video finishes, with only its files. Files from the slower ones are not used.",
+      ),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("combobox", { name: "When files meet" }));
+    await user.click(screen.getByRole("option", { name: "Wait for all, then use every file" }));
+    expect(onChange).toHaveBeenCalledWith({ join: undefined });
   });
 
   test("a step with one step before it says nothing about waiting", () => {

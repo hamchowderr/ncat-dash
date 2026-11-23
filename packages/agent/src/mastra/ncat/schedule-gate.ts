@@ -1,6 +1,6 @@
 import { env } from '../../lib/env';
-import { sessionOf } from './session-store';
-import { convexSiteUrl, signForDashboard } from './slack';
+import { personOf, sessionOf } from './session-store';
+import { convexSiteUrl, dashboardSecret, signForDashboard } from './slack';
 
 /**
  * The agent's own schedules ("every morning, check my uploads") fire with nobody
@@ -16,8 +16,10 @@ export type ScheduleOwner = { organizationId: string; userId?: string };
 export function ownerOf(resourceId: string): ScheduleOwner | null {
   const organizationId = sessionOf(resourceId)?.organizationId;
   if (!organizationId) return null;
-  // In the dashboard the resource is the person; in Slack or Discord it is the thread.
-  return resourceId.startsWith('channel:') ? { organizationId } : { organizationId, userId: resourceId };
+  // In the dashboard the resource is the person within the team; in Slack or Discord it
+  // is the thread, which is not one person.
+  const userId = personOf(resourceId);
+  return userId ? { organizationId, userId } : { organizationId };
 }
 
 export type Answer = { ok: true } | { ok: false; message: string };
@@ -25,7 +27,7 @@ type Ask = (owner: ScheduleOwner) => Promise<Answer | null>;
 
 const askDashboard: Ask = async (owner) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   if (!site || !secret) return null;
   try {
     const response = await fetch(`${site}/agent/scheduled-turn`, {

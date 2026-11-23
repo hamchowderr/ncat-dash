@@ -51,15 +51,16 @@ describe('the image GitHub builds is the one the server deploys', () => {
   const dockerfile = read('packages/agent/Dockerfile');
 
   it('the release Dockerfile pulls the tag the workflow publishes', () => {
-    // ghcr.io/${{ github.repository }}-agent:sha-${{ github.sha }}
+    // ghcr.io/${{ github.repository }}-agent:sha-<commit>, both processors under one tag
     expect(workflow).toContain('IMAGE: ghcr.io/${{ github.repository }}-agent');
-    expect(workflow).toContain('${{ env.IMAGE }}:sha-${{ github.sha }}');
+    expect(workflow).toContain('-t "$IMAGE:sha-$GITHUB_SHA"');
     expect(release).toContain('FROM ghcr.io/hamchowderr/ncat-dash-agent:sha-${SOURCE_COMMIT}');
     expect(release).toMatch(/^ARG SOURCE_COMMIT$/m);
   });
 
   it('the release branch moves only after the image is published', () => {
-    const publish = workflow.indexOf('name: Publish');
+    // After both halves are joined under the commit's tag, not after the first half.
+    const publish = workflow.indexOf('name: Join the two halves under one name');
     const releaseStep = workflow.indexOf('refs/heads/agent-release');
     expect(publish).toBeGreaterThan(0);
     expect(releaseStep).toBeGreaterThan(publish);
@@ -79,5 +80,11 @@ describe('the image GitHub builds is the one the server deploys', () => {
     expect(workflow).toContain('"id": "pnpm-store"');
     expect(workflow).toContain('"target": "/pnpm/store"');
     expect(dockerfile).toContain('id=pnpm-store,target=/pnpm/store');
+  });
+});
+
+describe('the agent image', () => {
+  it('never gives the agent a shell on the server', () => {
+    expect(read('packages/agent/Dockerfile')).toMatch(/WORKSPACE_SANDBOX=false/);
   });
 });

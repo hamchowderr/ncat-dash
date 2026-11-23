@@ -61,6 +61,9 @@ describe("what could be shown", () => {
   it("keeps the words that name something", () => {
     expect(shownWords("I started this whole thing in my dad's garage.")).toBe("whole dad garage");
     expect(shownWords("So yeah, I think that's really it.")).toBe("");
+    expect(shownWords("They were solutions to problems I didn't know about.")).toBe(
+      "solutions problems",
+    );
     expect(shownWords("We drove to the beach and watched the sunset over the ocean")).toBe(
       "beach sunset ocean",
     );
@@ -179,6 +182,106 @@ describe("choosing cutaways", () => {
     expect(cutawaySummary(cuts)).toBe("Added 2 cutaways: 1 from your library, 1 from Pixabay.");
     expect(cutawaySummary([])).toBe("No cutaways were added.");
   });
+
+  // Scores from the first real run: "international space station" against the team's own
+  // astronaut clip (0.283) and a Pixabay still (0.288).
+  it("prefers the library over stock that matches about as well", () => {
+    const stock = footage("pixabay:238", 0.288, { kind: "stock" });
+    const [cut] = chooseCutaways(
+      moments.slice(2, 3),
+      [[stock, footage("V2", 0.283)]],
+      { ...BROLL_DEFAULTS, skipOpening: 0 },
+      { duration: 40 },
+    );
+    expect(cut.footage.ref).toBe("V2");
+    // A clearly better stock clip still wins.
+    const [better] = chooseCutaways(
+      moments.slice(2, 3),
+      [[footage("pixabay:9", 0.31, { kind: "stock" }), footage("V2", 0.283)]],
+      { ...BROLL_DEFAULTS, skipOpening: 0 },
+      { duration: 40 },
+    );
+    expect(better.footage.ref).toBe("pixabay:9");
+  });
+
+  it("never lets a weak library match in on the preference", () => {
+    const cuts = chooseCutaways(
+      moments.slice(2, 3),
+      [[footage("V2", 0.245)]],
+      { ...BROLL_DEFAULTS, skipOpening: 0, match: "normal" },
+      { duration: 40 },
+    );
+    expect(cuts).toEqual([]);
+  });
+
+  // The NASA interview's cuts, found by the toolkit: its helmet shot runs 20.3 s to 27.8 s,
+  // and the astronaut clip once landed at 22.5 s inside it, so the helmet showed twice.
+  const NASA_CUTS = [0.1, 5.3, 7.6, 10.8, 12.2, 15.1, 18.1, 20.3, 27.8, 31.1, 35.9, 39.5];
+  const said = (start: number) => [
+    { start, end: start + 2, said: "the space station", show: "space station" },
+  ];
+
+  it("covers a short shot of the video whole instead of cutting into it", () => {
+    const [cut] = chooseCutaways(
+      said(22.5),
+      [[footage("ASTRO", 0.28, { duration: 16.5 })]],
+      BROLL_DEFAULTS,
+      {
+        duration: 75,
+        cuts: NASA_CUTS,
+      },
+    );
+    expect([cut.start, cut.end]).toEqual([20.3, 27.8]);
+  });
+
+  it("leaves a short shot alone when the footage is too short to cover it", () => {
+    expect(
+      chooseCutaways(said(22.5), [[footage("ASTRO", 0.28, { duration: 4 })]], BROLL_DEFAULTS, {
+        duration: 75,
+        cuts: NASA_CUTS,
+      }),
+    ).toEqual([]);
+  });
+
+  it("moves an edge onto a cut close by, and ends where the video cuts", () => {
+    // Starts 0.6 s into the 31.1 s shot: it starts with the shot.
+    const [early] = chooseCutaways(said(31.7), [[footage("A", 0.3)]], BROLL_DEFAULTS, {
+      duration: 75,
+      cuts: NASA_CUTS,
+    });
+    expect([early.start, early.end]).toEqual([31.1, 34.1]);
+    // 3 s from 13.5 s would run past the cut at 15.1 s: it ends there.
+    const [cut] = chooseCutaways(
+      said(13.5),
+      [[footage("B", 0.3)]],
+      { ...BROLL_DEFAULTS, skipOpening: 0 },
+      {
+        duration: 75,
+        cuts: [0.1, 12.2, 15.1, 30],
+      },
+    );
+    expect([cut.start, cut.end]).toEqual([13.5, 15.1]);
+  });
+
+  it("cuts away inside a long take, where the speaker talks", () => {
+    const [cut] = chooseCutaways(said(50), [[footage("A", 0.3)]], BROLL_DEFAULTS, {
+      duration: 75,
+      cuts: [40, 70],
+    });
+    expect([cut.start, cut.end]).toEqual([50, 53]);
+  });
+
+  it("is placed as before when the cuts are not known", () => {
+    const [cut] = chooseCutaways(
+      said(22.5),
+      [[footage("ASTRO", 0.28, { duration: 16.5 })]],
+      BROLL_DEFAULTS,
+      {
+        duration: 75,
+      },
+    );
+    expect([cut.start, cut.end]).toEqual([22.5, 25.5]);
+  });
 });
 
 describe("what counts as B-Roll", () => {
@@ -187,6 +290,23 @@ describe("what counts as B-Roll", () => {
     expect(looksLikeBroll({ duration: 12, faces: [0.2, 0.25, 0.22] })).toBe(false);
     expect(looksLikeBroll({ duration: 60, faces: [0], spokenWords: 150 })).toBe(false);
     expect(looksLikeBroll({ duration: 900, faces: [0] })).toBe(false);
+  });
+
+  // The faces the picture model found in a real NASA interview (75 s, 720p, not yet
+  // transcribed): she is in a medium shot most of the time, about 2.5% of the frame.
+  it("is not an interview where someone is on camera most of the time", () => {
+    const interview = [
+      0.058, 0.037, 0.016, 0.017, 0.025, 0.025, 0.024, 0.026, 0.057, 0.024, 0.02, 0.024, 0.025,
+      0.024, 0, 0, 0.03, 0.023, 0.024, 0.02, 0.021, 0.059, 0.063, 0.315, 0.308, 0.311, 0.294, 0.026,
+      0, 0, 0, 0.061, 0.03, 0.024, 0, 0, 0,
+    ];
+    expect(looksLikeBroll({ duration: 75, faces: interview })).toBe(false);
+    // A launch, the Earth from orbit: nobody on camera.
+    expect(looksLikeBroll({ duration: 57, faces: Array(28).fill(0) })).toBe(true);
+    // A crowd or a wide shot: faces now and then, all small.
+    expect(looksLikeBroll({ duration: 20, faces: [0, 0.006, 0.008, 0, 0.004, 0.015, 0, 0] })).toBe(
+      true,
+    );
   });
 
   it("scores unit vectors", () => {

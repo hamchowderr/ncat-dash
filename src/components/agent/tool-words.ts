@@ -44,8 +44,14 @@ function changeLine(change: Record<string, unknown>): string | null {
       return typeof change.label === "string"
         ? `Rename a step to "${change.label}"`
         : "Rename a step";
+    case "meet":
+      return "Choose how files meet at a step";
     case "trigger":
       return `Start it with: ${typeTitle((change.trigger as { kind?: unknown } | undefined)?.kind)}`;
+    case "addTrigger":
+      return `Also start it with: ${typeTitle((change.trigger as { kind?: unknown } | undefined)?.kind)}`;
+    case "removeTrigger":
+      return "Remove a trigger";
     case "name":
       return typeof change.name === "string"
         ? `Rename the automation to "${change.name}"`
@@ -56,6 +62,40 @@ function changeLine(change: Record<string, unknown>): string | null {
     default:
       return "Make a change";
   }
+}
+
+const KIND_LABELS: Record<string, string> = {
+  client: "client work",
+  ugc: "UGC and ads",
+  own: "your own content",
+  quick: "a quick personal job",
+};
+
+/** What a workflow set-up would change, one line each. */
+function workflowLines(given: Args): string[] {
+  const lines: string[] = [];
+  if (isText(given?.name)) lines.push(`Called "${given.name}"`);
+  if (isText(given?.kind) && KIND_LABELS[given.kind]) lines.push(`For ${KIND_LABELS[given.kind]}`);
+  if (given?.clientId === null) lines.push("For your team, not a client");
+  else if (isText(given?.clientId)) lines.push("For one of your clients");
+  const review = (given?.review ?? {}) as Record<string, unknown>;
+  if (review.on === false) lines.push("No review: the files go out as soon as they are made");
+  else if (review.on === true) lines.push("One review just before the last files go out");
+  if (Array.isArray(review.reviewers)) {
+    lines.push(
+      review.reviewers.length === 0
+        ? "Anyone on the team can approve"
+        : `${count(review.reviewers.length, "person", "people")} picked to approve`,
+    );
+  }
+  if (typeof review.timeLimit === "number") {
+    lines.push(
+      review.timeLimit > 0
+        ? `Decides by itself after ${review.timeLimit} ${isText(review.timeLimitUnit) ? review.timeLimitUnit : "hours"}`
+        : "Waits until someone decides",
+    );
+  }
+  return lines.length > 0 ? lines : ["Its automations become one workflow with one review"];
 }
 
 export function toolWords(name: string | undefined, args: unknown): ToolWords {
@@ -114,7 +154,7 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
     case "try_team_step": {
       const step = (given?.step ?? {}) as { title?: unknown };
       return {
-        title: "Trying a new FFmpeg step",
+        title: "Trying a new step",
         question: "Try this step on a file?",
         lines: [
           isText(step.title) ? `"${step.title}"` : "A step written for you",
@@ -135,7 +175,7 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
         lines: [
           isText(step.title) ? `"${step.title}"` : "A step written for you",
           settings.length ? `Settings: ${settings.join(", ")}` : "No settings to fill in",
-          "It runs as plain FFmpeg, with no AI each time.",
+          "It runs on your toolkit by plain rules, with no AI each time.",
         ],
       };
     }
@@ -177,6 +217,24 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
           `${isText(given?.key) ? fileName(given.key) : "The file"} becomes "${isText(given?.name) ? given.name : ""}"`,
         ],
       };
+    case "describe_workflow":
+      return { title: "Reading the workflow", question: "", lines: [] };
+    case "set_up_workflow":
+      return {
+        title: "Setting up the workflow",
+        question: "Set up this workflow?",
+        lines: workflowLines(given),
+      };
+    case "switch_workflow":
+      return {
+        title: given?.on ? "Switching the workflow on" : "Switching the workflow off",
+        question: given?.on ? "Switch this whole workflow on?" : "Switch this whole workflow off?",
+        lines: [
+          given?.on
+            ? "Every automation in it will then start by itself, with nobody logged in."
+            : "None of its automations will start by themselves.",
+        ],
+      };
     case "switch_automation":
       return {
         title: given?.on ? "Switching the automation on" : "Switching the automation off",
@@ -203,6 +261,16 @@ const PLAIN_TITLES: Record<string, string> = {
   task_check: "Checked the plan",
   updateWorkingMemory: "Saved a note",
   find_in_library: "Looking in your library",
+  library_file: "Looking up a library file",
+  knowledge_search: "Searching what I know",
+  knowledge_read: "Reading a page of notes",
+  knowledge_list: "Looking through my notes",
+  knowledge_page: "Writing a page of notes",
+  knowledge_note: "Saving a note",
+  knowledge_pin: "Keeping a page in mind",
+  skill: "Reading up on how to do it",
+  skill_search: "Looking through what I know how to do",
+  skill_read: "Reading a worked example",
   moments: "Finding the best moments",
   run_on_library_file: "Running an automation on a library file",
   list_schedules: "Looking at your schedules",

@@ -1,18 +1,35 @@
+import { beatRecipes } from "./beats";
 import type { StepDefinition } from "./define";
 import { editingRecipes } from "./editing";
 import { moreRecipes, recipes } from "./recipes";
 import { hiddenSteps, steps } from "./steps";
+import { savedLookStep } from "./looks";
+import { variantRecipes } from "./variants";
 import { type SavedTeamStep, teamStepDefinition } from "./team-steps";
 
 export * from "./define";
 export * from "./client";
+export * from "./compose-guard";
 export * from "./editing";
 export * from "./recipes";
 export * from "./steps";
 export * from "./team-steps";
+export * from "./variants";
+export * from "./disclosure";
+export * from "./codes";
+export * from "./looks";
+export * from "./beats";
 
 /** Every step a person can run: the toolkit's endpoints, then the ready-made recipes. */
-export const allSteps: StepDefinition[] = [...steps, ...recipes, ...moreRecipes, ...editingRecipes];
+export const allSteps: StepDefinition[] = [
+  ...steps,
+  ...recipes,
+  ...moreRecipes,
+  ...editingRecipes,
+  ...variantRecipes,
+  savedLookStep,
+  ...beatRecipes,
+];
 
 // Steps only other steps send, such as the motion graphics render: known by id, not listed.
 const byId = new Map<string, StepDefinition>(

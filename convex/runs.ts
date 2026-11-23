@@ -1,4 +1,4 @@
-import { type AutomationNode, nodeTypeOf } from "@ncat-dash/automation-core";
+import { type AutomationNode, nodeTypeOf, triggersOf } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, type MutationCtx, query } from "./_generated/server";
@@ -6,16 +6,24 @@ import { runEnded } from "./lib/chain";
 import { approvalView, membersOf } from "./lib/approvals";
 import { isMember, requireMember } from "./lib/authz";
 import { factsOf } from "./lib/facts";
+import { loggedJob } from "./lib/stepLog";
 import { finishWait } from "./lib/logic";
 import { pickUp as pickUpRun, pickUpCheck, stepsOf } from "./lib/pickUp";
 import { pump } from "./lib/queue";
-import { EDITORS, editorFiles as filesForEditors } from "@ncat-dash/timeline-export";
+import {
+  EDITORS,
+  editorFiles as filesForEditors,
+  fileNameOf,
+  sourcesOf,
+} from "@ncat-dash/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
 import { outputNamesOf, startingFileName } from "./lib/outputs";
+import { aiLimitOf } from "./aiSpend";
 import {
   approvalTimeUp as decideWhenTimeIsUp,
   decideApproval,
   retriesFor,
+  retryAgentStepNow,
   retryStepNow,
   startRun,
 } from "./lib/runner";
@@ -150,6 +158,14 @@ export const get = query({
       startedByRun: parent ? linkTo(parent) : null,
       // Runs this one started: by a Run an automation step, or by being followed.
       startedRuns: started.map(linkTo),
+      // Waiting for the automation's other runs, when it runs only a few at a time: how
+      // many it runs at once. Null when the run is not waiting for its turn.
+      waitingForTurn: run.heldForSlot
+        ? ((await ctx.db.get(run.automationId))?.runsAtOnce ?? null)
+        : null,
+      // What the run's AI steps spent, in millionths of a dollar, and the team's limit.
+      aiSpent: run.aiSpent ?? 0,
+      aiLimit: (await aiLimitOf(ctx, run.organizationId)) ?? null,
       nodes: run.nodes,
       edges: run.edges,
       steps: await Promise.all(
@@ -178,7 +194,17 @@ export const get = query({
             cutaways: step.cutaways ?? null,
             // For Add Motion Graphics and Add Sound Effects: what it put on each video, and when.
             placed: step.placed ?? null,
+            // For Clean Up Pauses And Retakes: what it took out of each video.
+            cleaned: step.cleaned ?? null,
+            // For Check Footage: each file it checked and what is wrong with it.
+            footage: step.footage ?? null,
+            // For Length Cuts and Hook And Ending Variants: the paid-ad disclosure kept.
+            disclosures: step.disclosures ?? null,
+            // For Translate Subtitles: each video's subtitle file in each language.
+            subtitles: step.subtitles ?? null,
             pickNote: step.pickNote ?? null,
+            // For a step that asks the AI: what it spent, in millionths of a dollar.
+            aiSpent: step.aiSpent ?? null,
             // For an If: the files that left by each way. For a Wait: when it carries on.
             branches: step.branches,
             resumeAt: step.resumeAt,
@@ -195,6 +221,35 @@ export const get = query({
           };
         }),
       ),
+    };
+  },
+});
+
+/** The most jobs a step's log lists. */
+const LOG_JOBS = 100;
+
+/**
+ * One step's log: every job it sent, earlier tries too, oldest first, and each try that
+ * failed and was tried again. Null for someone outside the team.
+ */
+export const stepLog = query({
+  args: { runStepId: v.id("runSteps") },
+  handler: async (ctx, args) => {
+    const step = await ctx.db.get(args.runStepId);
+    if (!step) return null;
+    const run = await ctx.db.get(step.runId);
+    if (!run || !(await isMember(ctx, run.organizationId))) return null;
+    const jobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_runStep", (q) => q.eq("runStepId", step._id))
+      .take(LOG_JOBS + 1);
+    return {
+      tries: step.tries ?? [],
+      jobs: jobs.slice(0, LOG_JOBS).map(loggedJob),
+      more: jobs.length > LOG_JOBS,
+      // The files it handed on, each with the file it was made from and the one the run
+      // started with. Steps that finished before these were kept have none.
+      files: (step.items ?? []).slice(0, LOG_JOBS),
     };
   },
 });
@@ -225,6 +280,14 @@ export const editorFiles = query({
       clips: finishedFiles(run, steps),
       // Readable names for the clips, by link, to save them under.
       clipNames: outputNamesOf(run, steps),
+      // The folder the desktop app saves everything into: the automation and the day it ran.
+      folder: `${run.automationName} ${new Date(run._creationTime).toISOString().slice(0, 10)}`,
+      // The recordings the timelines point at, under the file names the timelines use, so
+      // the desktop app can save them next to the timelines.
+      recordings: sourcesOf(cuts).map((source) => ({
+        url: source.url,
+        name: fileNameOf(source.url),
+      })),
     };
   },
 });
@@ -294,7 +357,7 @@ export const cancel = mutation({
  * Stops a run, and every run one of its "Run an automation" steps is waiting on. A step
  * waiting on this run is told it was stopped.
  */
-async function cancelRun(ctx: MutationCtx, run: Doc<"runs">): Promise<void> {
+export async function cancelRun(ctx: MutationCtx, run: Doc<"runs">): Promise<void> {
   if (run.status !== "running" && run.status !== "waiting") return;
   const now = Date.now();
   const steps = await ctx.db
@@ -307,13 +370,19 @@ async function cancelRun(ctx: MutationCtx, run: Doc<"runs">): Promise<void> {
     if (step.status === "done" || step.status === "failed" || step.status === "skipped") continue;
     for (const jobId of step.jobIds) {
       const job = await ctx.db.get(jobId);
-      if (job && job.status === "queued" && job.dispatchedAt === undefined) {
-        await ctx.db.patch(jobId, {
-          status: "failed",
-          error: "The run was cancelled before this job was sent.",
-          finishedAt: now,
-        });
-      }
+      if (!job || job.status === "done" || job.status === "failed") continue;
+      // A job the toolkit already has ends here too, so it stops counting toward the
+      // team's jobs at once. Otherwise a job that hangs on the toolkit would hold its slot,
+      // and the team's next runs would wait, until the dashboard gives up on it hours later.
+      // Its result, if one ever comes, is not used.
+      const sent = job.status === "running" || job.dispatchedAt !== undefined;
+      await ctx.db.patch(jobId, {
+        status: "failed",
+        error: sent
+          ? "The run was stopped while the toolkit worked on this job, so its result is not used."
+          : "The run was cancelled before this job was sent.",
+        finishedAt: now,
+      });
     }
     await ctx.db.patch(step._id, { status: "skipped", finishedAt: now });
   }
@@ -350,6 +419,18 @@ export const retryStep = internalMutation({
   },
 });
 
+/** Asks the agent again for a step whose asking failed. Scheduled by the runner. */
+export const retryAgentStep = internalMutation({
+  args: {
+    runStepId: v.id("runSteps"),
+    retry: v.number(),
+    ask: v.union(v.literal("pick"), v.literal("match"), v.literal("choose")),
+  },
+  handler: async (ctx, args) => {
+    await retryAgentStepNow(ctx, args.runStepId, args.retry, args.ask);
+  },
+});
+
 /**
  * Starts a finished run over, with the file and data that started it the first time
  * and the automation as it is now. For a run that failed once the cause is fixed.
@@ -379,7 +460,15 @@ export const runAgain = mutation({
           userId,
           { test: run.test },
         )
-      : await startRun(ctx, automation, run.triggerKind, run.trigger, userId);
+      : await startRun(ctx, automation, run.triggerKind, run.trigger, userId, {
+          // The same trigger's steps again, when that trigger is still there.
+          ...(run.triggerId &&
+          triggersOf(automation as Parameters<typeof triggersOf>[0]).some(
+            (each) => each.id === run.triggerId,
+          )
+            ? { triggerId: run.triggerId }
+            : {}),
+        });
     if (!started.ok) throw new ConvexError({ code: "invalid_input", message: started.message });
     return started.runId;
   },

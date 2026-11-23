@@ -150,3 +150,42 @@ export const people = query({
     return people;
   },
 });
+
+/**
+ * The person behind a signed-in session, or null when the session is missing, has
+ * expired or belongs to someone else. Same checks as Better Auth's safeGetAuthUser.
+ * It lives here rather than going through adapter.findOne because adapter.ts loads
+ * all of Better Auth on every call; this file stays small so each call stays fast.
+ */
+export const caller = query({
+  args: { sessionId: v.string(), userId: v.string() },
+  returns: v.union(v.null(), v.any()),
+  handler: async (ctx, args) => {
+    const sessionId = ctx.db.normalizeId("session", args.sessionId);
+    const session = sessionId ? await ctx.db.get(sessionId) : null;
+    if (!session || session.expiresAt <= Date.now() || session.userId !== args.userId) return null;
+    const userId = ctx.db.normalizeId("user", args.userId);
+    return userId ? await ctx.db.get(userId) : null;
+  },
+});
+
+/**
+ * What an invite-only copy needs to know before someone signs up: whether anyone has an
+ * account yet (the first person, the owner, always may), and whether this address has an
+ * invitation to a team that is still open.
+ */
+export const signUpCheck = query({
+  args: { email: v.string() },
+  returns: v.object({ hasAccounts: v.boolean(), invited: v.boolean() }),
+  handler: async (ctx, args) => {
+    const someone = await ctx.db.query("user").first();
+    const email = args.email.trim().toLowerCase();
+    const invitations = await ctx.db
+      .query("invitation")
+      .withIndex("email", (q) => q.eq("email", email))
+      .take(50);
+    const now = Date.now();
+    const invited = invitations.some((i) => i.status === "pending" && i.expiresAt > now);
+    return { hasAccounts: someone !== null, invited };
+  },
+});

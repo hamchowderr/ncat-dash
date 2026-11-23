@@ -1,22 +1,27 @@
 /// <reference types="vite/client" />
 import presence from "@convex-dev/presence/test";
 import rateLimiter from "@convex-dev/rate-limiter/test";
+import workpool from "@convex-dev/workpool/test";
 import { convexTest } from "convex-test";
 import { components } from "./_generated/api";
 import authSchema from "./betterAuth/schema";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/!(*.*.*)*.*s");
-const authModules = import.meta.glob("./betterAuth/**/!(*.*.*)*.*s");
+// Every function file, without tests and other dotted files (foo.test.ts).
+const modules = import.meta.glob(["./**/*.*s", "!./**/*.*.*s"]);
+const authModules = import.meta.glob(["./betterAuth/**/*.*s", "!./betterAuth/**/*.*.*s"]);
 
-/** A fresh in-memory backend with the auth, presence and rate limiter components installed. */
+/** A fresh in-memory backend with the auth, presence, rate limiter and workpool components. */
 export function backend() {
   process.env.SITE_URL = "http://localhost:3000";
   process.env.BETTER_AUTH_SECRET = "test-secret-test-secret-test-secret";
+  // Every deployment has its own address; jobs sent to a toolkit give it for the webhook.
+  process.env.CONVEX_SITE_URL ??= "https://dash.example";
   const t = convexTest(schema, modules);
   t.registerComponent("betterAuth", authSchema, authModules);
   presence.register(t, "presence");
   rateLimiter.register(t, "rateLimiter");
+  for (const name of ["outboundPool", "toolkitPool", "backgroundPool"]) workpool.register(t, name);
   return t;
 }
 

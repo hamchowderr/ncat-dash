@@ -56,8 +56,13 @@ function fakeToolkit(duration = 30, agentAnswer?: unknown) {
         });
       }
       if (url.endsWith("/v1/video/motion")) {
+        // Pieces behind the speaker with no cut-out sent: the toolkit makes one and hands it back.
+        const behind = (body.pieces as { layer?: string }[] | undefined)?.some(
+          (piece) => piece.layer === "behind",
+        );
         return done({
           file_url: "https://files.example/out/with-motion.mp4",
+          ...(behind && !body.mask_url ? { mask_url: "https://files.example/out/mask.mp4" } : {}),
           pieces: 3,
           sounds: 0,
           seconds: 30,
@@ -145,16 +150,12 @@ async function setUp(nodes: Node[], motion?: Record<string, unknown>) {
       updatedAt: Date.now(),
     });
   });
-  const start = () =>
+  const start = (
+    trigger: Record<string, unknown> = { file_url: FILE, file_name: "growth-talk.mp4" },
+  ) =>
     t.run(async (ctx) => {
       const automation = (await ctx.db.get(automationId))!;
-      const started = await startRun(
-        ctx,
-        automation,
-        "webhook",
-        { file_url: FILE, file_name: "growth-talk.mp4" },
-        maya.id,
-      );
+      const started = await startRun(ctx, automation, "webhook", trigger, maya.id);
       if (!started.ok) throw new Error(started.message);
       return started.runId;
     });
@@ -200,7 +201,7 @@ describe("Add Motion Graphics", () => {
     const pieces = render.body.pieces as { type: string; title?: string; subtitle?: string }[];
     // The second number is said within the style's gap of the first, so it gets no card.
     expect(pieces.map((piece) => piece.type)).toEqual(["title", "lower_third", "stat", "follow"]);
-    expect(pieces[0].title).toBe("growth-talk");
+    expect(pieces[0].title).toBe("growth talk");
     expect(pieces[1]).toMatchObject({ title: "Ana", subtitle: "Host" });
     expect(pieces[2]).toMatchObject({ title: "40%", subtitle: "faster than last year" });
     expect(pieces.at(-1)).toMatchObject({ title: "@saltstudio" });
@@ -235,13 +236,121 @@ describe("Add Motion Graphics", () => {
     expect(pieces.find((piece) => piece.type === "title")?.title).toBe("Big Year");
   });
 
+  test("puts the title behind the speaker, outlines them, punches in, and keeps the cut-out", async () => {
+    const sent = fakeToolkit();
+    const { t, start, runOf } = await setUp(
+      [
+        {
+          id: "motion",
+          kind: "motion",
+          input: { title: "Big Year", behind: true, outline: true, punchIns: true },
+        },
+      ],
+      TEAM_MOTION,
+    );
+    const runId = await start();
+    await settled(t);
+    expect((await runOf(runId))!.status).toBe("done");
+    const render = sent.find((one) => one.url.endsWith("/v1/video/motion"))!;
+    const pieces = render.body.pieces as { type: string; title?: string; layer?: string }[];
+    expect(pieces.find((piece) => piece.title === "Big Year")).toMatchObject({
+      type: "big_text",
+      layer: "behind",
+    });
+    expect(render.body.outlines).toEqual([expect.objectContaining({ start: 0.2 })]);
+    expect(render.body).not.toHaveProperty("mask_url");
+    // The cut-out the toolkit made is kept for the video and is not a finished file.
+    const step = await t.run(
+      async (ctx) =>
+        (await ctx.db
+          .query("runSteps")
+          .withIndex("by_run", (q) => q.eq("runId", runId))
+          .first())!,
+    );
+    expect(step.outputs).toEqual(["https://files.example/out/with-motion.mp4"]);
+    const kept = await t.run((ctx) => ctx.db.query("speakerMasks").collect());
+    expect(kept.map((one) => one.mask)).toEqual(["https://files.example/out/mask.mp4"]);
+
+    // The next run on the same video sends it, so the speaker is not cut out again.
+    const again = await start();
+    await settled(t);
+    expect((await runOf(again))!.status).toBe("done");
+    const renders = sent.filter((one) => one.url.endsWith("/v1/video/motion"));
+    expect(renders.at(-1)!.body.mask_url).toBe("https://files.example/out/mask.mp4");
+  });
+
+  test("titles a run started by hand, which only has the file's link, from that link", async () => {
+    const sent = fakeToolkit();
+    const { t, start, runOf } = await setUp(
+      [{ id: "motion", kind: "motion", input: {} }],
+      TEAM_MOTION,
+    );
+    const runId = await start({ file_url: "https://files.example/uploads/Meet-Zena_Cardman.mp4" });
+    await settled(t);
+    expect((await runOf(runId))!.status).toBe("done");
+    const render = sent.find((one) => one.url.endsWith("/v1/video/motion"))!;
+    const pieces = render.body.pieces as { type: string; title?: string }[];
+    // Uploads keep a tidied name with dashes; the title reads as words.
+    expect(pieces[0]).toMatchObject({ type: "title", title: "Meet Zena Cardman" });
+  });
+
   test("works with no Motion settings saved, in the default style", async () => {
     const sent = fakeToolkit();
     const { t, start, runOf } = await setUp([{ id: "motion", kind: "motion", input: {} }]);
     const runId = await start();
     await settled(t);
-    expect((await runOf(runId))!.status).toBe("done");
-    expect(sent.some((one) => one.url.endsWith("/v1/video/motion"))).toBe(true);
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    // The default style is a name card and a follow card, and neither has words yet, so
+    // the video goes on as it is and the step says what to fill in.
+    expect(sent.some((one) => one.url.endsWith("/v1/video/motion"))).toBe(false);
+    const step = run.steps.find((one) => one.nodeId === "motion")!;
+    expect(step.outputs).toEqual([FILE]);
+    expect(step.pickNote).toMatch(/Add a speaker name and a handle in Settings, under Motion/);
+  });
+});
+
+describe("Add Motion Graphics with nothing to draw", () => {
+  const NAME_AND_FOLLOW_ONLY = {
+    ...TEAM_MOTION,
+    style: {
+      ...TEAM_MOTION.style,
+      pieces: ["lower_third", "follow"],
+      opening: "none",
+      sound: "off",
+    },
+    hostName: "",
+    hostRole: "",
+    handle: "",
+  };
+
+  test("hands the video on unchanged, says why, and the steps after it still run", async () => {
+    const sent = fakeToolkit();
+    const { t, start, runOf } = await setUp(
+      [
+        { id: "motion", kind: "motion", input: {} },
+        { id: "sounds", kind: "sound-effects", input: {} },
+      ],
+      NAME_AND_FOLLOW_ONLY,
+    );
+    const runId = await start();
+    await settled(t);
+
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    const step = run.steps.find((one) => one.nodeId === "motion")!;
+    expect(step.status).toBe("done");
+    expect(step.error).toBeNull();
+    expect(step.outputs).toEqual([FILE]);
+    expect(step.pickNote).toBe(
+      "Nothing to draw on the video, so it went on unchanged. Add a speaker name and a handle in Settings, under Motion, for the name and follow cards to show.",
+    );
+    // No render was sent for a video with nothing on it. The one render is Add Sound
+    // Effects after it, given the untouched video.
+    const renders = sent.filter((one) => one.url.endsWith("/v1/video/motion"));
+    expect(renders).toHaveLength(1);
+    expect(renders[0].body).toMatchObject({ video_url: FILE, pieces: [] });
+    expect(run.steps.find((one) => one.nodeId === "sounds")!.status).toBe("done");
   });
 });
 

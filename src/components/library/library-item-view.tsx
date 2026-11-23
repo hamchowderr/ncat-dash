@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { describeFileDetails, formatMoment } from "@ncat-dash/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ArrowLeft, AudioLines, Play, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, AudioLines, Bot, Play, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -32,8 +32,12 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
+import { SubtitleText, TranscriptDownload } from "./transcript-files";
+import { LanguagePicker, ORIGINAL, TranslatedWords } from "./translations";
+import { UploadStoryboard } from "@/components/storyboard/storyboard-view";
 import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "./library-media";
 import { PickList } from "@/components/ui/pick-list";
+import { Segmented } from "@/components/ui/segmented";
 
 /** Wraps each place the search words appear in a highlight. */
 function marked(text: string, words: string[]): ReactNode {
@@ -270,6 +274,13 @@ export function LibraryItemView({
   const media = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const [now, setNow] = useState(0);
   const [find, setFind] = useState(search ?? "");
+  // Read the transcript line by line, or as the SRT or WebVTT file it makes.
+  const [shown, setShown] = useState<"read" | "srt" | "vtt">("read");
+  // The original words, or a translation of them by its language's code.
+  const [language, setLanguage] = useState(ORIGINAL);
+  const translations = useQuery(api.translations.list, { itemId }) ?? [];
+  const translation =
+    language === ORIGINAL ? null : (translations.find((one) => one.language === language) ?? null);
 
   const self = useMemo(() => (item ? [{ _id: item._id, kind: item.kind }] : undefined), [item]);
   const links = useLibraryLinks(team.id, self);
@@ -409,17 +420,67 @@ export function LibraryItemView({
                     </p>
                   )}
                 </div>
-                {item.searchable === "ready" && (
-                  <Input
-                    value={find}
-                    onChange={(event) => setFind(event.target.value)}
-                    placeholder="Find in this file"
-                    aria-label="Find in what was said"
-                    className="h-8 w-56"
-                  />
+                {item.searchable === "ready" && pieces.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <LanguagePicker
+                      itemId={item._id}
+                      translations={translations}
+                      value={translation ? translation.language : ORIGINAL}
+                      onValueChange={setLanguage}
+                    />
+                    <Segmented
+                      aria-label="Show the words as"
+                      className="w-auto"
+                      value={shown}
+                      onValueChange={setShown}
+                      options={[
+                        { value: "read", label: "Transcript" },
+                        { value: "srt", label: "SRT" },
+                        { value: "vtt", label: "VTT" },
+                      ]}
+                    />
+                    {translation ? (
+                      translation.status === "ready" && (
+                        <TranscriptDownload
+                          pieces={translation.cues}
+                          title={item.title}
+                          language={translation.language}
+                        />
+                      )
+                    ) : (
+                      <TranscriptDownload pieces={pieces} title={item.title} />
+                    )}
+                  </div>
                 )}
               </div>
-              {item.searchable === "ready" ? (
+              {item.searchable === "ready" && pieces.length > 0 && translation && (
+                <TranslatedWords
+                  itemId={item._id}
+                  translation={translation}
+                  shown={shown}
+                  now={now}
+                  onSeek={captions ? undefined : seek}
+                  onRemoved={() => setLanguage(ORIGINAL)}
+                />
+              )}
+              {translation
+                ? null
+                : item.searchable === "ready" &&
+                  pieces.length > 0 &&
+                  shown === "read" && (
+                    <Input
+                      value={find}
+                      onChange={(event) => setFind(event.target.value)}
+                      placeholder="Find in this file"
+                      aria-label="Find in what was said"
+                      className="h-8 w-full sm:w-64"
+                    />
+                  )}
+              {translation ? null : item.searchable === "ready" &&
+                pieces.length > 0 &&
+                shown !== "read" ? (
+                <SubtitleText pieces={pieces} format={shown} />
+              ) : item.searchable === "ready" ? (
                 shownPieces.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
                     {pieces.length === 0
@@ -474,11 +535,13 @@ export function LibraryItemView({
                     })}
                   </ol>
                 )
-              ) : item.searchable === "working" ? (
+              ) : item.searchable === "working" ||
+                (item.searchable === "no" && item.source === "upload" && !captions) ? (
+                // Everything brought in is transcribed by itself; an older file is caught up.
                 <p className="text-muted-foreground text-sm">
                   {captions
                     ? "Reading the caption file."
-                    : "Being transcribed on your toolkit. The words show here when it is done."}
+                    : "Being transcribed on your toolkit. The words, SRT and VTT show here when it is done."}
                 </p>
               ) : (
                 <div className="bg-surface flex flex-col items-start gap-3 rounded-xl p-5">
@@ -487,15 +550,15 @@ export function LibraryItemView({
                       ? `The last try did not work${item.transcriptError ? `: ${item.transcriptError}` : "."}`
                       : captions
                         ? "The caption file has not been read yet."
-                        : "Make this file searchable to find any moment by what was said in it."}
+                        : "Transcribe this file to find any moment by what was said in it, and to get its SRT and VTT."}
                   </p>
                   <Button size="sm" variant="secondary" onClick={() => void sendToSearch()}>
-                    <Sparkles />
+                    <Bot />
                     {item.searchable === "failed"
                       ? "Try again"
                       : captions
                         ? "Read it"
-                        : "Make searchable"}
+                        : "Transcribe"}
                   </Button>
                   {!captions && (
                     <p className="text-muted-foreground text-xs">
@@ -599,6 +662,18 @@ export function LibraryItemView({
           <p className="text-muted-foreground -mt-4 text-xs">The file itself stays in Files.</p>
         </aside>
       </div>
+      {item.source === "upload" && speaks && !captions && (
+        <section className="flex flex-col gap-3" aria-label="Storyboard">
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-base font-semibold">Storyboard</h2>
+            <p className="text-muted-foreground text-sm">
+              Drafted from what was said: a line for every sentence, each with its own clip, with
+              pauses and retakes left out. Add it to a project to gather it with other uploads.
+            </p>
+          </div>
+          <UploadStoryboard libraryItemId={item._id} transcribed={item.searchable === "ready"} />
+        </section>
+      )}
     </>
   );
 }

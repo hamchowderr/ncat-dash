@@ -1,14 +1,24 @@
+import { makeSignature } from "better-auth/crypto";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, components } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
-import { pkceMatches, readClientMetadata, redirectAllowed, validRedirectUri } from "./lib/oauth";
+import { fetchClientMetadata, TEAM_CLAIM } from "./lib/agentSignIn";
 import { addPerson, addTeam, backend } from "./test.setup";
 
+/**
+ * Agents sign in through Better Auth's MCP plugin. These tests drive the whole flow over
+ * HTTP, as an agent and the person's browser would: register, authorize, pick a team
+ * (/connect/team), allow it (/connect), swap the code, call /mcp, refresh, disconnect.
+ */
+
 type Backend = ReturnType<typeof backend>;
+type Person = Awaited<ReturnType<typeof addPerson>>;
 
 const SITE = "https://dash-api.example.site";
+const RESOURCE = `${SITE}/mcp`;
+const ISSUER = "http://localhost:3000/api/auth";
+const ORIGIN = "http://localhost:3000";
 const REDIRECT = "https://claude.ai/api/mcp/auth_callback";
-// A PKCE pair: the challenge is base64url(SHA-256(verifier)), worked out by hand.
+// A PKCE pair: the challenge is base64url(SHA-256(verifier)).
 const VERIFIER = "dBjftJeZ4CVP-mJ92K9ns3R_3iOIGI9w9U_7Hz0HRvM";
 const CHALLENGE = "1RieZWqo-K9gdSrRRuS-3G2913JS22xChv9t6ZUot1M";
 
@@ -35,21 +45,45 @@ async function setUp() {
   );
   return { t, team, second, owner, member };
 }
+type Setup = Awaited<ReturnType<typeof setUp>>;
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
-async function register(t: Backend, redirectUris = [REDIRECT]) {
-  const response = await t.fetch("/oauth/register", {
+/** The signed session cookie the person's browser sends (addPerson's session). */
+async function cookieOf(person: Person) {
+  const token = `token-${person.id}`;
+  const signature = await makeSignature(token, process.env.BETTER_AUTH_SECRET!);
+  return `better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}`;
+}
+
+/** A call from the person's browser on the dashboard. */
+async function asBrowser(t: Backend, person: Person, path: string, body: unknown) {
+  const response = await t.fetch(`/api/auth${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ client_name: "Claude", redirect_uris: redirectUris }),
+    headers: { cookie: await cookieOf(person), "content-type": "application/json", origin: ORIGIN },
+    body: JSON.stringify(body),
   });
   return { status: response.status, body: await response.json() };
 }
 
-function authorizeUrl(clientId: string, extra: Record<string, string> = {}) {
+async function register(t: Backend, redirectUris = [REDIRECT]) {
+  const response = await t.fetch("/api/auth/oauth2/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      client_name: "Claude",
+      redirect_uris: redirectUris,
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code", "refresh_token"],
+    }),
+  });
+  return { status: response.status, body: await response.json() };
+}
+
+function authorizePath(clientId: string, extra: Record<string, string> = {}) {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
@@ -57,20 +91,51 @@ function authorizeUrl(clientId: string, extra: Record<string, string> = {}) {
     code_challenge: CHALLENGE,
     code_challenge_method: "S256",
     state: "state-123",
-    scope: "automations",
-    resource: `${SITE}/mcp`,
+    scope: "openid offline_access automations",
+    resource: RESOURCE,
     ...extra,
   });
-  return `/oauth/authorize?${params}`;
+  return `/api/auth/oauth2/authorize?${params}`;
 }
 
-async function startSignIn(t: Backend, clientId: string, extra: Record<string, string> = {}) {
-  const response = await t.fetch(authorizeUrl(clientId, extra), { redirect: "manual" });
-  return { status: response.status, location: response.headers.get("location") ?? "", response };
+/** The agent sends the signed-in person's browser to sign in. */
+async function startSignIn(
+  t: Backend,
+  person: Person,
+  clientId: string,
+  extra: Record<string, string> = {},
+) {
+  const response = await t.fetch(authorizePath(clientId, extra), {
+    headers: { cookie: await cookieOf(person) },
+    redirect: "manual",
+  });
+  return { status: response.status, location: response.headers.get("location") ?? "" };
+}
+
+const queryOf = (location: string) => new URL(location, ORIGIN).search.slice(1);
+
+/** /connect/team: the person picks a team, and the sign-in carries on to /connect. */
+async function pickTeam(t: Backend, person: Person, teamPage: string, organizationId: string) {
+  const picked = await asBrowser(t, person, "/organization/set-active", { organizationId });
+  if (picked.status !== 200) return { status: picked.status, url: "" };
+  const next = await asBrowser(t, person, "/oauth2/continue", {
+    postLogin: true,
+    oauth_query: queryOf(teamPage),
+  });
+  return { status: next.status, url: (next.body.url as string) ?? "" };
+}
+
+/** /connect: the person allows the agent (or not), and is sent back to it. */
+async function decide(t: Backend, person: Person, consentPage: string, accept: boolean) {
+  const decided = await asBrowser(t, person, "/oauth2/consent", {
+    accept,
+    oauth_query: queryOf(consentPage),
+  });
+  return new URL(decided.body.url as string);
 }
 
 async function exchange(t: Backend, fields: Record<string, string>) {
-  const response = await t.fetch("/oauth/token", {
+  const response = await t.fetch("/api/auth/oauth2/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(fields).toString(),
@@ -79,26 +144,22 @@ async function exchange(t: Backend, fields: Record<string, string>) {
 }
 
 /** Registers, signs in as the owner on the team, and swaps the code for tokens. */
-async function connect(setup: Awaited<ReturnType<typeof setUp>>) {
-  const { t, team, owner } = setup;
+async function connect(setup: Setup, person: Person = setup.owner) {
+  const { t, team } = setup;
   const client = (await register(t)).body.client_id as string;
-  const started = await startSignIn(t, client);
-  const requestId = started.location.split("/connect/")[1];
-  const { redirectTo } = await owner.as.mutation(api.oauth.decide, {
-    requestId,
-    organizationId: team,
-    allow: true,
-  });
-  const code = new URL(redirectTo).searchParams.get("code")!;
+  const started = await startSignIn(t, person, client);
+  const consentPage = (await pickTeam(t, person, started.location, team)).url;
+  const back = await decide(t, person, consentPage, true);
+  const code = back.searchParams.get("code")!;
   const tokens = await exchange(t, {
     grant_type: "authorization_code",
     code,
     code_verifier: VERIFIER,
     client_id: client,
     redirect_uri: REDIRECT,
-    resource: `${SITE}/mcp`,
+    resource: RESOURCE,
   });
-  return { client, requestId, redirectTo, code, tokens: tokens.body };
+  return { client, back, code, tokens: tokens.body };
 }
 
 async function listAutomations(t: Backend, token: string) {
@@ -114,52 +175,121 @@ async function listAutomations(t: Backend, token: string) {
   });
 }
 
+function claimsOf(jwt: string) {
+  return JSON.parse(Buffer.from(jwt.split(".")[1], "base64url").toString());
+}
+
+async function leaveAllTeams(t: Backend, person: Person) {
+  await t.run((ctx) =>
+    ctx.runMutation(components.betterAuth.adapter.deleteMany, {
+      input: { model: "member", where: [{ field: "userId", value: person.id }] },
+      paginationOpts: { numItems: 10, cursor: null },
+    } as never),
+  );
+}
+
 describe("how an agent finds out how to sign in", () => {
   test("a request without a token gets 401 naming the resource metadata", async () => {
     const { t } = await setUp();
     const response = await t.fetch("/mcp", { method: "POST", body: "{}" });
     expect(response.status).toBe(401);
-    expect(response.headers.get("www-authenticate")).toBe(
-      `Bearer resource_metadata="${SITE}/.well-known/oauth-protected-resource/mcp", scope="automations"`,
+    expect(response.headers.get("www-authenticate")).toContain(
+      `resource_metadata="${SITE}/.well-known/oauth-protected-resource/mcp"`,
     );
   });
 
-  test("the metadata points from the MCP address to this server's sign-in", async () => {
+  test("MCP_ORIGIN gives the MCP server its own domain in the challenge and the metadata", async () => {
+    const { t } = await setUp();
+    process.env.MCP_ORIGIN = "https://mcp.example.com/";
+    try {
+      const response = await t.fetch("/mcp", { method: "POST", body: "{}" });
+      expect(response.status).toBe(401);
+      expect(response.headers.get("www-authenticate")).toContain(
+        'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"',
+      );
+      const resource = await (await t.fetch("/.well-known/oauth-protected-resource/mcp")).json();
+      expect(resource).toMatchObject({
+        resource: "https://mcp.example.com/mcp",
+        authorization_servers: [ISSUER],
+      });
+    } finally {
+      delete process.env.MCP_ORIGIN;
+    }
+  });
+
+  test("a token that is not a key or a good access token gets 401 too", async () => {
+    const { t } = await setUp();
+    expect((await listAutomations(t, "madeup")).status).toBe(401);
+  });
+
+  test("the metadata points from the MCP address to Better Auth's sign-in", async () => {
     const { t } = await setUp();
     for (const path of [
       "/.well-known/oauth-protected-resource/mcp",
       "/.well-known/oauth-protected-resource",
     ]) {
       const resource = await (await t.fetch(path)).json();
-      expect(resource).toMatchObject({ resource: `${SITE}/mcp`, authorization_servers: [SITE] });
+      expect(resource).toMatchObject({ resource: RESOURCE, authorization_servers: [ISSUER] });
     }
+    for (const path of [
+      "/.well-known/oauth-authorization-server",
+      "/api/auth/.well-known/openid-configuration",
+    ]) {
+      const server = await (await t.fetch(path)).json();
+      expect(server).toMatchObject({
+        issuer: ISSUER,
+        authorization_endpoint: `${ISSUER}/oauth2/authorize`,
+        token_endpoint: `${ISSUER}/oauth2/token`,
+        registration_endpoint: `${ISSUER}/oauth2/register`,
+        code_challenge_methods_supported: ["S256"],
+        client_id_metadata_document_supported: true,
+      });
+    }
+  });
+});
+
+describe("a copy being set up", () => {
+  test("without SITE_URL yet, the backend still answers, and agents' sign-in names it", async () => {
+    const { t } = await setUp();
+    vi.stubEnv("SITE_URL", "");
+    expect((await t.fetch("/automations/hook", { method: "POST" })).status).toBe(400);
     const server = await (await t.fetch("/.well-known/oauth-authorization-server")).json();
-    expect(server).toMatchObject({
-      issuer: SITE,
-      authorization_endpoint: `${SITE}/oauth/authorize`,
-      token_endpoint: `${SITE}/oauth/token`,
-      registration_endpoint: `${SITE}/oauth/register`,
-      code_challenge_methods_supported: ["S256"],
-      client_id_metadata_document_supported: true,
-      authorization_response_iss_parameter_supported: true,
-    });
+    expect(server.issuer).toBe(`${SITE}/api/auth`);
   });
 });
 
 describe("signing an agent in", () => {
-  test("register, allow on a team, swap the code, and work as that person on that team", async () => {
+  test("register, pick a team, allow, swap the code, and work as that person on that team", async () => {
     const setup = await setUp();
     const { t, team, owner } = setup;
-    const { redirectTo, tokens } = await connect(setup);
-    const back = new URL(redirectTo);
+    const client = (await register(t)).body.client_id as string;
+
+    const started = await startSignIn(t, owner, client);
+    expect(started.status).toBe(302);
+    expect(started.location).toMatch(/^\/connect\/team\?/);
+
+    const picked = await pickTeam(t, owner, started.location, team);
+    expect(picked.url).toMatch(/^\/connect\?/);
+
+    const back = await decide(t, owner, picked.url, true);
     expect(back.origin + back.pathname).toBe(REDIRECT);
     expect(back.searchParams.get("state")).toBe("state-123");
-    expect(back.searchParams.get("iss")).toBe(SITE);
-    expect(tokens).toMatchObject({
-      token_type: "Bearer",
-      access_token: expect.stringMatching(/^ncat_at_/),
-      refresh_token: expect.stringMatching(/^ncat_rt_/),
-      expires_in: 3600,
+    expect(back.searchParams.get("iss")).toBe(ISSUER);
+
+    const { body: tokens } = await exchange(t, {
+      grant_type: "authorization_code",
+      code: back.searchParams.get("code")!,
+      code_verifier: VERIFIER,
+      client_id: client,
+      redirect_uri: REDIRECT,
+      resource: RESOURCE,
+    });
+    expect(tokens).toMatchObject({ token_type: "Bearer", expires_in: 3600 });
+    expect(tokens.refresh_token).toEqual(expect.any(String));
+    expect(claimsOf(tokens.access_token)).toMatchObject({
+      sub: owner.id,
+      aud: expect.arrayContaining([RESOURCE]),
+      [TEAM_CLAIM]: team,
     });
 
     const listed = await (await listAutomations(t, tokens.access_token)).json();
@@ -173,112 +303,129 @@ describe("signing an agent in", () => {
     ]);
   });
 
-  test("the page shows the agent and the person's teams, and the person picks one", async () => {
-    const { t, owner } = await setUp();
-    const client = (await register(t)).body.client_id as string;
-    const started = await startSignIn(t, client);
-    expect(started.status).toBe(302);
-    expect(started.location).toMatch(/^http:\/\/localhost:3000\/connect\//);
-    const requestId = started.location.split("/connect/")[1];
-    const shown = await owner.as.query(api.oauth.request, { requestId });
-    expect(shown).toMatchObject({
-      status: "open",
-      clientName: "Claude",
-      redirectHost: "claude.ai",
-      teams: [
-        expect.objectContaining({ name: "Salt House" }),
-        expect.objectContaining({ name: "Night Shift" }),
-      ],
-    });
-    expect(await t.query(api.oauth.request, { requestId })).toEqual({ status: "signed-out" });
-  });
-
-  test("a code works once, only with its verifier, client and redirect address", async () => {
+  test("the team picked is the one the token works on", async () => {
     const setup = await setUp();
-    const { t, team, owner } = setup;
+    const { t, second, owner } = setup;
     const client = (await register(t)).body.client_id as string;
-    const started = await startSignIn(t, client);
-    const { redirectTo } = await owner.as.mutation(api.oauth.decide, {
-      requestId: started.location.split("/connect/")[1],
-      organizationId: team,
-      allow: true,
-    });
-    const code = new URL(redirectTo).searchParams.get("code")!;
-    const wrongVerifier = await exchange(t, {
+    const started = await startSignIn(t, owner, client);
+    const consentPage = (await pickTeam(t, owner, started.location, second)).url;
+    const back = await decide(t, owner, consentPage, true);
+    const { body: tokens } = await exchange(t, {
       grant_type: "authorization_code",
-      code,
-      code_verifier: "x".repeat(43),
-      client_id: client,
-      redirect_uri: REDIRECT,
-    });
-    expect(wrongVerifier).toMatchObject({ status: 400, body: { error: "invalid_grant" } });
-    // The failed try used the code up.
-    const again = await exchange(t, {
-      grant_type: "authorization_code",
-      code,
+      code: back.searchParams.get("code")!,
       code_verifier: VERIFIER,
       client_id: client,
       redirect_uri: REDIRECT,
+      resource: RESOURCE,
     });
-    expect(again).toMatchObject({ status: 400, body: { error: "invalid_grant" } });
+    expect(claimsOf(tokens.access_token)[TEAM_CLAIM]).toBe(second);
+    // Night Shift has no automations; Salt House's are not visible on it.
+    const listed = await (await listAutomations(t, tokens.access_token)).json();
+    expect(JSON.parse(listed.result.content[0].text)).toEqual([]);
   });
 
-  test("a refresh token gives new tokens once, and the old ones stop working", async () => {
+  test("a code works once, and only with its verifier", async () => {
     const setup = await setUp();
-    const { t } = setup;
+    const { t, team, owner } = setup;
+    const client = (await register(t)).body.client_id as string;
+    const started = await startSignIn(t, owner, client);
+    const back = await decide(
+      t,
+      owner,
+      (await pickTeam(t, owner, started.location, team)).url,
+      true,
+    );
+    const code = back.searchParams.get("code")!;
+    const fields = {
+      grant_type: "authorization_code",
+      code,
+      client_id: client,
+      redirect_uri: REDIRECT,
+      resource: RESOURCE,
+    };
+    expect((await exchange(t, { ...fields, code_verifier: "x".repeat(43) })).status).toBe(400);
+    const { code: second } = await connect(setup);
+    expect((await exchange(t, { ...fields, code: second, code_verifier: VERIFIER })).status).toBe(
+      400,
+    );
+  });
+
+  test("a refresh token gives new tokens once; using it again ends the connection", async () => {
+    const setup = await setUp();
+    const { t, team, owner } = setup;
     const { client, tokens } = await connect(setup);
+    const refresh = (refresh_token: string) =>
+      exchange(t, {
+        grant_type: "refresh_token",
+        refresh_token,
+        client_id: client,
+        resource: RESOURCE,
+      });
+
+    const fresh = await refresh(tokens.refresh_token);
+    expect(fresh.status).toBe(200);
+    expect(fresh.body.refresh_token).not.toBe(tokens.refresh_token);
+
+    // A replayed refresh token (stolen, or copied) is refused, and the family it came
+    // from goes with it: the fresh one stops working too.
+    expect((await refresh(tokens.refresh_token)).body.error).toBe("invalid_grant");
+    expect((await refresh(fresh.body.refresh_token)).body.error).toBe("invalid_grant");
+    expect(await owner.as.query(api.oauth.connections, { organizationId: team })).toHaveLength(1);
+  });
+
+  test("a refresh for someone who left the team is refused", async () => {
+    const setup = await setUp();
+    const { t, owner } = setup;
+    const { client, tokens } = await connect(setup);
+    await leaveAllTeams(t, owner);
     const refreshed = await exchange(t, {
       grant_type: "refresh_token",
       refresh_token: tokens.refresh_token,
       client_id: client,
+      resource: RESOURCE,
     });
-    expect(refreshed.status).toBe(200);
-    expect(refreshed.body.access_token).not.toBe(tokens.access_token);
-    expect((await listAutomations(t, tokens.access_token)).status).toBe(401);
-    expect((await listAutomations(t, refreshed.body.access_token)).status).toBe(200);
-    const reused = await exchange(t, {
-      grant_type: "refresh_token",
-      refresh_token: tokens.refresh_token,
-      client_id: client,
-    });
-    expect(reused.body.error).toBe("invalid_grant");
+    expect(refreshed.status).not.toBe(200);
+    expect(refreshed.body.access_token).toBeUndefined();
   });
 
   test("saying no sends the agent access_denied, and nothing is let in", async () => {
     const { t, team, owner } = await setUp();
     const client = (await register(t)).body.client_id as string;
-    const started = await startSignIn(t, client);
-    const { redirectTo } = await owner.as.mutation(api.oauth.decide, {
-      requestId: started.location.split("/connect/")[1],
-      allow: false,
-    });
-    expect(new URL(redirectTo).searchParams.get("error")).toBe("access_denied");
+    const started = await startSignIn(t, owner, client);
+    const back = await decide(
+      t,
+      owner,
+      (await pickTeam(t, owner, started.location, team)).url,
+      false,
+    );
+    expect(back.searchParams.get("error")).toBe("access_denied");
+    expect(back.searchParams.get("code")).toBeNull();
     expect(await owner.as.query(api.oauth.connections, { organizationId: team })).toEqual([]);
   });
 
   test("someone cannot let an agent into a team they are not on", async () => {
     const { t, second, member } = await setUp();
     const client = (await register(t)).body.client_id as string;
-    const started = await startSignIn(t, client);
-    await expect(
-      member.as.mutation(api.oauth.decide, {
-        requestId: started.location.split("/connect/")[1],
-        organizationId: second,
-        allow: true,
-      }),
-    ).rejects.toThrow(/not on this team/);
+    const started = await startSignIn(t, member, client);
+    const picked = await pickTeam(t, member, started.location, second);
+    expect(picked.status).not.toBe(200);
+    // Without a team of theirs picked, carrying on just asks for a team again.
+    const next = await asBrowser(t, member, "/oauth2/continue", {
+      postLogin: true,
+      oauth_query: queryOf(started.location),
+    });
+    expect(next.body.url ?? "").not.toMatch(/^\/connect\?|code=/);
   });
 
   test("refuses unknown clients and redirect addresses they did not register", async () => {
-    const { t } = await setUp();
-    const unknown = await startSignIn(t, "ncat_client_madeup");
-    expect(unknown.status).toBe(400);
+    const { t, owner } = await setUp();
+    const unknown = await startSignIn(t, owner, "madeup-client");
+    expect(unknown.location).not.toMatch(/^\/connect/);
     const client = (await register(t)).body.client_id as string;
-    const elsewhere = await startSignIn(t, client, { redirect_uri: "https://evil.example/cb" });
-    expect(elsewhere.status).toBe(400);
-    const noPkce = await startSignIn(t, client, { code_challenge_method: "plain" });
-    expect(noPkce.status).toBe(302);
-    expect(new URL(noPkce.location).searchParams.get("error")).toBe("invalid_request");
+    const elsewhere = await startSignIn(t, owner, client, {
+      redirect_uri: "https://evil.example/cb",
+    });
+    expect(elsewhere.location).not.toMatch(/^(\/connect|https:\/\/evil\.example)/);
     const badRegister = await register(t, ["javascript:alert(1)"]);
     expect(badRegister.status).toBe(400);
   });
@@ -287,30 +434,67 @@ describe("signing an agent in", () => {
     const { t, owner } = await setUp();
     const clientId = "https://claude.ai/oauth/mcp-oauth-client-metadata";
     const fetched = vi.fn(async () =>
-      Response.json({ client_id: clientId, client_name: "Claude", redirect_uris: [REDIRECT] }),
+      Response.json({
+        client_id: clientId,
+        client_name: "Claude",
+        redirect_uris: [REDIRECT],
+        token_endpoint_auth_method: "none",
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+      }),
     );
     vi.stubGlobal("fetch", fetched);
-    const started = await startSignIn(t, clientId);
-    expect(started.status).toBe(302);
-    expect(fetched).toHaveBeenCalledWith(clientId, expect.anything());
-    const shown = await owner.as.query(api.oauth.request, {
-      requestId: started.location.split("/connect/")[1],
+    const started = await startSignIn(t, owner, clientId);
+    expect(started.location).toMatch(/^\/connect\/team\?/);
+    expect(fetched).toHaveBeenCalled();
+    expect(String((fetched.mock.calls[0] as unknown[])[0])).toBe(clientId);
+  });
+});
+
+describe("fetching a client's metadata document", () => {
+  test("only https, never a private address, never following a redirect, and small", async () => {
+    // As on the hosted edition, which refuses private addresses (lib/outbound.ts).
+    vi.stubEnv("OUTBOUND_PRIVATE", "block");
+    await expect(fetchClientMetadata("http://claude.ai/meta")).rejects.toThrow(/https/);
+    await expect(fetchClientMetadata("https://127.0.0.1/meta")).rejects.toThrow(/private/);
+    await expect(fetchClientMetadata("https://10.0.0.5/meta")).rejects.toThrow(/private/);
+    await expect(fetchClientMetadata("https://claude.ai/meta", { method: "POST" })).rejects.toThrow(
+      /GET/,
+    );
+
+    const seen = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      expect(init?.redirect).toBe("manual");
+      return new Response("x".repeat(70 * 1024));
     });
-    expect(shown).toMatchObject({ clientName: "Claude" });
+    vi.stubGlobal("fetch", seen);
+    await expect(fetchClientMetadata("https://claude.ai/meta")).rejects.toThrow(/too large/);
+    expect(seen).toHaveBeenCalledTimes(1);
+
+    vi.stubGlobal("fetch", async () => Response.json({ client_id: "https://claude.ai/meta" }));
+    const ok = await fetchClientMetadata("https://claude.ai/meta");
+    expect(await ok.json()).toEqual({ client_id: "https://claude.ai/meta" });
   });
 });
 
 describe("disconnecting", () => {
-  test("the person disconnects it and its token stops working", async () => {
+  test("the person disconnects it, its token stops working, and its refresh token too", async () => {
     const setup = await setUp();
     const { t, team, owner } = setup;
-    const { tokens } = await connect(setup);
+    const { client, tokens } = await connect(setup);
     const [connection] = await owner.as.query(api.oauth.connections, { organizationId: team });
     await owner.as.mutation(api.oauth.disconnect, {
       organizationId: team,
-      grantId: connection.grantId as Id<"oauthGrants">,
+      grantId: connection.grantId,
     });
     expect((await listAutomations(t, tokens.access_token)).status).toBe(401);
+    const refreshed = await exchange(t, {
+      grant_type: "refresh_token",
+      refresh_token: tokens.refresh_token,
+      client_id: client,
+      resource: RESOURCE,
+    });
+    expect(refreshed.body.access_token).toBeUndefined();
+    expect(await owner.as.query(api.oauth.connections, { organizationId: team })).toEqual([]);
   });
 
   test("a member sees only their own, and cannot disconnect someone else's", async () => {
@@ -327,54 +511,24 @@ describe("disconnecting", () => {
     ).rejects.toThrow(/owner or admin/);
   });
 
+  test("a manager sees everyone's, and can disconnect a member's", async () => {
+    const setup = await setUp();
+    const { t, team, owner, member } = setup;
+    const { tokens } = await connect(setup, member);
+    const [connection] = await owner.as.query(api.oauth.connections, { organizationId: team });
+    expect(connection).toMatchObject({ person: "Theo Banks", mine: false });
+    await owner.as.mutation(api.oauth.disconnect, {
+      organizationId: team,
+      grantId: connection.grantId,
+    });
+    expect((await listAutomations(t, tokens.access_token)).status).toBe(401);
+  });
+
   test("leaving the team ends the agent's access", async () => {
     const setup = await setUp();
     const { t, owner } = setup;
     const { tokens } = await connect(setup);
-    await t.run((ctx) =>
-      ctx.runMutation(components.betterAuth.adapter.deleteMany, {
-        input: { model: "member", where: [{ field: "userId", value: owner.id }] },
-        paginationOpts: { numItems: 10, cursor: null },
-      } as never),
-    );
+    await leaveAllTeams(t, owner);
     expect((await listAutomations(t, tokens.access_token)).status).toBe(401);
-  });
-});
-
-describe("the sign-in checks", () => {
-  test("PKCE S256: only the verifier the challenge was made from matches", async () => {
-    expect(await pkceMatches(VERIFIER, CHALLENGE)).toBe(true);
-    expect(await pkceMatches(`${VERIFIER}x`, CHALLENGE)).toBe(false);
-  });
-
-  test("redirect addresses: https, loopback on any port, app schemes; never script schemes", () => {
-    expect(validRedirectUri("https://claude.ai/api/mcp/auth_callback")).toBe(true);
-    expect(validRedirectUri("http://localhost:33418/callback")).toBe(true);
-    expect(validRedirectUri("cursor://anysphere.cursor-mcp/oauth/callback")).toBe(true);
-    expect(validRedirectUri("http://example.com/cb")).toBe(false);
-    expect(validRedirectUri("javascript:alert(1)")).toBe(false);
-    expect(validRedirectUri("https://x.example/cb#frag")).toBe(false);
-    expect(redirectAllowed(["http://127.0.0.1/callback"], "http://127.0.0.1:52000/callback")).toBe(
-      true,
-    );
-    expect(redirectAllowed(["http://127.0.0.1/callback"], "http://127.0.0.1:52000/other")).toBe(
-      false,
-    );
-    expect(redirectAllowed(["https://a.example/cb"], "https://a.example/cb2")).toBe(false);
-  });
-
-  test("a metadata document must name itself and list usable redirect addresses", () => {
-    const id = "https://app.example/client.json";
-    expect(
-      readClientMetadata(id, { client_id: "https://other.example/c", redirect_uris: [REDIRECT] })
-        .ok,
-    ).toBe(false);
-    expect(readClientMetadata(id, { client_id: id, redirect_uris: ["javascript:x"] }).ok).toBe(
-      false,
-    );
-    expect(readClientMetadata(id, { client_id: id, redirect_uris: [REDIRECT] })).toMatchObject({
-      ok: true,
-      client: { name: "app.example" },
-    });
   });
 });

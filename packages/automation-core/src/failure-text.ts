@@ -12,6 +12,8 @@ export type ExplainedFailure = {
 };
 
 const MAX_REASON = 240;
+const STILL_IMAGE = "This file is a still image. This step needs a video or audio file.";
+const NO_SOUND = "This file has no sound to work with.";
 const STILL_IMAGE_CODECS = /Video: (png|mjpeg|jpeg|jpegls|webp|bmp|tiff|ppm|pgm|qoi)\b/;
 
 // Lines from FFmpeg's banner and its description of the files, which say nothing about
@@ -45,7 +47,7 @@ function friendlyReason(text: string): string | null {
     STILL_IMAGE_CODECS.test(inputPart) ||
     /Input #\d+, (png|jpeg|webp|bmp|tiff)_pipe\b/.test(inputPart);
   if (stillImage && /Duration: N\/A/.test(inputPart) && !hasAudio) {
-    return "This file is a still image. This step needs a video or audio file.";
+    return STILL_IMAGE;
   }
   if (
     /does not contain any stream|matches no streams|Output file is empty, nothing was encoded/.test(
@@ -54,7 +56,7 @@ function friendlyReason(text: string): string | null {
     hasVideo &&
     !hasAudio
   ) {
-    return "This file has no sound to work with.";
+    return NO_SOUND;
   }
   if (/Server returned 404|HTTP error 404|404 Not Found/.test(text)) {
     return 'The file\'s link returned "not found". Check the file is still there.';
@@ -163,8 +165,89 @@ function messageInBody(text: string): string | null {
   return null;
 }
 
+/** A web page in place of an answer: a server's own "Not Found" page, a proxy's error page. */
+const HTML_PAGE =
+  /<!doctype html|<html[\s>]|<head[\s>]|<body[\s>]|<title[\s>]|<\/(?:h1|p|div|pre|title)>/i;
+
+function looksLikeHtml(text: string): boolean {
+  return HTML_PAGE.test(text);
+}
+
+/** The words of a web page, with its tags, styles and scripts taken out. */
+function pageText(html: string): string {
+  return html
+    .replace(/<(script|style)[\s\S]*?(<\/\1>|$)/gi, " ")
+    .replace(/<!--[\s\S]*?(-->|$)/g, " ")
+    .replace(/<[^>]*>?/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
+}
+
+const MISSING_STEP = "Your toolkit does not have this step yet. Update it to the latest version.";
+
+/**
+ * A 404 or 405 for a job means the toolkit has no such endpoint: an older toolkit that
+ * predates this step. Unless it said something of its own, such as a file it could not find.
+ */
+function missingStep(text: string): boolean {
+  const status = Number(text.match(/\bHTTP (\d{3})\b/)?.[1] ?? NaN);
+  if (status !== 404 && status !== 405) return false;
+  if (looksLikeHtml(text)) return true;
+  return /^The toolkit (refused|was not ready for) the job/.test(text) && !messageInBody(text);
+}
+
 function clip(line: string): string {
   return line.length > MAX_REASON ? `${line.slice(0, MAX_REASON - 1).trimEnd()}…` : line;
+}
+
+export const CAPTIONS_NEED_VIDEO =
+  "Captions need a video. This file is a picture, or a video with no sound to caption.";
+
+/**
+ * A failure that comes from the file itself, such as a picture given to a step that needs a
+ * video: sending the same file again cannot work, so the step is not tried again. Returns
+ * what to tell people, or null when trying again might help.
+ */
+export function wrongKindOfFile(
+  stepId: string | null | undefined,
+  text: string | null | undefined,
+): string | null {
+  const full = (text ?? "").trim();
+  if (!full) return null;
+  // The toolkit's captioning reads the sound's words; a picture has none, and it fails
+  // with Python's "tuple index out of range" before saying why.
+  if (stepId === "video-caption" && /\b(tuple|list) index out of range\b/.test(full)) {
+    return CAPTIONS_NEED_VIDEO;
+  }
+  const { reason } = explainFailure(full);
+  if (reason === STILL_IMAGE || reason === NO_SOUND) {
+    return stepId === "video-caption" ? CAPTIONS_NEED_VIDEO : reason;
+  }
+  return null;
+}
+
+/**
+ * The motion render's checks of the request itself, such as "Nothing to add: no motion
+ * pieces or sound effects fall inside the video": the same request fails the same way
+ * every time, so it is not sent again.
+ */
+const MOTION_REQUEST_FAULT =
+  /^(Nothing to add\b|A [a-z ]+ piece needs\b|At most \d+ (motion pieces|sound effects)\b|There is no sound called\b)/;
+
+/** Whether a failed job would fail the same way if sent again unchanged. */
+export function failsTheSameEveryTime(
+  stepId: string | null | undefined,
+  text: string | null | undefined,
+): boolean {
+  if (wrongKindOfFile(stepId, text) !== null) return true;
+  return stepId === "video-motion" && MOTION_REQUEST_FAULT.test((text ?? "").trim());
 }
 
 export function explainFailure(text: string | null | undefined): ExplainedFailure {
@@ -192,12 +275,26 @@ export function explainFailure(text: string | null | undefined): ExplainedFailur
       ? lead && !errorLine.toLowerCase().includes(lead.toLowerCase())
         ? `${lead}: ${errorLine}`
         : errorLine
-      : lead || "FFmpeg could not process this file.";
+      : lead || "The toolkit could not process this file.";
     return { reason: clip(reason), details: full };
   }
 
+  // Raw HTML never reaches people, not even behind "Show details".
+  const plain = looksLikeHtml(full) ? pageText(full) : full;
+
+  if (missingStep(full)) return { reason: MISSING_STEP, details: plain };
+
   const developer = developerReason(full);
-  if (developer) return { reason: developer, details: full };
+  if (developer) return { reason: developer, details: plain };
+
+  if (plain !== full) {
+    // Something other than the toolkit answered, or it failed before it could say why.
+    return {
+      reason:
+        "The toolkit answered with an error page instead of a result. Check that it is running and up to date, and that its address in Settings is right.",
+      details: plain,
+    };
+  }
 
   // "The toolkit refused the job (HTTP 400). {"message": "..."}": say what it said.
   const said = messageInBody(full);

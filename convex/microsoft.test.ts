@@ -25,6 +25,10 @@ let hasFolder = true;
 // each token request asked for.
 let sharedFiles: { driveId: string; item: Record<string, unknown> }[] = [];
 let tokenScopes: string[] = [];
+// Recordings Teams saved in a channel's files (SharePoint), and whether that channel has
+// a Recordings folder yet.
+let channelFiles: Record<string, unknown>[] = [];
+let channelHasRecordings = true;
 
 beforeEach(() => {
   process.env.MICROSOFT_CLIENT_ID = "ms-client-id";
@@ -42,6 +46,8 @@ beforeEach(() => {
   hasFolder = true;
   sharedFiles = [];
   tokenScopes = [];
+  channelFiles = [];
+  channelHasRecordings = true;
   vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -106,6 +112,44 @@ beforeEach(() => {
           })),
         ],
       });
+    }
+    if (url.startsWith(`${GRAPH}/me/joinedTeams`)) {
+      return Response.json({ value: [{ id: "team-video", displayName: "Video team" }] });
+    }
+    if (url.startsWith(`${GRAPH}/teams/team-video/channels?`)) {
+      return Response.json({
+        value: [
+          { id: "19:general", displayName: "General" },
+          { id: "19:edits", displayName: "Edits" },
+        ],
+      });
+    }
+    if (
+      url === `${GRAPH}/teams/team-video/channels/${encodeURIComponent("19:edits")}/filesFolder`
+    ) {
+      return Response.json({
+        id: "folder-edits",
+        name: "Edits",
+        folder: {},
+        parentReference: { driveId: "drive-video" },
+      });
+    }
+    if (url.startsWith(`${GRAPH}/drives/drive-video/items/folder-edits:/Recordings:/children`)) {
+      return channelHasRecordings
+        ? Response.json({ value: channelFiles })
+        : Response.json({ error: { code: "itemNotFound" } }, { status: 404 });
+    }
+    if (url.startsWith(`${GRAPH}/drives/drive-video/items/`)) {
+      const id = decodeURIComponent(
+        url.slice(`${GRAPH}/drives/drive-video/items/`.length).split("?")[0],
+      );
+      const found = channelFiles.find((file) => file.id === id);
+      return found
+        ? Response.json({
+            ...found,
+            "@microsoft.graph.downloadUrl": `https://sharepoint.test/dl/${id}?t=channel`,
+          })
+        : Response.json({ error: { code: "itemNotFound" } }, { status: 404 });
     }
     if (url.startsWith(`${GRAPH}/drives/`)) {
       const [driveId, , itemId] = url
@@ -382,6 +426,8 @@ describe("Microsoft's change notices", () => {
       source: "microsoft",
       createdBy: setup.owner.id,
     });
+    // Kept in its own folder, beside the other places recordings come from.
+    expect(upload.key).toMatch(/^uploads\/Microsoft\/[0-9a-f-]+\//);
     const [job] = await jobs(setup.t);
     expect(job.stepId).toBe("storage-upload-s3");
     expect(job.input).toEqual({
@@ -758,5 +804,153 @@ describe("meetings shared with you", () => {
       status: "failed",
       error: "The recording is no longer shared with you.",
     });
+  });
+});
+
+describe("channel meetings", () => {
+  /** Connects, allows Teams channels the way Settings does, and picks the Edits channel. */
+  async function connectWithChannel(setup: Awaited<ReturnType<typeof setUp>>) {
+    await connect(setup);
+    await runScheduled(setup.t);
+    const url = await setup.owner.as.mutation(api.microsoft.startLink, {
+      organizationId: setup.team,
+      channels: true,
+    });
+    const result = await comeBack(setup.t, url, "c2", JORDAN);
+    await runScheduled(setup.t);
+    const args = { organizationId: setup.team };
+    const listed = await setup.owner.as.action(api.microsoft.teamChannels, args);
+    const picked = await setup.owner.as.action(api.microsoft.watchChannel, {
+      ...args,
+      teamId: "team-video",
+      teamName: "Video team",
+      channelId: "19:edits",
+      channelName: "Edits",
+    });
+    const [row] = await setup.t.run((ctx) => ctx.db.query("microsoftConnections").collect());
+    return { url, result, listed, picked, row };
+  }
+
+  test("picking channels first asks Microsoft to read the member's teams", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    await runScheduled(setup.t);
+    const args = { organizationId: setup.team };
+    await expect(setup.owner.as.action(api.microsoft.teamChannels, args)).rejects.toThrow(
+      /allow reading your Teams channels/,
+    );
+
+    const { url, result, listed, picked } = await connectWithChannel(setup);
+    const scope = new URL(url).searchParams.get("scope") ?? "";
+    expect(scope).toContain("Team.ReadBasic.All");
+    expect(scope).toContain("Channel.ReadBasic.All");
+    expect(result).toBe("channels");
+    expect(tokenScopes.at(-1)).toContain("Channel.ReadBasic.All");
+    expect(listed).toEqual([
+      {
+        teamId: "team-video",
+        teamName: "Video team",
+        channels: [
+          { id: "19:general", name: "General" },
+          { id: "19:edits", name: "Edits" },
+        ],
+      },
+    ]);
+    expect(picked).toEqual({ ok: true });
+    const view = await setup.owner.as.query(api.microsoft.forTeam, args);
+    expect(view?.me?.channelsGranted).toBe(true);
+    expect(view?.channels).toMatchObject([{ teamName: "Video team", channelName: "Edits" }]);
+
+    // Picking it again keeps one; a later sign-in keeps asking for channels.
+    await setup.owner.as.action(api.microsoft.watchChannel, {
+      ...args,
+      teamId: "team-video",
+      teamName: "Video team",
+      channelId: "19:edits",
+      channelName: "Edits",
+    });
+    expect(await setup.t.run((ctx) => ctx.db.query("microsoftChannels").collect())).toHaveLength(1);
+    const again = await setup.owner.as.mutation(api.microsoft.startLink, args);
+    expect(new URL(again).searchParams.get("scope")).toContain("Channel.ReadBasic.All");
+  });
+
+  test("a channel meeting's recording comes in from the channel's files", async () => {
+    const setup = await setUp();
+    const { row } = await connectWithChannel(setup);
+    channelFiles = [
+      recording("chan-1", "Edit Review-20261118_150000-Meeting Recording.mp4"),
+      // A recording from before the channel was picked stays out.
+      recording("chan-old", "Old-20260101_100000-Meeting Recording.mp4", 60 * 24),
+    ];
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    const [upload, ...more] = await uploads(setup.t);
+    expect(more).toEqual([]);
+    expect(upload).toMatchObject({
+      fileName: expect.stringMatching(/^Edit Review \d{4}-\d{2}-\d{2}\.mp4$/),
+      source: "microsoft",
+    });
+    const [job] = await jobs(setup.t);
+    expect(job.input).toMatchObject({
+      file_url: `${GRAPH}/drives/drive-video/items/chan-1/content`,
+    });
+    await setup.t.action(internal.jobs.dispatch, { jobId: job._id });
+    expect(toolkitCalls[0].body.file_url).toBe("https://sharepoint.test/dl/chan-1?t=channel");
+
+    // Looking again brings nothing in twice.
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    expect(await uploads(setup.t)).toHaveLength(1);
+  });
+
+  test("channel recordings come in even with your own meetings switched off", async () => {
+    const setup = await setUp();
+    const { row } = await connectWithChannel(setup);
+    await setup.owner.as.mutation(api.microsoft.setAutoImport, {
+      organizationId: setup.team,
+      autoImport: false,
+    });
+    files = [recording("own-1")];
+    channelFiles = [recording("chan-1", "Edit Review-20261118_150000-Meeting Recording.mp4")];
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    const all = await setup.t.run((ctx) => ctx.db.query("microsoftImports").collect());
+    expect(all.map((one) => one.itemId)).toEqual(["chan-1"]);
+  });
+
+  test("no Recordings folder in the channel yet: nothing happens", async () => {
+    const setup = await setUp();
+    const { row } = await connectWithChannel(setup);
+    channelHasRecordings = false;
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    expect(await uploads(setup.t)).toEqual([]);
+  });
+
+  test("stopping a channel, or disconnecting, means its recordings no longer come in", async () => {
+    const setup = await setUp();
+    const { row } = await connectWithChannel(setup);
+    const args = { organizationId: setup.team };
+    const [channel] = await setup.t.run((ctx) => ctx.db.query("microsoftChannels").collect());
+    // Someone else on the team cannot stop it.
+    await setup.member.as.mutation(api.microsoft.unwatchChannel, {
+      ...args,
+      channelRowId: channel._id,
+    });
+    expect(await setup.t.run((ctx) => ctx.db.query("microsoftChannels").collect())).toHaveLength(1);
+    await setup.owner.as.mutation(api.microsoft.unwatchChannel, {
+      ...args,
+      channelRowId: channel._id,
+    });
+    channelFiles = [recording("chan-1", "Edit Review-20261118_150000-Meeting Recording.mp4")];
+    await setup.owner.as.mutation(api.microsoft.setAutoImport, { ...args, autoImport: false });
+    await setup.t.action(internal.microsoft.check, { connectionId: row._id });
+    expect(await uploads(setup.t)).toEqual([]);
+
+    await setup.owner.as.action(api.microsoft.watchChannel, {
+      ...args,
+      teamId: "team-video",
+      teamName: "Video team",
+      channelId: "19:edits",
+      channelName: "Edits",
+    });
+    await setup.owner.as.mutation(api.microsoft.disconnect, args);
+    expect(await setup.t.run((ctx) => ctx.db.query("microsoftChannels").collect())).toEqual([]);
   });
 });

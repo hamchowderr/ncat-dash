@@ -11,6 +11,7 @@ import {
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { removeUploadDraft } from "./storyboards";
 
 /** The team's library settings, or the defaults. */
 export async function librarySettingsOf(ctx: QueryCtx, organizationId: string) {
@@ -55,8 +56,9 @@ type NewItem = {
 };
 
 /**
- * Adds a file to the library with its short ID. When the team has asked for every new file
- * to be searchable, a video or sound is sent to be transcribed straight away.
+ * Adds a file to the library with its short ID. Every video or sound someone brings in is
+ * sent to be transcribed straight away, once, so its words are there for search, subtitles
+ * and every step after. A file an automation made is too when the team has asked for it.
  */
 export async function addLibraryItem(ctx: MutationCtx, item: NewItem): Promise<Id<"libraryItems">> {
   const shortId = await nextShortId(
@@ -78,7 +80,8 @@ export async function addLibraryItem(ctx: MutationCtx, item: NewItem): Promise<I
     }),
   });
   const { searchNewFiles } = await librarySettingsOf(ctx, item.organizationId);
-  if (searchNewFiles && (item.kind === "video" || item.kind === "audio")) {
+  const transcribe = item.source === "upload" || searchNewFiles;
+  if (transcribe && (item.kind === "video" || item.kind === "audio")) {
     await ctx.scheduler.runAfter(0, internal.library.transcribe, { itemId });
   }
   // A new video is also looked at by the picture model, so it can be found as B-Roll.
@@ -172,6 +175,7 @@ export async function deleteLibraryItem(ctx: MutationCtx, itemId: Id<"libraryIte
     .withIndex("by_libraryItem", (q) => q.eq("libraryItemId", itemId))
     .take(500);
   for (const post of posts) await ctx.db.patch(post._id, { libraryItemId: undefined });
+  await removeUploadDraft(ctx, itemId);
   await ctx.db.delete(itemId);
 }
 
@@ -181,6 +185,12 @@ export async function deletePieces(ctx: MutationCtx, itemId: Id<"libraryItems">)
     .withIndex("by_item_and_start", (q) => q.eq("itemId", itemId))
     .take(4000);
   for (const piece of pieces) await ctx.db.delete(piece._id);
+  // Translations are made from what was said, so they go with it.
+  const translations = await ctx.db
+    .query("translations")
+    .withIndex("by_item_and_language", (q) => q.eq("itemId", itemId))
+    .take(100);
+  for (const translation of translations) await ctx.db.delete(translation._id);
 }
 
 /** Follows a file renamed or moved on the Files page; a deleted file leaves the library. */

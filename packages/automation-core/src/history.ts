@@ -112,7 +112,9 @@ export function draftChanges(live: AutomationDraft, draft: AutomationDraft): str
   const lines: string[] = [];
   const title = (node: AutomationNode) => node.label ?? nodeTypeOf(node)?.title ?? "a step";
   if (live.name !== draft.name) lines.push(`Renamed to "${draft.name}"`);
-  if (canonical(live.trigger) !== canonical(draft.trigger)) lines.push("Changed what starts it");
+  const triggers = (each: AutomationDraft) =>
+    canonical([each.trigger, each.moreTriggers ?? [], each.triggerStarts ?? null]);
+  if (triggers(live) !== triggers(draft)) lines.push("Changed what starts it");
   const before = new Map(live.nodes.map((node) => [node.id, node]));
   const after = new Map(draft.nodes.map((node) => [node.id, node]));
   for (const node of draft.nodes) {

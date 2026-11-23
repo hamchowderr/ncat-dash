@@ -1,6 +1,7 @@
 import { teamFolder } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
+import { backgroundPool } from "./lib/pools";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
@@ -102,7 +103,7 @@ function ready(): boolean {
 /** Back to Settings, saying how the Google sign-in went. */
 export function settingsUrl(result: string): string {
   const base = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  return `${base}/settings/google-meet?meet=${encodeURIComponent(result)}`;
+  return `${base}/settings/integrations/google-meet?meet=${encodeURIComponent(result)}`;
 }
 
 function clientFields() {
@@ -820,7 +821,7 @@ export const startImport = internalMutation({
     }
 
     const fileName = recordingFileName(recording.topic, recording.startTime, "mp4", FALLBACK_TOPIC);
-    const key = `uploads/${crypto.randomUUID()}/${safeName(fileName)}`;
+    const key = `uploads/Google Meet/${crypto.randomUUID()}/${safeName(fileName)}`;
     const importId =
       before?._id ??
       (await ctx.db.insert("googleMeetImports", {
@@ -1187,12 +1188,12 @@ export const checkAll = internalMutation({
   args: {},
   handler: async (ctx) => {
     const rows = await ctx.db.query("googleMeetConnections").take(2000);
-    let at = 0;
     for (const row of rows) {
       if (!row.autoImport || row.signInLostAt !== undefined) continue;
-      // Spread out a little, so many accounts do not all ask Google at once.
-      await ctx.scheduler.runAfter(at, internal.googleMeet.checkOne, { connectionId: row._id });
-      at += 250;
+      // A few at a time (lib/pools.ts), so many accounts do not all ask Google at once.
+      await backgroundPool.enqueueAction(ctx, internal.googleMeet.checkOne, {
+        connectionId: row._id,
+      });
     }
   },
 });

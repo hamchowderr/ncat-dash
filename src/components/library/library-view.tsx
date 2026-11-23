@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { formatMoment } from "@ncat-dash/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Columns3, LayoutGrid, List, Search, Sparkles } from "lucide-react";
+import { Bot, Columns3, LayoutGrid, List, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -508,10 +508,12 @@ export function LibraryView() {
   const onScreen = text ? hits : items;
   const links = useLibraryLinks(team.id, onScreen);
 
+  // What was brought in is transcribed by itself; this is for files automations made
+  // (when the setting is off) and for any transcript that failed.
   const waiting = (library?.items ?? []).filter(
     (item) =>
       (item.kind === "video" || item.kind === "audio") &&
-      (item.searchable === "no" || item.searchable === "failed"),
+      (item.searchable === "failed" || (item.searchable === "no" && item.source !== "upload")),
   );
 
   async function searchWaiting() {
@@ -569,10 +571,10 @@ export function LibraryView() {
                 disabled={sending}
                 onClick={() => void searchWaiting()}
               >
-                <Sparkles />
+                <Bot />
                 {waiting.length === 1
-                  ? "Make 1 file searchable"
-                  : `Make ${Math.min(waiting.length, 25)} files searchable`}
+                  ? "Transcribe 1 file"
+                  : `Transcribe ${Math.min(waiting.length, 25)} files`}
               </Button>
             )}
             <label
@@ -595,7 +597,9 @@ export function LibraryView() {
         )}
       </div>
       <p id="search-new-files-note" className="text-muted-foreground -mt-3 text-xs">
-        Searchable files are transcribed once on your own toolkit, with no AI tokens spent.
+        Every video and sound you bring in is transcribed once on your own toolkit, with no AI
+        tokens spent. This also transcribes the files your automations make and looks at new videos
+        for B-Roll.
         {library && !library.canChangeSettings && " Only an owner or admin can change this."}
       </p>
 

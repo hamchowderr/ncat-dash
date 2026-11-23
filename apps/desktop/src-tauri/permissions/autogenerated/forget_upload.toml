@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-forget-upload"
+description = "Enables the forget_upload command without any pre-configured scope."
+commands.allow = ["forget_upload"]
+
+[[permission]]
+identifier = "deny-forget-upload"
+description = "Denies the forget_upload command without any pre-configured scope."
+commands.deny = ["forget_upload"]

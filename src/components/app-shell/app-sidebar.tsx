@@ -6,7 +6,10 @@ import * as React from "react";
 import {
   ArrowLeft,
   Bell,
+  Blocks,
+  CircleUser,
   ChevronsUpDown,
+  Camera,
   Clapperboard,
   Contact,
   Film,
@@ -18,10 +21,8 @@ import {
   History,
   Home,
   Inbox,
-  KeyRound,
   Library,
   ListChecks,
-  Mail,
   MessagesSquare,
   Palette,
   Captions,
@@ -39,20 +40,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import {
-  DiscordLogo,
-  DropboxLogo,
-  GoogleMeetLogo,
-  MicrosoftTeamsLogo,
-  SlackLogo,
-  ZoomLogo,
-} from "@/components/brand-logos";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SETTINGS_GROUPS, type SettingsSlug } from "@/components/settings/settings-pages";
+import {
+  SETTINGS_GROUPS,
+  settingsLocation,
+  type SettingsSlug,
+} from "@/components/settings/settings-pages";
 
 import {
   Sidebar,
@@ -86,6 +83,7 @@ const navEveryday: NavItem[] = [
   { title: "Calendar", url: "/calendar", icon: CalendarDays },
   { title: "Review", url: "/review", icon: MessagesSquare },
   { title: "Clients", url: "/clients", icon: Contact },
+  { title: "Creators", url: "/creators", icon: Camera },
   { title: "Library", url: "/library", icon: Library },
   { title: "Outputs", url: "/outputs", icon: FolderOutput },
   { title: "Uploads", url: "/uploads", icon: UploadCloud },
@@ -113,23 +111,17 @@ export const isSettingsPath = (pathname: string) =>
   pathname === "/settings" || pathname.startsWith("/settings/");
 
 const SETTINGS_ICONS: Record<SettingsSlug, React.ComponentType<{ className?: string }>> = {
+  account: CircleUser,
   notifications: Bell,
   brand: Palette,
   captions: Captions,
   motion: PanelsTopLeft,
   team: Users,
+  integrations: Blocks,
   agent: MessagesSquare,
   runs: RotateCcw,
   broll: Clapperboard,
   editors: Film,
-  email: Mail,
-  slack: SlackLogo,
-  discord: DiscordLogo,
-  zoom: ZoomLogo,
-  "google-meet": GoogleMeetLogo,
-  microsoft: MicrosoftTeamsLogo,
-  dropbox: DropboxLogo,
-  mcp: KeyRound,
 };
 
 const LAST_APP_PAGE = "ncat:last-app-page";
@@ -353,7 +345,8 @@ function SettingsMenu({ pathname, back }: { pathname: string; back: string }) {
                 {group.pages.map((page) => {
                   const href = `/settings/${page.slug}`;
                   const Icon = SETTINGS_ICONS[page.slug];
-                  const active = pathname === href;
+                  // An app's page under Integrations keeps Integrations lit.
+                  const active = settingsLocation(pathname)?.menu === page.slug;
                   return (
                     <SidebarMenuItem key={page.slug}>
                       <SidebarMenuButton asChild tooltip={page.title} isActive={active}>

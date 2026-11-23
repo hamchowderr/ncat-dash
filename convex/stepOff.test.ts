@@ -69,6 +69,7 @@ describe("a step that is turned off", () => {
     const trim = steps.find((step) => step.nodeId === "trim")!;
     expect(trim).toMatchObject({ status: "done", jobIds: [], outputs: [FILE] });
     expect(jobs).toHaveLength(1);
-    expect(jobs[0]).toMatchObject({ stepId: "video-caption", input: { video_url: FILE } });
+    // Captions start with the timed words for the video (see burn-captions.ts).
+    expect(jobs[0]).toMatchObject({ stepId: "media-generate-ass", input: { media_url: FILE } });
   });
 });

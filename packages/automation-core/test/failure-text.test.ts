@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { explainFailure } from "../src/failure-text";
+import {
+  CAPTIONS_NEED_VIDEO,
+  explainFailure,
+  failsTheSameEveryTime,
+  wrongKindOfFile,
+} from "../src/failure-text";
 
 const fixture = (name: string) => readFileSync(join(__dirname, "fixtures", name), "utf8");
 
@@ -91,6 +96,61 @@ describe("explainFailure", () => {
     );
   });
 
+  test("an older toolkit without the step says to update it, never its HTML page", () => {
+    const flask404 = [
+      "<!doctype html>",
+      '<html lang="en">',
+      "<title>404 Not Found</title>",
+      "<h1>Not Found</h1>",
+      "<p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>",
+    ].join("\n");
+    const explained = explainFailure(`The toolkit refused the job (HTTP 404). ${flask404}`);
+    expect(explained.reason).toBe(
+      "Your toolkit does not have this step yet. Update it to the latest version.",
+    );
+    expect(explained.details).toContain("The requested URL was not found on the server.");
+    expect(explained.details).not.toMatch(/<[a-z!/]/i);
+
+    // The alert keeps only the first line, so an older stored message arrives cut short.
+    expect(explainFailure("The toolkit refused the job (HTTP 404). <!doctype html>").reason).toBe(
+      "Your toolkit does not have this step yet. Update it to the latest version.",
+    );
+    expect(explainFailure("The toolkit refused the job (HTTP 405). ").reason).toBe(
+      "Your toolkit does not have this step yet. Update it to the latest version.",
+    );
+  });
+
+  test("a 404 that says what was missing keeps the toolkit's words", () => {
+    expect(
+      explainFailure('The toolkit refused the job (HTTP 404). {"message": "Job not found"}').reason,
+    ).toBe("The toolkit refused the job: Job not found");
+  });
+
+  test("any other web page in place of an answer is said plainly", () => {
+    const explained = explainFailure(
+      "The toolkit refused the job (HTTP 400). <html><head><style>body{color:red}</style></head><body><h1>Bad Request</h1><p>The browser sent a request this server could not understand.</p></body></html>",
+    );
+    expect(explained.reason).toBe(
+      "The toolkit answered with an error page instead of a result. Check that it is running and up to date, and that its address in Settings is right.",
+    );
+    expect(explained.reason).not.toContain("<");
+    expect(explained.details).toContain("Bad Request");
+    expect(explained.details).not.toContain("color:red");
+    expect(explained.details).not.toContain("<");
+
+    // A proxy's own error page still reads as the toolkit having trouble.
+    expect(
+      explainFailure(
+        "The toolkit was not ready for the job (HTTP 502). <html><head><title>502 Bad Gateway</title></head></html>",
+      ).reason,
+    ).toBe("The toolkit ran into a problem of its own. Try again in a moment.");
+  });
+
+  test("user-facing words never name FFmpeg when a log has no error line", () => {
+    const log = "ffmpeg version 6.1 Copyright (c) 2000-2023 the FFmpeg developers\n";
+    expect(explainFailure(log).reason).not.toMatch(/ffmpeg/i);
+  });
+
   test("crashes and raw data never reach people as they are", () => {
     for (const raw of [
       "TypeError: Cannot read properties of undefined (reading 'url')",
@@ -106,5 +166,53 @@ describe("explainFailure", () => {
 
   test("plain sentences with numbers are left alone", () => {
     expect(explainFailure("The file is over 500 MB.").reason).toBe("The file is over 500 MB.");
+  });
+});
+
+describe("wrongKindOfFile", () => {
+  test("Caption video on a picture fails with words meant for programmers; it is said plainly", () => {
+    expect(wrongKindOfFile("video-caption", "tuple index out of range")).toBe(CAPTIONS_NEED_VIDEO);
+    expect(wrongKindOfFile("video-caption", "Error: list index out of range")).toBe(
+      CAPTIONS_NEED_VIDEO,
+    );
+  });
+
+  test("a still image or a silent file is the file's fault for any step", () => {
+    const still = fixture("ffmpeg-still-image.txt");
+    expect(wrongKindOfFile("video-trim", still)).toBe(
+      "This file is a still image. This step needs a video or audio file.",
+    );
+    expect(wrongKindOfFile("video-caption", still)).toBe(CAPTIONS_NEED_VIDEO);
+  });
+
+  test("anything that might work next time is left to be tried again", () => {
+    expect(wrongKindOfFile("video-trim", "tuple index out of range")).toBeNull();
+    expect(wrongKindOfFile("video-caption", "connect ECONNREFUSED 10.0.0.5:8080")).toBeNull();
+    expect(wrongKindOfFile("video-caption", "")).toBeNull();
+    expect(wrongKindOfFile("video-caption", null)).toBeNull();
+  });
+});
+
+describe("failsTheSameEveryTime", () => {
+  test("motion with nothing to draw, or a request it cannot take, is not sent again", () => {
+    for (const text of [
+      "Nothing to add: no motion pieces or sound effects fall inside the video.",
+      "A lower third piece needs its words.",
+      "At most 120 motion pieces can go on one video.",
+      "There is no sound called boing. Pick one of: click, ding.",
+    ]) {
+      expect(failsTheSameEveryTime("video-motion", text)).toBe(true);
+    }
+  });
+
+  test("a picture given to Caption video is not sent again either", () => {
+    expect(failsTheSameEveryTime("video-caption", "IndexError: tuple index out of range")).toBe(
+      true,
+    );
+  });
+
+  test("anything else may work on another try", () => {
+    expect(failsTheSameEveryTime("video-motion", "The toolkit could not be reached.")).toBe(false);
+    expect(failsTheSameEveryTime("video-trim", "Nothing to add: no motion pieces")).toBe(false);
   });
 });

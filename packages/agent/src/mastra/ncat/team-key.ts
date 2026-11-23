@@ -2,7 +2,7 @@ import type { RequestContext } from "@mastra/core/request-context";
 import { env } from "../../lib/env";
 import { TURN_USER_KEY } from "../lib/turn-user";
 import { sessionOf } from "./session-store";
-import { convexSiteUrl, signForDashboard } from "./dashboard-site";
+import { convexSiteUrl, dashboardSecret, signForDashboard } from "./dashboard-site";
 
 /**
  * A team's own Anthropic API key (Settings → Agent in the dashboard). When the team has
@@ -23,7 +23,7 @@ type Read = (organizationId: string) => Promise<string | null | undefined>;
 /** The key from the dashboard: null when the team has none, undefined when unknown. */
 const readFromDashboard: Read = async (organizationId) => {
   const site = convexSiteUrl();
-  const secret = env.MASTRA_JWT_SECRET;
+  const secret = dashboardSecret();
   // A mock model run never needs a real key.
   if (!site || !secret || env.USE_AIMOCK) return undefined;
   try {

@@ -35,6 +35,7 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { TabsContent } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -46,7 +47,7 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
-import { SettingsSection } from "./settings-shell";
+import { SettingsSection, SettingsTabs } from "./settings-shell";
 
 const same = (a: MotionSetup, b: MotionSetup) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -181,159 +182,184 @@ export function MotionCard({
     <SettingsSection id="motion">
       <form onSubmit={onSubmit}>
         <FieldGroup>
-          <FieldSet>
-            <FieldLegend variant="label">Style</FieldLegend>
-            <FieldDescription>
-              Where your motion graphics start. Pick the one closest to your videos, then change
-              anything below. A step can still use another one.
-            </FieldDescription>
-            <div className="flex flex-col gap-5" role="radiogroup" aria-label="Style">
-              {PRESET_GROUPS.map((group) => {
-                const inGroup = presets.filter((preset) => preset.group === group);
-                if (inGroup.length === 0) return null;
-                return (
-                  <div key={group} className="flex flex-col gap-1.5">
-                    <p className="text-muted-foreground text-xs font-medium">{group}</p>
-                    <div className="grid gap-1.5 sm:grid-cols-2">
-                      {inGroup.map((preset) => {
-                        const on = preset.id === shown.preset;
-                        return (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            role="radio"
-                            aria-checked={on}
-                            disabled={!canEdit}
-                            onClick={() => pick(preset)}
-                            className={cn(
-                              "choice-tile focus-visible:ring-ring/50 flex flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
-                            )}
-                          >
-                            <span className="text-sm font-medium">{preset.name}</span>
-                            <span className="text-muted-foreground text-xs leading-snug">
-                              {preset.bestFor}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+          <SettingsTabs
+            label="Motion"
+            tabs={[
+              { id: "style", label: "Style" },
+              { id: "pieces", label: "Pieces" },
+              { id: "names", label: "Names" },
+            ]}
+          >
+            <TabsContent value="style">
+              <FieldGroup>
+                <FieldSet>
+                  <FieldLegend variant="label" className="sr-only">
+                    Style
+                  </FieldLegend>
+                  <FieldDescription>
+                    Where your motion graphics start. Pick the one closest to your videos, then
+                    change anything below. A step can still use another one.
+                  </FieldDescription>
+                  <div className="flex flex-col gap-5" role="radiogroup" aria-label="Style">
+                    {PRESET_GROUPS.map((group) => {
+                      const inGroup = presets.filter((preset) => preset.group === group);
+                      if (inGroup.length === 0) return null;
+                      return (
+                        <div key={group} className="flex flex-col gap-1.5">
+                          <p className="text-muted-foreground text-xs font-medium">{group}</p>
+                          <div className="grid gap-1.5 sm:grid-cols-2">
+                            {inGroup.map((preset) => {
+                              const on = preset.id === shown.preset;
+                              return (
+                                <button
+                                  key={preset.id}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={on}
+                                  disabled={!canEdit}
+                                  onClick={() => pick(preset)}
+                                  className={cn(
+                                    "choice-tile focus-visible:ring-ring/50 flex flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
+                                  )}
+                                >
+                                  <span className="text-sm font-medium">{preset.name}</span>
+                                  <span className="text-muted-foreground text-xs leading-snug">
+                                    {preset.bestFor}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          </FieldSet>
+                </FieldSet>
 
-          <FieldSet>
-            <FieldLegend variant="label">
-              {picked ? `${picked.name}${untouched(shown) ? "" : ", changed"}` : "The style"}
-            </FieldLegend>
-            <FieldGroup>
-              <Choice
-                id="motion-look"
-                label="Look"
-                description="How the pieces are drawn. Your brand colour and font are used in all of them."
-                value={shown.style.look}
-                options={MOTION_LOOKS}
-                labels={LOOK_LABELS}
-                disabled={!canEdit}
-                onChange={(look) => changeStyle({ look })}
-              />
-              <Choice
-                id="motion-busy"
-                label="How busy"
-                description="How often pieces come in. Light leaves long stretches clear."
-                value={shown.style.busy}
-                options={MOTION_BUSY}
-                labels={BUSY_LABELS}
-                disabled={!canEdit}
-                onChange={(busy) => changeStyle({ busy })}
-              />
-              <Choice
-                id="motion-opening"
-                label="Opening"
-                description="What shows over the first seconds."
-                value={shown.style.opening}
-                options={OPENINGS}
-                labels={OPENING_LABELS}
-                disabled={!canEdit}
-                onChange={(opening) => changeStyle({ opening })}
-              />
-              <Choice
-                id="motion-ending"
-                label="Ending"
-                description="What shows over the last seconds."
-                value={shown.style.ending}
-                options={ENDINGS}
-                labels={ENDING_LABELS}
-                disabled={!canEdit}
-                onChange={(ending) => changeStyle({ ending })}
-              />
-              <Choice
-                id="motion-sound"
-                label="Sound effects"
-                description="How loud each piece's sound is, and how many an Add Sound Effects step adds."
-                value={shown.style.sound}
-                options={SOUND_LEVELS}
-                labels={SOUND_LEVEL_LABELS}
-                disabled={!canEdit}
-                onChange={(sound) => changeStyle({ sound })}
-              />
-            </FieldGroup>
-          </FieldSet>
-
-          <FieldSet>
-            <FieldLegend variant="label">Pieces</FieldLegend>
-            <FieldDescription>
-              The pieces this style uses. Each one comes in with its own sound.
-            </FieldDescription>
-            <div className="grid gap-1.5 sm:grid-cols-2">
-              {MOTION_PIECES.map((piece) => {
-                const on = shown.style.pieces.includes(piece.type);
-                return (
-                  <button
-                    key={piece.type}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={on}
-                    disabled={!canEdit}
-                    onClick={() => togglePiece(piece.type)}
-                    className={cn(
-                      "bg-surface hover:bg-muted focus-visible:ring-ring/50 flex items-start gap-2.5 rounded-lg px-3 py-2 text-left outline-none transition-colors focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
-                      on && "bg-primary/10 hover:bg-primary/15",
+                <FieldSet>
+                  <FieldLegend variant="label">
+                    {picked ? `${picked.name}${untouched(shown) ? "" : ", changed"}` : "The style"}
+                  </FieldLegend>
+                  <FieldGroup>
+                    <Choice
+                      id="motion-look"
+                      label="Look"
+                      description="How the pieces are drawn. Your brand colour and font are used in all of them."
+                      value={shown.style.look}
+                      options={MOTION_LOOKS}
+                      labels={LOOK_LABELS}
+                      disabled={!canEdit}
+                      onChange={(look) => changeStyle({ look })}
+                    />
+                    <Choice
+                      id="motion-busy"
+                      label="How busy"
+                      description="How often pieces come in. Light leaves long stretches clear."
+                      value={shown.style.busy}
+                      options={MOTION_BUSY}
+                      labels={BUSY_LABELS}
+                      disabled={!canEdit}
+                      onChange={(busy) => changeStyle({ busy })}
+                    />
+                    <Choice
+                      id="motion-opening"
+                      label="Opening"
+                      description="What shows over the first seconds."
+                      value={shown.style.opening}
+                      options={OPENINGS}
+                      labels={OPENING_LABELS}
+                      disabled={!canEdit}
+                      onChange={(opening) => changeStyle({ opening })}
+                    />
+                    <Choice
+                      id="motion-ending"
+                      label="Ending"
+                      description="What shows over the last seconds."
+                      value={shown.style.ending}
+                      options={ENDINGS}
+                      labels={ENDING_LABELS}
+                      disabled={!canEdit}
+                      onChange={(ending) => changeStyle({ ending })}
+                    />
+                    <Choice
+                      id="motion-sound"
+                      label="Sound effects"
+                      description="How loud each piece's sound is, and how many an Add Sound Effects step adds."
+                      value={shown.style.sound}
+                      options={SOUND_LEVELS}
+                      labels={SOUND_LEVEL_LABELS}
+                      disabled={!canEdit}
+                      onChange={(sound) => changeStyle({ sound })}
+                    />
+                  </FieldGroup>
+                </FieldSet>
+              </FieldGroup>
+            </TabsContent>
+            <TabsContent value="pieces">
+              <FieldGroup>
+                <FieldSet>
+                  <FieldLegend variant="label" className="sr-only">
+                    Pieces
+                  </FieldLegend>
+                  <FieldDescription>
+                    The pieces this style uses. Each one comes in with its own sound.
+                  </FieldDescription>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {MOTION_PIECES.map((piece) => {
+                      const on = shown.style.pieces.includes(piece.type);
+                      return (
+                        <button
+                          key={piece.type}
+                          type="button"
+                          role="checkbox"
+                          aria-checked={on}
+                          disabled={!canEdit}
+                          onClick={() => togglePiece(piece.type)}
+                          className={cn(
+                            "bg-surface hover:bg-muted focus-visible:ring-ring/50 flex items-start gap-2.5 rounded-lg px-3 py-2 text-left outline-none transition-colors focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
+                            on && "bg-primary/10 hover:bg-primary/15",
+                          )}
+                        >
+                          <span className="pt-0.5">
+                            <Tick on={on} />
+                          </span>
+                          <span className="flex flex-col gap-0.5">
+                            <span className="text-sm font-medium">{piece.title}</span>
+                            <span className="text-muted-foreground text-xs leading-snug">
+                              {piece.description}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </FieldSet>
+              </FieldGroup>
+            </TabsContent>
+            <TabsContent value="names">
+              <FieldGroup>
+                <FieldSet>
+                  <FieldLegend variant="label" className="sr-only">
+                    Names
+                  </FieldLegend>
+                  <FieldGroup>
+                    {text(
+                      "hostName",
+                      "Usual speaker",
+                      "Shown in the name lower third. Empty leaves it out.",
                     )}
-                  >
-                    <span className="pt-0.5">
-                      <Tick on={on} />
-                    </span>
-                    <span className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium">{piece.title}</span>
-                      <span className="text-muted-foreground text-xs leading-snug">
-                        {piece.description}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </FieldSet>
-
-          <FieldSet>
-            <FieldLegend variant="label">Names</FieldLegend>
-            <FieldGroup>
-              {text(
-                "hostName",
-                "Usual speaker",
-                "Shown in the name lower third. Empty leaves it out.",
-              )}
-              {text("hostRole", "Their role", "The small line under the name.")}
-              {text(
-                "handle",
-                "Handle",
-                "Shown on the follow card at the end. Empty leaves it out.",
-              )}
-              {text("callToAction", "Under the handle", "The small line on the follow card.")}
-            </FieldGroup>
-          </FieldSet>
+                    {text("hostRole", "Their role", "The small line under the name.")}
+                    {text(
+                      "handle",
+                      "Handle",
+                      "Shown on the follow card at the end. Empty leaves it out.",
+                    )}
+                    {text("callToAction", "Under the handle", "The small line on the follow card.")}
+                  </FieldGroup>
+                </FieldSet>
+              </FieldGroup>
+            </TabsContent>
+          </SettingsTabs>
 
           {canEdit ? (
             <Field orientation="horizontal">

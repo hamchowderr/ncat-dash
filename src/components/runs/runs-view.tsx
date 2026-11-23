@@ -15,18 +15,13 @@ import { RunStatusBadge } from "@/components/automations/run-status";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { ItemBadge, ItemList, ItemRow, MetaLine, Pager, usePages } from "@/components/ui/item-list";
 import { RUN_TRIGGER_LABELS } from "@/lib/automations";
 import { errorMessage, formatDuration } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
+import { exactly, timeAgo } from "@/lib/when";
 
 type Row = FunctionReturnType<typeof api.runs.listForTeam>["runs"][number];
 type Show = "all" | "failed";
@@ -100,6 +95,7 @@ export function RunsView() {
     });
 
   const allChosen = pickable.length > 0 && picked.length === pickable.length;
+  const { shown, pager } = usePages(runs, show === "failed" ? "runs-failed" : "runs");
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -166,52 +162,40 @@ export function RunsView() {
             : "Nothing has run yet. Runs show up here as soon as an automation starts."}
         </p>
       ) : (
-        <div className="reveal overflow-hidden rounded-xl bg-surface">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {show === "failed" && (
-                  <TableHead className="w-10">
-                    <Checkbox
-                      aria-label="Choose every run that can be picked up"
-                      disabled={pickable.length === 0}
-                      checked={allChosen}
-                      onCheckedChange={(checked) =>
-                        setChosen(new Set(checked ? pickable.map((run) => run._id) : []))
-                      }
-                    />
-                  </TableHead>
-                )}
-                <TableHead>Automation</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Started</TableHead>
-                <TableHead>Took</TableHead>
-                <TableHead>
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {runs.map((run) => (
-                <RunRow
-                  key={run._id}
-                  run={run}
-                  choosing={show === "failed"}
-                  chosen={chosen.has(run._id)}
-                  busy={busy}
-                  onChoose={(checked) =>
-                    setChosen((current) => {
-                      const next = new Set(current);
-                      if (checked) next.add(run._id);
-                      else next.delete(run._id);
-                      return next;
-                    })
-                  }
-                  onPickUp={() => pickUpOne(run)}
-                />
-              ))}
-            </TableBody>
-          </Table>
+        <div className="flex flex-col gap-4">
+          {show === "failed" && pickable.length > 0 && (
+            <label className="text-muted-foreground flex items-center gap-2 self-start px-4 text-sm">
+              <Checkbox
+                aria-label="Choose every run that can be picked up"
+                checked={allChosen}
+                onCheckedChange={(checked) =>
+                  setChosen(new Set(checked ? pickable.map((run) => run._id) : []))
+                }
+              />
+              <span aria-hidden="true">Choose all</span>
+            </label>
+          )}
+          <ItemList label={show === "failed" ? "Failed runs" : "Runs"}>
+            {shown.map((run) => (
+              <RunRow
+                key={run._id}
+                run={run}
+                choosing={show === "failed"}
+                chosen={chosen.has(run._id)}
+                busy={busy}
+                onChoose={(checked) =>
+                  setChosen((current) => {
+                    const next = new Set(current);
+                    if (checked) next.add(run._id);
+                    else next.delete(run._id);
+                    return next;
+                  })
+                }
+                onPickUp={() => pickUpOne(run)}
+              />
+            ))}
+          </ItemList>
+          <Pager {...pager} noun="runs" />
         </div>
       )}
     </div>
@@ -234,73 +218,86 @@ function RunRow({
   onPickUp: () => void;
 }) {
   const failed = run.status === "failed";
+  const reason = failed && run.error ? explainFailure(run.error).reason : "";
+  const href = `/automations/${run.automationId}/runs/${run._id}`;
   return (
-    <TableRow data-run={run._id}>
-      {choosing && (
-        <TableCell>
-          {run.canPickUp && (
+    <ItemRow
+      data-run={run._id}
+      selected={chosen}
+      name={run.automationName}
+      href={href}
+      openLabel={`${run.automationName}, run from ${when.format(run.startedAt)}`}
+      leading={
+        choosing ? (
+          run.canPickUp ? (
             <Checkbox
               aria-label={`Choose ${run.automationName}, ${when.format(run.startedAt)}`}
               checked={chosen}
               onCheckedChange={(checked) => onChoose(checked === true)}
             />
-          )}
-        </TableCell>
-      )}
-      <TableCell className="max-w-64">
-        <p className="truncate font-medium">{run.automationName}</p>
-        <p className="text-muted-foreground truncate text-xs">
-          {run.startedWith ?? RUN_TRIGGER_LABELS[run.triggerKind]}
-        </p>
-      </TableCell>
-      <TableCell className="max-w-md">
-        <div className="flex flex-wrap items-center gap-2">
-          <RunStatusBadge status={run.status} />
-          {run.pickedUp > 0 && (
-            <span className="text-muted-foreground text-xs">
-              {run.pickedUp === 1 ? "Picked up once" : `Picked up ${run.pickedUp} times`}
+          ) : (
+            <span className="size-4" aria-hidden="true" />
+          )
+        ) : undefined
+      }
+      meta={
+        <>
+          <MetaLine>
+            <span className="truncate">
+              {run.startedWith ?? RUN_TRIGGER_LABELS[run.triggerKind]}
             </span>
+            <span title={exactly(run.startedAt)}>Started {timeAgo(run.startedAt)}</span>
+            {run.finishedAt && <span>Took {formatDuration(run.finishedAt - run.startedAt)}</span>}
+          </MetaLine>
+          {failed && (reason || run.failedStep) && (
+            <p
+              className="text-muted-foreground truncate text-[0.8125rem]"
+              title={reason || undefined}
+            >
+              {run.failedStep && <span className="text-foreground">At {run.failedStep}. </span>}
+              {reason}
+            </p>
           )}
-        </div>
-        {failed && (
-          <p
-            className="text-muted-foreground mt-1 truncate text-xs"
-            title={run.error ? explainFailure(run.error).reason : undefined}
-          >
-            {run.failedStep && <span className="text-foreground">At {run.failedStep}. </span>}
-            {run.error ? explainFailure(run.error).reason : ""}
-          </p>
-        )}
-        {failed && run.whyNot && (
-          <p className="text-muted-foreground mt-0.5 truncate text-xs" title={run.whyNot}>
-            {run.whyNot}
-          </p>
-        )}
-      </TableCell>
-      <TableCell className="text-muted-foreground whitespace-nowrap">
-        {when.format(run.startedAt)}
-      </TableCell>
-      <TableCell className="text-muted-foreground tabular-nums">
-        {run.finishedAt ? formatDuration(run.finishedAt - run.startedAt) : ""}
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center justify-end gap-1">
+          {failed && run.whyNot && (
+            <p className="text-muted-foreground truncate text-[0.8125rem]" title={run.whyNot}>
+              {run.whyNot}
+            </p>
+          )}
+        </>
+      }
+      badges={
+        <>
+          {run.pickedUp > 0 && (
+            <ItemBadge>
+              <StepForward aria-hidden="true" />
+              {run.pickedUp === 1 ? "Picked up once" : `Picked up ${run.pickedUp} times`}
+            </ItemBadge>
+          )}
+          <RunStatusBadge status={run.status} />
           {run.canPickUp && (
             <Button variant="outline" size="sm" disabled={busy} onClick={onPickUp}>
               <StepForward />
               Pick up<span className="sr-only"> {run.automationName}</span>
             </Button>
           )}
-          <Button asChild variant="ghost" size="sm">
-            <Link
-              href={`/automations/${run.automationId}/runs/${run._id}`}
-              transitionTypes={["nav-forward"]}
-            >
-              View<span className="sr-only"> run from {when.format(run.startedAt)}</span>
-            </Link>
-          </Button>
-        </div>
-      </TableCell>
-    </TableRow>
+        </>
+      }
+      menuLabel={`More for the ${run.automationName} run`}
+      menu={
+        <>
+          <DropdownMenuItem asChild>
+            <Link href={href}>View the run</Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href={`/automations/${run.automationId}`}>Open the automation</Link>
+          </DropdownMenuItem>
+          {run.canPickUp && (
+            <DropdownMenuItem disabled={busy} onSelect={onPickUp}>
+              Pick up where it stopped
+            </DropdownMenuItem>
+          )}
+        </>
+      }
+    />
   );
 }

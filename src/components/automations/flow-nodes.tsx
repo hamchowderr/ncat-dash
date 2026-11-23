@@ -10,12 +10,16 @@ import {
   canFailOver,
   FAILURE_WAY,
   conditionSentence,
+  footageCheckSentence,
   getPreset,
   missingBrandOf,
   missingSettings,
   NODE_GAP,
   type NodeGroup,
   nodeTypeOf,
+  passedOverWithout,
+  sendSentence,
+  subtitleLanguagesSentence,
   waitSentence,
   approvalShort,
   waitsForRun,
@@ -35,6 +39,7 @@ import {
 } from "@xyflow/react";
 import {
   CalendarClock,
+  Languages,
   Clapperboard,
   Clock,
   Code,
@@ -43,7 +48,6 @@ import {
   FolderKanban,
   Hand,
   Layers,
-  WandSparkles,
   HardDriveUpload,
   Image as ImageIcon,
   type LucideIcon,
@@ -51,9 +55,12 @@ import {
   PictureInPicture2,
   Plus,
   Scissors,
+  ScissorsLineDashed,
+  ScanSearch,
+  Send,
   Shapes,
   Signpost,
-  Sparkles,
+  Bot,
   Star,
   ListOrdered,
   AudioLines,
@@ -96,7 +103,7 @@ export const CATEGORY_ICONS: Record<StepCategory, LucideIcon> = {
   media: Shapes,
   image: ImageIcon,
   recipe: Layers,
-  team: WandSparkles,
+  team: Bot,
   ffmpeg: Terminal,
   code: Code,
   storage: HardDriveUpload,
@@ -187,7 +194,7 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
   }
   if (node.kind === "broll-plan") {
     return {
-      icon: Sparkles,
+      icon: Bot,
       tint: "text-orange-600 dark:text-orange-400",
       kind: "AI picks the moments",
     };
@@ -214,6 +221,33 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
       kind: preset ? preset.name : "Your team's style",
     };
   }
+  if (node.kind === "cleanup") {
+    const hooks = node.input.hooks;
+    return {
+      icon: ScissorsLineDashed,
+      tint: CATEGORY_TINTS.video,
+      kind:
+        hooks === "none"
+          ? "One cleaned video"
+          : hooks === "count"
+            ? "First takes are hooks"
+            : "Splits hook takes you name",
+    };
+  }
+  if (node.kind === "footage-check") {
+    return {
+      icon: ScanSearch,
+      tint: CATEGORY_TINTS.video,
+      kind: footageCheckSentence(node.input),
+    };
+  }
+  if (node.kind === "subtitles") {
+    return {
+      icon: Languages,
+      tint: CATEGORY_TINTS.media,
+      kind: subtitleLanguagesSentence(node.input),
+    };
+  }
   if (node.kind === "sound-effects") {
     const level = node.input.level;
     return {
@@ -228,6 +262,9 @@ export function nodeLook(node: Pick<AutomationNode, "kind" | "stepId" | "input">
   }
   if (node.kind === "wait") {
     return { icon: Clock, tint: LOGIC_TINT, kind: waitSentence(node.input) };
+  }
+  if (node.kind === "send") {
+    return { icon: Send, tint: LOGIC_TINT, kind: sendSentence(node.input) };
   }
   if (node.kind === "automation") {
     return {
@@ -271,7 +308,13 @@ export type StepNodeData = {
   failWay?: "used" | "offered";
 };
 /** On a run's canvas, `runKind` is what started the run, which can be another run. */
-export type TriggerNodeData = { trigger: Trigger; summary?: string; runKind?: RunTriggerKind };
+export type TriggerNodeData = {
+  trigger: Trigger;
+  summary?: string;
+  runKind?: RunTriggerKind;
+  /** With several triggers, one that starts no step yet offers a "+" to start one. */
+  idle?: boolean;
+};
 export type StepFlowNode = Node<StepNodeData, "step">;
 export type TriggerFlowNode = Node<TriggerNodeData, "trigger">;
 export type FlowNode = StepFlowNode | TriggerFlowNode;
@@ -304,6 +347,8 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
   const nodeType = nodeTypeOf(node);
   const missing = status ? [] : missingSettings({ ...node, position: { x: 0, y: 0 } }, brand);
   const missingBrand = status || !nodeType ? [] : missingBrandOf(nodeType, node.input, brand);
+  // A step such as Music Under Each Variant runs only once the team has set its music.
+  const waitsFor = status || !nodeType ? null : passedOverWithout(nodeType, node.input, brand);
   const second = node.off
     ? "Turned off"
     : note
@@ -314,7 +359,9 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
           ? `Needs your ${BRAND_WORDS[missingBrand[0]]}`
           : missing.length > 0
             ? "Needs settings"
-            : look.kind;
+            : waitsFor
+              ? `Passed over until you add ${BRAND_WORDS[waitsFor]}`
+              : look.kind;
   return (
     <div className="relative" data-node={id}>
       <div
@@ -353,29 +400,6 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
             <TriangleAlert className="size-4" aria-hidden="true" />
           </span>
         )}
-        {canFailOver(node.kind) && (
-          // The way out for when the step fails, low on its right, in the colour of an error.
-          // Always there, so lines can attach to it; seen only when it is used or chosen.
-          <span className={cn(!failWay && "pointer-events-none opacity-0")} aria-hidden={!failWay}>
-            {failWay === "used" && (
-              <span
-                className="text-destructive pointer-events-none absolute right-2 -translate-y-1/2 text-[10px] leading-none font-medium"
-                style={{ top: `${FAIL_TOP}%` }}
-              >
-                Fails
-              </span>
-            )}
-            <Handle
-              id={FAILURE_WAY}
-              type="source"
-              position={Position.Right}
-              isConnectable={Boolean(failWay)}
-              className="!border-background !bg-destructive !size-2.5 !border-2"
-              style={{ top: `${FAIL_TOP}%` }}
-              title="Drag to the step that runs when this one fails"
-            />
-          </span>
-        )}
         {ways.length === 0 ? (
           <Handle type="source" position={Position.Right} className={handle} />
         ) : (
@@ -397,6 +421,30 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
               />
             </span>
           ))
+        )}
+        {canFailOver(node.kind) && (
+          // The way out for when the step fails, low on its right, in the colour of an error.
+          // Always there, so lines can attach to it; seen only when it is used or chosen.
+          // It comes after the usual way out: a line that names no way joins the first one.
+          <span className={cn(!failWay && "pointer-events-none opacity-0")} aria-hidden={!failWay}>
+            {failWay === "used" && (
+              <span
+                className="text-destructive pointer-events-none absolute right-2 -translate-y-1/2 text-[10px] leading-none font-medium"
+                style={{ top: `${FAIL_TOP}%` }}
+              >
+                Fails
+              </span>
+            )}
+            <Handle
+              id={FAILURE_WAY}
+              type="source"
+              position={Position.Right}
+              isConnectable={Boolean(failWay)}
+              className="!border-background !bg-destructive !size-2.5 !border-2"
+              style={{ top: `${FAIL_TOP}%` }}
+              title="Drag to the step that runs when this one fails"
+            />
+          </span>
         )}
       </div>
       {last && addAfter && ways.length === 0 && (
@@ -446,20 +494,28 @@ function StepNode({ id, data, selected }: NodeProps<StepFlowNode>) {
   );
 }
 
-function TriggerNode({ data, selected }: NodeProps<TriggerFlowNode>) {
+function TriggerNode({ id, data, selected }: NodeProps<TriggerFlowNode>) {
   const Icon = data.runKind ? RUN_TRIGGER_ICONS[data.runKind] : TRIGGER_ICONS[data.trigger.kind];
+  const addAfter = useContext(AddAfterContext);
   return (
-    <div className="relative" data-node={TRIGGER_ID}>
-      <div
-        className={cn(
-          tile,
-          "rounded-l-[2.5rem] rounded-r-2xl",
-          selected && "picked-ring",
-        )}
-      >
+    <div className="relative" data-node={id} data-trigger>
+      <div className={cn(tile, "rounded-l-[2.5rem] rounded-r-2xl", selected && "picked-ring")}>
         <Icon className={cn("size-8", TRIGGER_TINT)} strokeWidth={1.6} aria-hidden="true" />
         <Handle type="source" position={Position.Right} className={handle} />
       </div>
+      {data.idle && addAfter && (
+        <button
+          type="button"
+          aria-label={`Add a step after ${TRIGGER_LABELS[data.trigger.kind]}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            addAfter(id);
+          }}
+          className={cn(plus, "top-1/2 size-7")}
+        >
+          <Plus className="size-4" aria-hidden="true" />
+        </button>
+      )}
       <div className={caption}>
         <span className="truncate text-sm font-medium">
           {data.runKind ? RUN_TRIGGER_LABELS[data.runKind] : TRIGGER_LABELS[data.trigger.kind]}
@@ -600,8 +656,24 @@ export function triggerPosition(nodes: { position: { x: number; y: number } }[])
   return { x: left - NODE_GAP, y };
 }
 
-/** Lines from the trigger to every step that nothing else feeds. */
-export function triggerEdges(nodeIds: string[], edges: { target: string }[]): Edge[] {
+/**
+ * Lines from the trigger to every step that nothing else feeds. With several triggers,
+ * `starts` says which steps each one starts, and those lines can be chosen and deleted
+ * like any other.
+ */
+export function triggerEdges(
+  nodeIds: string[],
+  edges: { target: string }[],
+  starts?: Map<string, string[]>,
+): Edge[] {
+  if (starts && starts.size > 1) {
+    const known = new Set(nodeIds);
+    return [...starts].flatMap(([triggerId, ids]) =>
+      ids
+        .filter((id) => known.has(id))
+        .map((id) => flowEdge({ id: `${triggerId}>${id}`, source: triggerId, target: id })),
+    );
+  }
   const fed = new Set(edges.map((edge) => edge.target));
   return nodeIds
     .filter((id) => !fed.has(id))
@@ -615,6 +687,48 @@ export function triggerEdges(nodeIds: string[], edges: { target: string }[]): Ed
         focusable: false,
       }),
     );
+}
+
+/**
+ * Where each trigger sits: one place left of the steps it starts, level with their
+ * middle, and a trigger that starts nothing below the others. Triggers that would land
+ * on the same spot are stacked.
+ */
+export function triggerPositions(
+  triggerIds: string[],
+  nodes: { id: string; position: { x: number; y: number } }[],
+  starts: Map<string, string[]>,
+): Map<string, { x: number; y: number }> {
+  const places = new Map<string, { x: number; y: number }>();
+  if (triggerIds.length <= 1) {
+    for (const id of triggerIds) places.set(id, triggerPosition(nodes));
+    return places;
+  }
+  const left = nodes.length ? Math.min(...nodes.map((node) => node.position.x)) : 0;
+  const taken: { x: number; y: number }[] = [];
+  const free = (place: { x: number; y: number }) => {
+    let y = place.y;
+    while (taken.some((other) => other.x === place.x && Math.abs(other.y - y) < 120)) y += 150;
+    const spot = { x: place.x, y };
+    taken.push(spot);
+    return spot;
+  };
+  const idle: string[] = [];
+  for (const id of triggerIds) {
+    const started = nodes.filter((node) => (starts.get(id) ?? []).includes(node.id));
+    if (started.length === 0) {
+      idle.push(id);
+      continue;
+    }
+    const x = Math.min(...started.map((node) => node.position.x)) - NODE_GAP;
+    const y = started.reduce((sum, node) => sum + node.position.y, 0) / started.length;
+    places.set(id, free({ x: Math.min(x, left - NODE_GAP), y }));
+  }
+  for (const id of idle) {
+    const lowest = Math.max(0, ...nodes.map((node) => node.position.y), ...taken.map((p) => p.y));
+    places.set(id, free({ x: left - NODE_GAP, y: lowest + 150 }));
+  }
+  return places;
 }
 
 /** Ids of the steps nothing follows. */

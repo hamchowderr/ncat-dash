@@ -1,3 +1,7 @@
+import { getStep, userInputSchema } from "@ncat-dash/step-catalog";
+
+import { isTakeLabel } from "./cleanup";
+
 // Readable names for the files a run makes. The toolkit names what it makes after its own
 // job ids ("ca4934e3-…_output_0.mp4", "…_captioned.mp4"), which tell a person nothing. A
 // run's files are shown under the name of the file that started it instead, with what
@@ -100,14 +104,64 @@ export function runStem(startedWith: string | null | undefined, automationName: 
  */
 export function runOutputNames(
   stem: string,
-  steps: { stepId?: string | null; outputs: string[] }[],
+  steps: { stepId?: string | null; outputs: string[]; labels?: FileLabel[] }[],
 ): Record<string, string> {
   const names: Record<string, string> = {};
   for (const step of steps) {
+    const labels = new Map((step.labels ?? []).map((item) => [item.url, item.label]));
     const fresh = [...new Set(step.outputs)].filter((file) => !(file in names));
     nameFiles(stem, fresh, step.stepId).forEach((name, at) => {
-      names[fresh[at]] = name;
+      const label = labels.get(fresh[at]);
+      names[fresh[at]] =
+        label && isMachineName(fileNameOfLink(fresh[at])) ? `${stem} ${label}` : name;
     });
   }
   return names;
+}
+
+/** A variant code for one file a step made, such as "h02_c01_15s_9x16". */
+export interface FileLabel {
+  url: string;
+  label: string;
+}
+
+/**
+ * The variant codes for the files a finished step's jobs made. A step with codes of its
+ * own (StepDefinition.outputLabels) adds them after the code of the file each job worked
+ * on; one that only follows (a shape, captions) adds its code only to a file that has one.
+ * `earlier` holds the codes the run's earlier steps gave their files.
+ */
+export function stepFileLabels(
+  jobs: { stepId: string; input: unknown; outputs: string[] }[],
+  earlier: FileLabel[],
+): FileLabel[] {
+  const known = new Map(earlier.map((item) => [item.url, item.label]));
+  const made: FileLabel[] = [];
+  for (const job of jobs) {
+    const step = getStep(job.stepId);
+    if (!step?.outputLabels || job.outputs.length === 0) continue;
+    const input = (job.input ?? {}) as Record<string, unknown>;
+    const from = step.primaryInput ? input[step.primaryInput] : undefined;
+    // A cleaned recording's take ("hook02", "body") names where it is kept, not what a
+    // later step makes of it, so it is not carried on.
+    const found = typeof from === "string" ? known.get(from) : undefined;
+    const base = isTakeLabel(found) ? undefined : found;
+    if (step.labelsFollow && !base) continue;
+    let own: string[] = [];
+    try {
+      // With the step's defaults filled in, as when it ran.
+      const parsed = userInputSchema(step).safeParse(input);
+      own = step.outputLabels(
+        parsed.success ? (parsed.data as Record<string, unknown>) : input,
+        job.outputs.length,
+      );
+    } catch {
+      own = [];
+    }
+    job.outputs.forEach((url, at) => {
+      const parts = [base, own[at]].filter(Boolean);
+      if (parts.length > 0) made.push({ url, label: parts.join("_") });
+    });
+  }
+  return made;
 }

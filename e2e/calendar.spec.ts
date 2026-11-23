@@ -18,11 +18,14 @@ test.use({
 /** Drags one element onto another the way the browser does, with one shared DataTransfer. */
 async function drag(page: Page, source: Locator, target: Locator) {
   const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-  await source.dispatchEvent("dragstart", { dataTransfer });
+  // Held on to, as the browser does: the drop redraws the entry where it lands at once,
+  // so the element it was dragged from may already be gone when the drag ends.
+  const dragged = await source.elementHandle();
+  await dragged!.dispatchEvent("dragstart", { dataTransfer });
   await target.dispatchEvent("dragenter", { dataTransfer });
   await target.dispatchEvent("dragover", { dataTransfer });
   await target.dispatchEvent("drop", { dataTransfer });
-  await source.dispatchEvent("dragend", { dataTransfer });
+  await dragged!.dispatchEvent("dragend", { dataTransfer });
 }
 
 test("posts are planned on the calendar, fill repeating slots, and move by dragging", async ({
@@ -125,9 +128,48 @@ test("posts are planned on the calendar, fill repeating slots, and move by dragg
     days.nth(19).getByRole("button", { name: "Full episode for Episode 7, due" }),
   ).toBeVisible();
 
-  // The week view, with hours.
+  // Videos are picked from the library, not typed in by their ID.
+  await page.goto("/uploads");
+  await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.webm");
+  await expect(page.getByRole("button", { name: "Open clip.webm" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.goto("/calendar");
+  await side.getByRole("button", { name: "Add Post" }).click();
+  await expect(side.getByLabel("Library File")).toHaveCount(0);
+  await side.getByRole("button", { name: "Choose Videos" }).click();
+  const picker = page.getByRole("dialog", { name: "Choose From Your Library" });
+  await picker.getByRole("button", { name: "V1 clip" }).click();
+  await expect(picker.getByRole("button", { name: "V1 clip" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  if (recording) await page.waitForTimeout(800);
+  await picker.getByRole("button", { name: "Use 1 File" }).click();
+  await expect(side.getByRole("list", { name: "Picked files" })).toContainText("clip");
+  await side.getByLabel("Not Scheduled Yet").check();
+  await side.getByRole("button", { name: "Add Post" }).click();
+  await expect(side.getByRole("heading", { name: "Post", exact: true })).toBeVisible();
+  await expect(side.getByRole("link", { name: "V1 · clip" })).toBeVisible();
+  await side.getByRole("button", { name: "Back" }).click();
+
+  // At 1280 wide with the sidebar open, every day of the week fits: Saturday is not cut off.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const grid = page.locator('[data-tour-step-id="tour-calendar-grid"]');
+  const wholeWeek = async () => {
+    const fits = await grid.evaluate((box) => box.scrollWidth <= box.clientWidth + 1);
+    const box = (await grid.boundingBox())!;
+    const saturday = (await page.locator("[data-day]").nth(6).boundingBox())!;
+    return fits && saturday.x + saturday.width <= box.x + box.width + 1;
+  };
+  await expect(page.getByRole("button", { name: "Week", exact: true })).toBeVisible();
+  expect(await wholeWeek(), "the month cuts off Saturday at 1280").toBe(true);
+
+  // The week view, with hours, fits too.
   await page.getByRole("button", { name: "Week", exact: true }).click();
   await expect(page.locator("[data-hour]").first()).toBeVisible();
+  expect(await wholeWeek(), "the week cuts off Saturday at 1280").toBe(true);
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });

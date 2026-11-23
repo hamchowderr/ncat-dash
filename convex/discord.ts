@@ -28,9 +28,11 @@ const START_TTL_MS = 15 * 60 * 1000;
 
 /**
  * What the bot may do in a server: see channels, read history, send messages and
- * messages in threads, start public threads, attach files, embed links, add reactions.
+ * messages in threads, start public threads, attach files, embed links, add reactions,
+ * and manage webhooks (so review replies can show under the writer's own name and picture;
+ * without it the bot posts them with the name in the words).
  */
-export const BOT_PERMISSIONS = "309237763136";
+export const BOT_PERMISSIONS = "309774634048";
 
 type Kind = "server" | "person";
 
@@ -55,7 +57,7 @@ function ready(): boolean {
 /** Back to Settings, saying how the Discord sign-in went. */
 export function settingsUrl(result: string): string {
   const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  return `${site}/settings/discord?discord=${encodeURIComponent(result)}`;
+  return `${site}/settings/integrations/discord?discord=${encodeURIComponent(result)}`;
 }
 
 /** What Settings shows about Discord: the team's servers and the viewer's own link. */
@@ -90,10 +92,18 @@ export const forTeam = query({
       .query("discordPeople")
       .withIndex("by_member", (q) => q.eq("organizationId", args.organizationId))
       .take(200);
+    const reviewServer = servers.find((server) => server.alertChannelId);
     return {
       ready: ready(),
       canEdit: MANAGER_ROLES.includes(role),
       servers: shown,
+      reviewChannel: reviewServer?.alertChannelId
+        ? {
+            id: reviewServer.alertChannelId,
+            name: reviewServer.alertChannelName ?? reviewServer.alertChannelId,
+            guildName: reviewServer.guildName,
+          }
+        : null,
       me: me ? { discordName: me.discordName, linkedAt: me.linkedAt } : null,
       linkedCount: linked.length,
     };
@@ -427,7 +437,7 @@ export const person = internalAction({
 });
 
 /** A short-lived Convex token for a sign-in, as the browser gets one. */
-async function tokenFor(ctx: ActionCtx, sessionToken: string): Promise<string | null> {
+export async function tokenFor(ctx: ActionCtx, sessionToken: string): Promise<string | null> {
   try {
     const auth = createAuth(ctx);
     const result = (await auth.api.getConvexToken({

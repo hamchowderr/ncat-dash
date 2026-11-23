@@ -1,3 +1,4 @@
+import { audioBeats } from "./audio/beats";
 import { audioConcatenate } from "./audio/concatenate";
 import { codeExecutePython } from "./code/execute-python";
 import { ffmpegCompose } from "./ffmpeg/compose";
@@ -6,6 +7,7 @@ import { imageToVideo } from "./image/to-video";
 import { mediaConvert } from "./media/convert";
 import { mediaDownload } from "./media/download";
 import { mediaGenerateAss } from "./media/generate-ass";
+import { mediaCheck } from "./media/check";
 import { mediaLook } from "./media/look";
 import { mediaMetadata } from "./media/metadata";
 import { mediaSilenceDetect } from "./media/silence-detect";
@@ -14,8 +16,10 @@ import { mediaTranscribe } from "./media/transcribe";
 import { storageUploadGcp } from "./storage/upload-gcp";
 import { storageUploadS3 } from "./storage/upload-s3";
 import { videoCaption } from "./video/caption";
+import { videoBackground } from "./video/background";
 import { videoConcatenate } from "./video/concatenate";
 import { videoCut } from "./video/cut";
+import { videoCutout } from "./video/cutout";
 import { videoMotion } from "./video/motion";
 import { videoReframe } from "./video/reframe";
 import { videoSplit } from "./video/split";
@@ -23,6 +27,7 @@ import { videoThumbnail } from "./video/thumbnail";
 import { videoTrim } from "./video/trim";
 
 export const steps = [
+  audioBeats,
   audioConcatenate,
   codeExecutePython,
   ffmpegCompose,
@@ -37,6 +42,7 @@ export const steps = [
   mediaTranscribe,
   storageUploadGcp,
   storageUploadS3,
+  videoBackground,
   videoCaption,
   videoConcatenate,
   videoCut,
@@ -47,9 +53,10 @@ export const steps = [
 ] as const;
 
 /** Steps the runner sends for other steps; never shown in a step list. */
-export const hiddenSteps = [mediaLook, videoMotion] as const;
+export const hiddenSteps = [mediaCheck, mediaLook, videoCutout, videoMotion] as const;
 
 export {
+  audioBeats,
   audioConcatenate,
   codeExecutePython,
   ffmpegCompose,
@@ -57,6 +64,7 @@ export {
   imageToVideo,
   mediaConvert,
   mediaDownload,
+  mediaCheck,
   mediaGenerateAss,
   mediaLook,
   mediaMetadata,
@@ -65,9 +73,11 @@ export {
   mediaTranscribe,
   storageUploadGcp,
   storageUploadS3,
+  videoBackground,
   videoCaption,
   videoConcatenate,
   videoCut,
+  videoCutout,
   videoMotion,
   videoReframe,
   videoSplit,

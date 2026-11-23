@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TabsContent } from "@/components/ui/tabs";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
@@ -18,7 +19,13 @@ import { EditorsCard } from "./editors-card";
 import { EmailCard } from "./email-card";
 import { MotionCard } from "./motion-card";
 import { NotificationsCard } from "./notifications-card";
-import { SettingRow, SettingsLoading, SettingsSection, useTeamSettings } from "./settings-shell";
+import {
+  SettingRow,
+  SettingsLoading,
+  SettingsSection,
+  SettingsTabs,
+  useTeamSettings,
+} from "./settings-shell";
 import { DiscordCard } from "./discord-card";
 import { SlackCard } from "./slack-card";
 import { TeamCard } from "./team-card";
@@ -72,15 +79,25 @@ export function AgentSettings() {
   const settings = useTeamSettings();
   if (!settings) return <SettingsLoading />;
   return (
-    <div className="flex flex-col gap-12">
-      <AgentCard
-        agent={settings.agent}
-        models={settings.agentModels}
-        mostHouseRules={settings.mostHouseRules}
-        canEdit={settings.canEdit}
-      />
-      <AnthropicKeyCard anthropicKey={settings.anthropicKey} canEdit={settings.canEdit} />
-    </div>
+    <SettingsTabs
+      label="Agent"
+      tabs={[
+        { id: "rules", label: "Model And Rules" },
+        { id: "key", label: "Your Anthropic Key" },
+      ]}
+    >
+      <TabsContent value="rules">
+        <AgentCard
+          agent={settings.agent}
+          models={settings.agentModels}
+          mostHouseRules={settings.mostHouseRules}
+          canEdit={settings.canEdit}
+        />
+      </TabsContent>
+      <TabsContent value="key">
+        <AnthropicKeyCard anthropicKey={settings.anthropicKey} canEdit={settings.canEdit} />
+      </TabsContent>
+    </SettingsTabs>
   );
 }
 
@@ -99,6 +116,29 @@ function RunsForms({ settings }: { settings: Loaded }) {
   const setRetries = useMutation(api.teamSettings.setStepRetries);
   const [typedRetries, setTypedRetries] = useState<string | null>(null);
   const [savingRetries, setSavingRetries] = useState(false);
+  const setAiLimit = useMutation(api.teamSettings.setAiLimit);
+  const [typedLimit, setTypedLimit] = useState<string | null>(null);
+  const [savingLimit, setSavingLimit] = useState(false);
+  const savedLimit = settings.aiLimit === null ? "" : settings.aiLimit.toFixed(2);
+
+  async function onSubmitLimit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (typedLimit === null) return;
+    const trimmed = typedLimit.trim().replace(/^\$/, "");
+    setSavingLimit(true);
+    try {
+      await setAiLimit({
+        organizationId: team.id,
+        dollars: trimmed === "" ? null : Number(trimmed),
+      });
+      setTypedLimit(null);
+      toast.success(trimmed === "" ? "No limit for AI" : "Saved");
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The limit could not be saved. Try again."));
+    } finally {
+      setSavingLimit(false);
+    }
+  }
 
   async function onSubmitRetries(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -180,6 +220,33 @@ function RunsForms({ settings }: { settings: Loaded }) {
           {settings.canEdit && typedRetries !== null && (
             <Button type="submit" disabled={savingRetries}>
               {savingRetries ? "Saving" : "Save"}
+            </Button>
+          )}
+        </SettingRow>
+      </form>
+      <form onSubmit={onSubmitLimit}>
+        <SettingRow
+          label="Limit for AI per run"
+          htmlFor="ai-limit"
+          description={`Best moments, Chapters, B-Roll plans and AI motion plans ask the AI once for each video. A step that could take a run past this stops before asking. Blank for no limit, or $${settings.aiLimitRange.min.toFixed(2)} to $${settings.aiLimitRange.max}.`}
+        >
+          <div className="relative">
+            <span className="text-muted-foreground pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm">
+              $
+            </span>
+            <Input
+              id="ai-limit"
+              inputMode="decimal"
+              className="w-28 pl-6 tabular-nums"
+              placeholder="No limit"
+              value={typedLimit ?? savedLimit}
+              onChange={(event) => setTypedLimit(event.target.value)}
+              disabled={!settings.canEdit}
+            />
+          </div>
+          {settings.canEdit && typedLimit !== null && typedLimit.trim() !== savedLimit && (
+            <Button type="submit" disabled={savingLimit}>
+              {savingLimit ? "Saving" : "Save"}
             </Button>
           )}
         </SettingRow>

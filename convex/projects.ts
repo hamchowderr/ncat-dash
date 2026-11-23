@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
-import { authComponent } from "./auth";
+import { getCaller } from "./lib/caller";
 import { isMember, MANAGER_ROLES, requireMember } from "./lib/authz";
 import {
   type DeliverableStatus,
@@ -13,6 +13,7 @@ import {
 } from "./lib/packages";
 import { projectOf, putInSlot, slotMoved } from "./lib/projects";
 import { startRun } from "./lib/runner";
+import { removeStoryboard } from "./lib/storyboards";
 import { deliverableKindValidator, deliverableStatusValidator } from "./schema";
 
 /** The most projects a team's list shows, and the longest name one can have. */
@@ -218,6 +219,7 @@ export const remove = mutation({
     if (!project) return;
     await requireMember(ctx, project.organizationId, MANAGER_ROLES);
     for (const slot of await slotsOf(ctx, project._id)) await ctx.db.delete(slot._id);
+    await removeStoryboard(ctx, project._id);
     await ctx.db.delete(project._id);
   },
 });
@@ -328,7 +330,7 @@ export const addVersion = mutation({
   args: { deliverableId: v.id("deliverables"), url: v.string() },
   handler: async (ctx, args) => {
     const { slot, userId } = await loadSlot(ctx, args.deliverableId);
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     await putInSlot(ctx, slot, args.url.trim(), {
       userId,
       name: user?.name?.trim() || "Someone",

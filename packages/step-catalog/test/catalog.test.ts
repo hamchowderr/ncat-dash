@@ -7,6 +7,8 @@ import {
   steps,
   testConnection,
   jobStatus,
+  pictureGivenForVideo,
+  StepSetupError,
   ToolkitError,
   userInputJsonSchema,
   userInputSchema,
@@ -24,9 +26,9 @@ function fakeFetch(status: number, body: unknown) {
 }
 
 describe("catalog", () => {
-  it("has 21 steps with unique ids and endpoints under /v1", () => {
-    expect(steps).toHaveLength(21);
-    expect(new Set(steps.map((s) => s.id)).size).toBe(21);
+  it("has 23 steps with unique ids and endpoints under /v1", () => {
+    expect(steps).toHaveLength(23);
+    expect(new Set(steps.map((s) => s.id)).size).toBe(23);
     for (const step of steps) expect(step.endpoint).toMatch(/^\/v1\//);
   });
 
@@ -49,6 +51,42 @@ describe("catalog", () => {
         expect(json.properties?.[field]).toBeUndefined();
       }
     }
+  });
+});
+
+describe("new background", () => {
+  it("keeps the speaker's cut-out out of the form but sends it", () => {
+    const step = getStep("video-background")!;
+    const json = userInputJsonSchema(step) as { properties: Record<string, unknown> };
+    expect(json.properties.mask_url).toBeUndefined();
+    expect(Object.keys(json.properties)).toEqual(
+      expect.arrayContaining(["video_url", "background", "color", "background_url", "blur"]),
+    );
+    const blanks = userInputSchema(step).parse({
+      video_url: "https://x.test/a.mp4",
+      mask_url: "https://x.test/m.mp4",
+    });
+    expect(step.toRequest!(blanks as never, {})).toEqual({
+      video_url: "https://x.test/a.mp4",
+      background: { type: "blur", blur: 24 },
+      mask_url: "https://x.test/m.mp4",
+    });
+    const picture = userInputSchema(step).parse({
+      video_url: "https://x.test/a.mp4",
+      background: "image",
+      background_url: "https://x.test/b.jpg",
+    });
+    expect(step.toRequest!(picture as never, {})).toEqual({
+      video_url: "https://x.test/a.mp4",
+      background: { type: "image", url: "https://x.test/b.jpg" },
+    });
+  });
+
+  it("hides the motion step's cut-out from the agent too", () => {
+    const motion = getStep("video-motion")!;
+    const json = userInputJsonSchema(motion) as { properties: Record<string, unknown> };
+    expect(json.properties.mask_url).toBeUndefined();
+    expect(json.properties.zooms).toBeDefined();
   });
 });
 
@@ -83,9 +121,33 @@ describe("callStep", () => {
     expect(JSON.parse(calls[0].init.body as string)).toEqual({
       video_url: "https://x.test/a.mp4",
       start: "00:00:05",
+      // Saved with the quick setting unless the step picks another.
+      video_preset: "veryfast",
       webhook_url: "https://app.test/hook",
       id: "step-1",
     });
+  });
+
+  it("saves cut, trim and split video quickly unless the step picks a slower setting", async () => {
+    const span = [{ start: "00:00:01", end: "00:00:02" }];
+    const inputs: Record<string, Record<string, unknown>> = {
+      "video-trim": { video_url: "https://x.test/a.mp4" },
+      "video-cut": { video_url: "https://x.test/a.mp4", cuts: span },
+      "video-split": { video_url: "https://x.test/a.mp4", splits: span },
+    };
+    for (const [id, input] of Object.entries(inputs)) {
+      const quick = fakeFetch(202, { code: 202, job_id: "j" });
+      await callStep(connection, getStep(id)!, input, { fetch: quick.fn });
+      expect(JSON.parse(quick.calls[0].init.body as string).video_preset).toBe("veryfast");
+      const slow = fakeFetch(202, { code: 202, job_id: "j" });
+      await callStep(
+        connection,
+        getStep(id)!,
+        { ...input, video_preset: "slow" },
+        { fetch: slow.fn },
+      );
+      expect(JSON.parse(slow.calls[0].init.body as string).video_preset).toBe("slow");
+    }
   });
 
   it("rejects invalid input before any request", async () => {
@@ -104,7 +166,10 @@ describe("callStep", () => {
       { video_url: "https://x.test/a.mp4", webhook_url: "https://evil.test" },
       { fetch: fn },
     );
-    expect(JSON.parse(calls[0].init.body as string)).toEqual({ video_url: "https://x.test/a.mp4" });
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({
+      video_url: "https://x.test/a.mp4",
+      video_preset: "veryfast",
+    });
   });
 
   it("throws ToolkitError with status and body on a failure", async () => {
@@ -206,5 +271,56 @@ describe("jobStatus", () => {
   it("throws on a toolkit error so the caller asks again later", async () => {
     const { fn } = fakeFetch(502, "bad gateway");
     await expect(jobStatus(connection, "tk-1", { fetch: fn })).rejects.toBeInstanceOf(ToolkitError);
+  });
+});
+
+describe("Caption video given a picture", () => {
+  const caption = getStep("video-caption")!;
+
+  it("is refused before anything is sent, in plain words", async () => {
+    const { fn, calls } = fakeFetch(202, { code: 202, job_id: "j" });
+    const sent = callStep(
+      connection,
+      caption,
+      { video_url: "https://files.example/uploads/Poster%20Final.PNG?X-Amz-Signature=abc" },
+      { fetch: fn },
+    );
+    await expect(sent).rejects.toBeInstanceOf(StepSetupError);
+    await expect(sent).rejects.toThrow("Captions need a video, and Poster Final.PNG is a picture.");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("sends videos, and links whose name says nothing, as before", async () => {
+    for (const url of ["https://files.example/a.mp4", "https://drive.example/uc?id=123"]) {
+      const { fn, calls } = fakeFetch(202, { code: 202, job_id: "j" });
+      await callStep(connection, caption, { video_url: url }, { fetch: fn });
+      expect(calls).toHaveLength(1);
+    }
+  });
+
+  it("other video steps refuse a picture the same way", () => {
+    expect(
+      pictureGivenForVideo(getStep("video-trim")!, {
+        video_url: "https://files.example/uploads/Harbor-Lane-logo.png",
+      }),
+    ).toBe("This step needs a video, and Harbor-Lane-logo.png is a picture.");
+  });
+
+  it("steps that take any file are not judged by the file's name", () => {
+    expect(
+      pictureGivenForVideo(getStep("media-convert-mp3") ?? getStep("media-transcribe")!, {
+        video_url: "https://files.example/a.png",
+        media_url: "https://files.example/a.png",
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("step names people read", () => {
+  it("no step is named or described after the tool the toolkit uses underneath", async () => {
+    const { allSteps } = await import("../src");
+    const named = allSteps.filter((step) => /ffmpeg/i.test(`${step.title} ${step.description}`));
+    expect(named.map((step) => step.id)).toEqual([]);
+    expect(getStep("ffmpeg-compose")?.title).toBe("Custom edit");
   });
 });

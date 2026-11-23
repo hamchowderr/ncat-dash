@@ -1,11 +1,18 @@
 import { ConvexError, v } from "convex/values";
-import { components } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
+import {
+  action,
+  internalQuery,
+  mutation,
+  type MutationCtx,
+  query,
+  type QueryCtx,
+} from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
+import { clientBrand, signDownload, signLogo, teamLogoFile } from "./lib/clientLinks";
 import { packageOf } from "./lib/packages";
-import { brandOf } from "./lib/queue";
-import { shareOf } from "./lib/reviews";
+import { sharesOf } from "./lib/reviews";
 
 // A client's portal: one link (/portal/<token>) where someone outside the team sees only
 // their own projects, in the team's logo and colours, and opens each project's review
@@ -116,9 +123,48 @@ export const stop = mutation({
     if (!client) return;
     await requireMember(ctx, client.organizationId);
     const portal = await portalOf(ctx, client._id);
-    if (portal) await ctx.db.delete(portal._id);
+    if (portal) await removePortal(ctx, portal);
   },
 });
+
+/**
+ * Gives the portal a new address and turns the old one off straight away, for when the
+ * link was passed around. The review rooms the old link opened close too; the client
+ * opens them again from the new link.
+ */
+export const newLink = mutation({
+  args: { clientId: v.id("clients") },
+  handler: async (ctx, args) => {
+    const client = await ctx.db.get(args.clientId);
+    if (!client) throw new ConvexError({ code: "not_found", message: "That client is gone." });
+    await requireMember(ctx, client.organizationId);
+    const portal = await portalOf(ctx, client._id);
+    if (!portal) {
+      throw new ConvexError({ code: "not_found", message: "This client has no portal." });
+    }
+    await removeOpenedRooms(ctx, portal);
+    const token = newToken();
+    await ctx.db.patch(portal._id, { token });
+    return token;
+  },
+});
+
+async function removeOpenedRooms(ctx: MutationCtx, portal: Doc<"clientPortals">) {
+  const shares = await ctx.db
+    .query("reviewShares")
+    .withIndex("by_portal", (q) => q.eq("portalId", portal._id))
+    .take(500);
+  for (const share of shares) await ctx.db.delete(share._id);
+}
+
+/**
+ * Deletes a portal and the review links it opened, so the review rooms a client reached
+ * through it close too.
+ */
+export async function removePortal(ctx: MutationCtx, portal: Doc<"clientPortals">) {
+  await removeOpenedRooms(ctx, portal);
+  await ctx.db.delete(portal._id);
+}
 
 // ---- The client's side ----
 
@@ -136,7 +182,7 @@ export const view = query({
       organizationId: client.organizationId,
     });
     // The team's own brand: the portal is the agency's, showing the client's work.
-    const brand = await brandOf(ctx, client.organizationId);
+    const brand = await clientBrand(ctx, client.organizationId);
     const projects = await ctx.db
       .query("projects")
       .withIndex("by_client", (q) => q.eq("clientId", client._id))
@@ -162,8 +208,8 @@ export const view = query({
     return {
       agency: {
         name: teamName ?? "Your team",
-        logo: brand.logo ?? null,
-        color: brand.color ?? null,
+        logo: brand.logo,
+        color: brand.color,
       },
       client: { name: client.name },
       projects: rows.sort((a, b) => b.updatedAt - a.updatedAt),
@@ -212,7 +258,11 @@ export const openReview = mutation({
     if (!review) {
       throw new ConvexError({ code: "not_found", message: "Nothing is ready to review yet." });
     }
-    const existing = await shareOf(ctx, review._id);
+    // The portal's own link to the room, never the one the team shares by hand: that one
+    // has its own settings and stays open when the portal is switched off.
+    const existing = (await sharesOf(ctx, review._id)).find(
+      (share) => share.portalId === portal._id,
+    );
     if (existing) return existing.token;
     const token = newToken();
     await ctx.db.insert("reviewShares", {
@@ -222,7 +272,62 @@ export const openReview = mutation({
       createdBy: portal.createdBy,
       allowVerdict: portal.allowVerdict,
       showTeamComments: portal.showTeamComments,
+      portalId: portal._id,
     });
     return token;
+  },
+});
+
+/** The team's logo file, when the portal behind this link is live. */
+export const logoTarget = internalQuery({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const found = await portalFor(ctx, args.token);
+    return found ? await teamLogoFile(ctx, found.client.organizationId) : null;
+  },
+});
+
+/**
+ * A link the portal shows the team's uploaded logo from. Visitors are not signed in, so the
+ * portal's secret is what lets them see it. Null when there is no uploaded logo to show.
+ */
+export const logoLink = action({
+  args: { token: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args): Promise<string | null> => {
+    return await signLogo(ctx, await ctx.runQuery(internal.portal.logoTarget, args));
+  },
+});
+
+/** A finished piece the client may download: approved or published, in one of their projects. */
+export const finishedPiece = internalQuery({
+  args: { token: v.string(), projectId: v.string(), slotId: v.string() },
+  handler: async (ctx, args) => {
+    const found = await portalFor(ctx, args.token);
+    if (!found) return null;
+    const project = await projectIn(ctx, found.client, args.projectId);
+    const id = ctx.db.normalizeId("deliverables", args.slotId);
+    const slot = project && id ? await ctx.db.get(id) : null;
+    if (!project || !slot || slot.projectId !== project._id) return null;
+    if (slot.status !== "approved" && slot.status !== "published") return null;
+    const url = newest(slot);
+    return url ? { organizationId: project.organizationId, url, label: slot.label } : null;
+  },
+});
+
+/**
+ * A link that downloads one finished piece. Only approved and published pieces of the
+ * client's own projects; null for anything else. A piece kept outside the team's folder
+ * comes back as its own address, which the page opens.
+ */
+export const downloadLink = action({
+  args: { token: v.string(), projectId: v.string(), slotId: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args): Promise<string | null> => {
+    const piece = await ctx.runQuery(internal.portal.finishedPiece, args);
+    if (!piece) return null;
+    const ending = /\.[A-Za-z0-9]{1,5}$/.exec(new URL(piece.url).pathname)?.[0] ?? "";
+    const name = `${piece.label.replace(/[\\/:*?"<>|]/g, "-").trim() || "Download"}${ending}`;
+    return (await signDownload(ctx, piece.organizationId, piece.url, name)) ?? piece.url;
   },
 });

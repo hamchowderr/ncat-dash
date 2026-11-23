@@ -6,6 +6,7 @@
  * details.ts), so it can sit anywhere in an automation, also after a step that made a new
  * file. Its settings are a few words and a number that the canvas shows as a sentence.
  */
+import { sendProblem } from "./send";
 import { approvalProblem } from "./approval";
 import { detailsKind, type FileDetails, formatDuration } from "./details";
 
@@ -42,12 +43,16 @@ export function canFailOver(kind: string | undefined): boolean {
     kind === "motion" ||
     kind === "motion-plan" ||
     kind === "sound-effects" ||
+    kind === "cleanup" ||
+    kind === "footage-check" ||
+    kind === "subtitles" ||
     kind === "export" ||
-    kind === "automation"
+    kind === "automation" ||
+    kind === "send"
   );
 }
 
-export type Check = "length" | "type" | "shape" | "size" | "sound";
+export type Check = "length" | "type" | "shape" | "size" | "sound" | "words";
 
 interface CheckDescription {
   /** What is looked at, as the pick list names it. */
@@ -56,6 +61,8 @@ interface CheckDescription {
   choices: { value: string; label: string }[];
   /** For a check that compares against a number: what the number counts. */
   value?: "seconds" | "pixels";
+  /** For a check that looks for words: they are given as text. */
+  text?: true;
 }
 
 /** Every check an If can make. The pick lists and the agent's schema both come from here. */
@@ -99,6 +106,15 @@ export const CHECKS: Record<Check, CheckDescription> = {
       { value: "absent", label: "has no sound" },
     ],
   },
+  // What is said in it, from a Transcribe step before the If.
+  words: {
+    label: "What is said",
+    choices: [
+      { value: "mentions", label: "mentions" },
+      { value: "not_mentions", label: "does not mention" },
+    ],
+    text: true,
+  },
 };
 
 export const CHECK_NAMES = Object.keys(CHECKS) as Check[];
@@ -117,18 +133,25 @@ export interface Condition {
   is: string;
   /** Seconds for a length check, pixels on the shorter side for a picture size check. */
   value?: number;
+  /** The words a "What is said" check looks for. */
+  text?: string;
 }
 
 /** What a new If starts with, so it works before anyone touches it. */
-export const DEFAULT_CONDITION: Required<Condition> = { check: "length", is: "longer", value: 60 };
+export const DEFAULT_CONDITION: Required<Omit<Condition, "text">> = {
+  check: "length",
+  is: "longer",
+  value: 60,
+};
 
 /** The words `is` starts as when the check is changed, and the number that goes with them. */
 export function conditionFor(check: Check): Condition {
-  const { choices, value } = CHECKS[check];
+  const { choices, value, text } = CHECKS[check];
   return {
     check,
     is: choices[0].value,
     ...(value === "seconds" ? { value: 60 } : value === "pixels" ? { value: 1080 } : {}),
+    ...(text ? { text: "" } : {}),
   };
 }
 
@@ -147,6 +170,9 @@ export function conditionProblem(input: Record<string, unknown>): string | null 
         : "Choose a picture size.";
     }
   }
+  if (description.text && (typeof input.text !== "string" || input.text.trim() === "")) {
+    return "Say which words to look for.";
+  }
   return null;
 }
 
@@ -157,6 +183,7 @@ export function readCondition(input: Record<string, unknown>): Condition | null 
     check: input.check as Check,
     is: input.is as string,
     ...(CHECKS[input.check as Check].value ? { value: input.value as number } : {}),
+    ...(CHECKS[input.check as Check].text ? { text: (input.text as string).trim() } : {}),
   };
 }
 
@@ -175,7 +202,9 @@ export function conditionSentence(input: Record<string, unknown>): string {
       ? `${words.replace(/^is /, "")} ${formatDuration(condition.value!)}`
       : condition.check === "size"
         ? `${words.replace(/^is /, "")} ${sizeLabel(condition.value!)}`
-        : words;
+        : condition.check === "words"
+          ? `${words} “${condition.text}”`
+          : words;
   return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
 
@@ -187,7 +216,17 @@ const SQUARE_TOLERANCE = 0.03;
  * no such detail (the length of a picture, the shape of a sound), does not pass, so it
  * leaves by "no" and nothing is done to it by mistake.
  */
-export function passes(condition: Condition, details: FileDetails | null | undefined): boolean {
+export function passes(
+  condition: Condition,
+  details: FileDetails | null | undefined,
+  /** What is said in the file, for a "What is said" check; unknown words do not pass. */
+  said?: string | null,
+): boolean {
+  if (condition.check === "words") {
+    if (typeof said !== "string") return false;
+    const found = said.toLowerCase().includes((condition.text ?? "").toLowerCase());
+    return condition.is === "mentions" ? found : !found;
+  }
   if (!details) return false;
   switch (condition.check) {
     case "length": {
@@ -215,15 +254,18 @@ export function passes(condition: Condition, details: FileDetails | null | undef
       return condition.is === "present" ? details.hasAudio : !details.hasAudio;
     }
   }
+  return false;
 }
 
 /** Sorts files into the two ways out of an If, keeping their order. */
 export function sortFiles(
   condition: Condition,
-  files: { url: string; details: FileDetails | null }[],
+  files: { url: string; details: FileDetails | null; said?: string | null }[],
 ): Record<IfBranch, string[]> {
   const sorted: Record<IfBranch, string[]> = { yes: [], no: [] };
-  for (const file of files) sorted[passes(condition, file.details) ? "yes" : "no"].push(file.url);
+  for (const file of files) {
+    sorted[passes(condition, file.details, file.said) ? "yes" : "no"].push(file.url);
+  }
   return sorted;
 }
 
@@ -277,5 +319,6 @@ export function logicProblem(node: {
   if (node.kind === "if") return conditionProblem(node.input);
   if (node.kind === "wait") return waitProblem(node.input);
   if (node.kind === "approval") return approvalProblem(node.input);
+  if (node.kind === "send") return sendProblem(node.input);
   return null;
 }

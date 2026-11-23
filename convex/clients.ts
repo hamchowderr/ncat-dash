@@ -7,6 +7,7 @@ import { MANAGER_ROLES, isMember, requireMember } from "./lib/authz";
 import { checkedBrand, checkedMusic } from "./lib/brand";
 import { brandAndMusicOf } from "./lib/queue";
 import { brandValidator, musicValidator } from "./schema";
+import { removePortal } from "./portal";
 
 /** The most clients one team keeps, and the longest name one can have. */
 export const MAX_CLIENTS = 200;
@@ -172,9 +173,9 @@ export const setBrand = mutation({
   args: { clientId: v.id("clients"), brand: brandValidator, music: v.optional(musicValidator) },
   handler: async (ctx, args) => {
     const { client } = await loadForMember(ctx, args.clientId);
-    const brand = await checkedBrand(ctx, client.organizationId, args.brand);
+    const brand = await checkedBrand(ctx, client.organizationId, args.brand, client.brand);
     const music = args.music
-      ? await checkedMusic(ctx, client.organizationId, args.music)
+      ? await checkedMusic(ctx, client.organizationId, args.music, client.music)
       : client.music;
     await ctx.db.patch(client._id, { brand, music: music && music.length > 0 ? music : undefined });
   },
@@ -217,6 +218,17 @@ export const remove = mutation({
       .withIndex("by_client", (q) => q.eq("clientId", client._id))
       .take(2000);
     for (const file of files) await ctx.db.patch(file._id, { clientId: undefined });
+    // Creators' deals with it stay, since the rights still run out; the note keeps its name.
+    const deals = await ctx.db
+      .query("creatorRights")
+      .withIndex("by_client", (q) => q.eq("clientId", client._id))
+      .take(2000);
+    for (const deal of deals) {
+      await ctx.db.patch(deal._id, {
+        clientId: undefined,
+        note: [`For ${client.name}.`, deal.note].filter(Boolean).join(" "),
+      });
+    }
     // Its calendar posts and slots stay, as the team's own.
     for (const table of ["calendarPosts", "calendarSlots"] as const) {
       const rows = await ctx.db
@@ -225,12 +237,12 @@ export const remove = mutation({
         .take(2000);
       for (const row of rows) await ctx.db.patch(row._id, { clientId: undefined });
     }
-    // Its portal link stops working.
+    // Its portal link stops working, and so do the review rooms it opened.
     const portals = await ctx.db
       .query("clientPortals")
       .withIndex("by_client", (q) => q.eq("clientId", client._id))
       .take(10);
-    for (const portal of portals) await ctx.db.delete(portal._id);
+    for (const portal of portals) await removePortal(ctx, portal);
     await ctx.db.delete(client._id);
   },
 });

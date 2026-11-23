@@ -3,18 +3,20 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { threadComments } from "@ncat-dash/review-core";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Check, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
+import { type Agency, AgencyMark, brandStyle } from "@/components/portal/agency-mark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errorMessage } from "@/lib/catalog";
+import { useNarrow } from "@/hooks/use-narrow";
 import { cn } from "@/lib/utils";
 
 import { ClipStage, isStill, type Mark } from "./clip-stage";
@@ -117,7 +119,21 @@ function useGuestPresence(token: string, guest: Guest | null): Here[] {
   return here ?? [];
 }
 
-function NameForm({ teamName }: { teamName: string | null }) {
+/** The team's mark, its uploaded logo asked for with the share link's secret. */
+function RoomMark({ token, agency, small }: { token: string; agency: Agency; small?: boolean }) {
+  const logoLink = useAction(api.sharedReview.logoLink);
+  return <AgencyMark agency={agency} small={small} getLink={() => logoLink({ token })} />;
+}
+
+function NameForm({
+  token,
+  teamName,
+  brand,
+}: {
+  token: string;
+  teamName: string | null;
+  brand: { logo: string | null; color: string | null };
+}) {
   const [name, setName] = useState("");
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -129,6 +145,11 @@ function NameForm({ teamName }: { teamName: string | null }) {
       onSubmit={submit}
       className="bg-card mx-auto mt-[12svh] flex w-full max-w-sm flex-col gap-4 rounded-xl border p-6"
     >
+      {teamName && (
+        <div style={brandStyle(brand.color)}>
+          <RoomMark token={token} agency={{ name: teamName, ...brand }} />
+        </div>
+      )}
       <div className="grid gap-1">
         <h1 className="text-lg font-semibold">Before you start</h1>
         <p className="text-muted-foreground text-sm">
@@ -346,7 +367,18 @@ function Workspace({
   );
 }
 
-function Verdict({ token, guest, room }: { token: string; guest: Guest; room: Room }) {
+function Verdict({
+  token,
+  guest,
+  room,
+  narrow = false,
+}: {
+  token: string;
+  guest: Guest;
+  room: Room;
+  /** On a phone: two big buttons side by side along the bottom. */
+  narrow?: boolean;
+}) {
   const give = useMutation(api.sharedReview.verdict);
   const [busy, setBusy] = useState(false);
   if (room.status !== "open") {
@@ -372,15 +404,19 @@ function Verdict({ token, guest, room }: { token: string; guest: Guest; room: Ro
 
   const verdict = room.verdict;
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className={cn("flex flex-wrap items-center gap-2", narrow && "grid grid-cols-2")}>
       {verdict && (
-        <span role="status" className="text-muted-foreground text-sm">
+        <span
+          role="status"
+          className={cn("text-muted-foreground text-sm", narrow && "col-span-2 text-xs")}
+        >
           {verdict.name} {verdict.approved ? "approved" : "asked for changes"}
         </span>
       )}
       <Button
         variant={verdict && !verdict.approved ? "secondary" : "outline"}
-        size="sm"
+        size={narrow ? "lg" : "sm"}
+        className={cn(narrow && "h-11")}
         disabled={busy}
         aria-pressed={verdict ? !verdict.approved : false}
         onClick={() => void say(false)}
@@ -389,7 +425,8 @@ function Verdict({ token, guest, room }: { token: string; guest: Guest; room: Ro
         Ask for changes
       </Button>
       <Button
-        size="sm"
+        size={narrow ? "lg" : "sm"}
+        className={cn(narrow && "h-11")}
         variant={verdict?.approved ? "secondary" : "default"}
         disabled={busy}
         aria-pressed={verdict ? verdict.approved : false}
@@ -405,24 +442,31 @@ function Verdict({ token, guest, room }: { token: string; guest: Guest; room: Ro
 /** A review as a client sees it through its share link, with no account. */
 export function SharedReview({ token, backHref }: { token: string; backHref?: string }) {
   const room = useQuery(api.sharedReview.room, { token });
+  const ended = useQuery(api.sharedReview.ended, room === null ? { token } : "skip");
   const guest = useGuest();
   const here = useGuestPresence(token, guest);
   const [clipId, setClipId] = useState<Id<"reviewClips"> | null>(null);
   const [versions, setVersions] = useState<Record<string, number>>({});
+  const narrow = useNarrow();
 
   if (room === undefined) return <Skeleton className="m-4 h-[70svh] rounded-xl" />;
   if (room === null || room.clips.length === 0) {
     return (
       <div className="mx-auto mt-[12svh] flex max-w-sm flex-col gap-2 rounded-xl border p-6">
-        <h1 className="text-lg font-semibold">This review is no longer shared</h1>
+        <h1 className="text-lg font-semibold">
+          {ended === "approved" ? "This review is approved" : "This review is no longer shared"}
+        </h1>
         <p className="text-muted-foreground text-sm">
-          The link was switched off or the review was removed. Ask the person who sent it for a new
-          one.
+          {ended === "approved"
+            ? "The team has approved it, so the link is closed. Ask the person who sent it if you need to see it again."
+            : ended === "expired"
+              ? "Review links stop working after 30 days. Ask the person who sent it to renew it, and open this same link again."
+              : "The link was switched off or the review was removed. Ask the person who sent it for a new one."}
         </p>
       </div>
     );
   }
-  if (!guest) return <NameForm teamName={room.teamName} />;
+  if (!guest) return <NameForm token={token} teamName={room.teamName} brand={room.brand} />;
 
   const index = Math.max(
     0,
@@ -431,54 +475,78 @@ export function SharedReview({ token, backHref }: { token: string; backHref?: st
   const clip = room.clips[index];
   const version = Math.min(versions[clip._id] ?? clip.versions.length, clip.versions.length);
 
+  // A deciding client on a phone gets the buttons along the bottom, in their own room.
+  const bottomVerdict = narrow && room.status === "open" && room.allowVerdict;
+
   return (
-    <div className="flex min-h-[36rem] flex-col gap-3 p-3 sm:p-4 lg:h-svh">
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {backHref && (
-          <Button asChild variant="ghost" size="icon" className="-mr-2">
-            <Link href={backHref}>
-              <ArrowLeft />
-              <span className="sr-only">Back to the project</span>
-            </Link>
-          </Button>
-        )}
-        <div className="min-w-0 flex-1">
-          {room.teamName && (
-            <p className="text-muted-foreground truncate text-xs">From {room.teamName}</p>
+    // The whole window, so on a phone the room scrolls inside it and the decision stays put
+    // under the thumb, without covering anything.
+    <div
+      style={brandStyle(room.brand.color)}
+      className="flex h-dvh flex-col gap-3 p-3 sm:p-4 lg:h-svh lg:min-h-[36rem]"
+    >
+      <div
+        aria-hidden="true"
+        className="-mx-3 -mt-3 h-1 shrink-0 bg-[var(--brand,var(--primary))] sm:-mx-4 sm:-mt-4"
+      />
+      <div
+        data-room-scroll
+        className="-mx-3 min-h-0 flex-1 overflow-y-auto px-3 max-lg:space-y-3 sm:-mx-4 sm:px-4 lg:contents"
+      >
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {backHref && (
+            <Button asChild variant="ghost" size="icon" className="-mr-2">
+              <Link href={backHref}>
+                <ArrowLeft />
+                <span className="sr-only">Back to the project</span>
+              </Link>
+            </Button>
           )}
-          <h1 className="truncate font-medium">{room.title}</h1>
+          {room.teamName && (
+            <RoomMark token={token} agency={{ name: room.teamName, ...room.brand }} small />
+          )}
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate font-medium">{room.title}</h1>
+          </div>
+          <div className={cn("flex items-center gap-x-4 gap-y-2", narrow && "basis-full")}>
+            <HereNow here={here} me={`guest:${guest.id}`} />
+            <span className="text-muted-foreground text-sm">Reviewing as {guest.name}</span>
+          </div>
+          {!bottomVerdict && <Verdict token={token} guest={guest} room={room} />}
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+          {room.clips.length > 1 && (
+            <ClipList clips={room.clips} selected={clip._id} onSelect={setClipId} />
+          )}
+          <Workspace
+            key={`${clip._id}:${version}`}
+            token={token}
+            guest={guest}
+            clip={clip}
+            index={index}
+            count={room.clips.length}
+            version={version}
+            onVersion={(next) => setVersions((current) => ({ ...current, [clip._id]: next }))}
+            typing={here
+              .filter(
+                (person) =>
+                  person.id !== `guest:${guest.id}` &&
+                  person.typing?.clipId === clip._id &&
+                  person.typing.version === version,
+              )
+              .map((person) => ({
+                id: person.id,
+                name: person.name,
+                threadId: person.typing!.threadId,
+              }))}
+          />
         </div>
-        <HereNow here={here} me={`guest:${guest.id}`} />
-        <span className="text-muted-foreground text-sm">Reviewing as {guest.name}</span>
-        <Verdict token={token} guest={guest} room={room} />
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        {room.clips.length > 1 && (
-          <ClipList clips={room.clips} selected={clip._id} onSelect={setClipId} />
-        )}
-        <Workspace
-          key={`${clip._id}:${version}`}
-          token={token}
-          guest={guest}
-          clip={clip}
-          index={index}
-          count={room.clips.length}
-          version={version}
-          onVersion={(next) => setVersions((current) => ({ ...current, [clip._id]: next }))}
-          typing={here
-            .filter(
-              (person) =>
-                person.id !== `guest:${guest.id}` &&
-                person.typing?.clipId === clip._id &&
-                person.typing.version === version,
-            )
-            .map((person) => ({
-              id: person.id,
-              name: person.name,
-              threadId: person.typing!.threadId,
-            }))}
-        />
       </div>
+      {bottomVerdict && (
+        <div data-decision-bar className="pb-[env(safe-area-inset-bottom)]">
+          <Verdict token={token} guest={guest} room={room} narrow />
+        </div>
+      )}
     </div>
   );
 }

@@ -97,7 +97,13 @@ export async function joinChannel(token: string, channel: string): Promise<boole
 /** Posts a message, in a thread when `threadTs` is given. Returns its ts, or null. */
 export async function postMessage(
   token: string,
-  message: { channel: string; text: string; threadTs?: string },
+  message: {
+    channel: string;
+    text: string;
+    threadTs?: string;
+    // Posts under this name and picture (needs the app's chat:write.customize scope).
+    as?: { name: string; image: string | null };
+  },
 ): Promise<string | null> {
   const reply = await call("chat.postMessage", token, {
     channel: message.channel,
@@ -105,8 +111,29 @@ export async function postMessage(
     unfurl_links: "false",
     unfurl_media: "false",
     ...(message.threadTs ? { thread_ts: message.threadTs } : {}),
+    ...(message.as ? { username: message.as.name.slice(0, 80) } : {}),
+    ...(message.as?.image ? { icon_url: message.as.image } : {}),
   });
   return reply?.ok && typeof reply.ts === "string" ? reply.ts : null;
+}
+
+/**
+ * Whether the app may post under someone else's name and picture: Slack's
+ * chat:write.customize scope, which apps made before it was in the manifest lack until
+ * they are reinstalled. Slack lists a token's scopes on every answer.
+ */
+export async function canPostAsOthers(token: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${slackApiBase()}auth.test`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const scopes = (response.headers.get("x-oauth-scopes") ?? "").split(",");
+    return scopes.map((scope) => scope.trim()).includes("chat:write.customize");
+  } catch {
+    return false;
+  }
 }
 
 /** The Slack user with this email address, so a mention can tag them there. */
@@ -160,6 +187,44 @@ export async function postEphemeral(
     user: message.user,
     text: message.text,
     ...(message.threadTs ? { thread_ts: message.threadTs } : {}),
+  });
+  return reply?.ok === true;
+}
+
+/** A Slack message the dashboard posted, as Slack names it: its conversation and ts. */
+export type SlackMessageRef = { channel: string; ts: string };
+
+/**
+ * Posts a message built from Block Kit blocks, with `text` as what notifications and
+ * screen readers show. Posting to a person's Slack user id lands in their direct
+ * messages with the app. Returns where it went, or null.
+ */
+export async function postBlocks(
+  token: string,
+  message: { channel: string; text: string; blocks: unknown[] },
+): Promise<SlackMessageRef | null> {
+  const reply = await call("chat.postMessage", token, {
+    channel: message.channel,
+    text: message.text,
+    blocks: JSON.stringify(message.blocks),
+    unfurl_links: "false",
+    unfurl_media: "false",
+  });
+  if (!reply?.ok || typeof reply.ts !== "string" || typeof reply.channel !== "string") return null;
+  return { channel: reply.channel, ts: reply.ts };
+}
+
+/** Rewrites a message the app posted, such as taking its buttons away once decided. */
+export async function updateBlocks(
+  token: string,
+  ref: SlackMessageRef,
+  message: { text: string; blocks: unknown[] },
+): Promise<boolean> {
+  const reply = await call("chat.update", token, {
+    channel: ref.channel,
+    ts: ref.ts,
+    text: message.text,
+    blocks: JSON.stringify(message.blocks),
   });
   return reply?.ok === true;
 }

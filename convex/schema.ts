@@ -25,11 +25,23 @@ export const nodeValidator = v.object({
     v.literal("sound-effects"),
     // Has the AI plan which motion graphics go where, for the Add Motion Graphics after it.
     v.literal("motion-plan"),
+    // Takes long pauses and retakes out of each recording; can split out its hook takes.
+    v.literal("cleanup"),
+    // Measures each video before editing and stops or warns when one has a problem.
+    v.literal("footage-check"),
+    // Writes each video's subtitles in other languages.
+    v.literal("subtitles"),
+    // Posts the files that reach it, with the run's details, to an address.
+    v.literal("send"),
   ),
   stepId: v.optional(v.string()),
   label: v.optional(v.string()),
   // Turned off: runs hand its files straight on without doing its work.
   off: v.optional(v.boolean()),
+  // How it treats files when two or more lines meet at it (automation-core join.ts).
+  join: v.optional(
+    v.union(v.literal("all"), v.literal("source"), v.literal("position"), v.literal("first")),
+  ),
   input: v.record(v.string(), v.any()),
   position: v.object({ x: v.number(), y: v.number() }),
 });
@@ -68,6 +80,23 @@ export const deliverableKindValidator = v.union(
 );
 
 /** Where a deliverable is, as a column on the project's board. */
+export const sceneValidator = v.union(
+  v.literal("full"),
+  v.literal("panel"),
+  v.literal("centre"),
+  v.literal("graphic"),
+  v.literal("circle"),
+);
+
+export const takePartValidator = v.union(
+  v.literal("you"),
+  v.literal("graphic"),
+  v.literal("recording"),
+  v.literal("screen"),
+);
+
+export const cutValidator = v.object({ what: v.string(), where: v.string() });
+
 export const deliverableStatusValidator = v.union(
   v.literal("todo"),
   v.literal("in_progress"),
@@ -94,7 +123,14 @@ export const triggerValidator = v.union(
     maxSeconds: v.optional(v.number()),
   }),
   // A folder in the team's own bucket, checked every minute for new files.
-  v.object({ kind: v.literal("folder"), prefix: v.string(), fileType: fileTypeValidator }),
+  // With layout "creators", one folder per creator holds hooks/, body/ and endings/, and
+  // each creator's takes start one run together.
+  v.object({
+    kind: v.literal("folder"),
+    prefix: v.string(),
+    fileType: fileTypeValidator,
+    layout: v.optional(v.literal("creators")),
+  }),
   // A run of another of the team's automations ended. `automationId` is "" until picked.
   v.object({
     kind: v.literal("finished"),
@@ -106,6 +142,11 @@ export const triggerValidator = v.union(
     status: deliverableStatusValidator,
     slotKind: v.union(v.literal("any"), deliverableKindValidator),
   }),
+);
+
+/** Triggers after the first one, each with the steps it starts. See automation-core triggers.ts. */
+export const moreTriggersValidator = v.array(
+  v.object({ id: v.string(), trigger: triggerValidator, starts: v.array(v.string()) }),
 );
 
 /**
@@ -135,9 +176,20 @@ export const operationValidator = v.union(
   v.object({ op: v.literal("set"), id: v.string(), settings: v.record(v.string(), v.any()) }),
   v.object({ op: v.literal("use"), id: v.string(), field: v.string(), from: v.string() }),
   v.object({ op: v.literal("rename"), id: v.string(), label: v.string() }),
+  v.object({
+    op: v.literal("meet"),
+    id: v.string(),
+    mode: v.union(v.literal("all"), v.literal("source"), v.literal("position"), v.literal("first")),
+  }),
   v.object({ op: v.literal("switch"), id: v.string(), on: v.boolean() }),
   v.object({ op: v.literal("duplicate"), ids: v.array(v.string()) }),
-  v.object({ op: v.literal("trigger"), trigger: triggerValidator }),
+  v.object({ op: v.literal("trigger"), trigger: triggerValidator, id: v.optional(v.string()) }),
+  v.object({
+    op: v.literal("addTrigger"),
+    trigger: triggerValidator,
+    starts: v.optional(v.array(v.string())),
+  }),
+  v.object({ op: v.literal("removeTrigger"), id: v.string() }),
   v.object({ op: v.literal("name"), name: v.string() }),
   v.object({ op: v.literal("tidy") }),
 );
@@ -243,6 +295,24 @@ export const motionSetupValidator = v.object({
 // Users, sessions, organizations (teams), members and invitations live in the
 // Better Auth component (convex/betterAuth). App tables point at a team by its
 // organization id, and every read or write checks membership first (lib/authz.ts).
+// For one kind of news: whether it shows under the bell, is emailed, and goes to each
+// chat app the member linked. Left out: the kind's default.
+const kindChannels = v.object({
+  bell: v.optional(v.boolean()),
+  email: v.optional(v.boolean()),
+  telegram: v.optional(v.boolean()),
+  slack: v.optional(v.boolean()),
+  discord: v.optional(v.boolean()),
+  teams: v.optional(v.boolean()),
+});
+
+const chatAppValidator = v.union(
+  v.literal("telegram"),
+  v.literal("slack"),
+  v.literal("discord"),
+  v.literal("teams"),
+);
+
 export default defineSchema({
   toolkitConnections: defineTable({
     organizationId: v.string(),
@@ -269,6 +339,26 @@ export default defineSchema({
     ),
     createdBy: v.string(),
   }).index("by_organization", ["organizationId"]),
+
+  // How many workers the operator's toolkit that teams share reported at its last check.
+  // It is the total of jobs at once there, unless HOSTED_TOOLKIT_JOBS_AT_ONCE sets one.
+  sharedToolkitWorkers: defineTable({
+    workers: v.union(v.null(), v.number()),
+    checkedAt: v.number(),
+    // Set while backing off after trouble: the total allowed for now, below the full one.
+    allowed: v.optional(v.number()),
+    // When the total was last cut, so one burst of failures cuts it once.
+    cutAt: v.optional(v.number()),
+  }),
+
+  // Teams waiting for room at the operator's toolkit that teams share. The team served
+  // longest ago goes next, so each waiting team gets a turn in order.
+  toolkitTurns: defineTable({
+    organizationId: v.string(),
+    lastSentAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_lastSentAt", ["lastSentAt"]),
 
   // One run of one toolkit step, started from the test bench or by an automation run.
   jobs: defineTable({
@@ -297,6 +387,9 @@ export default defineSchema({
     // When the job was handed to the toolkit. A queued job without it is waiting for a
     // free slot under the team's limit on jobs at once.
     dispatchedAt: v.optional(v.number()),
+    // Set when the job was sent to the operator's toolkit that teams share, so the total
+    // there (HOSTED_TOOLKIT_JOBS_AT_ONCE) can be counted.
+    sharedToolkit: v.optional(v.boolean()),
     // Set when an automation run created the job, so its result moves the run on.
     runStepId: v.optional(v.id("runSteps")),
     // True when the failure is one another try cannot fix, such as a setting the
@@ -308,15 +401,24 @@ export default defineSchema({
     libraryItemId: v.optional(v.id("libraryItems")),
     // Set when the job brings a Zoom recording into the team's folder.
     zoomImportId: v.optional(v.id("zoomImports")),
+    // A sample being studied for its look: its sheet of frames or cuts.
+    lookStudyId: v.optional(v.id("lookStudies")),
     // Set when the job brings a Google Meet recording into the team's folder.
     googleMeetImportId: v.optional(v.id("googleMeetImports")),
     microsoftImportId: v.optional(v.id("microsoftImports")),
     // Set when the job brings a file from a watched Dropbox folder into the team's folder.
     dropboxImportId: v.optional(v.id("dropboxImports")),
+    // Set when the job brings a video from a pasted link into the team's folder.
+    linkImportId: v.optional(v.id("linkImports")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_sharedToolkit_and_status", ["sharedToolkit", "status"])
+    // Jobs handed to be sent, by when: finds a send that broke without reading the queue.
+    .index("by_status_and_dispatchedAt", ["status", "dispatchedAt"])
+    // Every job a step in a run sent, earlier tries too, for the step's log.
+    .index("by_runStep", ["runStepId"]),
 
   // Per-team settings. A team without a row uses the defaults.
   teamSettings: defineTable({
@@ -331,6 +433,9 @@ export default defineSchema({
     music: v.optional(musicValidator),
     // How many times a failed step in a run tries again before the run fails.
     stepRetries: v.optional(v.number()),
+    // The most one run may spend on AI steps, in millionths of a dollar. Left out: no
+    // limit (automation-core ai-spend.ts).
+    aiLimit: v.optional(v.number()),
     // The video editors the team uses, which decides the files an export makes.
     editors: v.optional(v.array(editorValidator)),
     // How the agent works for this team: its model, house rules and default platforms.
@@ -345,6 +450,16 @@ export default defineSchema({
     anthropicKey: v.optional(
       v.object({ cipher: v.string(), hint: v.string(), setBy: v.string(), setAt: v.number() }),
     ),
+    // The team's browser cookies for video sites (videoCookies.ts), sent with each video
+    // brought in from a link, to get past sign-in walls. Kept encrypted; shown by site only.
+    videoCookies: v.optional(
+      v.object({
+        cipher: v.string(),
+        sites: v.array(v.string()),
+        setBy: v.string(),
+        setAt: v.number(),
+      }),
+    ),
     // What the team makes and where it posts, from setting up (content-goals.ts). The
     // posting apps also become the agent's default platforms.
     contentGoals: v.optional(
@@ -355,64 +470,12 @@ export default defineSchema({
   // A saved automation: what starts it, and the steps it runs.
   // Sticky notes on an automation's canvas, for the team. Not part of its versions: they
   // explain the automation and never change what it does, so they save as they are typed.
-  // Keys that let Claude and other AI agents reach the team through the dashboard's MCP
-  // server (convex/mcp.ts). Only a hash of each key is kept; the key is shown once.
-  mcpKeys: defineTable({
-    organizationId: v.string(),
-    name: v.string(),
-    hash: v.string(),
-    // The key's last four characters, to tell keys apart.
-    hint: v.string(),
-    createdBy: v.string(),
-    createdAt: v.number(),
-    lastUsedAt: v.union(v.null(), v.number()),
-  })
-    .index("by_organization", ["organizationId"])
-    .index("by_hash", ["hash"]),
-
-  // AI agents that registered themselves to sign in with OAuth (RFC 7591). Agents that
-  // name themselves by a metadata document address are not stored here.
-  oauthClients: defineTable({
-    clientId: v.string(),
-    name: v.string(),
-    uri: v.union(v.null(), v.string()),
-    redirectUris: v.array(v.string()),
-    createdAt: v.number(),
-  }).index("by_client", ["clientId"]),
-
-  // An agent asking to sign in: shown to the person on /connect/<id>. Once they allow it,
-  // it holds the code the agent swaps for tokens (stored as a hash), used once.
-  oauthRequests: defineTable({
-    clientId: v.string(),
-    clientName: v.string(),
-    clientUri: v.union(v.null(), v.string()),
-    redirectUri: v.string(),
-    state: v.union(v.null(), v.string()),
-    codeChallenge: v.string(),
-    expiresAt: v.number(),
-    userId: v.optional(v.string()),
-    organizationId: v.optional(v.string()),
-    codeHash: v.optional(v.string()),
-    codeExpiresAt: v.optional(v.number()),
-  }).index("by_code", ["codeHash"]),
-
-  // An agent someone let in: it acts as that person, on one team, with their role there.
-  // Tokens are stored as hashes; the refresh token changes each time it is used.
-  oauthGrants: defineTable({
-    organizationId: v.string(),
-    userId: v.string(),
-    clientId: v.string(),
-    clientName: v.string(),
-    accessHash: v.string(),
-    accessExpiresAt: v.number(),
-    refreshHash: v.string(),
-    refreshExpiresAt: v.number(),
-    createdAt: v.number(),
-    lastUsedAt: v.union(v.null(), v.number()),
-  })
-    .index("by_access", ["accessHash"])
-    .index("by_refresh", ["refreshHash"])
-    .index("by_organization", ["organizationId"]),
+  // When an AI agent connection (a Better Auth OAuth consent, convex/oauth.ts) was last
+  // used, for Settings. Noted at most once a minute.
+  agentConnectionUse: defineTable({
+    consentId: v.string(),
+    lastUsedAt: v.number(),
+  }).index("by_consent", ["consentId"]),
 
   // A team's own FFmpeg steps, written by the agent (or a person) when no ready-made step
   // fits: a compose request with {{name}} blanks. See step-catalog's team-steps.ts.
@@ -456,18 +519,37 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_automation", ["automationId"]),
 
+  // A folder on the Automations page that a team names itself, like a workflow folder in
+  // n8n. Separate from clients: it only groups the list.
+  automationFolders: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
   automations: defineTable({
     organizationId: v.string(),
     name: v.string(),
     // Off: only "Run now" starts it. On: its trigger starts it with nobody logged in.
     enabled: v.boolean(),
     trigger: triggerValidator,
+    // Any triggers after the first, and which first steps the first one starts (left out:
+    // all the rest). Each run does only what its trigger starts.
+    moreTriggers: v.optional(moreTriggersValidator),
+    triggerStarts: v.optional(v.array(v.string())),
+    // True while the live version has more than one trigger, so the minute-by-minute
+    // checks can find its other triggers without reading every automation.
+    multiTrigger: v.optional(v.boolean()),
     nodes: v.array(nodeValidator),
     edges: v.array(edgeValidator),
     // Secret part of the webhook address that starts this automation.
     hookToken: v.string(),
-    // For a schedule trigger: when it next fires. Null otherwise.
+    // The ready-made automation it was made from, so follow-ons can be suggested for it.
+    starterId: v.optional(v.string()),
+    // For a schedule trigger: when it next fires (the soonest, with several). Null otherwise.
     nextRunAt: v.union(v.null(), v.number()),
+    // With more than one schedule trigger: when each one next fires.
+    scheduleTimes: v.optional(v.array(v.object({ triggerId: v.string(), at: v.number() }))),
     // For a watched folder: only files added after this moment start a run, so
     // switching it on never reprocesses what was already there.
     watchFrom: v.optional(v.number()),
@@ -477,6 +559,8 @@ export default defineSchema({
       v.object({
         name: v.string(),
         trigger: triggerValidator,
+        moreTriggers: v.optional(moreTriggersValidator),
+        triggerStarts: v.optional(v.array(v.string())),
         nodes: v.array(nodeValidator),
         edges: v.array(edgeValidator),
         updatedBy: v.string(),
@@ -487,11 +571,17 @@ export default defineSchema({
     ),
     createdBy: v.string(),
     updatedAt: v.number(),
+    // How many of its runs go at once; the rest wait their turn (lib/runLimit.ts). No
+    // limit when unset. Not part of versions.
+    runsAtOnce: v.optional(v.number()),
     // The client this automation works for. Its runs use that client's brand over the
     // team's, and keep their finished files in the client's folder. Not part of versions.
     clientId: v.optional(v.id("clients")),
+    // The folder it sits in on the Automations page, only for keeping the list tidy.
+    // Not part of versions.
+    folderId: v.optional(v.id("automationFolders")),
     // Switched on: each finished run's files are also sent to this Dropbox account, into
-    // `folder` (or "/Kontifi/<automation>"). Not part of versions.
+    // `folder` (or "/Takewon/<automation>"). Not part of versions.
     dropboxSend: v.optional(
       v.object({
         connectionId: v.id("dropboxConnections"),
@@ -502,8 +592,22 @@ export default defineSchema({
   })
     .index("by_organization", ["organizationId"])
     .index("by_client", ["clientId"])
+    .index("by_folder", ["folderId"])
     .index("by_enabled_and_nextRunAt", ["enabled", "nextRunAt"])
-    .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"]),
+    .index("by_enabled_and_trigger_kind", ["enabled", "trigger.kind"])
+    .index("by_enabled_and_multiTrigger", ["enabled", "multiTrigger"])
+    // One team's switched-on automations with a trigger of a kind, so a trigger that only
+    // starts the team's own automations never reads other teams'.
+    .index("by_organization_and_enabled_and_trigger_kind", [
+      "organizationId",
+      "enabled",
+      "trigger.kind",
+    ])
+    .index("by_organization_and_enabled_and_multiTrigger", [
+      "organizationId",
+      "enabled",
+      "multiTrigger",
+    ]),
 
   // Files a watched folder has already started a run for, so each starts only one.
   // Every version an automation has had as its live version, numbered from 1, so an
@@ -514,6 +618,8 @@ export default defineSchema({
     number: v.number(),
     name: v.string(),
     trigger: triggerValidator,
+    moreTriggers: v.optional(moreTriggersValidator),
+    triggerStarts: v.optional(v.array(v.string())),
     nodes: v.array(nodeValidator),
     edges: v.array(edgeValidator),
     // How it became live: made new, saved while off, published from a draft, or imported.
@@ -561,6 +667,9 @@ export default defineSchema({
       // A project slot moved to the status its trigger waits for.
       v.literal("slot"),
     ),
+    // Which of the automation's triggers started it, when it has more than one and it was
+    // not the first ("__trigger"). Its run only has the steps that trigger starts.
+    triggerId: v.optional(v.string()),
     // What the trigger handed over: file_url, the webhook body, the upload's details.
     trigger: v.any(),
     nodes: v.array(nodeValidator),
@@ -584,17 +693,42 @@ export default defineSchema({
     // The automations whose runs led to this one, the first one first, this one last. A
     // run never starts one of them again, nor goes deeper than MAX_CHAIN_DEPTH.
     chain: v.optional(v.array(v.id("automations"))),
+    // The workflow the automation was part of when the run started, when its review was on.
+    workflowId: v.optional(v.id("workflows")),
     // The client the automation was for when the run started.
     clientId: v.optional(v.id("clients")),
     // The project the run works for, and the slot it started from. Its finished files
     // fill the project's empty slots.
     projectId: v.optional(v.id("projects")),
     deliverableId: v.optional(v.id("deliverables")),
+    // What the run's AI steps have spent, and what steps waiting on an answer hold
+    // against the team's limit, in millionths of a dollar (convex/lib/aiSpend.ts).
+    aiSpent: v.optional(v.number()),
+    aiHeld: v.optional(v.number()),
+    // For a run its webhook started with a callback_url: where its end is reported.
+    callbackUrl: v.optional(v.string()),
+    // Waiting for one of the automation's runs under way to end, because it runs only a
+    // few at a time (automations.runsAtOnce). Its steps have not started.
+    heldForSlot: v.optional(v.boolean()),
   })
     .index("by_automation", ["automationId"])
+    .index("by_automation_and_status", ["automationId", "status"])
     .index("by_parentRun", ["parentRunId"])
     .index("by_organization", ["organizationId"])
-    .index("by_organization_and_status", ["organizationId", "status"]),
+    .index("by_organization_and_status", ["organizationId", "status"])
+    // Runs as they end, for the MCP server's run.finished events.
+    .index("by_organization_and_finishedAt", ["organizationId", "finishedAt"]),
+
+  // Webhook calls that sent an Idempotency-Key, so the same call sent again within a day
+  // answers with the run it already started instead of starting another.
+  hookCalls: defineTable({
+    automationId: v.id("automations"),
+    key: v.string(),
+    runId: v.id("runs"),
+    at: v.number(),
+  })
+    .index("by_automation_and_key", ["automationId", "key"])
+    .index("by_at", ["at"]),
 
   // The live state of one step within one run.
   runSteps: defineTable({
@@ -613,6 +747,29 @@ export default defineSchema({
     jobIds: v.array(v.id("jobs")),
     // The file URLs this step hands to the next ones.
     outputs: v.array(v.string()),
+    // Variant codes for its files, such as "h02_c01_15s_9x16", which name them.
+    labels: v.optional(v.array(v.object({ url: v.string(), label: v.string() }))),
+    // Where each of its files came from, written once the step is finished: the file it
+    // was made from, the file the run started with, what kind of file it is, and its
+    // variant code. See convex/lib/items.ts.
+    items: v.optional(
+      v.array(
+        v.object({
+          url: v.string(),
+          from: v.union(v.null(), v.string()),
+          source: v.union(v.null(), v.string()),
+          kind: v.union(
+            v.literal("video"),
+            v.literal("audio"),
+            v.literal("image"),
+            v.literal("captions"),
+            v.literal("text"),
+            v.literal("other"),
+          ),
+          label: v.optional(v.string()),
+        }),
+      ),
+    ),
     error: v.union(v.null(), v.string()),
     // For a "clips" step, which works in two stages: first it reads each video's length
     // and pauses ("probe"), then it cuts the clips ("cut"). jobIds holds the current
@@ -625,7 +782,12 @@ export default defineSchema({
     // An Add B-Roll step listens too, then finds footage ("match"), has the picture model
     // look at the words and the stock found ("look"), and lays the cutaways over ("lay").
     // A "motion" or "sound-effects" step transcribes each video ("listen"), reads its words
-    // and places what goes on it ("place"), then draws on it ("render").
+    // and places what goes on it ("place"), then draws on it ("render"). A "cleanup" step
+    // does the same, also hearing each video's pauses, and "render" cuts the cleaned files.
+    // A step keeping a paid-ad disclosure in every cut first transcribes its videos ("hear").
+    // "Caption video" with a caption language hears its videos too, then has the words
+    // translated and timed and the caption files written ("translate"), then burns them in
+    // ("render"). Translate Subtitles hears and translates the same way, then is done.
     stage: v.optional(
       v.union(
         v.literal("probe"),
@@ -640,6 +802,42 @@ export default defineSchema({
         v.literal("lay"),
         v.literal("place"),
         v.literal("render"),
+        // A "footage-check" step waiting for the toolkit to measure each file.
+        v.literal("footage"),
+        // A "send" step posting its files to an address.
+        v.literal("send"),
+        v.literal("hear"),
+        v.literal("translate"),
+      ),
+    ),
+    // For "Caption video" with a caption language, or Translate Subtitles: its videos have
+    // been heard ("hear").
+    heardWords: v.optional(v.boolean()),
+    // For "Caption video" with a caption language: each video, the language, and the look
+    // and size its caption file is drawn with, in the order of the step's jobs.
+    captionPlan: v.optional(
+      v.array(
+        v.object({
+          video: v.string(),
+          language: v.string(),
+          look: v.record(v.string(), v.union(v.string(), v.number(), v.boolean())),
+          width: v.number(),
+          height: v.number(),
+        }),
+      ),
+    ),
+    // For a Translate Subtitles step: each video's subtitle file in each language, in the
+    // team's folder (`key`, under Subtitles/) and the link it is opened by. A file not
+    // written yet has no key or link.
+    subtitles: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          language: v.string(),
+          name: v.string(),
+          key: v.optional(v.string()),
+          link: v.optional(v.string()),
+        }),
       ),
     ),
     // For a finished "if" step: the files that left by each way out. `outputs` holds all
@@ -712,6 +910,56 @@ export default defineSchema({
         }),
       ),
     ),
+    // For a "cleanup" step: what it took out of each video, and the file code of each file
+    // it made for it, in the order of its jobs ("hook01", "body", or null).
+    // For a "footage-check" step: each file it checked and what is wrong with it, whether
+    // it stopped the run, and the note it left in the creator's folder.
+    footage: v.optional(
+      v.object({
+        files: v.array(
+          v.object({
+            url: v.string(),
+            name: v.string(),
+            role: v.union(
+              v.literal("file"),
+              v.literal("body"),
+              v.literal("hook"),
+              v.literal("ending"),
+            ),
+            problems: v.array(v.object({ kind: v.string(), says: v.string() })),
+            width: v.optional(v.number()),
+            height: v.optional(v.number()),
+            duration: v.optional(v.number()),
+            loudness: v.optional(v.number()),
+          }),
+        ),
+        stopped: v.boolean(),
+        creator: v.optional(v.string()),
+        note: v.optional(v.string()),
+      }),
+    ),
+    cleaned: v.optional(
+      v.array(
+        v.object({
+          source: v.string(),
+          before: v.number(),
+          after: v.number(),
+          pauses: v.number(),
+          pauseSeconds: v.number(),
+          retakes: v.number(),
+          retakeSeconds: v.number(),
+          hooks: v.number(),
+          labels: v.array(v.union(v.string(), v.null())),
+          // Who filmed it: from the step, or the creator's folder the file was dropped in.
+          creator: v.optional(v.string()),
+        }),
+      ),
+    ),
+    // For a step keeping a paid creator's ad disclosure in every cut (Length Cuts, Hook And
+    // Ending Variants): per video, the disclosure heard and kept, or null when none was.
+    disclosures: v.optional(
+      v.array(v.object({ source: v.string(), text: v.union(v.string(), v.null()) })),
+    ),
     // What a "moments" or "chapters" step left out, said plainly ("2 picks were left out…").
     pickNote: v.optional(v.string()),
     // What a Plan step decided, for the step that carries it out (automation-core plans.ts).
@@ -750,11 +998,19 @@ export default defineSchema({
     // last one failed.
     retryAt: v.optional(v.number()),
     retryError: v.optional(v.string()),
+    // Each try that failed and was tried again: when, and why. The newest last.
+    tries: v.optional(v.array(v.object({ at: v.number(), error: v.string() }))),
     startedAt: v.union(v.null(), v.number()),
     finishedAt: v.union(v.null(), v.number()),
+    // An AI step: what it spent, and what it holds against the run's limit while it waits
+    // for an answer, in millionths of a dollar.
+    aiSpent: v.optional(v.number()),
+    aiHeld: v.optional(v.number()),
   })
     .index("by_run", ["runId"])
-    .index("by_organization_and_status", ["organizationId", "status"]),
+    .index("by_organization_and_status", ["organizationId", "status"])
+    // Steps that have been going a long time, for the check that ends a stuck one.
+    .index("by_status_and_startedAt", ["status", "startedAt"]),
 
   // A video's words with when each is said, from a transcript made with word timestamps,
   // kept so the same video is not transcribed again (Find more moments, Chapters after
@@ -765,6 +1021,16 @@ export default defineSchema({
     source: v.string(),
     words: v.array(v.object({ t: v.string(), s: v.number(), e: v.number() })),
     duration: v.number(),
+  }).index("by_source", ["organizationId", "source"]),
+
+  // The speaker's cut-out of a video (the toolkit's /v1/video/cutout mask), kept so it is
+  // made once and reused by New Background and pieces behind the speaker (lib/masks.ts).
+  // `source` is the video's address without its query, as in spokenWords.
+  speakerMasks: defineTable({
+    organizationId: v.string(),
+    source: v.string(),
+    mask: v.string(),
+    savedAt: v.number(),
   }).index("by_source", ["organizationId", "source"]),
 
   // The model's answer to a Best moments or Chapters question, kept so the same question
@@ -803,6 +1069,34 @@ export default defineSchema({
   // approval waiting or run out of time, a mention in a review. Shown under the bell to
   // the members it is for until each has seen it, unless they switched that kind off in
   // their notification settings.
+  // The creators who film for the team, named as their folders are, so their runs match.
+  creators: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    note: v.optional(v.string()),
+    createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
+  // Usage rights, one per deal: how long footage a creator filmed may be used, for which
+  // client and how. A week before the last day the team hears about it (convex/creators.ts).
+  creatorRights: defineTable({
+    organizationId: v.string(),
+    creatorId: v.id("creators"),
+    // The brand the deal is with. Left out: the team's own content.
+    clientId: v.optional(v.id("clients")),
+    // The last day the footage may be used, "YYYY-MM-DD".
+    endsOn: v.string(),
+    usage: v.union(v.literal("organic"), v.literal("paid"), v.literal("both")),
+    note: v.optional(v.string()),
+    // The end date a week-before alert has gone out for, so it goes once per date.
+    alertedFor: v.optional(v.string()),
+    updatedBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_creator", ["creatorId"])
+    .index("by_client", ["clientId"])
+    .index("by_ends", ["endsOn"]),
+
   alerts: defineTable({
     organizationId: v.string(),
     // "run_failed": a run ended with a failed step. "approval_waiting": a run reached an
@@ -818,6 +1112,13 @@ export default defineSchema({
       v.literal("client_feedback"),
       // "ready_for_review": a new version went into a project's slot and waits for review.
       v.literal("ready_for_review"),
+      // "clip_finished": a run is done and its finished files were kept in Files.
+      v.literal("clip_finished"),
+      // "footage_problem": a Check Footage step found footage that needs another look.
+      v.literal("footage_problem"),
+      // "rights_ending": a deal's usage rights end within a week. `automationName` holds
+      // the creator's name, `stepName` the client's, and `message` says when.
+      v.literal("rights_ending"),
     ),
     // The members it is for. Left out: everyone on the team.
     recipients: v.optional(v.array(v.string())),
@@ -838,6 +1139,8 @@ export default defineSchema({
     clipId: v.optional(v.id("reviewClips")),
     commentId: v.optional(v.id("reviewComments")),
     from: v.optional(v.string()),
+    // For "rights_ending": the creator it is about.
+    creatorId: v.optional(v.id("creators")),
     // The members who have seen it.
     seenBy: v.array(v.string()),
   })
@@ -906,9 +1209,38 @@ export default defineSchema({
     guildName: v.string(),
     addedBy: v.string(),
     addedAt: v.number(),
+    // The channel in this server review activity is posted to, when the team picked one
+    // here. A team has at most one such channel across its servers.
+    alertChannelId: v.optional(v.string()),
+    alertChannelName: v.optional(v.string()),
+    // The webhook in that channel that copies a teammate's reply under their own name
+    // and picture. Made the first time it is needed; its token is kept encrypted.
+    reviewWebhook: v.optional(
+      v.object({ channelId: v.string(), id: v.string(), tokenCipher: v.string() }),
+    ),
   })
     .index("by_organization", ["organizationId"])
     .index("by_guild", ["guildId"]),
+
+  // A review comment thread as a Discord thread in the team's review channel: what
+  // follows in the room goes there, and a teammate's reply there comes back.
+  discordReviewThreads: defineTable({
+    organizationId: v.string(),
+    guildId: v.string(),
+    channelId: v.string(),
+    threadId: v.string(),
+    reviewId: v.id("reviews"),
+    commentId: v.id("reviewComments"),
+  })
+    .index("by_comment", ["commentId"])
+    .index("by_thread", ["threadId"])
+    .index("by_review", ["reviewId"]),
+
+  // Discord messages already brought into a review, so one is never added twice.
+  discordReplies: defineTable({
+    messageId: v.string(),
+    commentId: v.id("reviewComments"),
+  }).index("by_message", ["messageId"]),
 
   // A team member's own Discord account, linked by signing in with Discord once. Discord
   // gives bots no email address, so this is how the agent knows who wrote to it. The
@@ -933,6 +1265,144 @@ export default defineSchema({
     kind: v.union(v.literal("server"), v.literal("person")),
     createdAt: v.number(),
   }).index("by_nonce", ["nonce"]),
+
+  // The Microsoft organization (Entra tenant) a team linked for the agent in Microsoft
+  // Teams. The bot is the deployment's (TEAMS_APP_* env here and on the agent server),
+  // never a team's. One organization belongs to one team. Alerts can post to one channel.
+  teamsTenants: defineTable({
+    organizationId: v.string(),
+    tenantId: v.string(),
+    tenantName: v.string(),
+    addedBy: v.string(),
+    addedAt: v.number(),
+    alertConversationId: v.optional(v.string()),
+    alertServiceUrl: v.optional(v.string()),
+    alertChannelName: v.optional(v.string()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_tenant", ["tenantId"]),
+
+  // Teams (Microsoft Teams' own teams) the bot was seen in, so Settings can offer their
+  // channels for alerts. Recorded when someone writes to the agent there.
+  teamsTeams: defineTable({
+    organizationId: v.string(),
+    tenantId: v.string(),
+    teamId: v.string(),
+    teamName: v.string(),
+    serviceUrl: v.string(),
+    seenAt: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_team", ["teamId"]),
+
+  // A team member's own Microsoft account, linked by signing in once (or found from their
+  // Microsoft 365 connection). Teams says who wrote by their Entra object id.
+  teamsPeople: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    aadObjectId: v.string(),
+    name: v.string(),
+    linkedAt: v.number(),
+    sessionToken: v.optional(v.string()),
+    sessionExpiresAt: v.optional(v.number()),
+  })
+    .index("by_aad_user", ["aadObjectId", "organizationId"])
+    .index("by_member", ["organizationId", "userId"]),
+
+  // A Microsoft sign-in for Teams someone started from Settings.
+  teamsLinkStarts: defineTable({
+    nonce: v.string(),
+    organizationId: v.string(),
+    userId: v.string(),
+    kind: v.union(v.literal("organization"), v.literal("person")),
+    createdAt: v.number(),
+  }).index("by_nonce", ["nonce"]),
+
+  // A review comment thread and the Teams reply thread it was posted as, in the team's
+  // alert channel. Replies written in that Teams thread come back to the review thread.
+  teamsReviewThreads: defineTable({
+    organizationId: v.string(),
+    // The channel's conversation id, and the id of the first message of the thread.
+    conversationId: v.string(),
+    rootActivityId: v.string(),
+    serviceUrl: v.string(),
+    reviewId: v.id("reviews"),
+    commentId: v.id("reviewComments"),
+  })
+    .index("by_comment", ["commentId"])
+    .index("by_teams_thread", ["conversationId", "rootActivityId"])
+    .index("by_review", ["reviewId"])
+    .index("by_organization", ["organizationId"]),
+
+  // Teams messages already brought into a review, so a message Teams sends twice is
+  // added once.
+  teamsReplies: defineTable({
+    conversationId: v.string(),
+    activityId: v.string(),
+    commentId: v.id("reviewComments"),
+  }).index("by_message", ["conversationId", "activityId"]),
+
+  // A member's own Telegram account on a team, linked from Settings by opening the
+  // dashboard's one Telegram bot with a one-time code. The agent then acts as them when
+  // they write to the bot, and alerts go to their chat with it (`chatId`).
+  telegramPeople: defineTable({
+    organizationId: v.string(),
+    userId: v.string(),
+    telegramUserId: v.string(),
+    // Their private chat with the bot, where alerts go.
+    chatId: v.string(),
+    telegramName: v.string(),
+    username: v.optional(v.string()),
+    linkedAt: v.number(),
+    sessionToken: v.optional(v.string()),
+    sessionExpiresAt: v.optional(v.number()),
+  })
+    .index("by_telegram_user", ["telegramUserId", "organizationId"])
+    .index("by_member", ["organizationId", "userId"]),
+
+  // A Telegram group the team added the bot to. Linked members can tag it there. At most
+  // one of a team's groups hears its review activity (`reviews`), the way Slack's channel
+  // does.
+  telegramGroups: defineTable({
+    organizationId: v.string(),
+    chatId: v.string(),
+    title: v.string(),
+    addedBy: v.string(),
+    addedAt: v.number(),
+    reviews: v.optional(v.boolean()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_chat", ["chatId"]),
+
+  // A message the bot posted about a review comment in the team's Telegram group. Every
+  // post about the same comment replies to the first, and a teammate's Telegram reply to
+  // any of them becomes their reply in the review room.
+  telegramReviewPosts: defineTable({
+    organizationId: v.string(),
+    chatId: v.string(),
+    messageId: v.number(),
+    reviewId: v.id("reviews"),
+    commentId: v.id("reviewComments"),
+  })
+    .index("by_comment", ["commentId"])
+    .index("by_message", ["chatId", "messageId"]),
+
+  // A teammate's Telegram reply already written into a review, so it is never added twice.
+  telegramReviewReplies: defineTable({
+    chatId: v.string(),
+    messageId: v.number(),
+    commentId: v.id("reviewComments"),
+  }).index("by_message", ["chatId", "messageId"]),
+
+  // A one-time code made in Settings and sent to the bot with /start, to link a person
+  // ("person") or a group ("group") to the team.
+  telegramLinkStarts: defineTable({
+    code: v.string(),
+    organizationId: v.string(),
+    userId: v.string(),
+    kind: v.union(v.literal("person"), v.literal("group")),
+    createdAt: v.number(),
+  }).index("by_code", ["code"]),
 
   // A team member's own Zoom account, connected from Settings so the cloud recordings of
   // meetings they host come into the team's uploads. The dashboard has ONE Zoom app, set
@@ -1094,6 +1564,9 @@ export default defineSchema({
     // ones made after sharedSince, when it was switched on.
     includeShared: v.optional(v.boolean()),
     sharedSince: v.optional(v.number()),
+    // The member let the dashboard list their Teams channels and read channel files
+    // (Team.ReadBasic.All, Channel.ReadBasic.All, Files.Read.All).
+    channelsGranted: v.optional(v.boolean()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_member", ["organizationId", "userId"])
@@ -1108,7 +1581,30 @@ export default defineSchema({
     createdAt: v.number(),
     // Started from the "shared with me" switch: asks for reading shared files too.
     shared: v.optional(v.boolean()),
+    // Started from "Add a channel": asks for listing the member's Teams channels and
+    // reading their files too.
+    channels: v.optional(v.boolean()),
   }).index("by_nonce", ["nonce"]),
+
+  // A Teams channel a member watches for meeting recordings. Recordings of meetings held
+  // in a channel are saved in the channel's SharePoint files, in a Recordings folder, not
+  // in anyone's OneDrive. New ones made after `since` come into the team's uploads.
+  microsoftChannels: defineTable({
+    organizationId: v.string(),
+    connectionId: v.id("microsoftConnections"),
+    teamId: v.string(),
+    teamName: v.string(),
+    channelId: v.string(),
+    channelName: v.string(),
+    // The SharePoint drive the channel's files are in, and the channel's folder there.
+    driveId: v.string(),
+    folderId: v.string(),
+    // The Recordings folder inside it, once Teams has made one.
+    recordingsFolderId: v.optional(v.string()),
+    since: v.number(),
+  })
+    .index("by_connection", ["connectionId"])
+    .index("by_organization", ["organizationId"]),
 
   // One Teams recording being brought in, or brought in: the toolkit streams the file from
   // OneDrive straight into the team's folder, then it becomes an upload like any other.
@@ -1174,10 +1670,32 @@ export default defineSchema({
     path: v.string(),
     pathLower: v.string(),
     cursor: v.optional(v.string()),
+    // false: only the files right in this folder (folders picked from the scan list).
+    // Missing: this folder and every folder inside it.
+    recursive: v.optional(v.boolean()),
     addedAt: v.number(),
   })
     .index("by_connection", ["connectionId"])
     .index("by_organization", ["organizationId"]),
+
+  // A video being brought in from a pasted link (links.ts): the toolkit downloads it from
+  // the site into the team's folder, then it becomes an upload like any other.
+  linkImports: defineTable({
+    organizationId: v.string(),
+    url: v.string(),
+    status: v.union(v.literal("importing"), v.literal("done"), v.literal("failed")),
+    uploadId: v.optional(v.id("uploads")),
+    jobId: v.optional(v.id("jobs")),
+    error: v.optional(v.string()),
+    // Brought in to copy its look: the study starts once its size and length are read.
+    forLook: v.optional(v.union(v.literal("waiting"), v.literal("started"), v.literal("failed"))),
+    // Put away by someone, so it no longer shows.
+    dismissed: v.optional(v.boolean()),
+    createdBy: v.string(),
+    at: v.number(),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_upload", ["uploadId"]),
 
   // One Dropbox file being brought in, or brought in: the toolkit streams it from Dropbox
   // straight into the team's folder, then it becomes an upload like any other.
@@ -1251,31 +1769,42 @@ export default defineSchema({
 
   // A member who has switched off emails about failed runs for a team. No row means
   // they get them.
+  // Each alert message a chat app was sent, so that once an approval is decided (from the
+  // dashboard or any app) every message about it can be changed to say so and lose its
+  // buttons. `userId` is left out for a message to a team channel rather than a person.
+  chatAlertMessages: defineTable({
+    organizationId: v.string(),
+    alertId: v.id("alerts"),
+    // The approval step it asks about, kept because the alert itself goes once decided.
+    runStepId: v.optional(v.id("runSteps")),
+    app: chatAppValidator,
+    userId: v.optional(v.string()),
+    // Whatever the app needs to find the message again, such as "chat id:message id".
+    ref: v.string(),
+    // The text it was sent with, so it can be edited without building it again.
+    text: v.string(),
+    settledAt: v.optional(v.number()),
+  })
+    .index("by_alert", ["alertId"])
+    .index("by_runStep", ["runStepId"]),
+
   notificationPreferences: defineTable({
     organizationId: v.string(),
     userId: v.string(),
-    // Per kind of news: under the bell, by email. Anything left out keeps its default
-    // (see NOTIFICATION_KINDS in convex/lib/notifications.ts).
+    // Per kind of news: under the bell, by email, and in each chat app the member linked.
+    // Anything left out keeps its default (see NOTIFICATION_KINDS in
+    // convex/lib/notifications.ts).
     kinds: v.optional(
       v.object({
-        run_failed: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
-        approval_waiting: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
-        approval_timed_out: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
-        mention: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
-        client_feedback: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
-        ready_for_review: v.optional(
-          v.object({ bell: v.optional(v.boolean()), email: v.optional(v.boolean()) }),
-        ),
+        run_failed: v.optional(kindChannels),
+        approval_waiting: v.optional(kindChannels),
+        approval_timed_out: v.optional(kindChannels),
+        mention: v.optional(kindChannels),
+        client_feedback: v.optional(kindChannels),
+        ready_for_review: v.optional(kindChannels),
+        clip_finished: v.optional(kindChannels),
+        footage_problem: v.optional(kindChannels),
+        rights_ending: v.optional(kindChannels),
       }),
     ),
     // "now": each email as it happens. "daily": one summary a day at `digestHour` in
@@ -1334,8 +1863,11 @@ export default defineSchema({
         v.literal("google_meet"),
         v.literal("microsoft"),
         v.literal("dropbox"),
+        v.literal("link"),
       ),
     ),
+    // The page a video brought in from a link came from.
+    sourceUrl: v.optional(v.string()),
     // Who shared a meeting recording brought in from someone else's Drive.
     sharedBy: v.optional(v.string()),
     // Read from the file by the toolkit once the upload finishes. Missing while that is
@@ -1385,9 +1917,16 @@ export default defineSchema({
     allowVerdict: v.boolean(),
     // Whether the client sees the team's own threads too, or only their own.
     showTeamComments: v.boolean(),
+    // Set when a client's portal opened this link. It then works only while that portal
+    // is on, and takes what the client may do from the portal's settings as they are now.
+    portalId: v.optional(v.id("clientPortals")),
+    // When a link the team shared by hand stops working. Missing on links made before
+    // links ran out: those last 30 days from when they were made. Portal links never do.
+    expiresAt: v.optional(v.number()),
   })
     .index("by_token", ["token"])
-    .index("by_review", ["reviewId"]),
+    .index("by_review", ["reviewId"])
+    .index("by_portal", ["portalId"]),
 
   // A client's portal: one link where the client sees only their own projects, in the
   // team's logo and colours, and opens each project's review room. At most one per client;
@@ -1442,6 +1981,10 @@ export default defineSchema({
     client: v.optional(v.boolean()),
     // Written by a teammate as a reply in the team's Slack thread for this comment.
     slack: v.optional(v.boolean()),
+    // Written by a teammate as a reply in the team's Teams thread for this comment.
+    teams: v.optional(v.boolean()),
+    // Written by a teammate as a reply in the team's Telegram group.
+    telegram: v.optional(v.boolean()),
     // Marks drawn over the paused frame, on a thread's first comment only.
     drawing: v.optional(drawingValidator),
     // Set on the agent's answer to an "@Agent" comment. The answer is written by the
@@ -1469,6 +2012,27 @@ export default defineSchema({
     // Where its finished files go, inside the team's folder. Left out: Clients/<name>/.
     deliveryFolder: v.optional(v.string()),
     createdBy: v.string(),
+  }).index("by_organization", ["organizationId"]),
+
+  // A workflow: a chain of linked automations with a name, a kind of work, a client, and
+  // one review for the whole chain (automation-core workflows.ts). The automations are
+  // the chain around those stored here, so links made later join it by themselves.
+  workflows: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    kind: v.union(v.literal("client"), v.literal("ugc"), v.literal("own"), v.literal("quick")),
+    automationIds: v.array(v.id("automations")),
+    clientId: v.optional(v.id("clients")),
+    // Same settings as an Approval step, plus whether the review happens at all.
+    review: v.object({
+      on: v.boolean(),
+      reviewers: v.array(v.string()),
+      timeLimit: v.optional(v.number()),
+      timeLimitUnit: v.optional(v.union(v.literal("hours"), v.literal("days"))),
+      whenTimeUp: v.optional(v.union(v.literal("reject"), v.literal("approve"))),
+    }),
+    createdBy: v.string(),
+    updatedAt: v.number(),
   }).index("by_organization", ["organizationId"]),
 
   // A project: one piece of work, such as an episode, with a slot for each thing to
@@ -1516,6 +2080,54 @@ export default defineSchema({
     .index("by_organization_and_dueAt", ["organizationId", "dueAt"])
     .index("by_clip", ["clipId"])
     .index("by_organization_and_status", ["organizationId", "status"]),
+
+  // A storyboard: the video planned line by line before it is made. A project has at most
+  // one, and so does each upload: the draft made from what was said in it, a line for every
+  // sentence with its own clip. Its chapters and takes are kept in their own tables below.
+  storyboards: defineTable({
+    organizationId: v.string(),
+    // The project it plans. Left out on an upload's draft.
+    projectId: v.optional(v.id("projects")),
+    // The upload it was drafted from. Left out on a project's storyboard.
+    libraryItemId: v.optional(v.id("libraryItems")),
+    aspect: v.union(v.literal("16:9"), v.literal("9:16"), v.literal("1:1"), v.literal("4:5")),
+    // Where its lines came from, such as "From the page AI-Assisted Development, Part 1".
+    source: v.optional(v.string()),
+    // The videos the storyboard is cut into, such as "Short lessons" on "YouTube · 16:9".
+    cuts: v.array(cutValidator),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_library_item", ["libraryItemId"])
+    .index("by_organization", ["organizationId"]),
+
+  storyboardChapters: defineTable({
+    storyboardId: v.id("storyboards"),
+    organizationId: v.string(),
+    title: v.string(),
+    order: v.number(),
+  }).index("by_storyboard", ["storyboardId"]),
+
+  // One line of the video: what is said, the scene it is shown in, what goes into it
+  // (you on camera, a graphic, a page recording, your screen) and the file for each part
+  // once it is in. A file is a link or a pointer to one of the team's uploads.
+  storyboardTakes: defineTable({
+    storyboardId: v.id("storyboards"),
+    chapterId: v.id("storyboardChapters"),
+    organizationId: v.string(),
+    order: v.number(),
+    line: v.string(),
+    scene: sceneValidator,
+    parts: v.array(takePartValidator),
+    files: v.object({
+      you: v.optional(v.string()),
+      graphic: v.optional(v.string()),
+      recording: v.optional(v.string()),
+      screen: v.optional(v.string()),
+    }),
+  })
+    .index("by_storyboard", ["storyboardId"])
+    .index("by_chapter", ["chapterId"]),
 
   // A post planned on the content calendar: what goes out, where, and when. With no time
   // it waits in the calendar's side list; queued ones fill the team's repeating slots.
@@ -1636,9 +2248,49 @@ export default defineSchema({
     start: v.number(),
     end: v.number(),
     text: v.string(),
+    // Each word with when it is said (text, start, end), for subtitles. Missing on a
+    // transcript made before words were kept, and on a caption file.
+    words: v.optional(v.array(v.object({ t: v.string(), s: v.number(), e: v.number() }))),
   })
     .index("by_item_and_start", ["itemId", "start"])
     .searchIndex("search_speech", { searchField: "text", filterFields: ["organizationId"] }),
+
+  // What was said in a library file in another language (translations.ts): its subtitle
+  // cues, each on the original cue's times, translated once and kept, so captions,
+  // downloads and later automations never pay for the same language twice. Made from the
+  // file's transcript, so a new transcript drops them (deletePieces).
+  translations: defineTable({
+    organizationId: v.string(),
+    itemId: v.id("libraryItems"),
+    // The language's code (automation-core LANGUAGES), such as "es" or "pt-BR".
+    language: v.string(),
+    status: v.union(v.literal("working"), v.literal("ready"), v.literal("failed")),
+    error: v.optional(v.string()),
+    // The cues translated so far, in order: s start, e end (seconds), t the words.
+    cues: v.array(v.object({ s: v.number(), e: v.number(), t: v.string() })),
+    // How many cues there are to translate in all.
+    total: v.number(),
+    // What asking the model cost, in millionths of a dollar.
+    aiSpent: v.number(),
+    // Who asked, so the agent server knows who it is answering.
+    requestedBy: v.string(),
+    at: v.number(),
+  })
+    .index("by_item_and_language", ["itemId", "language"])
+    .index("by_organization", ["organizationId"]),
+
+  // A video's words translated for captions in another language (captionTranslation.ts),
+  // each translated word timed from the spoken words it stands for, one list per spoken
+  // line. Kept so a video is never translated twice into the same language.
+  captionTranslations: defineTable({
+    organizationId: v.string(),
+    // The video, as spokenWords keys it (lib/moments.ts sourceKey).
+    source: v.string(),
+    language: v.string(),
+    lines: v.array(v.array(v.object({ t: v.string(), s: v.number(), e: v.number() }))),
+    aiSpent: v.number(),
+    savedAt: v.number(),
+  }).index("by_source_and_language", ["organizationId", "source", "language"]),
 
   // Frames of a library video (or the one picture), as the picture model sees them, so
   // footage can be found by what it shows. `vector` is CLIP ViT-B/32, length 1.
@@ -1739,5 +2391,55 @@ export default defineSchema({
     searchNewFiles: v.boolean(),
     // When the files a team had before the library were added to it.
     filledAt: v.optional(v.number()),
+  }).index("by_organization", ["organizationId"]),
+
+  // A sample video being studied for its look, once: the toolkit takes
+  // a sheet of frames and finds its cuts, then the model looks at the sheet one time and
+  // its answer waits here as a proposal until someone names and saves it.
+  lookStudies: defineTable({
+    organizationId: v.string(),
+    uploadId: v.id("uploads"),
+    sourceName: v.string(),
+    status: v.union(
+      v.literal("working"),
+      v.literal("ready"),
+      v.literal("failed"),
+      // Saved as a look, or put away: no longer shown.
+      v.literal("closed"),
+    ),
+    sheetJobId: v.id("jobs"),
+    cutsJobId: v.optional(v.id("jobs")),
+    width: v.number(),
+    height: v.number(),
+    duration: v.number(),
+    sheetUrl: v.optional(v.string()),
+    shotSeconds: v.optional(v.number()),
+    proposal: v.optional(v.any()),
+    error: v.optional(v.string()),
+    createdBy: v.string(),
+    at: v.number(),
+  }).index("by_organization", ["organizationId"]),
+
+  // A team's saved looks, which the Match A Saved Look step puts videos into with plain
+  // FFmpeg. `frame` is a FrameLook (step-catalog looks.ts); its captions are a team
+  // caption style of the same name, kept with the team's other caption styles.
+  teamLooks: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    frame: v.object({
+      shape: v.union(v.literal("vertical"), v.literal("wide"), v.literal("square")),
+      fill: v.union(v.literal("crop"), v.literal("blur"), v.literal("bars")),
+      brightness: v.number(),
+      contrast: v.number(),
+      saturation: v.number(),
+      warmth: v.number(),
+    }),
+    captionStyle: v.optional(v.string()),
+    shotSeconds: v.optional(v.number()),
+    notes: v.string(),
+    sourceName: v.string(),
+    sheetUrl: v.optional(v.string()),
+    createdBy: v.string(),
+    at: v.number(),
   }).index("by_organization", ["organizationId"]),
 });

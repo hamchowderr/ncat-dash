@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-unseen"
+description = "Enables the set_unseen command without any pre-configured scope."
+commands.allow = ["set_unseen"]
+
+[[permission]]
+identifier = "deny-set-unseen"
+description = "Denies the set_unseen command without any pre-configured scope."
+commands.deny = ["set_unseen"]

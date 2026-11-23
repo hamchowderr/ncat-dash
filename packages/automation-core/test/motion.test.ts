@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PRESET,
+  MOTION_EXTRA_PIECES,
   MOTION_PIECES,
   MOTION_PIECE_TYPES,
   MOTION_PRESETS,
@@ -22,6 +23,9 @@ import {
   tidyMotionSetup,
   type MotionSetup,
   type Word,
+  motionStepSettings,
+  nothingToDrawNote,
+  withStepEffects,
 } from "../src";
 
 /** Words spoken one after another, 0.4 s each, from `start`. */
@@ -44,7 +48,14 @@ const setup = (
 
 describe("pieces and presets", () => {
   it("lists every piece the toolkit draws, each with a sound it has", () => {
-    expect(MOTION_PIECES.map((piece) => piece.type)).toEqual([...MOTION_PIECE_TYPES]);
+    expect([...MOTION_PIECES, ...MOTION_EXTRA_PIECES].map((piece) => piece.type)).toEqual([
+      ...MOTION_PIECE_TYPES,
+    ]);
+    // A sound wave sits under speech, so it has no sound of its own.
+    for (const piece of MOTION_EXTRA_PIECES) {
+      if (piece.type === "waveform") expect(piece.sound).toBeNull();
+      else expect(MOTION_SOUNDS).toContain(piece.sound);
+    }
     for (const piece of MOTION_PIECES) expect(MOTION_SOUNDS).toContain(piece.sound);
   });
 
@@ -428,5 +439,135 @@ describe("the Plan Motion Graphics step", () => {
     expect(plan.pieces).toEqual([
       { type: "keyword", start: 8, duration: 1.2, title: "Consistency" },
     ]);
+  });
+});
+
+describe("nothingToDrawNote", () => {
+  const setup = {
+    ...NO_MOTION_SETUP,
+    style: { ...NO_MOTION_SETUP.style, pieces: ["lower_third" as const], ending: "none" as const },
+  };
+
+  it("names the missing speaker name when the name card has nothing to show", () => {
+    expect(nothingToDrawNote("motion", setup)).toBe(
+      "Nothing to draw on the video, so it went on unchanged. Add a speaker name in Settings, under Motion, for the name and follow cards to show.",
+    );
+  });
+
+  it("says only that the videos went on when nothing is missing", () => {
+    expect(nothingToDrawNote("motion", { ...setup, hostName: "Ana" }, 2)).toBe(
+      "Nothing to draw on the videos, so they went on unchanged.",
+    );
+  });
+
+  it("says so plainly for sound effects", () => {
+    expect(nothingToDrawNote("sound-effects", setup)).toBe(
+      "No sound effect fit the video, so it went on unchanged.",
+    );
+  });
+});
+
+describe("the Add Motion Graphics switches", () => {
+  const plan = {
+    pieces: [
+      { type: "title" as const, start: 0.2, duration: 2.8, title: "Takewon" },
+      { type: "keyword" as const, start: 5, duration: 1.2, title: "Wow" },
+      { type: "stat" as const, start: 5.5, duration: 3, title: "40%" },
+      { type: "stat" as const, start: 9, duration: 3, title: "10x" },
+      { type: "follow" as const, start: 20, duration: 4, title: "@me" },
+    ],
+    sounds: [],
+  };
+
+  it("are off unless switched on", () => {
+    expect(motionStepSettings({})).toMatchObject({
+      behind: false,
+      outline: false,
+      punchIns: false,
+    });
+    expect(motionStepSettings({ behind: true, outline: "yes", punchIns: true })).toMatchObject({
+      behind: true,
+      outline: false,
+      punchIns: true,
+    });
+    expect(withStepEffects(plan, motionStepSettings({}), 30)).toEqual(plan);
+  });
+
+  it("put the title and keywords behind the speaker, outlined while they show", () => {
+    const changed = withStepEffects(plan, { behind: true, outline: true, punchIns: false }, 30);
+    expect(changed.pieces[0]).toEqual({
+      type: "big_text",
+      start: 0.2,
+      duration: 2.8,
+      title: "Takewon",
+      layer: "behind",
+    });
+    expect(changed.pieces[1].layer).toBe("behind");
+    expect(changed.pieces.slice(2).every((piece) => piece.layer === undefined)).toBe(true);
+    expect(changed.outlines).toEqual([
+      { start: 0.2, duration: 2.8, style: "sketch" },
+      { start: 5, duration: 1.2, style: "sketch" },
+    ]);
+    expect(changed.zooms).toBeUndefined();
+  });
+
+  it("outline the opening when nothing sits behind the speaker", () => {
+    const changed = withStepEffects(plan, { behind: false, outline: true, punchIns: false }, 30);
+    expect(changed.outlines).toEqual([{ start: 0, duration: 3, style: "sketch" }]);
+  });
+
+  it("draw the outline as a sticker and move the camera another way when asked", () => {
+    const settings = motionStepSettings({
+      outline: true,
+      outlineStyle: "sticker",
+      punchIns: true,
+      punchStyle: "dolly",
+    });
+    expect(settings).toMatchObject({ outlineStyle: "sticker", punchStyle: "dolly" });
+    expect(motionStepSettings({ outlineStyle: "glow", punchStyle: "spin" })).toMatchObject({
+      outlineStyle: "sketch",
+      punchStyle: "punch",
+    });
+    const changed = withStepEffects(plan, settings, 9.2);
+    expect(changed.outlines).toEqual([{ start: 0, duration: 3, style: "sticker" }]);
+    expect(changed.zooms).toEqual([{ start: 5, duration: 1.2, scale: 1.3, style: "dolly" }]);
+    const through = withStepEffects(plan, { ...settings, punchStyle: "through" }, 9.2);
+    expect(through.zooms).toEqual([{ start: 5, duration: 1.2, scale: 2.4, style: "through" }]);
+  });
+
+  it("punch in on keywords and numbers without two punch-ins overlapping", () => {
+    const changed = withStepEffects(plan, { behind: false, outline: false, punchIns: true }, 9.2);
+    // 5.5 starts inside the punch-in at 5; 9 has too little video left after it.
+    expect(changed.zooms).toEqual([{ start: 5, duration: 1.2, scale: 1.2 }]);
+  });
+
+  it("send the new fields to the toolkit", () => {
+    const changed = withStepEffects(plan, { behind: true, outline: true, punchIns: true }, 30);
+    const request = motionRequest("u", changed, setup(), {});
+    const pieces = request.pieces as Record<string, unknown>[];
+    expect(pieces[0]).toMatchObject({ type: "big_text", layer: "behind" });
+    expect(pieces[3]).not.toHaveProperty("layer");
+    expect(request.outlines).toHaveLength(2);
+    expect(request.zooms).toEqual([
+      { start: 5, duration: 1.2, scale: 1.2 },
+      { start: 9, duration: 1.2, scale: 1.2 },
+    ]);
+    const tick = motionRequest(
+      "u",
+      {
+        pieces: [
+          { type: "checklist", start: 1, duration: 4, items: ["a", "b"] },
+          { type: "doodle", start: 2, duration: 2, shape: "crown" },
+        ],
+        sounds: [],
+      },
+      setup(),
+      {},
+    );
+    expect(tick.pieces).toEqual([
+      { type: "checklist", start: 1, duration: 4, items: ["a", "b"] },
+      { type: "doodle", start: 2, duration: 2, shape: "crown" },
+    ]);
+    expect(tick).not.toHaveProperty("outlines");
   });
 });

@@ -103,7 +103,7 @@ export const DASHBOARD_TOUR: Tour = {
       id: "tour-team",
       title: "Your Team Menu",
       content:
-        "Settings live here: your brand, set once for every automation, plus your team, notifications, Slack and Discord. You can take this tour again from your own menu at the bottom.",
+        "Settings live here: your brand, set once for every automation, plus your team, notifications, Slack, Discord and Telegram. You can take this tour again from your own menu at the bottom.",
       side: "right",
       align: "start",
     },
@@ -154,7 +154,9 @@ export function DashboardTour({ children }: { children: ReactNode }) {
     (tourId: string, how: TourEnd) => {
       if (!TOUR_IDS.has(tourId)) return;
       void end({ tourId: tourId as TourId, how }).then(() => {
-        if (how === "finished") toast.success(again(tourId));
+        // One note at a time: finishing a second tour while the first one's note is still up
+        // replaces it rather than stacking the same words twice.
+        if (how === "finished") toast.success(again(tourId), { id: "tour-again" });
       });
     },
     [end],

@@ -5,6 +5,7 @@ import "@xyflow/react/style.css";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
+  atATime,
   type AutomationEdge,
   type AutomationNode,
   failsOver,
@@ -35,6 +36,7 @@ import {
   triggerEdges,
   triggerPosition,
 } from "./flow-nodes";
+import { FollowOnsAfterRun } from "./follow-ons";
 import { CanvasBar, CanvasZoom, FitOnResize } from "./canvas-bar";
 import { ClipsRun } from "./clips-run";
 import { PicksPanel } from "./picks-panel";
@@ -236,6 +238,13 @@ export function RunView({
         </div>
       </div>
 
+      {run.waitingForTurn != null && (
+        <p className="text-muted-foreground text-sm text-pretty">
+          Waiting for its turn. {run.automationName} runs {atATime(run.waitingForTurn)}, so this run
+          starts when an earlier one ends.
+        </p>
+      )}
+
       {(run.startedByRun || followed.length > 0) && (
         <nav aria-label="Linked runs" className="flex flex-wrap items-center gap-x-6 gap-y-1">
           {run.startedByRun && <StartedRunLink run={run.startedByRun} lead="Started by a run of" />}
@@ -302,6 +311,10 @@ export function RunView({
             }
           />
         </div>
+      )}
+
+      {run.status === "done" && !run.testOf && (
+        <FollowOnsAfterRun automationId={automationId} automationName={run.automationName} />
       )}
     </div>
   );

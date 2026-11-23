@@ -10,7 +10,11 @@ import {
   type ChainMember,
   chainLoop,
   draftProblems,
+  followOnsByEnd,
+  followOnsFor,
+  followOnTrigger,
   followProblem,
+  isFollowOn,
   loopWords,
   targetOf,
   getNodeType,
@@ -22,7 +26,6 @@ import {
   missingBrandOf,
   withinLength,
   missingSettings,
-  nextRunAt,
   platformGuideText,
   motionGuideText,
   nodeTypeIndex,
@@ -31,12 +34,20 @@ import {
   outline,
   readAutomationFile,
   scheduleProblem,
+  starterOf,
   STARTERS,
+  chainGroup,
+  FIRST_TRIGGER,
+  tidyTriggers,
+  triggersOf,
+  triggersProblem,
+  triggerWithId,
 } from "@ncat-dash/automation-core";
+import { RUNS_AT_ONCE, startWaitingRuns } from "./lib/runLimit";
 import { getStep } from "@ncat-dash/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { authComponent } from "./auth";
+import { getCaller } from "./lib/caller";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
@@ -56,7 +67,22 @@ import { withTeamSteps } from "./lib/teamSteps";
 import { deleteVersions, recordVersion } from "./lib/versions";
 import { deleteNotes, notesOf } from "./notes";
 import { bucketOf, presign, storageConnection } from "./lib/bucket";
-import { edgeValidator, nodeValidator, operationValidator, triggerValidator } from "./schema";
+import {
+  edgeValidator,
+  moreTriggersValidator,
+  nodeValidator,
+  operationValidator,
+  triggerValidator,
+} from "./schema";
+import { HOOK_KEY_MS, hookTrigger, readHookCall, sameSecret } from "./lib/hooks";
+import {
+  dueSchedules,
+  multiTriggerOf,
+  scheduleTimesOf,
+  teamEnabledWithTrigger,
+  triggersOfKind,
+  watchStartOf,
+} from "./lib/triggers";
 
 const READ_LINK_SECONDS = 7 * 24 * 60 * 60;
 
@@ -78,29 +104,41 @@ async function loadForMember(
   return { automation, ...member };
 }
 
-type Version = Pick<Doc<"automations">, "name" | "trigger" | "nodes" | "edges">;
+type Version = Pick<
+  Doc<"automations">,
+  "name" | "trigger" | "moreTriggers" | "triggerStarts" | "nodes" | "edges"
+>;
 
 function versionOf(source: Version): Version {
-  return { name: source.name, trigger: source.trigger, nodes: source.nodes, edges: source.edges };
+  return {
+    name: source.name,
+    trigger: source.trigger,
+    ...(source.moreTriggers?.length ? { moreTriggers: source.moreTriggers } : {}),
+    ...(source.triggerStarts ? { triggerStarts: source.triggerStarts } : {}),
+    nodes: source.nodes,
+    edges: source.edges,
+  };
+}
+
+/** The fields to write with a new live version; `moreTriggers` and the rest go when unused. */
+function liveFields(
+  automation: Doc<"automations">,
+  version: Version,
+  enabled: boolean,
+): Partial<Doc<"automations">> {
+  return {
+    ...version,
+    moreTriggers: version.moreTriggers,
+    triggerStarts: version.triggerStarts,
+    multiTrigger: multiTriggerOf(version),
+    ...scheduleTimesOf(automation, version, enabled),
+    watchFrom: watchStartOf(automation, version, enabled),
+  };
 }
 
 /** What the editor and the agent work on: the draft when there is one, else the live version. */
 function workingCopy(automation: Doc<"automations">): Version {
   return versionOf(automation.draft ?? automation);
-}
-
-/** A watched folder starts counting from the moment it is switched on. */
-function watchStart(
-  automation: Doc<"automations">,
-  trigger: Doc<"automations">["trigger"],
-  enabled: boolean,
-): number | undefined {
-  if (!enabled || trigger.kind !== "folder") return undefined;
-  const same =
-    automation.enabled &&
-    automation.trigger.kind === "folder" &&
-    automation.trigger.prefix === trigger.prefix;
-  return same ? (automation.watchFrom ?? Date.now()) : Date.now();
 }
 
 export async function storageProblem(
@@ -113,8 +151,17 @@ export async function storageProblem(
   return storage ? null : "Connect your toolkit from Home first.";
 }
 
-function scheduledNext(trigger: Doc<"automations">["trigger"], enabled: boolean): number | null {
-  return enabled && trigger.kind === "schedule" ? nextRunAt(trigger.schedule, Date.now()) : null;
+/** Whether any of the version's triggers needs the team's storage, and it is not there. */
+async function storageProblemOf(
+  ctx: Parameters<typeof requireMember>[0],
+  organizationId: string,
+  version: Pick<Version, "trigger" | "moreTriggers">,
+): Promise<string | null> {
+  for (const { trigger } of triggersOf(version as AutomationDraft)) {
+    const problem = await storageProblem(ctx, organizationId, trigger);
+    if (problem) return problem;
+  }
+  return null;
 }
 
 /** Problems that stop an automation being switched on or run. Null when there are none. */
@@ -123,6 +170,7 @@ export function automationProblem(
   nodes: AutomationNode[],
   edges: AutomationEdge[],
   brand: Brand,
+  more: Pick<Version, "moreTriggers" | "triggerStarts"> = {},
 ): string | null {
   const graph = graphProblem(nodes, edges);
   if (graph) return graph;
@@ -145,11 +193,25 @@ export function automationProblem(
     const logic = logicProblem(node);
     if (logic) return `${title}: ${logic}`;
   }
+  const all = { trigger, ...more, nodes, edges } as AutomationDraft;
+  for (const each of triggersOf(all)) {
+    const problem = oneTriggerProblem(each.trigger);
+    if (problem) return problem;
+  }
+  return triggersProblem(all);
+}
+
+function oneTriggerProblem(trigger: Doc<"automations">["trigger"]): string | null {
   if (trigger.kind === "schedule") return scheduleProblem(trigger.schedule);
   if (trigger.kind === "finished") return followProblem(trigger);
   if (trigger.kind === "folder" && trigger.prefix.length > 500)
     return "That folder name is too long.";
   return null;
+}
+
+/** `automationProblem` for a whole version. */
+function versionProblem(version: Version, brand: Brand): string | null {
+  return automationProblem(version.trigger, version.nodes, version.edges, brand, version);
 }
 
 /** A team's automations with the state of each one's latest run. */
@@ -176,11 +238,18 @@ export const list = query({
           // True when there are changes that have not been published yet.
           hasDraft: automation.draft !== undefined,
           trigger: automation.trigger,
+          // The other triggers, when it has more than one.
+          moreTriggers: automation.moreTriggers?.map(({ trigger }) => trigger) ?? [],
           stepCount: automation.nodes.length,
           nodes: automation.nodes,
           edges: automation.edges,
           nextRunAt: automation.nextRunAt,
-          updatedAt: automation.updatedAt,
+          // The latest change, published or still a draft.
+          updatedAt: Math.max(automation.updatedAt, automation.draft?.updatedAt ?? 0),
+          createdAt: automation._creationTime,
+          clientId: automation.clientId ?? null,
+          // The folder it sits in on the Automations page.
+          folderId: automation.folderId ?? null,
           lastRun: lastRun
             ? { _id: lastRun._id, status: lastRun.status, startedAt: lastRun._creationTime }
             : null,
@@ -214,6 +283,8 @@ export const get = query({
       hookToken: automation.hookToken,
       nextRunAt: automation.nextRunAt,
       updatedAt: automation.updatedAt,
+      // How many of its runs go at once; null for no limit.
+      runsAtOnce: automation.runsAtOnce ?? null,
     };
   },
 });
@@ -239,15 +310,23 @@ async function createAutomation(
   if (starterId && !starter) fail("not_found", "Unknown starter.");
   const name = (givenName.trim() || starter?.name || "").slice(0, 80);
   if (!name) fail("invalid_input", "Give the automation a name.");
+  // A follow-on is wired to the team's newest automation it is made to run after, if any.
+  const followed =
+    starter && isFollowOn(starter) ? await followedBy(ctx, organizationId, starter.follows!) : null;
   const content = {
     name,
-    trigger: starter?.trigger ?? ({ kind: "manual" } as const),
+    trigger: starter
+      ? followed
+        ? followOnTrigger(starter, followed)
+        : starter.trigger
+      : ({ kind: "manual" } as const),
     nodes: starter?.nodes ?? [],
     edges: starter?.edges ?? [],
   };
   const automationId = await ctx.db.insert("automations", {
     organizationId,
     ...content,
+    ...(starter ? { starterId: starter.id } : {}),
     enabled: false,
     hookToken: randomToken(),
     nextRunAt: null,
@@ -259,6 +338,304 @@ async function createAutomation(
     source: "created",
   });
   return automationId;
+}
+
+/**
+ * The team's most recently changed automation made from one of `starterIds`, earlier ones
+ * in the list first, or null when the team has none of them.
+ */
+export async function followedBy(
+  ctx: QueryCtx,
+  organizationId: string,
+  starterIds: string[],
+): Promise<string | null> {
+  const team = await ctx.db
+    .query("automations")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .take(500);
+  for (const id of starterIds) {
+    const made = team
+      .filter((automation) => starterOf(automation) === id)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (made) return made._id;
+  }
+  return null;
+}
+
+const followOnsValidator = v.object({
+  // The team's automations that already start when this one finishes.
+  following: v.array(
+    v.object({
+      automationId: v.id("automations"),
+      name: v.string(),
+      enabled: v.boolean(),
+      when: v.union(v.literal("done"), v.literal("failed"), v.literal("either")),
+    }),
+  ),
+  // Ready-made automations made to run after this one that the team has not set up after it.
+  suggestions: v.array(v.string()),
+});
+
+/**
+ * What goes on after an automation: the team's automations that already start when it
+ * finishes, and the ready-made follow-ons that suit it and are not set up after it yet.
+ */
+export const followOns = query({
+  args: { automationId: v.id("automations") },
+  returns: followOnsValidator,
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    return await followOnsOf(ctx, automation);
+  },
+});
+
+const chainViewValidator = v.object({
+  // From the automations nothing starts to the last ones started.
+  columns: v.array(v.array(v.id("automations"))),
+  links: v.array(
+    v.object({
+      from: v.id("automations"),
+      to: v.id("automations"),
+      how: v.union(v.literal("done"), v.literal("failed"), v.literal("either"), v.literal("step")),
+    }),
+  ),
+  automations: v.array(
+    v.object({
+      automationId: v.id("automations"),
+      name: v.string(),
+      enabled: v.boolean(),
+      trigger: triggerValidator,
+      nodes: v.array(nodeValidator),
+      edges: v.array(edgeValidator),
+      lastRun: v.union(
+        v.object({
+          runId: v.id("runs"),
+          status: v.union(
+            v.literal("running"),
+            v.literal("waiting"),
+            v.literal("done"),
+            v.literal("failed"),
+            v.literal("cancelled"),
+          ),
+          at: v.number(),
+        }),
+        v.null(),
+      ),
+      // Ready-made follow-ons that would go well after it and are not set up yet.
+      suggestions: v.array(v.string()),
+    }),
+  ),
+});
+
+/**
+ * Every automation linked to this one, however far along, with how each starts the
+ * next, for showing them together on one page. Shows the saved versions, which are the
+ * ones that run.
+ */
+export const chainView = query({
+  args: { automationId: v.id("automations") },
+  returns: chainViewValidator,
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    const team = await ctx.db
+      .query("automations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+      .take(500);
+    const members: ChainMember[] = team.map((each) => ({
+      id: each._id,
+      name: each.name,
+      trigger: each.trigger as ChainMember["trigger"],
+      moreTriggers: each.moreTriggers,
+      nodes: each.nodes,
+    }));
+    const { columns, links } = chainGroup(members, automation._id);
+    const byId = new Map(team.map((each) => [each._id as string, each]));
+    const automations = [];
+    for (const id of columns.flat()) {
+      const each = byId.get(id)!;
+      const last = await ctx.db
+        .query("runs")
+        .withIndex("by_automation", (q) => q.eq("automationId", each._id))
+        .order("desc")
+        .first();
+      automations.push({
+        automationId: each._id,
+        name: each.name,
+        enabled: each.enabled,
+        trigger: each.trigger,
+        nodes: each.nodes,
+        edges: each.edges,
+        lastRun: last ? { runId: last._id, status: last.status, at: last._creationTime } : null,
+        suggestions: followOnsAmong(team, each).suggestions,
+      });
+    }
+    return {
+      columns: columns.map((column) => column.map((id) => byId.get(id)!._id)),
+      links: links.map((link) => ({
+        from: byId.get(link.from)!._id,
+        to: byId.get(link.to)!._id,
+        how: link.how,
+      })),
+      automations,
+    };
+  },
+});
+
+async function followOnsOf(ctx: QueryCtx, automation: Doc<"automations">) {
+  const team = await ctx.db
+    .query("automations")
+    .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+    .take(500);
+  return followOnsAmong(team, automation);
+}
+
+/** What `followOns` says about `automation`, given all of its team's automations. */
+function followOnsAmong(team: Doc<"automations">[], automation: Doc<"automations">) {
+  const following = team.flatMap((other) => {
+    const follows = triggersOfKind(workingCopy(other), "finished").find(
+      ({ trigger }) => trigger.automationId === automation._id,
+    );
+    return follows
+      ? [
+          {
+            automationId: other._id,
+            name: other.name,
+            enabled: other.enabled,
+            when: follows.trigger.when,
+          },
+        ]
+      : [];
+  });
+  const setUp = new Set(
+    following.flatMap(({ automationId }) => {
+      const other = team.find((each) => each._id === automationId);
+      return other ? [starterOf(other)] : [];
+    }),
+  );
+  const working = workingCopyWithStarter(automation);
+  const starterId = starterOf(working);
+  // Made from a ready-made: the follow-ons made for it. Otherwise: those that suit its end.
+  const fitting = starterId
+    ? followOnsFor(starterId)
+    : working.trigger.kind === "finished"
+      ? []
+      : followOnsByEnd(working.nodes, working.edges);
+  const suggestions = fitting.map((starter) => starter.id).filter((id) => !setUp.has(id));
+  return { following, suggestions };
+}
+
+/**
+ * For the home page: a few follow-ons that would carry on from the team's automations that
+ * are on, one per automation first and no ready-made twice.
+ */
+export const teamFollowOns = query({
+  args: { organizationId: v.string() },
+  returns: v.array(
+    v.object({
+      automationId: v.id("automations"),
+      automationName: v.string(),
+      starterId: v.string(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const team = await ctx.db
+      .query("automations")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .take(500);
+    const on = team
+      .filter((automation) => automation.enabled)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    const picked: { automationId: Id<"automations">; automationName: string; starterId: string }[] =
+      [];
+    const used = new Set<string>();
+    for (const automation of on) {
+      const next = followOnsAmong(team, automation).suggestions.find((id) => !used.has(id));
+      if (!next) continue;
+      used.add(next);
+      picked.push({
+        automationId: automation._id,
+        automationName: automation.name,
+        starterId: next,
+      });
+      if (picked.length === 3) break;
+    }
+    return picked;
+  },
+});
+
+function workingCopyWithStarter(automation: Doc<"automations">) {
+  return { ...workingCopy(automation), starterId: automation.starterId };
+}
+
+/**
+ * Makes a ready-made follow-on that starts when `automationId` finishes, built and wired
+ * in one go. It is switched on unless something it needs, such as a logo, is missing.
+ */
+const madeFollowOnValidator = v.object({
+  automationId: v.id("automations"),
+  // Switched on straight away, unless something it needs is missing: then `problem` says what.
+  on: v.boolean(),
+  problem: v.union(v.null(), v.string()),
+});
+
+export const setUpFollowOn = mutation({
+  args: { automationId: v.id("automations"), starterId: v.string() },
+  returns: madeFollowOnValidator,
+  handler: async (ctx, args) => {
+    const { automation, userId } = await loadForMember(ctx, args.automationId);
+    return await makeFollowOn(ctx, automation, userId, args.starterId);
+  },
+});
+
+async function makeFollowOn(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  userId: string,
+  starterId: string,
+) {
+  const starter = STARTERS.find((each) => each.id === starterId);
+  if (!starter) fail("not_found", "Unknown starter.");
+  if (!isFollowOn(starter)) {
+    fail("invalid_input", `${starter.name} starts by itself, not after another automation.`);
+  }
+  const team = await ctx.db
+    .query("automations")
+    .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
+    .take(500);
+  // Two of the same follow-on, after different automations, are told apart by name.
+  const taken = team.some((other) => other.name === starter.name);
+  const name = (taken ? `${starter.name} after ${automation.name}` : starter.name).slice(0, 80);
+  const content = {
+    name,
+    trigger: followOnTrigger(starter, automation._id),
+    nodes: starter.nodes,
+    edges: starter.edges,
+  };
+  const brand = await brandOf(ctx, automation.organizationId, automation.clientId);
+  const problem = automationProblem(content.trigger, content.nodes, content.edges, brand);
+  const automationId = await ctx.db.insert("automations", {
+    organizationId: automation.organizationId,
+    ...content,
+    // Made for the same client, it uses that client's brand like the one it follows.
+    ...(automation.clientId ? { clientId: automation.clientId } : {}),
+    starterId: starter.id,
+    enabled: problem === null,
+    hookToken: randomToken(),
+    nextRunAt: null,
+    createdBy: userId,
+    updatedAt: Date.now(),
+  });
+  await recordVersion(
+    ctx,
+    { _id: automationId, organizationId: automation.organizationId },
+    content,
+    {
+      userId,
+      source: "created",
+    },
+  );
+  return { automationId, on: problem === null, problem };
 }
 
 const savedValidator = v.object({
@@ -306,11 +683,9 @@ export const importFile = mutation({
     if (!read.ok) fail("invalid_input", read.message);
     const automationId = await ctx.db.insert("automations", {
       organizationId: args.organizationId,
-      name: read.draft.name,
       enabled: false,
-      trigger: read.draft.trigger,
-      nodes: read.draft.nodes,
-      edges: read.draft.edges,
+      ...versionOf(read.draft as Version),
+      multiTrigger: multiTriggerOf(read.draft as Version),
       hookToken: randomToken(),
       nextRunAt: null,
       createdBy: userId,
@@ -345,6 +720,8 @@ export const save = mutation({
     automationId: v.id("automations"),
     name: v.string(),
     trigger: triggerValidator,
+    moreTriggers: v.optional(moreTriggersValidator),
+    triggerStarts: v.optional(v.array(v.string())),
     nodes: v.array(nodeValidator),
     edges: v.array(edgeValidator),
   },
@@ -362,7 +739,7 @@ function checked(version: Version): Version {
   if (JSON.stringify(version.nodes).length > 400_000) {
     fail("invalid_input", "This automation's settings are too large to save.");
   }
-  return { ...versionOf(version), name };
+  return versionOf(tidyTriggers({ ...versionOf(version), name } as AutomationDraft) as Version);
 }
 
 async function problemOf(
@@ -373,13 +750,8 @@ async function problemOf(
   const { organizationId } = automation;
   await withTeamSteps(ctx, organizationId);
   return (
-    automationProblem(
-      version.trigger,
-      version.nodes,
-      version.edges,
-      await brandOf(ctx, organizationId, automation.clientId),
-    ) ??
-    (await storageProblem(ctx, organizationId, version.trigger)) ??
+    versionProblem(version, await brandOf(ctx, organizationId, automation.clientId)) ??
+    (await storageProblemOf(ctx, organizationId, version)) ??
     (await linkProblem(ctx, automation, version))
   );
 }
@@ -394,8 +766,10 @@ async function linkProblem(
   version: Version,
 ): Promise<string | null> {
   const targets = version.nodes.flatMap((node) => targetOf(node) ?? []);
-  const followed = version.trigger.kind === "finished" ? version.trigger.automationId : null;
-  if (targets.length === 0 && !followed) return null;
+  const followedIds = triggersOfKind(version, "finished").map(
+    ({ trigger }) => trigger.automationId,
+  );
+  if (targets.length === 0 && followedIds.length === 0) return null;
   const team = await ctx.db
     .query("automations")
     .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
@@ -404,7 +778,7 @@ async function linkProblem(
   if (targets.some((id) => !ids.has(id))) {
     return "A Run an automation step points at an automation that no longer exists. Pick another.";
   }
-  if (followed && !ids.has(followed)) {
+  if (followedIds.some((followed) => followed && !ids.has(followed))) {
     return "The automation this one waits for no longer exists. Pick another.";
   }
   // Every other automation as it will run (its draft too, which may be published later),
@@ -416,6 +790,7 @@ async function linkProblem(
       id: other._id,
       name: other.name,
       trigger: each.trigger,
+      moreTriggers: each.moreTriggers,
       nodes: each.nodes,
     }));
   });
@@ -423,6 +798,7 @@ async function linkProblem(
     id: automation._id,
     name: version.name,
     trigger: version.trigger,
+    moreTriggers: version.moreTriggers,
     nodes: version.nodes,
   });
   const loop = chainLoop(automation._id, members);
@@ -477,11 +853,9 @@ async function storeLive(
   const problem = await problemOf(ctx, automation, version);
   const enabled = automation.enabled && problem === null;
   await ctx.db.patch(automation._id, {
-    ...version,
+    ...liveFields(automation, version, enabled),
     draft: undefined,
     enabled,
-    nextRunAt: scheduledNext(version.trigger, enabled),
-    watchFrom: watchStart(automation, version.trigger, enabled),
     updatedAt: Date.now(),
   });
   await recordVersion(ctx, automation, version, by);
@@ -497,20 +871,29 @@ export const publish = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const { automation, userId } = await loadForMember(ctx, args.automationId);
-    if (!automation.draft) return null;
-    const version = checked(automation.draft);
-    if (automation.enabled) {
-      const problem = await problemOf(ctx, automation, version);
-      if (problem) fail("invalid_input", problem);
-    }
-    await storeLive(ctx, automation, version, {
-      userId,
-      source: "published",
-      restoredFrom: automation.draft.restoredFrom,
-    });
+    await publishDraft(ctx, automation, userId);
     return null;
   },
 });
+
+/** Makes an automation's draft its live version (publish, and MCP's publish_automation). */
+export async function publishDraft(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  userId: string,
+): Promise<void> {
+  if (!automation.draft) return;
+  const version = checked(automation.draft);
+  if (automation.enabled) {
+    const problem = await problemOf(ctx, automation, version);
+    if (problem) fail("invalid_input", problem);
+  }
+  await storeLive(ctx, automation, version, {
+    userId,
+    source: "published",
+    restoredFrom: automation.draft.restoredFrom,
+  });
+}
 
 /** Throws the draft away. The canvas goes back to the live version. */
 export const discardDraft = mutation({
@@ -538,6 +921,11 @@ const describedValidator = v.object({
   // The team, when the automation has an Approval step: put user ids in its `reviewers`
   // setting to name who decides. Owners and admins can always decide.
   team: v.optional(v.array(v.object({ userId: v.string(), name: v.string(), role: v.string() }))),
+  // Ready-made automations that go well after this one and are not set up after it yet.
+  // `automations.setUpFollowOn` makes one, wired to start when this one finishes.
+  followOns: v.optional(
+    v.array(v.object({ id: v.string(), name: v.string(), description: v.string() })),
+  ),
 });
 
 /**
@@ -567,6 +955,18 @@ async function describeAutomation(ctx: QueryCtx, automation: Doc<"automations">)
     draft: automation.draft !== undefined,
     music: music.map((track) => ({ name: track.name, value: track.file })),
     ...(await teamFor(ctx, automation.organizationId, draft)),
+    ...(await suggestedAfter(ctx, automation)),
+  };
+}
+
+async function suggestedAfter(ctx: QueryCtx, automation: Doc<"automations">) {
+  const { suggestions } = await followOnsOf(ctx, automation);
+  if (suggestions.length === 0) return {};
+  return {
+    followOns: suggestions.flatMap((id) => {
+      const starter = STARTERS.find((each) => each.id === id);
+      return starter ? [{ id, name: starter.name, description: starter.description }] : [];
+    }),
   };
 }
 
@@ -591,6 +991,19 @@ export const createAs = internalMutation({
   handler: async (ctx, args) => {
     await withTeamSteps(ctx, args.organizationId);
     return await createAutomation(ctx, args.organizationId, args.userId, args.name);
+  },
+});
+
+export const setUpFollowOnAs = internalMutation({
+  args: {
+    organizationId: v.string(),
+    userId: v.string(),
+    automationId: v.string(),
+    starterId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const automation = await teamAutomation(ctx, args.organizationId, args.automationId);
+    return await makeFollowOn(ctx, automation, args.userId, args.starterId);
   },
 });
 
@@ -688,23 +1101,52 @@ export const setEnabled = mutation({
   args: { automationId: v.id("automations"), enabled: v.boolean() },
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
-    if (args.enabled) {
-      const problem =
-        automationProblem(
-          automation.trigger,
-          automation.nodes,
-          automation.edges,
-          await brandOf(ctx, automation.organizationId, automation.clientId),
-        ) ??
-        (await storageProblem(ctx, automation.organizationId, automation.trigger)) ??
-        (await linkProblem(ctx, automation, automation));
-      if (problem) fail("invalid_input", problem);
+    await switchAutomation(ctx, automation, args.enabled);
+  },
+});
+
+/**
+ * Switches an automation on or off. Switching on refuses, in plain words, while something
+ * stops it running. Workflows switch all of theirs this way too.
+ */
+export async function switchAutomation(
+  ctx: MutationCtx,
+  automation: Doc<"automations">,
+  enabled: boolean,
+): Promise<void> {
+  if (enabled) {
+    const problem =
+      versionProblem(
+        automation,
+        await brandOf(ctx, automation.organizationId, automation.clientId),
+      ) ??
+      (await storageProblemOf(ctx, automation.organizationId, automation)) ??
+      (await linkProblem(ctx, automation, automation));
+    if (problem) fail("invalid_input", problem);
+  }
+  await ctx.db.patch(automation._id, {
+    enabled,
+    // Switching on starts every schedule afresh.
+    ...scheduleTimesOf(null, automation, enabled),
+    watchFrom: watchStartOf(automation, automation, enabled),
+  });
+}
+
+/**
+ * How many of its runs go at once. Runs started while that many are under way wait their
+ * turn. Null takes the limit away; waiting runs then start.
+ */
+export const setRunsAtOnce = mutation({
+  args: { automationId: v.id("automations"), runsAtOnce: v.union(v.null(), v.number()) },
+  handler: async (ctx, args) => {
+    const { automation } = await loadForMember(ctx, args.automationId);
+    const limit = args.runsAtOnce;
+    if (limit !== null && !(RUNS_AT_ONCE as readonly number[]).includes(limit)) {
+      fail("invalid_input", `Choose ${RUNS_AT_ONCE.join(", ")} runs at once, or no limit.`);
     }
-    await ctx.db.patch(args.automationId, {
-      enabled: args.enabled,
-      nextRunAt: scheduledNext(automation.trigger, args.enabled),
-      watchFrom: watchStart(automation, automation.trigger, args.enabled),
-    });
+    await ctx.db.patch(automation._id, { runsAtOnce: limit ?? undefined });
+    // A higher limit, or none, lets runs waiting for their turn start.
+    await startWaitingRuns(ctx, automation._id);
   },
 });
 
@@ -729,6 +1171,9 @@ export const runNow = mutation({
     automationId: v.id("automations"),
     fileUrl: v.optional(v.string()),
     version: v.optional(v.union(v.literal("draft"), v.literal("live"))),
+    // With several triggers: which one's steps to run, as if it had started it. The first
+    // when left out.
+    triggerId: v.optional(v.string()),
   },
   returns: v.id("runs"),
   handler: async (ctx, args) => {
@@ -737,17 +1182,40 @@ export const runNow = mutation({
     if (fileUrl && !/^https?:\/\//.test(fileUrl)) {
       fail("invalid_input", "The file address must start with http:// or https://.");
     }
+    const version = args.version === "live" ? automation : withWorkingCopy(automation);
+    const triggerId = knownTrigger(version, args.triggerId);
     const started = await startRun(
       ctx,
-      args.version === "live" ? automation : { ...automation, ...workingCopy(automation) },
+      version,
       "manual",
       fileUrl ? { file_url: fileUrl } : {},
       userId,
+      { triggerId },
     );
     if (!started.ok) fail("invalid_input", started.message);
     return started.runId;
   },
 });
+
+/** The automation with what the canvas shows in place of the live version. */
+function withWorkingCopy(automation: Doc<"automations">): Doc<"automations"> {
+  const working = workingCopy(automation);
+  return {
+    ...automation,
+    ...working,
+    moreTriggers: working.moreTriggers,
+    triggerStarts: working.triggerStarts,
+  };
+}
+
+/** The trigger id asked for, checked, or the first trigger's. */
+function knownTrigger(version: Version, asked: string | undefined): string {
+  if (!asked || asked === FIRST_TRIGGER) return FIRST_TRIGGER;
+  if (!triggerWithId(version as AutomationDraft, asked)) {
+    fail("invalid_input", "That trigger is no longer on this automation.");
+  }
+  return asked;
+}
 
 /**
  * The file a try run works on: the upload asked for, or else the team's newest upload the
@@ -778,15 +1246,25 @@ function pickUpload(
 
 /** The upload a try run would use, and the team's storage to make its link. Members only. */
 export const tryTarget = internalQuery({
-  args: { automationId: v.id("automations"), uploadId: v.optional(v.string()) },
+  args: {
+    automationId: v.id("automations"),
+    uploadId: v.optional(v.string()),
+    triggerId: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const { automation } = await loadForMember(ctx, args.automationId);
+    const working = workingCopy(automation);
+    const triggerId = knownTrigger(working, args.triggerId);
     const uploads = await ctx.db
       .query("uploads")
       .withIndex("by_organization", (q) => q.eq("organizationId", automation.organizationId))
       .order("desc")
       .take(100);
-    const upload = pickUpload(uploads, workingCopy(automation).trigger, args.uploadId);
+    const upload = pickUpload(
+      uploads,
+      triggerWithId(working as AutomationDraft, triggerId) ?? working.trigger,
+      args.uploadId,
+    );
     if (typeof upload === "string") fail("invalid_input", upload);
     const storage = await storageConnection(ctx, automation.organizationId);
     if (!storage) fail("no_storage", "Connect your toolkit first.");
@@ -796,16 +1274,22 @@ export const tryTarget = internalQuery({
 
 /** Starts the try run. Members only, checked again here. */
 export const startTry = internalMutation({
-  args: { automationId: v.id("automations"), trigger: v.any() },
+  args: {
+    automationId: v.id("automations"),
+    trigger: v.any(),
+    triggerId: v.optional(v.string()),
+  },
   returns: v.id("runs"),
   handler: async (ctx, args) => {
     const { automation, userId } = await loadForMember(ctx, args.automationId);
+    const version = withWorkingCopy(automation);
     const started = await startRun(
       ctx,
-      { ...automation, ...workingCopy(automation) },
+      version,
       "manual",
       args.trigger as Record<string, unknown>,
       userId,
+      { triggerId: knownTrigger(version, args.triggerId) },
     );
     if (!started.ok) fail("invalid_input", started.message);
     return started.runId;
@@ -818,13 +1302,18 @@ export const startTry = internalMutation({
  * takes the newest one the automation's trigger would take.
  */
 export const tryOnUpload = action({
-  args: { automationId: v.id("automations"), uploadId: v.optional(v.string()) },
+  args: {
+    automationId: v.id("automations"),
+    uploadId: v.optional(v.string()),
+    triggerId: v.optional(v.string()),
+  },
   returns: v.object({ runId: v.id("runs"), fileName: v.string() }),
   handler: async (ctx, args): Promise<{ runId: Id<"runs">; fileName: string }> => {
     const { upload, storage } = await ctx.runQuery(internal.automations.tryTarget, args);
     const fileUrl = await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
     const runId: Id<"runs"> = await ctx.runMutation(internal.automations.startTry, {
       automationId: args.automationId,
+      ...(args.triggerId ? { triggerId: args.triggerId } : {}),
       trigger: {
         file_url: fileUrl,
         file_name: upload.fileName,
@@ -862,6 +1351,9 @@ export const testStep = mutation({
       "motion-plan",
       "motion",
       "sound-effects",
+      "cleanup",
+      "footage-check",
+      "subtitles",
     ];
     if (!testable.includes(args.node.kind)) {
       fail("invalid_input", "Only steps that do work on a file can be tested on their own.");
@@ -907,29 +1399,55 @@ export function standAlone(input: Record<string, unknown>): Record<string, unkno
 
 // Internal: the triggers that start runs with nobody logged in.
 
-/** Called from the webhook address. Says why when it cannot start a run. */
+/**
+ * Called from the webhook address. Says why when it cannot start a run. A call that sent
+ * an Idempotency-Key it already sent in the last day answers with the run it started then.
+ */
 export const startFromHook = internalMutation({
-  args: { automationId: v.string(), token: v.string(), body: v.any() },
+  args: {
+    automationId: v.string(),
+    token: v.string(),
+    body: v.any(),
+    key: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const id = ctx.db.normalizeId("automations", args.automationId);
     const automation = id ? await ctx.db.get(id) : null;
     if (!automation) return { outcome: "not_found" as const };
-    if (automation.hookToken !== args.token) return { outcome: "forbidden" as const };
-    if (!automation.enabled || automation.trigger.kind !== "webhook") {
+    if (!sameSecret(args.token, automation.hookToken)) return { outcome: "forbidden" as const };
+    const hook = triggersOfKind(automation, "webhook")[0];
+    if (!automation.enabled || !hook) {
       return { outcome: "off" as const };
     }
-    const body = args.body as Record<string, unknown> | null;
-    const fileUrl = [body?.file_url, body?.url].find(
-      (value): value is string => typeof value === "string" && /^https?:\/\//.test(value),
-    );
-    const started = await startRun(
-      ctx,
-      automation,
-      "webhook",
-      { ...(fileUrl ? { file_url: fileUrl } : {}), body: body ?? {} },
-      null,
-    );
+    const now = Date.now();
+    if (args.key !== undefined) {
+      const earlier = await ctx.db
+        .query("hookCalls")
+        .withIndex("by_automation_and_key", (q) =>
+          q.eq("automationId", automation._id).eq("key", args.key!),
+        )
+        .first();
+      if (earlier && earlier.at > now - HOOK_KEY_MS) {
+        return { outcome: "repeat" as const, runId: earlier.runId };
+      }
+      if (earlier) await ctx.db.delete(earlier._id);
+    }
+    const body = (args.body ?? {}) as Record<string, unknown>;
+    const read = readHookCall(body);
+    if (!read.ok) return { outcome: "invalid" as const, message: read.message };
+    const started = await startRun(ctx, automation, "webhook", hookTrigger(read.call, body), null, {
+      triggerId: hook.id,
+      ...(read.call.callbackUrl ? { callbackUrl: read.call.callbackUrl } : {}),
+    });
     if (!started.ok) return { outcome: "invalid" as const, message: started.message };
+    if (args.key !== undefined) {
+      await ctx.db.insert("hookCalls", {
+        automationId: automation._id,
+        key: args.key,
+        runId: started.runId,
+        at: now,
+      });
+    }
     return { outcome: "started" as const, runId: started.runId };
   },
 });
@@ -946,13 +1464,19 @@ export const tick = internalMutation({
       )
       .take(50);
     for (const automation of due) {
-      if (automation.trigger.kind !== "schedule") {
-        await ctx.db.patch(automation._id, { nextRunAt: null });
-        continue;
-      }
-      await ctx.db.patch(automation._id, {
-        nextRunAt: nextRunAt(automation.trigger.schedule, now),
-      });
+      const fired = dueSchedules(automation, now);
+      // Each schedule that came due moves on to its next time; the others keep theirs.
+      await ctx.db.patch(
+        automation._id,
+        scheduleTimesOf(
+          automation,
+          automation,
+          true,
+          now,
+          fired.map((each) => each.id),
+        ),
+      );
+      if (fired.length === 0) continue;
       // If the last run is still going, skip this turn so runs never pile up.
       const lastRun = await ctx.db
         .query("runs")
@@ -960,7 +1484,11 @@ export const tick = internalMutation({
         .order("desc")
         .first();
       if (lastRun && (lastRun.status === "running" || lastRun.status === "waiting")) continue;
-      await startRun(ctx, automation, "schedule", { scheduled_for: automation.nextRunAt }, null);
+      for (const { id, at } of fired) {
+        await startRun(ctx, automation, "schedule", { scheduled_for: at }, null, {
+          triggerId: id,
+        });
+      }
     }
   },
 });
@@ -970,22 +1498,25 @@ export const loadUploadForTrigger = internalQuery({
   handler: async (ctx, args) => {
     const upload = await ctx.db.get(args.uploadId);
     if (!upload || upload.status !== "ready") return null;
-    const automations = await ctx.db
-      .query("automations")
-      .withIndex("by_organization", (q) => q.eq("organizationId", upload.organizationId))
-      .take(200);
+    const automations = await teamEnabledWithTrigger(ctx, upload.organizationId, "upload");
     const family = upload.contentType.split("/")[0];
-    const matching = automations.filter(
-      (automation) =>
-        automation.enabled &&
-        automation.trigger.kind === "upload" &&
-        (automation.trigger.fileType === "any" || automation.trigger.fileType === family) &&
-        withinLength(automation.trigger, upload.details),
+    // One run for each upload trigger that wants the file; an automation with two that
+    // both want it runs both branches.
+    const matching = automations.flatMap((automation) =>
+      automation.enabled
+        ? triggersOfKind(automation, "upload")
+            .filter(
+              ({ trigger }) =>
+                (trigger.fileType === "any" || trigger.fileType === family) &&
+                withinLength(trigger, upload.details),
+            )
+            .map(({ id }) => ({ automationId: automation._id, triggerId: id }))
+        : [],
     );
     if (matching.length === 0) return null;
     const storage = await storageConnection(ctx, upload.organizationId);
     if (!storage) return null;
-    return { upload, storage, automationIds: matching.map((automation) => automation._id) };
+    return { upload, storage, starts: matching };
   },
 });
 
@@ -998,7 +1529,7 @@ export const uploadFinished = internalAction({
     const { upload, storage } = found;
     const fileUrl = await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
     await ctx.runMutation(internal.automations.startFromUpload, {
-      automationIds: found.automationIds,
+      starts: found.starts,
       trigger: {
         file_url: fileUrl,
         file_name: upload.fileName,
@@ -1014,12 +1545,16 @@ export const uploadFinished = internalAction({
 });
 
 export const startFromUpload = internalMutation({
-  args: { automationIds: v.array(v.id("automations")), trigger: v.any() },
+  args: {
+    starts: v.array(v.object({ automationId: v.id("automations"), triggerId: v.string() })),
+    trigger: v.any(),
+  },
   handler: async (ctx, args) => {
-    for (const automationId of args.automationIds) {
+    for (const { automationId, triggerId } of args.starts) {
       const automation = await ctx.db.get(automationId);
-      if (!automation || !automation.enabled || automation.trigger.kind !== "upload") continue;
-      await startRun(ctx, automation, "upload", args.trigger, null);
+      if (!automation || !automation.enabled) continue;
+      if (!triggersOfKind(automation, "upload").some((each) => each.id === triggerId)) continue;
+      await startRun(ctx, automation, "upload", args.trigger, null, { triggerId });
     }
   },
 });
@@ -1048,7 +1583,7 @@ export const nodeTypes = query({
   args: { type: v.optional(v.string()), organizationId: v.optional(v.string()) },
   returns: v.object({ index: v.optional(v.string()), type: v.optional(v.any()) }),
   handler: async (ctx, args) => {
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     if (!user) fail("unauthenticated", "Sign in first.");
     if (args.organizationId) await requireMember(ctx, args.organizationId);
     if (!args.type) return { index: nodeTypeIndex() };
@@ -1067,7 +1602,7 @@ export const platformGuide = query({
   args: { platforms: v.optional(v.array(v.string())) },
   returns: v.object({ text: v.string(), unknown: v.array(v.string()) }),
   handler: async (ctx, args) => {
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     if (!user) fail("unauthenticated", "Sign in first.");
     return platformGuideText(args.platforms?.slice(0, 30));
   },

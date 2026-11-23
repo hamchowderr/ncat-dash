@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { isMember, requireMember } from "./lib/authz";
-import { shareOf } from "./lib/reviews";
+import { shareEnded, shareExpiry, shareExpiryFrom, shareOf } from "./lib/reviews";
 
 // The team's side of a review's share link: switching it on and off, and what the
 // client may do through it. The client's side is in convex/sharedReview.ts.
@@ -25,6 +25,9 @@ export const forReview = query({
       token: share.token,
       allowVerdict: share.allowVerdict,
       showTeamComments: share.showTeamComments,
+      // When the link stops working, and whether it already has.
+      expiresAt: shareExpiry(share),
+      ended: shareEnded(share, review, Date.now()),
     };
   },
 });
@@ -56,8 +59,27 @@ export const set = mutation({
       token,
       createdBy: userId,
       ...settings,
+      expiresAt: shareExpiryFrom(Date.now()),
     });
     return token;
+  },
+});
+
+/**
+ * Keeps the link working for another 30 days from now, with the same address, so a
+ * client whose link ran out can open the one they already have.
+ */
+export const renew = mutation({
+  args: { reviewId: v.id("reviews") },
+  handler: async (ctx, args) => {
+    const review = await ctx.db.get(args.reviewId);
+    if (!review) throw gone();
+    await requireMember(ctx, review.organizationId);
+    const share = await shareOf(ctx, review._id);
+    if (!share) {
+      throw new ConvexError({ code: "not_found", message: "This review is not shared." });
+    }
+    await ctx.db.patch(share._id, { expiresAt: shareExpiryFrom(Date.now()) });
   },
 });
 

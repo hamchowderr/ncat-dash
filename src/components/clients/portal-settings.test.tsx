@@ -48,4 +48,24 @@ describe("a client's portal settings", () => {
     await user.click(screen.getByRole("button", { name: "Switch off the portal" }));
     expect(stop).toHaveBeenCalledWith({ clientId: "k1" });
   });
+
+  test("makes a new link that turns the old one off", async () => {
+    const user = userEvent.setup();
+    answerQuery(api.portal.forClient, {
+      token: TOKEN,
+      allowVerdict: true,
+      showTeamComments: false,
+    });
+    const newLink = mutationOf(api.portal.newLink);
+    renderInApp(<PortalSettings clientId={"k1" as never} />);
+    expect(screen.getByText(/A new link turns this one off straight away/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Make a new link" }));
+    expect(newLink).toHaveBeenCalledWith({ clientId: "k1" });
+  });
+
+  test("offers no new link before the portal is on", () => {
+    answerQuery(api.portal.forClient, null);
+    renderInApp(<PortalSettings clientId={"k1" as never} />);
+    expect(screen.queryByRole("button", { name: "Make a new link" })).toBeNull();
+  });
 });

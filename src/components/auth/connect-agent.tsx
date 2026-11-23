@@ -1,11 +1,9 @@
 "use client";
 
-import { api } from "@convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { Check, Eye, Lock, Play, Workflow } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Check, CircleCheck, Eye, Play, UserRound, Workflow } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { FullPageLoader } from "@/components/full-page-loader";
 import { clientLogo } from "@/components/mcp-client-logos";
@@ -19,33 +17,54 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { authClient } from "@/lib/auth-client";
-import { errorMessage } from "@/lib/catalog";
 
 import { AuthCard } from "./auth-card";
 
 /**
  * Where an AI agent (an MCP client such as ChatGPT, Claude or Cursor) sends someone to let it
- * in. They pick the team it works on and allow it; it then acts as them on that team.
- * Someone signed out signs in first and comes straight back here.
+ * in. Better Auth runs the sign-in (convex/auth.ts, mcp()): it sends the person here with a
+ * signed copy of the agent's request. On /connect/team they pick the team it works on and
+ * allow it; /connect asks only to allow it, for the team already picked. Someone signed out
+ * signs in first and comes straight back. The agent then acts as them on that team.
  */
-export function ConnectAgent() {
-  const { requestId } = useParams<{ requestId: string }>();
-  const asked = useQuery(api.oauth.request, { requestId });
-  const decide = useMutation(api.oauth.decide);
+export function ConnectAgent({ step }: { step: "team" | "consent" }) {
+  const search = useSearchParams();
+  const query = search.toString();
+  const clientId = search.get("client_id");
+  const redirectHost = hostOf(search.get("redirect_uri"));
+  const signed = Boolean(clientId && search.get("sig"));
+
+  const session = authClient.useSession();
+  const teamsQuery = authClient.useListOrganizations();
+  const router = useRouter();
+  const [client, setClient] = useState<{ name: string; host: string | null } | null>(null);
   const [team, setTeam] = useState<string | null>(null);
   const [pending, setPending] = useState<"allow" | "deny" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const session = authClient.useSession();
-  const router = useRouter();
+  const signedIn = Boolean(session.data?.user);
+  useEffect(() => {
+    if (!signedIn || !clientId) return;
+    let cancelled = false;
+    void (async () => {
+      const found = await authCall<{ client_name?: string; client_uri?: string }>(
+        `/oauth2/public-client?client_id=${encodeURIComponent(clientId)}`,
+      ).catch(() => null);
+      if (cancelled) return;
+      setClient({
+        name: found?.client_name || hostOf(clientId) || "An app",
+        host: hostOf(found?.client_uri ?? null) ?? hostOf(clientId),
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn, clientId]);
 
-  // The question waits for the sign-in check, so a signed-in person never sees "Sign in".
-  if (session.isPending || asked === undefined) return <FullPageLoader />;
-  // Signed in, while the backend is still being handed the sign-in.
-  if (session.data?.user && asked.status === "signed-out") return <FullPageLoader />;
+  if (session.isPending) return <FullPageLoader />;
 
-  const here = encodeURIComponent(`/connect/${requestId}`);
-  if (!session.data?.user || asked.status === "signed-out") {
+  const here = encodeURIComponent(`/connect${step === "team" ? "/team" : ""}?${query}`);
+  if (!signedIn) {
     return (
       <AuthCard
         title="Connect an app"
@@ -53,21 +72,21 @@ export function ConnectAgent() {
       >
         <div className="flex flex-col gap-2">
           <Button asChild>
-            <Link href={`/sign-in?next=${here}`}>Sign in</Link>
+            <Link href={`/sign-in?redirectTo=${here}`}>Sign in</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href={`/sign-up?next=${here}`}>Create an account</Link>
+            <Link href={`/sign-up?redirectTo=${here}`}>Create an account</Link>
           </Button>
         </div>
       </AuthCard>
     );
   }
 
-  if (asked.status === "gone") {
+  if (!signed) {
     return (
       <AuthCard
         title="This link has expired"
-        description="Start connecting again from the app. Each link works once, for 15 minutes."
+        description="Start connecting again from the app. Each link works for 10 minutes."
       >
         <Button asChild variant="outline" className="w-full">
           <Link href="/">Go to the dashboard</Link>
@@ -76,22 +95,56 @@ export function ConnectAgent() {
     );
   }
 
-  const { clientName, clientHost, redirectHost, teams } = asked;
+  if (teamsQuery.isPending || client === null) return <FullPageLoader />;
+
+  const activeTeam = session.data?.session.activeOrganizationId ?? null;
+  const allTeams = (teamsQuery.data ?? []).map((each) => ({ id: each.id, name: each.name }));
+  // On /connect the team was already picked: it is the active one.
+  const teams = step === "team" ? allTeams : allTeams.filter((each) => each.id === activeTeam);
   const chosen = team ?? (teams.length === 1 ? teams[0].id : null);
+  const clientName = client.name;
+  const clientHost = client.host;
 
   async function answer(allow: boolean) {
     setPending(allow ? "allow" : "deny");
     setProblem(null);
     try {
-      const { redirectTo } = await decide({
-        requestId,
-        allow,
-        ...(allow && chosen ? { organizationId: chosen } : {}),
-      });
-      window.location.assign(redirectTo);
+      let url: string;
+      if (!allow) {
+        url = (
+          await authCall<{ url: string }>("/oauth2/consent", { accept: false, oauth_query: query })
+        ).url;
+      } else if (step === "team") {
+        const picked = await authClient.organization.setActive({ organizationId: chosen });
+        if (picked.error) throw new Error(picked.error.message);
+        url = (
+          await authCall<{ url: string }>("/oauth2/continue", {
+            postLogin: true,
+            oauth_query: query,
+          })
+        ).url;
+        // Not allowed before on this team: allow it now, as the person just asked.
+        if (url.startsWith("/connect?")) {
+          url = (
+            await authCall<{ url: string }>("/oauth2/consent", {
+              accept: true,
+              oauth_query: url.slice("/connect?".length),
+            })
+          ).url;
+        }
+      } else {
+        url = (
+          await authCall<{ url: string }>("/oauth2/consent", { accept: true, oauth_query: query })
+        ).url;
+      }
+      window.location.assign(url);
     } catch (caught) {
       setPending(null);
-      setProblem(errorMessage(caught, "That did not work. Try again from the app."));
+      setProblem(
+        caught instanceof Error && caught.message
+          ? caught.message
+          : "That did not work. Try again from the app.",
+      );
     }
   }
 
@@ -105,7 +158,8 @@ export function ConnectAgent() {
     );
   }
 
-  const user = session.data.user;
+  const user = session.data?.user;
+  if (!user) return <FullPageLoader />;
   const chosenTeam = teams.find((each) => each.id === chosen);
   const mark = clientLogo(clientName, "size-7");
 
@@ -147,7 +201,7 @@ export function ConnectAgent() {
               className="hover:text-foreground underline underline-offset-4"
               onClick={async () => {
                 await authClient.signOut();
-                router.push(`/sign-in?next=${here}`);
+                router.push(`/sign-in?redirectTo=${here}`);
               }}
             >
               Not you?
@@ -156,7 +210,7 @@ export function ConnectAgent() {
         </div>
 
         <div className="bg-background flex flex-col gap-6 rounded-2xl p-6 shadow-sm">
-          {teams.length > 1 && (
+          {step === "team" && teams.length > 1 && (
             <div className="flex flex-col gap-2">
               <label htmlFor="connect-team" className="text-sm font-medium">
                 Team
@@ -180,10 +234,11 @@ export function ConnectAgent() {
             <p className="text-sm font-medium">{clientName} will be able to</p>
             <ul className="flex flex-col gap-3 text-sm" aria-label="What it can do">
               <Can icon={<Eye />}>See your automations, uploads and runs</Can>
-              <Can icon={<Workflow />}>Build and change automations as drafts</Can>
-              <Can icon={<Play />}>Start runs and follow them</Can>
-              <Can icon={<Lock />} muted>
-                It cannot publish drafts or switch automations on
+              <Can icon={<Workflow />}>Build, change and publish automations</Can>
+              <Can icon={<Play />}>Switch automations on or off, and start runs</Can>
+              <Can icon={<CircleCheck />}>Approve or send back runs waiting for a review</Can>
+              <Can icon={<UserRound />} muted>
+                It acts as you, so it can do only what you can on this team
               </Can>
             </ul>
           </div>
@@ -223,4 +278,31 @@ function Can({ icon, muted, children }: { icon: ReactNode; muted?: boolean; chil
       {children}
     </li>
   );
+}
+
+/** A call to Better Auth's own endpoints, from the person's browser, following no redirect. */
+async function authCall<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`/api/auth${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    credentials: "include",
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const answer = (await response.json().catch(() => null)) as
+    (T & { message?: string; error_description?: string }) | null;
+  if (!response.ok || !answer) {
+    throw new Error(
+      answer?.error_description || answer?.message || "That did not work. Try again from the app.",
+    );
+  }
+  return answer;
+}
+
+function hostOf(address: string | null): string | null {
+  if (!address) return null;
+  try {
+    return new URL(address).host || null;
+  } catch {
+    return null;
+  }
 }

@@ -111,8 +111,17 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
     expect(narrowed.x + narrowed.width).toBeLessThanOrEqual(settings.x + 1);
     expect(await covered(page), `step settings at ${size.width}`).toEqual([]);
 
-    // The agent opens beside the page, and the notices stay clear of it.
-    await page.getByRole("button", { name: "Agent" }).click();
+    // Closed, the agent takes no room: its robot sits in the bar along the top, inside the
+    // page, the mirror of the menu's button. It opens beside the page, and the notices stay
+    // clear of it.
+    const robot = page.locator("header").getByRole("button", { name: "Open the agent" });
+    await expect(robot).toBeVisible();
+    const pageFrame = await box(page, "[data-page-frame]");
+    const robotBox = (await robot.boundingBox())!;
+    expect(robotBox.x + robotBox.width).toBeLessThanOrEqual(pageFrame.x + pageFrame.width + 1);
+    await expect(page.getByRole("complementary", { name: "Agent" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "Agent", exact: true })).toHaveCount(0);
+    await robot.click();
     const agent = page.getByRole("complementary", { name: "Agent" });
     await expect(agent).toBeVisible();
     await page.waitForTimeout(500);
@@ -121,15 +130,20 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
     expect(page_.x + page_.width).toBeLessThanOrEqual(agentBox.x + 1);
     expect(await covered(page), `agent at ${size.width}`).toEqual([]);
     await agent.getByRole("button", { name: /Close/ }).click();
-    await expect(agent).toBeHidden();
+    await expect(robot).toBeVisible();
+    // Cmd/Ctrl+J opens and closes it from the keyboard.
+    await page.keyboard.press("ControlOrMeta+j");
+    await expect(agent.getByRole("button", { name: /Close the agent/ })).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+j");
+    await expect(robot).toBeVisible();
   }
 
   // On a screen too narrow for a column beside the page, the agent takes the page's place
   // instead of lying over it, and closing it brings the page back.
   await page.setViewportSize({ width: 900, height: 800 });
   await page.goto(editor);
-  await page.getByRole("button", { name: "Agent" }).click();
   const agent = page.getByRole("complementary", { name: "Agent" });
+  await page.locator("header").getByRole("button", { name: "Open the agent" }).click();
   await expect(agent).toBeVisible();
   await expect(page.locator("[data-page-frame]")).toBeHidden();
   expect(await covered(page), "agent on a narrow screen").toEqual([]);
@@ -139,14 +153,19 @@ test("panels sit beside the canvas, never on top of it", async ({ page }) => {
   // Starting an automation is a page of its own, not a window over the list.
   await page.setViewportSize(SIZES[0]);
   await page.goto("/automations");
+  // This page's own tour starts on a first visit; the check is of the page under it. The
+  // spec's tour closer is set aside here, or it can close the card before it is seen when
+  // the tour starts quickly.
+  const card = page.locator("[data-tour-card]");
+  await page.removeLocatorHandler(card);
   await page.getByRole("link", { name: "New automation", exact: true }).click();
   await expect(page).toHaveURL(/\/automations\/new$/);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  // This page's own tour starts on a first visit; the check is of the page under it.
-  // Wait for the card without an assertion, which would let the spec's handler close it
-  // first, then let that handler close it.
-  await page.waitForFunction(() => document.querySelector("[data-tour-card]"));
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "Close the tour" }).dispatchEvent("click");
+  await expect(card).toHaveCount(0);
+  // Closing the tour takes its spotlight with it.
   await expect(page.locator("[data-tour-overlay]")).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await covered(page), "new automation page").toEqual([]);
 });
 
@@ -169,11 +188,11 @@ test("settings open from the team menu and swap the sidebar for their own menu, 
   await page.goto("/settings#notifications");
   await expect(page).toHaveURL(/\/settings\/notifications$/);
   await page.goto("/settings/chat");
-  await expect(page).toHaveURL(/\/settings\/slack$/);
+  await expect(page).toHaveURL(/\/settings\/integrations\/slack$/);
   // A Discord sign-in that returns to the old address lands on the Discord page, which reads
   // how it went and then tidies the address.
   await page.goto("/settings/chat?discord=taken");
-  await expect(page).toHaveURL(/\/settings\/discord(\?discord=taken)?$/);
+  await expect(page).toHaveURL(/\/settings\/integrations\/discord(\?discord=taken)?$/);
   await expect(page.getByRole("heading", { level: 1, name: "Discord" })).toBeVisible();
 
   // Settings are not an everyday page: the main menu leaves them out, and the team's menu
@@ -221,4 +240,89 @@ test("settings open from the team menu and swap the sidebar for their own menu, 
   await page.getByRole("link", { name: "Back to app" }).click();
   await expect(page).toHaveURL(/\/uploads$/);
   await expect(sidebar.getByRole("link", { name: "Uploads" })).toBeVisible();
+});
+
+test("the first-step hint and the On switches stay clear at a small laptop size", async ({
+  page,
+}) => {
+  await page.setViewportSize(SIZES[0]);
+  await page.goto("/sign-up");
+  await page.locator("#name").fill("Tomas Lindqvist");
+  await page.locator("#email").fill(`tomas.${stamp}@example.test`);
+  await page.locator("#password").fill("layout-e2e-12345");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
+  await page.getByPlaceholder("Your company or channel").fill("Small Screen Shop");
+  await page.getByRole("button", { name: "Create team" }).click();
+  await expect(page.getByRole("heading", { name: "Do You Have A Toolkit?" })).toBeVisible();
+
+  // A trigger and no steps: the hint sits under the canvas, wherever the trigger lands, so it
+  // never covers the trigger's caption. Adding a second trigger puts one low on the canvas.
+  await page.goto("/automations");
+  await page.getByRole("link", { name: "New automation", exact: true }).click();
+  await page.getByRole("button", { name: "Empty canvas" }).first().click();
+  await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
+  const hint = page.getByTestId("canvas-first-step-hint");
+  await expect(hint).toBeVisible();
+  await page.getByRole("button", { name: "Add trigger" }).click();
+  await expect(page.locator(".react-flow__node-trigger")).toHaveCount(2);
+  await page.getByRole("button", { name: "Add trigger" }).click();
+  await expect(page.locator(".react-flow__node-trigger")).toHaveCount(3);
+  await page.waitForTimeout(800);
+  const canvas = await box(page, "[data-testid=canvas]");
+  const hintBox = (await hint.boundingBox())!;
+  expect(hintBox.y).toBeGreaterThanOrEqual(canvas.y + canvas.height - 1);
+  for (const trigger of await page.locator(".react-flow__node-trigger").all()) {
+    const t = (await trigger.boundingBox())!;
+    const apart =
+      t.y + t.height <= hintBox.y ||
+      t.y >= hintBox.y + hintBox.height ||
+      t.x + t.width <= hintBox.x ||
+      t.x >= hintBox.x + hintBox.width;
+    expect(apart, "a trigger is under the hint").toBe(true);
+  }
+  expect(await covered(page), "editor with only triggers").toEqual([]);
+
+  // The list of automations, with the main menu open: every row's On switch is in view, not
+  // cut off on the right or hidden behind a sideways scroll.
+  // A long name and a long chain of steps are what pushed the column out.
+  const long = {
+    format: "ncat-dash-automation",
+    version: 1,
+    name: "Weekly podcast clips with captions, thumbnails and a review before posting",
+    trigger: { kind: "webhook" },
+    nodes: Array.from({ length: 12 }, (_, n) => ({
+      id: `thumb_${n}`,
+      kind: "step",
+      stepId: "video-thumbnail",
+      input: { second: 1 },
+      position: { x: n * 320, y: 0 },
+    })),
+    edges: Array.from({ length: 11 }, (_, n) => ({
+      id: `thumb_${n}>thumb_${n + 1}`,
+      source: `thumb_${n}`,
+      target: `thumb_${n + 1}`,
+    })),
+  };
+  await page.goto("/automations");
+  await page.getByLabel("Automation file to import").setInputFiles({
+    name: "long.automation.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(long)),
+  });
+  await expect(page).toHaveURL(/\/automations\/[a-z0-9]+$/, { timeout: 30_000 });
+  await page.goto("/automations");
+  // The steps past the fifth are counted, not drawn.
+  await expect(page.getByTestId("flow-strip-more")).toHaveText("+7");
+  const switches = page.getByRole("switch");
+  await expect(switches.first()).toBeVisible();
+  const list = await box(page, "[data-item-list]");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    "the page scrolls sideways",
+  ).toBeLessThanOrEqual(1);
+  for (const toggle of await switches.all()) {
+    const s = (await toggle.boundingBox())!;
+    expect(s.x + s.width).toBeLessThanOrEqual(Math.min(list.x + list.width, SIZES[0].width));
+  }
 });

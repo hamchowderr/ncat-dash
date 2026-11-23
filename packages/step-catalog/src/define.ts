@@ -70,6 +70,51 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    * what was read, by setting name.
    */
   readsFirst?: string[];
+  /**
+   * File settings among `readsFirst` whose pauses in speech are read too, so cuts can
+   * land between words. Only read for files up to 20 minutes long.
+   */
+  readsPauses?: string[];
+  /**
+   * File settings among `readsFirst` whose music's beats are read too (/v1/audio/beats),
+   * so cuts can land on them. Only read for files up to 20 minutes long.
+   */
+  readsBeats?: string[];
+  /**
+   * File settings among `readsFirst` whose camera cuts are read too (/v1/media/look with
+   * `cuts`), so a step can split footage into its own shots. Videos up to 20 minutes long.
+   */
+  readsCuts?: string[];
+  /**
+   * File settings whose spoken words the step needs, from the team's transcripts. In a run
+   * the runner transcribes any not heard before, then hands them over as `facts[field]
+   * .words`. Depends on the step's settings, so a step only asks when it will use them.
+   */
+  readsWords?: (input: Record<string, unknown>) => string[];
+  /**
+   * Settings asked for up front although they are optional, because the step is only
+   * useful with some of them set (such as the other hook takes of hook variants).
+   */
+  askFirst?: string[];
+  /**
+   * Short codes for each file one job of this step makes, in order, such as "h02_c01" or
+   * "15s". They go into the files' names, after the code of the file the job worked on,
+   * so a finished ad is named for its hook, ending, length and shape.
+   */
+  outputLabels?: (input: Record<string, unknown>, count: number) => string[];
+  /** Only label files whose input already carries a code, such as a shape or captions. */
+  labelsFollow?: boolean;
+  /**
+   * An optional setting the step is no use without, such as the music it lays under a
+   * video. When it is still empty once the team's brand is filled in, the run passes the
+   * step over and makes nothing there, instead of failing or stopping the automation.
+   */
+  skipsWithout?: string;
+  /**
+   * Settings the runner fills in itself, such as the speaker's cut-out kept for a video.
+   * Sent to the toolkit but never shown in a form or to the agent.
+   */
+  keptFields?: string[];
   /** Builds the toolkit request from the filled-in blanks. Only recipes have one. */
   toRequest?: (input: z.output<TInput>, facts: FileFacts) => Record<string, unknown>;
 }
@@ -84,6 +129,40 @@ export interface MediaFacts {
   fps?: number;
   hasVideo?: boolean;
   hasAudio?: boolean;
+  /** Pauses in speech, in seconds, for settings named in `readsPauses`. */
+  pauses?: Pause[];
+  /** Where the music's beats fall, for settings named in `readsBeats`. */
+  beats?: Beats;
+  /** Where the camera cuts fall, in seconds, for settings named in `readsCuts`. */
+  cuts?: number[];
+  /** Each word heard, in order, for settings named by `readsWords`. */
+  words?: SpokenWord[];
+}
+
+/** One word heard in a file, with when it is said, in seconds. */
+export interface SpokenWord {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/** A song's tempo and where its beats and bars fall, in seconds, as the toolkit found them. */
+export interface Beats {
+  /** Beats a minute. */
+  tempo: number;
+  /** How evenly the sound repeats at that tempo, 0 to 1. Speech is below about 0.3. */
+  steadiness: number;
+  beats: number[];
+  /** The first beat of each bar. */
+  downbeats: number[];
+  /** How loud each beat is, in dB below the song's loudest beat; one for each of `beats`. */
+  loudness?: number[];
+}
+
+/** A stretch of silence, from and to, in seconds. */
+export interface Pause {
+  start: number;
+  end: number;
 }
 
 /** The facts read for each setting named in `readsFirst`. */
@@ -115,6 +194,8 @@ export function userInputSchema(step: StepDefinition): z.ZodObject {
 
 /** JSON Schema for building a form or describing the step to a model. */
 export function userInputJsonSchema(step: StepDefinition) {
+  const shape = { ...userInputSchema(step).shape };
+  for (const field of step.keptFields ?? []) delete shape[field];
   // "input" so a blank with a default is shown as optional, with its default.
-  return z.toJSONSchema(userInputSchema(step), { io: "input" });
+  return z.toJSONSchema(z.object(shape), { io: "input" });
 }

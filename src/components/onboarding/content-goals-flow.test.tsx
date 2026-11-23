@@ -78,9 +78,37 @@ describe("asking what the team makes", () => {
     expect(list.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ })).toBeTruthy();
     expect(list.getAllByText("AI picks the moments")).toHaveLength(1);
     expect(
-      screen.getByRole("link", { name: /See all 64 ready-made automations/ }).getAttribute("href"),
+      screen.getByRole("link", { name: /See all 89 ready-made automations/ }).getAttribute("href"),
     ).toBe("/automations/new");
-    expect(screen.getByRole("button", { name: "Switch on 2 automations" })).toBeTruthy();
+    // What goes well after each pick is offered under it, ticked.
+    const after = within(
+      screen.getByRole("list", { name: "Goes well after Coaching session pack" }),
+    );
+    const brand = after.getByRole("checkbox", { name: /Brand Every Clip/ });
+    expect(brand.getAttribute("aria-checked")).toBe("true");
+    expect(after.getByText("Runs after Coaching session pack")).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: /Clips From The Episode/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Switch on 4 automations" })).toBeTruthy();
+  });
+
+  test("makes a follow-on only with what it runs after", async () => {
+    mutationOf(api.contentGoals.turnOn).mockResolvedValue([]);
+    renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);
+    pick(/Coaching or Courses/);
+    pick(/Continue/);
+    pick(/Continue without one/);
+    await screen.findByRole("heading", { name: "Switch these on" });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ }));
+    const episode = screen.getByRole("checkbox", { name: /Clips From The Episode/ });
+    expect(episode.getAttribute("aria-checked")).toBe("false");
+    expect(episode).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Brand Every Clip/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch on 1 automation" }));
+    await screen.findByRole("heading", { name: "Upload your first recording" });
+    expect(mutationOf(api.contentGoals.turnOn)).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      starterIds: ["coaching-session-pack"],
+    });
   });
 
   test("switches on only the ticked ones and says why any were left off", async () => {
@@ -165,6 +193,7 @@ describe("the first upload", () => {
     pick(/Continue without one/);
     await screen.findByRole("heading", { name: "Switch these on" });
     fireEvent.click(screen.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Brand Every Clip/ }));
     fireEvent.click(screen.getByRole("button", { name: "Switch on 1 automation" }));
     await screen.findByRole("heading", { name: "Upload your first recording" });
   }
@@ -243,6 +272,7 @@ describe("setting up without a toolkit", () => {
     pick(/Continue without one/);
     await screen.findByRole("heading", { name: "Switch these on" });
     fireEvent.click(screen.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Brand Every Clip/ }));
     fireEvent.click(screen.getByRole("button", { name: "Switch on 1 automation" }));
     expect(
       await screen.findByRole("heading", { name: "Connect A Toolkit When You're Ready" }),

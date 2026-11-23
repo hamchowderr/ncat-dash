@@ -18,6 +18,11 @@ export const mediaLook = defineStep({
   input: z.object({
     media_url: z.string().url().optional().describe("URL of a video or picture to sample"),
     every: z.number().min(0.5).max(60).optional().describe("Seconds between sampled frames"),
+    cuts: z.boolean().optional().describe("Also find the video's camera cuts"),
+    frames: z
+      .boolean()
+      .optional()
+      .describe("False skips the frames, when only the cuts are wanted"),
     image_urls: z.array(z.string().url()).max(60).optional().describe("Pictures to look at"),
     texts: z.array(z.string().max(1000)).max(200).optional().describe("Words to turn into vectors"),
     webhook_url: z.string().url().optional().describe("Callback URL for async job completion"),

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stack-saved"
+description = "Enables the stack_saved command without any pre-configured scope."
+commands.allow = ["stack_saved"]
+
+[[permission]]
+identifier = "deny-stack-saved"
+description = "Denies the stack_saved command without any pre-configured scope."
+commands.deny = ["stack_saved"]

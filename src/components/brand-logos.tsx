@@ -100,6 +100,36 @@ export function MicrosoftTeamsLogo(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Telegram's mark, from simple-icons. */
+export function TelegramLogo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+    </svg>
+  );
+}
+
+/** Microsoft's four-square logo, in one colour. */
+export function MicrosoftLogo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M1 1h10.5v10.5H1zM12.5 1H23v10.5H12.5zM1 12.5h10.5V23H1zM12.5 12.5H23V23H12.5z" />
+    </svg>
+  );
+}
+
+/** Microsoft's four-square logo in its own colours. */
+export function MicrosoftColorLogo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path fill="#F25022" d="M1 1h10.5v10.5H1z" />
+      <path fill="#7FBA00" d="M12.5 1H23v10.5H12.5z" />
+      <path fill="#00A4EF" d="M1 12.5h10.5V23H1z" />
+      <path fill="#FFB900" d="M12.5 12.5H23V23H12.5z" />
+    </svg>
+  );
+}
+
 /** Dropbox's mark, from simple-icons. */
 export function DropboxLogo(props: SVGProps<SVGSVGElement>) {
   return (
@@ -110,12 +140,7 @@ export function DropboxLogo(props: SVGProps<SVGSVGElement>) {
 }
 
 export type ConnectedApp =
-  | "slack"
-  | "discord"
-  | "zoom"
-  | "google-meet"
-  | "microsoft"
-  | "dropbox";
+  "slack" | "discord" | "telegram" | "zoom" | "google-meet" | "microsoft" | "teams" | "dropbox";
 
 const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactNode }> = {
   slack: { name: "Slack", tile: "bg-muted", mark: <SlackColorLogo className="size-6" /> },
@@ -124,6 +149,11 @@ const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactN
     tile: "bg-[#5865F2] text-white",
     mark: <DiscordLogo className="size-6" />,
   },
+  telegram: {
+    name: "Telegram",
+    tile: "bg-[#26A5E4] text-white",
+    mark: <TelegramLogo className="size-6" />,
+  },
   zoom: { name: "Zoom", tile: "bg-[#0B5CFF] text-white", mark: <ZoomLogo className="size-8" /> },
   "google-meet": {
     name: "Google Meet",
@@ -131,6 +161,11 @@ const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactN
     mark: <GoogleMeetColorLogo className="size-6" />,
   },
   microsoft: {
+    name: "Microsoft 365",
+    tile: "bg-muted",
+    mark: <MicrosoftColorLogo className="size-6" />,
+  },
+  teams: {
     name: "Microsoft Teams",
     tile: "bg-[#5B5FC7] text-white",
     mark: <MicrosoftTeamsLogo className="size-6" />,
@@ -143,14 +178,14 @@ const APP_TILES: Record<ConnectedApp, { name: string; tile: string; mark: ReactN
 };
 
 /** An app's logo in its own colours, on a soft rounded tile, for the top of its page. */
-export function AppTile({ app }: { app: ConnectedApp }) {
+export function AppTile({ app, small = false }: { app: ConnectedApp; small?: boolean }) {
   const { name, tile, mark } = APP_TILES[app];
   return (
     <span
       role="img"
       aria-label={`${name} logo`}
       data-app-tile={app}
-      className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${tile}`}
+      className={`flex shrink-0 items-center justify-center ${small ? "size-9 rounded-lg [&>svg]:scale-[0.85]" : "size-11 rounded-xl"} ${tile}`}
     >
       {mark}
     </span>

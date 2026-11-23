@@ -50,7 +50,7 @@ const START_TTL_MS = 15 * 60 * 1000;
 /** An access token with less than this left is renewed before it is used. */
 const RENEW_MS = 5 * 60 * 1000;
 /** At most this many folders are watched per member. */
-const MAX_FOLDERS = 25;
+const MAX_FOLDERS = 100;
 /** At most this many files are listed when looking through watched folders by hand. */
 const MAX_LISTED = 2000;
 /** At most this many files are brought over in one press. */
@@ -88,7 +88,7 @@ function ready(): boolean {
 /** Back to Settings, saying how the Dropbox sign-in went. */
 export function settingsUrl(result: string): string {
   const siteUrl = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  return `${siteUrl}/settings/dropbox?dropbox=${encodeURIComponent(result)}`;
+  return `${siteUrl}/settings/integrations/dropbox?dropbox=${encodeURIComponent(result)}`;
 }
 
 function randomText(): string {
@@ -150,6 +150,7 @@ export const forTeam = query({
             folders: (await foldersOf(ctx, mine._id)).map((one) => ({
               _id: one._id,
               path: one.path,
+              recursive: one.recursive !== false,
             })),
           }
         : null,
@@ -609,6 +610,7 @@ export const saveFolder = internalMutation({
     connectionId: v.id("dropboxConnections"),
     path: v.string(),
     cursor: v.string(),
+    recursive: v.optional(v.boolean()),
   },
   returns: v.union(v.id("dropboxFolders"), v.null()),
   handler: async (ctx, args) => {
@@ -630,6 +632,7 @@ export const saveFolder = internalMutation({
       path: args.path,
       pathLower,
       cursor: args.cursor,
+      ...(args.recursive === false ? { recursive: false } : {}),
       addedAt: Date.now(),
     });
   },
@@ -675,6 +678,196 @@ export const addFolder = action({
   },
 });
 
+// Reading the whole Dropbox: one list of the folders that hold media, to tick and bring in.
+
+/** How many entries a scan reads at most, so a huge Dropbox still answers in time. */
+const MAX_SCANNED = 40_000;
+/** How many folders a scan lists, the fullest first. */
+const MAX_SCAN_FOLDERS = 300;
+/** How many folders one press can bring in. */
+const MAX_PULL_FOLDERS = 50;
+
+export interface DropboxMediaFolder {
+  path: string;
+  name: string;
+  /** Videos, sounds and pictures right in this folder. */
+  files: number;
+  /** Of those, how many are not in Uploads yet. */
+  fresh: number;
+  watched: boolean;
+}
+
+/** "/A/B/clip.mp4" gives "/A/B"; a file at the very top gives "/". */
+function folderOfFile(path: string): string {
+  const cut = path.lastIndexOf("/");
+  return cut > 0 ? path.slice(0, cut) : "/";
+}
+
+/**
+ * Reads the caller's whole Dropbox (team folders too, on a team account) and lists every
+ * folder that has videos, sounds or pictures right in it, with how many and how many
+ * are new to Uploads. Folders already watched are marked.
+ */
+export const scan = action({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args): Promise<{ folders: DropboxMediaFolder[]; partial: boolean }> => {
+    const found: Mine = await ctx.runQuery(internal.dropbox.mine, {
+      organizationId: args.organizationId,
+    });
+    const done = await ctx.runQuery(internal.dropbox.brought, {
+      organizationId: args.organizationId,
+    });
+    const files = new Set(done.files);
+    const hashes = new Set(done.hashes);
+    const token = await signedIn(ctx, found.row);
+    const counts = new Map<string, DropboxMediaFolder>();
+    let read = 0;
+    let partial = false;
+    let response = await rpc(token, found.row, "files/list_folder", {
+      path: "",
+      recursive: true,
+      include_deleted: false,
+      limit: 2000,
+    });
+    for (;;) {
+      if (!response.ok) {
+        throw new ConvexError({
+          code: "dropbox_refused",
+          message: `Dropbox did not list your files (HTTP ${response.status}).`,
+        });
+      }
+      const body = (await response.json()) as ListPage;
+      for (const entry of body.entries ?? []) {
+        const picked = pickFile(entry);
+        if (!picked) continue;
+        const path = folderOfFile(picked.path);
+        const key = path.toLowerCase();
+        const row = counts.get(key) ?? {
+          path,
+          name: path === "/" ? "Dropbox" : path.slice(path.lastIndexOf("/") + 1),
+          files: 0,
+          fresh: 0,
+          watched: false,
+        };
+        row.files++;
+        const isIn =
+          files.has(`${picked.fileId}:${picked.contentHash}`) ||
+          (picked.contentHash !== "" && hashes.has(picked.contentHash));
+        if (!isIn) row.fresh++;
+        counts.set(key, row);
+      }
+      read += body.entries?.length ?? 0;
+      if (!body.has_more || !body.cursor) break;
+      if (read >= MAX_SCANNED) {
+        partial = true;
+        break;
+      }
+      response = await rpc(token, found.row, "files/list_folder/continue", { cursor: body.cursor });
+    }
+    const watched = new Set(found.folders.map((one) => one.pathLower));
+    for (const [key, row] of counts) row.watched = watched.has(key);
+    const folders = [...counts.values()]
+      .sort((a, b) => b.files - a.files || a.path.localeCompare(b.path))
+      .slice(0, MAX_SCAN_FOLDERS);
+    return { folders, partial };
+  },
+});
+
+/**
+ * The one button: watches each ticked folder (only the files right in it, as the scan
+ * counted them) and brings in what is already there and not in Uploads yet.
+ */
+export const pullIn = action({
+  args: { organizationId: v.string(), paths: v.array(v.string()) },
+  handler: async (ctx, args): Promise<{ watching: number; started: number; more: boolean }> => {
+    if (args.paths.length > MAX_PULL_FOLDERS) {
+      throw new ConvexError({
+        code: "too_many",
+        message: `Pick up to ${MAX_PULL_FOLDERS} folders at a time.`,
+      });
+    }
+    const found: Mine = await ctx.runQuery(internal.dropbox.mine, {
+      organizationId: args.organizationId,
+    });
+    const token = await signedIn(ctx, found.row);
+    let watching = 0;
+    let started = 0;
+    let more = false;
+    for (const asked of args.paths) {
+      let path = asked === "/" ? "" : asked.replace(/\/+$/, "");
+      if (path && !path.startsWith("/")) continue;
+      // Each folder is looked up in Dropbox again rather than taken on trust.
+      if (path) {
+        const meta = await rpc(token, found.row, "files/get_metadata", { path });
+        const entry = (meta.ok ? await meta.json() : {}) as DropboxEntry;
+        if (entry[".tag"] !== "folder") {
+          throw new ConvexError({
+            code: "not_found",
+            message: `${asked} is not in your Dropbox any more.`,
+          });
+        }
+        path = entry.path_display ?? path;
+      }
+      const latest = await rpc(token, found.row, "files/list_folder/get_latest_cursor", {
+        path,
+        recursive: false,
+        include_deleted: false,
+      });
+      const cursor = ((latest.ok ? await latest.json() : {}) as { cursor?: string }).cursor;
+      if (!cursor) {
+        throw new ConvexError({
+          code: "not_found",
+          message: `${asked} is not in your Dropbox any more.`,
+        });
+      }
+      const already = found.folders.some((one) => one.pathLower === (path || "/").toLowerCase());
+      if (!already) {
+        await ctx.runMutation(internal.dropbox.saveFolder, {
+          connectionId: found.row._id,
+          path: path || "/",
+          cursor,
+          recursive: false,
+        });
+      }
+      watching++;
+      let response = await rpc(token, found.row, "files/list_folder", {
+        path,
+        recursive: false,
+        include_deleted: false,
+        limit: 2000,
+      });
+      for (let page = 0; page < 10; page++) {
+        if (!response.ok) break;
+        const body = (await response.json()) as ListPage;
+        for (const entry of body.entries ?? []) {
+          const file = pickFile(entry);
+          if (!file) continue;
+          if (started >= MAX_BRING) {
+            more = true;
+            break;
+          }
+          const outcome = await ctx.runMutation(internal.dropbox.startImport, {
+            connectionId: found.row._id,
+            file,
+          });
+          if (outcome === "no_toolkit") {
+            throw new ConvexError({
+              code: "no_toolkit",
+              message: "Connect your toolkit first, so there is somewhere for files to go.",
+            });
+          }
+          if (outcome === "started") started++;
+        }
+        if (more || !body.has_more || !body.cursor) break;
+        response = await rpc(token, found.row, "files/list_folder/continue", {
+          cursor: body.cursor,
+        });
+      }
+    }
+    return { watching, started, more };
+  },
+});
+
 // Watching.
 
 export const watchedFolders = internalQuery({
@@ -701,7 +894,7 @@ async function latestCursor(
 ): Promise<string | null> {
   const latest = await rpc(token, row, "files/list_folder/get_latest_cursor", {
     path: requestPath(folder),
-    recursive: true,
+    recursive: folder.recursive !== false,
     include_deleted: false,
   });
   return ((latest.ok ? await latest.json() : {}) as { cursor?: string }).cursor ?? null;
@@ -930,7 +1123,7 @@ export const startImport = internalMutation({
       }
     }
 
-    const key = `uploads/${crypto.randomUUID()}/${safeName(file.name)}`;
+    const key = `uploads/Dropbox/${crypto.randomUUID()}/${safeName(file.name)}`;
     const importId =
       before?._id ??
       (await ctx.db.insert("dropboxImports", {
@@ -1084,7 +1277,7 @@ async function filesIn(
   for (const folder of folders) {
     let response = await rpc(token, found.row, "files/list_folder", {
       path: requestPath(folder),
-      recursive: true,
+      recursive: folder.recursive !== false,
       include_deleted: false,
       limit: 2000,
     });
@@ -1207,7 +1400,7 @@ export const forAutomation = query({
 
 /**
  * Switches an automation's finished files going to Dropbox on or off. On, they go to the
- * caller's own Dropbox, into the folder they picked or "/Kontifi/<automation>".
+ * caller's own Dropbox, into the folder they picked or "/Takewon/<automation>".
  */
 export const setSend = mutation({
   args: {

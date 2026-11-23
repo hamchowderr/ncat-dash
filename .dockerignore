@@ -10,3 +10,8 @@ test-results
 playwright-report
 # The pnpm store the agent image workflow keeps between runs
 pnpm-store
+# Local settings never go into an image
+.env*
+!.env.example
+# Rust builds of the desktop app
+apps/desktop/src-tauri/target

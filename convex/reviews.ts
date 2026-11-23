@@ -9,14 +9,21 @@ import {
   query,
   type QueryCtx,
 } from "./_generated/server";
-import { authComponent } from "./auth";
+import { getCaller } from "./lib/caller";
 import { notify } from "./lib/alerts";
 import { isMember, requireMember } from "./lib/authz";
 import { drawingValidator } from "./lib/drawing";
-import { CLIP_LIMIT, openReview, shareOf, VERSION_LIMIT } from "./lib/reviews";
+import {
+  CLIP_LIMIT,
+  openReview,
+  shareExpiryFrom,
+  shareOf,
+  sharesOf,
+  VERSION_LIMIT,
+} from "./lib/reviews";
 import { decideProjectSlots, forgetProjectRoom, mirrorClipVersion } from "./lib/projects";
 import { decideApproval } from "./lib/runner";
-import { toSlack } from "./lib/slackPosts";
+import { toReviewChannels } from "./lib/reviewChannels";
 
 // A review shows this many comments at most; a room is for one round of notes.
 const COMMENTS_SHOWN = 500;
@@ -258,6 +265,9 @@ export const reopen = mutation({
       decidedAt: undefined,
       clientVerdict: undefined,
     });
+    // A new round: the link the team shared works for another 30 days from now.
+    const share = await shareOf(ctx, review._id);
+    if (share) await ctx.db.patch(share._id, { expiresAt: shareExpiryFrom(Date.now()) });
   },
 });
 
@@ -281,8 +291,7 @@ export const remove = mutation({
       .withIndex("by_review", (q) => q.eq("reviewId", review._id))
       .take(CLIP_LIMIT);
     for (const clip of clips) await ctx.db.delete(clip._id);
-    const share = await shareOf(ctx, review._id);
-    if (share) await ctx.db.delete(share._id);
+    for (const share of await sharesOf(ctx, review._id)) await ctx.db.delete(share._id);
     await forgetProjectRoom(ctx, review._id);
     await ctx.db.delete(review._id);
   },
@@ -302,7 +311,7 @@ export const comment = mutation({
     const clip = await ctx.db.get(args.clipId);
     if (!clip) throw gone();
     const { userId } = await requireMember(ctx, clip.organizationId);
-    const user = await authComponent.safeGetAuthUser(ctx);
+    const user = await getCaller(ctx);
     return await writeTeamComment(
       ctx,
       clip,
@@ -317,6 +326,52 @@ export const comment = mutation({
  * A teammate's reply written in the Slack thread for a review thread. Slack can send the
  * same message twice; it is written once.
  */
+/** A teammate's reply written in the team's Teams thread for a review comment. */
+export const commentFromTeams = internalMutation({
+  args: {
+    commentId: v.id("reviewComments"),
+    userId: v.string(),
+    body: v.string(),
+    conversationId: v.string(),
+    activityId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const seen = await ctx.db
+      .query("teamsReplies")
+      .withIndex("by_message", (q) =>
+        q.eq("conversationId", args.conversationId).eq("activityId", args.activityId),
+      )
+      .first();
+    if (seen) return null;
+    const root = await ctx.db.get(args.commentId);
+    const clip = root ? await ctx.db.get(root.clipId) : null;
+    if (!root || !clip) return null;
+    const team = await ctx.runQuery(components.betterAuth.members.people, {
+      organizationId: clip.organizationId,
+    });
+    const member = team.find((person) => person.id === args.userId);
+    if (!member) return null;
+    const id = await writeTeamComment(
+      ctx,
+      clip,
+      { userId: args.userId, name: member.name },
+      {
+        body: args.body.slice(0, COMMENT_LIMIT),
+        time: root.time,
+        version: root.version,
+        parentId: root._id,
+      },
+      "teams",
+    );
+    await ctx.db.insert("teamsReplies", {
+      conversationId: args.conversationId,
+      activityId: args.activityId,
+      commentId: id,
+    });
+    return id;
+  },
+});
+
 export const commentFromSlack = internalMutation({
   args: {
     commentId: v.id("reviewComments"),
@@ -365,6 +420,82 @@ export const commentFromSlack = internalMutation({
 });
 
 /**
+ * A teammate's reply written in a review's Discord thread, as their reply in the review.
+ * Each Discord message is brought in once, however often it arrives.
+ */
+export const commentFromDiscord = internalMutation({
+  args: {
+    commentId: v.id("reviewComments"),
+    userId: v.string(),
+    authorName: v.string(),
+    body: v.string(),
+    messageId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const seen = await ctx.db
+      .query("discordReplies")
+      .withIndex("by_message", (q) => q.eq("messageId", args.messageId))
+      .first();
+    if (seen) return null;
+    const root = await ctx.db.get(args.commentId);
+    const clip = root ? await ctx.db.get(root.clipId) : null;
+    if (!root || !clip) return null;
+    const team = await ctx.runQuery(components.betterAuth.members.people, {
+      organizationId: clip.organizationId,
+    });
+    if (!team.some((person) => person.id === args.userId)) return null;
+    const id = await writeTeamComment(
+      ctx,
+      clip,
+      { userId: args.userId, name: args.authorName },
+      {
+        body: args.body.slice(0, COMMENT_LIMIT),
+        time: root.time,
+        version: root.version,
+        parentId: root._id,
+      },
+      "discord",
+    );
+    await ctx.db.insert("discordReplies", { messageId: args.messageId, commentId: id });
+    return id;
+  },
+});
+
+/**
+ * A teammate's reply in the team's Telegram group, under one of the bot's posts about a
+ * comment thread (convex/telegramReview.ts), written as their reply in the review room.
+ */
+export const commentFromTelegram = internalMutation({
+  args: {
+    commentId: v.id("reviewComments"),
+    userId: v.string(),
+    authorName: v.string(),
+    body: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const root = await ctx.db.get(args.commentId);
+    const clip = root ? await ctx.db.get(root.clipId) : null;
+    if (!root || !clip) return null;
+    const team = await ctx.runQuery(components.betterAuth.members.people, {
+      organizationId: clip.organizationId,
+    });
+    if (!team.some((person) => person.id === args.userId)) return null;
+    return await writeTeamComment(
+      ctx,
+      clip,
+      { userId: args.userId, name: args.authorName },
+      {
+        body: args.body.slice(0, COMMENT_LIMIT),
+        time: root.time,
+        version: root.version,
+        parentId: root._id,
+      },
+      "telegram",
+    );
+  },
+});
+
+/**
  * Writes a teammate's comment or reply, wherever it was written: tells the people it
  * mentions, asks the agent when it says "@Agent", and keeps the team's Slack thread for
  * it up to date.
@@ -380,7 +511,7 @@ async function writeTeamComment(
     parentId?: Id<"reviewComments">;
     drawing?: Doc<"reviewComments">["drawing"];
   },
-  from: "room" | "slack",
+  from: "room" | "slack" | "discord" | "teams" | "telegram",
 ): Promise<Id<"reviewComments">> {
   const { userId } = author;
   const body = args.body.trim();
@@ -429,6 +560,8 @@ async function writeTeamComment(
     // A drawing belongs to the moment a thread is about, so a reply carries none.
     drawing: parentId ? undefined : (cleanDrawing(args.drawing) ?? undefined),
     slack: from === "slack" ? true : undefined,
+    teams: from === "teams" ? true : undefined,
+    telegram: from === "telegram" ? true : undefined,
   });
 
   // Teammates named after "@" hear about it, under the bell and by email as they chose.
@@ -477,28 +610,39 @@ async function writeTeamComment(
     }
   }
 
-  // The team's Slack channel hears about mentions, and a reply written here goes to the
-  // Slack thread when the conversation is already there. One written in Slack is there.
-  if (from === "room") {
-    const review = await ctx.db.get(clip.reviewId);
-    if (review && mentioned.length > 0) {
-      await toSlack(ctx, clip.organizationId, {
+  // The team's chat channels hear about mentions, and a reply goes to each app's thread
+  // when the conversation is already there. One written in an app is already in it.
+  const review = await ctx.db.get(clip.reviewId);
+  const except = from === "room" ? undefined : from;
+  if (review && mentioned.length > 0) {
+    await toReviewChannels(
+      ctx,
+      clip.organizationId,
+      {
         kind: "mention",
         reviewId: review._id,
         commentId: parentId ?? id,
         from: author.name,
+        fromUserId: userId,
         body,
         mentioned,
-      });
-    } else if (review && parentId) {
-      await toSlack(ctx, clip.organizationId, {
+      },
+      except,
+    );
+  } else if (review && parentId) {
+    await toReviewChannels(
+      ctx,
+      clip.organizationId,
+      {
         kind: "team_reply",
         reviewId: review._id,
         commentId: parentId,
         from: author.name,
+        fromUserId: userId,
         body,
-      });
-    }
+      },
+      except,
+    );
   }
   return id;
 }

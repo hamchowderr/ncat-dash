@@ -97,6 +97,23 @@ describe("the home page", () => {
     ).toBe("/automations/auto1/runs/run2");
   });
 
+  test("a toolkit that lacks the step says to update it, never its HTML page", () => {
+    const html =
+      'The toolkit refused the job (HTTP 404). <!doctype html>\n<html lang="en">\n<title>404 Not Found</title>\n<h1>Not Found</h1>';
+    answerQuery(
+      api.home.summary,
+      summary({ failures: [run(2, "failed", { error: html })], recentRuns: [run(1, "done")] }),
+    );
+    renderInApp(<HomeView />);
+    const needs = screen.getByRole("region", { name: "Needs you" });
+    expect(
+      within(needs).getByText(
+        "Your toolkit does not have this step yet. Update it to the latest version.",
+      ),
+    ).toBeTruthy();
+    expect(needs.textContent).not.toMatch(/<!doctype|<html|HTTP 404/i);
+  });
+
   test("leaves out Needs you when nothing does", () => {
     answerQuery(api.home.summary, summary({ failures: [] }));
     renderInApp(<HomeView />);
@@ -135,7 +152,7 @@ describe("the home page", () => {
     const ready = screen.getByRole("region", { name: "Ready-made automations" });
     expect(
       within(ready)
-        .getByRole("link", { name: /See all 64/ })
+        .getByRole("link", { name: /See all 89/ })
         .getAttribute("href"),
     ).toBe("/automations/new");
     fireEvent.click(within(ready).getByText("Podcast master and transcript"));

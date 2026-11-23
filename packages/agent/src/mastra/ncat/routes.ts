@@ -1,9 +1,11 @@
 import { registerApiRoute } from "@mastra/core/server";
 import { RequestContext } from "@mastra/core/request-context";
 import { z } from "zod";
+import { env } from "../../lib/env";
 import { resourceIdOf } from "../routes/resource";
 import { reviewAgent } from "../agents/review";
-import { momentsAgent, momentsPrompt, momentsRequest } from "./moments";
+import { lookAgent, lookPrompt, lookRequest } from "./look";
+import { dashboardUsage, momentsAgent, momentsPrompt, momentsRequest } from "./moments";
 import {
   batchAnswers,
   batchCheck,
@@ -12,13 +14,26 @@ import {
   submitBatch,
 } from "./moments-batch";
 import { reviewPrompt, reviewQuestion } from "./review";
+import { scenesAgent, scenesPrompt, scenesRequest } from "./scenes";
+import {
+  translateAgent,
+  translateModel,
+  translatePrompt,
+  translateRequest,
+  translateWordsAgent,
+  translateWordsPrompt,
+  translateWordsRequest,
+} from "./translate";
 import { TEAM_KEY, teamKey } from "./team-key";
-import { rememberSession } from "./session-store";
+import { rememberSession, SCREEN_KINDS } from "./session-store";
 
 const body = z.object({
   convexToken: z.string().min(20).max(8000),
   organizationId: z.string().max(200).nullish(),
   automationId: z.string().max(200).nullish(),
+  screen: z
+    .object({ kind: z.enum(SCREEN_KINDS), id: z.string().min(1).max(200) })
+    .nullish(),
 });
 
 /**
@@ -49,6 +64,7 @@ export const createNcatRoutes = () => [
         convexToken: parsed.data.convexToken,
         organizationId: parsed.data.organizationId ?? null,
         automationId: parsed.data.automationId ?? null,
+        screen: parsed.data.screen ?? null,
       });
       return c.json({ ok: true });
     },
@@ -123,6 +139,157 @@ export const createNcatRoutes = () => [
         if (key) requestContext.set(TEAM_KEY, key);
         const result = await momentsAgent.generate(
           [{ role: "user", content: momentsPrompt(parsed.data) }],
+          { requestContext },
+        );
+        const answer = result.text.trim();
+        if (!answer) return c.json({ error: "empty answer" }, 502);
+        // What it used, so the dashboard can keep the run under its AI limit.
+        return c.json({
+          answer,
+          model: env.CHAT_MODEL,
+          usage: dashboardUsage(result.usage, result.providerMetadata),
+        });
+      } catch {
+        return c.json({ error: "The model did not answer." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/scenes: Convex asks, when someone presses "Suggest scenes" on a storyboard,
+  // which lines are better shown another way than Full Screen, and a name for each chapter.
+  // The answer goes back as text; the dashboard checks it against the storyboard itself.
+  registerApiRoute("/ncat/scenes", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const body = await c.req.json().catch(() => undefined);
+      const parsed = scenesRequest.safeParse(body);
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        const requestContext = new RequestContext();
+        const key = await teamKey(organizationOf(body));
+        if (key) requestContext.set(TEAM_KEY, key);
+        const result = await scenesAgent.generate(
+          [{ role: "user", content: scenesPrompt(parsed.data) }],
+          { requestContext },
+        );
+        const answer = result.text.trim();
+        if (!answer) return c.json({ error: "empty answer" }, 502);
+        return c.json({
+          answer,
+          model: env.CHAT_MODEL,
+          usage: dashboardUsage(result.usage, result.providerMetadata),
+        });
+      } catch {
+        return c.json({ error: "The model did not answer." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/translate: Convex asks for a batch of a video's subtitle lines in another
+  // language, once per video and language. The lines go back as the model wrote them;
+  // the dashboard checks there is one for each line it sent.
+  registerApiRoute("/ncat/translate", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const body = await c.req.json().catch(() => undefined);
+      const parsed = translateRequest.safeParse(body);
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        const requestContext = new RequestContext();
+        const key = await teamKey(organizationOf(body));
+        if (key) requestContext.set(TEAM_KEY, key);
+        const result = await translateAgent.generate(
+          [{ role: "user", content: translatePrompt(parsed.data) }],
+          { requestContext },
+        );
+        const answer = result.text.trim();
+        if (!answer) return c.json({ error: "empty answer" }, 502);
+        return c.json({
+          answer,
+          model: translateModel(),
+          usage: dashboardUsage(result.usage, result.providerMetadata),
+        });
+      } catch {
+        return c.json({ error: "The model did not answer." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/translate-words: Convex asks, once per video and language, for translated
+  // captions where each translated word names the spoken words it stands for, so the
+  // dashboard can light it up as the speaker says it (Caption video with a language).
+  registerApiRoute("/ncat/translate-words", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const body = await c.req.json().catch(() => undefined);
+      const parsed = translateWordsRequest.safeParse(body);
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        const requestContext = new RequestContext();
+        const key = await teamKey(organizationOf(body));
+        if (key) requestContext.set(TEAM_KEY, key);
+        const result = await translateWordsAgent.generate(
+          [{ role: "user", content: translateWordsPrompt(parsed.data) }],
+          { requestContext },
+        );
+        const answer = result.text.trim();
+        if (!answer) return c.json({ error: "empty answer" }, 502);
+        return c.json({
+          answer,
+          model: translateModel(),
+          usage: dashboardUsage(result.usage, result.providerMetadata),
+        });
+      } catch {
+        return c.json({ error: "The model did not answer." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/look: Convex asks, once, what a sample video looks like, for Settings →
+  // Looks. The sheet of frames is fetched here and sent as bytes, like a review still.
+  // Without it there is nothing to see, so the route says so rather than guess.
+  registerApiRoute("/ncat/look", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const body = await c.req.json().catch(() => undefined);
+      const parsed = lookRequest.safeParse(body);
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      const sheet = await fetchStill(parsed.data.sheet);
+      if (!sheet) return c.json({ error: "The frames could not be fetched." }, 502);
+      try {
+        const requestContext = new RequestContext();
+        const key = await teamKey(organizationOf(body));
+        if (key) requestContext.set(TEAM_KEY, key);
+        const result = await lookAgent.generate(
+          [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: lookPrompt(parsed.data) },
+                { type: "image" as const, image: sheet.bytes, mediaType: sheet.mediaType },
+              ],
+            },
+          ],
           { requestContext },
         );
         const answer = result.text.trim();

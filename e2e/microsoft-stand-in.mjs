@@ -6,7 +6,13 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
-import { MICROSOFT, MICROSOFT_PORT, MICROSOFT_USER, recording } from "./microsoft-data.mjs";
+import {
+  MICROSOFT,
+  MICROSOFT_PORT,
+  MICROSOFT_USER,
+  recording,
+  TEAMS_TEAM,
+} from "./microsoft-data.mjs";
 
 function read(request) {
   return new Promise((resolve) => {
@@ -28,7 +34,11 @@ let user = MICROSOFT_USER;
 let files = [recording("past-1", "Client Kickoff", 2 * 24 * 60)];
 // Recordings of other people's meetings, in their OneDrive, shared with the account.
 let shared = [];
+// Recordings of meetings held in a Teams channel, in the channel's files (SharePoint).
+let channelFiles = [];
 const watches = new Map();
+// What the Teams bot posted.
+const posts = [];
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", MICROSOFT);
@@ -42,16 +52,49 @@ const server = createServer(async (request, response) => {
   }
   if (path === "/common/oauth2/v2.0/token" && request.method === "POST") {
     await read(request);
+    // The id token names the account's organization, as Microsoft's does ("tid").
+    const claims = Buffer.from(JSON.stringify({ tid: user.tid, oid: user.id })).toString(
+      "base64url",
+    );
     return send(response, 200, {
       access_token: "stand-in-access",
       refresh_token: "stand-in-refresh",
+      id_token: `e30.${claims}.stand-in`,
       expires_in: 3600,
     });
+  }
+  // The Teams bot's own token, and the parts of the Bot Framework API the dashboard uses:
+  // a team's channels, and posting to one. Posts are kept for the tests to read.
+  if (path === "/botframework.com/oauth2/v2.0/token" && request.method === "POST") {
+    await read(request);
+    return send(response, 200, { access_token: "stand-in-bot", expires_in: 3600 });
+  }
+  if (path.startsWith("/bot/v3/teams/") && path.endsWith("/conversations")) {
+    return send(response, 200, {
+      conversations: [
+        { id: TEAMS_TEAM.id, name: null },
+        { id: "19:edits@thread.tacv2", name: "Edits" },
+      ],
+    });
+  }
+  if (path.startsWith("/bot/v3/conversations/") && request.method === "POST") {
+    posts.push({ path, method: "POST", body: JSON.parse(await read(request)) });
+    return send(response, 201, { id: String(posts.length) });
+  }
+  // Changing a message the bot posted, such as an approval card once it is decided.
+  if (path.startsWith("/bot/v3/conversations/") && request.method === "PUT") {
+    posts.push({ path, method: "PUT", body: JSON.parse(await read(request)) });
+    return send(response, 200, { id: decodeURIComponent(path.split("/").pop() ?? "") });
+  }
+  if (path === "/stand-in/posts") return send(response, 200, posts);
+  if (path === "/v1.0/organization") {
+    return send(response, 200, { value: [{ id: user.tid, displayName: "Harbour Films Ltd" }] });
   }
   if (path === "/stand-in/user" && request.method === "POST") {
     user = { ...MICROSOFT_USER, ...JSON.parse((await read(request)) || "{}") };
     files = [recording("past-1", "Client Kickoff", 2 * 24 * 60)];
     shared = [];
+    channelFiles = [];
     return send(response, 200, user);
   }
   if (path === "/stand-in/recording" && request.method === "POST") {
@@ -73,6 +116,53 @@ const server = createServer(async (request, response) => {
     const { id, topic, size } = JSON.parse(await read(request));
     shared.unshift({ ...recording(id, topic, 0), size });
     return send(response, 200, { shared: shared.length });
+  }
+  if (path === "/stand-in/channel-recording" && request.method === "POST") {
+    const { id, topic, size } = JSON.parse(await read(request));
+    channelFiles.unshift({ ...recording(id, topic, 0), size });
+    // Microsoft does not tell OneDrive watches about channel files; the dashboard looks
+    // every 15 minutes. To keep the test short, the stand-in nudges the watches instead.
+    for (const [subscriptionId, watch] of watches) {
+      await fetch(watch.notificationUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          value: [{ subscriptionId, clientState: watch.clientState, changeType: "updated" }],
+        }),
+      });
+    }
+    return send(response, 200, { watches: watches.size });
+  }
+  if (path === "/v1.0/me/joinedTeams") {
+    return send(response, 200, { value: [{ id: "team-video", displayName: "Video team" }] });
+  }
+  if (path === "/v1.0/teams/team-video/channels") {
+    return send(response, 200, {
+      value: [
+        { id: "19:general", displayName: "General" },
+        { id: "19:edits", displayName: "Edits" },
+      ],
+    });
+  }
+  if (path.startsWith("/v1.0/teams/team-video/channels/") && path.endsWith("/filesFolder")) {
+    return send(response, 200, {
+      id: "folder-channel",
+      name: "Channel",
+      folder: {},
+      parentReference: { driveId: "drive-team" },
+    });
+  }
+  if (path === "/v1.0/drives/drive-team/items/folder-channel:/Recordings:/children") {
+    return send(response, 200, { value: channelFiles });
+  }
+  if (path.startsWith("/v1.0/drives/drive-team/items/")) {
+    const id = decodeURIComponent(path.slice("/v1.0/drives/drive-team/items/".length));
+    const file = channelFiles.find((one) => one.id === id);
+    if (!file) return send(response, 404, { error: { code: "itemNotFound" } });
+    return send(response, 200, {
+      ...file,
+      "@microsoft.graph.downloadUrl": "http://127.0.0.1:8766/clip.webm",
+    });
   }
   if (path === "/v1.0/me") return send(response, 200, user);
   if (path.startsWith("/v1.0/me/drive/search(")) {

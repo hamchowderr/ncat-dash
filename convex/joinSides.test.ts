@@ -1,13 +1,23 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { encryptSecret } from "./lib/crypto";
 import { startRun } from "./lib/runner";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 const FILE = "https://files.example/uploads/station_interview.mp4";
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("a step that joins two sides", () => {
   test("waits for both, then runs once with the files from both", async () => {
+    // The toolkit takes every job it is sent and reports later.
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response(JSON.stringify({ code: 202, job_id: "tk-1" }), { status: 202 }),
+    );
+    process.env.CONNECTIONS_SECRET ??= "a-test-secret-that-is-long-enough-1234";
+    const apiKeyCipher = await encryptSecret("toolkit-key");
     const t = backend();
     const team = await addTeam(t, "Salt House");
     const maya = await addPerson(t, "Maya Ortiz", [team]);
@@ -15,7 +25,7 @@ describe("a step that joins two sides", () => {
       await ctx.db.insert("toolkitConnections", {
         organizationId: team,
         baseUrl: "https://toolkit.example",
-        apiKeyCipher: "x",
+        apiKeyCipher,
         apiKeyHint: "abcd",
         status: "ok",
         buildNumber: null,

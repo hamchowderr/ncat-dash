@@ -1,8 +1,13 @@
+import { composeProblem } from "./compose-guard";
 import {
+  type Beats,
   type FileFacts,
   type MediaFacts,
+  type Pause,
   RUNNER_FIELDS,
+  type SpokenWord,
   type StepDefinition,
+  StepSetupError,
   userInputSchema,
 } from "./define";
 
@@ -19,6 +24,11 @@ export interface CallOptions {
   id?: string;
   signal?: AbortSignal;
   fetch?: typeof fetch;
+  /**
+   * The words heard in the files a step names in `readsWords`, by setting name. The runner
+   * reads them from the team's transcripts; a file without any is cut as if nothing was said.
+   */
+  words?: Record<string, SpokenWord[]>;
 }
 
 export class ToolkitError extends Error {
@@ -74,7 +84,7 @@ export async function readFacts(
   connection: ToolkitConnection,
   step: StepDefinition,
   input: Record<string, unknown>,
-  options: Pick<CallOptions, "signal" | "fetch"> = {},
+  options: Pick<CallOptions, "signal" | "fetch" | "words"> = {},
 ): Promise<FileFacts> {
   const facts: FileFacts = {};
   const doFetch = options.fetch ?? fetch;
@@ -94,14 +104,187 @@ export async function readFacts(
     } catch {
       // Left out: the step works without it or says what it needs.
     }
+    const length = facts[field]?.duration;
+    if (step.readsBeats?.includes(field) && facts[field]?.hasAudio !== false) {
+      if (length && length <= PAUSE_READ_LIMIT) {
+        try {
+          const res = await doFetch(joinUrl(connection.baseUrl, "/v1/audio/beats"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-API-Key": connection.apiKey },
+            body: JSON.stringify({ media_url: url }),
+            signal: options.signal,
+          });
+          if (res.ok) {
+            const envelope = (await res.json()) as { response?: unknown } | null;
+            const beats = readBeats(envelope?.response);
+            if (beats) facts[field] = { ...facts[field], beats };
+          }
+        } catch {
+          // Left out: the step says the beat could not be read.
+        }
+      }
+    }
+    if (step.readsCuts?.includes(field) && facts[field]?.hasVideo !== false) {
+      if (length && length <= PAUSE_READ_LIMIT) {
+        try {
+          const res = await doFetch(joinUrl(connection.baseUrl, "/v1/media/look"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-API-Key": connection.apiKey },
+            body: JSON.stringify({ media_url: url, cuts: true, frames: false }),
+            signal: options.signal,
+          });
+          if (res.ok) {
+            const envelope = (await res.json()) as { response?: unknown } | null;
+            const cuts = readCuts(envelope?.response);
+            if (cuts) facts[field] = { ...facts[field], cuts };
+          }
+        } catch {
+          // Left out: the step says the shots could not be found.
+        }
+      }
+    }
+    if (!step.readsPauses?.includes(field)) continue;
+    if (!length || length > PAUSE_READ_LIMIT || facts[field]?.hasAudio === false) continue;
+    try {
+      const res = await doFetch(joinUrl(connection.baseUrl, "/v1/media/silence"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": connection.apiKey },
+        body: JSON.stringify({ media_url: url, duration: 0.3, noise: "-30dB", mono: true }),
+        signal: options.signal,
+      });
+      if (!res.ok) continue;
+      const envelope = (await res.json()) as { response?: unknown } | null;
+      facts[field] = { ...facts[field], pauses: readPauses(envelope?.response) };
+    } catch {
+      // Without pauses the cuts land on the exact second instead.
+    }
+  }
+  for (const field of step.readsWords?.(input) ?? []) {
+    const words = options.words?.[field];
+    if (words) facts[field] = { ...facts[field], words };
   }
   return facts;
+}
+
+/** The toolkit's /v1/audio/beats answer, with bad times dropped. Undefined when it has no beat. */
+export function readBeats(raw: unknown): Beats | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const answer = raw as Record<string, unknown>;
+  const times = (list: unknown) =>
+    (Array.isArray(list) ? list : [])
+      .filter((t): t is number => typeof t === "number" && Number.isFinite(t) && t >= 0)
+      .sort((a, b) => a - b);
+  const tempo = number(answer.tempo);
+  const beats = times(answer.beats);
+  if (!tempo || beats.length < 2) return undefined;
+  const steadiness = number(answer.steadiness);
+  const found: Beats = {
+    tempo,
+    steadiness: steadiness === undefined ? 1 : Math.min(1, steadiness),
+    beats,
+    downbeats: times(answer.downbeats),
+  };
+  // Loudness lines up with the beats as sent, so it is kept only when every pair is sound.
+  const rawBeats = Array.isArray(answer.beats) ? answer.beats : [];
+  const loudness = Array.isArray(answer.loudness) ? answer.loudness : [];
+  const pairs = rawBeats.map((time, index) => [time, loudness[index]]);
+  if (
+    loudness.length === rawBeats.length &&
+    pairs.every(
+      ([time, level]) =>
+        typeof time === "number" &&
+        Number.isFinite(time) &&
+        time >= 0 &&
+        typeof level === "number" &&
+        Number.isFinite(level),
+    )
+  ) {
+    found.loudness = (pairs as [number, number][])
+      .sort((a, b) => a[0] - b[0])
+      .map(([, level]) => Math.min(0, level));
+  }
+  return found;
+}
+
+/** The camera cuts in a /v1/media/look answer, in order. Undefined when cuts were not found. */
+export function readCuts(raw: unknown): number[] | undefined {
+  const media = raw && typeof raw === "object" ? (raw as Record<string, unknown>).media : null;
+  const cuts = media && typeof media === "object" ? (media as Record<string, unknown>).cuts : null;
+  if (!Array.isArray(cuts)) return undefined;
+  return cuts
+    .filter((t): t is number => typeof t === "number" && Number.isFinite(t) && t > 0)
+    .sort((a, b) => a - b);
+}
+
+/** Pauses are read only for files up to this long, in seconds, so a read stays quick. */
+export const PAUSE_READ_LIMIT = 20 * 60;
+
+/** "00:01:02.500" or 62.5 as seconds; NaN when it is neither. */
+export function clockSeconds(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return Number.NaN;
+  const parts = value.trim().split(":").map(Number);
+  if (parts.length === 0 || parts.some((part) => Number.isNaN(part))) return Number.NaN;
+  return parts.reduce((total, part) => total * 60 + part, 0);
+}
+
+/** The toolkit's silence answer as pauses in seconds, in order. Bad entries are dropped. */
+export function readPauses(raw: unknown): Pause[] {
+  const list = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { silences?: unknown })?.silences)
+      ? (raw as { silences: unknown[] }).silences
+      : [];
+  return list
+    .map((item) => {
+      const entry = (item ?? {}) as Record<string, unknown>;
+      return { start: clockSeconds(entry.start), end: clockSeconds(entry.end) };
+    })
+    .filter(
+      (pause) =>
+        Number.isFinite(pause.start) && Number.isFinite(pause.end) && pause.end > pause.start,
+    )
+    .sort((a, b) => a.start - b.start);
 }
 
 /**
  * Validates the input against the step's schema, then sends it to the toolkit.
  * Returns the toolkit's response envelope as parsed JSON.
  */
+const PICTURE = /\.(png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif|svg)$/i;
+
+/** Whether a step can only work on a video: the video steps that take one file. */
+export function needsVideo(step: Pick<StepDefinition, "category" | "primaryInput">): boolean {
+  return step.category === "video" && step.primaryInput === "video_url";
+}
+
+/**
+ * A step that works on a video, handed a picture: said before anything is sent, since the
+ * toolkit can only fail on it, and only after a while, in words meant for programmers.
+ * Judged by the file's name, so a link without one is sent as it is.
+ */
+export function pictureGivenForVideo(
+  step: Pick<StepDefinition, "id" | "category" | "primaryInput">,
+  input: Record<string, unknown>,
+): string | null {
+  if (!needsVideo(step)) return null;
+  const value = input.video_url;
+  if (typeof value !== "string") return null;
+  let path: string;
+  try {
+    path = decodeURIComponent(new URL(value).pathname);
+  } catch {
+    return null;
+  }
+  if (!PICTURE.test(path)) return null;
+  const name = path.split("/").filter(Boolean).pop() ?? "this file";
+  return step.id === "video-caption"
+    ? `Captions need a video, and ${name} is a picture.`
+    : `This step needs a video, and ${name} is a picture.`;
+}
+
+const COMPOSE_ENDPOINT = "/v1/ffmpeg/compose";
+
 export async function callStep(
   connection: ToolkitConnection,
   step: StepDefinition,
@@ -109,12 +292,20 @@ export async function callStep(
   options: CallOptions = {},
 ): Promise<unknown> {
   const parsed = userInputSchema(step).parse(input);
-  const facts = step.readsFirst
-    ? await readFacts(connection, step, parsed as Record<string, unknown>, options)
-    : {};
+  const picture = pictureGivenForVideo(step, parsed as Record<string, unknown>);
+  if (picture) throw new StepSetupError(picture);
+  const facts =
+    step.readsFirst || step.readsWords
+      ? await readFacts(connection, step, parsed as Record<string, unknown>, options)
+      : {};
   const body = compact(
     step.toRequest ? step.toRequest(parsed, facts) : (parsed as Record<string, unknown>),
   );
+  // Nothing sent to compose may read, write or load a file on the toolkit (compose-guard.ts).
+  if (step.endpoint === COMPOSE_ENDPOINT) {
+    const problem = composeProblem(body);
+    if (problem) throw new StepSetupError(problem);
+  }
   if (options.webhookUrl) body[RUNNER_FIELDS[0]] = options.webhookUrl;
   if (options.id) body[RUNNER_FIELDS[1]] = options.id;
 

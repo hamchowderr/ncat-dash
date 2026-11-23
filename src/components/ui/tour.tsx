@@ -61,6 +61,8 @@ type TourControls = {
   close: () => void;
   /** The tour showing now, if any. */
   activeTourId: string | null;
+  /** Whether this tour was finished or closed since the page loaded, before the backend says so. */
+  endedHere: (tourId: string) => boolean;
 };
 
 const TourContext = React.createContext<TourControls | null>(null);
@@ -88,9 +90,17 @@ function TourProvider({
   // The steps of the tour showing, fixed as it starts.
   const [steps, setSteps] = React.useState<Step[]>([]);
 
+  // Tours ended here: the backend's answer takes a moment to come back, and a page's tour
+  // must not start again in that moment.
+  const endedIds = React.useRef(new Set<string>());
+  const endedHere = React.useCallback((tourId: string) => endedIds.current.has(tourId), []);
+
   const end = React.useCallback(
     (how: TourEnd) => {
-      if (activeTourId) onEnd?.(activeTourId, how);
+      if (activeTourId) {
+        endedIds.current.add(activeTourId);
+        onEnd?.(activeTourId, how);
+      }
       setActiveTourId(null);
       setCurrentStepIndex(0);
     },
@@ -125,8 +135,8 @@ function TourProvider({
   const close = React.useCallback(() => end("closed"), [end]);
 
   const controls = React.useMemo(
-    () => ({ start, close, activeTourId }),
-    [start, close, activeTourId],
+    () => ({ start, close, activeTourId, endedHere }),
+    [start, close, activeTourId, endedHere],
   );
 
   return (

@@ -7,20 +7,16 @@ import { settingsUrl } from "./discord";
 import { fromAgent } from "./lib/agentToken";
 import { decryptSecret } from "./lib/crypto";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
-import { noStream, serve } from "./mcp";
+import { hookTokenOf, MAX_HOOK_KEY } from "./lib/hooks";
+import { noStream, openaiAppsChallenge, serverCard } from "./mcp";
+import { authorizationServer, serve } from "./mcpHttp";
 import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
 import { settingsUrl as microsoftSettingsUrl } from "./microsoft";
+import { settingsUrl as teamsSettingsUrl, TEAMS_STATE_PREFIX } from "./microsoftTeams";
+import { DEFAULT_BOT_NAME, teamsAppPackage } from "./lib/teamsApp";
 import { settingsUrl as dropboxSettingsUrl } from "./dropbox";
 import { settingsUrl as zoomSettingsUrl } from "./zoom";
-import {
-  authorizationServer,
-  authorize,
-  preflight,
-  protectedResource,
-  register,
-  revoke,
-  token,
-} from "./oauth";
+import { preflight, protectedResource } from "./oauth";
 
 const http = httpRouter();
 
@@ -72,8 +68,14 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
     const automationId = url.searchParams.get("id");
-    const token = url.searchParams.get("token");
+    const token = hookTokenOf(request, url);
     if (!automationId || !token) return new Response("Missing id or token", { status: 400 });
+    const key = request.headers.get("idempotency-key")?.trim() || undefined;
+    if (key !== undefined && key.length > MAX_HOOK_KEY) {
+      return new Response(`Idempotency-Key can be at most ${MAX_HOOK_KEY} characters`, {
+        status: 400,
+      });
+    }
 
     let body: unknown = {};
     const text = await request.text();
@@ -93,10 +95,22 @@ http.route({
       automationId,
       token,
       body,
+      ...(key !== undefined ? { key } : {}),
     });
     switch (result.outcome) {
       case "started":
-        return Response.json({ run_id: result.runId }, { status: 202 });
+        return Response.json(
+          { run_id: result.runId, status_url: statusUrl(url, result.runId) },
+          {
+            status: 202,
+          },
+        );
+      case "repeat":
+        // The same call again: the run it started the first time, not a second one.
+        return Response.json(
+          { run_id: result.runId, status_url: statusUrl(url, result.runId), repeat: true },
+          { status: 200 },
+        );
       case "forbidden":
         return new Response("Wrong token", { status: 403 });
       case "off":
@@ -106,6 +120,34 @@ http.route({
       default:
         return new Response("Unknown automation", { status: 404 });
     }
+  }),
+});
+
+/** Where a caller reads how a run it started is going, with the same token. */
+function statusUrl(url: URL, runId: string): string {
+  const status = new URL("/automations/hook/run", url.origin);
+  status.searchParams.set("id", url.searchParams.get("id") ?? "");
+  status.searchParams.set("run", runId);
+  return status.toString();
+}
+
+// How a run a webhook started is going, and its finished files once it is done. The
+// caller proves it holds the automation's token, as when it started the run.
+http.route({
+  path: "/automations/hook/run",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const automationId = url.searchParams.get("id");
+    const runId = url.searchParams.get("run");
+    const token = hookTokenOf(request, url);
+    if (!automationId || !runId || !token) {
+      return new Response("Missing id, run or token", { status: 400 });
+    }
+    const answer = await ctx.runQuery(internal.hooks.runForCaller, { automationId, runId, token });
+    if (answer === "forbidden") return new Response("Wrong token", { status: 403 });
+    if (answer === null) return new Response("Unknown run", { status: 404 });
+    return Response.json(answer);
   }),
 });
 
@@ -172,6 +214,82 @@ http.route({
   }),
 });
 
+// Approve or Send back pressed on an alert in Slack, passed on from /api/slack/events.
+// Checked with the workspace's own signing secret.
+http.route({
+  path: "/slack/actions",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const status = await ctx.runAction(internal.chatAlertPresses.takeSlackPress, {
+      body: await request.text(),
+      timestamp: request.headers.get("x-slack-request-timestamp") ?? "",
+      signature: request.headers.get("x-slack-signature") ?? "",
+      now: Date.now(),
+    });
+    return new Response(null, { status });
+  }),
+});
+
+// A message written in a Discord thread, handed over by the agent server's Gateway
+// connection: a teammate's reply in a review's thread comes into the review. Only a
+// caller holding MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/discord/review-reply",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const field = (name: string, max: number) =>
+      typeof body[name] === "string" && (body[name] as string).length <= max
+        ? (body[name] as string)
+        : "";
+    const args = {
+      guildId: field("guildId", 64),
+      threadId: field("threadId", 64),
+      messageId: field("messageId", 64),
+      discordUserId: field("discordUserId", 64),
+      text: field("text", 4000),
+    };
+    if (!args.guildId || !args.threadId || !args.messageId || !args.discordUserId) {
+      return new Response("Missing guildId, threadId, messageId or discordUserId", {
+        status: 400,
+      });
+    }
+    return Response.json(await ctx.runAction(internal.discordReview.takeReply, args));
+  }),
+});
+
+// Approve or Send back pressed on an alert in Discord. Discord delivers presses to the
+// agent server's Gateway connection, which passes them on. Only a caller holding
+// MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/discord/alert-action",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    const decision = asked.decision;
+    if (
+      !asked.runStepId ||
+      !asked.discordUserId ||
+      (decision !== "approve" && decision !== "send_back")
+    ) {
+      return new Response("Missing runStepId, discordUserId or decision", { status: 400 });
+    }
+    const answer = await ctx.runAction(internal.chatAlertPresses.discordPress, {
+      runStepId: asked.runStepId,
+      discordUserId: asked.discordUserId,
+      decision,
+    });
+    return Response.json(answer);
+  }),
+});
+
 // The agent server asks who a Discord user is on the team that owns the server they
 // wrote in. Only a caller holding MASTRA_JWT_SECRET is answered.
 http.route({
@@ -188,6 +306,114 @@ http.route({
       discordUserId: asked.discordUserId,
     });
     return Response.json(found);
+  }),
+});
+
+// The agent server asks who a Telegram user is on the team: in a group, the team that
+// added the bot there; in a direct chat, the team they linked last. Only a caller
+// holding MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/telegram/person",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.chatId || !asked.telegramUserId) {
+      return new Response("Missing chatId or telegramUserId", { status: 400 });
+    }
+    const found = await ctx.runAction(internal.telegram.person, {
+      chatId: asked.chatId,
+      telegramUserId: asked.telegramUserId,
+      isGroup: asked.isGroup === "true",
+    });
+    return Response.json(found);
+  }),
+});
+
+// Someone sent the bot /start with a code from Settings: link them, or the group, to the
+// team. Only a caller holding MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/telegram/link",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    if (!asked.code || !asked.chatId || !asked.telegramUserId) {
+      return new Response("Missing code, chatId or telegramUserId", { status: 400 });
+    }
+    const found = await ctx.runMutation(internal.telegram.link, {
+      code: asked.code,
+      chatId: asked.chatId,
+      telegramUserId: asked.telegramUserId,
+      isGroup: asked.isGroup === "true",
+      telegramName: asked.telegramName || "Telegram account",
+      ...(asked.chatTitle ? { chatTitle: asked.chatTitle } : {}),
+      ...(asked.username ? { username: asked.username } : {}),
+    });
+    return Response.json(found);
+  }),
+});
+
+// Someone pressed Approve or Send back on an alert in Telegram. Only a caller holding
+// MASTRA_JWT_SECRET is answered.
+http.route({
+  path: "/telegram/decide",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const asked = await slackQuestion(request);
+    if (asked instanceof Response) return asked;
+    const decision = asked.decision;
+    if (
+      !asked.runStepId ||
+      !asked.telegramUserId ||
+      (decision !== "approve" && decision !== "send_back")
+    ) {
+      return new Response("Missing runStepId, telegramUserId or decision", { status: 400 });
+    }
+    const found = await ctx.runMutation(internal.telegram.decide, {
+      runStepId: asked.runStepId,
+      telegramUserId: asked.telegramUserId,
+      decision,
+    });
+    return Response.json(found);
+  }),
+});
+
+// A reply in a Telegram group to one of the bot's posts about a review. A linked
+// teammate's reply goes into the review room. Only a caller holding MASTRA_JWT_SECRET is
+// answered.
+http.route({
+  path: "/telegram/review-reply",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const replyTo = Number(body.replyTo);
+    const messageId = Number(body.messageId);
+    if (
+      typeof body.chatId !== "string" ||
+      typeof body.telegramUserId !== "string" ||
+      typeof body.text !== "string" ||
+      !Number.isInteger(replyTo) ||
+      !Number.isInteger(messageId)
+    ) {
+      return new Response("Missing chatId, telegramUserId, text, replyTo or messageId", {
+        status: 400,
+      });
+    }
+    const answer = await ctx.runMutation(internal.telegramReview.reply, {
+      chatId: body.chatId.slice(0, 64),
+      telegramUserId: body.telegramUserId.slice(0, 64),
+      text: body.text.slice(0, 4000),
+      replyTo,
+      messageId,
+    });
+    return Response.json(answer);
   }),
 });
 
@@ -352,13 +578,148 @@ http.route({
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
+    // A sign-in started from the Teams settings page comes back here too.
+    const forTeams = state?.startsWith(TEAMS_STATE_PREFIX) ?? false;
+    const failed = url.searchParams.get("error") === "access_denied" ? "cancelled" : "refused";
     const location =
       code && state
-        ? await ctx.runAction(internal.microsoft.finishLink, { code, state })
-        : microsoftSettingsUrl(
-            url.searchParams.get("error") === "access_denied" ? "cancelled" : "refused",
-          );
+        ? forTeams
+          ? await ctx.runAction(internal.microsoftTeams.finishLink, {
+              code,
+              nonce: state.slice(TEAMS_STATE_PREFIX.length),
+            })
+          : await ctx.runAction(internal.microsoft.finishLink, { code, state })
+        : forTeams
+          ? teamsSettingsUrl(failed)
+          : microsoftSettingsUrl(failed);
     return new Response(null, { status: 302, headers: { location } });
+  }),
+});
+
+// The agent server asks who wrote to the bot in Microsoft Teams. Teams' ids and addresses
+// are longer than Slack's, so this one reads its own body.
+http.route({
+  path: "/teams/person",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const text = (key: string) => {
+      const value = body[key];
+      return typeof value === "string" && value.length > 0 && value.length <= 512 ? value : "";
+    };
+    const tenantId = text("tenantId");
+    const aadObjectId = text("aadObjectId");
+    if (!tenantId || !aadObjectId) {
+      return new Response("Missing tenantId or aadObjectId", { status: 400 });
+    }
+    const teamId = text("teamId");
+    const serviceUrl = text("serviceUrl");
+    // Teams always names an https address to post to; the browser tests' stand-in is local.
+    const found = await ctx.runAction(internal.microsoftTeamsChat.person, {
+      tenantId,
+      aadObjectId,
+      ...(teamId &&
+      (serviceUrl.startsWith("https://") || serviceUrl.startsWith("http://127.0.0.1:"))
+        ? { team: { teamId, teamName: text("teamName") || "Team", serviceUrl } }
+        : {}),
+    });
+    return Response.json(found);
+  }),
+});
+
+// Approve or Send back pressed on an alert in Microsoft Teams. Teams hands the press to the
+// agent server, which passes it here with who pressed it (their Microsoft account).
+http.route({
+  path: "/teams/alert-action",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const text = (key: string) => {
+      const value = body[key];
+      return typeof value === "string" && value.length > 0 && value.length <= 512 ? value : "";
+    };
+    const decision = text("decision");
+    const runStepId = text("runStepId");
+    if (!text("tenantId") || !text("aadObjectId") || !runStepId) {
+      return new Response("Missing tenantId, aadObjectId or runStepId", { status: 400 });
+    }
+    if (decision !== "approve" && decision !== "send_back") {
+      return new Response("Unknown decision", { status: 400 });
+    }
+    const answer = await ctx.runMutation(internal.microsoftTeams.alertPress, {
+      tenantId: text("tenantId"),
+      aadObjectId: text("aadObjectId"),
+      runStepId,
+      decision,
+    });
+    return Response.json(answer);
+  }),
+});
+
+// A message in a Teams reply thread: when the thread is a review thread, it becomes the
+// writer's reply in the review room, and the agent server does not answer it.
+http.route({
+  path: "/teams/review-reply",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    if (!(await fromAgent(request))) return new Response("Not the agent server", { status: 401 });
+    let body: Record<string, unknown>;
+    try {
+      body = (await request.json()) as Record<string, unknown>;
+    } catch {
+      return new Response("Body must be JSON", { status: 400 });
+    }
+    const text = (key: string, limit = 512) => {
+      const value = body[key];
+      return typeof value === "string" && value.length > 0 && value.length <= limit ? value : "";
+    };
+    const fields = {
+      tenantId: text("tenantId"),
+      aadObjectId: text("aadObjectId"),
+      conversationId: text("conversationId"),
+      rootActivityId: text("rootActivityId"),
+      activityId: text("activityId"),
+      text: text("text", 20_000),
+    };
+    if (Object.values(fields).some((value) => !value)) {
+      return Response.json({ handled: false });
+    }
+    const botName = text("botName", 100);
+    const answer = await ctx.runAction(internal.microsoftTeamsReview.reply, {
+      ...fields,
+      ...(botName ? { botName } : {}),
+    });
+    return Response.json(answer);
+  }),
+});
+
+// The Teams app a team uploads to its Teams: the dashboard's one bot, and its icons.
+http.route({
+  path: "/teams/app.zip",
+  method: "GET",
+  handler: httpAction(async () => {
+    const botId = process.env.TEAMS_APP_ID;
+    if (!botId) return new Response("Teams is not set up on this dashboard", { status: 404 });
+    const name = process.env.TEAMS_APP_NAME || DEFAULT_BOT_NAME;
+    const zip = teamsAppPackage({ botId, name, siteUrl: process.env.SITE_URL ?? "" });
+    return new Response(zip.buffer as ArrayBuffer, {
+      headers: {
+        "content-type": "application/zip",
+        "content-disposition": `attachment; filename="${name.replace(/[^\w .-]/g, "")} for Teams.zip"`,
+      },
+    });
   }),
 });
 
@@ -431,6 +792,13 @@ http.route({
 // The dashboard as an MCP server, for Claude and other AI agents (mcp.ts).
 http.route({ path: "/mcp", method: "POST", handler: serve });
 http.route({ path: "/mcp", method: "GET", handler: noStream });
+// Who the server is and where to reach it, for directories and apps (MCP Server Cards).
+http.route({ path: "/mcp/server-card", method: "GET", handler: serverCard });
+http.route({
+  path: "/.well-known/openai-apps-challenge",
+  method: "GET",
+  handler: openaiAppsChallenge,
+});
 http.route({ path: "/mcp", method: "DELETE", handler: noStream });
 
 // Agents sign in with OAuth (oauth.ts). They find how from the MCP address's metadata.
@@ -445,15 +813,8 @@ http.route({
   method: "GET",
   handler: authorizationServer,
 });
-http.route({ path: "/oauth/authorize", method: "GET", handler: authorize });
-http.route({ path: "/oauth/token", method: "POST", handler: token });
-http.route({ path: "/oauth/register", method: "POST", handler: register });
-http.route({ path: "/oauth/revoke", method: "POST", handler: revoke });
 for (const path of [
   "/mcp",
-  "/oauth/token",
-  "/oauth/register",
-  "/oauth/revoke",
   "/.well-known/oauth-protected-resource",
   "/.well-known/oauth-protected-resource/mcp",
   "/.well-known/oauth-authorization-server",

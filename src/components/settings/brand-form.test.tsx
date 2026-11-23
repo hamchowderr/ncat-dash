@@ -79,6 +79,45 @@ describe("the brand form", () => {
   });
 });
 
+describe("a brand file whose upload was removed", () => {
+  const names = (gone: string[]) => (args: Record<string, unknown>) =>
+    (args.ids as string[]).map((id) => ({
+      id,
+      fileName: gone.includes(id) ? null : `${id}.png`,
+    }));
+
+  test("is marked on its own row, and the rest still saves", async () => {
+    answerQuery(api.storage.listUploads, []);
+    answerQuery(api.storage.uploadNames, names(["song1"]));
+    const music = [{ name: "Upbeat", file: "upload:song1" }];
+    renderInApp(<BrandForm brand={{ logo: "upload:logo1" }} music={music} canEdit />);
+    const user = userEvent.setup();
+    expect(screen.getByText("logo1.png")).toBeTruthy();
+    expect(screen.getByText(/Removed from your uploads/)).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "Brand colour" }), {
+      target: { value: "#FFCC00" },
+    });
+    await user.click(screen.getByRole("button", { name: "Save brand" }));
+    expect(mutationOf(api.teamSettings.setBrand)).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      brand: { logo: "upload:logo1", color: "#FFCC00" },
+      music,
+    });
+  });
+
+  test("a removed logo says so and can be cleared and replaced", async () => {
+    answerQuery(api.storage.listUploads, []);
+    answerQuery(api.storage.uploadNames, names(["logo1"]));
+    renderInApp(<BrandForm brand={{ logo: "upload:logo1" }} music={[]} canEdit />);
+    const user = userEvent.setup();
+    expect(screen.getByText("An upload that was removed")).toBeTruthy();
+    expect(screen.getByText(/This file was removed from your uploads. Pick another/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Clear Logo" }));
+    expect(screen.getByRole("textbox", { name: "Logo: address of the file" })).toBeTruthy();
+    expect(screen.queryByText("An upload that was removed")).toBeNull();
+  });
+});
+
 describe("the tour of the brand settings", () => {
   test("has a place on the page for every part it points at, music too", () => {
     form();

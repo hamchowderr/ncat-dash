@@ -34,9 +34,16 @@ export default defineConfig({
       // NODE_ENV=test gates OM + the agent workspace OFF (see lib/memory.ts + agents/chat.ts)
       // so AIMock runs stay hermetic — the controller still supplies its own workspace.
       NODE_ENV: 'test',
+      // The shell is off on a real server unless asked for; the kit's tests drive it.
+      WORKSPACE_SANDBOX: 'true',
       // Set here, not inherited: a shell that exports a real CHAT_MODEL or USE_AIMOCK=false
       // (a developer's own agent settings) must never send a test run to a real model.
       USE_AIMOCK: 'true',
+      // The kit's tests drive its made-up demo tools through fixtures; a server never has them.
+      TOOL_DEMO: 'true',
+      // The kit's sample Knowledge pages (how the kit works), which its tests search; a
+      // server syncs the Takewon guide in ./knowledge instead.
+      KNOWLEDGE_DIR: './tests/fixtures/knowledge',
       CHAT_MODEL: 'anthropic/claude-sonnet-4-6',
       // Today's date falls back to this zone when a turn sends none (lib/turn-context.ts).
       DEFAULT_TIMEZONE: 'UTC',

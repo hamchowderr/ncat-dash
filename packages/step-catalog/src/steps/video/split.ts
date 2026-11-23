@@ -18,7 +18,10 @@ export const videoSplit = defineStep({
       .min(1)
       .describe("Clips to make, each with a start and end time (e.g. '00:01:00')"),
     video_codec: z.string().optional().describe("Video codec (e.g. 'libx264')"),
-    video_preset: z.string().optional().describe("Encoding preset (e.g. 'medium')"),
+    video_preset: z
+      .string()
+      .default("veryfast")
+      .describe("Encoding preset: veryfast saves quickly; slower ones make smaller files"),
     video_crf: z.number().min(0).max(51).optional().describe("Constant rate factor (0-51)"),
     audio_codec: z.string().optional().describe("Audio codec (e.g. 'aac')"),
     audio_bitrate: z.string().optional().describe("Audio bitrate (e.g. '128k')"),

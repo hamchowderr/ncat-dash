@@ -51,6 +51,9 @@ export const videoCaption = defineStep({
   method: "POST",
   output: "file",
   primaryInput: "video_url",
+  // A captioned copy of a labelled variant, beside the clean one.
+  outputLabels: () => ["captioned"],
+  labelsFollow: true,
   valueInputs: {
     captions: {
       value: "captions",

@@ -2,11 +2,12 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep, SAVED_LOOK_STEP } from "@ncat-dash/step-catalog";
 import { useMutation } from "convex/react";
 import { Play } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { LOOK_SETTING, LookPicker } from "@/components/automations/look-picker";
 import { JobResult } from "@/components/jobs/job-result";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,13 @@ export function StepForm({ stepId }: { stepId: string }) {
   const team = useActiveTeam();
   const step = getStep(stepId);
   const run = useMutation(api.jobs.run);
-  const fields = useStepFields(stepId);
+  const allFields = useStepFields(stepId);
+  // The saved look is picked by name from the team's looks, never typed.
+  const picksLook = stepId === SAVED_LOOK_STEP;
+  // A setting the team's brand fills in (music, logo...) can be left empty to use it.
+  const fields = allFields
+    ?.filter(({ name }) => !(picksLook && name === LOOK_SETTING))
+    .map((field) => (step?.brandInputs?.[field.name] ? { ...field, required: false } : field));
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +50,9 @@ export function StepForm({ stepId }: { stepId: string }) {
       setError(parsed.message);
       return;
     }
-    const input = parsed.input;
+    const input = picksLook
+      ? { ...parsed.input, [LOOK_SETTING]: values[LOOK_SETTING] ?? "" }
+      : parsed.input;
 
     setPending(true);
     try {
@@ -62,9 +71,7 @@ export function StepForm({ stepId }: { stepId: string }) {
           <CardTitle>
             <h2>Input</h2>
           </CardTitle>
-          <CardDescription>
-            Sent to <code className="text-xs">{step.endpoint}</code> on your toolkit.
-          </CardDescription>
+          <CardDescription>Runs on your toolkit with these settings.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit}>
@@ -74,6 +81,19 @@ export function StepForm({ stepId }: { stepId: string }) {
                 values={values}
                 onChange={(name, value) => setValues((current) => ({ ...current, [name]: value }))}
               />
+              {picksLook && (
+                <LookPicker
+                  nodeId="step-form"
+                  input={values}
+                  onChange={(input) =>
+                    setValues((current) => ({
+                      ...current,
+                      [LOOK_SETTING]:
+                        typeof input[LOOK_SETTING] === "string" ? input[LOOK_SETTING] : "",
+                    }))
+                  }
+                />
+              )}
 
               {error && (
                 <Alert variant="destructive">

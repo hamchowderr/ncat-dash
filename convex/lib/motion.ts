@@ -8,8 +8,10 @@ import {
   motionSetupFor,
   motionStepLevel,
   motionStepSettings,
+  withStepEffects,
   NO_MOTION_SETUP,
   nearestUpstreamOfKind,
+  nothingToDrawNote,
   type PlacedPiece,
   placedFrom,
   planMotionByRules,
@@ -18,13 +20,16 @@ import {
   type SoundLevel,
   soundStepSettings,
   TEAM_STYLE,
-  titleFromFileName,
   tidyMotionSetup,
 } from "@ncat-dash/automation-core";
+// The editing steps' reading of a file name: dashes and underscores become spaces.
+import { titleFromFileName } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { finishCleanup } from "./cleanup";
 import { heardFrom, wordsFor } from "./moments";
+import { startingFileName } from "./outputs";
 import { brandOf } from "./queue";
 import { advance, enqueueAll, failStep } from "./runner";
 
@@ -36,6 +41,9 @@ import { advance, enqueueAll, failStep } from "./runner";
  */
 
 export const isMotionKind = (kind: string) => kind === "motion" || kind === "sound-effects";
+
+/** Steps that transcribe, read the words into the dashboard ("place"), then render. */
+export const isPlaceKind = (kind: string) => isMotionKind(kind) || kind === "cleanup";
 
 /** The team's Motion settings, or the default style when it has not set any. */
 export async function motionSetupOf(ctx: QueryCtx, organizationId: string): Promise<MotionSetup> {
@@ -102,7 +110,10 @@ export async function finishMotionListening(
   byNode: Map<string, Doc<"runSteps">>,
   jobs: Doc<"jobs">[],
 ) {
-  const failed = jobs.find((job) => job.status === "failed");
+  // Without its pauses a cleanup still works, from the gaps between the words.
+  const failed = jobs.find(
+    (job) => job.status === "failed" && job.stepId !== "media-silence-detect",
+  );
   if (failed) {
     const what = failed.stepId === "media-transcribe" ? "transcribe" : "read";
     await failStep(
@@ -143,12 +154,20 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
   const jobs = (await Promise.all(step.jobIds.map((id) => ctx.db.get(id)))).filter(
     (job): job is Doc<"jobs"> => job !== null,
   );
+  if (node.kind === "cleanup") {
+    await finishCleanup(ctx, run, node, step, byNode, jobs);
+    return;
+  }
   const team = await motionSetupOf(ctx, run.organizationId);
   const brand = await brandOf(ctx, run.organizationId, run.clientId);
-  const fileName = (run.trigger as { file_name?: unknown } | null)?.file_name;
+  // As uploaded, or from its address when the run was started with a link or Run now.
+  const fileName = startingFileName(run.trigger) ?? "";
 
   const planned = node.kind === "motion" ? plannedBeats(run, node.id, byNode) : null;
   const renders: { stepId: string; input: unknown }[] = [];
+  // Videos with nothing to put on them go on as they are, with no render.
+  const unchanged: string[] = [];
+  let noteSetup = team;
   const placed: NonNullable<Doc<"runSteps">["placed"]> = [];
   for (const heard of heardFrom(jobs)) {
     const spoken = await wordsFor(ctx, run.organizationId, heard.url);
@@ -165,8 +184,8 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
     if (node.kind === "motion") {
       const settings = motionStepSettings(node.input);
       const setup = motionSetupFor(team, settings.style === "team" ? undefined : settings.style);
-      const title =
-        settings.title || titleFromFileName(typeof fileName === "string" ? fileName : "");
+      noteSetup = setup;
+      const title = settings.title || titleFromFileName(fileName);
       plan = planMotionByRules({
         words,
         duration,
@@ -177,6 +196,7 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
         // A Plan Motion Graphics step before this one chose the beats; the rules add the rest.
         ...(planned ? { beats: planned.get(heard.url) ?? [] } : {}),
       });
+      plan = withStepEffects(plan, settings, duration);
       const level = motionStepLevel(setup, settings);
       request = motionRequest(heard.url, plan, setup, brand, {
         level,
@@ -187,8 +207,29 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
       plan = { pieces: [], sounds: planSoundsByRules({ words, duration, level, chapters }) };
       request = motionRequest(heard.url, plan, team, {}, { level: "heavy", pieceSounds: false });
     }
-    renders.push({ stepId: "video-motion", input: request });
     placed.push(placedFrom(heard.url, plan));
+    if (plan.pieces.length === 0 && plan.sounds.length === 0) unchanged.push(heard.url);
+    else renders.push({ stepId: "video-motion", input: request });
+  }
+  const note =
+    unchanged.length > 0
+      ? nothingToDrawNote(
+          node.kind === "motion" ? "motion" : "sound-effects",
+          noteSetup,
+          unchanged.length,
+        )
+      : undefined;
+  if (renders.length === 0 && unchanged.length > 0) {
+    await ctx.db.patch(step._id, {
+      status: "done",
+      stage: undefined,
+      outputs: unchanged,
+      placed,
+      pickNote: note,
+      finishedAt: Date.now(),
+    });
+    await advance(ctx, run._id);
+    return;
   }
   if (renders.length === 0) {
     await failStep(ctx, run, step, byNode, "No video reached this step.");
@@ -201,6 +242,13 @@ export async function finishPlacing(ctx: MutationCtx, run: Doc<"runs">, step: Do
     await advance(ctx, run._id);
     return;
   }
-  await ctx.db.patch(step._id, { stage: "render", jobIds: queued.jobIds, placed });
+  // The unchanged videos wait in `outputs` and go on with the drawn ones (lib/runner.ts).
+  await ctx.db.patch(step._id, {
+    stage: "render",
+    jobIds: queued.jobIds,
+    placed,
+    outputs: unchanged,
+    ...(note ? { pickNote: note } : {}),
+  });
   await advance(ctx, run._id);
 }

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
+import { notifyDesktop, setDesktopUnseen } from "@/lib/desktop";
 import { useActiveTeam } from "@/lib/team-context";
 
 import { alertDetail, alertTitle, LOOK } from "./alert-look";
@@ -18,6 +19,9 @@ export const INBOX = "/inbox";
  * someone mentions them. Nothing is drawn otherwise. Alerts that were already there when
  * the page opened are not announced again, and on the Inbox page nothing pops up: the
  * list there says the same, and nothing should sit on top of it.
+ *
+ * In the desktop app each new alert is also a system notification (the app skips it while
+ * its window is in front), and the unseen count goes on the tray and the Dock or taskbar.
  */
 export function AlertNotices() {
   const team = useActiveTeam();
@@ -37,6 +41,11 @@ export function AlertNotices() {
     notices.current.clear();
   }, [onInbox]);
 
+  const unseen = data?.unseen;
+  useEffect(() => {
+    if (unseen !== undefined) void setDesktopUnseen(unseen);
+  }, [unseen]);
+
   useEffect(() => {
     if (!data) return;
     if (announced.current === null) {
@@ -46,7 +55,10 @@ export function AlertNotices() {
     for (const alert of data.alerts) {
       if (announced.current.has(alert._id)) continue;
       announced.current.add(alert._id);
-      if (alert.seen || onInboxRef.current) continue;
+      if (alert.seen) continue;
+      // Seen from the desktop, the window may be hidden, even on the Inbox page.
+      void notifyDesktop(alertTitle(alert), alertDetail(alert));
+      if (onInboxRef.current) continue;
       const id = `alert-${alert._id}`;
       (alert.kind === "run_failed" ? toast.error : toast.info)(alertTitle(alert), {
         id,

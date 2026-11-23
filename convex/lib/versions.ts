@@ -1,12 +1,15 @@
 import { type AutomationDraft, draftChanges } from "@ncat-dash/automation-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { authComponent } from "../auth";
+import { getCaller } from "./caller";
 
 /** How many versions of one automation are kept. The oldest go first. */
 export const VERSIONS_KEPT = 100;
 
-export type Content = Pick<Doc<"automations">, "name" | "trigger" | "nodes" | "edges">;
+export type Content = Pick<
+  Doc<"automations">,
+  "name" | "trigger" | "moreTriggers" | "triggerStarts" | "nodes" | "edges"
+>;
 export type VersionSource = Doc<"automationVersions">["source"];
 
 /**
@@ -45,7 +48,7 @@ export async function recordVersion(
 ): Promise<number | null> {
   const latest = await latestVersion(ctx, automation._id);
   if (latest && runsTheSame(latest, content)) return null;
-  const user = await authComponent.safeGetAuthUser(ctx);
+  const user = await getCaller(ctx);
   const number = (latest?.number ?? 0) + 1;
   await ctx.db.insert("automationVersions", {
     automationId: automation._id,
@@ -53,6 +56,8 @@ export async function recordVersion(
     number,
     name: content.name,
     trigger: content.trigger,
+    ...(content.moreTriggers?.length ? { moreTriggers: content.moreTriggers } : {}),
+    ...(content.triggerStarts ? { triggerStarts: content.triggerStarts } : {}),
     nodes: content.nodes,
     edges: content.edges,
     source: by.source,

@@ -46,6 +46,52 @@ describe("the Add Motion Graphics step", () => {
     expect(onChange).toHaveBeenLastCalledWith({ input: { title: "Big Year" } });
   });
 
+  test("switches the title behind the speaker, the outline and punch-ins on and off", async () => {
+    const user = userEvent.setup();
+    const onChange = panel({ id: "motion", kind: "motion", input: {} });
+    const behind = screen.getByRole("switch", { name: "Behind the speaker" });
+    expect(behind).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "Outline" })).not.toBeChecked();
+    expect(screen.getByText(/no green screen/)).toBeInTheDocument();
+    await user.click(behind);
+    expect(onChange).toHaveBeenLastCalledWith({ input: { behind: true } });
+    await user.click(screen.getByRole("switch", { name: "Punch-ins" }));
+    expect(onChange).toHaveBeenLastCalledWith({ input: { punchIns: true } });
+  });
+
+  test("turning a switch off leaves no setting behind", async () => {
+    const user = userEvent.setup();
+    const onChange = panel({ id: "motion", kind: "motion", input: { outline: true } });
+    const outline = screen.getByRole("switch", { name: "Outline" });
+    expect(outline).toBeChecked();
+    await user.click(outline);
+    expect(onChange).toHaveBeenLastCalledWith({ input: {} });
+  });
+
+  test("an outline and punch-ins pick their look once they are on", async () => {
+    const user = userEvent.setup();
+    const onChange = panel({
+      id: "motion",
+      kind: "motion",
+      input: { outline: true, punchIns: true },
+    });
+    const look = screen.getByRole("combobox", { name: "Outline look" });
+    expect(look).toHaveTextContent("Hand-drawn line");
+    const move = screen.getByRole("combobox", { name: "How the camera moves" });
+    expect(move).toHaveTextContent("Punch in");
+    await user.click(move);
+    await user.click(screen.getByRole("option", { name: "Room pushes in behind you" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      input: { outline: true, punchIns: true, punchStyle: "dolly" },
+    });
+  });
+
+  test("the looks stay hidden while their switch is off", () => {
+    panel({ id: "motion", kind: "motion", input: {} });
+    expect(screen.queryByRole("combobox", { name: "Outline look" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "How the camera moves" })).toBeNull();
+  });
+
   test("shows the picked preset on the canvas", () => {
     expect(nodeLook({ kind: "motion", input: { style: "neon" } }).kind).toBe("Neon");
     expect(nodeLook({ kind: "motion", input: {} }).kind).toBe("Your team's style");

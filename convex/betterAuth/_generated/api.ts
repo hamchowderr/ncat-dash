@@ -9,9 +9,11 @@
  */
 
 import type * as adapter from "../adapter.js";
+import type * as agents from "../agents.js";
 import type * as auth from "../auth.js";
 import type * as generatedSchema from "../generatedSchema.js";
 import type * as members from "../members.js";
+import type * as pluginTables from "../pluginTables.js";
 
 import type {
   ApiFromModules,
@@ -22,9 +24,11 @@ import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
   adapter: typeof adapter;
+  agents: typeof agents;
   auth: typeof auth;
   generatedSchema: typeof generatedSchema;
   members: typeof members;
+  pluginTables: typeof pluginTables;
 }> = anyApi as any;
 
 /**

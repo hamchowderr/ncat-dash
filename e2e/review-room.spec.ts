@@ -320,6 +320,7 @@ test("a teammate shares the room, and a client opens it with no account", async 
   const link = dialog.getByRole("textbox", { name: "Share link" });
   await expect(link).toHaveValue(/\/share\/[a-f0-9]{64}$/);
   shareUrl = await link.inputValue();
+  await expect(dialog.getByText(/The link works until/)).toBeVisible();
   await jordan.keyboard.press("Escape");
 
   // A fresh browser: nobody is signed in.
@@ -331,7 +332,7 @@ test("a teammate shares the room, and a client opens it with no account", async 
   ).toBeVisible();
   await client.getByLabel("Your name").fill("Riley Client");
   await client.getByRole("button", { name: "Continue" }).click();
-  await expect(client.getByText("From Salt House")).toBeVisible();
+  await expect(client.getByText("Salt House", { exact: true })).toBeVisible();
   await expect(client.getByText("Reviewing as Riley Client")).toBeVisible();
   await expect(
     client.getByRole("navigation", { name: "Clips in this review" }).getByRole("button"),
@@ -410,7 +411,8 @@ test("approving the room lets the automation finish", async () => {
   await jordan.getByRole("button", { name: "Approve", exact: true }).click();
   await expect(jordan.getByText("Approved by Jordan Lee")).toBeVisible();
   await expect(maya.getByText("Approved by Jordan Lee")).toBeVisible();
-  await expect(client.getByText("Approved by the team")).toBeVisible();
+  // An approved review closes the link the team shared by hand.
+  await expect(client.getByRole("heading", { name: "This review is approved" })).toBeVisible();
   await expect(client.getByRole("button", { name: "Approve" })).toHaveCount(0);
   await expect(jordan.getByText(/An automation is paused on this review/)).toBeHidden();
 

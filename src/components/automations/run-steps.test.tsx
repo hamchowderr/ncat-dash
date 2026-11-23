@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 import { answerQuery } from "@/test/convex";
 import { renderInApp } from "@/test/render";
 
-import { passedAlong, type RunDetails, RunSteps } from "./run-steps";
+import { aiLine, passedAlong, type RunDetails, RunSteps } from "./run-steps";
 
 const AT = 1_700_000_000_000;
 const CLIP = "https://files.example/out/video-caption-29.mp4";
@@ -83,6 +83,29 @@ function rows() {
   return within(screen.getByRole("region", { name: "What happened" })).getAllByRole("listitem");
 }
 
+describe("what a run spent on AI", () => {
+  test("shows beside the tally, with the team's limit when it has one", () => {
+    const spent = run({
+      aiSpent: 120_000,
+      aiLimit: 1_000_000,
+      nodes: [{ id: "chapters", kind: "chapters", input: {}, position: { x: 0, y: 0 } }],
+      steps: [step({ nodeId: "chapters", aiSpent: 120_000 })],
+    } as Partial<RunDetails>);
+    renderInApp(<RunSteps run={spent} highlighted={null} busy={false} onDecide={vi.fn()} />);
+    expect(screen.getByText("AI $0.12 of $1.00")).toHaveAttribute("data-ai-spent", "run");
+    const row = screen.getByRole("heading", { name: "Chapters and show notes" }).closest("li")!;
+    expect(within(row).getByText("AI $0.12")).toHaveAttribute("data-ai-spent", "step");
+  });
+
+  test("says nothing for a run that asked nothing and has no limit", () => {
+    renderInApp(<RunSteps run={run()} highlighted={null} busy={false} onDecide={vi.fn()} />);
+    expect(document.querySelector("[data-ai-spent]")).toBeNull();
+    expect(aiLine({ aiSpent: 0, aiLimit: null })).toBeNull();
+    expect(aiLine({ aiSpent: 0, aiLimit: 500_000 })).toBe("AI $0.00 of $0.50");
+    expect(aiLine({ aiSpent: 3_000, aiLimit: null })).toBe("AI under $0.01");
+  });
+});
+
 describe("what happened in a run", () => {
   test("lists the start and then each step in the canvas's order, with a tally", () => {
     renderInApp(<RunSteps run={run()} highlighted={null} busy={false} onDecide={vi.fn()} />);
@@ -102,6 +125,24 @@ describe("what happened in a run", () => {
     const skipped = screen.getByRole("heading", { name: "Clips for a platform" }).closest("li")!;
     expect(skipped.textContent).toContain("No files came this way.");
     expect(skipped.textContent).not.toContain("1m 3s");
+  });
+
+  test("Add Motion Graphics with nothing to draw says the video went on unchanged", () => {
+    const note = "Nothing to draw on the video, so it went on unchanged.";
+    renderInApp(
+      <RunSteps
+        run={run({
+          nodes: [{ id: "motion", kind: "motion", input: {}, position: { x: 0, y: 0 } }],
+          steps: [step({ nodeId: "motion", outputs: [CLIP], pickNote: note })],
+        } as never)}
+        highlighted={null}
+        busy={false}
+        onDecide={vi.fn()}
+      />,
+    );
+    const row = screen.getByRole("heading", { name: "Add Motion Graphics" }).closest("li")!;
+    expect(row.textContent).toContain(note);
+    expect(row.textContent).not.toContain("Nothing to add");
   });
 
   test("shows what a step found out as labelled facts, never raw data", () => {

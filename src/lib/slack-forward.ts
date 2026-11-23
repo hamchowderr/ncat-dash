@@ -50,15 +50,41 @@ export function isThreadReply(body: string): boolean {
   }
 }
 
+/** Our alert buttons' action ids start with this; the agent's own buttons do not. */
+const ALERT_ACTION_PREFIX = "ncat_alert_";
+
+/**
+ * Whether a Slack request is a press of an alert button (Approve, Send back) on a
+ * message the dashboard sent. Slack sends button presses form-encoded, as `payload`.
+ */
+export function isAlertAction(body: string): boolean {
+  try {
+    const payload = new URLSearchParams(body).get("payload");
+    if (!payload) return false;
+    const parsed = JSON.parse(payload) as { type?: string; actions?: { action_id?: unknown }[] };
+    return (
+      parsed.type === "block_actions" &&
+      (parsed.actions ?? []).some(
+        (action) =>
+          typeof action.action_id === "string" && action.action_id.startsWith(ALERT_ACTION_PREFIX),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Passes a Slack request on to the agent server, and a reply in a thread also to the
  * dashboard's backend, which writes it into the review that thread belongs to. Slack is
- * answered with what the agent server says.
+ * answered with what the agent server says. `later` keeps work going after Slack has its
+ * answer (Next's `after` in the route).
  */
 export async function forwardSlack(
   request: Request,
   serverUrl = SERVER_URL,
   convexSiteUrl = CONVEX_SITE_URL,
+  later: (work: Promise<unknown>) => void = (work) => void work,
 ): Promise<Response> {
   const body = await request.text();
   // Slack's one-time address check carries no data and gives up after 3 seconds, which a
@@ -70,6 +96,23 @@ export async function forwardSlack(
   for (const name of PASSED) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
+  }
+  // An Approve or Send back press on an alert is the dashboard's, not the agent's. Slack
+  // shows the presser an error unless it is answered within 3 seconds, and the backend
+  // can take longer than that to wake. So Slack is answered at once, and the press is
+  // handed on just after; the backend checks Slack's signature and does the rest (a
+  // press it refuses changes nothing, and the presser is told why in Slack).
+  if (isAlertAction(body)) {
+    if (!convexSiteUrl) return new Response("The dashboard is not set up.", { status: 503 });
+    later(
+      fetch(`${convexSiteUrl.replace(/\/$/, "")}/slack/actions`, {
+        method: "POST",
+        headers,
+        body,
+        signal: AbortSignal.timeout(30_000),
+      }).catch(() => null),
+    );
+    return new Response(null, { status: 200 });
   }
   const toReview =
     convexSiteUrl && isThreadReply(body)

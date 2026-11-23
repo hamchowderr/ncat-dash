@@ -37,7 +37,13 @@ describe("sharing a review with a client", () => {
   });
 
   test("shows the link to copy, saves a changed setting at once, and can stop sharing", async () => {
-    const user = open({ token: TOKEN, allowVerdict: true, showTeamComments: false });
+    const user = open({
+      token: TOKEN,
+      allowVerdict: true,
+      showTeamComments: false,
+      expiresAt: new Date(2026, 11, 23).getTime(),
+      ended: null,
+    });
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     await user.click(screen.getByRole("button", { name: "Share" }));
@@ -55,5 +61,46 @@ describe("sharing a review with a client", () => {
     });
     await user.click(screen.getByRole("button", { name: "Stop sharing" }));
     expect(mutationOf(api.reviewShares.stop)).toHaveBeenCalledWith({ reviewId: REVIEW });
+  });
+
+  test("says when the link stops working, and adds 30 days", async () => {
+    const user = open({
+      token: TOKEN,
+      allowVerdict: true,
+      showTeamComments: false,
+      expiresAt: new Date(2026, 11, 23).getTime(),
+      ended: null,
+    });
+    await user.click(screen.getByRole("button", { name: "Share" }));
+    expect(screen.getByText(/The link works until 23 December/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Add 30 days" }));
+    expect(mutationOf(api.reviewShares.renew)).toHaveBeenCalledWith({ reviewId: REVIEW });
+  });
+
+  test("offers to make a link that ran out work again", async () => {
+    const user = open({
+      token: TOKEN,
+      allowVerdict: true,
+      showTeamComments: false,
+      expiresAt: new Date(2026, 9, 1).getTime(),
+      ended: "expired",
+    });
+    await user.click(screen.getByRole("button", { name: "Share" }));
+    expect(screen.getByText(/The link stopped working on 1 October/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Make it work again" }));
+    expect(mutationOf(api.reviewShares.renew)).toHaveBeenCalledWith({ reviewId: REVIEW });
+  });
+
+  test("explains the link is paused while the review is approved", async () => {
+    const user = open({
+      token: TOKEN,
+      allowVerdict: true,
+      showTeamComments: false,
+      expiresAt: new Date(2026, 11, 23).getTime(),
+      ended: "approved",
+    });
+    await user.click(screen.getByRole("button", { name: "Share" }));
+    expect(screen.getByText(/paused while the review is approved/)).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Add 30 days|Make it work again/ })).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 
@@ -13,6 +14,21 @@ function absoluteFileUrl(url: string): string {
   const p = url.slice('file:'.length);
   if (p.startsWith('/') || path.isAbsolute(p)) return url;
   return `file:${path.resolve(process.cwd(), p.replace(/^\.\//, '')).replace(/\\/g, '/')}`;
+}
+
+/**
+ * Resolve a relative path against the server package: the nearest directory at or above
+ * the cwd that holds a package.json, else the cwd. `mastra dev` runs the server with its
+ * cwd in src/mastra/public, so a bare cwd-relative `./knowledge` would miss the folder at
+ * the package root; tests and `mastra start` run from the package root, and the Docker
+ * image (no package.json above /app) resolves against /app.
+ */
+export function packageRelative(p: string, cwd = process.cwd()): string {
+  if (path.isAbsolute(p)) return p;
+  for (let dir = cwd; ; dir = path.dirname(dir)) {
+    if (existsSync(path.join(dir, 'package.json'))) return path.resolve(dir, p);
+    if (path.dirname(dir) === dir) return path.resolve(cwd, p);
+  }
 }
 
 const boolish = z
@@ -60,7 +76,10 @@ const envSchema = z
     // The workspace always has its filesystem and file tools; the shell sandbox and the
     // browser each have a switch. WORKSPACE_BROWSER=false turns the browser off whatever
     // BROWSER_PROVIDER says.
-    WORKSPACE_SANDBOX: boolish.default(true),
+    // Off unless asked for. The shell runs as the agent server itself, so whoever chats
+    // with the agent could read the server's settings and memory. Turn it on only for an
+    // agent that one trusted person uses, never one that several teams share.
+    WORKSPACE_SANDBOX: boolish.default(false),
     WORKSPACE_BROWSER: boolish.default(true),
     // Which browser (lib/features.ts resolveBrowser). `viewer`: the local Chrome above,
     // which the agent drives with the browser CLI through the sandbox. `firecrawl`: hosted
@@ -78,9 +97,23 @@ const envSchema = z
     SUBAGENT_WRITER: boolish.default(true),
     SUBAGENT_REVIEW: boolish.default(true),
     SUBAGENT_DATA: boolish.default(true),
-    // generateImage (needs OPENAI_API_KEY), and the demo tools getWeather + searchKnowledge.
+    // generateImage (needs OPENAI_API_KEY), and the chat kit's demo tools getWeather +
+    // searchKnowledge. The demo tools answer with made-up results (searchKnowledge cites
+    // pages on docs.example.com), so they are off unless asked for: only the kit's own
+    // tests and fixtures turn them on.
     TOOL_GENERATE_IMAGE: boolish.default(true),
-    TOOL_DEMO: boolish.default(true),
+    TOOL_DEMO: boolish.default(false),
+    // Mastra Knowledge (lib/chat-knowledge.ts): the knowledge_* tools on the chat agent and
+    // the research specialist, the Studio Knowledge explorer, and the boot-time folder sync.
+    TOOL_KNOWLEDGE: boolish.default(true),
+    // The markdown folder mirrored into the Takewon guide scope at boot: each file becomes a
+    // page, an edited file updates its page, and a deleted file has its page removed. A
+    // relative path resolves against the agent package (packageRelative above). A folder
+    // that does not exist syncs nothing.
+    KNOWLEDGE_DIR: z
+      .string()
+      .default('./knowledge')
+      .transform((p) => packageRelative(p)),
     // Anthropic prompt caching (lib/turn-context.ts): cache breakpoints after the tools and
     // instructions, after the stable turn-context sections, and on the conversation tail.
     // Other providers ignore the markers.
@@ -160,6 +193,21 @@ const envSchema = z
     DISCORD_PUBLIC_KEY: z.string().optional(),
     // A stand-in Discord API for tests and local runs. Left out, Discord itself.
     DISCORD_API_URL: z.string().url().optional(),
+    // The dashboard's one Microsoft Teams bot: the Azure Bot's Microsoft app id and a
+    // client secret of that app, and for a bot that serves one Microsoft organization
+    // its tenant id. Left out, the agent is not in Teams.
+    TEAMS_APP_ID: z.string().optional(),
+    TEAMS_APP_PASSWORD: z.string().optional(),
+    TEAMS_APP_TENANT_ID: z.string().optional(),
+    // The bot's name in Teams (the Teams app's name), so a tag of it is taken out of replies.
+    TEAMS_APP_NAME: z.string().optional(),
+    // The dashboard's one Telegram bot (BotFather: the token, and its @name without the
+    // @). Left out, the agent is not in Telegram. The bot asks Telegram for new messages
+    // itself, so no public address is needed.
+    TELEGRAM_BOT_TOKEN: z.string().optional(),
+    TELEGRAM_BOT_USERNAME: z.string().optional(),
+    // A stand-in Telegram Bot API for tests and local runs. Left out, Telegram itself.
+    TELEGRAM_API_URL: z.string().url().optional(),
 
     USE_AIMOCK: boolish.default(false),
     AIMOCK_URL: z.string().url().default('http://localhost:4010'),
@@ -176,6 +224,7 @@ const envSchema = z
     // secret, and the token's `sub` (the signed-in user) picks that user's Session,
     // so each user gets their own threads. Unset = one shared Session.
     MASTRA_JWT_SECRET: z.string().min(32, 'MASTRA_JWT_SECRET must be at least 32 chars').optional(),
+    AGENT_CONVEX_SECRET: z.string().min(32, 'AGENT_CONVEX_SECRET must be at least 32 chars').optional(),
   })
   .refine(
     // Provider-agnostic. `CHAT_MODEL` is resolved by Mastra's model router, which derives

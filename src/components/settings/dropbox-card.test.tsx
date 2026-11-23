@@ -4,9 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { actionOf, answerQuery, mutationOf, toastError, toastSuccess } from "@/test/convex";
-import { renderInApp, TEAM } from "@/test/render";
+import { openTab, renderInApp, TEAM } from "@/test/render";
 
-import { crumbsOf, DropboxCard } from "./dropbox-card";
+import { DropboxCard, folderLabel } from "./dropbox-card";
 
 const empty = { ready: true, me: null, others: [], imports: [], sends: [] };
 const me = {
@@ -16,11 +16,11 @@ const me = {
   autoImport: true,
   needsReconnect: false,
   teamSpace: true,
-  folders: [] as { _id: string; path: string }[],
+  folders: [] as { _id: string; path: string; recursive: boolean }[],
 };
 const connected = {
   ...empty,
-  me: { ...me, folders: [{ _id: "f1", path: "/Raw footage" }] },
+  me: { ...me, folders: [{ _id: "f1", path: "/Raw footage", recursive: true }] },
   others: [{ name: "Maya O", memberName: "Maya Ortiz" }],
   imports: [
     {
@@ -43,7 +43,7 @@ const connected = {
       _id: "s1",
       name: "Space clip.mp4",
       automationName: "Weekly shorts",
-      folder: "/Kontifi/Weekly shorts",
+      folder: "/Takewon/Weekly shorts",
       dropboxPath: null,
       size: 100,
       offset: 40,
@@ -54,7 +54,7 @@ const connected = {
       _id: "s2",
       name: "Moon clip.mp4",
       automationName: "Weekly shorts",
-      folder: "/Kontifi/Weekly shorts",
+      folder: "/Takewon/Weekly shorts",
       dropboxPath: null,
       size: 100,
       offset: 0,
@@ -108,11 +108,21 @@ describe("the Dropbox card", () => {
     const setAuto = mutationOf(api.dropbox.setAutoImport);
     const remove = mutationOf(api.dropbox.removeFolder);
     const again = mutationOf(api.dropbox.sendAgain);
+    actionOf(api.dropbox.scan).mockResolvedValue({ folders: [], partial: false });
     renderInApp(<DropboxCard />);
     expect(screen.getByText("Jordan Lee")).toBeInTheDocument();
     expect(screen.getByText(/Maya Ortiz \(Maya O\)/)).toBeInTheDocument();
-    const folders = screen.getByRole("region", { name: "Watched folders" });
-    expect(within(folders).getByText("/Raw footage")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("switch"));
+    expect(setAuto).toHaveBeenCalledWith({ organizationId: TEAM.id, autoImport: false });
+    // Folders, and what came in and went out, are a tab away from the connection.
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Connection",
+      "Folders",
+    ]);
+    await openTab("Folders");
+    const folders = screen.getByRole("region", { name: "Folders with media" });
+    expect(await within(folders).findByText("/Raw footage")).toBeInTheDocument();
     const came = screen.getByRole("region", { name: "Brought in from Dropbox" });
     expect(within(came).getByRole("link", { name: "In Uploads" })).toHaveAttribute(
       "href",
@@ -123,95 +133,101 @@ describe("the Dropbox card", () => {
     expect(within(sent).getByText("Sending 40%")).toBeInTheDocument();
     expect(within(sent).getByText(/Dropbox is full/)).toBeInTheDocument();
 
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("switch"));
-    expect(setAuto).toHaveBeenCalledWith({ organizationId: TEAM.id, autoImport: false });
-    await user.click(within(folders).getByRole("button", { name: "Stop watching" }));
+    // Unticking a watched folder and pressing the one button stops watching it.
+    await user.click(within(folders).getByRole("checkbox", { name: "Bring in /Raw footage" }));
+    await user.click(within(folders).getByRole("button", { name: "Stop watching 1 folder" }));
     expect(remove).toHaveBeenCalledWith({ folderId: "f1" });
     await user.click(within(sent).getByRole("button", { name: "Send again" }));
     expect(again).toHaveBeenCalledWith({ sendId: "s2" });
   });
 
-  test("a folder is picked by opening folders, team folders marked, and watched", async () => {
+  test("reads the whole Dropbox and lists folders with media, fullest first", async () => {
     answerQuery(api.dropbox.forTeam, { ...empty, me });
-    const browse = actionOf(api.dropbox.browse);
-    browse.mockImplementation(async ({ path }: { path: string }) =>
-      path === ""
-        ? [
-            { name: "Marketing", path: "/Marketing", shared: true },
-            { name: "Raw footage", path: "/Raw footage", shared: false },
-          ]
-        : [{ name: "Day 1", path: "/Raw footage/Day 1", shared: false }],
-    );
-    const add = actionOf(api.dropbox.addFolder);
-    add.mockResolvedValue("f2");
+    let finish: (value: unknown) => void = () => {};
+    actionOf(api.dropbox.scan).mockReturnValue(new Promise((done) => (finish = done)));
     renderInApp(<DropboxCard />);
-    expect(screen.getByText(/your own or your team's/)).toBeInTheDocument();
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Add a folder" }));
-    expect(await screen.findByText("Team folder")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open Raw footage" }));
-    expect(await screen.findByRole("button", { name: "Open Day 1" })).toBeInTheDocument();
-    expect(browse).toHaveBeenLastCalledWith({ organizationId: TEAM.id, path: "/Raw footage" });
-    await user.click(screen.getByRole("button", { name: "Watch Raw footage" }));
-    expect(add).toHaveBeenCalledWith({ organizationId: TEAM.id, path: "/Raw footage" });
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Watching /Raw footage"));
-    // The way back up runs along the top.
-    expect(crumbsOf("/Raw footage/Day 1").map((one) => one.name)).toEqual([
-      "Dropbox",
-      "Raw footage",
-      "Day 1",
-    ]);
+    await openTab("Folders");
+    expect(screen.getByText("Reading your Dropbox")).toBeInTheDocument();
+    finish({
+      folders: [
+        { path: "/Raw footage", name: "Raw footage", files: 12, fresh: 12, watched: false },
+        { path: "/Shoots/Day 1", name: "Day 1", files: 5, fresh: 2, watched: false },
+        { path: "/", name: "Dropbox", files: 1, fresh: 0, watched: false },
+      ],
+      partial: false,
+    });
+    expect(await screen.findByText("12 files")).toBeInTheDocument();
+    expect(screen.getByText("2 new of 5")).toBeInTheDocument();
+    expect(screen.getByText("All in Uploads")).toBeInTheDocument();
+    expect(screen.getByText("Team folders are included.", { exact: false })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bring in" })).toBeDisabled();
   });
 
-  test("files already in watched folders are listed, ticked, and brought over", async () => {
-    answerQuery(api.dropbox.forTeam, connected);
-    actionOf(api.dropbox.pastFiles).mockResolvedValue([
-      {
-        fileId: "id:a",
-        name: "Interview.mov",
-        path: "/Raw footage/Interview.mov",
-        folder: "/Raw footage",
-        kind: "video",
-        size: 2_000_000,
-        modifiedAt: Date.UTC(2026, 10, 18),
-        brought: false,
-      },
-      {
-        fileId: "id:b",
-        name: "Voice.wav",
-        path: "/Raw footage/Voice.wav",
-        folder: "/Raw footage",
-        kind: "audio",
-        size: 1_000,
-        modifiedAt: Date.UTC(2026, 10, 17),
-        brought: false,
-      },
-      {
-        fileId: "id:c",
-        name: "Logo.png",
-        path: "/Raw footage/Logo.png",
-        folder: "/Raw footage",
-        kind: "image",
-        size: 1_000,
-        modifiedAt: Date.UTC(2026, 10, 16),
-        brought: true,
-      },
-    ]);
-    const bring = actionOf(api.dropbox.bringOver);
-    bring.mockResolvedValue({ started: 1, skipped: 0 });
+  test("ticking folders and pressing one button brings them in", async () => {
+    answerQuery(api.dropbox.forTeam, { ...empty, me });
+    const scan = actionOf(api.dropbox.scan);
+    scan.mockResolvedValue({
+      folders: [
+        { path: "/Raw footage", name: "Raw footage", files: 12, fresh: 12, watched: false },
+        { path: "/Shoots/Day 1", name: "Day 1", files: 5, fresh: 2, watched: false },
+      ],
+      partial: false,
+    });
+    const pull = actionOf(api.dropbox.pullIn);
+    pull.mockResolvedValue({ watching: 2, started: 14, more: false });
     renderInApp(<DropboxCard />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Find files" }));
-    expect(await screen.findByText("All 2 picked")).toBeInTheDocument();
-    expect(screen.getAllByText("In Uploads").length).toBeGreaterThan(0);
-    await user.click(screen.getByRole("checkbox", { name: "Pick Voice.wav" }));
-    expect(screen.getByText("1 of 2 picked")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Bring over 1 file" }));
-    expect(bring).toHaveBeenCalledWith({ organizationId: TEAM.id, fileIds: ["id:a"] });
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("1 file on the way to Uploads"));
-    // Search narrows the list.
-    await user.type(screen.getByRole("textbox", { name: "Search files" }), "voice");
-    expect(screen.queryByText("Logo.png")).toBeNull();
+    await openTab("Folders");
+    await user.click(await screen.findByRole("checkbox", { name: "Bring in /Raw footage" }));
+    await user.click(screen.getByRole("checkbox", { name: "Bring in /Shoots/Day 1" }));
+    expect(screen.getByText("2 folders ticked")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Bring in 2 folders" }));
+    expect(pull).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      paths: ["/Raw footage", "/Shoots/Day 1"],
+    });
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("14 files on the way to Uploads"),
+    );
+    // The list is read again afterwards.
+    await waitFor(() => expect(scan).toHaveBeenCalledTimes(2));
+  });
+
+  test("a very big Dropbox says only part was read, and folders can be searched", async () => {
+    answerQuery(api.dropbox.forTeam, { ...empty, me });
+    actionOf(api.dropbox.scan).mockResolvedValue({
+      folders: Array.from({ length: 10 }, (_, i) => ({
+        path: `/Shoot ${i + 1}`,
+        name: `Shoot ${i + 1}`,
+        files: 3,
+        fresh: 3,
+        watched: false,
+      })),
+      partial: true,
+    });
+    renderInApp(<DropboxCard />);
+    await openTab("Folders");
+    expect(await screen.findByText(/only the first part was read/)).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "Search folders" }), "shoot 10");
+    expect(screen.getByText("Shoot 10")).toBeInTheDocument();
+    expect(screen.queryByText("Shoot 2")).toBeNull();
+    expect(folderLabel("/")).toBe("All of Dropbox");
+    expect(folderLabel("/Raw footage")).toBe("/Raw footage");
+  });
+
+  test("when Dropbox cannot be read it says so and can try again", async () => {
+    answerQuery(api.dropbox.forTeam, { ...empty, me });
+    const scan = actionOf(api.dropbox.scan);
+    scan.mockRejectedValueOnce(new Error("down"));
+    scan.mockResolvedValue({ folders: [], partial: false });
+    renderInApp(<DropboxCard />);
+    const user = userEvent.setup();
+    await openTab("Folders");
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(toastError).toHaveBeenCalled();
+    expect(
+      await screen.findByText(/No videos, sounds or pictures in your Dropbox yet/),
+    ).toBeInTheDocument();
   });
 });

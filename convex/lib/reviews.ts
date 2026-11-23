@@ -3,7 +3,7 @@ import { clipTitleFrom, TITLE_LIMIT } from "@ncat-dash/review-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { outputNamesOf } from "./outputs";
-import { toSlack } from "./slackPosts";
+import { toReviewChannels } from "./reviewChannels";
 
 /**
  * A clip's title: its readable name when one is known ("Space interviews clip 1"), else
@@ -54,7 +54,7 @@ export async function openReview(
       versions: [{ url, addedBy: review.createdBy, addedAt: now }],
     });
   }
-  await toSlack(ctx, review.organizationId, { kind: "review_opened", reviewId });
+  await toReviewChannels(ctx, review.organizationId, { kind: "review_opened", reviewId });
   return reviewId;
 }
 
@@ -74,13 +74,22 @@ export async function openReviewForApproval(
     .take(200);
   await openReview(ctx, {
     organizationId: run.organizationId,
-    title: run.automationName,
+    title: reviewTitle(run, step),
     urls: files,
     createdBy: null,
     runId: run._id,
     runStepId: step._id,
     names: outputNamesOf(run, steps),
   });
+}
+
+/** A workflow's review is named after the workflow; any other after its automation. */
+function reviewTitle(run: Doc<"runs">, step: Doc<"runSteps">): string {
+  const node = (run.nodes as { id: string; input?: Record<string, unknown> }[]).find(
+    (candidate) => candidate.id === step.nodeId,
+  );
+  const name = node?.input?.workflowName;
+  return typeof name === "string" && name !== "" ? name : run.automationName;
 }
 
 /** Marks the room an approval step opened as decided, wherever the decision was made. */
@@ -103,10 +112,46 @@ export async function closeReviewForStep(
   });
 }
 
+/** How long a link the team shares by hand works before someone renews it. */
+export const SHARE_DAYS = 30;
+const SHARE_MS = SHARE_DAYS * 24 * 60 * 60 * 1000;
+
+/** When a share link made or renewed at `from` stops working. */
+export function shareExpiryFrom(from: number): number {
+  return from + SHARE_MS;
+}
+
+/** When a share link stops working, or null for one a client's portal opened. */
+export function shareExpiry(share: Doc<"reviewShares">): number | null {
+  if (share.portalId !== undefined) return null;
+  return share.expiresAt ?? shareExpiryFrom(share._creationTime);
+}
+
+/**
+ * Why a share link no longer opens its review, or null while it works. A link the team
+ * shared by hand ends 30 days after it was made or renewed, and while the review stands
+ * approved; reopening the review brings it back. A portal's links follow the portal.
+ */
+export function shareEnded(
+  share: Doc<"reviewShares">,
+  review: Doc<"reviews">,
+  now: number,
+): "expired" | "approved" | null {
+  const expiry = shareExpiry(share);
+  if (expiry === null) return null;
+  if (review.status === "approved") return "approved";
+  return now >= expiry ? "expired" : null;
+}
+
 /** A review's share link, if it has one switched on. */
 export async function shareOf(ctx: QueryCtx | MutationCtx, reviewId: Id<"reviews">) {
+  return (await sharesOf(ctx, reviewId)).find((share) => share.portalId === undefined) ?? null;
+}
+
+/** Every share link of a review: the team's own and the ones clients' portals opened. */
+export async function sharesOf(ctx: QueryCtx | MutationCtx, reviewId: Id<"reviews">) {
   return await ctx.db
     .query("reviewShares")
     .withIndex("by_review", (q) => q.eq("reviewId", reviewId))
-    .first();
+    .take(50);
 }

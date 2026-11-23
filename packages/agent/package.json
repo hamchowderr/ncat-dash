@@ -18,7 +18,7 @@
     "test:watch": "vitest",
     "measure:session": "tsx scripts/measure-session.ts"
   },
-  "license": "GPL-2.0-or-later",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "engines": {
     "node": ">=22.13.0"
@@ -29,6 +29,8 @@
     "@anthropic-ai/sdk": "^1.11.0",
     "@chat-adapter/discord": "4.45.0",
     "@chat-adapter/slack": "4.45.0",
+    "@chat-adapter/telegram": "4.45.0",
+    "@chat-adapter/teams": "4.45.0",
     "@mastra/agent-browser": "0.6.0",
     "@mastra/ai-sdk": "1.12.0",
     "@mastra/auth": "1.2.0",
@@ -44,6 +46,7 @@
     "@mastra/mcp": "2.9.0",
     "@mastra/memory": "1.41.1",
     "@mastra/observability": "1.24.0",
+    "@mastra/server": "1.83.0",
     "agent-browser": "0.19.0",
     "ai": "^7.0.37",
     "chat": "4.45.0",
@@ -55,12 +58,12 @@
   "devDependencies": {
     "@copilotkit/aimock": "^1.37.4",
     "@types/node": "^25.6.0",
-    "@vitest/ui": "^4.1.9",
+    "@vitest/ui": "^4.1.12",
     "mastra": "1.39.0",
     "playwright-core": "1.61.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.12"
   },
   "private": true
 }

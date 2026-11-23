@@ -23,6 +23,16 @@ export const MOTION_PIECE_TYPES = [
   "quote",
   "transition",
   "logo",
+  "big_text",
+  "graph",
+  "doodle",
+  "checklist",
+  "cards",
+  "wall",
+  "phone",
+  "orbit",
+  "ransom",
+  "waveform",
 ] as const;
 export type MotionPieceType = (typeof MOTION_PIECE_TYPES)[number];
 
@@ -48,9 +58,10 @@ export interface MotionPieceInfo {
   description: string;
   /** Seconds it shows for when nothing else is said. */
   seconds: number;
-  sound: MotionSound;
+  /** Its own sound; null for a piece that stays quiet (a sound wave sits under speech). */
+  sound: MotionSound | null;
   /** Where it sits, so two pieces in one place never show at once. */
-  place: "middle" | "bottom" | "side" | "corner";
+  place: "middle" | "bottom" | "side" | "corner" | "top";
 }
 
 /** Matches the toolkit's pieces (services/v1/video/motion/pieces.py). */
@@ -129,8 +140,99 @@ export const MOTION_PIECES: MotionPieceInfo[] = [
   },
 ];
 
+/**
+ * Pieces the toolkit can draw that a style does not switch on in Settings > Motion: the
+ * Add Motion Graphics step's own switches use them (big words behind the speaker), and the
+ * agent can place them when asked.
+ */
+export const MOTION_EXTRA_PIECES: MotionPieceInfo[] = [
+  {
+    type: "big_text",
+    title: "Big words",
+    description: "Huge words across the top of the frame, best behind the speaker's head.",
+    seconds: 3,
+    sound: "impact",
+    place: "top",
+  },
+  {
+    type: "graph",
+    title: "Rising graph",
+    description: "A line that shoots up, with a tag such as 10X and labels such as months.",
+    seconds: 3.5,
+    sound: "riser",
+    place: "top",
+  },
+  {
+    type: "doodle",
+    title: "Doodle",
+    description: "A hand-drawn crown, star, heart, arrow, burst or circle, just above the head.",
+    seconds: 2.5,
+    sound: "pop",
+    place: "top",
+  },
+  {
+    type: "checklist",
+    title: "Tick list",
+    description: "Up to six lines ticked off one after another at the bottom.",
+    seconds: 4,
+    sound: "tick",
+    place: "bottom",
+  },
+  {
+    type: "cards",
+    title: "Comment cards",
+    description:
+      "Up to six short lines, such as comments, popping in as white cards down the sides.",
+    seconds: 3,
+    sound: "pop",
+    place: "side",
+  },
+  {
+    type: "wall",
+    title: "Photo wall",
+    description:
+      "Up to nine pictures landing one by one as a wall of tiles, best behind the speaker.",
+    seconds: 3,
+    sound: "pop",
+    place: "middle",
+  },
+  {
+    type: "phone",
+    title: "Phone",
+    description: "One picture, such as a screenshot, on a phone that slides up.",
+    seconds: 3,
+    sound: "slide",
+    place: "side",
+  },
+  {
+    type: "orbit",
+    title: "Orbiting pictures",
+    description: "Up to six pictures circling the speaker, passing behind and in front of them.",
+    seconds: 3.5,
+    sound: "whoosh",
+    place: "middle",
+  },
+  {
+    type: "ransom",
+    title: "Cut-out letters",
+    description: "A few words, such as 100%, in letters cut from paper scraps.",
+    seconds: 2.5,
+    sound: "click",
+    place: "middle",
+  },
+  {
+    type: "waveform",
+    title: "Sound wave",
+    description: "A sound wave in the brand colour across the frame, with no sound of its own.",
+    seconds: 3,
+    sound: null,
+    place: "middle",
+  },
+];
+
 export const pieceInfo = (type: MotionPieceType): MotionPieceInfo =>
-  MOTION_PIECES.find((piece) => piece.type === type)!;
+  (MOTION_PIECES.find((piece) => piece.type === type) ??
+    MOTION_EXTRA_PIECES.find((piece) => piece.type === type))!;
 
 export const SOUND_LABELS: Record<MotionSound, string> = {
   whoosh: "Whoosh",
@@ -648,6 +750,66 @@ export interface PlacedPiece {
   image?: string;
   /** A sound other than the piece's own, or null for none. Left out: the piece's own. */
   sound?: MotionSound | null;
+  /** "behind" draws it between the background and the speaker. Left out: in front. */
+  layer?: "front" | "behind";
+  /** The lines of a tick list, or the labels along a graph. */
+  items?: string[];
+  /** The doodle's shape. */
+  shape?: DoodleShape;
+  /** Pictures for a photo wall, a phone or orbiting pictures (links). */
+  images?: string[];
+  /** Big words: a tall serif masthead (left out) or chrome letters. */
+  look?: "masthead" | "glass";
+}
+
+export const DOODLE_SHAPES = ["crown", "star", "heart", "arrow", "burst", "circle"] as const;
+export type DoodleShape = (typeof DOODLE_SHAPES)[number];
+
+export const OUTLINE_STYLES = ["sketch", "sticker"] as const;
+export type OutlineStyle = (typeof OUTLINE_STYLES)[number];
+export const OUTLINE_STYLE_LABELS: Record<OutlineStyle, string> = {
+  sketch: "Hand-drawn line",
+  sticker: "Sticker",
+};
+
+/** An outline around the speaker, from and to, in seconds. */
+export interface PlacedOutline {
+  start: number;
+  duration: number;
+  /** A hand-drawn line (the toolkit's default) or a thick sticker ring. */
+  style?: OutlineStyle;
+  color?: string;
+}
+
+/** The camera moves the toolkit makes (its zooms). */
+export const ZOOM_STYLES = [
+  "punch",
+  "through",
+  "dolly",
+  "pop",
+  "inset",
+  "paper",
+  "pullout",
+] as const;
+export type ZoomStyle = (typeof ZOOM_STYLES)[number];
+/** The moves the step's punch-ins can use; the rest need a picture or change the whole frame. */
+export const PUNCH_STYLES = ["punch", "through", "dolly"] as const;
+export type PunchStyle = (typeof PUNCH_STYLES)[number];
+export const PUNCH_STYLE_LABELS: Record<PunchStyle, string> = {
+  punch: "Punch in",
+  through: "Push through with a blur",
+  dolly: "Room pushes in behind you",
+};
+
+/** A camera move on the picture. */
+export interface PlacedZoom {
+  start: number;
+  duration: number;
+  scale: number;
+  /** Left out: a punch-in. */
+  style?: ZoomStyle;
+  /** The picture an inset or pull-out sits on. */
+  image?: string;
 }
 
 export interface PlacedSound {
@@ -659,6 +821,8 @@ export interface PlacedSound {
 export interface MotionPlan {
   pieces: PlacedPiece[];
   sounds: PlacedSound[];
+  outlines?: PlacedOutline[];
+  zooms?: PlacedZoom[];
 }
 
 /** Seconds kept between two pieces of the same kind, by how busy the style is. */
@@ -944,8 +1108,15 @@ export function motionRequest(
       ...(piece.subtitle ? { subtitle: piece.subtitle.slice(0, 200) } : {}),
       ...(piece.image ? { image: piece.image } : {}),
       ...(piece.sound !== undefined ? { sound: piece.sound } : {}),
+      ...(piece.layer === "behind" ? { layer: "behind" } : {}),
+      ...(piece.items?.length
+        ? { items: piece.items.slice(0, 6).map((item) => item.slice(0, 60)) }
+        : {}),
+      ...(piece.shape ? { shape: piece.shape } : {}),
     })),
     sounds: plan.sounds,
+    ...(plan.outlines?.length ? { outlines: plan.outlines } : {}),
+    ...(plan.zooms?.length ? { zooms: plan.zooms } : {}),
     style,
     sound_volume: SOUND_VOLUME[level],
     piece_sounds: options.pieceSounds ?? true,
@@ -982,13 +1153,92 @@ export interface MotionStepSettings {
   /** The opening title. Empty uses the name of the file that started the run. */
   title: string;
   sounds: typeof STYLE_SOUNDS | SoundLevel;
+  /** The opening title as big words behind the speaker's head, and keywords behind them too. */
+  behind: boolean;
+  /** An outline around the speaker while pieces sit behind them, or as it opens. */
+  outline: boolean;
+  outlineStyle: OutlineStyle;
+  /** A camera move as each keyword or number lands. */
+  punchIns: boolean;
+  punchStyle: PunchStyle;
 }
 
 export function motionStepSettings(input: Record<string, unknown>): MotionStepSettings {
   const style = getPreset(input.style) ? (input.style as string) : TEAM_STYLE;
   const title = typeof input.title === "string" ? input.title.trim().slice(0, 120) : "";
   const sounds = oneOf([STYLE_SOUNDS, ...SOUND_LEVELS] as const, input.sounds, STYLE_SOUNDS);
-  return { style, title, sounds };
+  return {
+    style,
+    title,
+    sounds,
+    behind: input.behind === true,
+    outline: input.outline === true,
+    outlineStyle: oneOf(OUTLINE_STYLES, input.outlineStyle, "sketch"),
+    punchIns: input.punchIns === true,
+    punchStyle: oneOf(PUNCH_STYLES, input.punchStyle, "punch"),
+  };
+}
+
+/** How long a punch-in holds, and how far in it goes. */
+export const PUNCH_IN = { seconds: 1.2, scale: 1.2 };
+/** How far each step move goes in: a push-through goes into the face, the room pushes in a little. */
+const PUNCH_SCALE: Record<PunchStyle, number> = { punch: PUNCH_IN.scale, through: 2.4, dolly: 1.3 };
+/** How long the outline shows as the video opens when nothing sits behind the speaker. */
+const OUTLINE_OPENING = 3;
+
+/**
+ * The Add Motion Graphics step's own switches laid onto a plan: the opening title becomes big
+ * words behind the speaker and keywords move behind them, a sticker outline rings the speaker
+ * while anything sits behind them, and the picture punches in on keywords and numbers.
+ */
+export function withStepEffects(
+  plan: MotionPlan,
+  settings: Pick<MotionStepSettings, "behind" | "outline" | "punchIns"> &
+    Partial<Pick<MotionStepSettings, "outlineStyle" | "punchStyle">>,
+  duration: number,
+): MotionPlan {
+  const pieces = plan.pieces.map((piece): PlacedPiece => {
+    if (!settings.behind) return piece;
+    if (piece.type === "title") return { ...piece, type: "big_text", layer: "behind" };
+    if (piece.type === "keyword") return { ...piece, layer: "behind" };
+    return piece;
+  });
+  const outlines: PlacedOutline[] = [];
+  if (settings.outline) {
+    const style = settings.outlineStyle ?? "sketch";
+    const behind = pieces.filter((piece) => piece.layer === "behind");
+    if (behind.length > 0) {
+      for (const piece of behind) {
+        outlines.push({ start: piece.start, duration: piece.duration, style });
+      }
+    } else if (duration > 1) {
+      outlines.push({ start: 0, duration: round2(Math.min(OUTLINE_OPENING, duration)), style });
+    }
+  }
+  const move = settings.punchStyle ?? "punch";
+  const zooms: PlacedZoom[] = [];
+  if (settings.punchIns) {
+    let free = 0;
+    for (const piece of pieces) {
+      if (piece.type !== "keyword" && piece.type !== "stat") continue;
+      if (piece.start < free) continue;
+      const length = Math.min(PUNCH_IN.seconds, duration - piece.start);
+      if (length < 0.3) continue;
+      zooms.push({
+        start: piece.start,
+        duration: round2(length),
+        scale: PUNCH_SCALE[move],
+        ...(move === "punch" ? {} : { style: move }),
+      });
+      free = piece.start + length + 0.3;
+    }
+  }
+  return {
+    ...plan,
+    pieces,
+    ...(outlines.length ? { outlines } : {}),
+    ...(zooms.length ? { zooms } : {}),
+  };
 }
 
 export interface SoundStepSettings {
@@ -1161,4 +1411,30 @@ export function motionBeatsFromPicks(
   }
   beats.sort((a, b) => a.start - b.start);
   return { beats, dropped };
+}
+
+/**
+ * What an Add Motion Graphics or Add Sound Effects step says when it found nothing to put on
+ * a video, so the video went on as it was. Names what is missing when the style's pieces
+ * wait on a name or handle no one has set.
+ */
+export function nothingToDrawNote(
+  kind: "motion" | "sound-effects",
+  setup: MotionSetup,
+  videos = 1,
+): string {
+  const which = videos === 1 ? "the video" : "the videos";
+  if (kind === "sound-effects") {
+    return `No sound effect fit ${which}, so ${videos === 1 ? "it" : "they"} went on unchanged.`;
+  }
+  const lead = `Nothing to draw on ${which}, so ${videos === 1 ? "it" : "they"} went on unchanged.`;
+  const wanted = [
+    setup.style.pieces.includes("lower_third") && !setup.hostName.trim() ? "a speaker name" : null,
+    (setup.style.pieces.includes("follow") || setup.style.ending === "follow") &&
+    !setup.handle.trim()
+      ? "a handle"
+      : null,
+  ].filter((one): one is string => one !== null);
+  if (wanted.length === 0) return lead;
+  return `${lead} Add ${wanted.join(" and ")} in Settings, under Motion, for the name and follow cards to show.`;
 }

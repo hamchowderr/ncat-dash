@@ -121,7 +121,7 @@ function ready(wholeAccount = false): boolean {
 /** Back to Settings, saying how the Zoom sign-in went. */
 export function settingsUrl(result: string): string {
   const base = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  return `${base}/settings/zoom?zoom=${encodeURIComponent(result)}`;
+  return `${base}/settings/integrations/zoom?zoom=${encodeURIComponent(result)}`;
 }
 
 function basicAuth(wholeAccount?: boolean): string {
@@ -588,7 +588,7 @@ export const startImport = internalMutation({
       args.meeting.startTime,
       args.meeting.file.extension,
     );
-    const key = `uploads/${crypto.randomUUID()}/${safeName(fileName)}`;
+    const key = `uploads/Zoom/${crypto.randomUUID()}/${safeName(fileName)}`;
     const importId =
       before?._id ??
       (await ctx.db.insert("zoomImports", {

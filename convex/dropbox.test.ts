@@ -170,17 +170,26 @@ beforeEach(() => {
       if (path === "files/list_folder/get_latest_cursor") {
         // A cursor from now on: changes made before it are not handed out.
         pending = pending.filter((one) => !under(body.path, one));
-        return Response.json({ cursor: `watch:${body.path}` });
+        // A folder watched on its own (not the folders inside it) gets a "flat" cursor.
+        return Response.json({ cursor: `watch${body.recursive ? "" : "flat"}:${body.path}` });
       }
       if (path === "files/list_folder/continue") {
         const cursor = String(body.cursor);
         if (cursor === "watch:/stale") {
           return Response.json({ error_summary: "reset/..." }, { status: 409 });
         }
-        const at = cursor.replace(/^watch:/, "").replace(/#\d+$/, "");
-        const mine = pending.filter((one) => under(at, one));
+        const flat = cursor.startsWith("watchflat:");
+        const at = cursor.replace(/^watch(flat)?:/, "").replace(/#\d+$/, "");
+        const mine = pending.filter(
+          (one) =>
+            under(at, one) && (!flat || !(one.path_lower ?? "").slice(at.length + 1).includes("/")),
+        );
         pending = pending.filter((one) => !mine.includes(one));
-        return Response.json({ entries: mine, cursor: `watch:${at}#1`, has_more: false });
+        return Response.json({
+          entries: mine,
+          cursor: `watch${flat ? "flat" : ""}:${at}#1`,
+          has_more: false,
+        });
       }
       if (path === "files/get_temporary_link") {
         if (gone.has(body.path)) {
@@ -266,7 +275,9 @@ async function connect(setup: SetUp, person: Person = setup.owner, account = JOR
 
 /** Runs what is due now, but not the check, hours later, for jobs that never report. */
 async function runScheduled(t: SetUp["t"]) {
-  await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000));
+  // A second at a time, up to about three hours: the pools (lib/pools.ts) check on their
+  // work every minute or so, well before the six-hour give-up.
+  await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000), 10_000);
 }
 
 async function notify(t: SetUp["t"], accounts: string[], secret = SECRET) {
@@ -302,7 +313,7 @@ describe("reading Dropbox", () => {
 
   test("settings for Dropbox are sent as plain ASCII, and folders get sensible names", () => {
     expect(apiArg({ path: "/Café/clip.mp4" })).toBe('{"path":"/Caf\\u00e9/clip.mp4"}');
-    expect(sendFolderOf(undefined, "Weekly / shorts")).toBe("/Kontifi/Weekly - shorts");
+    expect(sendFolderOf(undefined, "Weekly / shorts")).toBe("/Takewon/Weekly - shorts");
     expect(sendFolderOf("/Clients/Acme/", "Weekly shorts")).toBe("/Clients/Acme");
   });
 });
@@ -477,7 +488,8 @@ describe("watching folders", () => {
     expect(links).toContain(
       `https://dl.dropbox.test/${encodeURIComponent("id:/Raw footage/Day 1/Interview.mov")}`,
     );
-    expect(String(toolkitCalls[0].body.filename)).toMatch(new RegExp(`^teams/.+/uploads/`));
+    expect(String(toolkitCalls[0].body.filename)).toMatch(new RegExp(`^teams/.+/uploads/Dropbox/`));
+    for (const one of came) expect(one.key).toMatch(/^uploads\/Dropbox\//);
     // Nothing new: nothing more comes in.
     await notify(setup.t, [JORDAN.account_id]);
     await runScheduled(setup.t);
@@ -607,6 +619,86 @@ describe("files already in watched folders", () => {
   });
 });
 
+describe("reading the whole Dropbox and bringing folders in", () => {
+  test("lists every folder with media right in it, fullest first, with what is new", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    tree.push(
+      file("/Raw footage/a.mp4"),
+      file("/Raw footage/b.mp4"),
+      file("/Raw footage/Day 1/c.wav"),
+      file("/Raw footage/Notes.txt"),
+      file("/Top.png", 40_000),
+      file("/Docs/Plan.pdf"),
+    );
+    const read = await setup.owner.as.action(api.dropbox.scan, { organizationId: setup.team });
+    expect(read.partial).toBe(false);
+    expect(read.folders.map((one) => [one.path, one.name, one.files, one.fresh])).toEqual([
+      ["/Raw footage", "Raw footage", 2, 2],
+      ["/", "Dropbox", 1, 1],
+      ["/Raw footage/Day 1", "Day 1", 1, 1],
+    ]);
+    // The whole Dropbox was read in one listing from the top.
+    const listing = rpcCalls.find((one) => one.path === "files/list_folder");
+    expect(listing?.body).toMatchObject({ path: "", recursive: true });
+  });
+
+  test("ticked folders are watched and what is in them now comes in, nothing else", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    tree.push(
+      folder("/Raw footage"),
+      file("/Raw footage/a.mp4"),
+      file("/Raw footage/b.mp4"),
+      file("/Raw footage/Day 1/c.wav"),
+      file("/Elsewhere/d.mp4"),
+    );
+    const outcome = await setup.owner.as.action(api.dropbox.pullIn, {
+      organizationId: setup.team,
+      paths: ["/Raw footage"],
+    });
+    expect(outcome).toEqual({ watching: 1, started: 2, more: false });
+    await runScheduled(setup.t);
+    expect((await uploads(setup.t)).map((one) => one.fileName).sort()).toEqual(["a.mp4", "b.mp4"]);
+    const shown = await setup.owner.as.query(api.dropbox.forTeam, { organizationId: setup.team });
+    expect(shown?.me?.folders.map((one) => [one.path, one.recursive])).toEqual([
+      ["/Raw footage", false],
+    ]);
+    const read = await setup.owner.as.action(api.dropbox.scan, { organizationId: setup.team });
+    expect(read.folders.find((one) => one.path === "/Raw footage")).toMatchObject({
+      watched: true,
+      fresh: 0,
+    });
+    // Later, a new file right in the folder comes in; one in a folder inside it does not.
+    pending = [file("/Raw footage/e.mp4"), file("/Raw footage/Day 2/f.mp4")];
+    await notify(setup.t, [JORDAN.account_id]);
+    await runScheduled(setup.t);
+    expect((await uploads(setup.t)).map((one) => one.fileName).sort()).toEqual([
+      "a.mp4",
+      "b.mp4",
+      "e.mp4",
+    ]);
+    // Pressing again brings nothing twice.
+    expect(
+      await setup.owner.as.action(api.dropbox.pullIn, {
+        organizationId: setup.team,
+        paths: ["/Raw footage"],
+      }),
+    ).toEqual({ watching: 1, started: 0, more: false });
+  });
+
+  test("a folder that is gone, or someone without Dropbox, is refused", async () => {
+    const setup = await setUp();
+    await connect(setup);
+    await expect(
+      setup.owner.as.action(api.dropbox.pullIn, { organizationId: setup.team, paths: ["/Nope"] }),
+    ).rejects.toThrow(/not in your Dropbox/);
+    await expect(
+      setup.member.as.action(api.dropbox.scan, { organizationId: setup.team }),
+    ).rejects.toThrow(/Connect your Dropbox first/);
+  });
+});
+
 describe("sending finished files to Dropbox", () => {
   async function finishedRun(setup: SetUp, size: number) {
     const automationId = await setup.t.run((ctx) =>
@@ -674,7 +766,7 @@ describe("sending finished files to Dropbox", () => {
       canSwitch: true,
       account: "Jordan Lee",
       mine: true,
-      folder: "/Kontifi/Weekly shorts",
+      folder: "/Takewon/Weekly shorts",
     });
     await expect(
       setup.member.as.mutation(api.dropbox.setSend, { automationId, on: true }),
@@ -699,7 +791,7 @@ describe("sending finished files to Dropbox", () => {
     expect(contentCalls).toHaveLength(1);
     expect(contentCalls[0]).toMatchObject({ path: "files/upload", bytes: 1000, root: null });
     expect(contentCalls[0].arg).toMatchObject({ mode: "add", autorename: true });
-    expect(String(contentCalls[0].arg.path)).toMatch(/^\/Kontifi\/Weekly shorts\/.+\.mp4$/);
+    expect(String(contentCalls[0].arg.path)).toMatch(/^\/Takewon\/Weekly shorts\/.+\.mp4$/);
     const sent = await setup.t.run((ctx) => ctx.db.query("dropboxSends").collect());
     expect(sent[0]).toMatchObject({ status: "done", size: 1000 });
     // Keeping the run's files again does not send them twice.

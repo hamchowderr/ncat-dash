@@ -21,6 +21,15 @@ describe('who a schedule is for', () => {
     expect(ownerOf('user_1')).toEqual({ organizationId: 'team_1', userId: 'user_1' });
   });
 
+  it('is the person, not the team-and-person id the dashboard chat runs under', () => {
+    rememberSession('user_1~team_1', {
+      convexToken: 't',
+      organizationId: 'team_1',
+      automationId: null,
+    });
+    expect(ownerOf('user_1~team_1')).toEqual({ organizationId: 'team_1', userId: 'user_1' });
+  });
+
   it('in Slack or Discord it is the team only, since the thread is not one person', () => {
     rememberSession('channel:slack:C1:1.2', {
       convexToken: 't',

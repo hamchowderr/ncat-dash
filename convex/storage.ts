@@ -24,6 +24,7 @@ import {
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import {
   abortParts,
+  BucketError,
   bucketOf,
   completeParts,
   presign,
@@ -310,7 +311,16 @@ export const listUploads = query({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .order("desc")
       .take(100);
-    return uploads.map((upload) => ({
+    // Each one's place in the library, where its transcript, SRT and VTT are read.
+    const items = await Promise.all(
+      uploads.map((upload) =>
+        ctx.db
+          .query("libraryItems")
+          .withIndex("by_upload", (q) => q.eq("uploadId", upload._id))
+          .first(),
+      ),
+    );
+    return uploads.map((upload, index) => ({
       _id: upload._id,
       _creationTime: upload._creationTime,
       fileName: upload.fileName,
@@ -319,9 +329,32 @@ export const listUploads = query({
       status: upload.status,
       purpose: upload.purpose ?? null,
       source: upload.source ?? null,
+      sourceUrl: upload.sourceUrl ?? null,
       sharedBy: upload.sharedBy ?? null,
       details: upload.details ?? null,
+      libraryItemId: items[index]?._id ?? null,
+      transcript: items[index]?.transcript?.status ?? null,
     }));
+  },
+});
+
+/**
+ * The names of some of the team's uploads, for showing the files settings point at. An
+ * upload that was removed, or never finished, comes back with no name.
+ */
+export const uploadNames = query({
+  args: { organizationId: v.string(), ids: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const names: { id: string; fileName: string | null }[] = [];
+    for (const raw of args.ids.slice(0, 100)) {
+      const id = ctx.db.normalizeId("uploads", raw);
+      const upload = id ? await ctx.db.get(id) : null;
+      const there =
+        upload && upload.organizationId === args.organizationId && upload.status === "ready";
+      names.push({ id: raw, fileName: there ? upload.fileName : null });
+    }
+    return names;
   },
 });
 
@@ -335,7 +368,15 @@ export const linkFor = action({
       organizationId: upload.organizationId,
     });
     if (!storage) throw new ConvexError({ code: "no_storage", message: NO_STORAGE });
-    return await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
+    try {
+      return await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
+    } catch (error) {
+      // The link is made by the toolkit, so a toolkit that is down stops a run here. Say so.
+      if (error instanceof BucketError) {
+        throw new ConvexError({ code: "toolkit", message: error.message });
+      }
+      throw error;
+    }
   },
 });
 
@@ -440,7 +481,11 @@ export const saveDetails = internalMutation({
   handler: async (ctx, args) => {
     const upload = await ctx.db.get(args.uploadId);
     if (!upload) return;
-    await ctx.db.patch(args.uploadId, { details: args.details });
+    await ctx.db.patch(args.uploadId, {
+      details: args.details,
+      // A video from a link comes in before its size is known.
+      ...(upload.size === 0 && args.details.filesize ? { size: args.details.filesize } : {}),
+    });
     // The library's copy goes with it, and the details may say better what kind it is.
     const item = await ctx.db
       .query("libraryItems")
@@ -481,6 +526,10 @@ export const readDetails = internalAction({
       }
     } catch {
       // Details are a help, not a need: the upload is fine without them.
+    }
+    // A video brought in from a link to copy its look is studied now.
+    if (upload.source === "link") {
+      await ctx.runMutation(internal.links.detailsRead, { uploadId: upload._id });
     }
     // A logo or music track is kept for steps to use and never starts an automation.
     if (upload.purpose !== "brand") {

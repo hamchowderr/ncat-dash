@@ -50,6 +50,12 @@ export const BROLL_DEFAULTS: BrollSettings = {
 };
 
 export const MIN_BROLL_SECONDS = 1.5;
+/**
+ * Added to a library file's score when choosing, so the team's own footage wins over stock
+ * that matches about as well. It never lets a weak match in: the threshold is checked
+ * against the real score.
+ */
+export const LIBRARY_PREFERENCE = 0.01;
 export const MAX_BROLL_SECONDS = 8;
 export const MAX_SKIP_OPENING = 60;
 /** The most cutaways laid over one video. */
@@ -123,7 +129,8 @@ const NOT_SHOWN = new Set(
     "times to today too try trying um uh under until up us use used using very want wanted wants " +
     "was way we well went were what whats when where which while who why will with within " +
     "without wont would yeah yes yet you youre your yours yourself yourselves year years week " +
-    "weeks thing guys guy everyone somebody someone"
+    "weeks thing guys guy everyone somebody someone didnt doesnt isnt wasnt arent werent " +
+    "cant couldnt wouldnt shouldnt hasnt havent hadnt youve weve theyve ill youll part bit"
   ).split(" "),
 );
 
@@ -257,17 +264,84 @@ export interface Cutaway {
   from: number;
 }
 
+/** A camera cut this close to a cutaway's edge: the edge moves onto it. */
+export const SNAP_SECONDS = 1;
+/**
+ * A shot of the video no longer than this (a montage shot, a title) is covered whole or
+ * left alone, never cut into: cutting away and back would show the same short shot twice.
+ * A longer shot is a take where the speaker talks, and cutting away from it is the point.
+ */
+export const SHORT_SHOT_SECONDS = MAX_BROLL_SECONDS;
+
+/**
+ * Lines a cutaway up with the video's own camera cuts: an edge near a cut moves onto it,
+ * a cut inside it ends it there, and a short shot is covered whole or not at all. Null
+ * when it does not fit. Without cuts, the span as it was.
+ */
+export function fitToShots(
+  span: Span,
+  cuts: number[],
+  limits: { earliest: number; latest: number; duration: number; longest: number },
+): Span | null {
+  if (cuts.length === 0) return span;
+  const edges = [0, ...cuts.filter((cut) => cut > 0 && cut < limits.duration), limits.duration];
+  const shotAt = (time: number) => {
+    const end = edges.find((edge) => edge > time + 0.05) ?? limits.duration;
+    const start = [...edges].reverse().find((edge) => edge <= time + 0.05) ?? 0;
+    return { start, end };
+  };
+  let { start, end } = span;
+  const length = end - start;
+  let shot = shotAt(start);
+  if (start - shot.start <= SNAP_SECONDS && shot.start >= limits.earliest) {
+    end -= start - shot.start;
+    start = shot.start;
+  }
+  if (shot.end < end - 0.05) {
+    // The video cuts during the cutaway: end with it, or begin with it when too little
+    // would be left before it.
+    if (shot.end - start >= MIN_BROLL_SECONDS) end = shot.end;
+    else {
+      start = shot.end;
+      shot = shotAt(start);
+      end = Math.min(start + length, shot.end, limits.latest);
+    }
+  }
+  if (shot.end - end <= SNAP_SECONDS && shot.end - start <= limits.longest) {
+    end = Math.min(shot.end, limits.latest);
+  }
+  const before = start > shot.start + 0.05;
+  const after = end < shot.end - 0.05;
+  if (before && after && shot.end - shot.start <= SHORT_SHOT_SECONDS) {
+    // Inside a short shot: cover all of it, or leave it be.
+    if (
+      shot.end - shot.start > limits.longest ||
+      shot.start < limits.earliest ||
+      shot.end > limits.latest + 0.5
+    )
+      return null;
+    start = shot.start;
+    end = Math.min(shot.end, limits.latest);
+  }
+  if (end - start < MIN_BROLL_SECONDS) return null;
+  return { start, end };
+}
+
+/** A footage's score when choosing: the library a little ahead of stock. */
+const rankOf = (one: Footage) => one.score + (one.kind === "library" ? LIBRARY_PREFERENCE : 0);
+
 /**
  * Chooses the cutaways: the best match for each moment, if it is good enough, then the
  * strongest first, kept only where it fits (after the opening, not over another cutaway
  * or anything in `avoid`, with the gap the settings ask for), and no piece of footage
- * twice. Returned in time order.
+ * twice. With the video's camera `cuts`, each is lined up with its shots (`fitToShots`).
+ * Returned in time order.
  */
 export function chooseCutaways(
   moments: BrollMoment[],
   footage: Footage[][],
   settings: BrollSettings,
-  options: { duration: number; avoid?: Span[]; threshold?: number },
+  options: { duration: number; avoid?: Span[]; threshold?: number; cuts?: number[] },
 ): Cutaway[] {
   const threshold = options.threshold ?? BROLL_THRESHOLDS[settings.match];
   const gap = BROLL_GAPS[settings.often];
@@ -276,11 +350,22 @@ export function chooseCutaways(
   moments.forEach((moment, index) => {
     const ranked = (footage[index] ?? [])
       .filter((one) => one.score >= threshold && one.duration >= MIN_BROLL_SECONDS)
-      .sort((a, b) => b.score - a.score);
+      .sort((a, b) => rankOf(b) - rankOf(a));
     for (const one of ranked) {
-      const start = Math.max(moment.start, settings.skipOpening);
+      const first = Math.max(moment.start, settings.skipOpening);
       const length = Math.min(settings.seconds, one.duration);
-      const end = Math.min(start + length, latest);
+      const fitted = fitToShots(
+        { start: first, end: Math.min(first + length, latest) },
+        options.cuts ?? [],
+        {
+          earliest: settings.skipOpening,
+          latest,
+          duration: options.duration,
+          longest: Math.min(one.duration, MAX_BROLL_SECONDS),
+        },
+      );
+      if (!fitted) continue;
+      const { start, end } = fitted;
       if (end - start < MIN_BROLL_SECONDS) continue;
       // Centre the footage on its best moment, inside the footage.
       const span = end - start;
@@ -295,7 +380,7 @@ export function chooseCutaways(
       });
     }
   });
-  candidates.sort((a, b) => b.footage.score - a.footage.score);
+  candidates.sort((a, b) => rankOf(b.footage) - rankOf(a.footage));
 
   const kept: Cutaway[] = [];
   const used = new Set<string>();
@@ -414,8 +499,18 @@ export function cutawaySummary(cutaways: Cutaway[]): string {
 }
 
 /**
+ * How much of the frame a face covers, at least, to count as someone on camera. A person
+ * in a medium shot (waist up, 720p) covers about 2.5%; faces in a crowd or a wide shot
+ * stay under 1%.
+ */
+export const ON_CAMERA_FACE = 0.012;
+/** Share of a file's frames with someone on camera that makes it a talking head. */
+export const ON_CAMERA_SHARE = 0.4;
+
+/**
  * Whether a library file looks like B-Roll rather than a talking head: a short video in
- * which faces stay small and little is said. A person can say otherwise on the file.
+ * which nobody is on camera most of the time, faces stay small and little is said. A
+ * person can say otherwise on the file.
  */
 export function looksLikeBroll(file: {
   duration: number;
@@ -428,6 +523,8 @@ export function looksLikeBroll(file: {
   const faces = [...file.faces].sort((a, b) => a - b);
   const middle = faces.length ? faces[Math.floor(faces.length / 2)] : 0;
   if (middle > 0.06) return false;
+  const onCamera = faces.filter((face) => face >= ON_CAMERA_FACE).length;
+  if (faces.length && onCamera / faces.length >= ON_CAMERA_SHARE) return false;
   const perMinute = ((file.spokenWords ?? 0) / file.duration) * 60;
   return perMinute < 40;
 }

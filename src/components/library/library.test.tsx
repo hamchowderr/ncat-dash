@@ -152,17 +152,18 @@ describe("the Library page", () => {
     expect(mutationOf(api.library.setRating)).toHaveBeenCalledWith({ itemId: "i1", rating: 5 });
   });
 
-  test("offers to make the videos and sounds that are not searchable yet", async () => {
-    actionOf(api.library.makeSearchable).mockResolvedValue(2);
+  test("offers to transcribe what automations made, never what was brought in", async () => {
+    actionOf(api.library.makeSearchable).mockResolvedValue(1);
     renderInApp(<LibraryView />);
-    fireEvent.click(screen.getByRole("button", { name: "Make 2 files searchable" }));
+    // The clip (made by an automation) is offered; the uploaded theme is caught up by itself.
+    fireEvent.click(screen.getByRole("button", { name: "Transcribe 1 file" }));
     await waitFor(() =>
       expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
         organizationId: "team_1",
-        itemIds: ["i2", "i3"],
+        itemIds: ["i2"],
       }),
     );
-    expect(toastSuccess).toHaveBeenCalledWith("2 files are being transcribed on your toolkit.");
+    expect(toastSuccess).toHaveBeenCalledWith("1 file is being transcribed on your toolkit.");
   });
 
   test("the setting for new files is the owners' and admins'", () => {
@@ -230,6 +231,88 @@ describe("a library file", () => {
     expect(within(screen.getByTestId("transcript")).getAllByRole("button")).toHaveLength(2);
   });
 
+  test("shows the words as SRT or VTT, ready to copy", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      pieces: [
+        {
+          start: 0,
+          end: 1.6,
+          text: "Welcome back everyone.",
+          words: [
+            { t: "Welcome", s: 0, e: 0.5 },
+            { t: "back", s: 0.6, e: 0.9 },
+            { t: "everyone.", s: 1, e: 1.6 },
+          ],
+        },
+        { start: 751, end: 754, text: "Let's talk about pricing." },
+      ],
+    });
+    const user = userEvent.setup();
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    await user.click(screen.getByRole("radio", { name: "SRT" }));
+    const srt = screen.getByTestId("subtitle-text");
+    expect(srt.textContent).toBe(
+      "1\n00:00:00,000 --> 00:00:01,600\nWelcome back everyone.\n\n" +
+        "2\n00:12:31,000 --> 00:12:34,000\nLet's talk about pricing.\n",
+    );
+    // Finding words is for reading the transcript, not the file.
+    expect(screen.queryByLabelText("Find in what was said")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "VTT" }));
+    expect(screen.getByTestId("subtitle-text").textContent).toMatch(
+      /^WEBVTT\n\n00:00:00\.000 --> 00:00:01\.600\nWelcome back everyone\./,
+    );
+    expect(screen.getByRole("button", { name: "Copy WebVTT" })).toBeTruthy();
+    await user.click(screen.getByRole("radio", { name: "Transcript" }));
+    expect(screen.getByTestId("transcript")).toBeTruthy();
+  });
+
+  test("downloads the words as SRT, WebVTT or plain text, named after the file", async () => {
+    const saved: { name: string; type: string; text: string }[] = [];
+    const created = URL.createObjectURL;
+    const revoked = URL.revokeObjectURL;
+    let last: Blob | null = null;
+    URL.createObjectURL = (blob: Blob) => {
+      last = blob;
+      return "blob:transcript";
+    };
+    URL.revokeObjectURL = () => {};
+    const click = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      const blob = last!;
+      saved.push({ name: this.download, type: blob.type, text: "" });
+    };
+    try {
+      const user = userEvent.setup();
+      renderInApp(<LibraryItemView itemId={"i1" as never} />);
+      for (const label of [
+        "SRT subtitles (.srt)",
+        "WebVTT subtitles (.vtt)",
+        "Plain text (.txt)",
+      ]) {
+        await user.click(screen.getByRole("button", { name: "Download" }));
+        await user.click(await screen.findByRole("menuitem", { name: label }));
+      }
+    } finally {
+      URL.createObjectURL = created;
+      URL.revokeObjectURL = revoked;
+      HTMLAnchorElement.prototype.click = click;
+    }
+    expect(saved.map((one) => [one.name, one.type])).toEqual([
+      ["Episode 4.srt", "application/x-subrip;charset=utf-8"],
+      ["Episode 4.vtt", "text/vtt;charset=utf-8"],
+      ["Episode 4.txt", "text/plain;charset=utf-8"],
+    ]);
+  });
+
+  test("no SRT or download until there are words", () => {
+    answerQuery(api.library.get, { ...DETAIL, searchable: "working", pieces: [] });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.queryByRole("radio", { name: "SRT" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+    expect(screen.getByText(/The words, SRT and VTT show here when it is done/)).toBeTruthy();
+  });
+
   test("a moment in what was said plays the file from there", async () => {
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
     const player = (await screen.findByTestId("library-player")) as HTMLVideoElement;
@@ -273,11 +356,56 @@ describe("a library file", () => {
     expect(mutationOf(api.library.setTags)).toHaveBeenLastCalledWith({ itemId: "i1", tags: [] });
   });
 
-  test("a file that is not searchable yet offers to be", async () => {
+  test("an uploaded file without words yet is on its way, with nothing to press", () => {
     answerQuery(api.library.get, { ...DETAIL, searchable: "no", pieces: [] });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.getByText(/Being transcribed on your toolkit/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Transcribe" })).toBeNull();
+  });
+
+  test("an uploaded video has its storyboard below, drafted from what was said", () => {
+    answerQuery(api.library.get, DETAIL);
+    answerQuery(api.storyboards.forUpload, null);
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    const board = screen.getByRole("region", { name: "Storyboard" });
+    expect(board.textContent).toContain("a line for every sentence, each with its own clip");
+  });
+
+  test("a file an automation made has no storyboard of its own", () => {
+    answerQuery(api.library.get, { ...DETAIL, source: "automation" });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.queryByRole("region", { name: "Storyboard" })).toBeNull();
+  });
+
+  test("a failed transcript can be tried again", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      searchable: "failed",
+      transcriptError: "No sound.",
+      pieces: [],
+    });
     actionOf(api.library.makeSearchable).mockResolvedValue(1);
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
-    fireEvent.click(screen.getByRole("button", { name: "Make searchable" }));
+    expect(screen.getByText("The last try did not work: No sound.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() =>
+      expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
+        organizationId: "team_1",
+        itemIds: ["i1"],
+      }),
+    );
+  });
+
+  test("a file an automation made can be transcribed by hand", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      source: "automation",
+      searchable: "no",
+      pieces: [],
+    });
+    actionOf(api.library.makeSearchable).mockResolvedValue(1);
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    fireEvent.click(screen.getByRole("button", { name: "Transcribe" }));
     await waitFor(() =>
       expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
         organizationId: "team_1",

@@ -3,8 +3,10 @@
 import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
 import { Inbox, Mail } from "lucide-react";
+import type { ComponentType, SVGProps } from "react";
 import { toast } from "sonner";
 
+import { DiscordLogo, MicrosoftTeamsLogo, SlackLogo, TelegramLogo } from "@/components/brand-logos";
 import {
   Select,
   SelectContent,
@@ -26,8 +28,20 @@ type Kind =
   | "approval_timed_out"
   | "mention"
   | "client_feedback"
-  | "ready_for_review";
-type Channel = "bell" | "email";
+  | "ready_for_review"
+  | "clip_finished"
+  | "footage_problem"
+  | "rights_ending";
+type ChatApp = "telegram" | "slack" | "discord" | "teams";
+type Channel = "bell" | "email" | ChatApp;
+
+/** Each chat app's column: its name and mark. A column shows once the person linked it. */
+const CHAT_APPS: Record<ChatApp, { name: string; Logo: ComponentType<SVGProps<SVGSVGElement>> }> = {
+  telegram: { name: "Telegram", Logo: TelegramLogo },
+  slack: { name: "Slack", Logo: SlackLogo },
+  discord: { name: "Discord", Logo: DiscordLogo },
+  teams: { name: "Teams", Logo: MicrosoftTeamsLogo },
+};
 
 /** "8 AM", "12 PM", in the reader's own way of writing times. */
 export function hourLabel(hour: number): string {
@@ -45,8 +59,8 @@ function browserZone(): string | undefined {
 
 /**
  * Each member's own notification settings on this team: for every kind of news, whether
- * it shows in the Inbox and whether it is emailed, and whether emails come as they
- * happen or as one summary a day.
+ * it shows in the Inbox, is emailed, and goes to each chat app they linked, and whether
+ * emails come as they happen or as one summary a day.
  */
 export function NotificationsCard() {
   const team = useActiveTeam();
@@ -78,6 +92,8 @@ export function NotificationsCard() {
   }
 
   const daily = settings.emailTiming === "daily";
+  const apps = (settings.chatApps ?? []) as ChatApp[];
+  const columns = `1fr repeat(${2 + apps.length}, 3.5rem)`;
   const anyEmail = settings.kinds.some((entry) => entry.email);
 
   return (
@@ -85,7 +101,8 @@ export function NotificationsCard() {
       <div role="table" aria-label="What you hear about" className="flex flex-col">
         <div
           role="row"
-          className="text-muted-foreground grid grid-cols-[1fr_3.5rem_3.5rem] items-end gap-2 pb-2 text-xs font-medium"
+          className="text-muted-foreground grid items-end gap-2 pb-2 text-xs font-medium"
+          style={{ gridTemplateColumns: columns }}
         >
           <span role="columnheader">When</span>
           <span role="columnheader" className="flex flex-col items-center gap-1">
@@ -96,13 +113,28 @@ export function NotificationsCard() {
             <Mail className="size-4" aria-hidden="true" />
             Email
           </span>
+          {apps.map((app) => {
+            const { name, Logo } = CHAT_APPS[app];
+            return (
+              <span
+                key={app}
+                role="columnheader"
+                className="flex flex-col items-center gap-1"
+                data-chat-app={app}
+              >
+                <Logo className="size-4" />
+                {name}
+              </span>
+            );
+          })}
         </div>
         {settings.kinds.map((entry) => (
           <div
             role="row"
             key={entry.kind}
             data-notification={entry.kind}
-            className="grid grid-cols-[1fr_3.5rem_3.5rem] items-center gap-2 py-2.5"
+            className="grid items-center gap-2 py-2.5"
+            style={{ gridTemplateColumns: columns }}
           >
             <span role="cell" className="flex min-w-0 flex-col gap-0.5">
               <span className="text-sm font-medium">{entry.title}</span>
@@ -127,6 +159,15 @@ export function NotificationsCard() {
                 aria-label={`${entry.title}: by email`}
               />
             </span>
+            {apps.map((app) => (
+              <span key={app} role="cell" className="flex justify-center">
+                <Switch
+                  checked={entry[app]}
+                  onCheckedChange={(enabled) => onToggle(entry.kind, app, enabled)}
+                  aria-label={`${entry.title}: in ${CHAT_APPS[app].name}`}
+                />
+              </span>
+            ))}
           </div>
         ))}
       </div>

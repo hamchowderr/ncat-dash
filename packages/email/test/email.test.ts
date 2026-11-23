@@ -1,43 +1,52 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkKey,
   domainOf,
   invitationEmail,
   isEmailAddress,
   passwordResetEmail,
+  emailChangeEmail,
+  passwordChangedEmail,
   approvalTimedOutEmail,
   approvalWaitingEmail,
   clientFeedbackEmail,
   digestEmail,
   mentionEmail,
   readyForReviewEmail,
+  clipFinishedEmail,
+  rightsEndingEmail,
   runFailedEmail,
   sendEmail,
   senderProblem,
   verificationEmail,
 } from "../src";
 
-const branding = { appName: "Kontifi" };
+const branding = { appName: "Takewon" };
 
+// The official toSend SDK calls the global fetch, so the tests stand in for it there.
 function answer(status: number, body: unknown) {
   const calls: { url: string; init: RequestInit }[] = [];
   const fake = (async (url: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(url), init: init ?? {} });
-    return new Response(JSON.stringify(body), { status });
+    return new Response(typeof body === "string" ? body : JSON.stringify(body), { status });
   }) as typeof fetch;
+  vi.stubGlobal("fetch", fake);
   return { fake, calls };
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const message = { to: "jane@example.com", subject: "Hi", text: "Hello", html: "<p>Hello</p>" };
 
 describe("toSend client", () => {
   it("sends in the shape toSend asks for", async () => {
-    const { fake, calls } = answer(200, { message_id: "abc" });
+    const { calls } = answer(200, { message_id: "abc" });
     const result = await sendEmail(
       "tsend_key",
       { email: "alerts@acme.com", name: "Acme" },
       message,
-      { fetch: fake },
     );
     expect(result).toEqual({ ok: true, messageId: "abc" });
     expect(calls[0].url).toBe("https://api.tosend.com/v2/emails");
@@ -65,7 +74,7 @@ describe("toSend client", () => {
     ];
     for (const [status, text, reason] of cases) {
       const { fake } = answer(status, { status_code: status, message: text });
-      const result = await sendEmail("k", { email: "a@acme.com" }, message, { fetch: fake });
+      const result = await sendEmail("k", { email: "a@acme.com" }, message);
       expect(result).toMatchObject({ ok: false, status, reason, detail: text });
     }
   });
@@ -74,25 +83,55 @@ describe("toSend client", () => {
     const down = (async () => {
       throw new Error("connect ECONNREFUSED");
     }) as unknown as typeof fetch;
-    expect(await sendEmail("k", { email: "a@acme.com" }, message, { fetch: down })).toMatchObject({
+    vi.stubGlobal("fetch", down);
+    expect(await sendEmail("k", { email: "a@acme.com" }, message)).toMatchObject({
       ok: false,
       reason: "unreachable",
     });
-    expect(await checkKey("k", { fetch: down })).toMatchObject({
+    expect(await checkKey("k")).toMatchObject({
       ok: false,
       reason: "unreachable",
     });
   });
 
+  it("treats a gateway page that is not JSON as toSend being unreachable", async () => {
+    answer(502, "<html>Bad gateway</html>");
+    expect(await sendEmail("k", { email: "a@acme.com" }, message)).toMatchObject({
+      ok: false,
+      reason: "unreachable",
+    });
+  });
+
+  it("gives up on a toSend that does not answer in time", async () => {
+    vi.stubGlobal(
+      "fetch",
+      ((_url: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          );
+        })) as unknown as typeof fetch,
+    );
+    expect(await sendEmail("k", { email: "a@acme.com" }, message, { timeoutMs: 20 })).toMatchObject(
+      { ok: false, status: 0, reason: "unreachable" },
+    );
+  });
+
+  it("sends to the address it is given instead of toSend's own", async () => {
+    const { calls } = answer(200, { message_id: "x" });
+    await sendEmail("k", { email: "a@acme.com" }, message, { baseUrl: "https://mail.test" });
+    expect(calls[0].url).toBe("https://mail.test/v2/emails");
+  });
+
   it("checks a key and lists its sending domains", async () => {
-    const { fake, calls } = answer(200, {
+    const { calls } = answer(200, {
       account: { status: "active" },
       domains: [
         { domain_name: "Acme.com", verification_status: "verified" },
         { domain_name: "new.acme.com", verification_status: "pending" },
       ],
     });
-    const result = await checkKey("tsend_key", { fetch: fake });
+    const result = await checkKey("tsend_key");
     expect(calls[0].url).toBe("https://api.tosend.com/v2/info");
     expect(result).toEqual({
       ok: true,
@@ -101,8 +140,8 @@ describe("toSend client", () => {
         { name: "new.acme.com", verified: false },
       ],
     });
-    const bad = answer(401, { status_code: 401, message: "Invalid API key" });
-    expect(await checkKey("nope", { fetch: bad.fake })).toMatchObject({
+    answer(401, { status_code: 401, message: "Invalid API key" });
+    expect(await checkKey("nope")).toMatchObject({
       ok: false,
       reason: "unauthorized",
     });
@@ -132,6 +171,21 @@ describe("messages", () => {
     expect(reset.html).not.toContain("<b>Jane</b>");
     expect(reset.html).toContain("&lt;b&gt;Jane&lt;/b&gt;");
     expect(verificationEmail({ url }, branding).text).toContain(url);
+  });
+
+  it("names the new address on an address change, and links back on a password change", () => {
+    const url = "https://dash.example.com/api/auth/verify-email?token=t";
+    const change = emailChangeEmail({ name: "Jane", newEmail: "new@<x>.com", url }, branding);
+    expect(change.subject).toBe("Approve your new email address");
+    expect(change.text).toContain("new@<x>.com");
+    expect(change.html).toContain("new@&lt;x&gt;.com");
+    expect(change.text).toContain(url);
+    const changed = passwordChangedEmail(
+      { url: "https://dash.example.com/forgot-password" },
+      branding,
+    );
+    expect(changed.subject).toBe("Your password was changed");
+    expect(changed.text).toContain("https://dash.example.com/forgot-password");
   });
 
   it("keeps line breaks out of subjects", () => {
@@ -234,6 +288,41 @@ describe("messages", () => {
     expect(ready.text).toContain("Dev Patel added a new version");
     expect(ready.text).toContain("https://dash.example.com/review/r?clip=c");
     expect(ready.html).toContain("Episode &lt;12&gt;");
+  });
+
+  it("says a run finished, how many files it made, and links to the run", () => {
+    const done = clipFinishedEmail(
+      {
+        teamName: "Salt House",
+        automationName: "Shorts <daily>",
+        summary: "3 new files are ready in Files.",
+        runUrl: "https://dash.example.com/automations/a/runs/r",
+        settingsUrl: "https://dash.example.com/settings/notifications",
+      },
+      branding,
+    );
+    expect(done.subject).toBe("New files from Shorts <daily>");
+    expect(done.text).toContain("3 new files are ready in Files. In Salt House.");
+    expect(done.text).toContain("https://dash.example.com/automations/a/runs/r");
+    expect(done.html).toContain("Shorts &lt;daily&gt;");
+  });
+
+  it("warns that a creator's rights for a client end soon, and links to the creator", () => {
+    const ending = rightsEndingEmail(
+      {
+        teamName: "Salt House",
+        creator: "Ana <Ruiz>",
+        client: "Acme",
+        summary: "The last day you may use their footage is in 7 days, on Saturday, November 28.",
+        creatorsUrl: "https://dash.example.com/creators/c1",
+        settingsUrl: "https://dash.example.com/settings/notifications",
+      },
+      branding,
+    );
+    expect(ending.subject).toBe("Ana <Ruiz>'s rights for Acme end soon");
+    expect(ending.text).toContain("in 7 days, on Saturday, November 28. In Salt House.");
+    expect(ending.text).toContain("https://dash.example.com/creators/c1");
+    expect(ending.html).toContain("Ana &lt;Ruiz&gt;");
   });
 
   it("tells a person they were mentioned, quoting the comment, escaped", () => {

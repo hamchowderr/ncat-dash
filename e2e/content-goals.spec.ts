@@ -38,9 +38,12 @@ test("a coach is asked what they make and their first upload starts the fitting 
   await page.getByRole("button", { name: "LinkedIn" }).click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 
-  // The two that fit a coach, ticked, then switched on.
+  // The two that fit a coach, ticked, each with what goes well after it, then switched on.
   await expect(page.getByRole("heading", { name: "Switch these on" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /Coaching session pack/ })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: /Brand Every Clip/ })).toBeChecked();
+  await expect(page.getByText("Runs after Coaching session pack")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Clips From The Episode/ })).toBeChecked();
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const sideways = await page.evaluate(
@@ -49,7 +52,7 @@ test("a coach is asked what they make and their first upload starts the fitting 
     expect(sideways, `the page scrolls sideways at ${width}`).toBe(false);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByRole("button", { name: "Switch on 2 automations" }).click();
+  await page.getByRole("button", { name: "Switch on 4 automations" }).click();
 
   // The first upload goes in and starts them.
   await expect(page.getByRole("heading", { name: "Upload your first recording" })).toBeVisible();
@@ -67,8 +70,10 @@ test("a coach is asked what they make and their first upload starts the fitting 
   await page.getByRole("button", { name: /Go to the dashboard/ }).click();
   await expect(page).toHaveURL(/\/$/);
   // Setting up ends with the tour of the dashboard (e2e/tour.spec.ts walks it).
-  await expect(page.getByRole("dialog")).toContainText("Welcome to Kontifi");
-  await page.getByRole("button", { name: "Close the tour" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Welcome to Takewon");
+  // Escape closes it wherever the card sits; it moves while Home settles on a slow machine.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-tour-card]")).toHaveCount(0);
   // Answered, so Home no longer asks; the agent now makes clips for these by default.
   await expect(page.getByRole("link", { name: /Tell us what you make/ })).toHaveCount(0);
   await page.goto("/settings/agent");
@@ -117,7 +122,7 @@ test("someone without a toolkit skips every toolkit field, sets up, and connects
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Instagram" }).click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("button", { name: "Switch on 2 automations" }).click();
+  await page.getByRole("button", { name: "Switch on 4 automations" }).click();
 
   // Nowhere to upload to yet, so the last screen says what comes next.
   await expect(
@@ -127,8 +132,10 @@ test("someone without a toolkit skips every toolkit field, sets up, and connects
   await expect(page.getByText(/Coaching session pack/).first()).toBeVisible();
   await page.getByRole("button", { name: /Go to the dashboard/ }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("dialog")).toContainText("Welcome to Kontifi");
-  await page.getByRole("button", { name: "Close the tour" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Welcome to Takewon");
+  // Escape closes it wherever the card sits; it moves while Home settles on a slow machine.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("[data-tour-card]")).toHaveCount(0);
 
   // Home still offers the toolkit, and that link goes straight to the form.
   await page

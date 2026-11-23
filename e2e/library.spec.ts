@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, pick, test } from "./test";
 
 // The content library, in a real browser: an uploaded video joins it with a short ID, is
@@ -37,13 +39,41 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   await expect(tile.getByText("V1", { exact: true })).toBeVisible();
   await expect(tile.getByText(/Uploaded/)).toBeVisible();
 
-  // Made searchable: transcribed on the toolkit.
-  await page.getByRole("button", { name: "Make 1 file searchable" }).click();
+  // Transcribed on the toolkit as it came in: nothing to press.
+  await expect(page.getByRole("button", { name: /Transcribe 1 file/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Open V1 clip" }).click();
   const said = page.getByTestId("transcript");
   await expect(said.getByText("Today we talk about pricing your edits.")).toBeVisible({
     timeout: 30_000,
   });
+
+  // A storyboard drafted from it: a line for every sentence, each with its own clip.
+  const storyboard = page.getByRole("region", { name: "Storyboard" });
+  await expect(storyboard.getByText("Today we talk about pricing your edits.")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(storyboard.getByText(/1 chapter · 2 takes/)).toBeVisible();
+  await storyboard.getByRole("button", { name: /Take 1/ }).click();
+  await expect(storyboard.getByText(/From the upload, 0:00 to 0:0\d/)).toBeVisible();
+
+  // The same words as SRT and VTT, to read, copy or download.
+  await page.getByRole("radio", { name: "SRT" }).click();
+  const subtitles = page.getByTestId("subtitle-text");
+  await expect(subtitles).toContainText(
+    "1\n00:00:00,000 --> 00:00:02,400\nWelcome back to the station.",
+  );
+  await expect(subtitles).toContainText("00:00:02,500 --> ");
+  await page.getByRole("radio", { name: "VTT" }).click();
+  await expect(subtitles).toContainText(/^WEBVTT/);
+  await page.getByRole("button", { name: "Download" }).click();
+  const saving = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "SRT subtitles (.srt)" }).click();
+  const download = await saving;
+  expect(download.suggestedFilename()).toBe("clip.srt");
+  expect(await readFile((await download.path())!, "utf8")).toContain(
+    "Today we talk about pricing your edits.",
+  );
+  await page.getByRole("radio", { name: "Transcript" }).click();
 
   // Tags and stars, kept.
   await page.getByLabel("Add a tag").fill("pricing, behind the scenes");

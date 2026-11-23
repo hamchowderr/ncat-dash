@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
-import { finishPlacing, isMotionKind } from "./lib/motion";
+import { finishPlacing, isPlaceKind } from "./lib/motion";
 import { heardFrom, MAX_WORDS, wordsFor } from "./lib/moments";
 import { advance, failStep } from "./lib/runner";
 import { readWordsFile } from "./moments";
@@ -23,7 +23,7 @@ export const loadPlace = internalQuery({
     const run = await ctx.db.get(step.runId);
     if (!run || (run.status !== "running" && run.status !== "waiting")) return null;
     const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
-    if (!node || !isMotionKind(node.kind)) return null;
+    if (!node || !isPlaceKind(node.kind)) return null;
     const jobs = (await Promise.all(step.jobIds.map((id) => ctx.db.get(id)))).filter(
       (job) => job !== null,
     );

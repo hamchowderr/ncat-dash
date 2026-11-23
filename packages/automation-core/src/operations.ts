@@ -18,7 +18,25 @@ import {
 } from "./registry";
 import { scheduleProblem } from "./schedule";
 import { followProblem } from "./chain";
+import { JOIN_MODES, type JoinMode } from "./join";
 import type { StarterTrigger } from "./starters";
+import {
+  addTrigger,
+  FIRST_TRIGGER,
+  isTriggerId,
+  MAX_TRIGGERS,
+  type MoreTrigger,
+  removeTrigger,
+  replaceTrigger,
+  setTriggerStarts,
+  startsByTrigger,
+  startsOf,
+  startSteps,
+  tidyTriggers,
+  triggersOf,
+  triggersProblem,
+  triggersStarting,
+} from "./triggers";
 import {
   fileFields,
   referencedSteps,
@@ -30,7 +48,12 @@ import {
 
 export interface AutomationDraft {
   name: string;
+  /** The first trigger. An automation can have more; see triggers.ts. */
   trigger: StarterTrigger;
+  /** Any triggers after the first, each with the steps it starts. */
+  moreTriggers?: MoreTrigger[];
+  /** Which first steps the first trigger starts; left out, all that no other trigger starts. */
+  triggerStarts?: string[];
   nodes: AutomationNode[];
   edges: AutomationEdge[];
 }
@@ -70,6 +93,12 @@ export type Operation =
    */
   | { op: "use"; id: string; field: string; from: string }
   | { op: "rename"; id: string; label: string }
+  /**
+   * How a step treats files when two or more lines meet at it: "all" (wait for every line,
+   * then use every file; the default), "source" (pair files from the same upload),
+   * "position" (pair files in order) or "first" (use whichever line finishes first).
+   */
+  | { op: "meet"; id: string; mode: JoinMode }
   /** Turns a step off (its files go straight on) or back on. */
   | { op: "switch"; id: string; on: boolean }
   /**
@@ -82,7 +111,16 @@ export type Operation =
    * (by `branch`, for an If); without, it starts straight from the start.
    */
   | { op: "paste"; steps: StepsOnClipboard; after?: string; branch?: string }
-  | { op: "trigger"; trigger: StarterTrigger }
+  /** Changes a trigger: the first one, or the one with `id`. */
+  | { op: "trigger"; trigger: StarterTrigger; id?: string }
+  /**
+   * Adds another trigger. It starts nothing until a step is added after it (`add` with
+   * `after` set to its id) or it is connected to a step nothing else feeds (`connect`).
+   * With `starts`, it starts those steps straight away. New ids are "__trigger_2" and up.
+   */
+  | { op: "addTrigger"; trigger: StarterTrigger; starts?: string[] }
+  /** Removes a trigger. Removing the first one makes the next one the first. */
+  | { op: "removeTrigger"; id: string }
   | { op: "name"; name: string }
   /** Lays the steps out left to right. */
   | { op: "tidy" };
@@ -367,9 +405,13 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
   }
   // "after the trigger" is what a step with no `after` already does, so take it that way
   // rather than as a step called "trigger" (unless there really is one).
-  const afterTrigger =
-    (op.after === "trigger" || op.after === "__trigger") &&
+  const afterFirst =
+    (op.after === "trigger" || op.after === FIRST_TRIGGER) &&
     !draft.nodes.some((node) => node.id === op.after);
+  const afterTrigger = afterFirst || (op.after !== undefined && isTriggerId(op.after));
+  if (afterTrigger && !afterFirst) needTrigger(draft, op.after!);
+  // Which trigger starts the new step, when it comes straight after one.
+  const startedBy = afterTrigger ? (afterFirst ? FIRST_TRIGGER : op.after!) : undefined;
   const after = op.after && !afterTrigger ? need(draft, op.after) : undefined;
   const before = op.before ? need(draft, op.before) : undefined;
   const taken = op.id && draft.nodes.some((node) => node.id === op.id);
@@ -412,8 +454,18 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
         : branch === FAILURE_WAY
           ? ROW_GAP
           : (branch === "no" ? 1 : -1) * (ROW_GAP / 2);
+    const triggerSteps =
+      startedBy && hasOtherTriggers(draft)
+        ? startsOf(draft, startedBy).map((other) => need(draft, other))
+        : [];
     if (after) {
       position = { x: after.position.x + NODE_GAP, y: after.position.y + lift };
+    } else if (triggerSteps.length > 0) {
+      // Below the other steps this trigger starts.
+      position = {
+        x: Math.min(...triggerSteps.map((node) => node.position.x)),
+        y: Math.max(...triggerSteps.map((node) => node.position.y)) + ROW_GAP,
+      };
     } else if (nodes.length === 0) {
       position = { x: 0, y: 0 };
     } else {
@@ -452,7 +504,98 @@ function add(draft: AutomationDraft, op: Extract<Operation, { op: "add" }>): Aut
   };
   const problem = joined.length > 0 ? graphProblem([...nodes, node], edges) : null;
   if (problem) throw new OperationError(problem);
+  const several = hasOtherTriggers(draft) || draft.triggerStarts !== undefined;
+  if (several && before && !after && !draft.edges.some((edge) => edge.target === before.id)) {
+    // Put in front of a step a trigger starts: the new step is started by its triggers.
+    const inherit = triggersStarting(draft, before.id);
+    let next: AutomationDraft = {
+      ...draft,
+      triggerStarts: startsOf(draft, FIRST_TRIGGER),
+      moreTriggers: (draft.moreTriggers ?? []).map((each) => ({
+        ...each,
+        starts: startsOf(draft, each.id),
+      })),
+      nodes: [...nodes, node],
+      edges,
+    };
+    for (const triggerId of inherit) next = setTriggerStarts(next, triggerId, id, true);
+    return next;
+  }
+  if (startedBy && startedBy !== FIRST_TRIGGER) {
+    // Written out before the step exists, so the first trigger does not take it too.
+    const firstNow = startsOf(draft, FIRST_TRIGGER);
+    return setTriggerStarts(
+      { ...draft, triggerStarts: firstNow, nodes: [...nodes, node], edges },
+      startedBy,
+      id,
+      true,
+    );
+  }
+  if (!after && !before && several) {
+    // A step joined to nothing is started by the first trigger, like on its own.
+    const withStep = { ...draft, nodes: [...nodes, node], edges };
+    return startsOf(withStep, FIRST_TRIGGER).includes(id)
+      ? withStep
+      : setTriggerStarts(withStep, FIRST_TRIGGER, id, true);
+  }
   return { ...draft, nodes: [...nodes, node], edges };
+}
+
+function hasOtherTriggers(draft: AutomationDraft): boolean {
+  return (draft.moreTriggers?.length ?? 0) > 0;
+}
+
+function needTrigger(draft: AutomationDraft, id: string): StarterTrigger {
+  const found = triggersOf(draft).find((each) => each.id === id);
+  if (!found) throw new OperationError(`There is no trigger called "${id}".`);
+  return found.trigger;
+}
+
+/** Steps fed by the removed ones that start with nothing before them, and their triggers. */
+function removeSteps(draft: AutomationDraft, ids: string[]): AutomationDraft {
+  const removed = new Set(ids);
+  // Which triggers start each removed step, and which steps each removed step fed.
+  const byTrigger = startsByTrigger(draft);
+  const nodes = draft.nodes
+    .filter((node) => !removed.has(node.id))
+    .map((node) => ({ ...node, input: withoutReferencesTo(node.input, ids) }));
+  const edges = bridgeEdges(ids, draft.edges);
+  let next: AutomationDraft = { ...draft, nodes, edges };
+  if (!hasOtherTriggers(draft) && draft.triggerStarts === undefined) return next;
+  // Whatever a removed start step fed, its triggers start now: walk down through removed
+  // steps to the first ones left.
+  const roots = new Set(startSteps(next));
+  const reachedFrom = (start: string): string[] => {
+    const found: string[] = [];
+    const queue = [start];
+    const seen = new Set<string>();
+    while (queue.length > 0) {
+      const at = queue.shift()!;
+      if (seen.has(at)) continue;
+      seen.add(at);
+      if (!removed.has(at)) {
+        if (roots.has(at)) found.push(at);
+        continue;
+      }
+      for (const edge of draft.edges) if (edge.source === at) queue.push(edge.target);
+    }
+    return found;
+  };
+  const starts = new Map<string, string[]>();
+  for (const [triggerId, list] of byTrigger) {
+    starts.set(triggerId, [
+      ...new Set(list.flatMap((id) => (removed.has(id) ? reachedFrom(id) : [id]))),
+    ]);
+  }
+  next = {
+    ...next,
+    triggerStarts: starts.get(FIRST_TRIGGER) ?? [],
+    moreTriggers: (draft.moreTriggers ?? []).map((each) => ({
+      ...each,
+      starts: starts.get(each.id) ?? [],
+    })),
+  };
+  return tidyTriggers(next);
 }
 
 /** Applies one change and returns the new draft. Throws OperationError when it cannot. */
@@ -461,17 +604,32 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
     case "add":
       return add(draft, op);
     case "remove": {
-      for (const id of op.ids) need(draft, id);
-      return {
-        ...draft,
-        // A setting that pointed at a removed step goes back to being filled in by itself.
-        nodes: draft.nodes
-          .filter((node) => !op.ids.includes(node.id))
-          .map((node) => ({ ...node, input: withoutReferencesTo(node.input, op.ids) })),
-        edges: bridgeEdges(op.ids, draft.edges),
-      };
+      // Triggers can be removed along with steps, as when both are chosen on the canvas.
+      const triggerIds = op.ids.filter(
+        (id) => isTriggerId(id) && !draft.nodes.some((node) => node.id === id),
+      );
+      const stepIds = op.ids.filter((id) => !triggerIds.includes(id));
+      for (const id of stepIds) need(draft, id);
+      // A setting that pointed at a removed step goes back to being filled in by itself.
+      let next = stepIds.length > 0 ? removeSteps(draft, stepIds) : draft;
+      for (const id of triggerIds) next = applyOperation(next, { op: "removeTrigger", id });
+      return next;
     }
     case "connect": {
+      if (isTriggerId(op.source) && !draft.nodes.some((node) => node.id === op.source)) {
+        needTrigger(draft, op.source);
+        const target = need(draft, op.target);
+        if (draft.edges.some((edge) => edge.target === target.id)) {
+          throw new OperationError(
+            `${target.label ?? nodeTypeOf(target)?.title ?? target.id} already comes after another step. A trigger can only start a step that nothing else feeds.`,
+          );
+        }
+        if (op.branch !== undefined) throw new OperationError("A trigger has only one way out.");
+        return setTriggerStarts(draft, op.source, target.id, true);
+      }
+      if (isTriggerId(op.target) && !draft.nodes.some((node) => node.id === op.target)) {
+        throw new OperationError("Nothing can lead into a trigger.");
+      }
       need(draft, op.source);
       need(draft, op.target);
       const edges = withEdge(draft, op.source, op.target, op.branch);
@@ -480,6 +638,10 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
       return { ...draft, edges };
     }
     case "disconnect":
+      if (isTriggerId(op.source) && !draft.nodes.some((node) => node.id === op.source)) {
+        needTrigger(draft, op.source);
+        return setTriggerStarts(draft, op.source, op.target, false);
+      }
       return {
         ...draft,
         edges: draft.edges.filter(
@@ -520,7 +682,8 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
         }
         source = { from: "auto" };
       } else if (op.from === "trigger") {
-        if (triggerTypeOf(draft.trigger).gives !== "file") {
+        const starting = startingTriggers(draft, node.id);
+        if (!starting.some((trigger) => triggerTypeOf(trigger).gives === "file")) {
           throw new OperationError("This automation's start hands over no file.");
         }
         source = { from: "trigger" };
@@ -560,6 +723,26 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
         }),
       };
     }
+    case "meet": {
+      const node = need(draft, op.id);
+      if (!JOIN_MODES.some((one) => one.value === op.mode)) {
+        throw new OperationError(
+          `Files can meet in these ways: ${JOIN_MODES.map((one) => one.value).join(", ")}.`,
+        );
+      }
+      if ((op.mode === "source" || op.mode === "position") && node.kind !== "step") {
+        throw new OperationError("Only a step that does work can pair files.");
+      }
+      return {
+        ...draft,
+        nodes: draft.nodes.map((other) => {
+          if (other.id !== op.id) return other;
+          const rest = { ...other };
+          delete rest.join;
+          return op.mode === "all" ? rest : { ...rest, join: op.mode };
+        }),
+      };
+    }
     case "rename": {
       need(draft, op.id);
       const label = op.label.trim().slice(0, 60);
@@ -578,7 +761,45 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
         const problem = scheduleProblem(op.trigger.schedule);
         if (problem) throw new OperationError(problem);
       }
-      return { ...draft, trigger: op.trigger };
+      const id = op.id === undefined || op.id === "trigger" ? FIRST_TRIGGER : op.id;
+      needTrigger(draft, id);
+      return replaceTrigger(draft, id, op.trigger);
+    }
+    case "addTrigger": {
+      if (triggersOf(draft).length >= MAX_TRIGGERS) {
+        throw new OperationError(`An automation can have at most ${MAX_TRIGGERS} triggers.`);
+      }
+      if (op.trigger.kind === "schedule") {
+        const problem = scheduleProblem(op.trigger.schedule);
+        if (problem) throw new OperationError(problem);
+      }
+      if (
+        (op.trigger.kind === "webhook" || op.trigger.kind === "manual") &&
+        triggersOf(draft).some((each) => each.trigger.kind === op.trigger.kind)
+      ) {
+        throw new OperationError(
+          op.trigger.kind === "webhook"
+            ? "This automation already has a webhook trigger. It can only have one."
+            : "This automation can already be started with Run now.",
+        );
+      }
+      const roots = new Set(startSteps(draft));
+      for (const id of op.starts ?? []) {
+        need(draft, id);
+        if (!roots.has(id)) {
+          throw new OperationError(
+            `"${id}" already comes after another step. A trigger can only start a step that nothing else feeds.`,
+          );
+        }
+      }
+      return addTrigger(draft, op.trigger, op.starts ?? []).automation;
+    }
+    case "removeTrigger": {
+      needTrigger(draft, op.id);
+      if (triggersOf(draft).length === 1) {
+        throw new OperationError("An automation needs a trigger. Change this one instead.");
+      }
+      return removeTrigger(draft, op.id);
     }
     case "name": {
       const name = op.name.trim().slice(0, 80);
@@ -605,7 +826,8 @@ export function applyOperation(draft: AutomationDraft, op: Operation): Automatio
 export function applyOperations(draft: AutomationDraft, ops: Operation[]): AutomationDraft {
   return ops.reduce((current, op, index) => {
     try {
-      return applyOperation(current, op);
+      const next = applyOperation(current, op);
+      return next.moreTriggers || next.triggerStarts ? tidyTriggers(next) : next;
     } catch (caught) {
       if (caught instanceof OperationError) {
         throw new OperationError(`Change ${index + 1} (${op.op}): ${caught.message}`);
@@ -626,12 +848,16 @@ export function draftProblems(draft: AutomationDraft, brand: Brand = {}): DraftP
   const problems: DraftProblem[] = [];
   const graph = graphProblem(draft.nodes, draft.edges);
   if (graph) problems.push({ nodeId: null, message: graph });
-  if (draft.trigger.kind === "schedule") {
-    const schedule = scheduleProblem(draft.trigger.schedule);
-    if (schedule) problems.push({ nodeId: null, message: schedule });
+  for (const { trigger } of triggersOf(draft)) {
+    if (trigger.kind === "schedule") {
+      const schedule = scheduleProblem(trigger.schedule);
+      if (schedule) problems.push({ nodeId: null, message: schedule });
+    }
+    const follow = followProblem(trigger);
+    if (follow) problems.push({ nodeId: null, message: follow });
   }
-  const follow = followProblem(draft.trigger);
-  if (follow) problems.push({ nodeId: null, message: follow });
+  const triggers = triggersProblem(draft);
+  if (triggers) problems.push({ nodeId: null, message: triggers });
   for (const node of draft.nodes) {
     const nodeType = nodeTypeOf(node);
     if (!nodeType) {
@@ -684,12 +910,25 @@ export function draftProblems(draft: AutomationDraft, brand: Brand = {}): DraftP
  * before it changes anything.
  */
 export function outline(draft: AutomationDraft, brand: Brand = {}): string {
-  const lines = [
-    `Automation "${draft.name}"`,
-    `Starts: ${triggerTypeOf(draft.trigger).type} ${JSON.stringify(
-      Object.fromEntries(Object.entries(draft.trigger).filter(([key]) => key !== "kind")),
-    )}`,
-  ];
+  const settingsOf = (trigger: StarterTrigger) =>
+    JSON.stringify(Object.fromEntries(Object.entries(trigger).filter(([key]) => key !== "kind")));
+  const several = hasOtherTriggers(draft);
+  const lines = [`Automation "${draft.name}"`];
+  if (!several) {
+    lines.push(`Starts: ${triggerTypeOf(draft.trigger).type} ${settingsOf(draft.trigger)}`);
+  } else {
+    // Each trigger starts only the steps it is connected to, and what follows them.
+    const byTrigger = startsByTrigger(draft);
+    lines.push("Triggers (each run does only what its trigger starts):");
+    for (const { id, trigger } of triggersOf(draft)) {
+      const starts = byTrigger.get(id) ?? [];
+      lines.push(
+        `- ${id} [${triggerTypeOf(trigger).type}] ${settingsOf(trigger)} starts ${
+          starts.length ? starts.join(", ") : "nothing yet"
+        }`,
+      );
+    }
+  }
   const order = tidyPositions(
     draft.nodes.map((node) => node.id),
     draft.edges,
@@ -707,7 +946,11 @@ export function outline(draft: AutomationDraft, brand: Brand = {}): string {
     const issue = problems.find((problem) => problem.nodeId === node.id);
     lines.push(
       `- ${node.id} [${typeNameOf(node)}]${node.label ? ` "${node.label}"` : ""} from ${
-        sources.length ? sources.join(", ") : "the start"
+        sources.length
+          ? sources.join(", ")
+          : several
+            ? triggersStarting(draft, node.id).join(", ") || "no trigger"
+            : "the start"
       } settings ${JSON.stringify(node.input)}${issue ? ` PROBLEM: ${issue.message}` : ""}`,
     );
   }
@@ -715,4 +958,14 @@ export function outline(draft: AutomationDraft, brand: Brand = {}): string {
     lines.push(`PROBLEM: ${problem.message}`);
   }
   return lines.join("\n");
+}
+
+/** The triggers whose runs reach the step `nodeId`. */
+function startingTriggers(draft: AutomationDraft, nodeId: string): StarterTrigger[] {
+  if (!hasOtherTriggers(draft)) return [draft.trigger];
+  const before = new Set([nodeId, ...stepsBefore(nodeId, draft.edges).flat()]);
+  const byTrigger = startsByTrigger(draft);
+  return triggersOf(draft)
+    .filter(({ id }) => (byTrigger.get(id) ?? []).some((start) => before.has(start)))
+    .map(({ trigger }) => trigger);
 }

@@ -10,6 +10,7 @@ import { formatDuration } from "@/lib/catalog";
 
 import { MediaPreview } from "./media-preview";
 import { StatusBadge } from "./status-badge";
+import { waitingWords } from "./waiting-words";
 
 const WAITING = {
   queued: "Sending the job to your toolkit.",
@@ -35,7 +36,9 @@ export function JobResult({ jobId }: { jobId: Id<"jobs"> }) {
       </div>
 
       {(job.status === "queued" || job.status === "running") && (
-        <p className="text-muted-foreground text-sm">{WAITING[job.status]}</p>
+        <p className="text-muted-foreground text-sm">
+          {(job.status === "queued" && waitingWords(job.waiting)) || WAITING[job.status]}
+        </p>
       )}
 
       {job.status === "failed" && (

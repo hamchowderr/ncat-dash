@@ -10,9 +10,11 @@ import {
   readCondition,
   readFileDetails,
   sortFiles,
+  valueFrom,
   waitMs,
   waitProblem,
 } from "@ncat-dash/automation-core";
+import { getStep } from "@ncat-dash/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
@@ -39,6 +41,7 @@ async function sortInto(
   node: AutomationNode,
   files: string[],
   details: Map<string, FileDetails | null>,
+  said: Map<string, string> = new Map(),
 ) {
   const condition = readCondition(node.input)!;
   const now = Date.now();
@@ -47,7 +50,7 @@ async function sortInto(
     outputs: files,
     branches: sortFiles(
       condition,
-      files.map((url) => ({ url, details: details.get(url) ?? null })),
+      files.map((url) => ({ url, details: details.get(url) ?? null, said: said.get(url) ?? null })),
     ),
     startedAt: step.startedAt ?? now,
     finishedAt: now,
@@ -83,6 +86,12 @@ export async function startIf(
       byNode,
       `${files.length} files reached this step; the most it sorts at once is ${MAX_FILES_PER_IF}.`,
     );
+    return;
+  }
+
+  // What is said in each file comes from a Transcribe step before; nothing is read.
+  if (readCondition(node.input)?.check === "words") {
+    await sortInto(ctx, step, node, files, new Map(), await saidIn(ctx, byNode));
     return;
   }
 
@@ -139,6 +148,26 @@ export async function finishCheck(
     if (url) details.set(url, job.status === "done" ? readFileDetails(job.result) : null);
   }
   await sortInto(ctx, step, node, filesFor("any", node, run, byNode), details);
+}
+
+/**
+ * What is said in each file an earlier step transcribed, by file: the transcript of each
+ * job's own file. A file cut or changed since was not transcribed itself, so it has none.
+ */
+async function saidIn(ctx: MutationCtx, byNode: StepsByNode): Promise<Map<string, string>> {
+  const said = new Map<string, string>();
+  for (const other of byNode.values()) {
+    if (other.status !== "done") continue;
+    for (const jobId of other.jobIds) {
+      const job = await ctx.db.get(jobId);
+      if (job?.status !== "done" || !getStep(job.stepId)?.values?.transcript) continue;
+      const field = getStep(job.stepId)?.primaryInput;
+      const file = field ? (job.input as Record<string, unknown>)[field] : undefined;
+      const text = valueFrom(job.stepId, "transcript", job.result);
+      if (typeof file === "string" && typeof text === "string") said.set(file, text);
+    }
+  }
+  return said;
 }
 
 /** Starts a "wait" step: notes when it ends and asks to be woken then. */

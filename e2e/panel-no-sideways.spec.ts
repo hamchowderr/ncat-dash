@@ -71,10 +71,16 @@ test("no part of the automation editor scrolls sideways, for any step, at any wi
   const panel = page.getByRole("complementary", { name: "Settings for this step" });
   await page.getByRole("button", { name: "Add step" }).click();
   // Opens the list of steps unless it is open already (the button closes an open list).
+  // The search box is always on the page, clipped to nothing while the list is closed, so
+  // it reads as visible either way: only the list itself (hidden from the page's roles
+  // while closed) says whether it is open. Checked again until it is, in case a click
+  // lands while the columns are still moving.
   const openList = async () => {
-    if (!(await palette.isVisible()) || (await page.getByLabel("Search steps").isHidden()))
-      await page.getByRole("button", { name: "Add step" }).click();
-    await expect(page.getByLabel("Search steps")).toBeVisible();
+    await expect(async () => {
+      if (!(await palette.isVisible()))
+        await page.getByRole("button", { name: "Add step" }).click();
+      await expect(palette).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
   };
   const names = (await palette.getByRole("button").allTextContents())
     .map((name) => name.trim())

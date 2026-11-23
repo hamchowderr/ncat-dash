@@ -6,6 +6,9 @@ import type { backend } from "./test.setup";
  * A stand-in for the toolkit fork's storage requests (/v1/storage/*), answering the way
  * the real ones do, over an in-memory bucket. Other requests go to the real fetch.
  */
+// fetch as it was before any test replaced it.
+const nativeFetch = globalThis.fetch;
+
 export function fakeToolkitStorage({
   baseUrl = "https://toolkit.example",
   bucket = "test-bucket",
@@ -16,6 +19,8 @@ export function fakeToolkitStorage({
   broken = null as string | null,
 } = {}) {
   const files = new Map<string, { size: number; etag: string; lastModified: number }>();
+  // What was written through an upload link, by key: the CSV lists and other small files.
+  const texts = new Map<string, string>();
   const calls: { request: string; body: Record<string, unknown> }[] = [];
   // Uploads in parts still open: upload id -> key.
   const openUploads = new Map<string, string>();
@@ -138,9 +143,27 @@ export function fakeToolkitStorage({
         status: 200,
       });
     }
-    if (url.origin !== new URL(baseUrl).origin || !url.pathname.startsWith("/v1/storage/")) {
+    // A file written through a signed upload link.
+    if (
+      url.origin === "https://r2.example" &&
+      init?.method === "PUT" &&
+      url.searchParams.get("method") === "PUT" &&
+      url.pathname.startsWith(`/${bucket}/`)
+    ) {
+      const key = decodeURIComponent(url.pathname.slice(bucket.length + 2));
+      const text = String(init.body ?? "");
+      texts.set(key, text);
+      files.set(key, { size: text.length, etag: `etag-${key}`, lastModified: Date.now() });
+      return new Response(null, { status: 200 });
+    }
+    if (url.origin === new URL(baseUrl).origin && !url.pathname.startsWith("/v1/storage/")) {
+      // Another toolkit request, such as reading a new upload's details. Unless the test put
+      // its own stand-in in front, answer at once: a real request to the made-up address
+      // could hang until its timeout and stall the test.
+      if (realFetch === nativeFetch) return answer("not found", 404);
       return realFetch(input, init);
     }
+    if (url.origin !== new URL(baseUrl).origin) return realFetch(input, init);
     const request = url.pathname.slice("/v1/storage/".length);
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
     calls.push({ request, body });
@@ -153,6 +176,7 @@ export function fakeToolkitStorage({
     baseUrl,
     bucket,
     files,
+    texts,
     calls,
     openUploads,
     /** Puts a file in the bucket, as if it had been uploaded. */

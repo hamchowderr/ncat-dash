@@ -1,0 +1,20 @@
+Takewon
+Copyright (c) 2026 Otaku Solutions
+Licensed under the GNU Affero General Public License, version 3 or later. See LICENSE.
+
+Takewon is a separate program that talks to the No-Code Architects Toolkit
+(https://github.com/stephengpope/no-code-architects-toolkit, Copyright (c) 2025
+Stephen G. Pope, GPL-2.0) over its web API. It does not include or link the
+toolkit's code. Two pieces of this repository are taken from toolkit material:
+
+- packages/step-catalog/test/toolkit-schemas.json: the request schemas read out
+  of the toolkit's routes, used to check that each step sends what the toolkit
+  accepts.
+- packages/step-catalog/src/recipes.ts: the FFmpeg compose examples from the
+  toolkit's Postman collection, with the sample values turned into blanks.
+
+packages/agent/LICENSE-mastra-chat-kit covers code from mastra-chat-kit (MIT).
+
+src/components/auth/LICENSE-better-auth-ui covers the sign-in screens and account cards
+from Better Auth UI (https://better-auth-ui.com, MIT), in src/components/auth and
+src/lib/auth.

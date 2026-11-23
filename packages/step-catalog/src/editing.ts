@@ -23,8 +23,8 @@ const opt = (option: string, argument?: string | number): Option =>
 
 const VIDEO_OUT: Option[] = [
   opt("-c:v", "libx264"),
-  opt("-preset", "medium"),
-  opt("-crf", 23),
+  opt("-preset", "veryfast"),
+  opt("-crf", 21),
   opt("-c:a", "aac"),
   opt("-b:a", "192k"),
   opt("-movflags", "+faststart"),
@@ -73,6 +73,14 @@ function editStep<Shape extends z.ZodRawShape>(args: {
   brandInputs?: StepDefinition["brandInputs"];
   startInputs?: StepDefinition["startInputs"];
   readsFirst?: (keyof Shape & string)[];
+  readsPauses?: (keyof Shape & string)[];
+  readsBeats?: (keyof Shape & string)[];
+  readsCuts?: (keyof Shape & string)[];
+  readsWords?: (blanks: z.output<z.ZodObject<Shape>>) => string[];
+  askFirst?: (keyof Shape & string)[];
+  outputLabels?: (blanks: z.output<z.ZodObject<Shape>>, count: number) => string[];
+  labelsFollow?: boolean;
+  skipsWithout?: keyof Shape & string;
   blanks: Shape;
   toRequest: (blanks: z.output<z.ZodObject<Shape>>, facts: FileFacts) => Record<string, unknown>;
 }): StepDefinition {
@@ -89,6 +97,14 @@ function editStep<Shape extends z.ZodRawShape>(args: {
     brandInputs: args.brandInputs,
     startInputs: args.startInputs,
     readsFirst: args.readsFirst,
+    readsPauses: args.readsPauses,
+    ...(args.readsBeats ? { readsBeats: args.readsBeats } : {}),
+    ...(args.readsCuts ? { readsCuts: args.readsCuts } : {}),
+    readsWords: args.readsWords as StepDefinition["readsWords"],
+    askFirst: args.askFirst,
+    outputLabels: args.outputLabels as StepDefinition["outputLabels"],
+    ...(args.labelsFollow ? { labelsFollow: true } : {}),
+    ...(args.skipsWithout ? { skipsWithout: args.skipsWithout } : {}),
     input: z.object(args.blanks),
     toRequest: args.toRequest,
   }) as unknown as StepDefinition;
@@ -284,6 +300,27 @@ const FORMATS = {
   MP3: { format: "mp3", video: false },
   WAV: { format: "wav", video: false },
 } as const;
+
+/** The pieces other compose steps build with (variants.ts). Not part of the package's API. */
+export const composeParts = {
+  opt,
+  VIDEO_OUT,
+  url,
+  text,
+  number,
+  whole,
+  choice,
+  color,
+  font,
+  evenDown,
+  rateOf,
+  seconds,
+  silent,
+  editStep,
+  textBlock,
+  SHAPES,
+  SHAPE_NAMES,
+};
 
 export const editingRecipes: StepDefinition[] = [
   editStep({
@@ -848,10 +885,23 @@ export const editingRecipes: StepDefinition[] = [
           : b.to === "WAV"
             ? [opt("-vn"), opt("-c:a", "pcm_s16le")]
             : b.to === "WebM"
-              ? [opt("-c:v", "libvpx-vp9"), opt("-crf", 32), opt("-b:v", 0), opt("-c:a", "libopus")]
+              ? [
+                  opt("-c:v", "libvpx-vp9"),
+                  opt("-crf", 32),
+                  opt("-b:v", 0),
+                  opt("-deadline", "good"),
+                  opt("-cpu-used", 4),
+                  opt("-row-mt", 1),
+                  opt("-c:a", "libopus"),
+                ]
               : b.quick
                 ? [opt("-c", "copy")]
-                : [opt("-c:v", "libx264"), opt("-crf", 23), opt("-c:a", "aac")];
+                : [
+                    opt("-c:v", "libx264"),
+                    opt("-preset", "veryfast"),
+                    opt("-crf", 21),
+                    opt("-c:a", "aac"),
+                  ];
       return {
         inputs: [{ file_url: b.media_url }],
         filters: [],

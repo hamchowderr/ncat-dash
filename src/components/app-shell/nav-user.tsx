@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, ChevronsUpDown, Compass, LogOut, Settings } from "lucide-react";
+import { Bell, ChevronsUpDown, CircleUser, Compass, LogOut, Settings } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -83,6 +83,12 @@ export function NavUser({ user }: { user: ShellUser }) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
+              <Link href="/settings/account">
+                <CircleUser />
+                Account
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
               <Link href="/settings/brand">
                 <Settings />
                 Settings
@@ -103,7 +109,7 @@ export function NavUser({ user }: { user: ShellUser }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={signOut}>
               <LogOut />
-              Log out
+              Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

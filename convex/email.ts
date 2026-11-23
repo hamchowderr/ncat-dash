@@ -10,6 +10,9 @@ import {
   digestEmail,
   type DigestItem,
   clientFeedbackEmail,
+  clipFinishedEmail,
+  footageProblemEmail,
+  rightsEndingEmail,
   readyForReviewEmail,
   mentionEmail,
   sendEmail,
@@ -28,6 +31,7 @@ import {
   internalQuery,
   mutation,
   query,
+  type QueryCtx,
 } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
@@ -61,11 +65,14 @@ const apiBase = () => process.env.TOSEND_API_URL?.trim() || undefined;
 export const status = query({
   args: {},
   returns: v.object({ configured: v.boolean() }),
-  handler: async (ctx) => {
-    if (fromEnvironment()) return { configured: true };
-    return { configured: (await ctx.db.query("emailConnections").first()) !== null };
-  },
+  handler: async (ctx) => ({ configured: await emailConfigured(ctx) }),
 });
+
+/** Whether the dashboard can send email: set by whoever runs it, or saved in Settings. */
+export async function emailConfigured(ctx: QueryCtx): Promise<boolean> {
+  if (fromEnvironment()) return true;
+  return (await ctx.db.query("emailConnections").first()) !== null;
+}
 
 /**
  * How email is set up, for the Settings page. Which emails each member gets is in their
@@ -143,7 +150,7 @@ export const connect = action({
     if (!apiKey) return { ok: false as const, detail: "Enter your toSend API key." };
 
     const check = await checkKey(apiKey, {
-      signal: AbortSignal.timeout(15_000),
+      timeoutMs: 15_000,
       baseUrl: apiBase(),
     });
     if (!check.ok) {
@@ -296,30 +303,64 @@ export const sendAlert = internalAction({
                   },
                   branding,
                 )
-              : alert.kind === "client_feedback"
-                ? clientFeedbackEmail(
-                    {
-                      teamName,
-                      from: alert.from ?? "A client",
-                      reviewTitle: alert.automationName,
-                      feedback: alert.message,
-                      reviewUrl: link,
-                      settingsUrl,
-                    },
-                    branding,
-                  )
-                : runFailedEmail(
+              : alert.kind === "footage_problem"
+                ? footageProblemEmail(
                     {
                       teamName,
                       automationName: alert.automationName,
-                      stepName: alert.stepName,
-                      message: explainFailure(alert.message).reason,
-                      retries: alert.retries,
+                      message: alert.message,
                       runUrl: link,
                       settingsUrl,
                     },
                     branding,
-                  );
+                  )
+                : alert.kind === "rights_ending"
+                  ? rightsEndingEmail(
+                      {
+                        teamName,
+                        creator: alert.automationName,
+                        client: alert.stepName,
+                        summary: alert.message,
+                        creatorsUrl: link,
+                        settingsUrl,
+                      },
+                      branding,
+                    )
+                  : alert.kind === "clip_finished"
+                    ? clipFinishedEmail(
+                        {
+                          teamName,
+                          automationName: alert.automationName,
+                          summary: alert.message,
+                          runUrl: link,
+                          settingsUrl,
+                        },
+                        branding,
+                      )
+                    : alert.kind === "client_feedback"
+                      ? clientFeedbackEmail(
+                          {
+                            teamName,
+                            from: alert.from ?? "A client",
+                            reviewTitle: alert.automationName,
+                            feedback: alert.message,
+                            reviewUrl: link,
+                            settingsUrl,
+                          },
+                          branding,
+                        )
+                      : runFailedEmail(
+                          {
+                            teamName,
+                            automationName: alert.automationName,
+                            stepName: alert.stepName,
+                            message: explainFailure(alert.message).reason,
+                            retries: alert.retries,
+                            runUrl: link,
+                            settingsUrl,
+                          },
+                          branding,
+                        );
     for (const to of found.recipients) {
       const result = await deliver(ctx, sending, { to, ...composed });
       // A bad key, an unpaid account or an unverified domain fails for everyone alike.
@@ -458,6 +499,20 @@ function digestLine(alert: Doc<"alerts">): Omit<DigestItem, "url"> {
         title: `${alert.automationName}: an approval ran out of time`,
         detail: alert.message,
       };
+    case "clip_finished":
+      return { title: `${alert.automationName} finished`, detail: alert.message };
+    case "footage_problem":
+      return {
+        title: `${alert.automationName}: footage needs another look`,
+        detail: alert.message.split("\n")[0],
+      };
+    case "rights_ending":
+      return {
+        title: alert.stepName
+          ? `${alert.automationName}'s rights for ${alert.stepName} end soon`
+          : `Usage rights for ${alert.automationName} end soon`,
+        detail: alert.message,
+      };
     case "approval_waiting":
       return {
         title: `${alert.automationName} is waiting for your approval`,
@@ -522,7 +577,7 @@ async function deliver(
     sending.apiKey,
     { email: sending.fromEmail, name: sending.fromName },
     message,
-    { signal: AbortSignal.timeout(20_000), baseUrl: apiBase() },
+    { timeoutMs: 20_000, baseUrl: apiBase() },
   );
   if (!result.ok) console.error(`Email "${message.subject}" was not sent: ${result.detail}`);
   // A busy moment or one refused address says nothing about the setup.

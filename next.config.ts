@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
+import { SECURITY_HEADERS } from "./src/lib/security-headers";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // The Docker image (Dockerfile) builds a self-contained server that needs no pnpm
+  // install where it runs. Vercel and `pnpm start` keep the usual output.
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
   cacheComponents: true,
   transpilePackages: [
     "@ncat-dash/step-catalog",
@@ -10,6 +13,9 @@ const nextConfig: NextConfig = {
     "@ncat-dash/review-core",
   ],
   partialPrefetching: true,
+  async headers() {
+    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+  },
   turbopack: {
     rules: {
       "*.css": {

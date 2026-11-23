@@ -62,7 +62,9 @@ function vectorOf(words: string): number[] {
 
 type Sent = { url: string; body: Record<string, unknown> };
 
-function fakeServers(options: { agent?: unknown[]; pixabay?: unknown } = {}) {
+function fakeServers(
+  options: { agent?: unknown[]; pixabay?: unknown; cuts?: number[] | "fail" } = {},
+) {
   const sent: Sent[] = [];
   let made = 0;
   let asked = 0;
@@ -83,6 +85,14 @@ function fakeServers(options: { agent?: unknown[]; pixabay?: unknown } = {}) {
       }
       if (url.endsWith("/v1/media/transcribe")) {
         return done({ text: null, srt: null, segments: null, segments_url: WORDS_FILE });
+      }
+      if (url.endsWith("/v1/media/look") && body.cuts) {
+        // The video being covered: only its camera cuts.
+        if (options.cuts === "fail") return new Response("boom", { status: 500 });
+        return done({
+          model: "clip-vit-b-32",
+          media: { duration: 30, width: 1920, height: 1080, cuts: options.cuts ?? [] },
+        });
       }
       if (url.endsWith("/v1/media/look") && body.media_url) {
         // A library video: its frames, each showing green hills and no face.
@@ -260,8 +270,9 @@ describe("Add B-Roll", () => {
     });
     expect(step.pickNote).toMatch(/1 cutaway/);
 
-    // The picture model was asked about what each sentence shows, in plain words.
-    const look = sent.find((one) => one.url.endsWith("/v1/media/look"))!;
+    // The picture model was asked about what each sentence shows, in plain words. (The
+    // job that finds the video's camera cuts goes to the same address, in any order.)
+    const look = sent.find((one) => one.url.endsWith("/v1/media/look") && one.body.texts)!;
     expect(look.body.texts).toContain("a photo of old truck garage");
     expect(look.body.image_urls).toBeUndefined();
 
@@ -272,6 +283,39 @@ describe("Add B-Roll", () => {
     expect(request).toContain(TRUCK_CLIP);
     expect(request).not.toContain(BEACH_CLIP);
     expect(request).toContain("0:a?");
+  });
+
+  test("covers a short shot of the video whole, so it does not show again after the cutaway", async () => {
+    // The truck is mentioned 1.5 s into a 6.5 s shot, so a 3 s cutaway would leave the
+    // shot showing on both sides of it.
+    const sent = fakeServers({ cuts: [2.5, 9] });
+    const { t, start, runOf, libraryVideo } = await setUp([brollNode({ skipOpening: 0 })]);
+    await libraryVideo("Truck build", TRUCK_CLIP, "old truck garage");
+    const runId = await start();
+    await settled(t);
+
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    const step = run.steps.find((one) => one.nodeId === "broll")!;
+    expect(step.cutaways).toHaveLength(1);
+    expect(step.cutaways?.[0]).toMatchObject({ start: 2.5, end: 9, title: "Truck build" });
+    // The toolkit was asked for the video's cuts only, not its frames.
+    const cuts = sent.find((one) => one.url.endsWith("/v1/media/look") && one.body.cuts)!;
+    expect(cuts.body).toMatchObject({ media_url: FILE, cuts: true, frames: false });
+  });
+
+  test("a video whose cuts cannot be found still gets its cutaways", async () => {
+    fakeServers({ cuts: "fail" });
+    const { t, start, runOf, libraryVideo } = await setUp([brollNode()]);
+    await libraryVideo("Truck build", TRUCK_CLIP, "old truck garage");
+    const runId = await start();
+    for (let minute = 0; minute < 5; minute++) await settled(t);
+
+    const run = (await runOf(runId))!;
+    expect(run.status).toBe("done");
+    const step = run.steps.find((one) => one.nodeId === "broll")!;
+    expect(step.cutaways).toHaveLength(1);
+    expect(step.outputs).toEqual(["https://files.example/out/with-broll-1.mp4"]);
   });
 
   test("skips footage marked as not B-Roll, and talking heads that look like the video", async () => {
@@ -440,6 +484,44 @@ describe("The library and B-Roll", () => {
     // Marked as not B-Roll by hand, it is left out even though it looks like it.
     await maya.as.mutation(api.broll.setUse, { organizationId: team, itemId, use: "no" });
     expect((await maya.as.query(api.broll.status, { organizationId: team })).broll).toBe(0);
+  });
+
+  test("files already looked at are judged again when the rules change", async () => {
+    const { t, team } = await setUp([brollNode()]);
+    const insert = (title: string, faces: number[], brollLike: boolean) =>
+      t.run(async (ctx) => {
+        const itemId = await ctx.db.insert("libraryItems", {
+          organizationId: team,
+          shortId: title === "Interview" ? "V1" : "V2",
+          kind: "video",
+          source: "upload",
+          title,
+          url: `https://files.example/library/${title}.mp4`,
+          tags: [],
+          searchText: title,
+          createdBy: null,
+          details: { duration: 75 },
+          look: { status: "ready", brollLike, at: 0 },
+        });
+        for (const [index, face] of faces.entries()) {
+          await ctx.db.insert("libraryFrames", {
+            organizationId: team,
+            itemId,
+            time: index * 2 + 1,
+            face,
+            vector: Array(512).fill(0),
+          });
+        }
+        return itemId;
+      });
+    // Judged under the old rule: someone in a medium shot (about 2.5% of the frame) passed.
+    const interview = await insert("Interview", [0.025, 0.024, 0.03, 0, 0.026, 0.02], true);
+    const launch = await insert("Launch", [0, 0, 0, 0], true);
+
+    expect(await t.mutation(internal.broll.judgeAgain, {})).toEqual({ judged: 2, done: true });
+    const [a, b] = await t.run((ctx) => Promise.all([ctx.db.get(interview), ctx.db.get(launch)]));
+    expect(a!.look?.brollLike).toBe(false);
+    expect(b!.look?.brollLike).toBe(true);
   });
 
   test("a team key is checked before it is saved, and only owners and admins can save one", async () => {

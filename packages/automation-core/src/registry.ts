@@ -14,7 +14,9 @@ import {
 import type { StepCategory, StepDefinition } from "@ncat-dash/step-catalog";
 
 import type { Brand, BrandKey } from "./brand";
-import { CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
+import { CAPTION_LANGUAGE_SETTING, CAPTION_STYLE_SETTING, isCaptionStep } from "./captions";
+import { CLEANUP_DEFAULTS, HOOK_MODES, MAX_HOOKS } from "./cleanup";
+import { FOOTAGE_ACTIONS, FOOTAGE_DEFAULTS, FOOTAGE_SHAPES } from "./footage";
 import { FINISH_CHOICES } from "./chain";
 import { PLATFORMS } from "./clips";
 import type { AutomationNode } from "./graph";
@@ -40,6 +42,8 @@ import {
 import { MAX_CHAPTERS, MAX_MOMENTS, MAX_PADDING, MOMENT_DEFAULTS, MOMENT_EDGES } from "./moments";
 import { MOTION_PRESETS, SOUND_LEVELS, STYLE_SOUNDS, TEAM_STYLE } from "./motion";
 import { MIN_INTERVAL_MINUTES } from "./schedule";
+import { MAX_SUBTITLE_LANGUAGES } from "./translated-captions";
+import { LANGUAGES } from "./translation";
 import type { StarterTrigger } from "./starters";
 
 /** What moves along a connection. Only files do today; "data" is a step's JSON result. */
@@ -57,8 +61,8 @@ export interface JsonSchema {
 export interface NodeType {
   /**
    * Stable name: "trigger:upload", "approval", "clips", "moments", "chapters", "broll",
-   * "broll-plan", "motion", "sound-effects", "export",
-   * "if", "wait", "automation", or "step:<catalog id>".
+   * "broll-plan", "motion", "sound-effects", "cleanup", "footage-check", "subtitles", "export",
+   * "if", "wait", "send", "automation", or "step:<catalog id>".
    * Never rename one that has shipped.
    */
   type: string;
@@ -81,6 +85,11 @@ export interface NodeType {
   fills?: Record<string, string>;
   /** Settings filled from the team's brand in Settings when left empty. */
   brand?: Record<string, BrandKey>;
+  /**
+   * A setting the step is passed over without, such as the music it lays under a video:
+   * left empty and not in the team's brand, the run makes nothing there.
+   */
+  skipsWithout?: string;
   /**
    * Settings filled from the file that started the run when left empty, such as its name.
    * Nobody fills these in; they are not shown as settings.
@@ -108,7 +117,7 @@ export const GROUP_LABELS: Record<NodeGroup, string> = {
   image: "Image",
   recipe: "Recipes",
   team: "Your team's steps",
-  ffmpeg: "FFmpeg",
+  ffmpeg: "Custom edits",
   code: "Code",
   storage: "Storage",
   people: "People",
@@ -197,6 +206,12 @@ const TRIGGERS: NodeType[] = [
             'The folder to watch, for example "incoming/". Empty watches the whole bucket.',
         },
         fileType,
+        layout: {
+          type: "string",
+          enum: ["creators"],
+          description:
+            'Set to "creators" when the folder holds one folder per creator, each with hooks/, body/ and optionally endings/ inside: each creator\'s takes then start one run together, a few minutes after the last one lands, with the hook and ending variants step given every take. Leave it out for one run per new file.',
+        },
       },
       required: ["prefix", "fileType"],
     },
@@ -594,7 +609,7 @@ const MOTION: NodeType = {
   group: "video",
   title: "Add Motion Graphics",
   description:
-    "Draws designed motion graphics onto each video in the team's style from Settings > Motion: an opening title, the speaker's name, the numbers that are said, a card at each chapter, a follow card at the end, each with its own sound. Placed by plain rules from the transcript, with no AI, unless a Plan Motion Graphics step comes before it. Put it after Chapters to get chapter cards.",
+    "Draws designed motion graphics onto each video in the team's style from Settings > Motion: an opening title, the speaker's name, the numbers that are said, a card at each chapter, a follow card at the end, each with its own sound. Placed by plain rules from the transcript, with no AI, unless a Plan Motion Graphics step comes before it. Can put the title and keywords behind the speaker, ring them with a sticker outline and punch in on keywords and numbers. Put it after Chapters to get chapter cards.",
   takes: "file",
   gives: "files",
   settings: {
@@ -616,6 +631,23 @@ const MOTION: NodeType = {
         enum: [STYLE_SOUNDS, ...SOUND_LEVELS],
         default: STYLE_SOUNDS,
         description: `How loud each piece's sound is. ${STYLE_SOUNDS}: as the style says. off, light or heavy.`,
+      },
+      behind: {
+        type: "boolean",
+        default: false,
+        description:
+          "Behind the speaker: the opening title becomes big words behind their head, and keyword slams sit behind them too. The speaker is cut out once, with no green screen, and the cut-out is kept with the video.",
+      },
+      outline: {
+        type: "boolean",
+        default: false,
+        description:
+          "A white sticker outline around the speaker while something sits behind them, or for the first seconds when nothing does.",
+      },
+      punchIns: {
+        type: "boolean",
+        default: false,
+        description: "A quick punch-in on the picture as each keyword or number lands.",
       },
     },
   },
@@ -645,13 +677,154 @@ const SOUND_EFFECTS: NodeType = {
   automatic: null,
 };
 
+const CLEANUP: NodeType = {
+  type: "cleanup",
+  role: "action",
+  group: "video",
+  title: "Clean Up Pauses And Retakes",
+  description:
+    'Gets a raw recording ready to edit, by plain rules with no AI: long pauses heard by the toolkit\'s silence detection are taken down to a short breath, and a line said more than once is kept only as its last take. When the creator says "hook one", "hook two"… before each opening and "body" before the main part, each hook take comes back as a file of its own with the body as another, kept in hooks and body folders (per creator when one is named), ready for UGC Ad Variants. Put it first, before any editing.',
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      cutPausesOver: {
+        type: "number",
+        minimum: 0.3,
+        maximum: 5,
+        default: CLEANUP_DEFAULTS.cutPausesOver,
+        description: "Pauses longer than this, in seconds, are taken down.",
+      },
+      leavePause: {
+        type: "number",
+        minimum: 0,
+        maximum: 1,
+        default: CLEANUP_DEFAULTS.leavePause,
+        description: "How much of each long pause is left, in seconds, so speech still breathes.",
+      },
+      retakes: {
+        type: "boolean",
+        default: CLEANUP_DEFAULTS.retakes,
+        description: "Keep only the last take of a line said more than once.",
+      },
+      hooks: {
+        type: "string",
+        enum: [...HOOK_MODES],
+        default: CLEANUP_DEFAULTS.hooks,
+        description:
+          "How hook takes are found. said: the creator says hook one, hook two… and body. count: the first hookCount takes, split at pauses of a second or more, are hooks. none: always one video.",
+      },
+      hookCount: {
+        type: "integer",
+        minimum: 1,
+        maximum: MAX_HOOKS,
+        default: CLEANUP_DEFAULTS.hookCount,
+        description: "For hooks: count, how many takes at the start are hooks.",
+      },
+      creator: {
+        type: "string",
+        default: "",
+        description:
+          "Who filmed it. Their hook and body files are kept in a folder of their own, such as Jane/hooks.",
+      },
+    },
+  },
+  automatic: null,
+};
+
+const SUBTITLES: NodeType = {
+  type: "subtitles",
+  role: "action",
+  group: "media",
+  title: "Translate Subtitles",
+  description:
+    "Writes each video's subtitles in other languages, as SRT files to upload beside the video on YouTube and other platforms, where each viewer sees their own language. Uses the words heard in the video (transcribed once and kept) and translates each video into each language once. The files are kept in Files under Subtitles and listed on the run page; the video carries on to the next step unchanged.",
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      languages: {
+        type: "array",
+        items: { type: "string", enum: LANGUAGES.map((language) => language.code) },
+        minItems: 1,
+        maxItems: MAX_SUBTITLE_LANGUAGES,
+        default: [],
+        description: `The languages to write subtitles in, as codes such as es, ja or pt-BR. Up to ${MAX_SUBTITLE_LANGUAGES}.`,
+      },
+    },
+    required: ["languages"],
+  },
+  automatic: null,
+};
+
+const FOOTAGE_CHECK: NodeType = {
+  type: "footage-check",
+  role: "action",
+  group: "video",
+  title: "Check Footage",
+  description:
+    "Checks each video before editing, by plain rules on what the toolkit measures, with no AI: the shape it was filmed in, enough pixels, sound that is there, clear and not clipped, no black or frozen picture, and long enough. For a creator's folder it checks every hook, body and ending take. When something is wrong the team is told in the bell and their chat apps, a note is left in the creator's folder, and the run stops before editing (or carries on, if you choose). Put it first.",
+  takes: "file",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      shape: {
+        type: "string",
+        enum: [...FOOTAGE_SHAPES],
+        default: FOOTAGE_DEFAULTS.shape,
+        description:
+          "The shape the footage must be filmed in: vertical, horizontal, square or any.",
+      },
+      minShortSide: {
+        type: "integer",
+        minimum: 0,
+        maximum: 4320,
+        default: FOOTAGE_DEFAULTS.minShortSide,
+        description: "The fewest pixels on the short side, such as 1080 for 1080x1920. 0 skips it.",
+      },
+      minSeconds: {
+        type: "number",
+        minimum: 0,
+        maximum: 600,
+        default: FOOTAGE_DEFAULTS.minSeconds,
+        description: "The shortest a body or single video may be, in seconds.",
+      },
+      minTakeSeconds: {
+        type: "number",
+        minimum: 0,
+        maximum: 60,
+        default: FOOTAGE_DEFAULTS.minTakeSeconds,
+        description: "The shortest a hook or ending take may be, in seconds.",
+      },
+      quietBelow: {
+        type: "number",
+        minimum: -70,
+        maximum: -10,
+        default: FOOTAGE_DEFAULTS.quietBelow,
+        description: "Sound quieter than this, in LUFS, is too quiet to use.",
+      },
+      whenFound: {
+        type: "string",
+        enum: [...FOOTAGE_ACTIONS],
+        default: FOOTAGE_DEFAULTS.whenFound,
+        description:
+          "stop: the run stops before editing until better footage lands. tell: the team is told and editing goes on.",
+      },
+    },
+  },
+  automatic: null,
+};
+
 const IF: NodeType = {
   type: "if",
   role: "action",
   group: "logic",
   title: "If",
   description:
-    "Sends each file one of two ways. A file leaves by Yes when it passes a check on its length, type, shape, picture size or sound, and by No when it does not.",
+    "Sends each file one of two ways. A file leaves by Yes when it passes a check on its length, type, shape, picture size, sound or what is said in it, and by No when it does not.",
   takes: "files",
   gives: "files",
   settings: {
@@ -677,6 +850,11 @@ const IF: NodeType = {
         exclusiveMinimum: 0,
         default: DEFAULT_CONDITION.value,
         description: `The number to compare against. For length: seconds. For size: pixels on the shorter side (${PICTURE_SIZES.map((size) => size.value).join(", ")}). Not used by the other checks.`,
+      },
+      text: {
+        type: "string",
+        description:
+          "For words: the words to look for in what is said, matched without regard to capitals. The words come from a Transcribe step before the If; a file nothing transcribed leaves by No. Not used by the other checks.",
       },
     },
     required: ["check", "is"],
@@ -710,6 +888,30 @@ const WAIT: NodeType = {
   automatic: null,
 };
 
+const SEND: NodeType = {
+  type: "send",
+  role: "action",
+  group: "logic",
+  title: "Send to a URL",
+  description:
+    "Posts the files that reach it, with the run's details, to an address as JSON, such as an n8n webhook, then hands the same files to the next step. The post is signed with the automation's token. If the address does not answer, it is tried three more times.",
+  takes: "files",
+  gives: "files",
+  settings: {
+    type: "object",
+    properties: {
+      url: {
+        type: "string",
+        format: "uri",
+        description: "The http or https address to post to.",
+      },
+    },
+    required: ["url"],
+  },
+  automatic: null,
+  ask: ["url"],
+};
+
 const EXPORT: NodeType = {
   type: "export",
   role: "action",
@@ -740,6 +942,15 @@ function stepSettings(step: StepDefinition): JsonSchema {
         description:
           "The name of a caption style from Settings. Leave it and settings blank to use the team's style for the video's shape.",
       },
+      ...(step.id === "video-caption"
+        ? {
+            [CAPTION_LANGUAGE_SETTING]: {
+              type: "string",
+              description:
+                "A language code (such as es, ja or pt-BR) to caption in instead of the language spoken. The words are translated once and still light up as they are said. Leave it blank to caption in the spoken language.",
+            },
+          }
+        : {}),
     },
   };
 }
@@ -759,6 +970,7 @@ function stepType(step: StepDefinition): NodeType {
     automatic: step.primaryInput ?? step.listInput?.field ?? null,
     ...(step.values ? { makes: Object.keys(step.values) } : {}),
     ...(step.brandInputs ? { brand: step.brandInputs } : {}),
+    ...(step.skipsWithout ? { skipsWithout: step.skipsWithout } : {}),
     ...(step.startInputs ? { fromStart: step.startInputs } : {}),
     ...(step.valueInputs
       ? {
@@ -781,9 +993,13 @@ export const NODE_TYPES: NodeType[] = [
   MOTION_PLAN,
   MOTION,
   SOUND_EFFECTS,
+  CLEANUP,
+  FOOTAGE_CHECK,
+  SUBTITLES,
   EXPORT,
   IF,
   WAIT,
+  SEND,
   RUN_AUTOMATION,
   ...allSteps.map(stepType),
   APPROVAL,
@@ -848,9 +1064,13 @@ export function savedKind(type: string): Pick<AutomationNode, "kind" | "stepId">
     type === "motion" ||
     type === "motion-plan" ||
     type === "sound-effects" ||
+    type === "cleanup" ||
+    type === "footage-check" ||
+    type === "subtitles" ||
     type === "export" ||
     type === "if" ||
     type === "wait" ||
+    type === "send" ||
     type === "automation"
   ) {
     return { kind: type };
@@ -886,7 +1106,12 @@ export function missingSettingsOf(
   return (nodeType.settings.required ?? []).filter((name) => {
     if (name === nodeType.automatic) return false;
     const value = input[name];
-    if (!(value === undefined || value === null || value === "")) return false;
+    const blank =
+      value === undefined ||
+      value === null ||
+      value === "" ||
+      (Array.isArray(value) && value.length === 0);
+    if (!blank) return false;
     const key = nodeType.brand?.[name];
     return !(key && brand?.[key]);
   });
@@ -899,6 +1124,25 @@ export function missingBrandOf(
   brand: Brand,
 ): BrandKey[] {
   return missingSettingsOf(nodeType, input, brand).flatMap((name) => nodeType.brand?.[name] ?? []);
+}
+
+/**
+ * The brand item a node is passed over without, when the node leaves it empty and the
+ * team has not set it: "music" for Music Under Each Variant before any music is added.
+ * Null when the node will run.
+ */
+export function passedOverWithout(
+  nodeType: NodeType,
+  input: Record<string, unknown>,
+  brand: Brand,
+): BrandKey | null {
+  const name = nodeType.skipsWithout;
+  if (!name) return null;
+  const value = input[name];
+  if (!(value === undefined || value === null || value === "")) return null;
+  const key = nodeType.brand?.[name];
+  if (key && brand[key]) return null;
+  return key ?? null;
 }
 
 /** A node's settings with every blank brand setting filled from the team's brand. */

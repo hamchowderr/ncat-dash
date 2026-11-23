@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-watched-folders"
+description = "Enables the watched_folders command without any pre-configured scope."
+commands.allow = ["watched_folders"]
+
+[[permission]]
+identifier = "deny-watched-folders"
+description = "Denies the watched_folders command without any pre-configured scope."
+commands.deny = ["watched_folders"]

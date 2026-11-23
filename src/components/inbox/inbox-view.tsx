@@ -20,7 +20,7 @@ type Alert = FunctionReturnType<typeof api.alerts.list>["alerts"][number];
 /** The views across the top of the Inbox, each a set of kinds. */
 export const VIEWS = [
   { id: "all", label: "All", kinds: null },
-  { id: "needs-you", label: "Needs you", kinds: ["approval_waiting"] },
+  { id: "needs-you", label: "Needs you", kinds: ["approval_waiting", "rights_ending"] },
   { id: "failed", label: "Failed runs", kinds: ["run_failed", "approval_timed_out"] },
   {
     id: "mentions",

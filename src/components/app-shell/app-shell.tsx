@@ -2,12 +2,12 @@
 
 import { api } from "@convex/_generated/api";
 import { useQuery } from "convex/react";
-import { MessagesSquare } from "lucide-react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { type ReactNode, useEffect, useRef, ViewTransition } from "react";
+import { type ReactNode, useEffect, useRef, useState, ViewTransition } from "react";
 
 import { useAgentContext } from "@/components/agent/agent-context";
+import { AgentTrigger, useAgentShortcut } from "@/components/agent/agent-rail";
 import { FullPageLoader } from "@/components/full-page-loader";
 import { AlertNotices, useUnseenAlerts } from "@/components/inbox/alert-notices";
 import {
@@ -17,17 +17,19 @@ import {
   TrialEnded,
   useAccessRefusal,
 } from "@/components/trial/trial-notice";
-import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { showAgent, useAgentOpen } from "@/lib/agent-open";
 import { TeamContext } from "@/lib/team-context";
 import { TeamStepsSync } from "@/lib/team-steps-sync";
+import { TranscriptCatchUp } from "@/lib/transcript-catch-up";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
 import { cn } from "@/lib/utils";
 
 import { AppSidebar, isSettingsPath, navItemFor } from "./app-sidebar";
 import { DashboardTour } from "./dashboard-tour";
+import { LocalFolders } from "./local-folders";
+import { WatchHowButton, WatchHowPanel } from "./watch-how";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const state = useTeam();
@@ -46,6 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <TeamContext.Provider value={state.team}>
       <Shell state={state} edition={settings?.edition === "hosted" ? "Hosted" : "Self-hosted"}>
+        <TranscriptCatchUp organizationId={state.team.id} />
         <TeamStepsSync organizationId={state.team.id}>{children}</TeamStepsSync>
       </Shell>
     </TeamContext.Provider>
@@ -72,12 +75,18 @@ function Shell({
   const { onAutomation } = useAgentContext();
   const agentOpen = useAgentOpen();
   const refusal = useAccessRefusal(state.team.id);
+  useAgentShortcut(agentOpen);
+  // The video belongs to the page it was opened on: moving to another page closes it.
+  const [watch, setWatch] = useState<{ pathname: string; playing: string | null } | null>(null);
+  const watching = watch?.pathname === pathname;
 
   return (
     <SidebarProvider className="md:h-svh md:overflow-hidden">
       <DashboardTour>
         <RoomForAgent agentOpen={agentOpen} />
+        <CloseMenuOnNavigate pathname={pathname} />
         <AlertNotices />
+        <LocalFolders />
         <AppSidebar teamName={state.team.name} edition={edition} user={state.user} />
         {/* The page scrolls inside its own frame, so the bar along the top always stays put
           and a page can fill exactly the height that is left. */}
@@ -89,18 +98,14 @@ function Shell({
               <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
             )}
             <div className="ml-auto flex items-center gap-3">
+              <WatchHowButton
+                pathname={pathname}
+                open={watching}
+                onToggle={() => setWatch(watching ? null : { pathname, playing: null })}
+              />
               <TrialDays organizationId={state.team.id} />
-              {!agentOpen && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  data-tour-step-id="tour-agent"
-                  onClick={() => showAgent(true)}
-                >
-                  <MessagesSquare />
-                  Agent
-                </Button>
-              )}
+              {/* The agent's button, the mirror of the menu's on the left. */}
+              {!agentOpen && <AgentTrigger className="-mr-1" />}
             </div>
           </header>
           <div
@@ -111,23 +116,32 @@ function Shell({
               <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">
                 <TeamPaused organizationId={state.team.id} />
                 <TrialEnded organizationId={state.team.id} />
+                {watching && (
+                  <WatchHowPanel
+                    pathname={pathname}
+                    playing={watch.playing}
+                    onPlay={(playing) => setWatch({ pathname, playing })}
+                    onClose={() => setWatch(null)}
+                  />
+                )}
                 {children}
               </div>
             </PageTransition>
           </div>
         </SidebarInset>
-        {/* Always in place on a wide screen and opened by growing, so the page makes room
-          for the chat instead of jumping. On a narrow screen there is no room beside the
-          page, so the agent takes the page's place until it is closed: nothing lies over
-          anything. */}
+        {/* The agent is a sidebar of its own on the right, opened from the robot in the bar
+          along the top. Open, it sits beside the page, which makes room for it instead of
+          being covered, and it opens by growing, so nothing jumps. Closed, it takes no room
+          at all. On a screen too narrow for both, the open agent takes the page's place
+          until it is closed. */}
         <aside
           aria-label="Agent"
           aria-hidden={!agentOpen}
-          inert={!agentOpen}
+          data-state={agentOpen ? "open" : "closed"}
           className={cn(
-            "bg-background h-svh flex-col overflow-hidden lg:flex lg:shrink-0",
-            "motion-safe:lg:transition-[width] motion-safe:lg:duration-300 motion-safe:lg:ease-[cubic-bezier(0.16,1,0.3,1)]",
-            agentOpen ? "flex min-w-0 flex-1 lg:w-[26rem] lg:flex-none" : "hidden lg:w-0",
+            "bg-sidebar text-sidebar-foreground h-svh flex-col overflow-hidden md:flex md:shrink-0 md:py-2",
+            "motion-safe:md:transition-[width] motion-safe:md:duration-300 motion-safe:md:ease-[cubic-bezier(0.16,1,0.3,1)]",
+            agentOpen ? "flex min-w-0 flex-1 lg:w-[26rem] lg:flex-none" : "hidden md:w-0 md:py-0",
           )}
         >
           {agentOpen && (
@@ -193,6 +207,16 @@ function RoomForAgent({ agentOpen }: { agentOpen: boolean }) {
       root.removeAttribute("data-sidebar-open");
     };
   }, [agentOpen, open, isMobile]);
+  return null;
+}
+
+/**
+ * On a phone the menu slides over the page, so picking a page in it must also put it away;
+ * otherwise the page opens underneath and the menu stays in front of it.
+ */
+function CloseMenuOnNavigate({ pathname }: { pathname: string }) {
+  const { setOpenMobile } = useSidebar();
+  useEffect(() => setOpenMobile(false), [pathname, setOpenMobile]);
   return null;
 }
 

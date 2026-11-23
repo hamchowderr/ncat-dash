@@ -9,8 +9,17 @@ import {
 } from "@ncat-dash/automation-core";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Copy, LayoutGrid, List, Trash2, UploadCloud } from "lucide-react";
-import { useMemo, useRef, useSyncExternalStore, useState, type DragEvent } from "react";
+import { Copy, FileText, LayoutGrid, List, Trash2, UploadCloud } from "lucide-react";
+import Link from "next/link";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+  useState,
+  type DragEvent,
+} from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -32,9 +41,22 @@ import {
 } from "@/components/ui/table";
 import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
-import { useSendFile } from "@/lib/send-file";
+import { cn } from "@/lib/utils";
+import {
+  chooseFilesOnDesktop,
+  type DiskUpload,
+  forgetDiskUpload,
+  inDesktopApp,
+  stoppedDiskUploads,
+} from "@/lib/desktop";
+import { type StartedUpload, StoppedUpload, useSendFile, useSendFromDisk } from "@/lib/send-file";
+import { usePhone } from "@/hooks/use-narrow";
+import { useWakeLock } from "@/hooks/use-wake-lock";
+
+import { CopyLookFromUpload } from "@/components/looks/look-study";
 
 import { NeedsToolkit } from "./needs-toolkit";
+import { LinkRow, PasteLink, useLinks } from "./paste-link";
 import {
   UploadFrame,
   UploadingCard,
@@ -110,7 +132,8 @@ function UploadActions({
   onRemove: () => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center">
+    // On a phone the opened file carries these, as big buttons; the tile stays a picture.
+    <div className="flex shrink-0 items-center max-sm:hidden">
       <Button
         variant="ghost"
         size="icon-sm"
@@ -137,6 +160,8 @@ export function UploadsView() {
   const uploads = useQuery(api.storage.listUploads, { organizationId: team.id });
   const startUpload = useAction(api.storage.startUpload);
   const sendFile = useSendFile();
+  const fromDisk = useSendFromDisk();
+  const cancelUpload = useAction(api.storage.cancelUpload);
   const finishUpload = useMutation(api.storage.finishUpload);
   const removeUpload = useMutation(api.storage.removeUpload);
   const linkFor = useAction(api.storage.linkFor);
@@ -146,8 +171,43 @@ export function UploadsView() {
   const [dragging, setDragging] = useState(false);
   const [opened, setOpened] = useState<Id<"uploads"> | null>(null);
   const [hovered, setHovered] = useState<Id<"uploads"> | null>(null);
-  // The server always draws tiles; the browser then uses the viewer's own choice.
-  const layout = useSyncExternalStore(watchLayout, readLayout, () => "tiles" as const);
+  // The server always draws tiles; the browser then uses the viewer's own choice. A phone
+  // always gets tiles: the list's nine columns do not fit across one.
+  const phone = usePhone();
+  const chosen = useSyncExternalStore(watchLayout, readLayout, () => "tiles" as const);
+  const layout = phone ? "tiles" : chosen;
+  const sending = Object.keys(inFlight).length > 0;
+  // In the desktop app, files are chosen in the computer's own picker and sent from disk;
+  // an upload that stopped part way is listed here to carry on from where it got to.
+  const [desktop] = useState(inDesktopApp);
+  const [stoppedRecords, setStoppedRecords] = useState<DiskUpload[]>([]);
+  const refreshStopped = useCallback(() => {
+    void stoppedDiskUploads().then(setStoppedRecords);
+  }, []);
+  useEffect(() => {
+    if (desktop) refreshStopped();
+  }, [desktop, refreshStopped]);
+  const stopped = useMemo(
+    () =>
+      stoppedRecords.filter(
+        (record) =>
+          !inFlight[record.uploadId] &&
+          uploads?.some(
+            (upload) => upload._id === record.uploadId && upload.status === "uploading",
+          ),
+      ),
+    [stoppedRecords, uploads, inFlight],
+  );
+  // The app remembers an upload the team no longer has (removed elsewhere): forget it.
+  useEffect(() => {
+    if (!uploads) return;
+    for (const record of stoppedRecords) {
+      if (!uploads.some((upload) => upload._id === record.uploadId)) {
+        void forgetDiskUpload(record.uploadId);
+      }
+    }
+  }, [uploads, stoppedRecords]);
+  useWakeLock(sending);
   const ready = useMemo(
     () =>
       uploads
@@ -156,6 +216,9 @@ export function UploadsView() {
     [uploads],
   );
   const links = usePreviewLinks(team.id, ready);
+  // Videos coming in from pasted links, and links that could not be brought in. Those
+  // pasted to copy a look show in the step they were pasted in.
+  const pasted = (useLinks() ?? []).filter((link) => !link.forLook);
   // Meeting recordings the toolkit is still bringing in, straight from Zoom or Google
   // Drive to the bucket.
   const fromZoom = useMemo(
@@ -204,8 +267,79 @@ export function UploadsView() {
     [uploads, ready, inFlight],
   );
 
-  async function send(files: FileList | File[]) {
-    for (const file of Array.from(files)) {
+  function send(files: FileList | File[]) {
+    return sendAll(
+      Array.from(files).map((file) => ({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        go: (started: StartedUpload, onProgress: (percent: number) => void) =>
+          sendFile(started, file, onProgress),
+      })),
+    );
+  }
+
+  async function choose() {
+    const chosen = desktop ? await chooseFilesOnDesktop() : null;
+    // Outside the app, or an app too old to have its own picker: the page's file input.
+    if (chosen === null) {
+      input.current?.click();
+      return;
+    }
+    await sendAll(
+      chosen.map((file) => ({
+        name: file.name,
+        type: file.contentType,
+        size: file.size,
+        go: (started: StartedUpload, onProgress: (percent: number) => void) =>
+          fromDisk.send(started, file, onProgress),
+      })),
+    );
+  }
+
+  function stoppedNotice(name: string) {
+    refreshStopped();
+    toast.error(`${name} stopped part way. Carry on below to send the rest.`);
+  }
+
+  async function carryOn(record: DiskUpload) {
+    const id = record.uploadId as Id<"uploads">;
+    setInFlight((current) => ({ ...current, [id]: { name: record.name, percent: 0 } }));
+    try {
+      await fromDisk.carryOn(record, (percent) =>
+        setInFlight((current) => ({ ...current, [id]: { name: record.name, percent } })),
+      );
+      await finishUpload({ uploadId: id });
+      refreshStopped();
+    } catch (caught) {
+      if (caught instanceof StoppedUpload) stoppedNotice(record.name);
+      else {
+        await removeUpload({ uploadId: id }).catch(() => null);
+        refreshStopped();
+        toast.error(errorMessage(caught, `${record.name} did not upload.`));
+      }
+    } finally {
+      setInFlight((current) =>
+        Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)),
+      );
+    }
+  }
+
+  async function drop(record: DiskUpload) {
+    await cancelUpload({ uploadId: record.uploadId as Id<"uploads"> }).catch(() => null);
+    await forgetDiskUpload(record.uploadId);
+    refreshStopped();
+  }
+
+  async function sendAll(
+    files: {
+      name: string;
+      type: string;
+      size: number;
+      go: (started: StartedUpload, onProgress: (percent: number) => void) => Promise<void>;
+    }[],
+  ) {
+    for (const file of files) {
       let uploadId: Id<"uploads"> | null = null;
       try {
         const started = await startUpload({
@@ -217,11 +351,16 @@ export function UploadsView() {
         uploadId = started.uploadId;
         const id = started.uploadId;
         setInFlight((current) => ({ ...current, [id]: { name: file.name, percent: 0 } }));
-        await sendFile(started, file, (percent) =>
+        await file.go(started, (percent) =>
           setInFlight((current) => ({ ...current, [id]: { name: file.name, percent } })),
         );
         await finishUpload({ uploadId: id });
       } catch (caught) {
+        // Stopped part way from disk: kept, to carry on from where it got to.
+        if (caught instanceof StoppedUpload) {
+          stoppedNotice(file.name);
+          continue;
+        }
         if (uploadId) await removeUpload({ uploadId });
         toast.error(
           errorMessage(
@@ -297,10 +436,17 @@ export function UploadsView() {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         data-dragging={dragging}
-        className="data-[dragging=true]:border-primary data-[dragging=true]:bg-accent/50 flex flex-col items-center gap-3 rounded-xl bg-surface p-8 text-center transition-colors"
+        data-upload-area
+        className="data-[dragging=true]:border-primary data-[dragging=true]:bg-accent/50 flex flex-col items-center gap-3 rounded-xl bg-surface p-5 text-center transition-colors sm:p-8"
       >
-        <UploadCloud className="text-muted-foreground size-8" aria-hidden="true" />
-        <p className="text-sm">Drop files here, or choose them from your computer.</p>
+        <UploadCloud className="text-muted-foreground size-8 max-sm:size-7" aria-hidden="true" />
+        {/* A phone has nothing to drag from: its picker opens the camera roll and the camera. */}
+        <p className="text-sm pointer-coarse:hidden">
+          Drop files here, or choose them from your computer.
+        </p>
+        <p className="hidden text-sm pointer-coarse:block">
+          Choose videos and photos from your phone.
+        </p>
         <input
           ref={input}
           type="file"
@@ -312,13 +458,72 @@ export function UploadsView() {
             event.target.value = "";
           }}
         />
-        <Button size="sm" onClick={() => input.current?.click()}>
+        <Button
+          size="sm"
+          className="pointer-coarse:h-11 pointer-coarse:w-full pointer-coarse:max-w-xs pointer-coarse:text-base"
+          onClick={() => void choose()}
+        >
           Choose files
         </Button>
         <p className="text-muted-foreground text-xs">
           Going to your toolkit&apos;s storage, bucket {storage.bucket}.
         </p>
+        <PasteLink className="mt-3 max-w-md text-left" />
       </div>
+
+      {pasted.length > 0 && (
+        <section aria-label="Videos from links" className="flex flex-col gap-3">
+          {pasted.map((link) => (
+            <LinkRow key={link._id} link={link} />
+          ))}
+        </section>
+      )}
+
+      {sending && (
+        <p role="status" className="text-muted-foreground text-sm" data-keep-open>
+          {desktop
+            ? "Keep the app open until your files finish sending; closing the window keeps it running. If sending stops, it carries on from where it got to."
+            : "Keep this page open until your files finish sending. The screen stays on meanwhile."}
+        </p>
+      )}
+
+      {stopped.length > 0 && (
+        <section aria-label="Stopped uploads" className="flex flex-col gap-2">
+          {stopped.map((record) => {
+            const sent = record.parts.reduce(
+              (total, part) =>
+                total +
+                Math.min(
+                  record.plan.partSize,
+                  record.size - (part.partNumber - 1) * record.plan.partSize,
+                ),
+              0,
+            );
+            return (
+              <div
+                key={record.uploadId}
+                className="flex flex-wrap items-center gap-3 rounded-lg bg-surface px-4 py-3 text-sm"
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  {record.name} stopped at {Math.floor((sent / record.size) * 100)}% (
+                  {formatBytes(sent)} of {formatBytes(record.size)}).
+                </span>
+                <Button size="sm" onClick={() => void carryOn(record)}>
+                  Carry on
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Drop ${record.name}`}
+                  onClick={() => void drop(record)}
+                >
+                  Drop
+                </Button>
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       {fromZoom.length > 0 && (
         <p className="text-muted-foreground text-sm" data-zoom-coming>
@@ -356,7 +561,7 @@ export function UploadsView() {
             <p className="text-muted-foreground text-sm tabular-nums">
               {shown.length === 1 ? "1 file" : `${shown.length} files`}
             </p>
-            <SegmentedGroup aria-label="Show as">
+            <SegmentedGroup aria-label="Show as" className="max-sm:hidden">
               {(
                 [
                   ["tiles", LayoutGrid, "Tiles"],
@@ -376,7 +581,7 @@ export function UploadsView() {
           </div>
 
           {layout === "tiles" ? (
-            <ul className="reveal grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-x-5 gap-y-6">
+            <ul className="reveal grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] sm:gap-x-5 sm:gap-y-6">
               {shown.map((entry) => {
                 if (entry.going)
                   return (
@@ -527,7 +732,15 @@ export function UploadsView() {
         </section>
       )}
       <Dialog open={openedUpload !== undefined} onOpenChange={(open) => !open && setOpened(null)}>
-        <DialogContent className={openedUpload?.kind === "other" ? "sm:max-w-md" : "sm:max-w-5xl"}>
+        <DialogContent
+          className={cn(
+            "max-h-[calc(100dvh-2rem)] overflow-y-auto",
+            openedUpload?.kind === "other" ? "sm:max-w-md" : "sm:max-w-5xl",
+            // A phone gets the whole screen: the player at the top, the details under it and
+            // the buttons in reach of a thumb.
+            "max-sm:inset-0 max-sm:h-dvh max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:content-start max-sm:overflow-y-auto max-sm:rounded-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
+          )}
+        >
           <DialogHeader>
             <DialogTitle className="truncate pr-6">{openedUpload?.fileName}</DialogTitle>
             <DialogDescription>
@@ -560,14 +773,31 @@ export function UploadsView() {
                     </div>
                   ))}
                 </dl>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => copyLink(openedUpload._id)}>
+                <div className="flex flex-wrap gap-2 max-sm:grid max-sm:grid-cols-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="max-sm:h-11"
+                    onClick={() => copyLink(openedUpload._id)}
+                  >
                     <Copy />
                     Copy link
                   </Button>
+                  {openedUpload.libraryItemId &&
+                    (openedUpload.kind === "video" || openedUpload.kind === "audio") && (
+                      <Button asChild variant="secondary" size="sm" className="max-sm:h-11">
+                        <Link href={`/library/${openedUpload.libraryItemId}`}>
+                          <FileText />
+                          {openedUpload.transcript === "working"
+                            ? "Transcript on its way"
+                            : "Transcript and SRT"}
+                        </Link>
+                      </Button>
+                    )}
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="max-sm:h-11"
                     onClick={() => {
                       const id = openedUpload._id;
                       setOpened(null);
@@ -580,6 +810,9 @@ export function UploadsView() {
                 </div>
               </div>
             </div>
+          )}
+          {openedUpload?.kind === "video" && openedUpload.details?.hasVideo !== false && (
+            <CopyLookFromUpload upload={openedUpload} />
           )}
         </DialogContent>
       </Dialog>

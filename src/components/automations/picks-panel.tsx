@@ -4,14 +4,18 @@ import {
   type AutomationEdge,
   type AutomationNode,
   type Chapter,
+  checkedName,
+  cleanupSentence,
+  footageSummary,
   clipsKeepShape,
   clock,
   frameSize,
   getPlatform,
+  languageOf,
   showNotes,
   youtubeChapters,
 } from "@ncat-dash/automation-core";
-import { Check, Copy, Download, ListPlus } from "lucide-react";
+import { Check, CircleAlert, CircleCheck, Copy, Download, ListPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -53,6 +57,12 @@ export function PicksPanel({
     if (node.kind === "moments" && step.moments?.length) return [{ node, step }];
     if (node.kind === "chapters" && step.chapters?.length) return [{ node, step }];
     if (node.kind === "broll" && step.cutaways?.length) return [{ node, step }];
+    if (node.kind === "cleanup" && step.cleaned?.length) return [{ node, step }];
+    if (node.kind === "footage-check" && step.footage?.files.length) return [{ node, step }];
+    if (node.kind === "subtitles" && step.status === "done" && step.subtitles?.length) {
+      return [{ node, step }];
+    }
+    if (step.disclosures?.length) return [{ node, step }];
     return [];
   });
   if (shown.length === 0) return null;
@@ -71,11 +81,243 @@ export function PicksPanel({
           />
         ) : node.kind === "broll" ? (
           <CutawaysSection key={step._id} title={nodeTitle(node)} step={step} />
+        ) : node.kind === "cleanup" ? (
+          <CleanupSection key={step._id} title={nodeTitle(node)} step={step} />
+        ) : node.kind === "footage-check" ? (
+          <FootageSection key={step._id} title={nodeTitle(node)} step={step} />
+        ) : node.kind === "subtitles" ? (
+          <SubtitlesSection key={step._id} title={nodeTitle(node)} step={step} />
+        ) : step.disclosures?.length ? (
+          <DisclosureSection key={step._id} title={nodeTitle(node)} step={step} />
         ) : (
           <ChaptersSection key={step._id} title={nodeTitle(node)} step={step} />
         ),
       )}
     </div>
+  );
+}
+
+/**
+ * The subtitle files a Translate Subtitles step wrote: one row per video, one link per
+ * language. A video with no speech heard has no files, and the note says so.
+ */
+function SubtitlesSection({ title, step }: { title: string; step: RunStep }) {
+  const files = step.subtitles ?? [];
+  const videos = [...new Set(files.map((file) => file.source))];
+  return (
+    <section aria-label={title} className="bg-surface rounded-xl">
+      <header className="grid px-4 py-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="text-muted-foreground text-xs">
+          SRT files to upload beside each video. They are kept in Files under Subtitles.
+        </p>
+      </header>
+      <ul className="grid gap-1 px-4 pb-4">
+        {videos.map((video) => {
+          const made = files.filter((file) => file.source === video && file.link);
+          const name = files.find((file) => file.source === video)?.name ?? "";
+          return (
+            <li key={video} className="bg-background grid gap-2 rounded-lg px-3 py-2">
+              <p className="truncate text-sm">{name.replace(/\.[^.]+\.srt$/, "")}</p>
+              {made.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {made.map((file) => (
+                    <a
+                      key={file.language}
+                      href={file.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      download={file.name}
+                      className="bg-muted hover:bg-accent flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
+                    >
+                      <Download className="size-3" />
+                      {languageOf(file.language)?.name ?? file.language}
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-xs">No speech was heard in this video.</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** A take's file code as it reads: "hook02" is "Hook 2". */
+function takeName(label: string | null): string {
+  if (!label) return "Cleaned video";
+  const hook = /^hook0?(\d)$/.exec(label);
+  return hook ? `Hook ${hook[1]}` : label === "body" ? "Body" : label;
+}
+
+/**
+ * What Clean Up Pauses And Retakes took out of each video, how long it was and is now, and
+ * the files it made: one cleaned video, or each hook take and the body.
+ */
+function CleanupSection({ title, step }: { title: string; step: RunStep }) {
+  const cleaned = step.cleaned ?? [];
+  // The step's files, in the order its plans were made.
+  const files = step.jobs.flatMap((job) => job.outputs);
+  let at = 0;
+  return (
+    <section aria-label={title} className="bg-surface rounded-xl">
+      <header className="grid px-4 py-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="text-muted-foreground text-xs">No AI: pauses and retakes found by rules.</p>
+      </header>
+      <ul className="grid gap-1 px-4 pb-4">
+        {cleaned.map((one) => {
+          const made = one.labels.map((label) => ({ label, url: files[at++] }));
+          return (
+            <li key={one.source} className="bg-background grid gap-2 rounded-lg px-3 py-2">
+              <p className="text-sm">{cleanupSentence(one)}</p>
+              <p className="text-muted-foreground text-xs tabular-nums">
+                {length(one.before)} down to {length(one.after)}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {made.map(({ label, url }, index) =>
+                  url ? (
+                    <a
+                      key={`${label}-${index}`}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-muted hover:bg-accent rounded-md px-2 py-1 text-xs font-medium"
+                    >
+                      {takeName(label)}
+                    </a>
+                  ) : (
+                    <span
+                      key={`${label}-${index}`}
+                      className="bg-muted text-muted-foreground rounded-md px-2 py-1 text-xs"
+                    >
+                      {takeName(label)}
+                    </span>
+                  ),
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** A file's name from its address: "Boots ad.mp4" from ".../Boots%20ad.mp4?x=1". */
+function fileName(url: string): string {
+  const last = url.split(/[?#]/)[0].split("/").pop() ?? url;
+  try {
+    return decodeURIComponent(last);
+  } catch {
+    return last;
+  }
+}
+
+/**
+ * The paid-ad disclosure a Length Cuts or Hook And Ending Variants step kept in every cut
+ * of each video, as it was said, or that none was heard, so the team can have the creator
+ * add one before the ads go out.
+ */
+function DisclosureSection({ title, step }: { title: string; step: RunStep }) {
+  const notes = step.disclosures ?? [];
+  return (
+    <section aria-label={`${title}: paid-ad disclosure`} className="bg-surface rounded-xl">
+      <header className="grid px-4 py-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="text-muted-foreground text-xs">
+          Paid-ad disclosure, found in what was said. No AI.
+        </p>
+      </header>
+      <ul className="grid gap-1 px-4 pb-4">
+        {notes.map((note, index) => (
+          <li
+            key={`${note.source}-${index}`}
+            className="bg-background grid gap-1 rounded-lg px-3 py-2"
+          >
+            <p className="text-muted-foreground truncate text-xs">{fileName(note.source)}</p>
+            {note.text ? (
+              <p className="text-sm">
+                Kept in every cut: <q className="font-medium">{note.text}</q>
+              </p>
+            ) : (
+              <p className="text-sm">
+                No disclosure was heard, so the cuts have none. A paid creator&apos;s ad should say
+                it is one, like &ldquo;paid partnership with&hellip;&rdquo;.
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * What Check Footage found in each file before editing: its size and length, and every
+ * problem in plain words, or that it is fine. Says whether the run stopped, and where the
+ * note for the creator was left.
+ */
+function FootageSection({ title, step }: { title: string; step: RunStep }) {
+  const footage = step.footage!;
+  const bad = footage.files.filter((file) => file.problems.length > 0).length;
+  return (
+    <section aria-label={title} className="bg-surface rounded-xl">
+      <header className="grid px-4 py-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <p className="text-muted-foreground text-xs text-pretty">
+          {footageSummary(footage.files)}{" "}
+          {bad > 0 && (footage.stopped ? "Editing did not start. " : "Editing went ahead. ")}
+          No AI: measured by your toolkit, judged by rules.
+          {footage.note ? ` A note for the creator is in ${footage.note}.` : ""}
+        </p>
+      </header>
+      <ul className="grid gap-1 px-4 pb-4">
+        {footage.files.map((file) => {
+          const fine = file.problems.length === 0;
+          const facts = [
+            file.width && file.height ? `${file.width}×${file.height}` : null,
+            typeof file.duration === "number" ? length(file.duration) : null,
+            typeof file.loudness === "number" ? `${Math.round(file.loudness)} LUFS` : null,
+          ].filter(Boolean);
+          return (
+            <li
+              key={file.url}
+              className="bg-background grid grid-cols-[auto_1fr] gap-x-3 rounded-lg px-3 py-2"
+            >
+              {fine ? (
+                <CircleCheck className="mt-0.5 size-4 text-emerald-600" aria-label="Fine" />
+              ) : (
+                <CircleAlert className="mt-0.5 size-4 text-amber-600" aria-label="Needs a look" />
+              )}
+              <div className="grid gap-1">
+                <p className="text-sm font-medium break-all">
+                  {checkedName(file)}
+                  {facts.length > 0 && (
+                    <span className="text-muted-foreground font-normal tabular-nums">
+                      {" "}
+                      · {facts.join(" · ")}
+                    </span>
+                  )}
+                </p>
+                {fine ? (
+                  <p className="text-muted-foreground text-xs">Fine to edit.</p>
+                ) : (
+                  <ul className="grid gap-0.5 text-xs text-pretty">
+                    {file.problems.map((problem) => (
+                      <li key={problem.kind}>{problem.says}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

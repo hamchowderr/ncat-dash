@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
+import { linkedChatApps } from "./lib/chatAlerts";
 import {
   ALWAYS_RIGHT_AWAY,
   DEFAULT_DIGEST_HOUR,
@@ -22,6 +23,9 @@ const kind = v.union(
   v.literal("mention"),
   v.literal("client_feedback"),
   v.literal("ready_for_review"),
+  v.literal("clip_finished"),
+  v.literal("footage_problem"),
+  v.literal("rights_ending"),
 );
 
 /** The person asking's notification settings on a team, with every kind spelled out. */
@@ -40,12 +44,18 @@ export const get = query({
         description: entry.description,
         bell: wants(preference, entry.kind, "bell"),
         email: wants(preference, entry.kind, "email"),
+        telegram: wants(preference, entry.kind, "telegram"),
+        slack: wants(preference, entry.kind, "slack"),
+        discord: wants(preference, entry.kind, "discord"),
+        teams: wants(preference, entry.kind, "teams"),
         alwaysRightAway: ALWAYS_RIGHT_AWAY.includes(entry.kind),
       })),
       emailTiming: preference?.emailTiming ?? ("now" as const),
       digestHour: preference?.digestHour ?? DEFAULT_DIGEST_HOUR,
       timeZone: preference?.timeZone ?? null,
       emailReady,
+      // The chat apps this person has linked on this team; Settings shows a column each.
+      chatApps: await linkedChatApps(ctx, args.organizationId, userId),
     };
   },
 });
@@ -55,7 +65,14 @@ export const set = mutation({
   args: {
     organizationId: v.string(),
     kind,
-    channel: v.union(v.literal("bell"), v.literal("email")),
+    channel: v.union(
+      v.literal("bell"),
+      v.literal("email"),
+      v.literal("telegram"),
+      v.literal("slack"),
+      v.literal("discord"),
+      v.literal("teams"),
+    ),
     enabled: v.boolean(),
   },
   handler: async (ctx, args) => {

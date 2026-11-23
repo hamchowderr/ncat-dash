@@ -22,12 +22,17 @@ function settings(over: Record<string, unknown> = {}) {
       description: `About ${title}.`,
       bell: true,
       email: true,
+      telegram: kind !== "approval_timed_out",
+      slack: true,
+      discord: true,
+      teams: true,
       alwaysRightAway,
     })),
     emailTiming: "now",
     digestHour: 8,
     timeZone: null,
     emailReady: true,
+    chatApps: [],
     ...over,
   };
 }
@@ -42,6 +47,50 @@ describe("notification settings", () => {
     expect(
       screen.getByRole("switch", { name: "Someone mentions me in a review: by email" }),
     ).toBeChecked();
+  });
+
+  test("a chat app the person linked gets its own column of switches", () => {
+    answerQuery(api.notifications.get, settings({ chatApps: ["telegram"] }));
+    renderInApp(<NotificationsCard />);
+    expect(screen.getByRole("columnheader", { name: "Telegram" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Slack" })).not.toBeInTheDocument();
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.map((row) => within(row).getAllByRole("switch").length)).toEqual([3, 3, 3, 3]);
+    expect(
+      screen.getByRole("switch", { name: "An approval ran out of time: in Telegram" }),
+    ).not.toBeChecked();
+    fireEvent.click(
+      screen.getByRole("switch", { name: "An approval is waiting for me: in Telegram" }),
+    );
+    expect(mutationOf(api.notifications.set)).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      kind: "approval_waiting",
+      channel: "telegram",
+      enabled: false,
+    });
+  });
+
+  test("Slack and Discord each get a column once the person can get alerts there", () => {
+    answerQuery(api.notifications.get, settings({ chatApps: ["slack", "discord"] }));
+    renderInApp(<NotificationsCard />);
+    expect(screen.getByRole("columnheader", { name: "Slack" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Discord" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "A run fails: in Discord" }));
+    expect(mutationOf(api.notifications.set)).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      kind: "run_failed",
+      channel: "discord",
+      enabled: false,
+    });
+    fireEvent.click(
+      screen.getByRole("switch", { name: "An approval is waiting for me: in Slack" }),
+    );
+    expect(mutationOf(api.notifications.set)).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      kind: "approval_waiting",
+      channel: "slack",
+      enabled: false,
+    });
   });
 
   test("switching one off saves just that kind and channel", () => {

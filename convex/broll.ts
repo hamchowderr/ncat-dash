@@ -43,9 +43,9 @@ import { bucketOf, presign } from "./lib/bucket";
 import { refreshBrollLike, usableAsBroll } from "./lib/broll";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { heardFrom, MAX_VIDEOS_PER_PICK_STEP, wordsFor } from "./lib/moments";
-import { enqueueAll, advance, failStep } from "./lib/runner";
+import { enqueueAll, advance, bookAgentRetry, failStep } from "./lib/runner";
 import { enqueueJob, pump } from "./lib/queue";
-import { PickError, wordsOfVideo } from "./moments";
+import { mayPass, PickError, wordsOfVideo } from "./moments";
 
 /**
  * B-Roll (automation-core broll.ts has the rules).
@@ -58,7 +58,8 @@ import { PickError, wordsOfVideo } from "./moments";
  * The run side, for an Add B-Roll step after "listen" (convex/lib/moments.ts):
  * - "match": the moments to cover come from Plan B-Roll's plan, or else every sentence
  *   that names something to show. Free stock is searched for the strongest of them.
- * - "look": one toolkit job turns the words and the stock stills into vectors.
+ * - "look": one toolkit job turns the words and the stock stills into vectors, and one per
+ *   video finds its camera cuts.
  * - choose (here): the library is searched with each moment's vector, stock is scored by
  *   its still, the cutaways are chosen, and one compose job per video lays them over
  *   ("lay", which the runner finishes like any job).
@@ -233,6 +234,31 @@ export const setUse = mutation({
     if (!item || item.organizationId !== args.organizationId) fail("not_found", "File not found.");
     if (item.kind !== "video") fail("invalid_input", "Only videos can be used as B-Roll.");
     await ctx.db.patch(item._id, { broll: args.use === "auto" ? undefined : args.use });
+  },
+});
+
+/**
+ * Works out again, for every library video already looked at, whether it looks like
+ * B-Roll: for when the rules change (`npx convex run broll:judgeAgain`). A few files at a
+ * time, each read with its frames and words, then the next page is scheduled.
+ */
+export const judgeAgain = internalMutation({
+  args: { cursor: v.optional(v.union(v.string(), v.null())) },
+  returns: v.object({ judged: v.number(), done: v.boolean() }),
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("libraryItems")
+      .paginate({ cursor: args.cursor ?? null, numItems: 20 });
+    let judged = 0;
+    for (const item of page.page) {
+      if (item.kind !== "video" || item.look?.status !== "ready") continue;
+      await refreshBrollLike(ctx, item._id);
+      judged++;
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.broll.judgeAgain, { cursor: page.continueCursor });
+    }
+    return { judged, done: page.isDone };
   },
 });
 
@@ -614,25 +640,31 @@ export const match = internalAction({
       await ctx.runMutation(internal.broll.stop, {
         runStepId: args.runStepId,
         stage: "match",
-        error:
-          error instanceof PickError
-            ? error.message
-            : "Finding B-Roll failed. Run it again in a moment.",
+        error: error instanceof PickError ? error.message : "Finding B-Roll failed.",
+        tryAgain: mayPass(error),
       });
     }
   },
 });
 
-/** Fails an Add B-Roll step with a plain reason. */
+/**
+ * Fails an Add B-Roll step with a plain reason, or, when the failure may pass, books
+ * another try of the same stage while the step has tries left.
+ */
 export const stop = internalMutation({
   args: {
     runStepId: v.id("runSteps"),
     stage: v.union(v.literal("match"), v.literal("look")),
     error: v.string(),
+    tryAgain: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const loaded = await loadStep(ctx, args.runStepId, args.stage);
     if (!loaded) return;
+    if (args.tryAgain) {
+      const ask = args.stage === "match" ? "match" : "choose";
+      if (await bookAgentRetry(ctx, loaded.run, loaded.step, args.error, ask)) return;
+    }
     await failStep(ctx, loaded.run, loaded.step, await stepsMap(ctx, loaded.run), args.error);
     await advance(ctx, loaded.run._id);
   },
@@ -669,8 +701,14 @@ export const startLooking = internalMutation({
       await advance(ctx, run._id);
       return;
     }
+    // The first job looks at the words and stills; one more per video finds its camera
+    // cuts, so cutaways line up with its shots.
     const queued = await enqueueAll(ctx, run, step, [
       { stepId: "media-look", input: { texts, ...(stills.length ? { image_urls: stills } : {}) } },
+      ...work.map((video) => ({
+        stepId: "media-look",
+        input: { media_url: video.url, cuts: true, frames: false },
+      })),
     ]);
     if (!queued.ok) {
       await failStep(ctx, run, step, await stepsMap(ctx, run), queued.message);
@@ -690,12 +728,18 @@ export const loadChoose = internalQuery({
   handler: async (ctx, args) => {
     const loaded = await loadStep(ctx, args.runStepId, "look");
     if (!loaded) return null;
-    const job = loaded.step.jobIds.length ? await ctx.db.get(loaded.step.jobIds[0]) : null;
+    const [first, ...rest] = await Promise.all(loaded.step.jobIds.map((id) => ctx.db.get(id)));
+    const work = (loaded.step.brollWork ?? []) as WorkVideo[];
     return {
       organizationId: loaded.run.organizationId,
       input: loaded.node.input,
-      work: (loaded.step.brollWork ?? []) as WorkVideo[],
-      result: job?.status === "done" ? job.result : null,
+      work,
+      result: first?.status === "done" ? first.result : null,
+      // A video whose cuts could not be found is laid over as before, without them.
+      cuts: work.map((_, index) => {
+        const job = rest[index];
+        return job?.status === "done" ? cutsOf(job.result) : [];
+      }),
     };
   },
 });
@@ -727,6 +771,15 @@ export const framesFound = internalQuery({
     return found;
   },
 });
+
+/** The camera cuts in a look job's answer, in seconds. */
+export function cutsOf(result: unknown): number[] {
+  const media = (result as { media?: { cuts?: unknown } } | null)?.media;
+  if (!media || !Array.isArray(media.cuts)) return [];
+  return media.cuts
+    .filter((cut): cut is number => typeof cut === "number" && Number.isFinite(cut) && cut > 0)
+    .sort((a, b) => a - b);
+}
 
 function vectorsOf(result: unknown) {
   const texts = new Map<string, number[]>();
@@ -777,7 +830,7 @@ export const choose = internalAction({
       };
 
       const results: { video: WorkVideo; cutaways: Cutaway[] }[] = [];
-      for (const video of loaded.work) {
+      for (const [videoIndex, video] of loaded.work.entries()) {
         const options: Footage[][] = [];
         for (const [index, moment] of video.moments.entries()) {
           const vector = texts.get(lookWords(moment.show));
@@ -831,7 +884,10 @@ export const choose = internalAction({
         }
         results.push({
           video,
-          cutaways: chooseCutaways(video.moments, options, settings, { duration: video.duration }),
+          cutaways: chooseCutaways(video.moments, options, settings, {
+            duration: video.duration,
+            cuts: loaded.cuts[videoIndex] ?? [],
+          }),
         });
       }
       await ctx.runMutation(internal.broll.lay, { runStepId: args.runStepId, results });
@@ -839,10 +895,8 @@ export const choose = internalAction({
       await ctx.runMutation(internal.broll.stop, {
         runStepId: args.runStepId,
         stage: "look",
-        error:
-          error instanceof PickError
-            ? error.message
-            : "Choosing B-Roll failed. Run it again in a moment.",
+        error: error instanceof PickError ? error.message : "Choosing B-Roll failed.",
+        tryAgain: mayPass(error),
       });
     }
   },

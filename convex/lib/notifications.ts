@@ -3,8 +3,9 @@ import type { QueryCtx } from "../_generated/server";
 
 /**
  * Everything the dashboard tells people about, and how each member wants to hear it:
- * under the bell, by email, both or neither. Each member sets this for themselves, once
- * per team, in Settings > Notifications.
+ * under the bell, by email, in the chat apps they have linked (Telegram, Slack, Discord,
+ * Teams), any mix or none. Each member sets this for themselves, once per team, in
+ * Settings > Notifications. `chat` is the starting choice for every chat app.
  */
 export const NOTIFICATION_KINDS = [
   {
@@ -14,6 +15,7 @@ export const NOTIFICATION_KINDS = [
       "A run stopped because a step still failed after all its tries. Goes to everyone on the team.",
     bell: true,
     email: true,
+    chat: true,
   },
   {
     kind: "approval_waiting",
@@ -21,6 +23,7 @@ export const NOTIFICATION_KINDS = [
     description: "A run reached an Approval step that asks you, or the whole team, to decide.",
     bell: true,
     email: true,
+    chat: true,
   },
   {
     kind: "approval_timed_out",
@@ -29,6 +32,7 @@ export const NOTIFICATION_KINDS = [
       "Nobody decided an Approval step you were asked about in time, so it approved or rejected by itself.",
     bell: true,
     email: true,
+    chat: false,
   },
   {
     kind: "mention",
@@ -36,6 +40,7 @@ export const NOTIFICATION_KINDS = [
     description: "A teammate wrote @ and your name in a review comment.",
     bell: true,
     email: true,
+    chat: true,
   },
   {
     kind: "client_feedback",
@@ -44,6 +49,7 @@ export const NOTIFICATION_KINDS = [
       "Someone you shared a review with commented, approved or asked for changes. Goes to everyone on the team.",
     bell: true,
     email: true,
+    chat: false,
   },
   {
     kind: "ready_for_review",
@@ -52,11 +58,46 @@ export const NOTIFICATION_KINDS = [
       "A new version went into a slot of a project, such as a short or a thumbnail. Goes to everyone on the team.",
     bell: true,
     email: true,
+    chat: false,
+  },
+  {
+    kind: "clip_finished",
+    title: "A run finishes with new files",
+    description:
+      "A run is done and its finished clips or files are in Files. Goes to everyone on the team.",
+    bell: false,
+    email: false,
+    chat: true,
+  },
+  {
+    kind: "footage_problem",
+    title: "Footage needs another look",
+    description:
+      "A Check Footage step found a video that is the wrong shape, too small, too quiet or clipped, black, frozen or too short, before editing. Goes to everyone on the team.",
+    bell: true,
+    email: true,
+    chat: true,
+  },
+  {
+    kind: "rights_ending",
+    title: "A creator's usage rights are about to end",
+    description:
+      "A week before the last day of a creator's deal, as kept on their page under Creators. Goes to everyone on the team.",
+    bell: true,
+    email: true,
+    chat: true,
   },
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];
-export type Channel = "bell" | "email";
+/** The chat apps an alert can go to, each on its own switch. */
+export const CHAT_APPS = ["telegram", "slack", "discord", "teams"] as const;
+export type ChatApp = (typeof CHAT_APPS)[number];
+export type Channel = "bell" | "email" | ChatApp;
+
+export function isChatApp(channel: Channel): channel is ChatApp {
+  return (CHAT_APPS as readonly string[]).includes(channel);
+}
 export type EmailTiming = "now" | "daily";
 
 /** Approvals have a deadline, so their emails go at once even for a daily summary. */
@@ -71,7 +112,9 @@ type Preference = Pick<Doc<"notificationPreferences">, "kinds"> | null | undefin
 export function wants(preference: Preference, kind: NotificationKind, channel: Channel): boolean {
   const chosen = preference?.kinds?.[kind]?.[channel];
   if (chosen !== undefined) return chosen;
-  return NOTIFICATION_KINDS.find((entry) => entry.kind === kind)?.[channel] ?? true;
+  const entry = NOTIFICATION_KINDS.find((one) => one.kind === kind);
+  if (!entry) return true;
+  return isChatApp(channel) ? entry.chat : entry[channel];
 }
 
 /** Whether an email of this kind goes straight away, rather than in the daily summary. */
@@ -133,7 +176,7 @@ export async function preferenceOf(
 export function alertHref(
   alert: Pick<
     Doc<"alerts">,
-    "kind" | "runId" | "automationId" | "reviewId" | "clipId" | "commentId"
+    "kind" | "runId" | "automationId" | "reviewId" | "clipId" | "commentId" | "creatorId"
   >,
 ): string {
   if (
@@ -148,6 +191,8 @@ export function alertHref(
     const tail = query.toString();
     return `/review/${alert.reviewId}${tail ? `?${tail}` : ""}`;
   }
+  if (alert.kind === "rights_ending")
+    return alert.creatorId ? `/creators/${alert.creatorId}` : "/creators";
   if (alert.automationId && alert.runId)
     return `/automations/${alert.automationId}/runs/${alert.runId}`;
   return "/";

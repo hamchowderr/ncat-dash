@@ -22,6 +22,11 @@ export type AgentControllerMessage = {
    * where they were emitted; `content` is re-derived from them after each delta.
    */
   parts?: unknown[];
+  /**
+   * The person's message as shown the moment they sent it, before the server's own copy
+   * arrives (which then replaces it). Chat apps show a sent message at once.
+   */
+  optimistic?: true;
 };
 
 export type AgentControllerTaskItem = {

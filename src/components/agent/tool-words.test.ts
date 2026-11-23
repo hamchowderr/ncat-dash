@@ -24,7 +24,20 @@ const KNOWN_TOOL_IDS = [
   "move_files",
   "rename_file",
   "switch_automation",
+  "describe_workflow",
+  "set_up_workflow",
+  "switch_workflow",
   "find_in_library",
+  "library_file",
+  "knowledge_search",
+  "knowledge_read",
+  "knowledge_list",
+  "knowledge_page",
+  "knowledge_note",
+  "knowledge_pin",
+  "skill",
+  "skill_search",
+  "skill_read",
   "moments",
   "run_on_library_file",
   "list_schedules",
@@ -115,6 +128,14 @@ describe("what the agent's tools are called", () => {
     for (const raw of ["step:", "logo_1", "caption_1", "video_url", "a_1", "{{"]) {
       expect(shown).not.toContain(raw);
     }
+  });
+
+  test("choosing how files meet says so without the way's name", () => {
+    const words = toolWords("change_automation", {
+      operations: [{ op: "meet", id: "join_1", mode: "source" }],
+    });
+    expect(words?.lines).toEqual(["Choose how files meet at a step"]);
+    expect(JSON.stringify(words)).not.toContain("join_1");
   });
 
   test("a change that only tidies says so", () => {
@@ -330,5 +351,31 @@ describe("files and folders", () => {
     ]);
     expect(resultWords("make_folder", { made: [] })).toEqual(["It was already there."]);
     expect(resultWords("move_files", { moved: 1 })).toEqual(["Moved 1 file"]);
+  });
+});
+
+describe("the workflow tools in plain words", () => {
+  test("say what a set-up changes and what switching does", () => {
+    const words = toolWords("set_up_workflow", {
+      name: "Weekly ads",
+      kind: "ugc",
+      review: { on: true, reviewers: ["a", "b"], timeLimit: 2, timeLimitUnit: "days" },
+    });
+    expect(words.question).toBe("Set up this workflow?");
+    expect(words.lines).toEqual([
+      'Called "Weekly ads"',
+      "For UGC and ads",
+      "One review just before the last files go out",
+      "2 people picked to approve",
+      "Decides by itself after 2 days",
+    ]);
+    expect(toolWords("set_up_workflow", { kind: "quick", review: { on: false } }).lines).toEqual([
+      "For a quick personal job",
+      "No review: the files go out as soon as they are made",
+    ]);
+    expect(toolWords("switch_workflow", { on: true }).question).toBe(
+      "Switch this whole workflow on?",
+    );
+    expect(toolWords("describe_workflow", {}).title).toBe("Reading the workflow");
   });
 });

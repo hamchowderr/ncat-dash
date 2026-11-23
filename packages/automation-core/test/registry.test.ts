@@ -80,7 +80,36 @@ describe("node registry", () => {
     expect(names).not.toContain("step:video-motion");
     expect(savedKind("step:video-motion")).toBeNull();
     expect(savedKind("motion")).toEqual({ kind: "motion" });
-    expect(names.length).toBe(6 + allSteps.length + 13);
+    expect(getNodeType("cleanup")).toMatchObject({
+      title: "Clean Up Pauses And Retakes",
+      takes: "file",
+      gives: "files",
+      group: "video",
+    });
+    expect(savedKind("cleanup")).toEqual({ kind: "cleanup" });
+    expect(getNodeType("footage-check")).toMatchObject({
+      title: "Check Footage",
+      takes: "file",
+      gives: "files",
+      group: "video",
+    });
+    expect(savedKind("footage-check")).toEqual({ kind: "footage-check" });
+    expect(getNodeType("subtitles")).toMatchObject({
+      title: "Translate Subtitles",
+      takes: "file",
+      gives: "files",
+      group: "media",
+    });
+    expect(savedKind("subtitles")).toEqual({ kind: "subtitles" });
+    expect(savedKind("send")).toEqual({ kind: "send" });
+    // The address is the person's to give; the agent asks for it.
+    expect(missingSettingsOf(getNodeType("send")!, {})).toEqual(["url"]);
+    // No language picked yet is a setting still to fill in.
+    expect(missingSettingsOf(getNodeType("subtitles")!, { languages: [] })).toEqual(["languages"]);
+    expect(missingSettingsOf(getNodeType("subtitles")!, { languages: ["es"] })).toEqual([]);
+    // The toolkit's footage check is only sent by it, never listed as a step.
+    expect(names).not.toContain("step:media-check");
+    expect(names.length).toBe(6 + allSteps.length + 17);
   });
 
   it("gives every type a title, a description and an object schema for its settings", () => {
@@ -97,7 +126,7 @@ describe("node registry", () => {
   it("lists only steps that can be added, with no trigger among them", () => {
     const listed = actionTypesByGroup().flatMap((group) => group.types);
     expect(listed.every((nodeType) => nodeType.role === "action")).toBe(true);
-    expect(listed.length).toBe(allSteps.length + 13);
+    expect(listed.length).toBe(allSteps.length + 17);
   });
 
   it("knows the type of every node in every template", () => {

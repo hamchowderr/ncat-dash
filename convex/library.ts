@@ -8,9 +8,11 @@ import {
   snippetAround,
   titleFromFileName,
   transcriptPieces,
+  wordsFromSegments,
 } from "@ncat-dash/automation-core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
+import { backgroundPool } from "./lib/pools";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
@@ -36,7 +38,7 @@ import {
 } from "./lib/library";
 import { startingFiles } from "./lib/chain";
 import { outputNamesOf } from "./lib/outputs";
-import { enqueueJob, pump } from "./lib/queue";
+import { enqueueJob } from "./lib/queue";
 import { refreshBrollLike, usableAsBroll } from "./lib/broll";
 import { startRun } from "./lib/runner";
 
@@ -49,6 +51,9 @@ const LIST_LIMIT = 500;
 const FILL_UPLOADS = 500;
 const FILL_RUNS = 200;
 const MOMENTS_PER_FILE = 3;
+// The most words kept in one row for the steps (a Convex list holds 8,192): about an hour
+// of talk. A longer file still gets its transcript; a step on it transcribes it itself.
+const MAX_KEPT_WORDS = 8000;
 
 function fail(code: string, message: string): never {
   throw new ConvexError({ code, message });
@@ -192,7 +197,12 @@ export const get = query({
       children: children
         .sort((a, b) => a._creationTime - b._creationTime)
         .map((child) => summaryOf(child, byId, new Map(), clients)),
-      pieces: pieces.map((piece) => ({ start: piece.start, end: piece.end, text: piece.text })),
+      pieces: pieces.map((piece) => ({
+        start: piece.start,
+        end: piece.end,
+        text: piece.text,
+        ...(piece.words ? { words: piece.words } : {}),
+      })),
       captionFormat,
       captionsFor: captionsFor
         ? { _id: captionsFor._id, shortId: captionsFor.shortId, title: captionsFor.title }
@@ -694,12 +704,68 @@ export const transcribe = internalAction({
         url = null;
       }
     }
-    if (!url) return;
+    if (!url) {
+      await ctx.runMutation(internal.library.transcriptNotStarted, {
+        itemId: item._id,
+        error: "The file could not be reached in your storage.",
+      });
+      return;
+    }
     await ctx.runMutation(internal.library.startTranscript, {
       itemId: item._id,
       mediaUrl: url,
       asMember: false,
     });
+  },
+});
+
+/** A transcript that could not be started says why, so the file can be tried again. */
+export const transcriptNotStarted = internalMutation({
+  args: { itemId: v.id("libraryItems"), error: v.string() },
+  handler: async (ctx, args) => {
+    const item = await ctx.db.get(args.itemId);
+    if (!item || item.transcript?.jobId) return;
+    await ctx.db.patch(item._id, {
+      transcript: { status: "failed", error: args.error, at: Date.now() },
+    });
+  },
+});
+
+// Files brought in before every upload was transcribed (2026-11-21) have no transcript.
+// The first time anyone on the team opens the dashboard they are sent, a few at a time
+// (the background pool, lib/pools.ts).
+const CATCH_UP_AT_ONCE = 100;
+
+/**
+ * Sends each video and sound the team brought in that has no transcript yet to be
+ * transcribed, once. Safe to call on every visit: files already on their way, done or
+ * failed are left alone. Returns how many were sent.
+ */
+export const catchUpTranscripts = mutation({
+  args: { organizationId: v.string() },
+  returns: v.number(),
+  handler: async (ctx, args): Promise<number> => {
+    await requireMember(ctx, args.organizationId);
+    const items = await ctx.db
+      .query("libraryItems")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .order("desc")
+      .take(LIST_LIMIT);
+    const missing = items.filter(
+      (item) =>
+        item.source === "upload" &&
+        (item.kind === "video" || item.kind === "audio") &&
+        !item.transcript &&
+        !captionFileFormat(item.key ?? item.url ?? ""),
+    );
+    const sent = missing.slice(0, CATCH_UP_AT_ONCE);
+    for (const item of sent) {
+      await ctx.db.patch(item._id, { transcript: { status: "working", at: Date.now() } });
+      await backgroundPool.enqueueAction(ctx, internal.library.transcribe, {
+        itemId: item._id,
+      });
+    }
+    return sent.length;
   },
 });
 
@@ -718,7 +784,8 @@ export const startTranscript = internalMutation({
     const createdBy = args.asMember
       ? (await requireMember(ctx, item.organizationId)).userId
       : (item.createdBy ?? "library");
-    if (item.transcript?.status === "working") return false;
+    // A job already on its way; a catch-up marks files "working" before their job exists.
+    if (item.transcript?.status === "working" && item.transcript.jobId) return false;
     if (captionFileFormat(item.key ?? item.url ?? "")) {
       await ctx.db.patch(item._id, { transcript: { status: "working", at: Date.now() } });
       await ctx.scheduler.runAfter(0, internal.library.readCaptions, { itemId: item._id });
@@ -732,6 +799,8 @@ export const startTranscript = internalMutation({
         media_url: args.mediaUrl,
         include_text: false,
         include_segments: true,
+        // Each word's timing, for subtitles and for the steps that cut by words.
+        word_timestamps: true,
         // Kept as a file at the toolkit: a long video's segments would not fit in a result.
         response_type: "cloud",
       },
@@ -747,7 +816,10 @@ export const startTranscript = internalMutation({
     await ctx.db.patch(item._id, {
       transcript: { status: "working", jobId: queued.jobId, at: Date.now() },
     });
-    await pump(ctx, item.organizationId);
+    // Sent on separately, so starting a transcript never clashes with a job finishing.
+    await ctx.scheduler.runAfter(0, internal.jobs.pumpTeam, {
+      organizationId: item.organizationId,
+    });
     return true;
   },
 });
@@ -759,7 +831,8 @@ export const transcriptJob = internalQuery({
     const job = await ctx.db.get(args.jobId);
     if (!job?.libraryItemId) return null;
     const connection = await storageConnection(ctx, job.organizationId);
-    return { job, connection };
+    const item = await ctx.db.get(job.libraryItemId);
+    return { job, connection, duration: item?.details?.duration ?? null };
   },
 });
 
@@ -812,6 +885,18 @@ export const readTranscript = internalAction({
       ok: true,
       pieces: transcriptPieces(segments),
     });
+    // The words are kept for the steps too (Best moments, Chapters, Clean Up Pauses And
+    // Retakes), so a run on this file does not transcribe it again.
+    const words = wordsFromSegments(segments);
+    const mediaUrl = (job.input as { media_url?: unknown } | null)?.media_url;
+    if (words.length > 0 && words.length <= MAX_KEPT_WORDS && typeof mediaUrl === "string") {
+      await ctx.runMutation(internal.moments.saveWords, {
+        organizationId: job.organizationId,
+        source: mediaUrl,
+        duration: Math.max(found.duration ?? 0, words[words.length - 1]!.end),
+        words: words.map((word) => ({ t: word.text, s: word.start, e: word.end })),
+      });
+    }
   },
 });
 
@@ -846,7 +931,16 @@ export const saveTranscript = internalMutation({
     jobId: v.id("jobs"),
     ok: v.boolean(),
     error: v.optional(v.string()),
-    pieces: v.optional(v.array(v.object({ start: v.number(), end: v.number(), text: v.string() }))),
+    pieces: v.optional(
+      v.array(
+        v.object({
+          start: v.number(),
+          end: v.number(),
+          text: v.string(),
+          words: v.optional(v.array(v.object({ t: v.string(), s: v.number(), e: v.number() }))),
+        }),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const item = await ctx.db.get(args.itemId);
@@ -871,6 +965,10 @@ export const saveTranscript = internalMutation({
     });
     // How much is said in it helps tell B-Roll from a talking head.
     await refreshBrollLike(ctx, item._id);
+    // Every upload gets a storyboard drafted from what was said in it.
+    if (item.source === "upload" && (item.kind === "video" || item.kind === "audio")) {
+      await ctx.scheduler.runAfter(0, internal.storyboards.draftForUpload, { itemId: item._id });
+    }
   },
 });
 

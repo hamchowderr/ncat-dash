@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { knownWordsFor } from "./lib/knownWords";
 import { startRun } from "./lib/runner";
 import { addPerson, addTeam, backend } from "./test.setup";
 
@@ -171,18 +172,36 @@ describe("a caption step in a run", () => {
 
     await finish(reading.jobs[0]._id, { width: 2160, height: 3840, duration: 30 });
     const captioning = await caption();
-    expect(captioning.step.stage).toBeUndefined();
+    // First the timed words, with the look and word fixes...
+    expect(captioning.step.stage).toBe("listen");
     expect(captioning.step.status).toBe("running");
     expect(captioning.jobs).toHaveLength(1);
-    expect(captioning.jobs[0].stepId).toBe("video-caption");
+    expect(captioning.jobs[0].stepId).toBe("media-generate-ass");
     expect(captioning.jobs[0].input).toEqual({
-      video_url: FILE,
+      media_url: FILE,
       // "Tall" for a vertical video, its text scaled for 4K.
       settings: { style: "highlight", font_size: 200, word_color: "#FF0000" },
       replace: CAPTIONS.fixes,
     });
 
-    await finish(captioning.jobs[0]._id, { file_url: "https://files.example/out/captioned.mp4" });
+    await finish(captioning.jobs[0]._id, "https://files.example/out/words.ass");
+    // ...then one quick save that burns them into the video.
+    const burning = await caption();
+    expect(burning.step.stage).toBe("render");
+    expect(burning.jobs).toHaveLength(1);
+    expect(burning.jobs[0].stepId).toBe("ffmpeg-compose");
+    const burn = burning.jobs[0].input as {
+      inputs: { file_url: string }[];
+      filters: { filter: string }[];
+      outputs: { options: { option: string; argument?: unknown }[] }[];
+    };
+    expect(burn.inputs).toEqual([{ file_url: FILE }]);
+    expect(burn.filters[0].filter).toBe(
+      "[0:v]ass='https://files.example/out/words.ass',setsar=1[v]",
+    );
+    expect(burn.outputs[0].options).toContainEqual({ option: "-preset", argument: "veryfast" });
+
+    await finish(burning.jobs[0]._id, { file_url: "https://files.example/out/captioned.mp4" });
     const done = await caption();
     expect(done.step.status).toBe("done");
     expect(done.step.outputs).toEqual(["https://files.example/out/captioned.mp4"]);
@@ -200,8 +219,8 @@ describe("a caption step in a run", () => {
       { file_url: FILE, details: { width: 1920, height: 1080 } },
     );
     const { step, jobs } = await caption();
-    expect(step.stage).toBeUndefined();
-    expect(jobs[0].stepId).toBe("video-caption");
+    expect(step.stage).toBe("listen");
+    expect(jobs[0].stepId).toBe("media-generate-ass");
     expect(jobs[0].input).toMatchObject({ settings: { style: "classic", font_size: 50 } });
   });
 
@@ -252,9 +271,9 @@ describe("a caption step in a run", () => {
     });
     const { caption } = await captionRun(setup, { settings: { style: "underline" } });
     const { step, jobs } = await caption();
-    expect(step.stage).toBeUndefined();
+    expect(step.stage).toBe("listen");
     expect(jobs[0].input).toEqual({
-      video_url: FILE,
+      media_url: FILE,
       settings: { style: "underline" },
       replace: CAPTIONS.fixes,
     });
@@ -271,9 +290,32 @@ describe("a caption step in a run", () => {
     await finish(reading.jobs[0]._id, null, false);
     const { step, jobs } = await caption();
     expect(step.status).toBe("running");
-    expect(jobs[0].stepId).toBe("video-caption");
+    expect(jobs[0].stepId).toBe("media-generate-ass");
     // Shapes get different styles, so with no shape the toolkit's own look is used.
-    expect(jobs[0].input).toEqual({ video_url: FILE, replace: CAPTIONS.fixes });
+    expect(jobs[0].input).toEqual({ media_url: FILE, replace: CAPTIONS.fixes });
+  });
+
+  test("captions the team typed itself still go to the caption route, the only one that takes text", async () => {
+    const setup = await setUp();
+    const { caption } = await captionRun(
+      setup,
+      { captions: "Hello there", settings: { style: "classic" } },
+      { file_url: FILE, details: { width: 1920, height: 1080 } },
+    );
+    const { step, jobs } = await caption();
+    expect(step.stage).toBeUndefined();
+    expect(jobs[0].stepId).toBe("video-caption");
+    expect(jobs[0].input).toMatchObject({ video_url: FILE, captions: "Hello there" });
+  });
+
+  test("when the words can't be found, the step fails with the toolkit's reason", async () => {
+    const setup = await setUp();
+    const { caption, finish } = await captionRun(setup, { settings: { style: "underline" } });
+    const words = await caption();
+    await finish(words.jobs[0]._id, null, false);
+    const after = await caption();
+    // A failed job gets its usual tries again first; it is never burned in without words.
+    expect(after.jobs.some((job) => job.stepId === "ffmpeg-compose")).toBe(false);
   });
 
   test("Generate caption file gets the same treatment", async () => {
@@ -294,5 +336,172 @@ describe("a caption step in a run", () => {
       settings: { style: "classic", font_size: 50 },
       replace: CAPTIONS.fixes,
     });
+  });
+});
+
+/** FILE's words, kept when it was uploaded and transcribed. */
+async function keepWords({ t, team }: Setup, source = FILE) {
+  await t.run(async (ctx) => {
+    await ctx.db.insert("spokenWords", {
+      organizationId: team,
+      source,
+      duration: 60,
+      words: [
+        { t: "Hello", s: 0, e: 0.5 },
+        { t: "there.", s: 0.6, e: 1 },
+        { t: "Second", s: 30.2, e: 30.6 },
+        { t: "part.", s: 30.7, e: 31 },
+      ],
+    });
+  });
+}
+
+describe("a caption step on a video whose words are already known", () => {
+  test("sends the words, so the video is not heard again, and its size, so it is not downloaded", async () => {
+    const setup = await setUp();
+    await keepWords(setup);
+    const { caption } = await captionRun(
+      setup,
+      {},
+      // A fresh signed link to the same file still finds its words.
+      { file_url: `${FILE}?X-Amz-Signature=abc`, details: { width: 1920, height: 1080 } },
+    );
+    const { step, jobs } = await caption();
+    expect(step.stage).toBe("listen");
+    expect(jobs[0].stepId).toBe("media-generate-ass");
+    expect(jobs[0].input).toMatchObject({
+      canvas_width: 1920,
+      canvas_height: 1080,
+      segments: [
+        {
+          start: 0,
+          end: 1,
+          words: [
+            { word: "Hello", start: 0, end: 0.5 },
+            { word: "there.", start: 0.6, end: 1 },
+          ],
+        },
+        { start: 30.2, end: 31, words: expect.any(Array) },
+      ],
+    });
+  });
+
+  test("a step set to hear another language leaves it to the toolkit", async () => {
+    const setup = await setUp();
+    await keepWords(setup);
+    const { caption } = await captionRun(
+      setup,
+      { language: "es" },
+      {
+        file_url: FILE,
+        details: { width: 1920, height: 1080 },
+      },
+    );
+    const { jobs } = await caption();
+    expect(jobs[0].input).not.toHaveProperty("segments");
+    expect(jobs[0].input).toMatchObject({ language: "es" });
+  });
+
+  test("a toolkit that refuses the words is asked again the old way", async () => {
+    const setup = await setUp();
+    await keepWords(setup);
+    const { caption, finish } = await captionRun(
+      setup,
+      {},
+      {
+        file_url: FILE,
+        details: { width: 1920, height: 1080 },
+      },
+    );
+    const first = await caption();
+    expect(first.jobs[0].input).toHaveProperty("segments");
+    await finish(first.jobs[0]._id, null, false);
+    const again = await caption();
+    expect(again.step.stage).toBe("listen");
+    expect(again.step.status).toBe("running");
+    expect(again.jobs).toHaveLength(1);
+    expect(again.jobs[0]._id).not.toBe(first.jobs[0]._id);
+    expect(again.jobs[0].input).not.toHaveProperty("segments");
+    expect(again.jobs[0].input).not.toHaveProperty("canvas_width");
+    expect(again.jobs[0].input).toMatchObject({ media_url: FILE });
+    // Refused the old way too, the step fails as before.
+    await finish(again.jobs[0]._id, null, false);
+    const after = await caption();
+    expect(after.step.status).toBe("failed");
+  });
+});
+
+describe("known words for clips cut in the run", () => {
+  test("a clip takes the words of its stretch, and Follow the speaker keeps them", async () => {
+    const setup = await setUp();
+    const { t, team, owner } = setup;
+    await keepWords(setup);
+    const found = await t.run(async (ctx) => {
+      const connectionId = await ctx.db.insert("toolkitConnections", {
+        organizationId: team,
+        baseUrl: "https://toolkit.example",
+        apiKeyCipher: "x",
+        apiKeyHint: "abcd",
+        status: "ok",
+        buildNumber: null,
+        lastCheckedAt: 0,
+        lastError: null,
+        createdBy: owner.id,
+      });
+      const job = (stepId: string, input: unknown, output: string) =>
+        ctx.db.insert("jobs", {
+          organizationId: team,
+          connectionId,
+          stepId,
+          input,
+          status: "done",
+          webhookToken: "w",
+          toolkitJobId: null,
+          result: output,
+          outputs: [output],
+          error: null,
+          createdBy: owner.id,
+          startedAt: 0,
+          finishedAt: 0,
+        });
+      const first = await job("ffmpeg-compose", {}, "https://files.example/out/clip1.mp4");
+      const second = await job("ffmpeg-compose", {}, "https://files.example/out/clip2.mp4");
+      const followed = await job(
+        "video-reframe",
+        { video_url: "https://files.example/out/clip2.mp4" },
+        "https://files.example/out/followed2.mp4",
+      );
+      const other = await job("video-cleanup", {}, "https://files.example/out/cleaned.mp4");
+      const steps = [
+        {
+          status: "done",
+          jobIds: [first, second],
+          plan: [
+            { source: FILE, part: 1, parts: 2, start: 0, seconds: 30 },
+            { source: FILE, part: 2, parts: 2, start: 30, seconds: 30 },
+          ],
+        },
+        { status: "done", jobIds: [followed] },
+        { status: "done", jobIds: [other] },
+      ] as unknown as Parameters<typeof knownWordsFor>[2];
+      const run = { organizationId: team } as Parameters<typeof knownWordsFor>[1];
+      const known = await knownWordsFor(ctx, run, steps, [
+        "https://files.example/out/clip1.mp4",
+        "https://files.example/out/followed2.mp4?sig=1",
+        "https://files.example/out/cleaned.mp4",
+      ]);
+      return Object.fromEntries(known);
+    });
+    expect(found["https://files.example/out/clip1.mp4"]).toEqual([
+      { text: "Hello", start: 0, end: 0.5 },
+      { text: "there.", start: 0.6, end: 1 },
+    ]);
+    // Timed from the clip's own start.
+    expect(found["https://files.example/out/followed2.mp4?sig=1"]).toEqual([
+      { text: "Second", start: 0.2, end: 0.6 },
+      { text: "part.", start: 0.7, end: 1 },
+    ]);
+    // A step that changes the timing: heard again.
+    expect(found).not.toHaveProperty(["https://files.example/out/cleaned.mp4"]);
   });
 });

@@ -14,6 +14,12 @@ export const mediaDownload = defineStep({
   input: z.object({
     media_url: z.string().url().describe("URL of the media to download"),
     cloud_upload: z.boolean().optional().describe("Upload downloaded media to cloud storage"),
+    filename: z
+      .string()
+      .optional()
+      .describe(
+        "Where in the bucket to put it (a key such as folder/name.mp4); its own name by default",
+      ),
     cookie: z.string().optional().describe("Cookie string, path, or URL for authentication"),
     format: z
       .object({

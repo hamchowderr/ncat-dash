@@ -1,4 +1,10 @@
-import { isTransientStatus } from "@ncat-dash/automation-core";
+import {
+  failsTheSameEveryTime,
+  getNodeType,
+  isTransientStatus,
+  withBrand,
+  wrongKindOfFile,
+} from "@ncat-dash/automation-core";
 import {
   callStep,
   getStep,
@@ -6,6 +12,7 @@ import {
   StepSetupError,
   ToolkitError,
 } from "@ncat-dash/step-catalog";
+import { vOnCompleteArgs } from "@convex-dev/workpool";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -20,9 +27,14 @@ import {
 } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { decryptSecret } from "./lib/crypto";
+import { keepMaskFrom } from "./lib/masks";
 import { collectUrls, handOutputNames, outputNamesOf } from "./lib/outputs";
-import { enqueueJob, pump } from "./lib/queue";
+import { brandOf, enqueueJob, pump, waitReason } from "./lib/queue";
+import { toolkitPool } from "./lib/pools";
 import { onJobFinished } from "./lib/runner";
+import { onLinkJobFinished } from "./links";
+import { onLookJobFinished } from "./looks";
+import { wordsForJob } from "./lib/disclosure";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { UploadLinkError, withUploadLinks } from "./storage";
 import {
@@ -42,8 +54,12 @@ import { downloadHeadersFor, onZoomJobFinished, ZoomSignInError } from "./zoom";
 const MAX_RESULT_CHARS = 700_000;
 
 /** What the browser may see: everything except the webhook token. */
-function toPublic(job: Doc<"jobs">) {
+type Wait = Awaited<ReturnType<typeof waitReason>>;
+
+function toPublic(job: Doc<"jobs">, wait: Wait = null) {
   return {
+    // Why a job not yet sent is still waiting, when it is.
+    waiting: job.status === "queued" && job.dispatchedAt === undefined ? wait : null,
     _id: job._id,
     _creationTime: job._creationTime,
     stepId: job.stepId,
@@ -66,10 +82,17 @@ export const run = mutation({
   returns: v.id("jobs"),
   handler: async (ctx, args) => {
     const { userId } = await requireMember(ctx, args.organizationId);
+    // Settings the team's brand fills in (music, logo...) are left empty to use it, as
+    // in an automation.
+    const nodeType = getNodeType(`step:${args.stepId}`);
+    const input =
+      nodeType?.brand && args.input && typeof args.input === "object"
+        ? withBrand(nodeType, args.input, await brandOf(ctx, args.organizationId))
+        : args.input;
     const queued = await enqueueJob(ctx, {
       organizationId: args.organizationId,
       stepId: args.stepId,
-      input: args.input,
+      input,
       createdBy: userId,
     });
     if (!queued.ok) throw new ConvexError({ code: queued.code, message: queued.message });
@@ -88,6 +111,9 @@ export const list = query({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .order("desc")
       .take(100);
+    const wait = jobs.some((job) => job.status === "queued" && job.dispatchedAt === undefined)
+      ? await waitReason(ctx, args.organizationId)
+      : null;
     // Meeting recordings being brought in show in Settings and Uploads, not with step jobs.
     return jobs
       .filter(
@@ -95,9 +121,10 @@ export const list = query({
           !job.zoomImportId &&
           !job.googleMeetImportId &&
           !job.microsoftImportId &&
-          !job.dropboxImportId,
+          !job.dropboxImportId &&
+          !job.linkImportId,
       )
-      .map(toPublic);
+      .map((job) => toPublic(job, wait));
   },
 });
 
@@ -107,18 +134,29 @@ export const get = query({
     const job = await ctx.db.get(args.jobId);
     if (!job) return null;
     await requireMember(ctx, job.organizationId);
-    return toPublic(job);
+    const waiting = job.status === "queued" && job.dispatchedAt === undefined;
+    return toPublic(job, waiting ? await waitReason(ctx, job.organizationId) : null);
   },
 });
 
 /** Finished jobs that produced files, newest first: the outputs library. */
 /** Readable names for a job's files: as its run names them, or else as a step run by hand. */
-async function namesOfJob(ctx: QueryCtx, job: Doc<"jobs">): Promise<Record<string, string>> {
+async function namesOfJob(
+  ctx: QueryCtx,
+  job: Doc<"jobs">,
+): Promise<{ names: Record<string, string>; stepName: string | null }> {
   const step = job.runStepId ? await ctx.db.get(job.runStepId) : null;
   const run = step ? await ctx.db.get(step.runId) : null;
-  if (!step || !run) return handOutputNames(job);
+  if (!step || !run) return { names: handOutputNames(job), stepName: null };
   const names = outputNamesOf(run, [step]);
-  return { ...handOutputNames(job), ...names };
+  // The step as it is named in the automation ("Caption TikTok clips"), not the toolkit
+  // request it was sent as.
+  const node = (run.nodes as { id: string; stepId?: string; label?: string }[]).find(
+    (candidate) => candidate.id === step.nodeId,
+  );
+  const stepName =
+    node?.label?.trim() || (node?.stepId ? (getStep(node.stepId)?.title ?? null) : null);
+  return { names: { ...handOutputNames(job), ...names }, stepName };
 }
 
 export const outputs = query({
@@ -141,16 +179,22 @@ export const outputs = query({
             !job.zoomImportId &&
             !job.googleMeetImportId &&
             !job.microsoftImportId &&
-            !job.dropboxImportId,
+            !job.dropboxImportId &&
+            !job.linkImportId,
         )
-        .map(async (job) => ({
-          jobId: job._id,
-          stepId: job.stepId,
-          finishedAt: job.finishedAt,
-          urls: job.outputs,
-          // Readable names, by link: from the run the job was part of, if it was.
-          names: await namesOfJob(ctx, job),
-        })),
+        .map(async (job) => {
+          // Readable names, by link, and the step's own name: from the run the job was
+          // part of, if it was.
+          const { names, stepName } = await namesOfJob(ctx, job);
+          return {
+            jobId: job._id,
+            stepId: job.stepId,
+            stepName,
+            finishedAt: job.finishedAt,
+            urls: job.outputs,
+            names,
+          };
+        }),
     );
   },
 });
@@ -164,7 +208,12 @@ export const loadForDispatch = internalQuery({
     if (!job || job.status !== "queued") return null;
     const connection = await ctx.db.get(job.connectionId);
     if (!connection) return null;
-    return { job, connection };
+    // A step keeping a paid creator's disclosure gets the words heard in its videos.
+    const step = getStep(job.stepId);
+    const words = step?.readsWords
+      ? await wordsForJob(ctx, job.organizationId, step, job.input)
+      : undefined;
+    return { job, connection, words };
   },
 });
 
@@ -207,13 +256,30 @@ async function withMicrosoftLink(
   return input;
 }
 
+/**
+ * A download from a video site gets the team's cookies for video sites (Settings → Video
+ * Links) only now, as it is sent, unless the step was given cookies of its own.
+ */
+async function withVideoCookies(
+  ctx: ActionCtx,
+  job: Doc<"jobs">,
+  input: unknown,
+): Promise<unknown> {
+  if (job.stepId !== "media-download" || !input || typeof input !== "object") return input;
+  if ((input as { cookie?: unknown }).cookie) return input;
+  const cipher: string | null = await ctx.runQuery(internal.videoCookies.forJob, {
+    organizationId: job.organizationId,
+  });
+  return cipher ? { ...input, cookie: await decryptSecret(cipher) } : input;
+}
+
 /** Sends the job to the toolkit and asks it to post the result back to our webhook. */
 export const dispatch = internalAction({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, args) => {
     const loaded = await ctx.runQuery(internal.jobs.loadForDispatch, { jobId: args.jobId });
     if (!loaded) return;
-    const { job, connection } = loaded;
+    const { job, connection, words } = loaded;
     const step = getStep(job.stepId);
     if (!step) {
       await ctx.runMutation(internal.jobs.finish, {
@@ -233,14 +299,28 @@ export const dispatch = internalAction({
       const answer = (await callStep(
         { baseUrl: connection.baseUrl, apiKey: await decryptSecret(connection.apiKeyCipher) },
         step,
-        await withMicrosoftLink(
+        await withVideoCookies(
           ctx,
           job,
-          await withZoomSignIn(ctx, job, await withUploadLinks(ctx, job.organizationId, job.input)),
+          await withMicrosoftLink(
+            ctx,
+            job,
+            await withZoomSignIn(
+              ctx,
+              job,
+              await withUploadLinks(ctx, job.organizationId, job.input),
+            ),
+          ),
         ),
-        { webhookUrl: webhookUrl.toString(), id: job._id, signal: AbortSignal.timeout(120_000) },
+        {
+          webhookUrl: webhookUrl.toString(),
+          id: job._id,
+          signal: AbortSignal.timeout(120_000),
+          words,
+        },
       )) as { code?: number; job_id?: string; response?: unknown; message?: string } | null;
 
+      if (job.sharedToolkit) await ctx.runMutation(internal.toolkitHealth.sharedWentFine, {});
       if (answer?.code === 200 && answer.response !== undefined) {
         // Some endpoints answer straight away instead of queueing.
         await ctx.runMutation(internal.jobs.finish, {
@@ -277,6 +357,12 @@ export const dispatch = internalAction({
             error instanceof GoogleSignInError ||
             error instanceof MicrosoftSignInError ||
             error instanceof DropboxSignInError;
+      // A shared toolkit that is busy or out of reach gets less sent to it for a while.
+      const toolkitTrouble =
+        error instanceof ToolkitError ? isTransientStatus(error.status) : !permanent;
+      if (job.sharedToolkit && toolkitTrouble) {
+        await ctx.runMutation(internal.toolkitHealth.sharedTrouble, {});
+      }
       await ctx.runMutation(internal.jobs.finish, {
         jobId: job._id,
         ok: false,
@@ -319,21 +405,32 @@ export const finish = internalMutation({
     if (args.token !== undefined && args.token !== job.webhookToken) return "forbidden";
     if (job.status === "done" || job.status === "failed") return "ignored";
     const now = Date.now();
+    // A picture given to Caption video and the like: the file can never work, so it is
+    // said plainly (the toolkit's own words kept below, for "Show details") and not retried.
+    const wrongFile = args.ok ? null : wrongKindOfFile(job.stepId, args.error);
+    const error = wrongFile ? `${wrongFile}\n\n${args.error}` : args.error;
+    // A request the toolkit turned down for what it asks, such as motion with nothing to
+    // draw, fails the same way when sent again.
+    const permanent = args.permanent || (!args.ok && failsTheSameEveryTime(job.stepId, args.error));
     // A Convex document holds at most 1 MB. A very long transcript is kept as its file
     // links only; the full data is still at the toolkit's own output URLs.
-    const tooLarge = args.ok && JSON.stringify(args.result ?? null).length > MAX_RESULT_CHARS;
+    // A new speaker cut-out is kept for its video and is not one of the job's files.
+    const result = args.ok
+      ? await keepMaskFrom(ctx, job.organizationId, job.input, args.result)
+      : args.result;
+    const tooLarge = args.ok && JSON.stringify(result ?? null).length > MAX_RESULT_CHARS;
     await ctx.db.patch(args.jobId, {
       status: args.ok ? "done" : "failed",
       result: !args.ok
         ? undefined
         : tooLarge
-          ? { note: "This result is too large to show here.", urls: collectUrls(args.result) }
-          : args.result,
-      outputs: args.ok ? collectUrls(args.result) : [],
-      error: args.ok ? null : (args.error ?? "The step failed."),
+          ? { note: "This result is too large to show here.", urls: collectUrls(result) }
+          : result,
+      outputs: args.ok ? collectUrls(result) : [],
+      error: args.ok ? null : (error ?? "The step failed."),
       startedAt: job.startedAt ?? now,
       finishedAt: now,
-      ...(!args.ok && args.permanent ? { permanent: true } : {}),
+      ...(!args.ok && permanent ? { permanent: true } : {}),
     });
     if (job.runStepId) await onJobFinished(ctx, job.runStepId);
     // A Zoom recording on its way in: it becomes an upload, or the import says why not.
@@ -356,12 +453,62 @@ export const finish = internalMutation({
       args.ok,
       args.ok ? null : (args.error ?? "The step failed."),
     );
+    // A video on its way in from a pasted link.
+    await onLinkJobFinished(
+      ctx,
+      job,
+      args.ok ? args.result : null,
+      args.ok ? null : (args.error ?? "The step failed."),
+    );
+    // A sample being studied for its look.
+    await onLookJobFinished(ctx, job);
     // A library file being made searchable: keep what was said in it.
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
     }
-    await pump(ctx, job.organizationId);
+    // The next waiting jobs are sent on separately. Reading the team's whole queue here
+    // made this mutation clash with every job being added or finished at the same moment
+    // (several recordings coming in, each then sent to be transcribed), and a result lost
+    // that way left an upload "on its way" until the late check.
+    await ctx.scheduler.runAfter(0, internal.jobs.pumpTeam, {
+      organizationId: job.organizationId,
+    });
     return "recorded";
+  },
+});
+
+// A job that has waited this long without being sent is stopped, so old work cannot block
+// the line after an outage. A step that tries again joins the back of the line.
+const WAIT_AT_MOST_MS = 6 * 60 * 60 * 1000;
+
+/** Stops jobs that waited too long to be sent. Runs every few minutes. */
+export const ageOut = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const oldest = await ctx.db
+      .query("jobs")
+      .withIndex("by_status_and_dispatchedAt", (q) =>
+        q.eq("status", "queued").eq("dispatchedAt", undefined),
+      )
+      .take(50);
+    const cutoff = Date.now() - WAIT_AT_MOST_MS;
+    for (const job of oldest) {
+      if (job._creationTime > cutoff) break;
+      await ctx.scheduler.runAfter(0, internal.jobs.finish, {
+        jobId: job._id,
+        ok: false,
+        error:
+          "This job waited more than 6 hours without starting, so it was stopped to keep newer work moving. If the step tries again, it goes to the back of the line.",
+      });
+    }
+  },
+});
+
+/** Sends a team's waiting jobs to its toolkit, as many as its limit allows. */
+export const pumpTeam = internalMutation({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    await pump(ctx, args.organizationId);
   },
 });
 
@@ -395,10 +542,14 @@ export const giveUp = internalMutation({
       false,
       "The toolkit never reported a result for this job.",
     );
+    await onLinkJobFinished(ctx, job, null, "The toolkit never reported a result for this job.");
+    await onLookJobFinished(ctx, job);
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
     }
-    await pump(ctx, job.organizationId);
+    await ctx.scheduler.runAfter(0, internal.jobs.pumpTeam, {
+      organizationId: job.organizationId,
+    });
   },
 });
 
@@ -417,6 +568,27 @@ export const LOST_AFTER_MS = 5 * 60 * 1000;
 export const LOST_JOB_ERROR =
   "The toolkit lost this job before it finished, most likely because it restarted.";
 
+export const NOT_SENT_ERROR = "The job could not be sent to the toolkit.";
+
+/**
+ * Called by the toolkit pool when sending a job ended. A send that crashed or ran out of
+ * time leaves the job waiting, holding one of the team's places: it is failed, not
+ * permanently, so its step can send it again.
+ */
+export const sent = internalMutation({
+  args: vOnCompleteArgs(v.object({ jobId: v.id("jobs") })),
+  handler: async (ctx, { context, result }) => {
+    if (result.kind === "success") return;
+    const job = await ctx.db.get(context.jobId);
+    if (!job || job.status !== "queued") return;
+    await ctx.scheduler.runAfter(0, internal.jobs.finish, {
+      jobId: job._id,
+      ok: false,
+      error: NOT_SENT_ERROR,
+    });
+  },
+});
+
 /** Every minute: books a question to the toolkit for each running job that is late. */
 export const checkLate = internalMutation({
   args: {},
@@ -431,7 +603,7 @@ export const checkLate = internalMutation({
       if ((job.startedAt ?? now) > now - ASK_AFTER_MS) continue;
       if ((job.lastAskedAt ?? 0) > now - ASK_EVERY_MS) continue;
       await ctx.db.patch(job._id, { lastAskedAt: now });
-      await ctx.scheduler.runAfter(0, internal.jobs.askToolkit, { jobId: job._id });
+      await toolkitPool.enqueueAction(ctx, internal.jobs.askToolkit, { jobId: job._id });
     }
   },
 });
@@ -443,7 +615,12 @@ export const loadForAsking = internalQuery({
     if (!job || job.status !== "running" || !job.toolkitJobId) return null;
     const connection = await ctx.db.get(job.connectionId);
     if (!connection) return null;
-    return { job, connection };
+    // A step keeping a paid creator's disclosure gets the words heard in its videos.
+    const step = getStep(job.stepId);
+    const words = step?.readsWords
+      ? await wordsForJob(ctx, job.organizationId, step, job.input)
+      : undefined;
+    return { job, connection, words };
   },
 });
 

@@ -328,6 +328,7 @@
     --notice-left: 16rem;
   }
 }
+/* Closed, the agent takes no room; its robot sits in the bar along the top. */
 @media (min-width: 64rem) {
   :root[data-agent-open] {
     --notice-right: 26rem;

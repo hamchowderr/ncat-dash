@@ -26,6 +26,7 @@ import {
 import { CalendarTourButton, StartCalendarTour } from "./calendar-tour";
 import { type Dragged, type Entry, entriesByDay } from "./entries";
 import { MonthGrid, WeekGrid } from "./grids";
+import { movePostLocally, setDueLocally } from "./optimistic";
 import { type Panel, SidePanel } from "./side-panel";
 import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
 import { PickList } from "@/components/ui/pick-list";
@@ -75,8 +76,8 @@ export function CalendarView({ now: givenNow }: { now?: number } = {}) {
   const waiting = useQuery(api.calendar.waiting, { organizationId: team.id, ...client });
   const slots = useQuery(api.calendar.slots, { organizationId: team.id });
   const clients = useQuery(api.clients.list, { organizationId: team.id }) ?? [];
-  const movePost = useMutation(api.calendar.movePost);
-  const setDue = useMutation(api.calendar.setDue);
+  const movePost = useMutation(api.calendar.movePost).withOptimisticUpdate(movePostLocally);
+  const setDue = useMutation(api.calendar.setDue).withOptimisticUpdate(setDueLocally);
 
   // Kept from the last answer while the next range loads, so moving between months does
   // not flash empty cells.
@@ -237,7 +238,7 @@ export function CalendarView({ now: givenNow }: { now?: number } = {}) {
           </div>
           <div data-tour-step-id="tour-calendar-grid" className="overflow-x-auto pb-1">
             {byDay === null ? (
-              <Skeleton className="h-[36rem] min-w-[44rem] rounded-xl" />
+              <Skeleton className="h-[36rem] min-w-[36rem] rounded-xl" />
             ) : view === "month" ? (
               <MonthGrid
                 days={days}

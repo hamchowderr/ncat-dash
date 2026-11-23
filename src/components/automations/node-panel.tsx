@@ -6,20 +6,24 @@ import type {
   CaptionSetup,
   CaptionShape,
   CaptionStyle,
+  JoinMode,
 } from "@ncat-dash/automation-core";
 import {
   BRAND_WORDS,
   CAPTION_SHAPES,
+  CAPTION_LANGUAGE_SETTING,
   CAPTION_STYLE_SETTING,
   isCaptionStep,
   getPlatform,
+  JOIN_MODES,
+  joinOf,
   KIND_WORDS,
   nodeTypeOf,
   waitsForRun,
   wantedKind,
   writeSource,
 } from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep, SAVED_LOOK_STEP, userInputSchema } from "@ncat-dash/step-catalog";
 import { ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -53,8 +57,13 @@ import { TeamApprovalSettings } from "./approval-panel";
 import { AutomationPicker } from "./automation-picker";
 import { nodeLook } from "./flow-nodes";
 import { LogicSettings } from "./logic-panel";
+import { LOOK_SETTING, LookPicker } from "./look-picker";
 import { ChaptersMain, MomentsMain, MomentsMore } from "./moments-settings";
 import { BrollMain, BrollMore, BrollPlanMain } from "./broll-settings";
+import { CaptionLanguagePicker } from "./caption-language-picker";
+import { CleanupMain } from "./cleanup-settings";
+import { FootageMain } from "./footage-settings";
+import { SubtitleLanguagesPicker } from "./subtitle-languages-picker";
 import { MotionMain, MotionPlanMain, SoundEffectsMain } from "./motion-settings";
 import { PlatformPicker } from "./platform-picker";
 import { useTeamStepsVersion } from "@/lib/team-steps-sync";
@@ -72,6 +81,54 @@ function isBlank(value: unknown): boolean {
  * itself is listed in one short block, and everything else sits under "More options".
  */
 /** "A", "A and B", "A, B and C". */
+/** How a step treats the files of the lines that meet at it. */
+function JoinSetting({
+  node,
+  waitsFor,
+  onChange,
+}: {
+  node: NodeContent;
+  waitsFor: string[];
+  onChange: (patch: Partial<NodeContent>) => void;
+}) {
+  const mode = joinOf(node as AutomationNode);
+  const picked = JOIN_MODES.find((one) => one.value === mode) ?? JOIN_MODES[0];
+  return (
+    <Field>
+      <FieldLabel htmlFor="join-mode">When files meet</FieldLabel>
+      <Select
+        value={mode}
+        onValueChange={(value) =>
+          onChange({ join: value === "all" ? undefined : (value as JoinMode) })
+        }
+      >
+        <SelectTrigger id="join-mode" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {JOIN_MODES.filter(
+            // Only a toolkit step has files of its own to pair.
+            (one) => node.kind === "step" || (one.value !== "source" && one.value !== "position"),
+          ).map((one) => (
+            <SelectItem key={one.value} value={one.value}>
+              {one.title}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-muted-foreground text-sm text-pretty">
+        {mode === "all"
+          ? `Waits for ${joinNames(waitsFor)} to finish, then runs once with the files from ${
+              waitsFor.length === 2 ? "both" : "all of them"
+            }. A side an If did not send files down is not waited for.`
+          : mode === "first"
+            ? `Starts as soon as one of ${joinNames(waitsFor)} finishes, with only its files. Files from the slower ones are not used.`
+            : `${picked.description} The first line is ${waitsFor[0]}.`}
+      </p>
+    </Field>
+  );
+}
+
 function joinNames(names: string[]): string {
   return names.length < 2
     ? (names[0] ?? "")
@@ -128,7 +185,11 @@ export function NodePanel({
   const nodeType = nodeTypeOf(node);
   const allFields = useStepFields(node.stepId ?? "");
   // Settings taken from the file that started the run are never filled in by hand.
-  const fields = allFields?.filter(({ name }) => !nodeType?.fromStart?.[name]);
+  // The saved look is picked by name from the team's looks, never typed.
+  const picksLook = node.kind === "step" && node.stepId === SAVED_LOOK_STEP;
+  const fields = allFields?.filter(
+    ({ name }) => !nodeType?.fromStart?.[name] && !(picksLook && name === LOOK_SETTING),
+  );
   const [values, setValues] = useState(() => fromInput(node.input));
   const [problem, setProblem] = useState<string | null>(null);
   const look = nodeLook(node);
@@ -165,9 +226,12 @@ export function NodePanel({
     ]),
   );
 
-  // Asked for up front: what is required and nothing else supplies.
+  // Asked for up front: what is required and nothing else supplies, and what the step
+  // names as worth asking first.
+  const askFirst = new Set(step?.askFirst ?? []);
   const needed = (fields ?? []).filter(
-    ({ name, required }) => required && name !== automaticField && !brandFields[name],
+    ({ name, required }) =>
+      (required || askFirst.has(name)) && name !== automaticField && !brandFields[name],
   );
   const rest = (fields ?? []).filter((field) => !needed.includes(field));
 
@@ -190,9 +254,13 @@ export function NodePanel({
     });
   }
   if (automaticField && isBlank(node.input[automaticField])) {
+    const word = KIND_WORDS[wantedKind(automaticField)];
+    // A list takes every file that reaches it, such as the clips of Cut To The Beat.
+    const many = step?.listInput?.field === automaticField;
+    const label = fieldLabel(automaticField).replace(/ URLs?$/i, "");
     handled.push({
-      label: fieldLabel(automaticField).replace(/ URLs?$/, ""),
-      text: `the nearest ${KIND_WORDS[wantedKind(automaticField)]} before this step`,
+      label: many && !label.endsWith("s") ? `${label}s` : label,
+      text: many ? `every ${word} that reaches this step` : `the nearest ${word} before this step`,
     });
   }
   for (const [name, note] of Object.entries(filled)) {
@@ -210,12 +278,34 @@ export function NodePanel({
     node.kind === "broll-plan" ||
     node.kind === "motion-plan" ||
     node.kind === "motion" ||
-    node.kind === "sound-effects"
+    node.kind === "sound-effects" ||
+    node.kind === "cleanup" ||
+    node.kind === "subtitles"
   ) {
     handled.push({
       label: "Video",
       text: "the nearest video before this step, transcribed with each word's timing",
     });
+  }
+  if (node.kind === "cleanup") {
+    handled.push({ label: "Pauses", text: "where the toolkit hears silence in the video" });
+  }
+  if (node.kind === "footage-check") {
+    handled.push({
+      label: "Videos",
+      text: "every video before this step and, from a creator's folder, each hook and ending take, measured by your toolkit",
+    });
+  }
+  // Length Cuts and Hook And Ending Variants keeping a paid creator's ad disclosure.
+  if (step?.readsWords) {
+    const parsed = userInputSchema(step).safeParse(node.input);
+    const settings = (parsed.success ? parsed.data : node.input) as Record<string, unknown>;
+    if (step.readsWords(settings).length > 0) {
+      handled.push({
+        label: "Paid-ad disclosure",
+        text: "found in what the creator says, and kept in every cut",
+      });
+    }
   }
   for (const name of Object.keys(nodeType?.fromStart ?? {})) {
     if (isBlank(node.input[name])) {
@@ -245,13 +335,14 @@ export function NodePanel({
     setValues(next);
     const parsed = toInput(fields, next);
     setProblem(parsed.ok ? null : parsed.message);
-    // The caption style is not one of the toolkit's fields, so it is carried over by hand.
-    const picked = node.input[CAPTION_STYLE_SETTING];
-    if (parsed.ok) {
-      onChange({
-        input: { ...parsed.input, ...(picked ? { [CAPTION_STYLE_SETTING]: picked } : {}) },
-      });
-    }
+    // The caption style and language are not the toolkit's fields, so they are carried
+    // over by hand.
+    const own = Object.fromEntries(
+      [CAPTION_STYLE_SETTING, CAPTION_LANGUAGE_SETTING].flatMap((name) =>
+        node.input[name] ? [[name, node.input[name]]] : [],
+      ),
+    );
+    if (parsed.ok) onChange({ input: { ...parsed.input, ...own } });
   };
   const automatic = { field: automaticField, sources, filled, brand: brandFields };
 
@@ -308,12 +399,8 @@ export function NodePanel({
         </p>
       </div>
 
-      {waitsFor && waitsFor.length > 1 && (
-        <p className="text-muted-foreground bg-background rounded-lg px-3 py-2 text-xs text-pretty">
-          Waits for {joinNames(waitsFor)} to finish, then runs once with the files from{" "}
-          {waitsFor.length === 2 ? "both" : "all of them"}. A side an If did not send files down is
-          not waited for.
-        </p>
+      {waitsFor && waitsFor.length > 1 && node.kind !== "if" && (
+        <JoinSetting node={node} waitsFor={waitsFor} onChange={onChange} />
       )}
 
       {node.off && (
@@ -404,6 +491,33 @@ export function NodePanel({
         <SoundEffectsMain node={node} onChange={(input) => onChange({ input })} />
       )}
 
+      {node.kind === "cleanup" && (
+        <CleanupMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
+      )}
+
+      {node.kind === "footage-check" && (
+        <FootageMain key={node.id} node={node} onChange={(input) => onChange({ input })} />
+      )}
+
+      {node.kind === "subtitles" && (
+        <SubtitleLanguagesPicker
+          nodeId={node.id}
+          input={node.input}
+          onChange={(input) => onChange({ input })}
+        />
+      )}
+
+      {picksLook && (
+        <LookPicker
+          nodeId={node.id}
+          input={node.input}
+          onChange={(input) => {
+            setValues(fromInput(input));
+            onChange({ input });
+          }}
+        />
+      )}
+
       {captionStep && (
         <CaptionStylePicker
           node={node}
@@ -415,9 +529,20 @@ export function NodePanel({
         />
       )}
 
+      {captionStep && node.stepId === "video-caption" && (
+        <CaptionLanguagePicker
+          nodeId={node.id}
+          input={node.input}
+          onChange={(input) => {
+            setValues(fromInput(input));
+            onChange({ input });
+          }}
+        />
+      )}
+
       {node.kind === "approval" && <TeamApprovalSettings node={node} onChange={onChange} />}
 
-      {(node.kind === "if" || node.kind === "wait") && (
+      {(node.kind === "if" || node.kind === "wait" || node.kind === "send") && (
         <LogicSettings node={node} onChange={onChange} />
       )}
 
@@ -497,7 +622,7 @@ export function NodePanel({
         </div>
       )}
 
-      {node.kind === "step" && needed.length === 0 && unset.length === 0 && (
+      {node.kind === "step" && !picksLook && needed.length === 0 && unset.length === 0 && (
         <p className="text-muted-foreground text-sm">Nothing to set. This step works as it is.</p>
       )}
 

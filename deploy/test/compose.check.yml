@@ -1,0 +1,7 @@
+# Used only by deploy/test/stack-check.sh (and CI) on top of deploy/compose.yml. There
+# is no reverse proxy in a test, so the public addresses are 127.0.0.1 ports; the web
+# app shares the machine's network so it can reach Convex at those addresses too.
+services:
+  web:
+    network_mode: host
+    ports: !reset []

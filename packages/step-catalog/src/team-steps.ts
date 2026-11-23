@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineStep, type StepDefinition } from "./define";
+import { composeProblem } from "./compose-guard";
 import { ffmpegCompose } from "./steps/ffmpeg/compose";
 
 /**
@@ -70,7 +71,10 @@ function blankSchema(blank: TeamStepBlank): z.ZodType {
       return typeof blank.default === "number" ? described.default(blank.default) : described;
     }
     case "color": {
-      const color = z.string().regex(COLOR, "A colour name such as white, or a hex value such as #FFCC00").describe(blank.label);
+      const color = z
+        .string()
+        .regex(COLOR, "A colour name such as white, or a hex value such as #FFCC00")
+        .describe(blank.label);
       return typeof blank.default === "string" ? color.default(blank.default) : color;
     }
     case "choice": {
@@ -170,7 +174,8 @@ export function teamStepProblem(template: TeamStepTemplate): string | null {
         return `"${blank.name}" needs 2 to 20 choices.`;
       }
       const bad = options.find((option) => !SAFE_CHOICE.test(option));
-      if (bad !== undefined) return `The choice "${bad}" of "${blank.name}" has characters FFmpeg could misread.`;
+      if (bad !== undefined)
+        return `The choice "${bad}" of "${blank.name}" has characters FFmpeg could misread.`;
       if (blank.default !== undefined && !options.includes(String(blank.default))) {
         return `The default of "${blank.name}" is not one of its choices.`;
       }
@@ -222,6 +227,9 @@ export function teamStepProblem(template: TeamStepTemplate): string | null {
     const issue = checked.error.issues[0];
     return `The request is not a valid FFmpeg compose request: ${issue.path.join(".") || "request"}: ${issue.message}`;
   }
+  // Nothing in it may read, write or load a file on the toolkit (compose-guard.ts).
+  const unsafe = composeProblem(filled as Record<string, unknown>);
+  if (unsafe) return unsafe;
   for (const field of ["webhook_url", "id"]) {
     if (field in (template.request as Record<string, unknown>)) {
       return `Leave ${field} out of the request: the dashboard sets it.`;

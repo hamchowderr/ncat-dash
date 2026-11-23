@@ -5,7 +5,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import type { DeliverableKind, DeliverableStatus } from "@convex/lib/packages";
 import { CALENDAR_PLATFORMS, WEEKDAYS } from "@ncat-dash/automation-core";
 import { useMutation, useQuery } from "convex/react";
-import { ArrowLeft, Check, ListOrdered, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Clapperboard, ListOrdered, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { type DragEvent, type FormEvent, type ReactNode, useState } from "react";
 import { toast } from "sonner";
@@ -20,6 +20,8 @@ import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import { dayKey, DUE_HOUR, fromInputValue, timeLabel, toInputValue } from "./dates";
+import { type LibraryFile, LibraryPicker, PickedFiles } from "./library-picker";
+import { movePostLocally, setDueLocally } from "./optimistic";
 import { type Dragged, type Due, PlatformMark, type Post, type Waiting } from "./entries";
 import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
 import { PickList } from "@/components/ui/pick-list";
@@ -352,13 +354,15 @@ function AddPost({
 }: {
   start: { at?: number; platform?: string };
   clients: Client[];
-  onDone: (postId: Id<"calendarPosts">) => void;
+  onDone: (postIds: Id<"calendarPosts">[]) => void;
 }) {
   const team = useActiveTeam();
   const add = useMutation(api.calendar.addPost);
+  const addMany = useMutation(api.calendar.addPosts);
   const [title, setTitle] = useState("");
   const [platform, setPlatform] = useState(start.platform ?? CALENDAR_PLATFORMS[0].id);
-  const [file, setFile] = useState("");
+  const [files, setFiles] = useState<LibraryFile[]>([]);
+  const [choosing, setChoosing] = useState(false);
   const [clientId, setClientId] = useState("");
   const [when, setWhen] = useState<When>(start.at ? "time" : "queue");
   const [at, setAt] = useState(start.at ? toInputValue(start.at) : "");
@@ -367,53 +371,78 @@ function AddPost({
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setPending(true);
-    let postId: Id<"calendarPosts"> | null = null;
+    let postIds: Id<"calendarPosts">[] = [];
     const time = when === "time" ? fromInputValue(at) : null;
     if (when === "time" && time === null) {
       toast.error("Pick a day and time.");
       setPending(false);
       return;
     }
+    const shared = {
+      organizationId: team.id,
+      platform,
+      at: time,
+      queue: when === "queue",
+      ...(clientId ? { clientId: clientId as Id<"clients"> } : {}),
+    };
     await attempt(async () => {
-      postId = await add({
-        organizationId: team.id,
-        title,
-        platform,
-        at: time,
-        queue: when === "queue",
-        ...(file.trim() ? { file: file.trim() } : {}),
-        ...(clientId ? { clientId: clientId as Id<"clients"> } : {}),
-      });
+      postIds =
+        files.length > 0
+          ? await addMany({
+              ...shared,
+              ...(title.trim() ? { title } : {}),
+              itemIds: files.map((file) => file._id),
+            })
+          : [await add({ ...shared, title })];
     }, "The post could not be added.");
     setPending(false);
-    if (postId) onDone(postId);
+    if (postIds.length > 0) onDone(postIds);
   }
 
   return (
     <form onSubmit={(event) => void onSubmit(event)} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <span id="post-files" className="text-sm font-medium">
+          From Your Library
+        </span>
+        {files.length > 0 && (
+          <PickedFiles
+            files={files}
+            onRemove={(file) =>
+              setFiles((current) => current.filter((entry) => entry._id !== file._id))
+            }
+          />
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-describedby="post-files"
+          className="self-start"
+          onClick={() => setChoosing(true)}
+        >
+          <Clapperboard />
+          {files.length === 0 ? "Choose Videos" : "Change Videos"}
+        </Button>
+        <p className="text-muted-foreground text-xs">
+          {files.length > 1
+            ? "Each one becomes its own post, named after its file unless a title is given."
+            : "Optional. A post takes its file's name when the title is left empty."}
+        </p>
+        {choosing && (
+          <LibraryPicker picked={files} onPick={setFiles} onClose={() => setChoosing(false)} />
+        )}
+      </div>
       <Field id="post-title" label="Title">
         <Input
           id="post-title"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder="Episode 12 teaser"
+          placeholder={files.length > 0 ? files[0].title : "Episode 12 teaser"}
         />
       </Field>
       <Field id="post-platform" label="Where">
         <PlatformSelect id="post-platform" value={platform} onChange={setPlatform} />
-      </Field>
-      <Field
-        id="post-file"
-        label="Library File"
-        hint="Its short ID, such as C12. The title comes from the file when left empty."
-      >
-        <Input
-          id="post-file"
-          value={file}
-          onChange={(event) => setFile(event.target.value)}
-          placeholder="C12"
-          className="uppercase"
-        />
       </Field>
       {clients.length > 0 && (
         <Field id="post-client" label="For">
@@ -460,14 +489,14 @@ function AddPost({
         )}
       </fieldset>
       <Button type="submit" size="sm" disabled={pending} className="self-start">
-        Add Post
+        {files.length > 1 ? `Add ${files.length} Posts` : "Add Post"}
       </Button>
     </form>
   );
 }
 
 function PostDetails({ post, onClose }: { post: Post; onClose: () => void }) {
-  const move = useMutation(api.calendar.movePost);
+  const move = useMutation(api.calendar.movePost).withOptimisticUpdate(movePostLocally);
   const queue = useMutation(api.calendar.queuePost);
   const update = useMutation(api.calendar.updatePost);
   const remove = useMutation(api.calendar.removePost);
@@ -596,7 +625,7 @@ function PostDetails({ post, onClose }: { post: Post; onClose: () => void }) {
 }
 
 function DueDetails({ due }: { due: Due }) {
-  const setDue = useMutation(api.calendar.setDue);
+  const setDue = useMutation(api.calendar.setDue).withOptimisticUpdate(setDueLocally);
   const value = due.dueAt === null ? "" : dayKey(due.dueAt);
   return (
     <div className="flex flex-col gap-4">
@@ -834,7 +863,14 @@ export function SidePanel({
           key={`${panel.at}-${panel.platform}`}
           start={panel}
           clients={clients}
-          onDone={(id) => setPanel({ mode: "post", id })}
+          onDone={(ids) => {
+            if (ids.length === 1) {
+              setPanel({ mode: "post", id: ids[0] });
+            } else {
+              toast.success(`${ids.length} posts added.`);
+              back();
+            }
+          }}
         />
       </>
     );

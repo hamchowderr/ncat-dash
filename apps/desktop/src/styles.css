@@ -1,0 +1,370 @@
+/* The Connect screen, in the same quiet look as the web app (light only). */
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --surface: oklch(0.973 0 0);
+  --selected: oklch(0.935 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --radius: 0.625rem;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font:
+    14px/1.5 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 48px 16px;
+}
+
+.connect {
+  width: 100%;
+  max-width: 420px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 40px;
+}
+.brand svg {
+  width: 28px;
+  height: 28px;
+}
+
+h1 {
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+}
+.lead {
+  color: var(--muted-foreground);
+  margin: 0 0 24px;
+}
+
+.address-form {
+  display: flex;
+  gap: 8px;
+}
+
+input,
+select {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--input);
+  border-radius: calc(var(--radius) * 0.8);
+  background: var(--background);
+  color: inherit;
+  font: inherit;
+}
+input:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px oklch(0.708 0 0 / 0.3);
+}
+input[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px oklch(0.708 0 0 / 0.4);
+}
+
+.address-form button {
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: calc(var(--radius) * 0.8);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 500;
+}
+
+.error {
+  color: var(--destructive);
+  margin: 12px 0 0;
+}
+
+.recent {
+  margin-top: 36px;
+}
+.recent h2 {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  margin: 0 0 6px;
+}
+.recent ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.recent li {
+  display: flex;
+  align-items: center;
+  border-radius: calc(var(--radius) * 0.8);
+}
+.recent li:hover {
+  background: var(--surface);
+}
+.recent-open {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-forget {
+  padding: 4px 10px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: calc(var(--radius) * 0.6);
+  background: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.recent-forget:hover {
+  background: var(--selected);
+  color: var(--foreground);
+}
+
+.opening-text {
+  color: var(--muted-foreground);
+  margin: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Running the whole product on this computer. */
+.run {
+  max-width: 520px;
+}
+.run h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 32px 0 8px;
+}
+.run .hint {
+  color: var(--muted-foreground);
+  margin: 0 0 12px;
+}
+.items,
+.steps {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.item .mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  background: var(--surface);
+}
+.item.fail .mark {
+  color: var(--destructive);
+}
+.item .detail {
+  color: var(--muted-foreground);
+}
+.field {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.field small {
+  color: var(--muted-foreground);
+}
+.here .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.backup-result.error,
+.restore-result.error {
+  color: var(--destructive);
+}
+.restore {
+  margin-top: 16px;
+}
+.restore label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+.restore-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.restore-pick select {
+  flex: 1 1 200px;
+  width: auto;
+}
+.ways {
+  border: 0;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.ways legend {
+  padding: 0;
+  margin-bottom: 8px;
+}
+.way {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+.way:has(input:checked) {
+  background: var(--selected);
+}
+.way input {
+  flex: none;
+  height: auto;
+  margin: 3px 0 0;
+  accent-color: var(--primary);
+}
+.way small {
+  color: var(--muted-foreground);
+}
+.cloudflare .find-domains {
+  margin: 0 0 12px;
+}
+.field a {
+  color: inherit;
+  text-underline-offset: 2px;
+}
+.steps li {
+  color: var(--muted-foreground);
+  padding-left: 26px;
+  position: relative;
+}
+.steps li::before {
+  content: "○";
+  position: absolute;
+  left: 4px;
+}
+.steps li.doing {
+  color: var(--foreground);
+}
+.steps li.doing::before {
+  content: "◌";
+}
+.steps li.done {
+  color: var(--foreground);
+}
+.steps li.done::before {
+  content: "✓";
+}
+.steps li.failed::before {
+  content: "✕";
+  color: var(--destructive);
+}
+.primary,
+.secondary {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: calc(var(--radius) * 0.8);
+}
+.primary {
+  border: 0;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.secondary {
+  border: 1px solid var(--input);
+  background: var(--background);
+  color: inherit;
+}
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.run .back {
+  margin-top: 32px;
+}
+.run-here {
+  margin-top: 32px;
+  color: var(--muted-foreground);
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { KINDS, STATUSES } from "@convex/lib/packages";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,10 @@ import {
 import { hookUrl, type Trigger, TRIGGER_LABELS, type TriggerKind } from "@/lib/automations";
 
 import { AutomationPicker } from "./automation-picker";
+import { RunsAtOnce } from "./runs-at-once";
 import { TRIGGER_ICONS, TRIGGER_TINT } from "./flow-nodes";
 import { TimeZonePicker, zoneCity } from "./time-zone-picker";
+import { LocalFolder } from "./local-folder";
 import { WatchedFolder } from "./watched-folder";
 
 const UNITS = { minutes: 1, hours: 60, days: 1440 } as const;
@@ -38,6 +40,18 @@ type Unit = keyof typeof UNITS;
 
 function unitOf(minutes: number): Unit {
   return minutes % 1440 === 0 ? "days" : minutes % 60 === 0 ? "hours" : "minutes";
+}
+
+/**
+ * What a newly added trigger starts as: the first of the usual ones the automation does not
+ * have yet. Its kind can be changed straight after.
+ */
+export function newTriggerKind(existing: { trigger: Trigger }[]): Trigger {
+  const used = new Set(existing.map((each) => each.trigger.kind));
+  const kind =
+    (["upload", "folder", "schedule", "webhook"] as const).find((each) => !used.has(each)) ??
+    "schedule";
+  return defaultFor(kind);
 }
 
 function defaultFor(kind: TriggerKind): Trigger {
@@ -83,12 +97,30 @@ export function TriggerPanel({
   trigger,
   onChange,
   automationId,
+  automationName = "",
   hookToken,
+  taken = [],
+  starts,
+  onStopStarting,
+  onAddStep,
+  onRemove,
+  runsAtOnce,
 }: {
   trigger: Trigger;
   onChange: (trigger: Trigger) => void;
   automationId: string;
+  /** The automation's name, for the desktop app's list of watched folders. */
+  automationName?: string;
   hookToken: string;
+  /** Kinds the automation's other triggers are; a webhook or Run now can only be there once. */
+  taken?: TriggerKind[];
+  /** With several triggers: the steps this one starts, by id and name. */
+  starts?: { id: string; title: string }[];
+  onStopStarting?: (stepId: string) => void;
+  onAddStep?: () => void;
+  onRemove?: () => void;
+  /** How many of the automation's runs go at once (null: no limit); left out to hide it. */
+  runsAtOnce?: number | null;
 }) {
   const address = hookUrl(automationId, hookToken);
 
@@ -106,19 +138,23 @@ export function TriggerPanel({
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {(Object.keys(TRIGGER_LABELS) as TriggerKind[]).map((kind) => {
-              const Icon = TRIGGER_ICONS[kind];
-              return (
-                <SelectItem
-                  key={kind}
-                  value={kind}
-                  description={TRIGGER_HINTS[kind]}
-                  icon={<Icon className={TRIGGER_TINT} aria-hidden="true" />}
-                >
-                  {TRIGGER_LABELS[kind]}
-                </SelectItem>
-              );
-            })}
+            {(Object.keys(TRIGGER_LABELS) as TriggerKind[])
+              .filter(
+                (kind) => !((kind === "webhook" || kind === "manual") && taken.includes(kind)),
+              )
+              .map((kind) => {
+                const Icon = TRIGGER_ICONS[kind];
+                return (
+                  <SelectItem
+                    key={kind}
+                    value={kind}
+                    description={TRIGGER_HINTS[kind]}
+                    icon={<Icon className={TRIGGER_TINT} aria-hidden="true" />}
+                  >
+                    {TRIGGER_LABELS[kind]}
+                  </SelectItem>
+                );
+              })}
           </SelectContent>
         </Select>
         {trigger.kind === "manual" && (
@@ -137,8 +173,15 @@ export function TriggerPanel({
           </div>
           <FieldDescription>
             Send a POST here to start a run once the automation is switched on. To hand it a file,
-            send JSON with the file&apos;s link as <code>file_url</code>. Anything else you send is
-            kept with the run. Treat the address like a password.
+            send JSON with the file&apos;s link as <code>file_url</code>, or several links as{" "}
+            <code>files</code>. Anything else you send is kept with the run. Treat the address like
+            a password.
+          </FieldDescription>
+          <FieldDescription>
+            The answer says where to read how the run went. Add <code>callback_url</code> to be sent
+            its end when it finishes, signed with the token. Send the same{" "}
+            <code>Idempotency-Key</code> header again and no second run starts. The token can go in
+            an <code>X-Takewon-Token</code> header instead of the address.
           </FieldDescription>
         </Field>
       )}
@@ -244,10 +287,45 @@ export function TriggerPanel({
             It is checked every minute. Files already there when you switch the automation on are
             left alone.
           </FieldDescription>
+          <LocalFolder
+            automationId={automationId}
+            automationName={automationName}
+            prefix={trigger.prefix}
+          />
         </Field>
       )}
 
-      {(trigger.kind === "upload" || trigger.kind === "folder") && (
+      {trigger.kind === "folder" && (
+        <Field>
+          <FieldLabel htmlFor="trigger-folder-layout">What lands there</FieldLabel>
+          <Select
+            value={trigger.layout ?? "files"}
+            onValueChange={(layout) => {
+              const next = { ...trigger };
+              if (layout === "creators") {
+                next.layout = "creators";
+                next.fileType = "video";
+              } else delete next.layout;
+              onChange(next);
+            }}
+          >
+            <SelectTrigger id="trigger-folder-layout" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="files">Single files</SelectItem>
+              <SelectItem value="creators">A folder for each creator</SelectItem>
+            </SelectContent>
+          </Select>
+          <FieldDescription>
+            {trigger.layout === "creators"
+              ? "Inside it, each creator has a folder with hooks, body and, if you like, endings in it, like Maya/hooks/. Once a creator has a body and a hook take, and nothing new has landed for 3 minutes, one run starts with all their takes: up to 5 hooks and 3 endings. A new take later makes the set again."
+              : "Each file that lands starts a run of its own."}
+          </FieldDescription>
+        </Field>
+      )}
+
+      {(trigger.kind === "upload" || (trigger.kind === "folder" && !trigger.layout)) && (
         <Field>
           <FieldLabel htmlFor="trigger-file-type">Which files</FieldLabel>
           <Select
@@ -311,6 +389,58 @@ export function TriggerPanel({
           schedule={trigger.schedule}
           onChange={(schedule) => onChange({ kind: "schedule", schedule })}
         />
+      )}
+      {starts && (
+        <Field>
+          <FieldLabel>What it starts</FieldLabel>
+          {starts.length === 0 ? (
+            <FieldDescription>
+              Nothing yet. Add a step after it, or drag from its dot to a first step.
+            </FieldDescription>
+          ) : (
+            <ul className="grid gap-1">
+              {starts.map((step) => (
+                <li
+                  key={step.id}
+                  className="bg-background flex items-center gap-2 rounded-md py-1 pr-1 pl-3 text-sm"
+                >
+                  <span className="min-w-0 flex-1 truncate">{step.title}</span>
+                  {onStopStarting && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => onStopStarting(step.id)}
+                    >
+                      <X />
+                      <span className="sr-only">Stop starting {step.title}</span>
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <FieldDescription>
+            Each trigger runs only the steps it starts and what comes after them.
+          </FieldDescription>
+          <div className="flex flex-wrap gap-2">
+            {onAddStep && (
+              <Button type="button" variant="outline" size="sm" onClick={onAddStep}>
+                <Plus />
+                Add a step after it
+              </Button>
+            )}
+            {onRemove && (
+              <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+                <Trash2 />
+                Remove trigger
+              </Button>
+            )}
+          </div>
+        </Field>
+      )}
+      {runsAtOnce !== undefined && (
+        <RunsAtOnce automationId={automationId} runsAtOnce={runsAtOnce} />
       )}
     </FieldGroup>
   );

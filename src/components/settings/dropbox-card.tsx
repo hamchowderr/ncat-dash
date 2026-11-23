@@ -3,16 +3,7 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
-import {
-  ChevronRight,
-  Folder,
-  FolderPlus,
-  Image as ImageIcon,
-  Music,
-  Search,
-  Users,
-  Video,
-} from "lucide-react";
+import { Folder, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -22,15 +13,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TabsContent } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { errorMessage, formatBytes } from "@/lib/catalog";
+import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
-import { SettingsSection } from "./settings-shell";
+import { SettingsSection, SettingsTabs } from "./settings-shell";
 
 /** What Settings says when Dropbox sends someone back, by the result in the address. */
 export const DROPBOX_RESULTS: Record<string, { ok: boolean; text: string }> = {
-  connected: { ok: true, text: "Your Dropbox is connected. Pick the folders to watch." },
+  connected: { ok: true, text: "Your Dropbox is connected. Tick the folders to bring in." },
   cancelled: { ok: false, text: "Nothing changed: Dropbox was closed before it finished." },
   expired: { ok: false, text: "That took too long. Press the button again." },
   taken: { ok: false, text: "That Dropbox is already connected to another team." },
@@ -43,21 +35,6 @@ export const DROPBOX_RESULTS: Record<string, { ok: boolean; text: string }> = {
   refused: { ok: false, text: "Dropbox did not finish signing you in. Try again." },
   unreachable: { ok: false, text: "Dropbox could not be reached. Try again in a minute." },
 };
-
-type FolderChoice = { name: string; path: string; shared: boolean };
-
-type PastFile = {
-  fileId: string;
-  name: string;
-  path: string;
-  folder: string;
-  kind: "video" | "audio" | "image";
-  size: number;
-  modifiedAt: number;
-  brought: boolean;
-};
-
-const KIND_ICON = { video: Video, audio: Music, image: ImageIcon } as const;
 
 const IMPORT_TEXT = {
   importing: "Coming in",
@@ -80,19 +57,10 @@ export function when(at: number) {
   });
 }
 
-/** The folders on the way to a path, for moving back up: "/A/B" gives Dropbox, A, B. */
-export function crumbsOf(path: string): { name: string; path: string }[] {
-  const parts = path.split("/").filter(Boolean);
-  return [
-    { name: "Dropbox", path: "" },
-    ...parts.map((name, i) => ({ name, path: `/${parts.slice(0, i + 1).join("/")}` })),
-  ];
-}
-
 /**
- * Dropbox, both ways. Each person connects their own Dropbox once and picks folders to
- * watch, their own or the team's. New videos, sounds and pictures put in them come into
- * Uploads by themselves; what is already there can be brought over in one go.
+ * Dropbox, both ways. Each person connects their own Dropbox once; the dashboard reads it
+ * and lists the folders with media, their own or the team's. Ticked folders come into
+ * Uploads, now and from then on, and automations can send finished clips back.
  */
 export function DropboxCard() {
   const team = useActiveTeam();
@@ -100,10 +68,8 @@ export function DropboxCard() {
   const startLink = useMutation(api.dropbox.startLink);
   const disconnect = useMutation(api.dropbox.disconnect);
   const setAutoImport = useMutation(api.dropbox.setAutoImport);
-  const removeFolder = useMutation(api.dropbox.removeFolder);
   const sendAgain = useMutation(api.dropbox.sendAgain);
   const [busy, setBusy] = useState<string | null>(null);
-  const [picking, setPicking] = useState(false);
 
   // Coming back from Dropbox: say how it went once, then tidy the address.
   useEffect(() => {
@@ -156,219 +122,182 @@ export function DropboxCard() {
   const me = box.me;
 
   return (
-    <SettingsSection data-dropbox-card className="gap-8">
-      <section className="flex flex-col gap-3" aria-label="Your Dropbox">
-        {me ? (
-          <>
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span>
-                Connected as <span className="font-medium">{me.name}</span>
-                {me.email && <span className="text-muted-foreground"> · {me.email}</span>}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy !== null}
-                onClick={() =>
-                  run(
-                    "disconnect",
-                    () => disconnect({ organizationId: team.id }),
-                    "Your Dropbox is disconnected",
-                  )
-                }
-              >
-                Disconnect
-              </Button>
-            </div>
-            {me.needsReconnect && (
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-destructive">
-                  Dropbox stopped accepting your sign-in, so nothing new comes in.
-                </span>
-                <Button size="sm" disabled={busy !== null} onClick={connect}>
-                  Connect again
-                </Button>
-              </div>
-            )}
-            <div className="flex items-start gap-3">
-              <Switch
-                id="dropbox-auto"
-                checked={me.autoImport}
-                disabled={busy !== null}
-                onCheckedChange={(checked) =>
-                  run("auto", () => setAutoImport({ organizationId: team.id, autoImport: checked }))
-                }
-              />
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="dropbox-auto">Bring in new files by themselves</Label>
-                <p className="text-muted-foreground text-sm">
-                  When a video, sound or picture is added to a folder you watch, it goes to Uploads
-                  and starts any automation set to run on an upload. Documents and other files stay
-                  in Dropbox.
-                </p>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-muted-foreground text-sm">
-              Connect your Dropbox, then pick the folders to watch. Footage added to them comes into
-              Uploads by themselves, and automations can send finished clips back to Dropbox.
-            </p>
-            <div>
-              <Button size="sm" disabled={busy !== null} onClick={connect}>
-                {busy === "connect" ? "Opening Dropbox" : "Connect Dropbox"}
-              </Button>
-            </div>
-          </>
-        )}
-        {box.others.length > 0 && (
-          <p className="text-muted-foreground text-sm">
-            Also connected on this team:{" "}
-            {box.others
-              .map((one) => (one.memberName ? `${one.memberName} (${one.name})` : one.name))
-              .join(", ")}
-            .
-          </p>
-        )}
-      </section>
-
-      {me && (
-        <section className="flex flex-col gap-3" aria-label="Watched folders">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-medium">Watched folders</p>
-            {!picking && (
-              <Button size="sm" variant="outline" onClick={() => setPicking(true)}>
-                <FolderPlus />
-                Add a folder
-              </Button>
-            )}
-          </div>
-          {me.folders.length === 0 && !picking && (
-            <p className="text-muted-foreground text-sm">
-              No folders yet. Add the ones your footage goes into
-              {me.teamSpace ? ", your own or your team's" : ""}. Folders inside them are watched
-              too.
-            </p>
-          )}
-          {me.folders.length > 0 && (
-            <ul className="flex flex-col gap-1.5 text-sm">
-              {me.folders.map((folder) => (
-                <li key={folder._id} className="flex items-center justify-between gap-3">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Folder className="text-muted-foreground size-4 shrink-0" />
-                    <span className="truncate">{folder.path}</span>
+    <SettingsSection data-dropbox-card>
+      <SettingsTabs
+        label="Dropbox"
+        tabs={[
+          { id: "connection", label: "Connection" },
+          ...(me !== null || box.imports.length > 0 || box.sends.length > 0
+            ? [{ id: "folders", label: "Folders" }]
+            : []),
+        ]}
+      >
+        <TabsContent value="connection" className="flex flex-col gap-8">
+          <section className="flex flex-col gap-3" aria-label="Your Dropbox">
+            {me ? (
+              <>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span>
+                    Connected as <span className="font-medium">{me.name}</span>
+                    {me.email && <span className="text-muted-foreground"> · {me.email}</span>}
                   </span>
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="shrink-0"
                     disabled={busy !== null}
                     onClick={() =>
                       run(
-                        `remove-${folder._id}`,
-                        () => removeFolder({ folderId: folder._id }),
-                        `Stopped watching ${folder.path}`,
+                        "disconnect",
+                        () => disconnect({ organizationId: team.id }),
+                        "Your Dropbox is disconnected",
                       )
                     }
                   >
-                    Stop watching
+                    Disconnect
                   </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {picking && (
-            <FolderPicker
-              teamSpace={me.teamSpace}
-              watched={me.folders.map((one) => one.path.toLowerCase())}
-              onDone={() => setPicking(false)}
-            />
-          )}
-        </section>
-      )}
-
-      {me && me.folders.length > 0 && <AlreadyThere />}
-
-      {box.imports.length > 0 && (
-        <section className="flex flex-col gap-3" aria-label="Brought in from Dropbox">
-          <p className="text-sm font-medium">Brought in from Dropbox</p>
-          <ul className="flex flex-col gap-2 text-sm">
-            {box.imports.map((one: DropboxImportRow) => (
-              <li key={one._id} className="flex flex-col gap-0.5">
-                <span className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate">
-                    <span className="font-medium">{one.name}</span>
-                    <span className="text-muted-foreground"> · {parentOf(one.path)}</span>
-                  </span>
-                  <span
-                    className={
-                      one.status === "failed"
-                        ? "text-destructive shrink-0"
-                        : "text-muted-foreground shrink-0"
-                    }
-                  >
-                    {one.status === "done" ? (
-                      <Link href="/uploads" className="underline-offset-4 hover:underline">
-                        {IMPORT_TEXT.done}
-                      </Link>
-                    ) : (
-                      IMPORT_TEXT[one.status]
-                    )}
-                  </span>
-                </span>
-                {one.status === "failed" && one.error && (
-                  <span className="text-muted-foreground">{one.error}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {box.sends.length > 0 && (
-        <section className="flex flex-col gap-3" aria-label="Sent to Dropbox">
-          <p className="text-sm font-medium">Sent to Dropbox</p>
-          <ul className="flex flex-col gap-2 text-sm">
-            {box.sends.map((one: DropboxSendRow) => (
-              <li key={one._id} className="flex flex-col gap-0.5">
-                <span className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate">
-                    <span className="font-medium">{one.name}</span>
-                    <span className="text-muted-foreground">
-                      {" "}
-                      · {one.automationName} ·{" "}
-                      {one.dropboxPath ? parentOf(one.dropboxPath) : one.folder}
+                </div>
+                {me.needsReconnect && (
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-destructive">
+                      Dropbox stopped accepting your sign-in, so nothing new comes in.
                     </span>
-                  </span>
-                  {one.status === "failed" ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="shrink-0"
-                      disabled={busy !== null}
-                      onClick={() => run(`send-${one._id}`, () => sendAgain({ sendId: one._id }))}
-                    >
-                      Send again
+                    <Button size="sm" disabled={busy !== null} onClick={connect}>
+                      Connect again
                     </Button>
-                  ) : (
-                    <span className="text-muted-foreground shrink-0 tabular-nums">
-                      {one.status === "done"
-                        ? "Sent"
-                        : one.size > 0
-                          ? `Sending ${Math.floor((one.offset / one.size) * 100)}%`
-                          : "Sending"}
-                    </span>
-                  )}
-                </span>
-                {one.status === "failed" && one.error && (
-                  <span className="text-muted-foreground">{one.error}</span>
+                  </div>
                 )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+                <div className="flex items-start gap-3">
+                  <Switch
+                    id="dropbox-auto"
+                    checked={me.autoImport}
+                    disabled={busy !== null}
+                    onCheckedChange={(checked) =>
+                      run("auto", () =>
+                        setAutoImport({ organizationId: team.id, autoImport: checked }),
+                      )
+                    }
+                  />
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="dropbox-auto">Bring in new files by themselves</Label>
+                    <p className="text-muted-foreground text-sm">
+                      When a video, sound or picture is added to a folder you watch, it goes to
+                      Uploads and starts any automation set to run on an upload. Documents and other
+                      files stay in Dropbox.
+                    </p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-muted-foreground text-sm">
+                  Connect your Dropbox, then tick the folders to bring in. Their footage comes into
+                  Uploads, now and whenever more is added, and automations can send finished clips
+                  back to Dropbox.
+                </p>
+                <div>
+                  <Button size="sm" disabled={busy !== null} onClick={connect}>
+                    {busy === "connect" ? "Opening Dropbox" : "Connect Dropbox"}
+                  </Button>
+                </div>
+              </>
+            )}
+            {box.others.length > 0 && (
+              <p className="text-muted-foreground text-sm">
+                Also connected on this team:{" "}
+                {box.others
+                  .map((one) => (one.memberName ? `${one.memberName} (${one.name})` : one.name))
+                  .join(", ")}
+                .
+              </p>
+            )}
+          </section>
+        </TabsContent>
+        <TabsContent value="folders" className="flex flex-col gap-8">
+          {me && <MediaFolders watched={me.folders} teamSpace={me.teamSpace} />}
+
+          {box.imports.length > 0 && (
+            <section className="flex flex-col gap-3" aria-label="Brought in from Dropbox">
+              <p className="text-sm font-medium">Brought in from Dropbox</p>
+              <ul className="flex flex-col gap-2 text-sm">
+                {box.imports.map((one: DropboxImportRow) => (
+                  <li key={one._id} className="flex flex-col gap-0.5">
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate">
+                        <span className="font-medium">{one.name}</span>
+                        <span className="text-muted-foreground"> · {parentOf(one.path)}</span>
+                      </span>
+                      <span
+                        className={
+                          one.status === "failed"
+                            ? "text-destructive shrink-0"
+                            : "text-muted-foreground shrink-0"
+                        }
+                      >
+                        {one.status === "done" ? (
+                          <Link href="/uploads" className="underline-offset-4 hover:underline">
+                            {IMPORT_TEXT.done}
+                          </Link>
+                        ) : (
+                          IMPORT_TEXT[one.status]
+                        )}
+                      </span>
+                    </span>
+                    {one.status === "failed" && one.error && (
+                      <span className="text-muted-foreground">{one.error}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {box.sends.length > 0 && (
+            <section className="flex flex-col gap-3" aria-label="Sent to Dropbox">
+              <p className="text-sm font-medium">Sent to Dropbox</p>
+              <ul className="flex flex-col gap-2 text-sm">
+                {box.sends.map((one: DropboxSendRow) => (
+                  <li key={one._id} className="flex flex-col gap-0.5">
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate">
+                        <span className="font-medium">{one.name}</span>
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {one.automationName} ·{" "}
+                          {one.dropboxPath ? parentOf(one.dropboxPath) : one.folder}
+                        </span>
+                      </span>
+                      {one.status === "failed" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="shrink-0"
+                          disabled={busy !== null}
+                          onClick={() =>
+                            run(`send-${one._id}`, () => sendAgain({ sendId: one._id }))
+                          }
+                        >
+                          Send again
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground shrink-0 tabular-nums">
+                          {one.status === "done"
+                            ? "Sent"
+                            : one.size > 0
+                              ? `Sending ${Math.floor((one.offset / one.size) * 100)}%`
+                              : "Sending"}
+                        </span>
+                      )}
+                    </span>
+                    {one.status === "failed" && one.error && (
+                      <span className="text-muted-foreground">{one.error}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </TabsContent>
+      </SettingsTabs>
     </SettingsSection>
   );
 }
@@ -379,305 +308,249 @@ function parentOf(path: string): string {
   return cut > 0 ? path.slice(0, cut) : "/";
 }
 
+type MediaFolder = {
+  path: string;
+  name: string;
+  files: number | null;
+  fresh: number;
+  watched: boolean;
+};
+
+type WatchedFolder = { _id: Id<"dropboxFolders">; path: string; recursive: boolean };
+
+/** How a watched folder reads in the list: the very top is all of Dropbox. */
+export function folderLabel(path: string): string {
+  return path === "/" || path === "" ? "All of Dropbox" : path;
+}
+
 /**
- * Picks a folder to watch: opens folders one level at a time, like Dropbox's own "Move"
- * window, with the way back up along the top. Shown in place, not over the page.
+ * Every folder in the person's Dropbox that holds videos, sounds or pictures, read in one
+ * go, with tick boxes. One press watches the ticked folders, brings in what is in them,
+ * and stops watching the ones unticked. Like Google Photos' "Back up device folders".
  */
-function FolderPicker({
-  teamSpace,
-  watched,
-  onDone,
-}: {
-  teamSpace: boolean;
-  watched: string[];
-  onDone: () => void;
-}) {
+function MediaFolders({ watched, teamSpace }: { watched: WatchedFolder[]; teamSpace: boolean }) {
   const team = useActiveTeam();
-  const browse = useAction(api.dropbox.browse);
-  const addFolder = useAction(api.dropbox.addFolder);
-  const [path, setPath] = useState("");
-  // What Dropbox listed, and for which folder: anything else is still loading.
-  const [listed, setListed] = useState<{ path: string; list: FolderChoice[] } | null>(null);
-  const folders = listed?.path === path ? listed.list : null;
-  const [adding, setAdding] = useState<string | null>(null);
+  const scan = useAction(api.dropbox.scan);
+  const pullIn = useAction(api.dropbox.pullIn);
+  const removeFolder = useMutation(api.dropbox.removeFolder);
+  const [found, setFound] = useState<{ folders: MediaFolder[]; partial: boolean } | null>(null);
+  const [failed, setFailed] = useState(false);
+  // Only what the person changed; anything else is ticked when it is watched now.
+  const [changed, setChanged] = useState<Map<string, boolean>>(new Map());
+  const [search, setSearch] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [round, setRound] = useState(0);
 
   useEffect(() => {
     let current = true;
-    browse({ organizationId: team.id, path })
-      .then((list) => current && setListed({ path, list }))
+    scan({ organizationId: team.id })
+      .then((result) => {
+        if (!current) return;
+        setFailed(false);
+        setFound(result);
+      })
       .catch((caught) => {
         if (!current) return;
-        toast.error(errorMessage(caught, "Dropbox did not list that folder."));
-        setListed({ path, list: [] });
+        setFailed(true);
+        toast.error(errorMessage(caught, "Dropbox could not be read. Try again."));
       });
     return () => {
       current = false;
     };
-  }, [browse, team.id, path]);
+  }, [scan, team.id, round]);
 
-  async function watch(target: string) {
-    setAdding(target);
+  const watchedKeys = useMemo(
+    () => new Set(watched.map((one) => one.path.toLowerCase())),
+    [watched],
+  );
+  const isPicked = (path: string) => {
+    const key = path.toLowerCase();
+    return changed.get(key) ?? watchedKeys.has(key);
+  };
+
+  const rows = useMemo(() => {
+    const list: MediaFolder[] = (found?.folders ?? []).map((one) => ({ ...one }));
+    const listed = new Set(list.map((one) => one.path.toLowerCase()));
+    // Watched folders with no media right in them still show, so they can be unticked.
+    for (const one of watched) {
+      if (listed.has(one.path.toLowerCase())) continue;
+      list.push({
+        path: one.path,
+        name: one.path === "/" ? "All of Dropbox" : one.path.slice(one.path.lastIndexOf("/") + 1),
+        files: null,
+        fresh: 0,
+        watched: true,
+      });
+    }
+    return list;
+  }, [found, watched]);
+
+  const words = search.trim().toLowerCase();
+  const shown = rows.filter((one) => !words || one.path.toLowerCase().includes(words));
+  const toAdd = rows.filter(
+    (one) => isPicked(one.path) && !watchedKeys.has(one.path.toLowerCase()),
+  );
+  const toRemove = watched.filter((one) => !isPicked(one.path));
+
+  function flip(path: string, on: boolean) {
+    setChanged((before) => new Map(before).set(path.toLowerCase(), on));
+  }
+
+  async function apply() {
+    setBusy(true);
     try {
-      await addFolder({ organizationId: team.id, path: target });
-      toast.success(`Watching ${target || "your whole Dropbox"}`);
-      onDone();
+      for (const one of toRemove) await removeFolder({ folderId: one._id });
+      let started = 0;
+      let more = false;
+      for (let i = 0; i < toAdd.length; i += 50) {
+        const outcome = await pullIn({
+          organizationId: team.id,
+          paths: toAdd.slice(i, i + 50).map((one) => one.path),
+        });
+        started += outcome.started;
+        more ||= outcome.more;
+      }
+      const said: string[] = [];
+      if (toAdd.length > 0) {
+        said.push(
+          started > 0
+            ? `${plural(started, "file")} on the way to Uploads`
+            : `Watching ${plural(toAdd.length, "folder")}`,
+        );
+      }
+      if (toRemove.length > 0) said.push(`stopped watching ${plural(toRemove.length, "folder")}`);
+      const text = said.join(", ");
+      toast.success(text.charAt(0).toUpperCase() + text.slice(1));
+      if (more) toast.message("More files are waiting. Press Bring in again for the rest.");
+      setChanged(new Map());
+      setRound((n) => n + 1);
     } catch (caught) {
-      toast.error(errorMessage(caught, "That folder could not be watched."));
+      toast.error(errorMessage(caught, "Those folders could not be brought in."));
     } finally {
-      setAdding(null);
+      setBusy(false);
     }
   }
 
-  const crumbs = crumbsOf(path);
-  const isWatched = (target: string) => watched.includes((target || "/").toLowerCase());
+  const label =
+    toAdd.length > 0
+      ? `Bring in ${plural(toAdd.length, "folder")}`
+      : toRemove.length > 0
+        ? `Stop watching ${plural(toRemove.length, "folder")}`
+        : "Bring in";
 
   return (
-    <div className="bg-muted/40 flex flex-col gap-3 rounded-lg p-3" data-dropbox-picker>
-      <div className="flex items-center justify-between gap-3">
-        <nav aria-label="Folder path" className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
-          {crumbs.map((crumb, i) => (
-            <span key={crumb.path} className="flex items-center gap-1">
-              {i > 0 && <ChevronRight className="text-muted-foreground size-3.5" />}
-              {i === crumbs.length - 1 ? (
-                <span className="font-medium">{crumb.name}</span>
-              ) : (
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground outline-none focus-visible:underline"
-                  onClick={() => setPath(crumb.path)}
-                >
-                  {crumb.name}
-                </button>
-              )}
-            </span>
-          ))}
-        </nav>
-        <Button size="sm" variant="ghost" onClick={onDone}>
-          Done
-        </Button>
+    <section className="flex flex-col gap-3" aria-label="Folders with media">
+      <div className="flex flex-col gap-0.5">
+        <p className="text-sm font-medium">Folders with videos, sounds or pictures</p>
+        <p className="text-muted-foreground text-sm">
+          Tick the folders to bring in. What is in them now comes into Uploads, and anything added
+          later comes in by itself.{teamSpace ? " Team folders are included." : ""}
+        </p>
       </div>
-      {folders === null ? (
-        <Skeleton className="h-24 rounded-md" />
-      ) : folders.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No folders in here.</p>
-      ) : (
-        <ul className="flex max-h-72 flex-col gap-0.5 overflow-y-auto text-sm" aria-label="Folders">
-          {folders.map((folder) => (
-            <li key={folder.path} className="flex items-center justify-between gap-3">
-              <button
-                type="button"
-                className="hover:bg-muted flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none focus-visible:underline"
-                onClick={() => setPath(folder.path)}
-                aria-label={`Open ${folder.name}`}
-              >
-                {folder.shared ? (
-                  <Users className="text-muted-foreground size-4 shrink-0" />
-                ) : (
-                  <Folder className="text-muted-foreground size-4 shrink-0" />
-                )}
-                <span className="truncate">{folder.name}</span>
-                {folder.shared && teamSpace && (
-                  <span className="text-muted-foreground shrink-0 text-xs">Team folder</span>
-                )}
-              </button>
-              {isWatched(folder.path) ? (
-                <span className="text-muted-foreground shrink-0 text-xs">Watched</span>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="shrink-0"
-                  disabled={adding !== null}
-                  onClick={() => void watch(folder.path)}
-                  aria-label={`Watch ${folder.name}`}
-                >
-                  {adding === folder.path ? "Adding" : "Watch"}
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
+
+      {found === null && !failed && (
+        <div className="flex flex-col gap-2" aria-label="Reading your Dropbox">
+          <p className="text-muted-foreground text-sm">Reading your Dropbox</p>
+          <Skeleton className="h-8 rounded-lg" />
+          <Skeleton className="h-8 rounded-lg" />
+          <Skeleton className="h-8 rounded-lg" />
+        </div>
       )}
-      {path !== "" && !isWatched(path) && (
+
+      {failed && found === null && (
         <div>
-          <Button size="sm" disabled={adding !== null} onClick={() => void watch(path)}>
-            {adding === path ? "Adding" : `Watch ${crumbs[crumbs.length - 1].name}`}
+          <Button size="sm" variant="outline" onClick={() => setRound((n) => n + 1)}>
+            Try again
           </Button>
         </div>
       )}
-    </div>
-  );
-}
 
-/**
- * What is already in the watched folders: listed when asked for, newest first, with
- * tick boxes, and brought over in one press.
- */
-function AlreadyThere() {
-  const team = useActiveTeam();
-  const listFiles = useAction(api.dropbox.pastFiles);
-  const bringOver = useAction(api.dropbox.bringOver);
-  const [files, setFiles] = useState<PastFile[] | null>(null);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
-  const [busy, setBusy] = useState<"list" | "bring" | null>(null);
-
-  async function find() {
-    setBusy("list");
-    try {
-      const list = await listFiles({ organizationId: team.id });
-      setFiles(list);
-      setPicked(new Set(list.filter((one) => !one.brought).map((one) => one.fileId)));
-    } catch (caught) {
-      toast.error(errorMessage(caught, "Dropbox could not be reached. Try again."));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  const shown = useMemo(() => {
-    const words = search.trim().toLowerCase();
-    return (files ?? []).filter((one) => !words || one.path.toLowerCase().includes(words));
-  }, [files, search]);
-  const fresh = (files ?? []).filter((one) => !one.brought);
-  const shownFresh = shown.filter((one) => !one.brought);
-  const shownPicked = shownFresh.filter((one) => picked.has(one.fileId)).length;
-  const pickedCount = fresh.filter((one) => picked.has(one.fileId)).length;
-
-  function setMany(ids: string[], on: boolean) {
-    setPicked((before) => {
-      const next = new Set(before);
-      for (const id of ids) {
-        if (on) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
-  }
-
-  async function bring() {
-    const ids = fresh.filter((one) => picked.has(one.fileId)).map((one) => one.fileId);
-    setBusy("bring");
-    try {
-      const outcome = await bringOver({ organizationId: team.id, fileIds: ids.slice(0, 500) });
-      toast.success(
-        outcome.started > 0
-          ? `${plural(outcome.started, "file")} on the way to Uploads`
-          : "Those files are already in Uploads",
-      );
-      const sent = new Set(ids.slice(0, 500));
-      setFiles((list) =>
-        (list ?? []).map((one) => (sent.has(one.fileId) ? { ...one, brought: true } : one)),
-      );
-      setPicked(new Set());
-    } catch (caught) {
-      toast.error(errorMessage(caught, "Those files could not be brought over."));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  return (
-    <section className="flex flex-col gap-3" aria-label="Already in these folders">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex flex-col gap-0.5">
-          <p className="text-sm font-medium">Already in these folders</p>
-          <p className="text-muted-foreground text-sm">
-            Only files added from now on come in by themselves. Bring over what is there already.
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="shrink-0"
-          disabled={busy !== null}
-          onClick={find}
-        >
-          {busy === "list" ? "Asking Dropbox" : files ? "Look again" : "Find files"}
-        </Button>
-      </div>
-
-      {files !== null && files.length === 0 && (
+      {found !== null && rows.length === 0 && (
         <p className="text-muted-foreground text-sm">
-          No videos, sounds or pictures in the folders you watch.
+          No videos, sounds or pictures in your Dropbox yet. Once some are there, open this page
+          again and they show up here.
         </p>
       )}
 
-      {files !== null && files.length > 0 && (
+      {rows.length > 0 && (
         <>
-          <div className="relative">
-            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search files"
-              aria-label="Search files"
-              className="pl-8"
-            />
-          </div>
-          {fresh.length > 0 && (
-            <div className="bg-muted/50 flex items-center justify-between gap-3 rounded-lg px-3 py-2">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={
-                    shownFresh.length === 0
-                      ? false
-                      : shownPicked === shownFresh.length
-                        ? true
-                        : shownPicked === 0
-                          ? false
-                          : "indeterminate"
-                  }
-                  disabled={shownFresh.length === 0}
-                  onCheckedChange={(on) =>
-                    setMany(
-                      shownFresh.map((one) => one.fileId),
-                      on === true,
-                    )
-                  }
-                  aria-label="Pick every file shown that is not in Uploads"
-                />
-                {pickedCount === fresh.length
-                  ? `All ${fresh.length.toLocaleString()} picked`
-                  : `${pickedCount.toLocaleString()} of ${fresh.length.toLocaleString()} picked`}
-              </label>
-              <Button size="sm" disabled={busy !== null || pickedCount === 0} onClick={bring}>
-                {busy === "bring" ? "Bringing over" : `Bring over ${plural(pickedCount, "file")}`}
-              </Button>
+          {rows.length > 8 && (
+            <div className="relative">
+              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search folders"
+                aria-label="Search folders"
+                className="pl-8"
+              />
             </div>
           )}
           {shown.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No files match.</p>
+            <p className="text-muted-foreground text-sm">No folders match.</p>
           ) : (
-            <ul className="flex max-h-96 flex-col gap-1.5 overflow-y-auto text-sm">
+            <ul className="flex max-h-96 flex-col gap-1 overflow-y-auto text-sm">
               {shown.map((one) => {
-                const Icon = KIND_ICON[one.kind];
+                const key = one.path.toLowerCase();
+                const id = `dropbox-folder-${key}`;
                 return (
-                  <li key={one.fileId} className="flex items-center gap-3">
-                    {one.brought ? (
-                      <span className="size-4 shrink-0" />
-                    ) : (
-                      <Checkbox
-                        checked={picked.has(one.fileId)}
-                        onCheckedChange={(on) => setMany([one.fileId], on === true)}
-                        aria-label={`Pick ${one.name}`}
-                      />
-                    )}
-                    <Icon className="text-muted-foreground size-4 shrink-0" />
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="truncate font-medium">{one.name}</span>
-                      <span className="text-muted-foreground truncate text-xs">
-                        {parentOf(one.path)} · {when(one.modifiedAt)} · {formatBytes(one.size)}
+                  <li
+                    key={key}
+                    className="hover:bg-muted/50 flex items-center gap-3 rounded-lg px-2 py-1.5"
+                  >
+                    <Checkbox
+                      id={id}
+                      checked={isPicked(one.path)}
+                      disabled={busy}
+                      onCheckedChange={(on) => flip(one.path, on === true)}
+                      aria-label={`Bring in ${folderLabel(one.path)}`}
+                    />
+                    <label
+                      htmlFor={id}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2"
+                    >
+                      <Folder className="text-muted-foreground size-4 shrink-0" />
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate font-medium">{one.name}</span>
+                        {one.path !== "/" && (
+                          <span className="text-muted-foreground truncate text-xs">{one.path}</span>
+                        )}
                       </span>
+                    </label>
+                    <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                      {one.watched
+                        ? "Watching"
+                        : one.files === null
+                          ? ""
+                          : one.fresh === one.files
+                            ? plural(one.files, "file")
+                            : one.fresh === 0
+                              ? "All in Uploads"
+                              : `${one.fresh.toLocaleString()} new of ${one.files.toLocaleString()}`}
                     </span>
-                    {one.brought && (
-                      <span className="text-muted-foreground shrink-0 text-xs">In Uploads</span>
-                    )}
                   </li>
                 );
               })}
             </ul>
           )}
+          {found?.partial && (
+            <p className="text-muted-foreground text-sm">
+              Your Dropbox is very big, so only the first part was read. Search for a folder by name
+              if it is not listed.
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground text-sm">
+              {plural(rows.filter((one) => isPicked(one.path)).length, "folder")} ticked
+            </span>
+            <Button
+              size="sm"
+              disabled={busy || (toAdd.length === 0 && toRemove.length === 0)}
+              onClick={apply}
+            >
+              {busy ? "Bringing in" : label}
+            </Button>
+          </div>
         </>
       )}
     </section>

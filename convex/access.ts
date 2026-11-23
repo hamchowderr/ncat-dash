@@ -1,11 +1,13 @@
 import { v } from "convex/values";
 
+import { components } from "./_generated/api";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { blockOf, rateLimitedMessage, refusalFor, takeAgentTurn } from "./lib/access";
 import { requireMember } from "./lib/authz";
 import { emailKey } from "./lib/emailKey";
 import { UNKNOWN_NETWORK } from "./lib/clientIp";
 import { getEdition } from "./lib/edition";
+import { INVITE_ONLY_MESSAGE, signUpsMode } from "./lib/signUps";
 import { limiter, waitLabel } from "./lib/limits";
 
 const refusal = v.object({
@@ -73,6 +75,23 @@ export const userBlocked = internalQuery({
 });
 
 /**
+ * On an invite-only copy (SIGN_UPS=invite-only), what to tell someone who may not make an
+ * account: everyone but the first person needs an open invitation to a team. Null when
+ * they may.
+ */
+export const signUpRefusal = internalQuery({
+  args: { email: v.string() },
+  returns: v.union(v.null(), v.string()),
+  handler: async (ctx, args) => {
+    if (signUpsMode() !== "invite-only") return null;
+    const check = await ctx.runQuery(components.betterAuth.members.signUpCheck, {
+      email: args.email,
+    });
+    return !check.hasAccounts || check.invited ? null : INVITE_ONLY_MESSAGE;
+  },
+});
+
+/**
  * Takes one sign-up from the network's allowance and everyone's, on the hosted edition.
  * Returns what to tell the person when there is none left, or null.
  */
@@ -88,6 +107,46 @@ export const takeSignUp = internalMutation({
     const everyone = network.ok ? await limiter.limit(ctx, "signUps") : network;
     if (everyone.ok) return null;
     return `Too many accounts have been made from here in a short time. Try again ${waitLabel(everyone.retryAfter ?? 60_000)}.`;
+  },
+});
+
+/**
+ * Takes one try from the allowances of the network and of the account it is for: a
+ * password sign-in, or an email sent on request (a password reset or a confirmation
+ * link). Every edition, since guessing passwords is a risk on a self-hosted copy too.
+ * Returns what to tell the person when there is none left, or null.
+ */
+export const takeAuthAttempt = internalMutation({
+  args: {
+    kind: v.union(v.literal("signIn"), v.literal("email")),
+    networkKey: v.string(),
+    email: v.optional(v.string()),
+  },
+  returns: v.union(v.null(), v.string()),
+  handler: async (ctx, args) => {
+    const unknown = args.networkKey === UNKNOWN_NETWORK;
+    const account = args.email ? emailKey(args.email) || args.email.trim().toLowerCase() : "";
+    const checks =
+      args.kind === "signIn"
+        ? [
+            unknown
+              ? () => limiter.limit(ctx, "signInFromUnknown")
+              : () => limiter.limit(ctx, "signInFromNetwork", { key: args.networkKey }),
+            ...(account ? [() => limiter.limit(ctx, "signInToAccount", { key: account })] : []),
+          ]
+        : [
+            () => limiter.limit(ctx, "authEmailFromNetwork", { key: args.networkKey }),
+            ...(account ? [() => limiter.limit(ctx, "authEmailToAddress", { key: account })] : []),
+          ];
+    for (const check of checks) {
+      const status = await check();
+      if (status.ok) continue;
+      const wait = waitLabel(status.retryAfter ?? 60_000);
+      return args.kind === "signIn"
+        ? `Too many sign-in attempts. Try again ${wait}.`
+        : `Too many emails have been asked for. Try again ${wait}.`;
+    }
+    return null;
   },
 });
 
