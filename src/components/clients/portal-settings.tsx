@@ -3,7 +3,7 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
-import { Check, Copy, ExternalLink, Link2, Link2Off } from "lucide-react";
+import { Check, Copy, ExternalLink, Link2, Link2Off, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -53,6 +53,7 @@ export function PortalSettings({ clientId }: { clientId: Id<"clients"> }) {
   const portal = useQuery(api.portal.forClient, { clientId });
   const set = useMutation(api.portal.set);
   const stop = useMutation(api.portal.stop);
+  const newLink = useMutation(api.portal.newLink);
   const [draft, setDraft] = useState<Settings>({ allowVerdict: true, showTeamComments: false });
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -128,6 +129,29 @@ export function PortalSettings({ clientId }: { clientId: Id<"clients"> }) {
         checked={settings.showTeamComments}
         onChange={(showTeamComments) => void save({ ...settings, showTeamComments })}
       />
+      {portal && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-muted-foreground max-w-sm text-xs">
+            Passed around by mistake? A new link turns this one off straight away. Send the new one
+            to the client.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() =>
+              void newLink({ clientId })
+                .then(() =>
+                  toast.success("The portal has a new link. The old one no longer works."),
+                )
+                .catch((caught) =>
+                  toast.error(errorMessage(caught, "A new link could not be made.")),
+                )
+            }
+          >
+            <RefreshCw />
+            Make a new link
+          </Button>
+        </div>
+      )}
       <div>
         {portal ? (
           <Button

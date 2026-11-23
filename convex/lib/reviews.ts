@@ -112,6 +112,37 @@ export async function closeReviewForStep(
   });
 }
 
+/** How long a link the team shares by hand works before someone renews it. */
+export const SHARE_DAYS = 30;
+const SHARE_MS = SHARE_DAYS * 24 * 60 * 60 * 1000;
+
+/** When a share link made or renewed at `from` stops working. */
+export function shareExpiryFrom(from: number): number {
+  return from + SHARE_MS;
+}
+
+/** When a share link stops working, or null for one a client's portal opened. */
+export function shareExpiry(share: Doc<"reviewShares">): number | null {
+  if (share.portalId !== undefined) return null;
+  return share.expiresAt ?? shareExpiryFrom(share._creationTime);
+}
+
+/**
+ * Why a share link no longer opens its review, or null while it works. A link the team
+ * shared by hand ends 30 days after it was made or renewed, and while the review stands
+ * approved; reopening the review brings it back. A portal's links follow the portal.
+ */
+export function shareEnded(
+  share: Doc<"reviewShares">,
+  review: Doc<"reviews">,
+  now: number,
+): "expired" | "approved" | null {
+  const expiry = shareExpiry(share);
+  if (expiry === null) return null;
+  if (review.status === "approved") return "approved";
+  return now >= expiry ? "expired" : null;
+}
+
 /** A review's share link, if it has one switched on. */
 export async function shareOf(ctx: QueryCtx | MutationCtx, reviewId: Id<"reviews">) {
   return (await sharesOf(ctx, reviewId)).find((share) => share.portalId === undefined) ?? null;
