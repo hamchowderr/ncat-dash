@@ -18,6 +18,9 @@ import {
   sendEmail,
   senderProblem,
   testEmail,
+  trialEndedEmail,
+  trialEndingEmail,
+  welcomeEmail,
   type SendResult,
 } from "@ncat-dash/email";
 import { ConvexError, v } from "convex/values";
@@ -37,6 +40,7 @@ import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { getEdition } from "./lib/edition";
 import { isFor } from "./lib/alerts";
+import { buyUrl } from "./lib/trial";
 import { alertHref, emailsRightAway, preferenceOf, wants } from "./lib/notifications";
 
 // Email goes out through toSend (https://tosend.com). There is one sending account for
@@ -392,6 +396,117 @@ export const sendDigest = internalAction({
         { appName: sending.fromName },
       ),
     });
+  },
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Welcomes someone who just made a team, unless it is not their first: one welcome per
+ * person. Booked by `afterCreateOrganization` in auth.ts a few seconds after the team is
+ * made, so the trial it mentions has started.
+ */
+export const sendWelcome = internalAction({
+  args: { organizationId: v.string(), userId: v.string() },
+  handler: async (ctx, args) => {
+    const sending = await loadSending(ctx);
+    if (!sending) return;
+    const found = await ctx.runQuery(internal.email.welcomeFor, args);
+    if (!found) return;
+    await deliver(ctx, sending, {
+      to: found.email,
+      ...welcomeEmail(
+        {
+          name: found.name || undefined,
+          teamName: found.teamName,
+          trialDays: found.trialDays,
+          homeUrl: siteUrl("/"),
+          uploadsUrl: siteUrl("/uploads"),
+          readyMadeUrl: siteUrl("/automations/new"),
+          brandUrl: siteUrl("/settings/brand"),
+        },
+        { appName: sending.fromName },
+      ),
+    });
+  },
+});
+
+export const welcomeFor = internalQuery({
+  args: { organizationId: v.string(), userId: v.string() },
+  handler: async (ctx, args) => {
+    const teams = await ctx.runQuery(components.betterAuth.members.teamsFor, {
+      userId: args.userId,
+    });
+    const team = teams.find((candidate) => candidate.id === args.organizationId);
+    if (!team || teams.length > 1) return null;
+    const person = await ctx.runQuery(components.betterAuth.members.contact, {
+      userId: args.userId,
+    });
+    if (!person) return null;
+    const trial = await ctx.db
+      .query("teamTrials")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .unique();
+    const fresh = trial && trial.repeatOf === undefined && trial.paidAt === undefined;
+    return {
+      email: person.email,
+      name: person.name,
+      teamName: team.name,
+      trialDays: fresh ? Math.max(1, Math.round((trial.endsAt - trial.startedAt) / DAY)) : null,
+    };
+  },
+});
+
+/**
+ * Tells a team's owner their free trial ends tomorrow, or has ended. Booked by
+ * `trial.begin` for the moment it was set to end; does nothing when the team has bought
+ * since, or its trial was moved.
+ */
+export const sendTrialReminder = internalAction({
+  args: {
+    organizationId: v.string(),
+    endsAt: v.number(),
+    kind: v.union(v.literal("ending"), v.literal("ended")),
+  },
+  handler: async (ctx, args) => {
+    const sending = await loadSending(ctx);
+    if (!sending) return;
+    const found = await ctx.runQuery(internal.email.trialReminderFor, {
+      organizationId: args.organizationId,
+      endsAt: args.endsAt,
+    });
+    if (!found) return;
+    const details = {
+      name: found.name || undefined,
+      teamName: found.teamName,
+      buyUrl: buyUrl(),
+      homeUrl: siteUrl("/"),
+    };
+    const branding = { appName: sending.fromName };
+    await deliver(ctx, sending, {
+      to: found.email,
+      ...(args.kind === "ending"
+        ? trialEndingEmail(details, branding)
+        : trialEndedEmail(details, branding)),
+    });
+  },
+});
+
+export const trialReminderFor = internalQuery({
+  args: { organizationId: v.string(), endsAt: v.number() },
+  handler: async (ctx, args) => {
+    const trial = await ctx.db
+      .query("teamTrials")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .unique();
+    if (!trial || trial.paidAt !== undefined || trial.endsAt !== args.endsAt) return null;
+    if (!trial.ownerId) return null;
+    const team = await ctx.runQuery(components.betterAuth.members.contactsFor, {
+      organizationId: args.organizationId,
+    });
+    const owner = team.members.find((member) => member.userId === trial.ownerId);
+    if (!owner || !team.teamName) return null;
+    return { email: owner.email, name: owner.name, teamName: team.teamName };
   },
 });
 
