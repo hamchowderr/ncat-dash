@@ -33,8 +33,7 @@ import {
   LEGACY_VERSIONS,
   MODERN_VERSIONS,
 } from "./lib/mcpServer";
-import { ACCESS_TOKEN_PREFIX } from "./lib/oauth";
-import { mcpResource, signInChallenge } from "./oauth";
+import { mcpResource } from "./lib/agentSignIn";
 import { approvalView, membersOf, type TeamMembers } from "./lib/approvals";
 import { decideApproval, incomingFiles, startRun } from "./lib/runner";
 import { publishDraft, switchAutomation } from "./automations";
@@ -1402,42 +1401,20 @@ function asSent(op: unknown): unknown {
   return { ...change, trigger: { ...change.trigger, kind } };
 }
 
-const CORS = {
+export const CORS = {
   "access-control-allow-origin": "*",
   "access-control-expose-headers": "www-authenticate",
 };
 
-const unauthorized = (invalid: boolean) =>
-  new Response(
-    JSON.stringify({
-      error:
-        "Sign in to use this server, or send one of your team's keys as Authorization: Bearer <key>.",
-    }),
-    {
-      status: 401,
-      headers: {
-        "content-type": "application/json",
-        "www-authenticate": signInChallenge(invalid ? "invalid_token" : undefined),
-        ...CORS,
-      },
-    },
-  );
+export type { Caller };
 
-/** The person and team a request acts for, from its OAuth token or team key. */
-async function callerOf(ctx: ActionCtx, request: Request): Promise<Caller | "none" | "invalid"> {
-  const header = request.headers.get("authorization") ?? "";
-  const token = /^Bearer\s+(\S+)$/i.exec(header)?.[1];
-  if (!token) return "none";
-  if (token.startsWith(ACCESS_TOKEN_PREFIX)) {
-    const grant = await ctx.runQuery(internal.oauth.grantFor, { accessToken: token });
-    if (!grant) return "invalid";
-    if (!grant.lastUsedAt || Date.now() - grant.lastUsedAt > 60_000) {
-      await ctx.runMutation(internal.oauth.touchGrant, { grantId: grant.grantId });
-    }
-    return { organizationId: grant.organizationId, userId: grant.userId };
-  }
+/** The team key a request sends, as "Authorization: Bearer ncat_...", and who it acts for. */
+export async function keyCallerOf(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Caller | "none" | "invalid"> {
   const presented = bearerKey(request);
-  if (!presented) return "invalid";
+  if (!presented) return "none";
   const key = await ctx.runQuery(internal.mcp.keyFor, { hash: await hashMcpKey(presented) });
   if (!key) return "invalid";
   // Noted at most once a minute, so a busy agent does not write on every call.
@@ -1864,11 +1841,15 @@ export const openaiAppsChallenge = httpAction(async () => {
   });
 });
 
-/** POST /mcp: one JSON-RPC message in, one answer out. */
-export const serve = httpAction(async (ctx, request) => {
-  const caller = await callerOf(ctx, request);
-  if (caller === "none" || caller === "invalid") return unauthorized(caller === "invalid");
-
+/**
+ * One JSON-RPC message in, one answer out, for a caller already identified by its team
+ * key or OAuth token (mcpHttp.ts serves POST /mcp).
+ */
+export async function answerMcp(
+  ctx: ActionCtx,
+  caller: Caller,
+  request: Request,
+): Promise<Response> {
   const body = await request.text();
   if (body.length > 200_000) return new Response("Body too large", { status: 413, headers: CORS });
   let message: unknown;
@@ -1915,7 +1896,7 @@ export const serve = httpAction(async (ctx, request) => {
   });
   if (!reply.body) return new Response(null, { status: 202, headers: CORS });
   return Response.json(reply.body, { status: reply.status, headers: CORS });
-});
+}
 
 /**
  * The addresses a team's finished files come from: its toolkit's storage, as the toolkit

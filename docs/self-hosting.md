@@ -202,7 +202,7 @@ Each integration below is off until its settings are present, and shows up in Se
 | Dropbox                                                                       | `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`                                                                                                                                      |                                                                     | `CONVEX_SITE_URL/dropbox/callback`, webhook `CONVEX_SITE_URL/dropbox/events`                   |
 | Free stock footage for B-Roll                                                 | `PIXABAY_API_KEY` (free at pixabay.com/api/docs), or `PEXELS_API_KEY`                                                                                                        |                                                                     |                                                                                                |
 
-The MCP server needs nothing set. AI apps that speak MCP (ChatGPT, Claude, Cursor, VS Code, n8n and others) connect to `CONVEX_SITE_URL/mcp`; apps that can sign in use OAuth, and the rest use a key a team owner makes under Settings, MCP.
+The MCP server needs nothing set. AI apps that speak MCP (ChatGPT, Claude, Cursor, VS Code, n8n and others) connect to `CONVEX_SITE_URL/mcp`; apps that can sign in use OAuth (Better Auth, at `SITE_URL/api/auth`), and the rest use a key a team owner makes under Settings, MCP.
 
 Settings on Convex take effect at once; settings on the agent server need a restart of that container.
 

@@ -128,15 +128,41 @@ export const stop = mutation({
 });
 
 /**
- * Deletes a portal and the review links it opened, so the review rooms a client reached
- * through it close too.
+ * Gives the portal a new address and turns the old one off straight away, for when the
+ * link was passed around. The review rooms the old link opened close too; the client
+ * opens them again from the new link.
  */
-export async function removePortal(ctx: MutationCtx, portal: Doc<"clientPortals">) {
+export const newLink = mutation({
+  args: { clientId: v.id("clients") },
+  handler: async (ctx, args) => {
+    const client = await ctx.db.get(args.clientId);
+    if (!client) throw new ConvexError({ code: "not_found", message: "That client is gone." });
+    await requireMember(ctx, client.organizationId);
+    const portal = await portalOf(ctx, client._id);
+    if (!portal) {
+      throw new ConvexError({ code: "not_found", message: "This client has no portal." });
+    }
+    await removeOpenedRooms(ctx, portal);
+    const token = newToken();
+    await ctx.db.patch(portal._id, { token });
+    return token;
+  },
+});
+
+async function removeOpenedRooms(ctx: MutationCtx, portal: Doc<"clientPortals">) {
   const shares = await ctx.db
     .query("reviewShares")
     .withIndex("by_portal", (q) => q.eq("portalId", portal._id))
     .take(500);
   for (const share of shares) await ctx.db.delete(share._id);
+}
+
+/**
+ * Deletes a portal and the review links it opened, so the review rooms a client reached
+ * through it close too.
+ */
+export async function removePortal(ctx: MutationCtx, portal: Doc<"clientPortals">) {
+  await removeOpenedRooms(ctx, portal);
   await ctx.db.delete(portal._id);
 }
 

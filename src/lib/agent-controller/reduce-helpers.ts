@@ -188,7 +188,12 @@ export function upsertMessage(
       (p) => p.type !== 'tool_call' || !earlierCalls.has((p as { id?: string }).id ?? ''),
     );
   }
-  const idx = messages.findIndex((x) => x.id === m.id);
+  let idx = messages.findIndex((x) => x.id === m.id);
+  // The server's copy of the person's message takes the place of the one shown the moment
+  // it was sent (`optimistic`), so it is never shown twice and keeps its place.
+  if (idx === -1 && m.role === 'user') {
+    idx = messages.findIndex((x) => x.optimistic && x.role === 'user');
+  }
   if (idx === -1) {
     return [...messages, m];
   }

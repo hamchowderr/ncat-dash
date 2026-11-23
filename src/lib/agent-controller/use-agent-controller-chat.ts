@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type AgentControllerGoal,
+  type AgentControllerMessage,
   type AgentControllerSchedule,
   type AgentControllerTranscript,
   approvalsState,
@@ -70,6 +71,33 @@ function startRun(running: { current: AbortController | null }): AbortController
   const run = new AbortController();
   running.current = run;
   return run;
+}
+
+let localIds = 0;
+
+/**
+ * The person's message as it is shown the moment they send it (text, then any files), until
+ * the server's own copy replaces it.
+ */
+export function optimisticUserMessage(
+  text: string,
+  files?: Array<{ url: string; mediaType: string; filename?: string }>,
+): AgentControllerMessage {
+  return {
+    id: `local-user-${Date.now()}-${++localIds}`,
+    role: 'user',
+    optimistic: true,
+    createdAt: new Date().toISOString(),
+    content: [
+      ...(text.trim() ? [{ type: 'text' as const, text }] : []),
+      ...(files ?? []).map((f) => ({
+        type: 'file' as const,
+        data: f.url,
+        mediaType: f.mediaType,
+        ...(f.filename ? { filename: f.filename } : {}),
+      })),
+    ],
+  };
 }
 
 /** A tool call the agent finished: which tool, and whether it reported an error. */
@@ -252,16 +280,27 @@ export function useAgentControllerChat(options: string | UseAgentControllerChatO
       if (!text.trim() && !opts?.files?.length) {
         return false;
       }
-      // NOTE: no optimistic user message — the AgentController echoes the user turn as its
-      // own `message_start`/`message_end` (role=user) at the start of the run. Adding
-      // our own would render the user's message twice (different ids → both kept).
-      setTranscript((s) => ({ ...s, error: null, done: false }));
+      // The message shows at once, as in any chat app. The server echoes the turn as its own
+      // `message_start` (role=user) once the run starts, a few seconds later (the access
+      // check, the hand-over and the thread come first); that copy takes this one's place
+      // (upsertMessage), so it is never shown twice.
+      const local = optimisticUserMessage(text, opts?.files);
+      setTranscript((s) => ({
+        ...s,
+        messages: [...s.messages, local],
+        error: null,
+        done: false,
+      }));
       setStatus('streaming');
       const run = startRun(running);
+      // A refused turn takes its message back: the composer keeps what was typed.
+      const takeBack = () =>
+        setTranscript((s) => ({ ...s, messages: s.messages.filter((m) => m.id !== local.id) }));
 
-      const fail = (err: unknown) => {
+      const fail = (err: unknown, refused = false) => {
         // Stopped, or replaced by a newer turn: that one owns the chat now.
         if (running.current !== run) return;
+        if (refused) takeBack();
         setTranscript((s) => ({
           ...s,
           error: err instanceof Error ? err.message : String(err),
@@ -293,13 +332,13 @@ export function useAgentControllerChat(options: string | UseAgentControllerChatO
       } catch (err) {
         // Stopped before the server answered: nothing was refused, so the text isn't handed back.
         if (run.signal.aborted) return true;
-        fail(err);
+        fail(err, true);
         return false;
       }
       // Refused (a bad message, too large, signed out …): say why, and tell the caller,
       // so the composer can keep what was typed and attached.
       if (!res.ok) {
-        fail(new Error(await refusalReason(res)));
+        fail(new Error(await refusalReason(res)), true);
         return false;
       }
 

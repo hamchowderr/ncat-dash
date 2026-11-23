@@ -13,7 +13,14 @@ import { getCaller } from "./lib/caller";
 import { notify } from "./lib/alerts";
 import { isMember, requireMember } from "./lib/authz";
 import { drawingValidator } from "./lib/drawing";
-import { CLIP_LIMIT, openReview, sharesOf, VERSION_LIMIT } from "./lib/reviews";
+import {
+  CLIP_LIMIT,
+  openReview,
+  shareExpiryFrom,
+  shareOf,
+  sharesOf,
+  VERSION_LIMIT,
+} from "./lib/reviews";
 import { decideProjectSlots, forgetProjectRoom, mirrorClipVersion } from "./lib/projects";
 import { decideApproval } from "./lib/runner";
 import { toReviewChannels } from "./lib/reviewChannels";
@@ -258,6 +265,9 @@ export const reopen = mutation({
       decidedAt: undefined,
       clientVerdict: undefined,
     });
+    // A new round: the link the team shared works for another 30 days from now.
+    const share = await shareOf(ctx, review._id);
+    if (share) await ctx.db.patch(share._id, { expiresAt: shareExpiryFrom(Date.now()) });
   },
 });
 

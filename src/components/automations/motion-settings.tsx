@@ -4,7 +4,11 @@ import {
   type AutomationNode,
   MOTION_PRESETS,
   motionStepSettings,
+  OUTLINE_STYLE_LABELS,
+  OUTLINE_STYLES,
   PRESET_GROUPS,
+  PUNCH_STYLE_LABELS,
+  PUNCH_STYLES,
   SOUND_LEVEL_LABELS,
   SOUND_LEVELS,
   soundStepSettings,
@@ -14,7 +18,13 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -26,13 +36,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 type NodeContent = Omit<AutomationNode, "position">;
 type Settings = Record<string, unknown>;
 
 function setOrClear(input: Settings, name: string, value: unknown): Settings {
   const next = { ...input };
-  if (value === undefined || value === "" || value === TEAM_STYLE || value === STYLE_SOUNDS) {
+  if (
+    value === undefined ||
+    value === "" ||
+    value === false ||
+    value === TEAM_STYLE ||
+    value === STYLE_SOUNDS
+  ) {
     delete next[name];
   } else next[name] = value;
   return next;
@@ -43,6 +60,40 @@ const SettingsLink = () => (
     Settings &gt; Motion
   </Link>
 );
+
+/** The Add Motion Graphics switches that need the speaker cut out, or punch in. */
+const EFFECTS = [
+  {
+    name: "behind",
+    label: "Behind the speaker",
+    description:
+      "The opening title becomes big words behind your head, and keywords sit behind you too. You are cut out once, with no green screen.",
+  },
+  {
+    name: "outline",
+    label: "Outline",
+    description: "A line drawn around you while something sits behind you, or as it opens.",
+  },
+  {
+    name: "punchIns",
+    label: "Punch-ins",
+    description: "The camera moves as each keyword or number lands.",
+  },
+] as const;
+
+/** The look each switch can take once it is on. */
+const EFFECT_STYLES = {
+  outline: {
+    name: "outlineStyle",
+    label: "Outline look",
+    options: OUTLINE_STYLES.map((value) => ({ value, label: OUTLINE_STYLE_LABELS[value] })),
+  },
+  punchIns: {
+    name: "punchStyle",
+    label: "How the camera moves",
+    options: PUNCH_STYLES.map((value) => ({ value, label: PUNCH_STYLE_LABELS[value] })),
+  },
+} as const;
 
 /** Add Motion Graphics: the style (the team's or a preset), the opening title, the sounds. */
 export function MotionMain({
@@ -117,7 +168,63 @@ export function MotionMain({
         </Select>
         <FieldDescription>Each piece comes in with its own sound.</FieldDescription>
       </Field>
+      {EFFECTS.map((effect) => (
+        <Field key={effect.name} orientation="horizontal">
+          <Switch
+            id={`node-${node.id}-${effect.name}`}
+            checked={settings[effect.name]}
+            onCheckedChange={(on) => set(effect.name, on)}
+          />
+          <FieldContent>
+            <FieldLabel htmlFor={`node-${node.id}-${effect.name}`}>{effect.label}</FieldLabel>
+            <FieldDescription>{effect.description}</FieldDescription>
+            {effect.name !== "behind" && settings[effect.name] ? (
+              <EffectStyle
+                id={`node-${node.id}-${EFFECT_STYLES[effect.name].name}`}
+                label={EFFECT_STYLES[effect.name].label}
+                value={settings[EFFECT_STYLES[effect.name].name]}
+                options={EFFECT_STYLES[effect.name].options}
+                onChange={(value) => set(EFFECT_STYLES[effect.name].name, value)}
+              />
+            ) : null}
+          </FieldContent>
+        </Field>
+      ))}
     </FieldGroup>
+  );
+}
+
+function EffectStyle({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  options: readonly { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      <FieldLabel htmlFor={id} className="text-muted-foreground text-xs">
+        {label}
+      </FieldLabel>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
