@@ -10,6 +10,10 @@ import {
   MOTION_BUSY,
   MOTION_LOOKS,
   MOTION_PIECES,
+  type MotionEnding,
+  type MotionLook,
+  type MotionOpening,
+  type MotionPieceType,
   type MotionPreset,
   type MotionSetup,
   type MotionStyle,
@@ -47,6 +51,7 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
+import { ExamplePane, motionExample, useExample, WithExample } from "./example-pane";
 import { SettingsSection, SettingsTabs } from "./settings-shell";
 
 const same = (a: MotionSetup, b: MotionSetup) => JSON.stringify(a) === JSON.stringify(b);
@@ -64,6 +69,8 @@ function Choice<T extends string>({
   labels,
   disabled,
   onChange,
+  examples,
+  onExample,
 }: {
   id: string;
   label: string;
@@ -73,6 +80,9 @@ function Choice<T extends string>({
   labels: Record<T, string>;
   disabled: boolean;
   onChange: (value: T) => void;
+  /** The example clip each option plays while the pointer is on it, if it has one. */
+  examples?: Partial<Record<T, string>>;
+  onExample?: (example: string | null) => void;
 }) {
   return (
     <Field orientation="responsive">
@@ -80,13 +90,25 @@ function Choice<T extends string>({
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <FieldDescription>{description}</FieldDescription>
       </FieldContent>
-      <Select value={value} onValueChange={(next) => onChange(next as T)} disabled={disabled}>
+      <Select
+        value={value}
+        onValueChange={(next) => onChange(next as T)}
+        onOpenChange={(open) => {
+          if (!open) onExample?.(null);
+        }}
+        disabled={disabled}
+      >
         <SelectTrigger id={id} className="w-44">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {options.map((option) => (
-            <SelectItem key={option} value={option}>
+            <SelectItem
+              key={option}
+              value={option}
+              // The highlighted option has focus, by pointer or by arrow keys.
+              onFocus={() => onExample?.(examples?.[option] ?? null)}
+            >
               {labels[option]}
             </SelectItem>
           ))}
@@ -107,6 +129,38 @@ function Tick({ on }: { on: boolean }) {
     >
       {on && <Check className="size-3" />}
     </span>
+  );
+}
+
+/** The example clip for each look, opening and ending (public/examples/motion). */
+const LOOK_EXAMPLES = Object.fromEntries(
+  MOTION_LOOKS.map((look) => [look, `look-${look}`]),
+) as Record<MotionLook, string>;
+const OPENING_EXAMPLES: Partial<Record<MotionOpening, string>> = {
+  title: "piece-title",
+  logo: "piece-logo",
+};
+const ENDING_EXAMPLES: Partial<Record<MotionEnding, string>> = {
+  follow: "piece-follow",
+  logo: "piece-logo",
+};
+
+/** What an example clip shows, in words, for the line under it. */
+function exampleLabel(name: string, presets: MotionPreset[]): string {
+  const [kind, ...rest] = name.split("-");
+  const id = rest.join("-");
+  if (kind === "preset") return presets.find((preset) => preset.id === id)?.name ?? id;
+  if (kind === "look") return `${LOOK_LABELS[id as MotionLook]} look`;
+  return MOTION_PIECES.find((piece) => piece.type === id)?.title ?? id;
+}
+
+/** The example beside a tab: the option under the pointer, else what is picked. */
+function MotionExample({ name, presets }: { name: string | null; presets: MotionPreset[] }) {
+  return (
+    <ExamplePane
+      src={name ? motionExample(name) : null}
+      label={name ? `Example: ${exampleLabel(name, presets)}` : "Point at an option to see it."}
+    />
   );
 }
 
@@ -131,6 +185,9 @@ export function MotionCard({
   const shown = draft ?? motion;
   const changed = draft !== null && !same(draft, motion);
   const picked = presets.find((preset) => preset.id === shown.preset);
+  // The option under the pointer plays its example; otherwise what is picked does.
+  const { example, setExample, hover } = useExample<string>();
+  const firstPiece: MotionPieceType = shown.style.pieces[0] ?? "title";
 
   const change = (next: Partial<MotionSetup>) => setDraft({ ...shown, ...next });
   const changeStyle = (next: Partial<MotionStyle>) =>
@@ -191,150 +248,175 @@ export function MotionCard({
             ]}
           >
             <TabsContent value="style">
-              <FieldGroup>
-                <FieldSet>
-                  <FieldLegend variant="label" className="sr-only">
-                    Style
-                  </FieldLegend>
-                  <FieldDescription>
-                    Where your motion graphics start. Pick the one closest to your videos, then
-                    change anything below. A step can still use another one.
-                  </FieldDescription>
-                  <div className="flex flex-col gap-5" role="radiogroup" aria-label="Style">
-                    {PRESET_GROUPS.map((group) => {
-                      const inGroup = presets.filter((preset) => preset.group === group);
-                      if (inGroup.length === 0) return null;
-                      return (
-                        <div key={group} className="flex flex-col gap-1.5">
-                          <p className="text-muted-foreground text-xs font-medium">{group}</p>
-                          <div className="grid gap-1.5 sm:grid-cols-2">
-                            {inGroup.map((preset) => {
-                              const on = preset.id === shown.preset;
-                              return (
-                                <button
-                                  key={preset.id}
-                                  type="button"
-                                  role="radio"
-                                  aria-checked={on}
-                                  disabled={!canEdit}
-                                  onClick={() => pick(preset)}
-                                  className={cn(
-                                    "choice-tile focus-visible:ring-ring/50 flex flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
-                                  )}
-                                >
-                                  <span className="text-sm font-medium">{preset.name}</span>
-                                  <span className="text-muted-foreground text-xs leading-snug">
-                                    {preset.bestFor}
-                                  </span>
-                                </button>
-                              );
-                            })}
+              <WithExample
+                example={
+                  <MotionExample
+                    name={example ?? (picked ? `preset-${picked.id}` : null)}
+                    presets={presets}
+                  />
+                }
+              >
+                <FieldGroup>
+                  <FieldSet>
+                    <FieldLegend variant="label" className="sr-only">
+                      Style
+                    </FieldLegend>
+                    <FieldDescription>
+                      Where your motion graphics start. Pick the one closest to your videos, then
+                      change anything below. A step can still use another one.
+                    </FieldDescription>
+                    <div className="flex flex-col gap-5" role="radiogroup" aria-label="Style">
+                      {PRESET_GROUPS.map((group) => {
+                        const inGroup = presets.filter((preset) => preset.group === group);
+                        if (inGroup.length === 0) return null;
+                        return (
+                          <div key={group} className="flex flex-col gap-1.5">
+                            <p className="text-muted-foreground text-xs font-medium">{group}</p>
+                            <div className="grid gap-1.5 sm:grid-cols-2">
+                              {inGroup.map((preset) => {
+                                const on = preset.id === shown.preset;
+                                return (
+                                  <button
+                                    key={preset.id}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={on}
+                                    disabled={!canEdit}
+                                    onClick={() => pick(preset)}
+                                    {...hover(`preset-${preset.id}`)}
+                                    className={cn(
+                                      "choice-tile focus-visible:ring-ring/50 flex flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
+                                    )}
+                                  >
+                                    <span className="text-sm font-medium">{preset.name}</span>
+                                    <span className="text-muted-foreground text-xs leading-snug">
+                                      {preset.bestFor}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </FieldSet>
+                        );
+                      })}
+                    </div>
+                  </FieldSet>
 
-                <FieldSet>
-                  <FieldLegend variant="label">
-                    {picked ? `${picked.name}${untouched(shown) ? "" : ", changed"}` : "The style"}
-                  </FieldLegend>
-                  <FieldGroup>
-                    <Choice
-                      id="motion-look"
-                      label="Look"
-                      description="How the pieces are drawn. Your brand colour and font are used in all of them."
-                      value={shown.style.look}
-                      options={MOTION_LOOKS}
-                      labels={LOOK_LABELS}
-                      disabled={!canEdit}
-                      onChange={(look) => changeStyle({ look })}
-                    />
-                    <Choice
-                      id="motion-busy"
-                      label="How busy"
-                      description="How often pieces come in. Light leaves long stretches clear."
-                      value={shown.style.busy}
-                      options={MOTION_BUSY}
-                      labels={BUSY_LABELS}
-                      disabled={!canEdit}
-                      onChange={(busy) => changeStyle({ busy })}
-                    />
-                    <Choice
-                      id="motion-opening"
-                      label="Opening"
-                      description="What shows over the first seconds."
-                      value={shown.style.opening}
-                      options={OPENINGS}
-                      labels={OPENING_LABELS}
-                      disabled={!canEdit}
-                      onChange={(opening) => changeStyle({ opening })}
-                    />
-                    <Choice
-                      id="motion-ending"
-                      label="Ending"
-                      description="What shows over the last seconds."
-                      value={shown.style.ending}
-                      options={ENDINGS}
-                      labels={ENDING_LABELS}
-                      disabled={!canEdit}
-                      onChange={(ending) => changeStyle({ ending })}
-                    />
-                    <Choice
-                      id="motion-sound"
-                      label="Sound effects"
-                      description="How loud each piece's sound is, and how many an Add Sound Effects step adds."
-                      value={shown.style.sound}
-                      options={SOUND_LEVELS}
-                      labels={SOUND_LEVEL_LABELS}
-                      disabled={!canEdit}
-                      onChange={(sound) => changeStyle({ sound })}
-                    />
-                  </FieldGroup>
-                </FieldSet>
-              </FieldGroup>
+                  <FieldSet>
+                    <FieldLegend variant="label">
+                      {picked
+                        ? `${picked.name}${untouched(shown) ? "" : ", changed"}`
+                        : "The style"}
+                    </FieldLegend>
+                    <FieldGroup>
+                      <Choice
+                        id="motion-look"
+                        label="Look"
+                        description="How the pieces are drawn. Your brand colour and font are used in all of them."
+                        value={shown.style.look}
+                        options={MOTION_LOOKS}
+                        labels={LOOK_LABELS}
+                        disabled={!canEdit}
+                        onChange={(look) => changeStyle({ look })}
+                        examples={LOOK_EXAMPLES}
+                        onExample={setExample}
+                      />
+                      <Choice
+                        id="motion-busy"
+                        label="How busy"
+                        description="How often pieces come in. Light leaves long stretches clear."
+                        value={shown.style.busy}
+                        options={MOTION_BUSY}
+                        labels={BUSY_LABELS}
+                        disabled={!canEdit}
+                        onChange={(busy) => changeStyle({ busy })}
+                      />
+                      <Choice
+                        id="motion-opening"
+                        label="Opening"
+                        description="What shows over the first seconds."
+                        value={shown.style.opening}
+                        options={OPENINGS}
+                        labels={OPENING_LABELS}
+                        disabled={!canEdit}
+                        onChange={(opening) => changeStyle({ opening })}
+                        examples={OPENING_EXAMPLES}
+                        onExample={setExample}
+                      />
+                      <Choice
+                        id="motion-ending"
+                        label="Ending"
+                        description="What shows over the last seconds."
+                        value={shown.style.ending}
+                        options={ENDINGS}
+                        labels={ENDING_LABELS}
+                        disabled={!canEdit}
+                        onChange={(ending) => changeStyle({ ending })}
+                        examples={ENDING_EXAMPLES}
+                        onExample={setExample}
+                      />
+                      <Choice
+                        id="motion-sound"
+                        label="Sound effects"
+                        description="How loud each piece's sound is, and how many an Add Sound Effects step adds."
+                        value={shown.style.sound}
+                        options={SOUND_LEVELS}
+                        labels={SOUND_LEVEL_LABELS}
+                        disabled={!canEdit}
+                        onChange={(sound) => changeStyle({ sound })}
+                      />
+                    </FieldGroup>
+                  </FieldSet>
+                </FieldGroup>
+              </WithExample>
             </TabsContent>
             <TabsContent value="pieces">
-              <FieldGroup>
-                <FieldSet>
-                  <FieldLegend variant="label" className="sr-only">
-                    Pieces
-                  </FieldLegend>
-                  <FieldDescription>
-                    The pieces this style uses. Each one comes in with its own sound.
-                  </FieldDescription>
-                  <div className="grid gap-1.5 sm:grid-cols-2">
-                    {MOTION_PIECES.map((piece) => {
-                      const on = shown.style.pieces.includes(piece.type);
-                      return (
-                        <button
-                          key={piece.type}
-                          type="button"
-                          role="checkbox"
-                          aria-checked={on}
-                          disabled={!canEdit}
-                          onClick={() => togglePiece(piece.type)}
-                          className={cn(
-                            "bg-surface hover:bg-muted focus-visible:ring-ring/50 flex items-start gap-2.5 rounded-lg px-3 py-2 text-left outline-none transition-colors focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
-                            on && "bg-primary/10 hover:bg-primary/15",
-                          )}
-                        >
-                          <span className="pt-0.5">
-                            <Tick on={on} />
-                          </span>
-                          <span className="flex flex-col gap-0.5">
-                            <span className="text-sm font-medium">{piece.title}</span>
-                            <span className="text-muted-foreground text-xs leading-snug">
-                              {piece.description}
+              <WithExample
+                example={
+                  <MotionExample name={example ?? `piece-${firstPiece}`} presets={presets} />
+                }
+              >
+                <FieldGroup>
+                  <FieldSet>
+                    <FieldLegend variant="label" className="sr-only">
+                      Pieces
+                    </FieldLegend>
+                    <FieldDescription>
+                      The pieces this style uses. Each one comes in with its own sound.
+                    </FieldDescription>
+                    <div className="grid gap-1.5 sm:grid-cols-2">
+                      {MOTION_PIECES.map((piece) => {
+                        const on = shown.style.pieces.includes(piece.type);
+                        return (
+                          <button
+                            key={piece.type}
+                            type="button"
+                            role="checkbox"
+                            aria-checked={on}
+                            disabled={!canEdit}
+                            onClick={() => togglePiece(piece.type)}
+                            {...hover(`piece-${piece.type}`)}
+                            className={cn(
+                              "bg-surface hover:bg-muted focus-visible:ring-ring/50 flex items-start gap-2.5 rounded-lg px-3 py-2 text-left outline-none transition-colors focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-60",
+                              on && "bg-primary/10 hover:bg-primary/15",
+                            )}
+                          >
+                            <span className="pt-0.5">
+                              <Tick on={on} />
                             </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </FieldSet>
-              </FieldGroup>
+                            <span className="flex flex-col gap-0.5">
+                              <span className="text-sm font-medium">{piece.title}</span>
+                              <span className="text-muted-foreground text-xs leading-snug">
+                                {piece.description}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </FieldSet>
+                </FieldGroup>
+              </WithExample>
             </TabsContent>
             <TabsContent value="names">
               <FieldGroup>
