@@ -23,4 +23,16 @@ describe("automation file format", () => {
   test("anything else is not an automation file", () => {
     expect(readAutomationFile(file("something-else")).ok).toBe(false);
   });
+
+  test("an upload trigger keeps asking first, and only a real yes counts", () => {
+    const read = (ask: unknown) => {
+      const result = readAutomationFile({
+        ...file(AUTOMATION_FILE_FORMAT),
+        trigger: { kind: "upload", fileType: "video", maxSeconds: 90, ask },
+      });
+      return result.ok ? result.draft.trigger : null;
+    };
+    expect(read(true)).toEqual({ kind: "upload", fileType: "video", maxSeconds: 90, ask: true });
+    expect(read("yes")).toEqual({ kind: "upload", fileType: "video", maxSeconds: 90 });
+  });
 });

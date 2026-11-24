@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
+import { OnThisUpload } from "@/components/uploads/on-this-upload";
 import { NeedsToolkit } from "@/components/uploads/needs-toolkit";
 import { UploadFrame } from "@/components/uploads/upload-media";
 import {
@@ -49,6 +50,8 @@ import {
   KIND_LABELS,
   ShortId,
   sourceLabel,
+  FROM_LABELS,
+  type LibraryFrom,
   StarRating,
   useLibraryLinks,
   type LibraryKind,
@@ -70,6 +73,8 @@ type Item = {
   client: { _id: Id<"clients">; name: string } | null;
   made: number;
   searchable: "no" | "working" | "ready" | "failed";
+  from: LibraryFrom | null;
+  inReview: boolean;
 };
 
 type Shown = "all" | "videos" | "clips" | "audio" | "images" | "other";
@@ -207,6 +212,15 @@ function InlineTitle({ item }: { item: Item }) {
   );
 }
 
+/** Says a file is in an open review, beside its name. */
+function InReview() {
+  return (
+    <span className="bg-primary/10 text-primary shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium">
+      In review
+    </span>
+  );
+}
+
 function Tags({ tags }: { tags: string[] }) {
   if (tags.length === 0) return null;
   return (
@@ -288,7 +302,10 @@ function ItemList({
                 </TableCell>
               )}
               <TableCell className="max-w-72">
-                <InlineTitle item={item} />
+                <span className="flex items-center gap-2">
+                  <InlineTitle item={item} />
+                  {item.inReview && <InReview />}
+                </span>
               </TableCell>
               {on("client") && <TableCell className="text-sm">{item.client?.name ?? ""}</TableCell>}
               {on("kind") && <TableCell className="text-sm">{KIND_LABELS[item.kind]}</TableCell>}
@@ -372,6 +389,7 @@ function ItemTiles({ items, links }: { items: Item[]; links: Map<Id<"libraryItem
           <div className="flex min-w-0 items-center gap-2">
             <ShortId id={item.shortId} />
             <span className="truncate text-sm font-medium">{item.title}</span>
+            {item.inReview && <InReview />}
           </div>
           <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-xs">
             <span className="truncate">
@@ -475,8 +493,6 @@ export function LibraryView() {
   const team = useActiveTeam();
   const library = useQuery(api.library.list, { organizationId: team.id });
   const fill = useMutation(api.library.fill);
-  const setSearchNewFiles = useMutation(api.library.setSearchNewFiles);
-  const makeSearchable = useAction(api.library.makeSearchable);
   const chosenLayout = useSyncExternalStore(
     layoutChoice.watch,
     layoutChoice.read,
@@ -492,7 +508,9 @@ export function LibraryView() {
   const [tag, setTag] = useState<string | null>(null);
   // A client's ID, TEAM_OWN for the team's own files, or null for every file.
   const [client, setClient] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
+  // Where uploads came from (a FROM_LABELS key), or null for anywhere.
+  const [from, setFrom] = useState<LibraryFrom | null>(null);
+  const [reviewOnly, setReviewOnly] = useState(false);
   // Files come in right here: the Upload button, a pasted link, or files dropped anywhere.
   const uploader = useUploader();
 
@@ -515,11 +533,17 @@ export function LibraryView() {
         (item) =>
           shows(item, shown) &&
           (tag === null || item.tags.includes(tag)) &&
-          (client === null || (item.client?._id ?? TEAM_OWN) === client),
+          (client === null || (item.client?._id ?? TEAM_OWN) === client) &&
+          (from === null || item.from === from) &&
+          (!reviewOnly || item.inReview),
       ),
-    [library, shown, tag, client],
+    [library, shown, tag, client, from, reviewOnly],
   );
   const clients = library?.clients ?? [];
+  // The places this team's uploads came from, in the order the filter lists them.
+  const froms = (Object.keys(FROM_LABELS) as LibraryFrom[]).filter((one) =>
+    (library?.items ?? []).some((item) => item.from === one),
+  );
   const chosenClient =
     client === TEAM_OWN ? "Your team" : clients.find((one) => one._id === client)?.name;
   // Each team sees a Client column and filter only once it has clients.
@@ -527,31 +551,6 @@ export function LibraryView() {
   const columnsOn = columns.filter((id) => columnsHere.some(([one]) => one === id));
   const onScreen = text ? hits : items;
   const links = useLibraryLinks(team.id, onScreen);
-
-  // What was brought in is transcribed by itself; this is for files automations made
-  // (when the setting is off) and for any transcript that failed.
-  const waiting = (library?.items ?? []).filter(
-    (item) =>
-      (item.kind === "video" || item.kind === "audio") &&
-      (item.searchable === "failed" || (item.searchable === "no" && item.source !== "upload")),
-  );
-
-  async function searchWaiting() {
-    setSending(true);
-    try {
-      const batch = waiting.slice(0, 25).map((item) => item._id);
-      const sent = await makeSearchable({ organizationId: team.id, itemIds: batch });
-      toast.success(
-        sent === 1
-          ? "1 file is being transcribed on your toolkit."
-          : `${sent} files are being transcribed on your toolkit.`,
-      );
-    } catch (caught) {
-      toast.error(errorMessage(caught, "The files could not be sent."));
-    } finally {
-      setSending(false);
-    }
-  }
 
   return (
     <div
@@ -591,48 +590,24 @@ export function LibraryView() {
             aria-label="Search the library"
           />
         </InputGroup>
-        {library && (
-          <div className="flex flex-1 flex-wrap items-center justify-end gap-x-5 gap-y-2">
-            {waiting.length > 0 && (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={sending}
-                onClick={() => void searchWaiting()}
-              >
-                <Bot />
-                {waiting.length === 1
-                  ? "Transcribe 1 file"
-                  : `Transcribe ${Math.min(waiting.length, 25)} files`}
-              </Button>
-            )}
-            <label
-              className="flex items-center gap-2 text-sm"
-              data-tour-step-id="tour-library-searchable"
-            >
-              <Switch
-                checked={library.searchNewFiles}
-                disabled={!library.canChangeSettings}
-                onCheckedChange={(on) =>
-                  void setSearchNewFiles({ organizationId: team.id, on }).catch((caught) =>
-                    toast.error(errorMessage(caught, "The setting could not be changed.")),
-                  )
-                }
-                aria-describedby="search-new-files-note"
-              />
-              Make new files searchable
-            </label>
-          </div>
-        )}
       </div>
-      <p id="search-new-files-note" className="text-muted-foreground -mt-3 text-xs">
-        Every video and sound you bring in is transcribed once on your own toolkit, with no AI
-        tokens spent. This also transcribes the files your automations make and looks at new videos
-        for B-Roll.
-        {library && !library.canChangeSettings && " Only an owner or admin can change this."}
+      <p
+        className="text-muted-foreground -mt-3 text-xs"
+        data-tour-step-id="tour-library-searchable"
+      >
+        Every video and sound, uploaded or made by your automations, is transcribed once by itself,
+        with no AI tokens spent, so you can search what was said. New videos are also looked at for
+        B-Roll.
       </p>
 
       <ComingIn uploader={uploader} />
+      {uploader.storage ? (
+        <OnThisUpload
+          organizationId={team.id}
+          skipped={uploader.skipped}
+          onSkippedChange={uploader.setSkipped}
+        />
+      ) : null}
 
       {library === undefined ? (
         <Skeleton className="h-48 rounded-xl" />
@@ -695,6 +670,42 @@ export function LibraryView() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
+              )}
+              {froms.length > 1 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant={from ? "secondary" : "ghost"}>
+                      {from ? `From: ${FROM_LABELS[from]}` : "From"}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuCheckboxItem
+                      checked={from === null}
+                      onCheckedChange={() => setFrom(null)}
+                    >
+                      Anywhere
+                    </DropdownMenuCheckboxItem>
+                    {froms.map((one) => (
+                      <DropdownMenuCheckboxItem
+                        key={one}
+                        checked={from === one}
+                        onCheckedChange={() => setFrom(from === one ? null : one)}
+                      >
+                        {FROM_LABELS[one]}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              {(reviewOnly || library.items.some((item) => item.inReview)) && (
+                <button
+                  type="button"
+                  aria-pressed={reviewOnly}
+                  onClick={() => setReviewOnly(!reviewOnly)}
+                  className="choice-chip focus-visible:ring-ring/50 h-8 rounded-lg px-3 text-sm outline-none focus-visible:ring-3"
+                >
+                  In review
+                </button>
               )}
               {library.tags.length > 0 && (
                 <DropdownMenu>

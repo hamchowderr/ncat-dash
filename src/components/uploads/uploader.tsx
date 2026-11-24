@@ -71,6 +71,8 @@ export function useUploader() {
   const input = useRef<HTMLInputElement>(null);
   const [inFlight, setInFlight] = useState<Record<string, InFlight>>({});
   const [dragging, setDragging] = useState(false);
+  // Automations that run by themselves, unticked under On this upload for the files sent now.
+  const [skipped, setSkipped] = useState<Id<"automations">[]>([]);
   const sending = Object.keys(inFlight).length > 0;
   // In the desktop app, files are chosen in the computer's own picker and sent from disk;
   // an upload that stopped part way is listed to carry on from where it got to.
@@ -194,6 +196,7 @@ export function useUploader() {
           fileName: file.name,
           contentType: file.type,
           size: file.size,
+          ...(skipped.length > 0 ? { skipAutomations: skipped } : {}),
         });
         uploadId = started.uploadId;
         const id = started.uploadId;
@@ -275,6 +278,8 @@ export function useUploader() {
     choose,
     carryOn,
     drop,
+    skipped,
+    setSkipped,
   };
 }
 

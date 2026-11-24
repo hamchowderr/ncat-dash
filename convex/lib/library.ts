@@ -22,6 +22,63 @@ export async function librarySettingsOf(ctx: QueryCtx, organizationId: string) {
   return { row, searchNewFiles: row?.searchNewFiles ?? false, filledAt: row?.filledAt ?? null };
 }
 
+export type LibraryFrom = "computer" | NonNullable<Doc<"libraryItems">["importedFrom"]>;
+
+// Where each service's recordings land, for files added before importedFrom was kept.
+const FOLDER_SOURCES: [string, LibraryFrom][] = [
+  ["uploads/Zoom/", "zoom"],
+  ["uploads/Google Meet/", "google_meet"],
+  ["uploads/Microsoft Teams/", "microsoft"],
+  ["uploads/Microsoft/", "microsoft"],
+  ["uploads/Dropbox/", "dropbox"],
+];
+
+/** Where an uploaded file came from; null for a file an automation made. */
+export function fromOf(item: Doc<"libraryItems">): LibraryFrom | null {
+  if (item.source !== "upload") return null;
+  if (item.importedFrom) return item.importedFrom;
+  const key = item.key ?? "";
+  return FOLDER_SOURCES.find(([folder]) => key.includes(folder))?.[1] ?? "computer";
+}
+
+/**
+ * The files of the team's open reviews, by link, so the Library can say which files are
+ * in review. A review clip holds a link to the file, so a file counts when a clip's latest
+ * version is its link or a link to its place in storage.
+ */
+export async function inReviewOf(ctx: QueryCtx, organizationId: string) {
+  const reviews = await ctx.db
+    .query("reviews")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .order("desc")
+    .take(200);
+  const links: string[] = [];
+  for (const review of reviews.filter((one) => one.status === "open")) {
+    const clips = await ctx.db
+      .query("reviewClips")
+      .withIndex("by_review", (q) => q.eq("reviewId", review._id))
+      .take(50);
+    for (const clip of clips) {
+      const latest = clip.versions.at(-1)?.url;
+      if (latest) links.push(safeDecode(latest.split("?")[0]));
+    }
+  }
+  return (item: Doc<"libraryItems">) =>
+    links.some(
+      (link) =>
+        (item.url !== undefined && link === safeDecode(item.url.split("?")[0])) ||
+        (item.key !== undefined && link.endsWith(`/${item.key}`)),
+    );
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
 /** Hands out the team's next short ID for a letter: "V1", then "V2", and so on. */
 export async function nextShortId(
   ctx: MutationCtx,
@@ -79,13 +136,13 @@ export async function addLibraryItem(ctx: MutationCtx, item: NewItem): Promise<I
       automationName: item.automationName,
     }),
   });
-  const { searchNewFiles } = await librarySettingsOf(ctx, item.organizationId);
-  const transcribe = item.source === "upload" || searchNewFiles;
-  if (transcribe && (item.kind === "video" || item.kind === "audio")) {
+  // Every video and sound, brought in or made by an automation, is transcribed once, so it
+  // can be searched by what was said and has its SRT and VTT.
+  if (item.kind === "video" || item.kind === "audio") {
     await ctx.scheduler.runAfter(0, internal.library.transcribe, { itemId });
   }
   // A new video is also looked at by the picture model, so it can be found as B-Roll.
-  if (searchNewFiles && item.kind === "video") {
+  if (item.kind === "video") {
     await ctx.scheduler.runAfter(0, internal.broll.lookAt, { itemId });
   }
   // A caption file is read straight away: its lines are already timed, nothing to transcribe.
@@ -114,6 +171,7 @@ export async function addUploadToLibrary(
     title: titleFromFileName(upload.fileName),
     key: upload.key,
     uploadId: upload._id,
+    ...(upload.source ? { importedFrom: upload.source } : {}),
     ...(upload.details ? { details: upload.details } : {}),
     createdBy: upload.createdBy,
   });

@@ -12,6 +12,8 @@ import {
   POSTING_APPS,
   STARTERS,
   suggestedStarters,
+  clashes,
+  recordsMeetings,
 } from "../src";
 
 describe("content goals", () => {
@@ -27,18 +29,33 @@ describe("content goals", () => {
     }
   });
 
-  it("gives a coach the coaching session pack first", () => {
+  it("gives a coach one pick: the coaching session pack", () => {
     expect(suggestedStarters(["coaching"]).map((starter) => starter.id)).toEqual([
       "coaching-session-pack",
-      "recording-pack",
     ]);
   });
 
-  it("gives an entrepreneur speaker clips and captions", () => {
+  it("gives an entrepreneur speaker clips", () => {
     expect(suggestedStarters(["entrepreneurs"]).map((starter) => starter.id)).toEqual([
       "clips-follow-speaker",
-      "caption-uploads",
     ]);
+  });
+
+  it("knows which kinds are recorded on calls", () => {
+    expect(recordsMeetings(["coaching"])).toBe(true);
+    expect(recordsMeetings(["music", "business"])).toBe(false);
+    expect(recordsMeetings(["music", "podcast"])).toBe(true);
+  });
+
+  it("never offers two that make clips from the same upload", () => {
+    expect(suggestedStarters(["coaching", "entrepreneurs"]).map((starter) => starter.id)).toEqual(
+      ["coaching-session-pack", "caption-uploads"],
+    );
+    const every = suggestedStarters(CONTENT_KINDS.map((kind) => kind.id));
+    for (const one of every) {
+      for (const other of every) if (one !== other) expect(clashes(one, other)).toBe(false);
+    }
+    expect(every.length).toBeLessThanOrEqual(CONTENT_KINDS.length);
   });
 
   it("names every kind in Title Case", () => {
@@ -49,9 +66,9 @@ describe("content goals", () => {
     }
   });
 
-  it("offers each suggestion once, in the order the kinds are listed", () => {
+  it("offers one per kind, each once, in the order the kinds are listed", () => {
     const ids = suggestedStarters(["talks", "coaching"]).map((starter) => starter.id);
-    expect(ids).toEqual(["coaching-session-pack", "recording-pack", "social-clips"]);
+    expect(ids).toEqual(["coaching-session-pack", "recording-pack"]);
     expect(suggestedStarters([])).toEqual([]);
     expect(suggestedStarters(["nothing"])).toEqual([]);
   });

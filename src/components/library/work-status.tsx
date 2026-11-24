@@ -89,14 +89,10 @@ export function WorkRow({ works, className }: { works: Work[]; className?: strin
 }
 
 /** A transcript's state from the file's own: an upload with none yet is being caught up. */
-export function transcriptState(
-  searchable: "no" | "working" | "ready" | "failed",
-  source: "upload" | "automation",
-): WorkState {
+export function transcriptState(searchable: "no" | "working" | "ready" | "failed"): WorkState {
   if (searchable === "ready") return "ready";
   if (searchable === "failed") return "failed";
-  if (searchable === "working") return "working";
-  // Everything brought in is transcribed by itself; a file an automation made waits for a
-  // person to ask.
-  return source === "upload" ? "working" : "waiting";
+  // Every video and sound, brought in or made, is transcribed by itself; one not started yet
+  // is caught up.
+  return "working";
 }

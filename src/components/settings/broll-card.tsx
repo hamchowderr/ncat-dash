@@ -171,7 +171,7 @@ export function BrollCard() {
               ? "No videos in the library yet."
               : `${status.looked} of ${plural(status.videos, "video")} looked at${
                   status.looking ? `, ${status.looking} being looked at now` : ""
-                }. New videos are looked at when Make new files searchable is on.`
+                }. New videos are looked at by themselves.`
           }
         >
           {status.manager && waiting > 0 && (
