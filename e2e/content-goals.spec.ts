@@ -68,7 +68,7 @@ test("a coach is asked what they make and their first upload starts the fitting 
   const meetings = page.getByRole("region", { name: "Record your sessions on a call?" });
   await expect(meetings.getByRole("link", { name: /Connect Zoom/ })).toBeVisible();
   await expect(meetings.getByRole("link", { name: /Connect Google Meet/ })).toBeVisible();
-  await expect(meetings.getByRole("link", { name: /Connect Microsoft 365/ })).toBeVisible();
+  await expect(meetings.getByRole("link", { name: /Connect Microsoft Teams/ })).toBeVisible();
   await page.getByLabel("Choose a recording to upload").setInputFiles("e2e/fixtures/clip.webm");
   const started = page.getByRole("region", { name: "What your upload started" });
   await expect(started.getByText("clip.webm")).toBeVisible({ timeout: 30_000 });

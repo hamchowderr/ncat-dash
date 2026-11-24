@@ -449,11 +449,13 @@ function FirstUpload({
   );
 }
 
+// Teams recordings come in through the Microsoft 365 connection (Settings, Microsoft 365),
+// so the Teams tile, with the Teams logo, opens that page.
 const MEETING_APPS = [
-  { app: "zoom", name: "Zoom" },
-  { app: "google-meet", name: "Google Meet" },
-  { app: "microsoft", name: "Microsoft 365" },
-] as const satisfies readonly { app: ConnectedApp; name: string }[];
+  { app: "zoom", tile: "zoom", name: "Zoom" },
+  { app: "google-meet", tile: "google-meet", name: "Google Meet" },
+  { app: "microsoft", tile: "teams", name: "Microsoft Teams" },
+] as const satisfies readonly { app: ConnectedApp; tile: ConnectedApp; name: string }[];
 
 /**
  * For teams that record calls: connect a meeting app and each recording comes in by itself,
@@ -471,7 +473,7 @@ function MeetingApps() {
         </p>
       </div>
       <ul className="grid gap-2 sm:grid-cols-3">
-        {MEETING_APPS.map(({ app, name }) => (
+        {MEETING_APPS.map(({ app, tile, name }) => (
           <li key={app}>
             <a
               href={`/settings/integrations/${app}`}
@@ -480,7 +482,7 @@ function MeetingApps() {
               aria-label={`Connect ${name} (opens in a new tab)`}
               className="bg-surface hover:bg-muted flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors"
             >
-              <AppTile app={app} small />
+              <AppTile app={tile} small />
               {name}
             </a>
           </li>

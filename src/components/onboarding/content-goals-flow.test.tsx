@@ -259,7 +259,7 @@ describe("the first upload", () => {
     expect(apps.getByRole("link", { name: /Connect Google Meet/ }).getAttribute("href")).toBe(
       "/settings/integrations/google-meet",
     );
-    expect(apps.getByRole("link", { name: /Connect Microsoft 365/ }).getAttribute("href")).toBe(
+    expect(apps.getByRole("link", { name: /Connect Microsoft Teams/ }).getAttribute("href")).toBe(
       "/settings/integrations/microsoft",
     );
   });
