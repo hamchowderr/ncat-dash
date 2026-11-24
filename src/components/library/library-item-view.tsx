@@ -502,6 +502,15 @@ export function LibraryItemView({
               )}
             </p>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground shrink-0"
+            onClick={() => setDeleting(true)}
+          >
+            <Trash2 />
+            Delete
+          </Button>
         </div>
         <WorkRow works={works} />
       </header>
@@ -789,18 +798,6 @@ export function LibraryItemView({
                   {item.broll && (
                     <BrollUse itemId={item._id} organizationId={team.id} broll={item.broll} />
                   )}
-
-                  <div className="flex flex-col items-start gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground -ml-2"
-                      onClick={() => setDeleting(true)}
-                    >
-                      <Trash2 />
-                      Delete
-                    </Button>
-                  </div>
                 </div>
               </TabsContent>
             </div>
