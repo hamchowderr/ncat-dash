@@ -273,9 +273,9 @@ export function TeamFollowOns({ organizationId }: { organizationId: string }) {
   });
   if (shown.length === 0) return null;
   return (
-    <section className="grid content-start gap-3" aria-labelledby="home-goes-well">
+    <section className="grid content-start gap-3" aria-labelledby="team-goes-well">
       <div className="grid gap-0.5">
-        <h2 id="home-goes-well" className="text-sm font-medium">
+        <h2 id="team-goes-well" className="text-sm font-medium">
           Goes well with what you have
         </h2>
         <p className="text-muted-foreground text-sm text-pretty">

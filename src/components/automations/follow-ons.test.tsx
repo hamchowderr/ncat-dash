@@ -124,7 +124,7 @@ describe("the ready-made list", () => {
   });
 });
 
-describe("on Home", () => {
+describe("on the Automations page", () => {
   test("suggests follow-ons for the team's automations, saying which each goes after", async () => {
     answerQuery(api.automations.teamFollowOns, [
       { automationId: "auto_clips", automationName: "Shorts clips", starterId: "brand-every-clip" },

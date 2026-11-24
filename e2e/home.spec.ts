@@ -1,13 +1,15 @@
 import { expect, test } from "./test";
 
-// The home page and the ready-made list, in a real browser: a new team sees what is left
-// to set up and the ready-made automations first, starts one from home, and finds every
-// ready-made automation on the New automation page, sorted and searchable.
+// The home page in a real browser: a new team sees what is left to set up, with no
+// templates on Home and no scroll bar, and finds every template on the New automation
+// page, sorted and searchable.
 
 const stamp = Date.now().toString(36);
 const TOOLKIT = "http://127.0.0.1:8767";
 
-test("a new team's home leads with getting set up and ready-made automations", async ({ page }) => {
+test("a new team's home shows getting set up, fits the window, and leaves templates to Automations", async ({
+  page,
+}) => {
   await page.goto("/sign-up");
   await page.locator("#name").fill("Kai Moreno");
   await page.locator("#email").fill(`kai.${stamp}@example.test`);
@@ -28,16 +30,45 @@ test("a new team's home leads with getting set up and ready-made automations", a
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Moreno Studio" })).toBeVisible();
   await expect(page.getByTestId("home-week")).toHaveText(
-    "No automations yet. Start from a ready-made one below.",
+    "No automations yet. Start from a template on the Automations page.",
   );
-  await expect(page.getByTestId("connection-status")).toHaveText("Toolkit connected");
-  const setup = page.getByRole("region", { name: /^Getting started, 2 of 6 done$/ });
+  // Nothing about the toolkit on Home: that is in Settings.
+  await expect(page.getByTestId("processing-status")).toHaveCount(0);
+  await expect(page.getByRole("main")).not.toContainText(/toolkit/i);
+  const glance = page.getByRole("complementary", { name: "Your team at a glance" });
+  const setup = glance.getByRole("region", { name: /^Getting started, 0 of 4 done$/ });
   await expect(setup.getByRole("link", { name: /Add your logo/ })).toBeVisible();
-
-  // Nothing is on yet, so ready-made automations come before the latest runs.
-  const ready = page.getByRole("region", { name: "Ready-made automations" });
+  // Getting started and This week sit in a narrow column on the right, at the top.
   const latest = page.getByRole("region", { name: "Latest runs" });
-  expect((await ready.boundingBox())!.y).toBeLessThan((await latest.boundingBox())!.y);
+  const side = (await glance.boundingBox())!;
+  const main = (await latest.boundingBox())!;
+  expect(side.x).toBeGreaterThan(main.x + main.width - 1);
+  expect(side.width).toBeLessThan(main.width / 2);
+  expect(Math.abs(side.y - main.y)).toBeLessThan(40);
+  await expect(glance.getByRole("region", { name: "This week" })).toBeVisible();
+
+  // Templates are not on Home: they live on the Automations page.
+  await expect(page.getByRole("region", { name: /Ready-made/ })).toHaveCount(0);
+  await expect(page.getByText("Podcast master and transcript")).toHaveCount(0);
+
+  // Home fits the window: no scroll bar on a laptop screen, and never sideways.
+  const frame = page.locator("[data-page-frame]");
+  for (const [width, height] of [
+    [1440, 900],
+    [1280, 720],
+  ]) {
+    await page.setViewportSize({ width, height });
+    const extra = await frame.evaluate((el) => el.scrollHeight - el.clientHeight);
+    expect(extra, `Home scrolls at ${width}x${height}`).toBeLessThanOrEqual(1);
+  }
+  // A page that does scroll shows no scroll bar either, and neither does anything else
+  // that scrolls. (Headless Chromium draws bars over the page, so the style is checked.)
+  const bars = await page.evaluate(() =>
+    [document.querySelector("[data-page-frame]")!, document.documentElement, document.body].map(
+      (el) => getComputedStyle(el).scrollbarWidth,
+    ),
+  );
+  expect(bars).toEqual(["none", "none", "none"]);
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const sideways = await page.evaluate(
@@ -47,8 +78,8 @@ test("a new team's home leads with getting set up and ready-made automations", a
   }
   await page.setViewportSize({ width: 1280, height: 900 });
 
-  // Every ready-made automation is on one page, by category, and can be searched.
-  await ready.getByRole("link", { name: /See all 89/ }).click();
+  // Getting started points to every template, on one page, by category, and searchable.
+  await setup.getByRole("link", { name: /Switch on an automation/ }).click();
   await expect(page).toHaveURL(/\/automations\/new$/);
   await expect(page.getByRole("button", { name: /^All 89$/ })).toHaveAttribute(
     "aria-pressed",
@@ -60,13 +91,10 @@ test("a new team's home leads with getting set up and ready-made automations", a
   await page.getByRole("button", { name: /^All 89$/ }).click();
   await page.getByLabel("Find a ready-made automation").fill("loudness");
   await expect(page.getByText("Even out loudness for platforms")).toBeVisible();
+  await page.getByLabel("Find a ready-made automation").fill("");
 
-  // Starting one from home opens it on the canvas.
-  await page.goto("/");
-  await page
-    .getByRole("region", { name: "Ready-made automations" })
-    .getByText("Podcast master and transcript")
-    .click();
+  // Starting one there opens it on the canvas.
+  await page.getByText("Podcast master and transcript").click();
   await expect(page).toHaveURL(/\/automations\/(?!new$)[a-z0-9]+$/, { timeout: 30_000 });
   await expect(page.locator(".react-flow__node-step")).toHaveCount(2);
 });

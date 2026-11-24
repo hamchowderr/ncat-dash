@@ -196,6 +196,14 @@
   html {
     @apply font-sans;
   }
+  /* No scroll bars anywhere (Chowderr, 2026-11-24): pages and panels still scroll with the
+   * wheel, trackpad, touch and keyboard, the bar just never shows. */
+  * {
+    scrollbar-width: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /*
