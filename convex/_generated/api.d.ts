@@ -123,6 +123,7 @@ import type * as lib_tours from "../lib/tours.js";
 import type * as lib_trial from "../lib/trial.js";
 import type * as lib_triggers from "../lib/triggers.js";
 import type * as lib_typing from "../lib/typing.js";
+import type * as lib_unsubscribe from "../lib/unsubscribe.js";
 import type * as lib_versions from "../lib/versions.js";
 import type * as lib_workflows from "../lib/workflows.js";
 import type * as lib_zoom from "../lib/zoom.js";
@@ -298,6 +299,7 @@ declare const fullApi: ApiFromModules<{
   "lib/trial": typeof lib_trial;
   "lib/triggers": typeof lib_triggers;
   "lib/typing": typeof lib_typing;
+  "lib/unsubscribe": typeof lib_unsubscribe;
   "lib/versions": typeof lib_versions;
   "lib/workflows": typeof lib_workflows;
   "lib/zoom": typeof lib_zoom;

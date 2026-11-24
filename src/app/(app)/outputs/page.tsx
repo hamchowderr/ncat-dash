@@ -1,10 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { OutputsView } from "@/components/jobs/outputs-view";
-
-export const metadata: Metadata = { title: "Outputs" };
-export const instant = false;
-
+// Outputs is now the Recently Made tab of Files; old links and bookmarks land there.
 export default function Page() {
-  return <OutputsView />;
+  redirect("/files?tab=made");
 }

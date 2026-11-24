@@ -196,11 +196,11 @@ export function ReviewsView() {
         <div className="flex flex-col items-start gap-3 rounded-xl bg-surface p-6">
           <p className="text-muted-foreground max-w-prose text-sm">
             Nothing to review yet. A review opens by itself when an automation reaches an approval
-            step, and you can send any finished files here from Outputs.
+            step, and you can send any finished files here from Files.
           </p>
           <div className="flex gap-2">
             <Button asChild size="sm">
-              <Link href="/outputs">Go to Outputs</Link>
+              <Link href="/files?tab=made">Go to Files</Link>
             </Button>
             <Button asChild size="sm" variant="outline">
               <Link href="/automations">Automations</Link>
