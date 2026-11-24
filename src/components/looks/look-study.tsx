@@ -73,7 +73,7 @@ export function CopyLookFromUpload({ upload }: { upload: { _id: string; fileName
   const { start, busy } = useStartStudy();
   if (!shown?.canEdit) return null;
   const study = shown.study;
-  if (study && study.uploadId === upload._id) return <StudyView study={study} canEdit wide />;
+  if (study && study.uploadId === upload._id) return <StudyView study={study} canEdit />;
   const another = study?.status === "working";
   return (
     <div className="flex flex-col items-start gap-1.5">

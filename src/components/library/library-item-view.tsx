@@ -4,12 +4,13 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { describeFileDetails, formatMoment } from "@takewon/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ArrowLeft, AudioLines, Bot, Play, Trash2, X } from "lucide-react";
+import { ArrowLeft, AudioLines, Bot, Copy, Play, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
+import { CopyLookFromUpload } from "@/components/looks/look-study";
 import { UploadFrame } from "@/components/uploads/upload-media";
 import { Button } from "@/components/ui/button";
 import {
@@ -283,6 +284,7 @@ export function LibraryItemView({
   const setRating = useMutation(api.library.setRating);
   const remove = useMutation(api.library.remove);
   const deleteFiles = useAction(api.files.remove);
+  const linkFor = useAction(api.storage.linkFor);
   const [deleting, setDeleting] = useState(false);
   const makeSearchable = useAction(api.library.makeSearchable);
   const media = useRef<HTMLVideoElement & HTMLAudioElement>(null);
@@ -326,6 +328,15 @@ export function LibraryItemView({
       ? pieces.filter((piece) => words.some((word) => piece.text.toLowerCase().includes(word)))
       : pieces;
   const playing = pieces.findLast((piece) => piece.start <= now)?.start;
+
+  async function copyLink(uploadId: Id<"uploads">) {
+    try {
+      await navigator.clipboard.writeText(await linkFor({ uploadId }));
+      toast.success("Link copied. It works for seven days.");
+    } catch {
+      toast.error("The link could not be copied.");
+    }
+  }
 
   function seek(seconds: number) {
     const element = media.current;
@@ -749,6 +760,7 @@ export function LibraryItemView({
                       </Fact>
                     )}
                     {item.details && <Fact label="File">{describeFileDetails(item.details)}</Fact>}
+                    {item.upload?.sharedBy && <Fact label="Shared by">{item.upload.sharedBy}</Fact>}
                     <Fact label="Added">
                       {new Date(item._creationTime).toLocaleDateString(undefined, {
                         month: "short",
@@ -789,11 +801,28 @@ export function LibraryItemView({
                     <BrollUse itemId={item._id} organizationId={team.id} broll={item.broll} />
                   )}
 
-                  <div className="flex flex-col items-start gap-1">
+                  {item.upload && item.kind === "video" && item.details?.hasVideo !== false && (
+                    <CopyLookFromUpload
+                      upload={{ _id: item.upload._id, fileName: item.upload.fileName }}
+                    />
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2 max-sm:grid max-sm:grid-cols-2">
+                    {item.upload && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="max-sm:h-11"
+                        onClick={() => void copyLink(item.upload!._id)}
+                      >
+                        <Copy />
+                        Copy link
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-muted-foreground -ml-2"
+                      className="text-muted-foreground max-sm:h-11"
                       onClick={() => setDeleting(true)}
                     >
                       <Trash2 />

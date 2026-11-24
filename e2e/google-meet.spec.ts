@@ -125,7 +125,6 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
   await expect(uploads.getByText(/^Design Review \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(uploads.getByText(/Shared by Pat Rivera/)).toBeVisible();
   await expect(uploads.getByText(/^Annual Review \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
@@ -135,5 +134,8 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
   await expect(uploads.getByText(/^Weekly Sync \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
+  // The one shared from someone else's Drive says who shared it, on its page.
+  await page.getByLabel(/^Open V\d+ Partner Sync \d{4}-\d{2}-\d{2}$/).click();
+  await expect(page.getByText("Pat Rivera", { exact: true })).toBeVisible();
   await page.waitForTimeout(1500);
 });

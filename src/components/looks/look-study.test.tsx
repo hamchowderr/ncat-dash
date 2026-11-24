@@ -7,7 +7,7 @@ import { actionOf, answerQuery, mutationOf, resetConvex, toastSuccess } from "@/
 import { renderInApp, TEAM } from "@/test/render";
 
 import { NodePanel } from "@/components/automations/node-panel";
-import { UploadsView } from "@/components/uploads/uploads-view";
+import { LibraryItemView } from "@/components/library/library-item-view";
 
 const FRAME = {
   shape: "vertical",
@@ -107,43 +107,67 @@ function step(input: Record<string, unknown> = {}) {
   return onChange;
 }
 
+/** The Library page of the uploaded video Cafe sample.mp4. */
+function libraryVideo(overrides: Record<string, unknown> = {}) {
+  actionOf(api.library.previewLinks).mockResolvedValue([]);
+  answerQuery(api.library.get, {
+    _id: "item_1",
+    _creationTime: 0,
+    shortId: "V1",
+    kind: "video",
+    source: "upload",
+    title: "Cafe sample",
+    tags: [],
+    rating: null,
+    duration: 20,
+    automationName: null,
+    parent: null,
+    client: null,
+    made: 0,
+    searchable: "no",
+    details: { duration: 20, hasVideo: true, width: 1080, height: 1920 },
+    storyboardDrafted: false,
+    key: "uploads/Cafe sample.mp4",
+    upload: { _id: "up_1", fileName: "Cafe sample.mp4", size: 1000, sharedBy: null },
+    runId: null,
+    automationId: null,
+    transcriptError: null,
+    broll: null,
+    children: [],
+    pieces: [],
+    captionFormat: null,
+    captionsFor: null,
+    ...overrides,
+  });
+}
+
 describe("copying a look", () => {
   beforeEach(() => resetConvex());
 
-  test("from a video on the Library", async () => {
-    answerQuery(api.storage.get, { bucket: "ncat", publicUrl: null, baseUrl: "https://t.example" });
-    answerQuery(api.storage.listUploads, UPLOADS);
-    actionOf(api.storage.previewLinks).mockResolvedValue([]);
+  test("from a video's page in the Library", async () => {
+    libraryVideo();
     answerQuery(api.looks.list, shown());
     const study = mutationOf(api.looks.study);
     const user = userEvent.setup();
-    renderInApp(<UploadsView />);
-    await user.click(screen.getByRole("button", { name: "Open Cafe sample.mp4" }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Copy its look" }));
+    renderInApp(<LibraryItemView itemId={"item_1" as never} />);
+    await user.click(screen.getByRole("button", { name: "Copy its look" }));
     expect(study).toHaveBeenCalledWith({ organizationId: TEAM.id, uploadId: "up_1" });
   });
 
-  test("the video's study shows on it, and is saved there", async () => {
-    answerQuery(api.storage.get, { bucket: "ncat", publicUrl: null, baseUrl: "https://t.example" });
-    answerQuery(api.storage.listUploads, UPLOADS);
-    actionOf(api.storage.previewLinks).mockResolvedValue([]);
+  test("the video's study shows on its page, and is saved there", async () => {
+    libraryVideo();
     answerQuery(api.looks.list, shown({ study: STUDY() }));
     const save = mutationOf(api.looks.save);
     const user = userEvent.setup();
-    renderInApp(<UploadsView />);
-    await user.click(screen.getByRole("button", { name: "Open Cafe sample.mp4" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByRole("img", { name: "Six frames from Cafe sample.mp4" }),
-    ).toBeTruthy();
-    expect(within(dialog).getByText(PROPOSAL.notes)).toBeTruthy();
-    const name = within(dialog).getByLabelText("Name");
+    renderInApp(<LibraryItemView itemId={"item_1" as never} />);
+    expect(screen.getByRole("img", { name: "Six frames from Cafe sample.mp4" })).toBeTruthy();
+    expect(screen.getByText(PROPOSAL.notes)).toBeTruthy();
+    const name = screen.getByLabelText("Name");
     expect(name).toHaveValue("Cafe sample");
     await user.clear(name);
     await user.type(name, "Cafe Reels");
-    await user.click(within(dialog).getByLabelText("Use its captions for every vertical video"));
-    await user.click(within(dialog).getByRole("button", { name: "Save look" }));
+    await user.click(screen.getByLabelText("Use its captions for every vertical video"));
+    await user.click(screen.getByRole("button", { name: "Save look" }));
     expect(save).toHaveBeenCalledWith({
       organizationId: TEAM.id,
       studyId: "study_1",
@@ -153,16 +177,19 @@ describe("copying a look", () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Saved "Cafe Reels"'));
   });
 
-  test("someone who cannot change looks sees no copy button on a video", async () => {
-    answerQuery(api.storage.get, { bucket: "ncat", publicUrl: null, baseUrl: "https://t.example" });
-    answerQuery(api.storage.listUploads, UPLOADS);
-    actionOf(api.storage.previewLinks).mockResolvedValue([]);
+  test("someone who cannot change looks sees no copy button on a video", () => {
+    libraryVideo();
     answerQuery(api.looks.list, shown({ canEdit: false }));
-    const user = userEvent.setup();
-    renderInApp(<UploadsView />);
-    await user.click(screen.getByRole("button", { name: "Open Cafe sample.mp4" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).queryByRole("button", { name: "Copy its look" })).toBeNull();
+    renderInApp(<LibraryItemView itemId={"item_1" as never} />);
+    expect(screen.getByRole("button", { name: "Copy link" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Copy its look" })).toBeNull();
+  });
+
+  test("a sound file has no look to copy", () => {
+    libraryVideo({ kind: "audio", details: { duration: 20, hasVideo: false } });
+    answerQuery(api.looks.list, shown());
+    renderInApp(<LibraryItemView itemId={"item_1" as never} />);
+    expect(screen.queryByRole("button", { name: "Copy its look" })).toBeNull();
   });
 
   test("inside the step, with no looks yet: pick a video and copy it there", async () => {
