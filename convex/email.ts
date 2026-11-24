@@ -451,7 +451,7 @@ export const sendWelcome = internalAction({
           teamName: found.teamName,
           trialDays: found.trialDays,
           homeUrl: siteUrl("/"),
-          uploadsUrl: siteUrl("/uploads"),
+          uploadsUrl: siteUrl("/library"),
           readyMadeUrl: siteUrl("/automations/new"),
           brandUrl: siteUrl("/settings/brand"),
         },

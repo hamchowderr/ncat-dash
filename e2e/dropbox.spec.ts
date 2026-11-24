@@ -25,7 +25,9 @@ test("connects Dropbox, ticks folders to bring in, and sends clips back", async 
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill(`Harbour Films ${stamp}`);
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -60,10 +62,12 @@ test("connects Dropbox, ticks folders to bring in, and sends clips back", async 
   await folders.getByRole("checkbox", { name: "Bring in /Marketing" }).click();
   await expect(folders.getByText("3 folders ticked")).toBeVisible();
   await folders.getByRole("button", { name: "Bring in 3 folders" }).click();
-  await expect(page.getByText("3 files on the way to Uploads")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("3 files on the way to the Library")).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(folders.getByText("Watching")).toHaveCount(3);
   const brought = page.getByRole("region", { name: "Brought in from Dropbox" });
-  await expect(brought.getByRole("link", { name: "In Uploads" }).first()).toBeVisible({
+  await expect(brought.getByRole("link", { name: "In the Library" }).first()).toBeVisible({
     timeout: 30_000,
   });
 
@@ -75,10 +79,10 @@ test("connects Dropbox, ticks folders to bring in, and sends clips back", async 
   expect(((await told.json()) as { told: number }).told).toBe(200);
   await expect(brought.getByText("Launch teaser.mp4")).toBeVisible({ timeout: 30_000 });
 
-  await page.goto("/uploads");
-  const uploads = page.getByRole("region", { name: "Your uploads" });
-  for (const name of ["Interview.mov", "Voiceover.wav", "Logo.png", "Launch teaser.mp4"]) {
-    await expect(uploads.getByText(name)).toBeVisible({ timeout: 30_000 });
+  await page.goto("/library");
+  const uploads = page.getByRole("region", { name: "Your library" });
+  for (const name of ["Interview", "Voiceover", "Logo", "Launch teaser"]) {
+    await expect(uploads.getByText(name, { exact: true })).toBeVisible({ timeout: 30_000 });
   }
 
   // An automation switched to send its finished files to Dropbox, into a folder picked here.

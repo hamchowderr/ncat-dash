@@ -34,7 +34,7 @@ describe("the videos for a page", () => {
   test("meeting and chat app pages get Meeting Imports and Chat Alerts", () => {
     expect(titles("/settings/zoom")).toEqual(["Meeting Imports"]);
     expect(titles("/settings/microsoft")).toEqual(["Meeting Imports"]);
-    expect(titles("/uploads")).toEqual(["Meeting Imports"]);
+    expect(titles("/library")).toEqual(["Your Library", "Meeting Imports"]);
     expect(titles("/settings/telegram")).toEqual(["Chat Alerts"]);
     expect(titles("/settings/notifications")).toEqual(["Chat Alerts"]);
     expect(titles("/inbox")).toContain("Chat Alerts");

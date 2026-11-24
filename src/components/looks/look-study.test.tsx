@@ -110,7 +110,7 @@ function step(input: Record<string, unknown> = {}) {
 describe("copying a look", () => {
   beforeEach(() => resetConvex());
 
-  test("from a video on the Uploads page", async () => {
+  test("from a video on the Library", async () => {
     answerQuery(api.storage.get, { bucket: "ncat", publicUrl: null, baseUrl: "https://t.example" });
     answerQuery(api.storage.listUploads, UPLOADS);
     actionOf(api.storage.previewLinks).mockResolvedValue([]);

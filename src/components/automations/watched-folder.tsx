@@ -41,9 +41,9 @@ export function WatchedFolder({
   if (storage === null) {
     return (
       <p className="text-muted-foreground text-sm text-pretty">
-        Connect a bucket on the{" "}
-        <Link href="/uploads" className="text-foreground underline underline-offset-4">
-          Uploads page
+        Your files go to your toolkit&apos;s storage.{" "}
+        <Link href="/" className="text-foreground underline underline-offset-4">
+          Connect your toolkit
         </Link>{" "}
         first, then pick a folder in it here.
       </p>

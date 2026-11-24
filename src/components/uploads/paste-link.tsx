@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
  * # A video from a link
  *
  * Paste a link to a post on TikTok, Instagram, YouTube, X, Facebook, LinkedIn or another
- * video site, and the toolkit brings the video into Uploads. Used on the Uploads page, and
+ * video site, and the toolkit brings the video into the Library. Used on the Library, and
  * in the Match A Saved Look step to copy the look of a video the team never had a file of.
  */
 
@@ -53,7 +53,7 @@ export function PasteLink({
     try {
       await bringIn({ organizationId: team.id, url, forLook });
       setUrl("");
-      if (!forLook) toast.success("On its way. It shows in Uploads once it is in.");
+      if (!forLook) toast.success("On its way. It shows in the Library once it is in.");
     } catch (caught) {
       toast.error(errorMessage(caught, "The link could not be brought in. Try again."));
     } finally {

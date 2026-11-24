@@ -177,9 +177,19 @@ export const get = query({
     const captionFormat = captionFileFormat(item.key ?? item.url ?? "");
     const captionsFor = captionFormat ? await videoCaptioned(ctx, item, parent) : null;
     const clients = await clientsOf(ctx, item.organizationId);
+    const upload = item.uploadId ? await ctx.db.get(item.uploadId) : null;
     return {
       ...summaryOf(item, byId, new Map([[item._id as string, children.length]]), clients),
       details: item.details ?? null,
+      // The upload it came in as: its link, its look, and who shared it.
+      upload: upload
+        ? {
+            _id: upload._id,
+            fileName: upload.fileName,
+            size: upload.size,
+            sharedBy: upload.sharedBy ?? null,
+          }
+        : null,
       runId: item.runId ?? null,
       automationId: item.runId ? ((await ctx.db.get(item.runId))?.automationId ?? null) : null,
       transcriptError:

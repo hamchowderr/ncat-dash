@@ -197,9 +197,9 @@ test("settings open from the team menu and swap the sidebar for their own menu, 
 
   // Settings are not an everyday page: the main menu leaves them out, and the team's menu
   // opens them.
-  await page.goto("/uploads");
+  await page.goto("/library");
   const sidebar = page.locator("[data-sidebar=sidebar]").first();
-  await expect(sidebar.getByRole("link", { name: "Uploads" })).toBeVisible();
+  await expect(sidebar.getByRole("link", { name: "Library", exact: true })).toBeVisible();
   await expect(sidebar.getByRole("link", { name: "Settings", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Wide Shop menu" }).click();
   await page.getByRole("menuitem", { name: "Settings" }).click();
@@ -209,7 +209,7 @@ test("settings open from the team menu and swap the sidebar for their own menu, 
   // the page: the page is titled by what it holds.
   const menu = page.getByRole("navigation", { name: "Settings" });
   await expect(menu.getByRole("link", { name: "Brand" })).toHaveAttribute("aria-current", "page");
-  await expect(sidebar.getByRole("link", { name: "Uploads" })).toHaveCount(0);
+  await expect(sidebar.getByRole("link", { name: "Library", exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1, name: "Brand" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Settings" })).toHaveCount(0);
   await expect(page.locator("header").getByText("Settings", { exact: true })).toHaveCount(0);
@@ -238,8 +238,8 @@ test("settings open from the team menu and swap the sidebar for their own menu, 
 
   // "Back to app" returns to the page you came from.
   await page.getByRole("link", { name: "Back to app" }).click();
-  await expect(page).toHaveURL(/\/uploads$/);
-  await expect(sidebar.getByRole("link", { name: "Uploads" })).toBeVisible();
+  await expect(page).toHaveURL(/\/library$/);
+  await expect(sidebar.getByRole("link", { name: "Library", exact: true })).toBeVisible();
 });
 
 test("the first-step hint and the On switches stay clear at a small laptop size", async ({

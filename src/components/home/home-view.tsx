@@ -378,7 +378,7 @@ function GettingStarted({ setup }: { setup: Summary["setup"] }) {
       done: setup.bucket,
       label: "Find the toolkit's file storage",
       detail: "Uploads and finished files are kept there. Check your toolkit again to find it.",
-      href: "/uploads",
+      href: "/library",
     },
     {
       done: setup.brand,
@@ -396,7 +396,7 @@ function GettingStarted({ setup }: { setup: Summary["setup"] }) {
       done: setup.firstRun,
       label: "See your first run finish",
       detail: "Upload a file, or press Run now on an automation.",
-      href: "/uploads",
+      href: "/library",
     },
   ];
   const left = steps.filter((step) => !step.done).length;

@@ -28,8 +28,8 @@ import { useActiveTeam } from "@/lib/team-context";
 /**
  * # Copying a look from a video
  *
- * A look is copied where the video is, or where it is used: from a video on the Uploads
- * page, or from inside the Match A Saved Look step. Both show the same study: the toolkit
+ * A look is copied where the video is, or where it is used: from a video in the Library,
+ * or from inside the Match A Saved Look step. Both show the same study: the toolkit
  * takes six frames and finds the cuts, the agent looks once, and the team names and saves
  * what it saw.
  */
@@ -65,7 +65,7 @@ function useStartStudy() {
 }
 
 /**
- * On a video in Uploads: "Copy its look", then the study of that video right there. Only
+ * On a video in the Library: "Copy its look", then the study of that video right there. Only
  * owners and admins see it, since a saved look changes what steps do.
  */
 export function CopyLookFromUpload({ upload }: { upload: { _id: string; fileName: string } }) {
@@ -97,7 +97,7 @@ export function CopyLookFromUpload({ upload }: { upload: { _id: string; fileName
 
 /**
  * Inside the step: pick one of the team's videos and copy its look, or paste a link to a
- * video on another site. A pasted video comes into Uploads, then its look is studied.
+ * video on another site. A pasted video comes into the Library, then its look is studied.
  */
 export function CopyLookFromVideo({
   shown,
@@ -171,7 +171,7 @@ function StudyView({
   study: Study;
   canEdit: boolean;
   onSaved?: (name: string) => void;
-  /** Frames beside the words, where there is room (the open video on Uploads). */
+  /** Frames beside the words, where there is room (the open video on the Library). */
   wide?: boolean;
 }) {
   const team = useActiveTeam();

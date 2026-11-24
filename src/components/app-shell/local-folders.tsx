@@ -71,7 +71,7 @@ export function LocalFolders() {
                 await fromDisk.send(started, file, () => {});
                 await finishUpload({ uploadId: started.uploadId });
               } catch (caught) {
-                // Stopped part way: it is listed on Uploads to carry on from there.
+                // Stopped part way: it is listed on the Library to carry on from there.
                 if (!(caught instanceof StoppedUpload)) throw caught;
               }
               await landedSentOnDesktop(watch.automationId, file.path);
