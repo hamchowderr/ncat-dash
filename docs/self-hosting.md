@@ -300,6 +300,14 @@ To see how long videos take on your machine, before and after an update or a cha
 - **On a computer run by the desktop app**, backups are made for you: see [the desktop app](desktop-app.md). The app brings one back with **Bring back a backup**. By hand: start the stack, run `npx convex import --replace-all -y database.zip` and `npx convex env set --force < convex-settings.env` (with the two `CONVEX_SELF_HOSTED_*` values set), stop `agent` and unpack `agent-memory.tgz` into the `agent-data` volume, then start it and run `setup` again. `settings.env` is the app's settings file from then, for a computer that has none.
 - **Secrets**: keep `CONNECTIONS_SECRET`, `BETTER_AUTH_SECRET`, the Convex instance secret and admin key, and `MASTRA_JWT_SECRET` in a secrets manager. Without `CONNECTIONS_SECRET` a restored database cannot read its saved keys.
 
+## Deleting Teams And Accounts
+
+- **A team** is deleted by one of its owners, at the foot of Settings > Members, after typing its name. Its people lose it at once. Then, in the background: everything in its folder in the bucket (`teams/<id>/`) and the results the toolkit wrote for its jobs, then every row it has in Convex. If the bucket can't be reached after five tries over about a quarter of an hour, the rows go anyway and the deletion's record says what was left.
+- **An account** is deleted by its owner in Settings > Account > Password And Devices, with their password (or, for an account without one, a sign-in from the last day). A team nobody else is on goes with it. The only owner of a team other people are on must make someone else an owner, or delete the team, first. Any other team they simply leave.
+- **What stays**: a keyed hash of the owner's mailbox and network in the trial record, so deleting and making a team again doesn't start a new free trial, and the record of each deletion (`teamDeletions`).
+- **How a deletion went**: `npx convex run teamDeletion:status '{"organizationId":"<team id>"}'`.
+- **Teams deleted before this existed** left their data behind. `npx convex run teamDeletion:findLeftovers` lists them, and `npx convex run teamDeletion:cleanUpLeftovers '{"organizationId":"<team id>"}'` takes each one's data away.
+
 ## When Something Is Wrong
 
 | What you see                                  | Why, and what to do                                                                                                                                                                                                                                |

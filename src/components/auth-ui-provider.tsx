@@ -7,8 +7,9 @@ import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { deleteUserPlugin } from "@/lib/auth/delete-user-plugin";
 import { authClient } from "@/lib/auth-client";
-import { LOCALIZATION } from "@/lib/auth-words";
+import { DELETE_ACCOUNT_WORDS, LOCALIZATION } from "@/lib/auth-words";
 
 /**
  * The sign-in screens and account cards come from Better Auth UI (better-auth-ui.com),
@@ -41,6 +42,8 @@ export function AuthUiProvider({ children }: { children: ReactNode }) {
         maxPasswordLength: 128,
       }}
       avatar={{ enabled: false }}
+      // Delete account, at the foot of Settings > Account > Password And Devices.
+      plugins={[deleteUserPlugin({ localization: DELETE_ACCOUNT_WORDS })]}
       localization={LOCALIZATION}
     >
       {children}

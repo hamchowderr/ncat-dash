@@ -44,3 +44,12 @@ export const LOCALIZATION = {
     linkedAccounts: "Sign in with",
   },
 } as const;
+
+/** Deleting your own account (Settings > Account > Password And Devices). */
+export const DELETE_ACCOUNT_WORDS = {
+  deleteAccount: "Delete account",
+  deleteAccountDescription:
+    "Deletes your account and signs you out everywhere. This can't be undone.",
+  deleteUserSuccess: "Your account is deleted.",
+  deleteUserVerificationSent: "Check your email to confirm deleting your account.",
+};

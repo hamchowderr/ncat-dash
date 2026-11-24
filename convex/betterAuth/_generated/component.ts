@@ -4343,6 +4343,56 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Name
       >;
     };
+    deletion: {
+      endTeamAgents: FunctionReference<
+        "mutation",
+        "internal",
+        { organizationId: string },
+        null,
+        Name
+      >;
+      forgetPerson: FunctionReference<
+        "mutation",
+        "internal",
+        { userId: string },
+        null,
+        Name
+      >;
+      leaveTeam: FunctionReference<
+        "mutation",
+        "internal",
+        { organizationId: string; userId: string },
+        null,
+        Name
+      >;
+      removeTeam: FunctionReference<
+        "mutation",
+        "internal",
+        { organizationId: string },
+        null | string,
+        Name
+      >;
+      teamName: FunctionReference<
+        "query",
+        "internal",
+        { organizationId: string },
+        null | string,
+        Name
+      >;
+      teamsOf: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
+        Array<{
+          id: string;
+          name: string;
+          owners: number;
+          people: number;
+          role: string;
+        }>,
+        Name
+      >;
+    };
     members: {
       caller: FunctionReference<
         "query",

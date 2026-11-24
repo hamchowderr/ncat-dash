@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { authClient } from "@/lib/auth-client";
 import { useActiveTeam } from "@/lib/team-context";
 
+import { DeleteTeam } from "./delete-team";
 import { SettingsSection } from "./settings-shell";
 
 const roleNames: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member" };
@@ -157,6 +158,8 @@ export function TeamCard({ canEdit }: { canEdit: boolean }) {
           ))}
         </ul>
       )}
+
+      <DeleteTeam />
     </SettingsSection>
   );
 }

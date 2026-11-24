@@ -521,7 +521,9 @@ export default defineSchema({
     height: v.number(),
     createdBy: v.string(),
     updatedAt: v.number(),
-  }).index("by_automation", ["automationId"]),
+  })
+    .index("by_automation", ["automationId"])
+    .index("by_organization", ["organizationId"]),
 
   // A folder on the Automations page that a team names itself, like a workflow folder in
   // n8n. Separate from clients: it only groups the list.
@@ -637,7 +639,9 @@ export default defineSchema({
     restoredFrom: v.optional(v.number()),
     byId: v.string(),
     byName: v.string(),
-  }).index("by_automation_and_number", ["automationId", "number"]),
+  })
+    .index("by_automation_and_number", ["automationId", "number"])
+    .index("by_organization", ["organizationId"]),
 
   watchedFiles: defineTable({
     automationId: v.id("automations"),
@@ -1061,7 +1065,9 @@ export default defineSchema({
     batchId: v.string(),
     sentAt: v.number(),
     checks: v.number(),
-  }).index("by_step", ["runStepId"]),
+  })
+    .index("by_step", ["runStepId"])
+    .index("by_organization", ["organizationId"]),
 
   // A moment a Best moments step cut from a video, so a later run on the same video can
   // find new ones instead of the same again.
@@ -1103,7 +1109,8 @@ export default defineSchema({
   })
     .index("by_creator", ["creatorId"])
     .index("by_client", ["clientId"])
-    .index("by_ends", ["endsOn"]),
+    .index("by_ends", ["endsOn"])
+    .index("by_organization", ["organizationId"]),
 
   alerts: defineTable({
     organizationId: v.string(),
@@ -1193,7 +1200,8 @@ export default defineSchema({
     commentId: v.optional(v.id("reviewComments")),
   })
     .index("by_app_organization", ["app", "organizationId"])
-    .index("by_app_comment", ["app", "commentId"]),
+    .index("by_app_comment", ["app", "commentId"])
+    .index("by_organization", ["organizationId"]),
 
   // A review comment thread and the Slack thread it was posted as. Replies written in
   // that Slack thread come back to the review thread, and the other way round.
@@ -1207,7 +1215,8 @@ export default defineSchema({
   })
     .index("by_comment", ["commentId"])
     .index("by_slack_thread", ["slackTeamId", "channelId", "threadTs"])
-    .index("by_review", ["reviewId"]),
+    .index("by_review", ["reviewId"])
+    .index("by_organization", ["organizationId"]),
 
   // Slack messages already brought into a review, so Slack sending one again (it does,
   // when an answer is slow) does not add it twice.
@@ -1216,7 +1225,9 @@ export default defineSchema({
     channelId: v.string(),
     ts: v.string(),
     commentId: v.id("reviewComments"),
-  }).index("by_message", ["slackTeamId", "channelId", "ts"]),
+  })
+    .index("by_message", ["slackTeamId", "channelId", "ts"])
+    .index("by_comment", ["commentId"]),
 
   // Who a Slack user is on the dashboard, found by their email address, and the
   // sign-in the agent uses to act as them. Rows go when the connection goes.
@@ -1227,7 +1238,9 @@ export default defineSchema({
     userId: v.string(),
     sessionToken: v.string(),
     sessionExpiresAt: v.number(),
-  }).index("by_slack_user", ["slackTeamId", "slackUserId"]),
+  })
+    .index("by_slack_user", ["slackTeamId", "slackUserId"])
+    .index("by_organization", ["organizationId"]),
 
   // Discord servers a team added the dashboard's one Discord bot to. The bot itself is
   // the deployment's (DISCORD_* env on the agent server and here), never a team's.
@@ -1262,13 +1275,16 @@ export default defineSchema({
   })
     .index("by_comment", ["commentId"])
     .index("by_thread", ["threadId"])
-    .index("by_review", ["reviewId"]),
+    .index("by_review", ["reviewId"])
+    .index("by_organization", ["organizationId"]),
 
   // Discord messages already brought into a review, so one is never added twice.
   discordReplies: defineTable({
     messageId: v.string(),
     commentId: v.id("reviewComments"),
-  }).index("by_message", ["messageId"]),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_comment", ["commentId"]),
 
   // A team member's own Discord account, linked by signing in with Discord once. Discord
   // gives bots no email address, so this is how the agent knows who wrote to it. The
@@ -1292,7 +1308,9 @@ export default defineSchema({
     userId: v.string(),
     kind: v.union(v.literal("server"), v.literal("person")),
     createdAt: v.number(),
-  }).index("by_nonce", ["nonce"]),
+  })
+    .index("by_nonce", ["nonce"])
+    .index("by_organization", ["organizationId"]),
 
   // The Microsoft organization (Entra tenant) a team linked for the agent in Microsoft
   // Teams. The bot is the deployment's (TEAMS_APP_* env here and on the agent server),
@@ -1344,7 +1362,9 @@ export default defineSchema({
     userId: v.string(),
     kind: v.union(v.literal("organization"), v.literal("person")),
     createdAt: v.number(),
-  }).index("by_nonce", ["nonce"]),
+  })
+    .index("by_nonce", ["nonce"])
+    .index("by_organization", ["organizationId"]),
 
   // A review comment thread and the Teams reply thread it was posted as, in the team's
   // alert channel. Replies written in that Teams thread come back to the review thread.
@@ -1368,7 +1388,9 @@ export default defineSchema({
     conversationId: v.string(),
     activityId: v.string(),
     commentId: v.id("reviewComments"),
-  }).index("by_message", ["conversationId", "activityId"]),
+  })
+    .index("by_message", ["conversationId", "activityId"])
+    .index("by_comment", ["commentId"]),
 
   // A member's own Telegram account on a team, linked from Settings by opening the
   // dashboard's one Telegram bot with a one-time code. The agent then acts as them when
@@ -1413,14 +1435,17 @@ export default defineSchema({
     commentId: v.id("reviewComments"),
   })
     .index("by_comment", ["commentId"])
-    .index("by_message", ["chatId", "messageId"]),
+    .index("by_message", ["chatId", "messageId"])
+    .index("by_organization", ["organizationId"]),
 
   // A teammate's Telegram reply already written into a review, so it is never added twice.
   telegramReviewReplies: defineTable({
     chatId: v.string(),
     messageId: v.number(),
     commentId: v.id("reviewComments"),
-  }).index("by_message", ["chatId", "messageId"]),
+  })
+    .index("by_message", ["chatId", "messageId"])
+    .index("by_comment", ["commentId"]),
 
   // A one-time code made in Settings and sent to the bot with /start, to link a person
   // ("person") or a group ("group") to the team.
@@ -1430,7 +1455,9 @@ export default defineSchema({
     userId: v.string(),
     kind: v.union(v.literal("person"), v.literal("group")),
     createdAt: v.number(),
-  }).index("by_code", ["code"]),
+  })
+    .index("by_code", ["code"])
+    .index("by_organization", ["organizationId"]),
 
   // A team member's own Zoom account, connected from Settings so the cloud recordings of
   // meetings they host come into the team's uploads. The dashboard has ONE Zoom app, set
@@ -1468,7 +1495,9 @@ export default defineSchema({
     // True: connecting the whole Zoom account, through the admin-managed app.
     wholeAccount: v.optional(v.boolean()),
     createdAt: v.number(),
-  }).index("by_nonce", ["nonce"]),
+  })
+    .index("by_nonce", ["nonce"])
+    .index("by_organization", ["organizationId"]),
 
   // One Zoom recording being brought in, or brought in: the toolkit streams the file from
   // Zoom straight into the team's folder, then it becomes an upload like any other.
@@ -1531,7 +1560,9 @@ export default defineSchema({
     organizationId: v.string(),
     userId: v.string(),
     createdAt: v.number(),
-  }).index("by_nonce", ["nonce"]),
+  })
+    .index("by_nonce", ["nonce"])
+    .index("by_organization", ["organizationId"]),
 
   // One Meet recording being brought in, or brought in: the toolkit streams the file from
   // the organizer's Drive straight into the team's folder, then it becomes an upload.
@@ -1612,7 +1643,9 @@ export default defineSchema({
     // Started from "Add a channel": asks for listing the member's Teams channels and
     // reading their files too.
     channels: v.optional(v.boolean()),
-  }).index("by_nonce", ["nonce"]),
+  })
+    .index("by_nonce", ["nonce"])
+    .index("by_organization", ["organizationId"]),
 
   // A Teams channel a member watches for meeting recordings. Recordings of meetings held
   // in a channel are saved in the channel's SharePoint files, in a Recordings folder, not
@@ -1688,7 +1721,9 @@ export default defineSchema({
     organizationId: v.string(),
     userId: v.string(),
     createdAt: v.number(),
-  }).index("by_nonce", ["nonce"]),
+  })
+    .index("by_nonce", ["nonce"])
+    .index("by_organization", ["organizationId"]),
 
   // A Dropbox folder a member watches. Its subfolders are watched too. `cursor` is where
   // Dropbox's list of changes in it was read up to.
@@ -1793,7 +1828,7 @@ export default defineSchema({
     status: v.union(v.literal("ok"), v.literal("failing")),
     // Why the last email could not be sent, in plain words.
     lastError: v.union(v.null(), v.string()),
-  }),
+  }).index("by_organization", ["organizationId"]),
 
   // A member who has switched off emails about failed runs for a team. No row means
   // they get them.
@@ -1814,7 +1849,8 @@ export default defineSchema({
     settledAt: v.optional(v.number()),
   })
     .index("by_alert", ["alertId"])
-    .index("by_runStep", ["runStepId"]),
+    .index("by_runStep", ["runStepId"])
+    .index("by_organization", ["organizationId"]),
 
   // Addresses toSend reported back: a bounce or a spam complaint (POST /email/events).
   // toSend already stops sending to them; this is so the app can say why someone hears
@@ -1969,7 +2005,8 @@ export default defineSchema({
   })
     .index("by_token", ["token"])
     .index("by_review", ["reviewId"])
-    .index("by_portal", ["portalId"]),
+    .index("by_portal", ["portalId"])
+    .index("by_organization", ["organizationId"]),
 
   // A client's portal: one link where the client sees only their own projects, in the
   // team's logo and colours, and opens each project's review room. At most one per client;
@@ -1985,7 +2022,8 @@ export default defineSchema({
     showTeamComments: v.boolean(),
   })
     .index("by_token", ["token"])
-    .index("by_client", ["clientId"]),
+    .index("by_client", ["clientId"])
+    .index("by_organization", ["organizationId"]),
 
   // One clip in a review. A changed clip is added as a new version, so comments on the
   // earlier ones stay where they were made.
@@ -2001,7 +2039,9 @@ export default defineSchema({
         addedAt: v.number(),
       }),
     ),
-  }).index("by_review", ["reviewId"]),
+  })
+    .index("by_review", ["reviewId"])
+    .index("by_organization", ["organizationId"]),
 
   // A comment on a clip, pinned to a moment in it. A reply points at the comment that
   // started its thread and carries that comment's moment.
@@ -2041,7 +2081,8 @@ export default defineSchema({
     ),
   })
     .index("by_clip", ["clipId"])
-    .index("by_review", ["reviewId"]),
+    .index("by_review", ["reviewId"])
+    .index("by_organization", ["organizationId"]),
 
   // A client an agency works for, inside one team. Its brand fills in before the team's
   // for the automations that are for it, and its finished files are kept in its own folder.
@@ -2149,7 +2190,9 @@ export default defineSchema({
     organizationId: v.string(),
     title: v.string(),
     order: v.number(),
-  }).index("by_storyboard", ["storyboardId"]),
+  })
+    .index("by_storyboard", ["storyboardId"])
+    .index("by_organization", ["organizationId"]),
 
   // One line of the video: what is said, the scene it is shown in, what goes into it
   // (you on camera, a graphic, a page recording, your screen) and the file for each part
@@ -2170,7 +2213,8 @@ export default defineSchema({
     }),
   })
     .index("by_storyboard", ["storyboardId"])
-    .index("by_chapter", ["chapterId"]),
+    .index("by_chapter", ["chapterId"])
+    .index("by_organization", ["organizationId"]),
 
   // A post planned on the content calendar: what goes out, where, and when. With no time
   // it waits in the calendar's side list; queued ones fill the team's repeating slots.
@@ -2310,6 +2354,7 @@ export default defineSchema({
     words: v.optional(v.array(v.object({ t: v.string(), s: v.number(), e: v.number() }))),
   })
     .index("by_item_and_start", ["itemId", "start"])
+    .index("by_organization", ["organizationId"])
     .searchIndex("search_speech", { searchField: "text", filterFields: ["organizationId"] }),
 
   // What was said in a library file in another language (translations.ts): its subtitle
@@ -2360,6 +2405,7 @@ export default defineSchema({
     vector: v.array(v.float64()),
   })
     .index("by_item", ["itemId"])
+    .index("by_organization", ["organizationId"])
     .vectorIndex("by_vector", {
       vectorField: "vector",
       dimensions: 512,
@@ -2499,4 +2545,28 @@ export default defineSchema({
     createdBy: v.string(),
     at: v.number(),
   }).index("by_organization", ["organizationId"]),
+  // A team being deleted (teamDeletion.ts). Better Auth removes the team, its members and
+  // invitations at once; this tracks taking away everything else it made: its files in
+  // storage first, then its rows here, table by table. Kept once finished, as a record
+  // that the team's data is gone. Holds no names of people or files.
+  teamDeletions: defineTable({
+    organizationId: v.string(),
+    // The team's name when it was deleted, for the operator.
+    name: v.string(),
+    // Who deleted it, or whose account deletion took it with them.
+    by: v.string(),
+    reason: v.union(v.literal("team"), v.literal("account")),
+    startedAt: v.number(),
+    phase: v.union(v.literal("files"), v.literal("rows"), v.literal("done")),
+    // The table the row purge is on, as its place in lib/teamPurge.ts's list.
+    table: v.number(),
+    filesDeleted: v.number(),
+    rowsDeleted: v.number(),
+    // Set when the team's storage could not be reached after every try: the rows are
+    // taken away regardless, and this says what was left.
+    filesProblem: v.optional(v.string()),
+    finishedAt: v.optional(v.number()),
+  })
+    .index("by_organization", ["organizationId"])
+    .index("by_phase", ["phase"]),
 });

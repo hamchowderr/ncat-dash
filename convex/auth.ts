@@ -198,6 +198,21 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
     // Sign in with Google, offered only once its keys are set (see socialProviders()).
     socialProviders: socialProviders(),
     user: {
+      // Deleting your own account (Settings > Account). Better Auth asks for the password,
+      // or a recent sign-in for an account without one. Its teams are dealt with first
+      // (accountDeletion.ts): one only this person is on goes with it, and the only owner
+      // of a team others are on is asked to hand it over or delete it first.
+      deleteUser: {
+        enabled: true,
+        beforeDelete: async (user) => {
+          const run = runner(ctx);
+          if (!run) return;
+          const refused = await run.runMutation(internal.accountDeletion.prepare, {
+            userId: user.id,
+          });
+          if (refused) throw new APIError("BAD_REQUEST", { message: refused });
+        },
+      },
       // Moving an account to a new address: the old address approves first, then the new
       // one confirms, so a stolen session alone can't take the account away.
       changeEmail: {
@@ -329,6 +344,19 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
             await ctx.scheduler.runAfter(5_000, internal.email.sendWelcome, {
               organizationId: organization.id,
               userId: user.id,
+            });
+          },
+          // Better Auth has deleted the team, its members and invitations; everything
+          // else it made (automations, files, runs, outputs, uploads in storage) goes in
+          // the background (teamDeletion.ts).
+          afterDeleteOrganization: async ({ organization, user }) => {
+            const run = runner(ctx);
+            if (!run) return;
+            await run.runMutation(internal.teamDeletion.begin, {
+              organizationId: organization.id,
+              name: organization.name,
+              by: user.id,
+              reason: "team",
             });
           },
         },
