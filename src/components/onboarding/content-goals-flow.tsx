@@ -481,7 +481,7 @@ function MeetingApps() {
               className="bg-surface hover:bg-muted flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors"
             >
               <AppTile app={app} small />
-              Connect {name}
+              {name}
             </a>
           </li>
         ))}
