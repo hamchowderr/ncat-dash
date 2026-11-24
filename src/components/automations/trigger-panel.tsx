@@ -352,6 +352,31 @@ export function TriggerPanel({
         </Field>
       )}
 
+      {trigger.kind === "upload" && (
+        <Field>
+          <FieldLabel id="trigger-upload-mode">On each upload</FieldLabel>
+          <Segmented
+            aria-labelledby="trigger-upload-mode"
+            value={trigger.ask ? "ask" : "auto"}
+            onValueChange={(mode) => {
+              const next = { ...trigger };
+              if (mode === "ask") next.ask = true;
+              else delete next.ask;
+              onChange(next);
+            }}
+            options={[
+              { value: "auto", label: "Run by itself" },
+              { value: "ask", label: "Ask me each time" },
+            ]}
+          />
+          <FieldDescription>
+            {trigger.ask
+              ? "It never runs by itself. Each matching upload shows it on the file's page, ready to run with one press."
+              : "It runs on every matching upload. You can untick it for one upload under On this upload."}
+          </FieldDescription>
+        </Field>
+      )}
+
       {trigger.kind === "upload" && trigger.fileType !== "image" && (
         <Field>
           <FieldLabel>Only files of this length</FieldLabel>

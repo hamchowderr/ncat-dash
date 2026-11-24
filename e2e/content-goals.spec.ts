@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 
 // Setting up ends by asking what the team makes, in a real browser against a real local
 // backend: a coach picks coaching and where they post, the coaching pack and the lecture
-// pack are switched on for Instagram, and the first upload starts them.
+// pack are added for Instagram, set to ask first, so the first upload shows them ready to
+// run with one press and nothing runs by itself.
 
 const stamp = Date.now().toString(36);
 const TOOLKIT = "http://127.0.0.1:8767";
@@ -43,7 +44,7 @@ test("a coach is asked what they make and their first upload starts the fitting 
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 
   // The two that fit a coach, ticked, each with what goes well after it, then switched on.
-  await expect(page.getByRole("heading", { name: "Switch these on" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Suggest these on your uploads" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /Coaching session pack/ })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: /Brand Every Clip/ })).toBeChecked();
   await expect(page.getByText("Runs after Coaching session pack")).toBeVisible();
@@ -56,20 +57,32 @@ test("a coach is asked what they make and their first upload starts the fitting 
     expect(sideways, `the page scrolls sideways at ${width}`).toBe(false);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByRole("button", { name: "Switch on 4 automations" }).click();
+  await page.getByRole("button", { name: "Add 4 automations" }).click();
 
-  // The first upload goes in and starts them.
+  // The first upload goes in. Nothing runs by itself: both show on it, one press each.
   await expect(page.getByRole("heading", { name: "Upload your first recording" })).toBeVisible();
   await expect(page.getByText(/Coaching session pack/).first()).toBeVisible();
   await page.getByLabel("Choose a recording to upload").setInputFiles("e2e/fixtures/clip.webm");
   const started = page.getByRole("region", { name: "What your upload started" });
   await expect(started.getByText("clip.webm")).toBeVisible({ timeout: 30_000 });
-  await expect(started.getByRole("link", { name: /Coaching session pack/ })).toBeVisible({
-    timeout: 60_000,
-  });
+  const suggested = started.getByRole("list", { name: "Suggested for this file" });
   await expect(
-    started.getByRole("link", { name: /Sermon, webinar or lecture pack/ }),
+    suggested.getByRole("button", { name: "Run Coaching session pack on this file" }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    suggested.getByRole("button", { name: "Run Sermon, webinar or lecture pack on this file" }),
   ).toBeVisible();
+  await expect(started.getByRole("list", { name: "Ran on this file" })).toHaveCount(0);
+  // One press runs it on this file, and it moves to what ran, with how it is doing.
+  await suggested.getByRole("button", { name: "Run Coaching session pack on this file" }).click();
+  const ran = started.getByRole("list", { name: "Ran on this file" });
+  await expect(ran.getByRole("link", { name: /Coaching session pack/ })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(ran.getByText(/Run by hand/)).toBeVisible();
+  await expect(
+    suggested.getByRole("button", { name: "Run Coaching session pack on this file" }),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: /Go to the dashboard/ }).click();
   await expect(page).toHaveURL(/\/$/);
@@ -125,7 +138,7 @@ test("setting up never asks about a toolkit; a copy that lends none connects one
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Instagram" }).click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("button", { name: "Switch on 4 automations" }).click();
+  await page.getByRole("button", { name: "Add 4 automations" }).click();
 
   // This copy lends no toolkit, so there is nowhere to upload to yet: the last screen says
   // what comes next.

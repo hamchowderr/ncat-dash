@@ -55,6 +55,7 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 
 import { CopyLookFromUpload } from "@/components/looks/look-study";
 
+import { OnThisUpload } from "./on-this-upload";
 import { NeedsToolkit } from "./needs-toolkit";
 import { LinkRow, PasteLink, useLinks } from "./paste-link";
 import {
@@ -169,6 +170,8 @@ export function UploadsView() {
   const input = useRef<HTMLInputElement>(null);
   const [inFlight, setInFlight] = useState<Record<string, InFlight>>({});
   const [dragging, setDragging] = useState(false);
+  // Automations that run by themselves, unticked under On this upload for the files sent now.
+  const [skipped, setSkipped] = useState<Id<"automations">[]>([]);
   const [opened, setOpened] = useState<Id<"uploads"> | null>(null);
   const [hovered, setHovered] = useState<Id<"uploads"> | null>(null);
   // The server always draws tiles; the browser then uses the viewer's own choice. A phone
@@ -347,6 +350,7 @@ export function UploadsView() {
           fileName: file.name,
           contentType: file.type,
           size: file.size,
+          ...(skipped.length > 0 ? { skipAutomations: skipped } : {}),
         });
         uploadId = started.uploadId;
         const id = started.uploadId;
@@ -470,6 +474,8 @@ export function UploadsView() {
         </p>
         <PasteLink className="mt-3 max-w-md text-left" />
       </div>
+
+      <OnThisUpload organizationId={team.id} skipped={skipped} onSkippedChange={setSkipped} />
 
       {pasted.length > 0 && (
         <section aria-label="Videos from links" className="flex flex-col gap-3">

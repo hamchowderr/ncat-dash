@@ -20,7 +20,9 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Duarte Media");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -28,6 +30,12 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
   await page.goto("/uploads");
+  // What every upload gets, and that nothing else runs on it by itself yet.
+  const onUpload = page.getByRole("region", { name: "On this upload" });
+  await expect(onUpload).toContainText(
+    "Every upload gets its transcript, SRT and storyboard draft.",
+  );
+  await expect(onUpload).toContainText("No automation runs on uploads by itself.");
   await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.webm");
   await expect(page.getByRole("button", { name: "Open clip.webm" })).toBeVisible({
     timeout: 30_000,
@@ -43,6 +51,10 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   // Transcribed on the toolkit as it came in: nothing to press.
   await expect(page.getByRole("button", { name: /Transcribe 1 file/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Open V1 clip" }).click();
+  // Nothing ran on it, and the file's page says so where the runs would be.
+  await expect(page.getByRole("region", { name: "Automations on this file" })).toContainText(
+    "None yet.",
+  );
   const said = page.getByTestId("transcript");
   await expect(said.getByText("Today we talk about pricing your edits.")).toBeVisible({
     timeout: 30_000,
@@ -132,7 +144,9 @@ test("a caption file shows its lines, and they are searched like what was said",
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Duarte Captions");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");

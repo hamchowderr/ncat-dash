@@ -162,7 +162,14 @@ export const turnOn = mutation({
           : null;
       const content = {
         name: starter.name,
-        trigger: followed ? followOnTrigger(starter, followed) : starter.trigger,
+        // Picked at signup, a ready-made that starts on an upload asks first: it shows on
+        // each upload it fits, ready to run with one press, and never runs by itself until
+        // someone sets it to. Follow-ons still start when what they follow ends.
+        trigger: followed
+          ? followOnTrigger(starter, followed)
+          : starter.trigger.kind === "upload"
+            ? { ...starter.trigger, ask: true }
+            : starter.trigger,
         nodes: nodesForPlatform(starter.nodes, platform),
         edges: starter.edges,
       };
@@ -199,39 +206,5 @@ export const turnOn = mutation({
       });
     }
     return made;
-  },
-});
-
-/**
- * The runs a team's first upload started, newest first, so setting up can show them as
- * they begin. Runs start a moment after the upload is in, once its details are read.
- */
-export const runsForUpload = query({
-  args: { organizationId: v.string(), uploadId: v.id("uploads") },
-  returns: v.array(
-    v.object({
-      runId: v.id("runs"),
-      automationId: v.id("automations"),
-      automationName: v.string(),
-      status: v.string(),
-    }),
-  ),
-  handler: async (ctx, args) => {
-    await requireMember(ctx, args.organizationId);
-    const upload = await ctx.db.get(args.uploadId);
-    if (!upload || upload.organizationId !== args.organizationId) return [];
-    const runs = await ctx.db
-      .query("runs")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .order("desc")
-      .take(50);
-    return runs
-      .filter((run) => run.trigger?.upload_id === args.uploadId)
-      .map((run) => ({
-        runId: run._id,
-        automationId: run.automationId,
-        automationName: run.automationName,
-        status: run.status,
-      }));
   },
 });

@@ -116,6 +116,8 @@ export const startUpload = action({
     size: v.number(),
     // "brand" for a logo or music track: kept for steps to use, never starts an automation.
     purpose: v.optional(v.literal("brand")),
+    // Automations that run on every upload, unticked for this one in "On this upload".
+    skipAutomations: v.optional(v.array(v.id("automations"))),
   },
   returns: v.object({ uploadId: v.id("uploads"), ...sendPlanValidator }),
   handler: async (
@@ -148,6 +150,9 @@ export const startUpload = action({
       createdBy: userId,
       ...(args.purpose ? { purpose: args.purpose } : {}),
       ...(plan.partsUploadId ? { partsUploadId: plan.partsUploadId } : {}),
+      ...(args.skipAutomations?.length
+        ? { skipAutomations: args.skipAutomations.slice(0, 100) }
+        : {}),
     });
     return { uploadId, uploadUrl: plan.uploadUrl, parts: plan.parts };
   },
@@ -603,6 +608,7 @@ export const recordUpload = internalMutation({
     createdBy: v.string(),
     purpose: v.optional(v.literal("brand")),
     partsUploadId: v.optional(v.string()),
+    skipAutomations: v.optional(v.array(v.id("automations"))),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("uploads", { ...args, status: "uploading" });

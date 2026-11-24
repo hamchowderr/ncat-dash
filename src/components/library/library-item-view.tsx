@@ -32,6 +32,7 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
+import { FileRuns } from "./file-runs";
 import { SubtitleText, TranscriptDownload } from "./transcript-files";
 import { LanguagePicker, ORIGINAL, TranslatedWords } from "./translations";
 import { UploadStoryboard } from "@/components/storyboard/storyboard-view";
@@ -601,6 +602,8 @@ export function LibraryItemView({
           </div>
 
           <RunMenu itemId={item._id} teamId={team.id} />
+
+          <FileRuns itemId={item._id} />
 
           <dl className="flex flex-col gap-2.5">
             <ClientFact itemId={item._id} teamId={team.id} client={item.client} />

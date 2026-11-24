@@ -27,6 +27,11 @@ export type StarterTrigger =
       minSeconds?: number;
       /** Only files at most this long, in seconds, start the automation. */
       maxSeconds?: number;
+      /**
+       * True: it never runs by itself; each upload it fits shows it, ready to run with one
+       * press. Left out: it runs on every upload it fits.
+       */
+      ask?: boolean;
     }
   | {
       kind: "folder";

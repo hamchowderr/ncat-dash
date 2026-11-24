@@ -32,6 +32,7 @@ import { useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
 import { FlowStrip } from "@/components/automations/flow-strip";
+import { FileRuns } from "@/components/library/file-runs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
@@ -169,7 +170,7 @@ export function ContentGoalsFlow({
       setMade(await turnOn({ organizationId, starterIds: chosen.map((starter) => starter.id) }));
       setStage("upload");
     } catch (caught) {
-      toast.error(errorMessage(caught, "The automations could not be switched on. Try again."));
+      toast.error(errorMessage(caught, "The automations could not be added. Try again."));
     } finally {
       setBusy(false);
     }
@@ -184,8 +185,8 @@ export function ContentGoalsFlow({
       {stage === "kinds" && (
         <>
           <Heading title="What Do You Make?">
-            Pick everything that fits. We&apos;ll switch on ready-made automations made for it, so
-            your first upload is handled the way you would handle it.
+            Pick everything that fits. We&apos;ll suggest ready-made automations made for it on each
+            video you upload, ready to run with one press.
           </Heading>
           <div role="group" aria-label="What you make" className="grid gap-2 sm:grid-cols-2">
             {CONTENT_KINDS.map((kind) => {
@@ -264,8 +265,10 @@ export function ContentGoalsFlow({
 
       {stage === "turn-on" && (
         <>
-          <Heading title="Switch these on">
-            Each one runs by itself on every video you upload. Untick any you don&apos;t want.
+          <Heading title="Suggest these on your uploads">
+            None of them runs by itself. Each one shows on every video you upload, ready to run with
+            one press, and you can set any of them to run by itself later. Untick any you don&apos;t
+            want.
           </Heading>
           <ul className="grid gap-2" aria-label="Ready-made automations for you">
             {suggested.map((starter) => (
@@ -313,8 +316,8 @@ export function ContentGoalsFlow({
               {chosen.length === 0
                 ? "Continue without these"
                 : chosen.length === 1
-                  ? "Switch on 1 automation"
-                  : `Switch on ${chosen.length} automations`}
+                  ? "Add 1 automation"
+                  : `Add ${chosen.length} automations`}
               <ArrowRight />
             </Button>
           </div>
@@ -330,14 +333,6 @@ export function ContentGoalsFlow({
     </div>
   );
 }
-
-const RUN_WORDS: Record<string, string> = {
-  running: "Running",
-  waiting: "Waiting for you",
-  done: "Done",
-  failed: "Failed",
-  cancelled: "Stopped",
-};
 
 /** The last screen: one recording in, and the runs it starts as they begin. */
 function FirstUpload({
@@ -357,10 +352,6 @@ function FirstUpload({
   const [going, setGoing] = useState<{ name: string; percent: number } | null>(null);
   const [uploaded, setUploaded] = useState<{ id: Id<"uploads">; name: string } | null>(null);
   const [dragging, setDragging] = useState(false);
-  const runs = useQuery(
-    api.contentGoals.runsForUpload,
-    uploaded ? { organizationId, uploadId: uploaded.id } : "skip",
-  );
   const on = made.filter((each) => each.on);
 
   async function send(file: File) {
@@ -401,7 +392,7 @@ function FirstUpload({
     <>
       <Heading title="Upload your first recording">
         It goes into your content library and is transcribed, so you can search for what was said.
-        {on.length > 0 && " The automations you switched on start on it by themselves."}
+        {on.length > 0 && " The automations you picked show on it, ready to run with one press."}
       </Heading>
 
       <MadeList made={made} />
@@ -414,30 +405,7 @@ function FirstUpload({
           <p className="text-sm">
             <span className="font-medium">{uploaded.name}</span> is in your library.
           </p>
-          {on.length > 0 &&
-            (runs === undefined || runs.length === 0 ? (
-              <p className="text-muted-foreground flex items-center gap-2 text-sm">
-                <Spinner className="size-4" />
-                Reading its details, then the automations start…
-              </p>
-            ) : (
-              <ul className="grid gap-1">
-                {runs.map((run) => (
-                  <li key={run.runId}>
-                    <Link
-                      href={`/automations/${run.automationId}/runs/${run.runId}`}
-                      className="hover:bg-muted -mx-2 flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm"
-                    >
-                      <span className="font-medium">{run.automationName}</span>
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        {RUN_WORDS[run.status] ?? run.status}
-                        <ArrowRight className="size-4" aria-hidden="true" />
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ))}
+          {on.length > 0 && <FileRuns uploadId={uploaded.id} />}
         </section>
       ) : going ? (
         <UploadingRow name={going.name} percent={going.percent} />
@@ -493,7 +461,7 @@ function FirstUpload({
 }
 
 /** What the turn-on screen made: each one on, or made but off with the reason. */
-/** One ready-made to tick on the "Switch these on" screen. */
+/** One ready-made to tick on the "Suggest these on your uploads" screen. */
 function SuggestedRow({
   starter,
   after,
@@ -563,7 +531,7 @@ function MadeList({ made }: { made: Made[] }) {
         <li key={each.starterId} className="flex items-center gap-2">
           <span className="bg-emerald-600 size-2 rounded-full" aria-hidden="true" />
           <span>
-            <span className="font-medium">{each.name}</span> is on
+            <span className="font-medium">{each.name}</span> is ready for your uploads
           </span>
         </li>
       ))}

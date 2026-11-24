@@ -8,6 +8,7 @@ import {
   snippetAround,
   titleFromFileName,
   transcriptPieces,
+  withinLength,
   wordsFromSegments,
 } from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
@@ -41,6 +42,7 @@ import { outputNamesOf } from "./lib/outputs";
 import { enqueueJob } from "./lib/queue";
 import { refreshBrollLike, usableAsBroll } from "./lib/broll";
 import { startRun } from "./lib/runner";
+import { teamEnabledWithTrigger, triggersOfKind } from "./lib/triggers";
 
 // Links the library plays and shows files from: long enough for a working session.
 const PREVIEW_LINK_SECONDS = 6 * 60 * 60;
@@ -157,6 +159,92 @@ export const list = query({
 });
 
 /** One library file: where it came from, what was made from it, and what was said in it. */
+/**
+ * The automations that ran on a file's upload, newest first: each run's automation, how it
+ * ended or that it is still going, how it started, and how many files it made. Test runs
+ * of one step are left out. Members only.
+ */
+export const runsOnFile = query({
+  args: { itemId: v.id("libraryItems") },
+  handler: async (ctx, args) => {
+    const item = await ctx.db.get(args.itemId);
+    if (!item) return null;
+    await requireMember(ctx, item.organizationId);
+    return await fileRunsOf(ctx, item);
+  },
+});
+
+/** The same as runsOnFile, found by the upload, for the first upload while setting up. */
+export const runsOnUpload = query({
+  args: { uploadId: v.id("uploads") },
+  handler: async (ctx, args) => {
+    const upload = await ctx.db.get(args.uploadId);
+    if (!upload) return null;
+    await requireMember(ctx, upload.organizationId);
+    const item = await ctx.db
+      .query("libraryItems")
+      .withIndex("by_upload", (q) => q.eq("uploadId", args.uploadId))
+      .first();
+    return item ? await fileRunsOf(ctx, item) : null;
+  },
+});
+
+async function fileRunsOf(ctx: QueryCtx, item: Doc<"libraryItems">) {
+  // Only a file brought in has runs on it; a file an automation made shows what made it.
+  const uploadId = item.uploadId;
+  if (!uploadId || item.runId) return null;
+  const runs = await ctx.db
+    .query("runs")
+    .withIndex("by_upload", (q) => q.eq("uploadId", uploadId))
+    .order("desc")
+    .take(50);
+  const shown = runs.filter((run) => !run.test && run.organizationId === item.organizationId);
+  const upload = await ctx.db.get(uploadId);
+  // Automations set to ask first that fit this file and have not run on it yet: each is
+  // one press away. One that already ran shows in the list instead.
+  const ran = new Set<string>(shown.map((run) => run.automationId));
+  const family = (upload?.contentType ?? "").split("/")[0];
+  const asking = upload
+    ? (await teamEnabledWithTrigger(ctx, item.organizationId, "upload")).filter(
+        (automation) =>
+          !ran.has(automation._id) &&
+          triggersOfKind(automation, "upload").some(
+            ({ trigger }) =>
+              trigger.ask === true &&
+              (trigger.fileType === "any" || trigger.fileType === family) &&
+              withinLength(trigger, upload.details),
+          ),
+      )
+    : [];
+  const done = await Promise.all(
+    shown.map(async (run) => {
+      const made = await ctx.db
+        .query("libraryItems")
+        .withIndex("by_run", (q) => q.eq("runId", run._id))
+        .take(100);
+      return {
+        _id: run._id,
+        automationId: run.automationId,
+        automationName: run.automationName,
+        status: run.status,
+        // By itself (the upload, a follow-on, another automation) or by someone's press.
+        byHand: run.startedBy !== null && run.triggerKind === "manual",
+        followed: run.parentRunId !== undefined,
+        startedAt: run._creationTime,
+        finishedAt: run.finishedAt,
+        made: made.length,
+      };
+    }),
+  );
+  return {
+    itemId: item._id,
+    runs: done,
+    suggested: asking
+      .map((automation) => ({ _id: automation._id, name: automation.name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
 export const get = query({
   args: { itemId: v.id("libraryItems") },
   handler: async (ctx, args) => {
