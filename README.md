@@ -322,7 +322,7 @@ npx convex run blocks:list
 
 ## Issues
 
-Work is tracked in Beads (`bd`), not GitHub issues. The issues live in a Dolt database on DoltHub, `chowderr/ncat-dash` (private), and `.beads/issues.jsonl` is a read-only export of it. Every piece of work starts as a bead, and its PR names the bead it closes (for example "Closes dash-0y4").
+Work is tracked in Beads (`bd`), not GitHub issues. The issues live in a Dolt database on DoltHub, `chowderr/takewon` (private), and `.beads/issues.jsonl` is a read-only export of it. Every piece of work starts as a bead, and its PR names the bead it closes (for example "Closes dash-0y4").
 
 To get the issues in a new clone, run:
 
