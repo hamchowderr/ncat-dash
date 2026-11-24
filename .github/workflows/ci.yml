@@ -13,14 +13,49 @@ permissions:
   contents: read
 
 jobs:
+  # Typecheck, lint and the production build. The tests run beside it, split across machines.
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     env:
       # Placeholders so the build can prerender. Real values live in each deployment.
       NEXT_PUBLIC_CONVEX_URL: https://example.convex.cloud
       NEXT_PUBLIC_CONVEX_SITE_URL: https://example.convex.site
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm build
+
+  # `pnpm test`, in four parts on four machines. Together they run every test `pnpm test` runs:
+  # the agent's own tests (the longest part) in two halves, the other packages, and the
+  # Convex functions, the screens and the scripts.
+  test:
+    name: test (${{ matrix.part }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: agent 1 of 2
+            run: pnpm --filter @takewon/agent test --shard=1/2
+            agent: true
+          - part: agent 2 of 2
+            run: pnpm --filter @takewon/agent test --shard=2/2
+            agent: true
+          - part: packages
+            run: pnpm -r --filter '!@takewon/agent' test
+            otio: true
+          - part: convex, screens and scripts
+            run: pnpm test:convex && pnpm test:screens && pnpm test:scripts
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -49,24 +84,34 @@ jobs:
             ffmpeg fonts-dejavu-core libxml2-utils
           sudo chown -R "$USER" ~/apt-archives
       - name: Keep the FFmpeg packages
-        if: steps.apt-restore.outputs.cache-hit != 'true'
+        if: steps.apt-restore.outputs.cache-hit != 'true' && matrix.part == 'packages'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/apt-archives
           key: apt-ffmpeg-${{ runner.os }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-v1
-      # The timeline export tests read every file back with OpenTimelineIO, an independent reader.
-      - run: pip install opentimelineio==0.18.1 OpenTimelineIO-Plugins otio-fcpx-xml-adapter
+      # The timeline export tests read every file back with OpenTimelineIO, an independent
+      # reader. Its downloads are kept between runs.
+      - name: Restore the OpenTimelineIO downloads
+        if: matrix.otio
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/pip
+          key: pip-otio-${{ runner.os }}-${{ env.ImageOS }}-0.18.1-v1
+      - if: matrix.otio
+        run: pip install opentimelineio==0.18.1 OpenTimelineIO-Plugins otio-fcpx-xml-adapter
       # The agent's tests build a Memory, which wants a small embedding model (~130MB).
       # It is fetched once here, in one process, and only a good copy is kept for later
       # runs: test files that fetch it at the same time can leave it broken. If the
       # fetch fails the tests still run, since none of them depends on the embeddings.
       - name: Restore the embedding model
+        if: matrix.agent
         id: fastembed-restore
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/mastra/fastembed-models
           key: fastembed-${{ runner.os }}-bge-small-en-v1.5-hf-v3
       - name: Fetch the embedding model
+        if: matrix.agent
         id: fastembed-warm
         continue-on-error: true
         working-directory: packages/agent
@@ -80,21 +125,27 @@ jobs:
             }
           "
       - name: Keep the embedding model
-        if: steps.fastembed-warm.outcome == 'success' && steps.fastembed-restore.outputs.cache-hit != 'true'
+        if: matrix.agent && steps.fastembed-warm.outcome == 'success' && steps.fastembed-restore.outputs.cache-hit != 'true' && matrix.part == 'agent 1 of 2'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/mastra/fastembed-models
           key: fastembed-${{ runner.os }}-bge-small-en-v1.5-hf-v3
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
-      - run: pnpm build
+      - run: ${{ matrix.run }}
 
-  # The review room in a real browser, against a real local backend. The suite (83 tests, about
-  # 13 minutes) plus install and the backend start-up ran past a 20-minute cap with every test passing.
+  # Every screen in a real browser, against a real local backend, split across machines so
+  # the 109 tests (about 19 minutes one after another) finish in a few minutes. Each machine
+  # starts its own backend, agent server and app; scripts/e2e-shard.mjs picks its test files
+  # by how long each took (e2e/timings.json), and every file runs on exactly one machine.
   browser:
+    name: browser (${{ matrix.shard }} of 5)
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    env:
+      E2E_MACHINES: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -105,7 +156,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       # The stand-in toolkit runs a real FFmpeg for the steps a test checks the picture of,
-      # such as the sheet of frames a look is copied from. The check job keeps the packages.
+      # such as the sheet of frames a look is copied from. The test job keeps the packages.
       - name: Restore the FFmpeg packages
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -120,11 +171,15 @@ jobs:
             -o Acquire::Retries=3 \
             ffmpeg || (sudo apt-get update && sudo apt-get install -y --no-install-recommends \
             -o Dir::Cache::Archives="$HOME/apt-archives" -o Acquire::Retries=3 ffmpeg)
-      - run: pnpm test:e2e
+      - name: This machine's tests
+        run: |
+          node scripts/e2e-shard.mjs ${{ matrix.shard }} "$E2E_MACHINES" > shard-files.txt
+          cat shard-files.txt
+          pnpm test:e2e $(cat shard-files.txt)
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/
