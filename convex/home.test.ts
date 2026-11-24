@@ -71,6 +71,38 @@ describe("the home summary", () => {
     expect(summary.automations).toEqual({ total: 2, on: 1 });
   });
 
+  test("keeps home short: the latest five runs and three failures", async () => {
+    const { t, teamId, olu } = await team();
+    const shorts = (await olu.as.query(api.home.summary, { organizationId: teamId })).recentRuns[0]
+      .automationId;
+    await t.run(async (ctx) => {
+      for (let n = 0; n < 6; n++) {
+        await ctx.db.insert("runs", {
+          organizationId: teamId,
+          automationId: shorts,
+          automationName: "Shorts",
+          status: "failed",
+          triggerKind: "upload",
+          trigger: {},
+          nodes: [],
+          edges: [],
+          error: `Failure ${n}`,
+          startedBy: null,
+          finishedAt: Date.now(),
+        });
+      }
+    });
+    const summary = await olu.as.query(api.home.summary, { organizationId: teamId });
+    expect(summary.recentRuns).toHaveLength(5);
+    expect(summary.failures.map((run) => run.error)).toEqual([
+      "Failure 5",
+      "Failure 4",
+      "Failure 3",
+    ]);
+    // The week still counts every failure, so nothing is hidden from the numbers.
+    expect(summary.week.failed).toBe(8);
+  });
+
   test("tracks how far the team is through setting up", async () => {
     const { t, teamId, olu } = await team();
     const before = await olu.as.query(api.home.summary, { organizationId: teamId });

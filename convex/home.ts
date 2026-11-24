@@ -7,6 +7,10 @@ import { startingFileName } from "./lib/outputs";
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 // Enough runs to count a busy week without reading the whole history.
 const RUNS_READ = 300;
+// Home fits the window without scrolling, so it shows only the latest few of each; the
+// Runs page has the rest.
+const RECENT = 5;
+const FAILURES = 3;
 
 /**
  * Everything the home page shows in one read: how the week went, the latest runs, the
@@ -60,10 +64,10 @@ export const summary = query({
         going: thisWeek.filter((run) => run.status === "running" || run.status === "waiting")
           .length,
       },
-      recentRuns: runs.slice(0, 8).map(view),
+      recentRuns: runs.slice(0, RECENT).map(view),
       failures: thisWeek
         .filter((run) => run.status === "failed")
-        .slice(0, 5)
+        .slice(0, FAILURES)
         .map(view),
       automations: {
         total: automations.length,
@@ -77,8 +81,6 @@ export const summary = query({
         firstRun: runs.some((run) => run.status === "done"),
         goals: settings?.contentGoals !== undefined,
       },
-      // What the team makes, so the ready-made automations it sees first fit it.
-      contentKinds: settings?.contentGoals?.kinds ?? [],
     };
   },
 });
