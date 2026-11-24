@@ -473,6 +473,14 @@ test("Files shows the run's files and sends them to review", async () => {
     jordan.getByRole("navigation", { name: "Clips in this review" }).getByRole("button"),
   ).toHaveCount(2);
   await expect(jordan.getByText(/An automation is paused/)).toBeHidden();
+
+  // The Library says which files are in review, and shows only those when asked.
+  await jordan.goto("/library");
+  const inReview = jordan.getByRole("button", { name: "In review", exact: true });
+  await expect(inReview).toBeVisible();
+  await inReview.click();
+  await expect(jordan.getByTestId("library-tile")).toHaveCount(2);
+  await jordan.screenshot({ path: "/mnt/project-files/upload-choices/Library In Review.png" });
 });
 
 test("someone on another team cannot open the room", async ({ browser }) => {
