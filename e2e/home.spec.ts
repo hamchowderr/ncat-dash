@@ -61,6 +61,14 @@ test("a new team's home shows getting set up, fits the window, and leaves templa
     const extra = await frame.evaluate((el) => el.scrollHeight - el.clientHeight);
     expect(extra, `Home scrolls at ${width}x${height}`).toBeLessThanOrEqual(1);
   }
+  // A page that does scroll shows no scroll bar either, and neither does anything else
+  // that scrolls. (Headless Chromium draws bars over the page, so the style is checked.)
+  const bars = await page.evaluate(() =>
+    [document.querySelector("[data-page-frame]")!, document.documentElement, document.body].map(
+      (el) => getComputedStyle(el).scrollbarWidth,
+    ),
+  );
+  expect(bars).toEqual(["none", "none", "none"]);
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const sideways = await page.evaluate(
