@@ -44,7 +44,7 @@ test("a photo is uploaded to storage and shows on the account and the team", asy
 test("a job title and a time zone are saved and the title shows on Members", async () => {
   await page.goto("/settings/account");
   await page.getByLabel("Job title").fill("Producer");
-  await page.getByRole("button", { name: "Save changes" }).last().click();
+  await page.getByRole("button", { name: "Save work details" }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
   await page.goto("/settings/team");
   await expect(page.getByRole("list", { name: "People on the team" })).toContainText(

@@ -89,7 +89,7 @@ function ProfileForm({
           </CardContent>
           <CardFooter>
             <Button type="submit" size="sm" disabled={!changed || pending}>
-              Save changes
+              Save work details
             </Button>
           </CardFooter>
         </Card>

@@ -17,7 +17,7 @@ describe("role and time zone on the profile", () => {
     const role = screen.getByLabelText("Job title");
     expect(role).toHaveValue("Editor");
     expect(screen.getByText(/Berlin/)).toBeInTheDocument();
-    const save = screen.getByRole("button", { name: "Save changes" });
+    const save = screen.getByRole("button", { name: "Save work details" });
     expect(save).toBeDisabled();
     fireEvent.change(role, { target: { value: "Producer" } });
     expect(save).toBeEnabled();
