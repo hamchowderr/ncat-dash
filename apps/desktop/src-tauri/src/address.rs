@@ -89,9 +89,8 @@ fn is_private(ip: &IpAddr) -> bool {
     }
 }
 
-/// What the dashboard may say it is on [`CHECK_PATH`]. Dashboards from before the rename to
-/// Takewon say "ncat-dash", and so do current ones until every installed app accepts
-/// "takewon"; this list takes both.
+/// What the dashboard may say it is on [`CHECK_PATH`]: "takewon", or "ncat-dash" from a
+/// dashboard set up before the rename that hasn't updated.
 const ANSWERS: [&str; 2] = ["takewon", "ncat-dash"];
 
 /// What the dashboard answers on [`CHECK_PATH`].
@@ -227,7 +226,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accepts_our_reply() {
+    async fn accepts_the_old_name() {
         let url = serve_once(
             "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 19\r\nconnection: close\r\n\r\n{\"app\":\"ncat-dash\"}",
         )
@@ -236,7 +235,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn accepts_the_new_name() {
+    async fn accepts_our_reply() {
         let url = serve_once(
             "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 17\r\nconnection: close\r\n\r\n{\"app\":\"takewon\"}",
         )
