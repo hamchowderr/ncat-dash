@@ -7,7 +7,7 @@ import {
   approvalSettings,
   TIME_LIMIT_UNITS,
   type TimeLimitUnit,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { api } from "@convex/_generated/api";
 import { useQuery } from "convex/react";
 import { useState } from "react";

@@ -5,7 +5,7 @@ import {
   MAX_SUBTITLE_LANGUAGES,
   languageOf,
   subtitleLanguagesOf,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { Check, Plus, X } from "lucide-react";
 import { useState } from "react";
 

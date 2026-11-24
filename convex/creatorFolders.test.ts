@@ -1,4 +1,4 @@
-import { STARTERS } from "@ncat-dash/automation-core";
+import { STARTERS } from "@takewon/automation-core";
 import { afterEach, describe, expect, test } from "vitest";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";

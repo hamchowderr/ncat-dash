@@ -1,6 +1,6 @@
 "use client";
 
-import { readShareLink } from "@ncat-dash/automation-core";
+import { readShareLink } from "@takewon/automation-core";
 import { CircleAlert, Link2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";

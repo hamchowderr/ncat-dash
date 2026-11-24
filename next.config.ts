@@ -7,10 +7,10 @@ const nextConfig: NextConfig = {
   ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
   cacheComponents: true,
   transpilePackages: [
-    "@ncat-dash/step-catalog",
-    "@ncat-dash/automation-core",
-    "@ncat-dash/timeline-export",
-    "@ncat-dash/review-core",
+    "@takewon/step-catalog",
+    "@takewon/automation-core",
+    "@takewon/timeline-export",
+    "@takewon/review-core",
   ],
   partialPrefetching: true,
   async headers() {

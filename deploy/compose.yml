@@ -96,7 +96,7 @@ services:
         condition: service_healthy
 
   agent:
-    image: ${AGENT_IMAGE:-ghcr.io/hamchowderr/ncat-dash-agent:latest}
+    image: ${AGENT_IMAGE:-ghcr.io/hamchowderr/takewon-agent:latest}
     restart: unless-stopped
     ports:
       - "127.0.0.1:4111:4111"
@@ -123,7 +123,7 @@ services:
       - agent-data:/data
 
   web:
-    image: ${WEB_IMAGE:-ghcr.io/hamchowderr/ncat-dash-web:latest}
+    image: ${WEB_IMAGE:-ghcr.io/hamchowderr/takewon-web:latest}
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
@@ -140,7 +140,7 @@ services:
   # `run --rm setup` after the first start and after every update. Keep SETUP_IMAGE on
   # the same commit as WEB_IMAGE, so the dashboard and the backend match.
   setup:
-    image: ${SETUP_IMAGE:-ghcr.io/hamchowderr/ncat-dash-setup:latest}
+    image: ${SETUP_IMAGE:-ghcr.io/hamchowderr/takewon-setup:latest}
     profiles: [setup]
     environment:
       CONVEX_SELF_HOSTED_URL: http://convex:3210

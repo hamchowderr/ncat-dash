@@ -2,7 +2,7 @@
 // the run's details, to an address, then hands the same files on. The post is made by
 // convex/send.ts through the outbound pool (lib/pools.ts), which tries again when the
 // address does not answer.
-import { type AutomationNode, sendProblem } from "@ncat-dash/automation-core";
+import { type AutomationNode, sendProblem } from "@takewon/automation-core";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";

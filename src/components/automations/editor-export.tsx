@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { fileNameOf } from "@ncat-dash/timeline-export";
+import { fileNameOf } from "@takewon/timeline-export";
 import { useQuery } from "convex/react";
 import { Clapperboard, Download, FolderOpen, HardDriveDownload } from "lucide-react";
 import Link from "next/link";

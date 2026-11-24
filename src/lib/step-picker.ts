@@ -1,4 +1,4 @@
-import { actionTypesByGroup } from "@ncat-dash/automation-core";
+import { actionTypesByGroup } from "@takewon/automation-core";
 
 /**
  * The groups the canvas's step list offers. Steps the agent saved for the team stay out

@@ -1,4 +1,4 @@
-import { type CaptionSetup, NO_CAPTION_SETUP } from "@ncat-dash/automation-core";
+import { type CaptionSetup, NO_CAPTION_SETUP } from "@takewon/automation-core";
 import type { QueryCtx } from "../_generated/server";
 
 /**

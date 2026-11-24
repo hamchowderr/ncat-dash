@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { type Starter, STARTERS, suggestedStarters } from "@ncat-dash/automation-core";
+import { type Starter, STARTERS, suggestedStarters } from "@takewon/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ArrowRight, CircleAlert, Circle, Hourglass, RefreshCw, TriangleAlert } from "lucide-react";

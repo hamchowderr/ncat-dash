@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { type AgentSettings, PLATFORMS } from "@ncat-dash/automation-core";
+import { type AgentSettings, PLATFORMS } from "@takewon/automation-core";
 import { useMutation } from "convex/react";
 import { Check } from "lucide-react";
 import { type FormEvent, useState } from "react";

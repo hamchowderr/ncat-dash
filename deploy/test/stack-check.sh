@@ -2,7 +2,7 @@
 # Starts Convex and the web app from deploy/compose.yml the way an owner would, pushes
 # the backend to it with the setup image, and checks that signing up works and that an
 # invite-only copy keeps strangers out. Run from the repository root:
-#   WEB_IMAGE=ncat-dash-web:check SETUP_IMAGE=ncat-dash-setup:check deploy/test/stack-check.sh
+#   WEB_IMAGE=takewon-web:check SETUP_IMAGE=takewon-setup:check deploy/test/stack-check.sh
 # CI runs it on Intel/AMD and on ARM (.github/workflows/web-image.yml).
 set -euo pipefail
 
@@ -23,8 +23,8 @@ S3_SECRET_KEY=unused
 S3_BUCKET_NAME=unused
 AGENT_APP_SECRET=$(secret)
 MASTRA_JWT_SECRET=$(secret)
-WEB_IMAGE=${WEB_IMAGE:-ghcr.io/hamchowderr/ncat-dash-web:latest}
-SETUP_IMAGE=${SETUP_IMAGE:-ghcr.io/hamchowderr/ncat-dash-setup:latest}
+WEB_IMAGE=${WEB_IMAGE:-ghcr.io/hamchowderr/takewon-web:latest}
+SETUP_IMAGE=${SETUP_IMAGE:-ghcr.io/hamchowderr/takewon-setup:latest}
 ENV
 
 compose() {

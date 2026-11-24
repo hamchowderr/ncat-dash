@@ -1,5 +1,5 @@
 {
-  "format": "ncat-dash-automation",
+  "format": "takewon-automation",
   "version": 1,
   "name": "Episode thumbnails",
   "trigger": { "kind": "webhook" },

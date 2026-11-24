@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import type { LookProposal } from "@ncat-dash/automation-core";
+import type { LookProposal } from "@takewon/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import { SwatchBook } from "lucide-react";
 import { useState } from "react";

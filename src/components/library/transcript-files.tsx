@@ -8,7 +8,7 @@ import {
   transcriptFileName,
   translationFileName,
   type TimedPiece,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { Copy, Download } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";

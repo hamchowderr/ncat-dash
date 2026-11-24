@@ -14,7 +14,7 @@ import {
   soundStepSettings,
   STYLE_SOUNDS,
   TEAM_STYLE,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import Link from "next/link";
 import { useState } from "react";
 

@@ -11,7 +11,7 @@
  * run", "the file from Add a logo"). That choice is kept in the settings as a reference
  * the runner fills in; nobody types one.
  */
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep } from "@takewon/step-catalog";
 
 import { fileFamily } from "./files";
 import type { AutomationEdge, AutomationNode } from "./graph";

@@ -1,6 +1,6 @@
 "use client";
 
-import type { Brand } from "@ncat-dash/automation-core";
+import type { Brand } from "@takewon/automation-core";
 
 import { StartPageTour } from "@/components/tours/page-tour";
 

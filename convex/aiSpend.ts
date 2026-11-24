@@ -1,4 +1,4 @@
-import { checkSpend } from "@ncat-dash/automation-core";
+import { checkSpend } from "@takewon/automation-core";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";

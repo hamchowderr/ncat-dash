@@ -1,4 +1,4 @@
-import { type AutomationNode, nodeTypeOf, triggersOf } from "@ncat-dash/automation-core";
+import { type AutomationNode, nodeTypeOf, triggersOf } from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, type MutationCtx, query } from "./_generated/server";
@@ -15,7 +15,7 @@ import {
   editorFiles as filesForEditors,
   fileNameOf,
   sourcesOf,
-} from "@ncat-dash/timeline-export";
+} from "@takewon/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
 import { outputNamesOf, startingFileName } from "./lib/outputs";
 import { aiLimitOf } from "./aiSpend";

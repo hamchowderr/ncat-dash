@@ -21,9 +21,9 @@ import {
   soundStepSettings,
   TEAM_STYLE,
   tidyMotionSetup,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 // The editing steps' reading of a file name: dashes and underscores become spaces.
-import { titleFromFileName } from "@ncat-dash/step-catalog";
+import { titleFromFileName } from "@takewon/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";

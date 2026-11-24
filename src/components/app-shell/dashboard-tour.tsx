@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { PRODUCT_NAME } from "@ncat-dash/automation-core";
+import { PRODUCT_NAME } from "@takewon/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";

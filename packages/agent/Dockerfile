@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # The agent server, built from the repository root:
-#   docker build -f packages/agent/Dockerfile -t ncat-dash-agent .
+#   docker build -f packages/agent/Dockerfile -t takewon-agent .
 # It listens on 4111 and keeps its memory in /data, so mount a volume there.
 #
 # GitHub Actions builds this on every push to main and publishes it to GHCR
@@ -18,10 +18,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN printf '\nsupportedArchitectures:\n  os: [current]\n  cpu: [current]\n  libc: [glibc]\n' >> pnpm-workspace.yaml
 COPY packages/agent/package.json packages/agent/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile --filter @ncat-dash/agent
+    pnpm install --frozen-lockfile --filter @takewon/agent
 COPY packages/agent packages/agent
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm --filter @ncat-dash/agent build \
+    pnpm --filter @takewon/agent build \
  && node packages/agent/scripts/slim-output.mjs packages/agent/.mastra/output
 
 FROM node:22-bookworm-slim

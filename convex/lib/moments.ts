@@ -24,8 +24,8 @@ import {
   sourceKey,
   tooShortFor,
   type Word,
-} from "@ncat-dash/automation-core";
-import { readPauses } from "@ncat-dash/step-catalog";
+} from "@takewon/automation-core";
+import { readPauses } from "@takewon/step-catalog";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";

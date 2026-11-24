@@ -8,7 +8,7 @@ import {
   tidySetting,
   tidyTime,
   type SettingSchema,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { ArrowUp, Plus, X } from "lucide-react";
 import { createContext, type ReactNode, useContext, useState } from "react";
 

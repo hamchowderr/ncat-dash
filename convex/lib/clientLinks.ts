@@ -1,4 +1,4 @@
-import { keyOfUrl, readUploadRef, teamFolder } from "@ncat-dash/automation-core";
+import { keyOfUrl, readUploadRef, teamFolder } from "@takewon/automation-core";
 import { internal } from "../_generated/api";
 import type { ActionCtx, QueryCtx } from "../_generated/server";
 import { bucketOf, presign } from "./bucket";

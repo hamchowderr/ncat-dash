@@ -1,5 +1,5 @@
-import { fileNameOfLink, plainName, runOutputNames, runStem } from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+import { fileNameOfLink, plainName, runOutputNames, runStem } from "@takewon/automation-core";
+import { getStep } from "@takewon/step-catalog";
 
 /** Collects every http(s) URL inside a toolkit result, whatever its shape. */
 export function collectUrls(value: unknown, found: string[] = [], depth = 0): string[] {

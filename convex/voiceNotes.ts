@@ -1,4 +1,4 @@
-import { callStep, getStep, ToolkitError } from "@ncat-dash/step-catalog";
+import { callStep, getStep, ToolkitError } from "@takewon/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { type ActionCtx, internalAction } from "./_generated/server";

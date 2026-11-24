@@ -3,7 +3,7 @@ import {
   fileNameOfLink,
   subtitleFileName,
   subtitleLanguagesOf,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";

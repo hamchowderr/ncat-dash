@@ -74,7 +74,7 @@ describe("the app's details", () => {
   test("updates itself only from this repository's latest release, signed with its own key", () => {
     const { pubkey, endpoints } = config.plugins.updater;
     expect(endpoints).toEqual([
-      "https://github.com/hamchowderr/ncat-dash/releases/latest/download/latest.json",
+      "https://github.com/hamchowderr/takewon/releases/latest/download/latest.json",
     ]);
     // A minisign public key, as `tauri signer generate` writes it (base64 of two lines).
     expect(Buffer.from(pubkey, "base64").toString()).toMatch(

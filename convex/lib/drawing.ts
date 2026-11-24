@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-/** A drawing on the paused frame, as @ncat-dash/review-core describes it. */
+/** A drawing on the paused frame, as @takewon/review-core describes it. */
 export const drawingValidator = v.array(
   v.object({
     tool: v.union(v.literal("pen"), v.literal("arrow"), v.literal("box")),

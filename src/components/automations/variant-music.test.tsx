@@ -2,7 +2,7 @@ import { type NodeProps, ReactFlowProvider } from "@xyflow/react";
 import { screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
-import type { Brand } from "@ncat-dash/automation-core";
+import type { Brand } from "@takewon/automation-core";
 import { renderInApp } from "@/test/render";
 
 import { BrandContext, nodeTypes, type StepFlowNode } from "./flow-nodes";

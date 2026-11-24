@@ -78,7 +78,7 @@ jobs:
           file: packages/agent/Dockerfile
           platforms: linux/${{ matrix.arch }}
           load: true
-          tags: ncat-dash-agent:check
+          tags: takewon-agent:check
           cache-from: type=gha,scope=${{ matrix.cache }}
           cache-to: type=gha,scope=${{ matrix.cache }},mode=max
       - name: Start it and wait for /health
@@ -86,7 +86,7 @@ jobs:
           docker run -d --name agent -p 4111:4111 \
             -e APP_SECRET=ci-app-secret-at-least-32-characters-long \
             -e ANTHROPIC_API_KEY=unused \
-            ncat-dash-agent:check
+            takewon-agent:check
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:4111/health; then
               echo
@@ -99,7 +99,7 @@ jobs:
           docker logs agent
           exit 1
       - name: Image size
-        run: docker image inspect ncat-dash-agent:check --format '{{.Size}}' | awk '{ printf "%.0f MB\n", $1 / 1000000 }'
+        run: docker image inspect takewon-agent:check --format '{{.Size}}' | awk '{ printf "%.0f MB\n", $1 / 1000000 }'
       - if: env.PUBLISH == 'true'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:

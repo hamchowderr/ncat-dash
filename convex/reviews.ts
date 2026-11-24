@@ -1,4 +1,4 @@
-import { AGENT, asksAgent, cleanDrawing, COMMENT_LIMIT, mentionedIn } from "@ncat-dash/review-core";
+import { AGENT, asksAgent, cleanDrawing, COMMENT_LIMIT, mentionedIn } from "@takewon/review-core";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";

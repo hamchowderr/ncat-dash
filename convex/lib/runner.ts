@@ -66,11 +66,11 @@ import {
   pairs,
   partnersOf,
   readSource,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { startSend } from "./send";
 import { type Item, recordItems } from "./items";
 import { mustWaitForSlot } from "./runLimit";
-import { getStep, pictureGivenForVideo } from "@ncat-dash/step-catalog";
+import { getStep, pictureGivenForVideo } from "@takewon/step-catalog";
 import { withTeamSteps } from "./teamSteps";
 import { ConvexError } from "convex/values";
 import { components, internal } from "../_generated/api";

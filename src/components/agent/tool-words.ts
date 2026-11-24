@@ -1,4 +1,4 @@
-import { getNodeType } from "@ncat-dash/automation-core";
+import { getNodeType } from "@takewon/automation-core";
 
 /**
  * What the agent's dashboard tools are doing, in plain words. The chat shows these in

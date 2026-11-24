@@ -3,7 +3,7 @@
 // broke without reporting, the step would say "Running" forever and the run never end.
 // This check ends such a step as failed, so the team hears about it and can pick the run
 // up where it stopped.
-import type { AutomationNode } from "@ncat-dash/automation-core";
+import type { AutomationNode } from "@takewon/automation-core";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";

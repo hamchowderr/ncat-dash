@@ -1,4 +1,4 @@
-import { sourceKey } from "@ncat-dash/automation-core";
+import { sourceKey } from "@takewon/automation-core";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 /**

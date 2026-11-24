@@ -69,14 +69,14 @@ export type ChatPanelProps = {
    */
   approvalViews?: ApprovalViews;
   /**
-   * ncat-dash: draws a tool call the host's own way (a line of plain words in place of the
+   * Takewon: draws a tool call the host's own way (a line of plain words in place of the
    * raw input and output). Returning undefined leaves the call to the default view.
    */
   renderTool?: (
     call: { id: string; name: string; args: unknown },
     result: { result?: unknown; isError?: boolean } | undefined,
   ) => ReactNode | undefined;
-  /** ncat-dash: the words shown when a turn fails, in place of the raw error. */
+  /** Takewon: the words shown when a turn fails, in place of the raw error. */
   errorWords?: (error: string) => string;
 };
 

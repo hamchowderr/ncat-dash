@@ -1,5 +1,5 @@
 {
-  "name": "@ncat-dash/automation-core",
+  "name": "@takewon/automation-core",
   "version": "0.1.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@ncat-dash/step-catalog": "workspace:*",
+    "@takewon/step-catalog": "workspace:*",
     "typescript": "^5",
     "vitest": "^4.1.12"
   }

@@ -7,7 +7,7 @@ import {
   MAX_BROLL_SECONDS,
   MAX_SKIP_OPENING,
   MIN_BROLL_SECONDS,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import Link from "next/link";
 
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";

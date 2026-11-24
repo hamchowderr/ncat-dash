@@ -1,6 +1,6 @@
 // A step's log on the run page: every job it sent, earlier tries too, with what was sent,
 // how long it waited and worked, and how each try ended.
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep } from "@takewon/step-catalog";
 import type { Doc } from "../_generated/dataModel";
 
 /** Settings whose value is kept out of the log: keys, secrets, passwords, tokens. */

@@ -10,7 +10,7 @@ import {
   type Starter,
   STARTERS,
   suggestedStarters,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   ArrowRight,

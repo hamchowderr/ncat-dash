@@ -34,7 +34,7 @@ import {
   valueSources,
   clipsKeepShape,
   followShapeLine,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import {
   Background,
   type Connection,

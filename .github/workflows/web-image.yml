@@ -5,7 +5,7 @@ name: Web image
 # for ARM such as Apple-chip Macs (arm64), each on its own kind of runner. On each,
 # deploy/test/stack-check.sh starts Convex and the web image from deploy/compose.yml,
 # pushes the backend with the setup image and signs up through it. Main also publishes
-# both under one tag each: ghcr.io/hamchowderr/ncat-dash-web and ncat-dash-setup,
+# both under one tag each: ghcr.io/hamchowderr/takewon-web and takewon-setup,
 # :sha-<commit> and :latest.
 on:
   pull_request:
@@ -61,7 +61,7 @@ jobs:
           context: .
           platforms: linux/${{ matrix.arch }}
           load: true
-          tags: ncat-dash-web:check
+          tags: takewon-web:check
           cache-from: type=gha,scope=web-${{ matrix.arch }}
           cache-to: type=gha,scope=web-${{ matrix.arch }},mode=max
       - name: Build the setup image
@@ -71,18 +71,18 @@ jobs:
           target: setup
           platforms: linux/${{ matrix.arch }}
           load: true
-          tags: ncat-dash-setup:check
+          tags: takewon-setup:check
           cache-from: type=gha,scope=web-${{ matrix.arch }}
       - name: Image sizes
         run: |
-          for image in ncat-dash-web:check ncat-dash-setup:check; do
+          for image in takewon-web:check takewon-setup:check; do
             docker image inspect "$image" --format '{{.Size}}' | awk -v i="$image" '{ printf "%s %.0f MB\n", i, $1 / 1000000 }'
           done
       # Only Docker on the machine, as for an owner: the setup image pushes the backend.
       - name: Start the stack and sign up through it
         env:
-          WEB_IMAGE: ncat-dash-web:check
-          SETUP_IMAGE: ncat-dash-setup:check
+          WEB_IMAGE: takewon-web:check
+          SETUP_IMAGE: takewon-setup:check
         run: deploy/test/stack-check.sh
       - if: env.PUBLISH == 'true'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3

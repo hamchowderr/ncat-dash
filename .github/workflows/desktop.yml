@@ -120,14 +120,14 @@ jobs:
           RUST_BACKTRACE: "1"
           WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: --remote-debugging-port=9222
         run: |
-          app=src-tauri/target/debug/ncat-dash-desktop.exe
+          app=src-tauri/target/debug/takewon-desktop.exe
           "$app" > app.log 2>&1 &
           sleep 20
-          tasklist | grep -iE "ncat-dash|msedgewebview2" || true
+          tasklist | grep -iE "takewon|msedgewebview2" || true
           answered=0
           curl -s --max-time 5 http://127.0.0.1:9222/json/list && answered=1
           cat app.log
-          taskkill //F //T //IM ncat-dash-desktop.exe > /dev/null 2>&1 || true
+          taskkill //F //T //IM takewon-desktop.exe > /dev/null 2>&1 || true
           taskkill //F //IM msedgewebview2.exe > /dev/null 2>&1 || true
           sleep 3
           if [ "$answered" = 0 ]; then

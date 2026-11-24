@@ -3,7 +3,7 @@
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { DeliverableKind, DeliverableStatus } from "@convex/lib/packages";
-import { CALENDAR_PLATFORMS, WEEKDAYS } from "@ncat-dash/automation-core";
+import { CALENDAR_PLATFORMS, WEEKDAYS } from "@takewon/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Check, Clapperboard, ListOrdered, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";

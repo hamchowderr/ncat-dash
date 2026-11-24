@@ -5,7 +5,7 @@ import {
   creatorFromKey,
   planCleanup,
   readFileDetails,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { heardFrom, wordsFor } from "./moments";

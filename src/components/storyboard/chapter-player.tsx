@@ -1,7 +1,7 @@
 "use client";
 
 import { fileKindOf } from "@convex/lib/packages";
-import { timeRangeOf } from "@ncat-dash/automation-core";
+import { timeRangeOf } from "@takewon/automation-core";
 import { type Part, secondsFor } from "@convex/lib/storyboard";
 import { Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";

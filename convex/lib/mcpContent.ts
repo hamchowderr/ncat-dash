@@ -101,7 +101,7 @@ export const SKILLS: McpSkill[] = [
   },
 ];
 
-export const RUN_APP_URI = "ui://ncat-dash/run.html";
+export const RUN_APP_URI = "ui://takewon/run.html";
 
 /**
  * A run's progress, shown in the chat by hosts with MCP Apps. It reads the tool result it

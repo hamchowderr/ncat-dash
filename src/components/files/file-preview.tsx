@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { fileDetailRows } from "@ncat-dash/automation-core";
+import { fileDetailRows } from "@takewon/automation-core";
 import { useAction } from "convex/react";
 import { Download, Link2 } from "lucide-react";
 import { useEffect, useState } from "react";

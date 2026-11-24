@@ -11,7 +11,7 @@ import {
   WAIT_UNITS,
   type WaitUnit,
   waitProblem,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { useState } from "react";
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";

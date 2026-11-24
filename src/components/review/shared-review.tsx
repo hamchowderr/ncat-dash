@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { threadComments } from "@ncat-dash/review-core";
+import { threadComments } from "@takewon/review-core";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Check, Undo2 } from "lucide-react";
 import Link from "next/link";
@@ -25,13 +25,14 @@ import { CommentPanel } from "./comment-panel";
 import { useFrameDrawing } from "./frame-drawing";
 import { ClipList, type Here, HereNow } from "./review-room";
 import { type Typist, useTypingSignal } from "./typing";
+import { readStored, writeStored } from "@/lib/stored";
 
 type Room = NonNullable<ReturnType<typeof useQuery<typeof api.sharedReview.room>>>;
 type Clip = Room["clips"][number];
 
 // Who the client is, kept in their browser: a random id, so they can delete what they
 // wrote, and the name they gave. Nothing here signs them in to anything.
-const KEY = "ncat-dash:share-guest";
+const KEY = "share-guest";
 type Guest = { id: string; name: string };
 
 const listeners = new Set<() => void>();
@@ -40,7 +41,7 @@ let cached: { raw: string | null; guest: Guest | null } = { raw: null, guest: nu
 function readGuest(): Guest | null {
   let raw: string | null = null;
   try {
-    raw = window.localStorage.getItem(KEY);
+    raw = readStored(KEY);
   } catch {
     raw = null;
   }
@@ -64,7 +65,7 @@ let fallback: Guest | null = null;
 function saveGuest(name: string) {
   const guest = { id: readGuest()?.id ?? fallback?.id ?? crypto.randomUUID(), name };
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(guest));
+    writeStored(KEY, JSON.stringify(guest));
   } catch {
     fallback = guest;
   }

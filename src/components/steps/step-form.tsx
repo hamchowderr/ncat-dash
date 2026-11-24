@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { getStep, SAVED_LOOK_STEP } from "@ncat-dash/step-catalog";
+import { getStep, SAVED_LOOK_STEP } from "@takewon/step-catalog";
 import { useMutation } from "convex/react";
 import { Play } from "lucide-react";
 import { useState, type FormEvent } from "react";

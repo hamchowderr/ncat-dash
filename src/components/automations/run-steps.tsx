@@ -15,7 +15,7 @@ import {
   isWorkflowReview,
   nodeTypeOf,
   waitsForRun,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {

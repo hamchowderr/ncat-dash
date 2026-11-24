@@ -1,4 +1,4 @@
-import { cleanDrawing, COMMENT_LIMIT } from "@ncat-dash/review-core";
+import { cleanDrawing, COMMENT_LIMIT } from "@takewon/review-core";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";

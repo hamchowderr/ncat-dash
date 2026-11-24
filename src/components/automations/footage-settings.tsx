@@ -5,7 +5,7 @@ import {
   type FootageAction,
   type FootageShape,
   footageSettings,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {

@@ -1,4 +1,4 @@
-import { TITLE_LIMIT } from "@ncat-dash/review-core";
+import { TITLE_LIMIT } from "@takewon/review-core";
 import { ConvexError } from "convex/values";
 import { components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";

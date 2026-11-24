@@ -1,4 +1,4 @@
-import { explainFailure } from "@ncat-dash/automation-core";
+import { explainFailure } from "@takewon/automation-core";
 import {
   AtSign,
   Bell,

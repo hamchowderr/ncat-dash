@@ -9,7 +9,7 @@ import {
   titleFromFileName,
   transcriptPieces,
   wordsFromSegments,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { backgroundPool } from "./lib/pools";

@@ -1,6 +1,6 @@
 "use client";
 
-import { formatMoment, momentPercent } from "@ncat-dash/review-core";
+import { formatMoment, momentPercent } from "@takewon/review-core";
 import { Pause, Play } from "lucide-react";
 import {
   type CSSProperties,

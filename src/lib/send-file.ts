@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { partRange, type PartsPlan } from "@ncat-dash/automation-core";
+import { partRange, type PartsPlan } from "@takewon/automation-core";
 import { useAction } from "convex/react";
 import { useCallback, useMemo } from "react";
 

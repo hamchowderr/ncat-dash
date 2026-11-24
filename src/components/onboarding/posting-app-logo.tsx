@@ -1,4 +1,4 @@
-import type { PostingAppId } from "@ncat-dash/automation-core";
+import type { PostingAppId } from "@takewon/automation-core";
 import Image from "next/image";
 import type { SimpleIcon } from "simple-icons";
 import {

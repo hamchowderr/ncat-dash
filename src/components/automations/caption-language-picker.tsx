@@ -1,6 +1,6 @@
 "use client";
 
-import { CAPTION_LANGUAGE_SETTING, LANGUAGES, languageOf } from "@ncat-dash/automation-core";
+import { CAPTION_LANGUAGE_SETTING, LANGUAGES, languageOf } from "@takewon/automation-core";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
 

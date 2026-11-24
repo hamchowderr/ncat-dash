@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { formatMoment, LANGUAGES } from "@ncat-dash/automation-core";
+import { formatMoment, LANGUAGES } from "@takewon/automation-core";
 import { useMutation } from "convex/react";
 import { Check, Languages, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";

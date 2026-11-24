@@ -4,7 +4,7 @@
 // variants, once nothing new has landed in their folders for a few minutes. No AI: the
 // folder names say what each file is.
 
-import { BODY_ONLY } from "@ncat-dash/step-catalog";
+import { BODY_ONLY } from "@takewon/step-catalog";
 
 import type { AutomationNode } from "./graph";
 

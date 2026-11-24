@@ -6,7 +6,7 @@ import {
   STARTER_CATEGORIES,
   type StarterCategory,
   STARTERS,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { Plus, Search } from "lucide-react";
 import { useId, useState } from "react";
 

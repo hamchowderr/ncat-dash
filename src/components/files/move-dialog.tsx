@@ -1,6 +1,6 @@
 "use client";
 
-import { baseName, isFolderKey, parentOf } from "@ncat-dash/automation-core";
+import { baseName, isFolderKey, parentOf } from "@takewon/automation-core";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";

@@ -1,6 +1,4 @@
-import {
-  type AutomationNode,
-} from "@ncat-dash/automation-core";
+import { type AutomationNode } from "@takewon/automation-core";
 import {
   isTeamStepId,
   TEAM_STEP_PREFIX,
@@ -8,7 +6,7 @@ import {
   teamStepProblem,
   type TeamStepTemplate,
   userInputSchema,
-} from "@ncat-dash/step-catalog";
+} from "@takewon/step-catalog";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type QueryCtx } from "./_generated/server";
@@ -197,4 +195,3 @@ export const tryOut = mutation({
     return { jobId: queued.jobId };
   },
 });
-

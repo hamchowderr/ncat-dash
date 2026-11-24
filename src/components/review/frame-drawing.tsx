@@ -9,7 +9,7 @@ import {
   type Shape,
   SHAPE_LIMIT,
   type Thread,
-} from "@ncat-dash/review-core";
+} from "@takewon/review-core";
 import { ArrowUpRight, Check, Eraser, PenLine, Square, Undo2 } from "lucide-react";
 import { type PointerEvent, type RefObject, useEffect, useRef, useState } from "react";
 

@@ -2,7 +2,7 @@
 
 Your content, social media ready.
 
-Takewon is a finished shell around the [NCA Toolkit](https://github.com/hamchowderr/no-code-architects-toolkit), the free and open-source media engine. The toolkit does the work (FFmpeg, transcription, captions, clips) but has no interface of its own. Takewon is where a team builds, tests and runs media automations, reviews what they make with clients, and has an agent set the automations up. The automations run on their own, on a server, with nobody signed in; n8n is optional. This repository is `ncat-dash`. Under active development.
+Takewon is a finished shell around the [NCA Toolkit](https://github.com/hamchowderr/no-code-architects-toolkit), the free and open-source media engine. The toolkit does the work (FFmpeg, transcription, captions, clips) but has no interface of its own. Takewon is where a team builds, tests and runs media automations, reviews what they make with clients, and has an agent set the automations up. The automations run on their own, on a server, with nobody signed in; n8n is optional. Under active development.
 
 Takewon works with [the toolkit fork](https://github.com/hamchowderr/no-code-architects-toolkit) only. The original toolkit lacks the storage, health and look endpoints it calls.
 
@@ -243,22 +243,22 @@ pnpm setup:agent
 It makes the shared secret and puts every value where it is read: `.env.local` for the chat, `packages/agent/.env` for the agent server, and `AGENT_URL` and `MASTRA_JWT_SECRET` in Convex for @Agent in review rooms. Running it again keeps the same secret. When the agent server runs somewhere else, pass its address: `pnpm setup:agent --agent-url https://agent.example.com` (a Convex in the cloud cannot reach an agent on your own computer). The model key is not copied anywhere: it stays in Infisical, and `infisical run` hands it to the agent server as it starts. The model is Sonnet 5.5 (`CHAT_MODEL=anthropic/claude-sonnet-5-5`, set by `pnpm setup:agent`). Then:
 
 ```bash
-infisical run --path=/shared -- pnpm --filter @ncat-dash/agent dev   # the agent server, with the model key from Infisical
-pnpm --filter @ncat-dash/agent dev:mock   # only with USE_AIMOCK=true
+infisical run --path=/shared -- pnpm --filter @takewon/agent dev   # the agent server, with the model key from Infisical
+pnpm --filter @takewon/agent dev:mock   # only with USE_AIMOCK=true
 ```
 
 The stand-in model is [AIMock](https://aimock.copilotkit.dev), a small server that pretends to be a model provider. It costs nothing and needs no key. The agent package carries the kit's whole AIMock setup:
 
-- `pnpm --filter @ncat-dash/agent dev:mock` answers from a script (`packages/agent/fixtures/chat.json`). Our set requests come first in that file: "List my automations and say which are switched on.", "Build an automation that makes short clips with captions from each new recording I upload." and then "Add captions to the clips before they go for approval." The kit's own demo requests follow.
-- `pnpm --filter @ncat-dash/agent test` runs the kit's tests and ours against it. `tests/integration/ncat-tools.test.ts` drives our tools end to end through the real approval gates, with only Convex stood in for, and reads AIMock's journal to prove each step was answered by its own script entry. A test in `automation-core` makes the scripted changes against the real automation rules.
+- `pnpm --filter @takewon/agent dev:mock` answers from a script (`packages/agent/fixtures/chat.json`). Our set requests come first in that file: "List my automations and say which are switched on.", "Build an automation that makes short clips with captions from each new recording I upload." and then "Add captions to the clips before they go for approval." The kit's own demo requests follow.
+- `pnpm --filter @takewon/agent test` runs the kit's tests and ours against it. `tests/integration/ncat-tools.test.ts` drives our tools end to end through the real approval gates, with only Convex stood in for, and reads AIMock's journal to prove each step was answered by its own script entry. A test in `automation-core` makes the scripted changes against the real automation rules.
 
 #### Recording a real model
 
 AIMock can also sit between the agent and a real model and save what the model answers, so a real conversation can be played back afterwards for free, in tests and for screen recordings.
 
 1. In `packages/agent/.env` keep `USE_AIMOCK=true` and set a real key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY`) with a matching `CHAT_MODEL` such as `anthropic/claude-sonnet-5-5`. Recording goes straight to the provider; a gateway model (`vercel/...`, `mastra/...`) is not recorded.
-2. Run `pnpm --filter @ncat-dash/agent dev:record` in place of `dev:mock`, and use the chat. Each answer the model gives is saved under `packages/agent/fixtures/recorded/`. A message that was already recorded is played back and costs nothing; only new ones reach the model.
-3. Run `pnpm --filter @ncat-dash/agent dev:replay` to play the recordings back with no key. Anything that was not recorded gets an error there, so a recording can never quietly turn into a paid call.
+2. Run `pnpm --filter @takewon/agent dev:record` in place of `dev:mock`, and use the chat. Each answer the model gives is saved under `packages/agent/fixtures/recorded/`. A message that was already recorded is played back and costs nothing; only new ones reach the model.
+3. Run `pnpm --filter @takewon/agent dev:replay` to play the recordings back with no key. Anything that was not recorded gets an error there, so a recording can never quietly turn into a paid call.
 
 A recording is matched on the message the person typed, so the same sentence always gets the same answer. Read a recording before committing it. The recorder reads the folder when it starts, so restart it after deleting recordings.
 

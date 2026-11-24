@@ -7,7 +7,7 @@ import type {
   CaptionShape,
   CaptionStyle,
   JoinMode,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import {
   BRAND_WORDS,
   CAPTION_SHAPES,
@@ -22,8 +22,8 @@ import {
   waitsForRun,
   wantedKind,
   writeSource,
-} from "@ncat-dash/automation-core";
-import { getStep, SAVED_LOOK_STEP, userInputSchema } from "@ncat-dash/step-catalog";
+} from "@takewon/automation-core";
+import { getStep, SAVED_LOOK_STEP, userInputSchema } from "@takewon/step-catalog";
 import { ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";

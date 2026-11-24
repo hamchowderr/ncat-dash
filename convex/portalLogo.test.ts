@@ -1,4 +1,4 @@
-import { uploadRef } from "@ncat-dash/automation-core";
+import { uploadRef } from "@takewon/automation-core";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { api } from "./_generated/api";
