@@ -40,15 +40,15 @@ export const MEET_RESULTS: Record<string, { ok: boolean; text: string }> = {
 
 const STATUS_TEXT = {
   importing: "Coming in",
-  done: "In Uploads",
+  done: "In the Library",
   failed: "Did not come in",
-  duplicate: "Already in Uploads",
+  duplicate: "Already in the Library",
 } as const;
 
 /**
  * Google Meet recordings, brought in by themselves. Each person who organizes meetings
  * connects their own Google account once; recordings Meet saves to their Drive then land
- * in Uploads, ready to clip.
+ * in the Library, ready to clip.
  */
 export function GoogleMeetCard() {
   const team = useActiveTeam();
@@ -176,8 +176,8 @@ export function GoogleMeetCard() {
                     <Label htmlFor="meet-auto">Bring in new recordings by themselves</Label>
                     <p className="text-muted-foreground text-sm">
                       When Meet finishes saving a recording of a meeting you organize, its video
-                      goes to Uploads within a few minutes and starts any automation set to run on
-                      an upload.
+                      goes to the Library within a few minutes and starts any automation set to run
+                      on an upload.
                     </p>
                   </div>
                 </div>
@@ -207,7 +207,7 @@ export function GoogleMeetCard() {
               <>
                 <p className="text-muted-foreground text-sm">
                   Connect the Google account you organize meetings with. The recordings Meet saves
-                  to its Drive then come into Uploads by themselves, ready to clip and caption.
+                  to its Drive then come into the Library by themselves, ready to clip and caption.
                 </p>
                 {connectButton("Connect Google Meet")}
               </>
@@ -247,7 +247,7 @@ export function GoogleMeetCard() {
                         }
                       >
                         {one.status === "done" ? (
-                          <Link href="/uploads" className="underline-offset-4 hover:underline">
+                          <Link href="/library" className="underline-offset-4 hover:underline">
                             {STATUS_TEXT.done}
                           </Link>
                         ) : (

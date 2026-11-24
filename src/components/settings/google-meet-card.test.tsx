@@ -81,7 +81,10 @@ describe("the Google Meet card", () => {
     expect(screen.getByText(/Maya Ortiz \(Maya O\)/)).toBeInTheDocument();
     // What came in sits with the past recordings, a tab away from the connection.
     await openTab("Past Recordings");
-    expect(screen.getByRole("link", { name: "In Uploads" })).toHaveAttribute("href", "/uploads");
+    expect(screen.getByRole("link", { name: "In the Library" })).toHaveAttribute(
+      "href",
+      "/library",
+    );
     expect(screen.getByText("Did not come in")).toBeInTheDocument();
     expect(screen.getByText(/Connect your toolkit first/)).toBeInTheDocument();
     await openTab("Connection");
@@ -137,12 +140,12 @@ describe("the Google Meet card", () => {
     expect(screen.getByText(/however old/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Find recordings" }));
     expect(
-      await screen.findByText("5 recordings in your Drive. 3 not in Uploads yet."),
+      await screen.findByText("5 recordings in your Drive. 3 not in the Library yet."),
     ).toBeInTheDocument();
     // Grouped by year, the newest open; the ones already in are said so and cannot be picked.
     expect(screen.getByRole("group", { name: String(thisYear - 1) })).toBeInTheDocument();
     expect(screen.getByText("Brought in")).toBeInTheDocument();
-    expect(screen.getByText("Already in Uploads")).toBeInTheDocument();
+    expect(screen.getByText("Already in the Library")).toBeInTheDocument();
     expect(screen.getAllByRole("checkbox", { name: /^Pick .*,/ })).toHaveLength(1);
     const lastYear = screen.getByRole("button", {
       name: `${thisYear - 1} · 2 recordings · 2 picked`,
@@ -162,11 +165,11 @@ describe("the Google Meet card", () => {
       driveFileIds: ["fileOne", "fileOld"],
     });
     await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("2 recordings on the way to Uploads"),
+      expect(toastSuccess).toHaveBeenCalledWith("2 recordings on the way to the Library"),
     );
     // Looked through again: only the one left out is still to bring over.
     expect(
-      await screen.findByText("5 recordings in your Drive. 1 not in Uploads yet."),
+      await screen.findByText("5 recordings in your Drive. 1 not in the Library yet."),
     ).toBeInTheDocument();
   });
 
@@ -200,12 +203,18 @@ describe("the Google Meet card", () => {
     await user.click(screen.getByRole("button", { name: "Find recordings" }));
     expect(await screen.findByText(/Showing the newest 2,000/)).toBeInTheDocument();
     await user.click(
-      screen.getByRole("checkbox", { name: `Pick every ${thisYear - 1} recording not in Uploads` }),
+      screen.getByRole("checkbox", {
+        name: `Pick every ${thisYear - 1} recording not in the Library`,
+      }),
     );
     expect(screen.getByText("1 of 2 picked")).toBeInTheDocument();
-    await user.click(screen.getByRole("checkbox", { name: "Pick every recording not in Uploads" }));
+    await user.click(
+      screen.getByRole("checkbox", { name: "Pick every recording not in the Library" }),
+    );
     expect(screen.getByText("All 2 picked")).toBeInTheDocument();
-    await user.click(screen.getByRole("checkbox", { name: "Pick every recording not in Uploads" }));
+    await user.click(
+      screen.getByRole("checkbox", { name: "Pick every recording not in the Library" }),
+    );
     expect(screen.getByText("0 of 2 picked")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Bring over 0 recordings" })).toBeDisabled();
   });
@@ -237,7 +246,7 @@ describe("the Google Meet card", () => {
     await user.click(screen.getByRole("button", { name: "Find recordings" }));
     expect(
       await screen.findByText(
-        "1 recording in your Drive, 1 shared with you. 1 not in Uploads yet.",
+        "1 recording in your Drive, 1 shared with you. 1 not in the Library yet.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Shared with you", { selector: "[data-slot=badge]" })).toBeVisible();

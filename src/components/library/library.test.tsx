@@ -409,6 +409,30 @@ describe("a library file", () => {
     );
   });
 
+  test("an upload's page copies a link to it and says who shared it", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      upload: { _id: "up_4", fileName: "Episode 4.mp4", size: 1000, sharedBy: "Pat Rivera" },
+    });
+    actionOf(api.storage.linkFor).mockResolvedValue("https://files.example/episode-4.mp4?sig=1");
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    openTab("Details");
+    expect(screen.getByText("Pat Rivera")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Link copied. It works for seven days."),
+    );
+    expect(actionOf(api.storage.linkFor)).toHaveBeenCalledWith({ uploadId: "up_4" });
+    expect(await navigator.clipboard.readText()).toBe("https://files.example/episode-4.mp4?sig=1");
+  });
+
+  test("a file made by an automation has no upload link to copy", () => {
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    openTab("Details");
+    expect(screen.queryByRole("button", { name: "Copy link" })).toBeNull();
+    expect(screen.queryByText("Shared by")).toBeNull();
+  });
+
   test("the file's numbers are labels, each with its own icon and name", () => {
     answerQuery(api.library.get, {
       ...DETAIL,

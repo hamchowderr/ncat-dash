@@ -125,17 +125,17 @@ export const INTEGRATION_GROUPS = [
       {
         slug: "zoom",
         title: "Zoom",
-        description: "Meeting recordings come into Uploads by themselves, ready to clip.",
+        description: "Meeting recordings come into the Library by themselves, ready to clip.",
       },
       {
         slug: "google-meet",
         title: "Google Meet",
-        description: "Meet recordings come into Uploads by themselves, ready to clip.",
+        description: "Meet recordings come into the Library by themselves, ready to clip.",
       },
       {
         slug: "microsoft",
         title: "Microsoft 365",
-        description: "Teams meeting recordings come into Uploads by themselves, ready to clip.",
+        description: "Teams meeting recordings come into the Library by themselves, ready to clip.",
       },
     ],
   },
@@ -147,7 +147,7 @@ export const INTEGRATION_GROUPS = [
         slug: "dropbox",
         title: "Dropbox",
         description:
-          "Footage in the folders you pick comes into Uploads; finished clips can go back.",
+          "Footage in the folders you pick comes into the Library; finished clips can go back.",
       },
       {
         slug: "video-links",

@@ -153,7 +153,7 @@ export function LibraryPicker({
           ) : postable.length === 0 ? (
             <div className="text-muted-foreground flex flex-col items-center gap-2 py-12 text-center text-sm">
               <p>There are no videos or pictures in your library yet.</p>
-              <Link href="/uploads" className="text-foreground underline underline-offset-4">
+              <Link href="/library" className="text-foreground underline underline-offset-4">
                 Upload One
               </Link>
             </div>

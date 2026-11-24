@@ -89,7 +89,7 @@ function CookiesForm({
       <SettingsSection
         id="links"
         title="Pasting a link"
-        description="On Uploads, or in the Match A Saved Look step, paste a link to a post and the toolkit brings its video in."
+        description="In the Library, or in the Match A Saved Look step, paste a link to a post and the toolkit brings its video in."
       >
         <SettingRow
           label="Works as it is"

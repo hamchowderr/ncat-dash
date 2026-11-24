@@ -283,6 +283,7 @@ export const get = query({
         .query("storyboards")
         .withIndex("by_library_item", (q) => q.eq("libraryItemId", item._id))
         .first()) !== null;
+    const upload = item.uploadId ? await ctx.db.get(item.uploadId) : null;
     return {
       ...summaryOf(
         item,
@@ -295,6 +296,15 @@ export const get = query({
       storyboardDrafted: drafted,
       // Where it is in the team's storage, for deleting it from there; null for a link.
       key: item.key ?? null,
+      // The upload it came in as: its link, its look, and who shared it.
+      upload: upload
+        ? {
+            _id: upload._id,
+            fileName: upload.fileName,
+            size: upload.size,
+            sharedBy: upload.sharedBy ?? null,
+          }
+        : null,
       runId: item.runId ?? null,
       automationId: item.runId ? ((await ctx.db.get(item.runId))?.automationId ?? null) : null,
       transcriptError:

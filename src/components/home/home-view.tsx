@@ -313,7 +313,7 @@ function GettingStarted({ setup }: { setup: Summary["setup"] }) {
     { done: setup.goals, label: "Tell us what you make", href: "/get-started" },
     { done: setup.brand, label: "Add your logo", href: "/settings/brand" },
     { done: setup.automationOn, label: "Switch on an automation", href: "/automations/new" },
-    { done: setup.firstRun, label: "See your first run finish", href: "/uploads" },
+    { done: setup.firstRun, label: "See your first run finish", href: "/library" },
   ];
   const done = steps.filter((step) => step.done).length;
   if (done === steps.length) return null;

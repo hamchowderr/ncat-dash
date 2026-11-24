@@ -10,7 +10,16 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 
+import { OnThisUpload } from "@/components/uploads/on-this-upload";
+import { NeedsToolkit } from "@/components/uploads/needs-toolkit";
 import { UploadFrame } from "@/components/uploads/upload-media";
+import {
+  ComingIn,
+  UploadButtons,
+  UploadDropArea,
+  UploadInput,
+  useUploader,
+} from "@/components/uploads/uploader";
 import { Button } from "@/components/ui/button";
 import { PageTourButton, StartPageTour } from "@/components/tours/page-tour";
 import {
@@ -34,6 +43,7 @@ import {
 import { errorMessage } from "@/lib/catalog";
 import { followedMessage } from "@/components/library/followed";
 import { useActiveTeam } from "@/lib/team-context";
+import { usePhone } from "@/hooks/use-narrow";
 import { cn } from "@/lib/utils";
 
 import {
@@ -355,7 +365,7 @@ function ItemList({
 function ItemTiles({ items, links }: { items: Item[]; links: Map<Id<"libraryItems">, string> }) {
   const [hovered, setHovered] = useState<Id<"libraryItems"> | null>(null);
   return (
-    <ul className="reveal grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-x-5 gap-y-6">
+    <ul className="reveal grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] sm:gap-x-5 sm:gap-y-6">
       {items.map((item) => (
         <li
           key={item._id}
@@ -483,7 +493,14 @@ export function LibraryView() {
   const team = useActiveTeam();
   const library = useQuery(api.library.list, { organizationId: team.id });
   const fill = useMutation(api.library.fill);
-  const layout = useSyncExternalStore(layoutChoice.watch, layoutChoice.read, layoutChoice.server);
+  const chosenLayout = useSyncExternalStore(
+    layoutChoice.watch,
+    layoutChoice.read,
+    layoutChoice.server,
+  );
+  // A phone always gets tiles, two across: a list's columns do not fit across one.
+  const phone = usePhone();
+  const layout = phone ? "tiles" : chosenLayout;
   const columns = useSyncExternalStore(columnChoice.watch, columnChoice.read, columnChoice.server);
   const [typed, setTyped] = useState("");
   const [text, setText] = useState("");
@@ -494,6 +511,8 @@ export function LibraryView() {
   // Where uploads came from (a FROM_LABELS key), or null for anywhere.
   const [from, setFrom] = useState<LibraryFrom | null>(null);
   const [reviewOnly, setReviewOnly] = useState(false);
+  // Files come in right here: the Upload button, a pasted link, or files dropped anywhere.
+  const uploader = useUploader();
 
   // Searches once typing pauses, not on every key.
   useEffect(() => {
@@ -534,9 +553,15 @@ export function LibraryView() {
   const links = useLibraryLinks(team.id, onScreen);
 
   return (
-    <>
+    <div
+      {...uploader.dropTarget}
+      data-dragging={uploader.dragging}
+      data-library-page
+      className="data-[dragging=true]:outline-primary flex flex-col gap-4 rounded-xl outline-offset-8 data-[dragging=true]:outline-2 data-[dragging=true]:outline-dashed md:gap-6"
+    >
       <StartPageTour tourId="library" ready={library !== undefined} />
-      <div className="flex items-start gap-3">
+      <UploadInput uploader={uploader} />
+      <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
           <p className="text-muted-foreground text-sm">
@@ -544,7 +569,10 @@ export function LibraryView() {
             ID, like C12, that you can use with the agent: &ldquo;caption C12&rdquo;.
           </p>
         </div>
-        <PageTourButton tourId="library" />
+        <div className="flex items-center gap-2">
+          <PageTourButton tourId="library" />
+          <UploadButtons uploader={uploader} />
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -572,21 +600,25 @@ export function LibraryView() {
         B-Roll.
       </p>
 
+      <ComingIn uploader={uploader} />
+      {uploader.storage ? (
+        <OnThisUpload
+          organizationId={team.id}
+          skipped={uploader.skipped}
+          onSkippedChange={uploader.setSkipped}
+        />
+      ) : null}
+
       {library === undefined ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : text ? (
         <SearchResults text={text} hits={hits} links={links} />
       ) : library.items.length === 0 ? (
-        <div className="bg-surface flex flex-col items-center gap-3 rounded-xl p-10 text-center">
-          <p className="text-sm font-medium">Nothing in the library yet</p>
-          <p className="text-muted-foreground max-w-md text-sm">
-            Files you upload and the files your automations make show up here. Bringing in your back
-            catalogue? Drop all of it on the Uploads page at once.
-          </p>
-          <Button asChild size="sm">
-            <Link href="/uploads">Go to Uploads</Link>
-          </Button>
-        </div>
+        uploader.storage === null ? (
+          <NeedsToolkit />
+        ) : uploader.going.length === 0 ? (
+          <UploadDropArea uploader={uploader} />
+        ) : null
       ) : (
         <section className="flex flex-col gap-4" aria-label="Your library">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -735,7 +767,7 @@ export function LibraryView() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-              <SegmentedGroup aria-label="Show as">
+              <SegmentedGroup aria-label="Show as" className="max-sm:hidden">
                 {(
                   [
                     ["tiles", LayoutGrid, "Tiles"],
@@ -770,6 +802,6 @@ export function LibraryView() {
           )}
         </section>
       )}
-    </>
+    </div>
   );
 }

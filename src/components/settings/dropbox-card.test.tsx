@@ -124,9 +124,9 @@ describe("the Dropbox card", () => {
     const folders = screen.getByRole("region", { name: "Folders with media" });
     expect(await within(folders).findByText("/Raw footage")).toBeInTheDocument();
     const came = screen.getByRole("region", { name: "Brought in from Dropbox" });
-    expect(within(came).getByRole("link", { name: "In Uploads" })).toHaveAttribute(
+    expect(within(came).getByRole("link", { name: "In the Library" })).toHaveAttribute(
       "href",
-      "/uploads",
+      "/library",
     );
     expect(within(came).getByText("The file is no longer in Dropbox.")).toBeInTheDocument();
     const sent = screen.getByRole("region", { name: "Sent to Dropbox" });
@@ -158,7 +158,7 @@ describe("the Dropbox card", () => {
     });
     expect(await screen.findByText("12 files")).toBeInTheDocument();
     expect(screen.getByText("2 new of 5")).toBeInTheDocument();
-    expect(screen.getByText("All in Uploads")).toBeInTheDocument();
+    expect(screen.getByText("All in the Library")).toBeInTheDocument();
     expect(screen.getByText("Team folders are included.", { exact: false })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Bring in" })).toBeDisabled();
   });
@@ -187,7 +187,7 @@ describe("the Dropbox card", () => {
       paths: ["/Raw footage", "/Shoots/Day 1"],
     });
     await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("14 files on the way to Uploads"),
+      expect(toastSuccess).toHaveBeenCalledWith("14 files on the way to the Library"),
     );
     // The list is read again afterwards.
     await waitFor(() => expect(scan).toHaveBeenCalledTimes(2));

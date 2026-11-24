@@ -128,6 +128,27 @@ describe("files join the library", () => {
     expect((await items()).map((item) => item.shortId)).toEqual(["V2"]);
   });
 
+  test("a file's page knows the upload it came in as, and who shared it", async () => {
+    const { t, maya, upload, itemOf, finishedRun, toolkit } = await studio();
+    const episode = await upload("episode.mp4");
+    await t.run((ctx) => ctx.db.patch(episode, { sharedBy: "Pat Rivera" }));
+    const view = await maya.as.query(api.library.get, { itemId: (await itemOf(episode))._id });
+    expect(view?.upload).toEqual({
+      _id: episode,
+      fileName: "episode.mp4",
+      size: 5000,
+      sharedBy: "Pat Rivera",
+    });
+
+    // What an automation made was never uploaded.
+    const { runId } = await finishedRun(episode, [`${LINK}/${JOB}_output_0.mp4`]);
+    toolkit.put(`${JOB}_output_0.mp4`);
+    await t.action(internal.files.keepFinished, { runId });
+    const after = await maya.as.query(api.library.get, { itemId: (await itemOf(episode))._id });
+    const clip = after!.children[0];
+    expect((await maya.as.query(api.library.get, { itemId: clip._id }))?.upload).toBeNull();
+  });
+
   test("a run's finished files join as made from the file it started with", async () => {
     const { t, team, maya, upload, itemOf, finishedRun, toolkit } = await studio();
     const episode = await upload("episode.mp4");

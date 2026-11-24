@@ -29,7 +29,7 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   await page.getByRole("button", { name: "Test and connect" }).click();
   await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
-  await page.goto("/uploads");
+  await page.goto("/library");
   // What every upload gets, and that nothing else runs on it by itself yet.
   const onUpload = page.getByRole("region", { name: "On this upload" });
   await expect(onUpload).toContainText(
@@ -37,7 +37,7 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   );
   await expect(onUpload).toContainText("No automation runs on uploads by itself.");
   await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.webm");
-  await expect(page.getByRole("button", { name: "Open clip.webm" })).toBeVisible({
+  await expect(page.getByLabel(/^Open V\d+ clip$/)).toBeVisible({
     timeout: 30_000,
   });
 
@@ -172,10 +172,10 @@ test("a caption file shows its lines, and they are searched like what was said",
   await page.getByRole("button", { name: "Test and connect" }).click();
   await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
-  await page.goto("/uploads");
+  await page.goto("/library");
   await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.srt");
   // Finished uploading (the name shows while it is still on its way).
-  await expect(page.getByRole("button", { name: "Open clip.srt" })).toBeVisible({
+  await expect(page.getByLabel("Open F1 clip")).toBeVisible({
     timeout: 30_000,
   });
 

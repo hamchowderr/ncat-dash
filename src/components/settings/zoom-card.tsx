@@ -65,13 +65,13 @@ function when(at: number) {
 
 const STATUS_TEXT = {
   importing: "Coming in",
-  done: "In Uploads",
+  done: "In the Library",
   failed: "Did not come in",
 } as const;
 
 /**
  * Zoom meetings, brought in by themselves. Each person who hosts meetings connects their
- * own Zoom once; their finished cloud recordings then land in Uploads, ready to clip.
+ * own Zoom once; their finished cloud recordings then land in the Library, ready to clip.
  */
 export function ZoomCard() {
   const team = useActiveTeam();
@@ -189,7 +189,7 @@ export function ZoomCard() {
                     <Label htmlFor="zoom-auto">Bring in new recordings by themselves</Label>
                     <p className="text-muted-foreground text-sm">
                       When Zoom finishes a cloud recording of a meeting you host, its video goes to
-                      Uploads and starts any automation set to run on an upload.
+                      the Library and starts any automation set to run on an upload.
                     </p>
                   </div>
                 </div>
@@ -198,7 +198,7 @@ export function ZoomCard() {
               <>
                 <p className="text-muted-foreground text-sm">
                   Connect the Zoom account you host meetings with. Its cloud recordings then come
-                  into Uploads by themselves, ready to clip and caption.
+                  into the Library by themselves, ready to clip and caption.
                 </p>
                 <div>
                   <Button size="sm" disabled={busy !== null} onClick={() => connect()}>
@@ -258,7 +258,7 @@ export function ZoomCard() {
                 <>
                   <p className="text-muted-foreground text-sm">
                     A Zoom account admin can connect the whole Zoom account once. Then the cloud
-                    recordings of every host in it come into Uploads, without each person
+                    recordings of every host in it come into the Library, without each person
                     connecting.
                   </p>
                   {zoom.canManage ? (
@@ -343,7 +343,7 @@ export function ZoomCard() {
                                     ),
                                   );
                                 },
-                                `${meeting.topic} is on its way to Uploads`,
+                                `${meeting.topic} is on its way to the Library`,
                               )
                             }
                           >
@@ -376,7 +376,7 @@ export function ZoomCard() {
                         }
                       >
                         {one.status === "done" ? (
-                          <Link href="/uploads" className="underline-offset-4 hover:underline">
+                          <Link href="/library" className="underline-offset-4 hover:underline">
                             {STATUS_TEXT.done}
                           </Link>
                         ) : (

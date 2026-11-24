@@ -38,9 +38,9 @@ export const DROPBOX_RESULTS: Record<string, { ok: boolean; text: string }> = {
 
 const IMPORT_TEXT = {
   importing: "Coming in",
-  done: "In Uploads",
+  done: "In the Library",
   failed: "Did not come in",
-  duplicate: "Already in Uploads",
+  duplicate: "Already in the Library",
 } as const;
 
 function plural(count: number, word: string) {
@@ -60,7 +60,7 @@ export function when(at: number) {
 /**
  * Dropbox, both ways. Each person connects their own Dropbox once; the dashboard reads it
  * and lists the folders with media, their own or the team's. Ticked folders come into
- * Uploads, now and from then on, and automations can send finished clips back.
+ * the Library, now and from then on, and automations can send finished clips back.
  */
 export function DropboxCard() {
   const team = useActiveTeam();
@@ -180,8 +180,8 @@ export function DropboxCard() {
                   <div className="flex flex-col gap-1">
                     <Label htmlFor="dropbox-auto">Bring in new files by themselves</Label>
                     <p className="text-muted-foreground text-sm">
-                      When a video, sound or picture is added to a folder you watch, it goes to
-                      Uploads and starts any automation set to run on an upload. Documents and other
+                      When a video, sound or picture is added to a folder you watch, it goes to the
+                      Library and starts any automation set to run on an upload. Documents and other
                       files stay in Dropbox.
                     </p>
                   </div>
@@ -191,8 +191,8 @@ export function DropboxCard() {
               <>
                 <p className="text-muted-foreground text-sm">
                   Connect your Dropbox, then tick the folders to bring in. Their footage comes into
-                  Uploads, now and whenever more is added, and automations can send finished clips
-                  back to Dropbox.
+                  the Library, now and whenever more is added, and automations can send finished
+                  clips back to Dropbox.
                 </p>
                 <div>
                   <Button size="sm" disabled={busy !== null} onClick={connect}>
@@ -234,7 +234,7 @@ export function DropboxCard() {
                         }
                       >
                         {one.status === "done" ? (
-                          <Link href="/uploads" className="underline-offset-4 hover:underline">
+                          <Link href="/library" className="underline-offset-4 hover:underline">
                             {IMPORT_TEXT.done}
                           </Link>
                         ) : (
@@ -414,7 +414,7 @@ function MediaFolders({ watched, teamSpace }: { watched: WatchedFolder[]; teamSp
       if (toAdd.length > 0) {
         said.push(
           started > 0
-            ? `${plural(started, "file")} on the way to Uploads`
+            ? `${plural(started, "file")} on the way to the Library`
             : `Watching ${plural(toAdd.length, "folder")}`,
         );
       }
@@ -443,8 +443,8 @@ function MediaFolders({ watched, teamSpace }: { watched: WatchedFolder[]; teamSp
       <div className="flex flex-col gap-0.5">
         <p className="text-sm font-medium">Folders with videos, sounds or pictures</p>
         <p className="text-muted-foreground text-sm">
-          Tick the folders to bring in. What is in them now comes into Uploads, and anything added
-          later comes in by itself.{teamSpace ? " Team folders are included." : ""}
+          Tick the folders to bring in. What is in them now comes into the Library, and anything
+          added later comes in by itself.{teamSpace ? " Team folders are included." : ""}
         </p>
       </div>
 
@@ -525,7 +525,7 @@ function MediaFolders({ watched, teamSpace }: { watched: WatchedFolder[]; teamSp
                           : one.fresh === one.files
                             ? plural(one.files, "file")
                             : one.fresh === 0
-                              ? "All in Uploads"
+                              ? "All in the Library"
                               : `${one.fresh.toLocaleString()} new of ${one.files.toLocaleString()}`}
                     </span>
                   </li>

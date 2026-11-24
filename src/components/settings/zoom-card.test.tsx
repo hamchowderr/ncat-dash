@@ -93,9 +93,12 @@ describe("the Zoom card", () => {
     expect(screen.getByText("Jordan Lee")).toBeInTheDocument();
     expect(screen.getByText(/Maya Ortiz \(Maya O\)/)).toBeInTheDocument();
     // What came in sits with the past recordings, a tab away from the connection.
-    expect(screen.queryByRole("link", { name: "In Uploads" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "In the Library" })).toBeNull();
     await openTab("Past Recordings");
-    expect(screen.getByRole("link", { name: "In Uploads" })).toHaveAttribute("href", "/uploads");
+    expect(screen.getByRole("link", { name: "In the Library" })).toHaveAttribute(
+      "href",
+      "/library",
+    );
     expect(screen.getByText("Did not come in")).toBeInTheDocument();
     expect(screen.getByText(/Connect your toolkit first/)).toBeInTheDocument();
 
@@ -141,7 +144,7 @@ describe("the Zoom card", () => {
     await user.click(screen.getByRole("button", { name: "Bring in" }));
     expect(bring).toHaveBeenCalledWith({ organizationId: TEAM.id, meetingUuid: "m1" });
     await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("Podcast Taping is on its way to Uploads"),
+      expect(toastSuccess).toHaveBeenCalledWith("Podcast Taping is on its way to the Library"),
     );
     expect(screen.getAllByText("Brought in")).toHaveLength(2);
   });
@@ -185,7 +188,7 @@ describe("the Zoom card", () => {
       } as Location);
       renderInApp(<ZoomCard />);
       const region = screen.getByRole("region", { name: "Whole Zoom account" });
-      expect(region).toHaveTextContent(/every host in it come into Uploads/);
+      expect(region).toHaveTextContent(/every host in it come into the Library/);
       const user = userEvent.setup();
       await user.click(screen.getByRole("button", { name: "Connect whole Zoom account" }));
       expect(start).toHaveBeenCalledWith({ organizationId: TEAM.id, wholeAccount: true });
