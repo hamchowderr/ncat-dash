@@ -75,3 +75,4 @@ sync:
     remote: "https://doltremoteapi.dolthub.com/chowderr/takewon"
 export:
     auto: true
+    git-add: false
