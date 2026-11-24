@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { describeFileDetails, formatMoment } from "@takewon/automation-core";
+import { formatMoment } from "@takewon/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { ArrowLeft, AudioLines, Bot, Copy, Play, Trash2, X } from "lucide-react";
 import Link from "next/link";
@@ -48,6 +48,7 @@ import { UploadStoryboard } from "@/components/storyboard/storyboard-view";
 import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "./library-media";
 import { PickList } from "@/components/ui/pick-list";
 import { Segmented } from "@/components/ui/segmented";
+import { FileFacts } from "./file-facts";
 import { transcriptState, WorkRow, type Work } from "./work-status";
 
 type Tab = "words" | "storyboard" | "made" | "details";
@@ -512,6 +513,28 @@ export function LibraryItemView({
               )}
             </p>
           </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {item.upload && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => void copyLink(item.upload!._id)}
+              >
+                <Copy />
+                Copy link
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => setDeleting(true)}
+            >
+              <Trash2 />
+              Delete
+            </Button>
+          </div>
         </div>
         <WorkRow works={works} />
       </header>
@@ -759,7 +782,6 @@ export function LibraryItemView({
                         {item.made === 1 ? "1 file" : `${item.made} files`}
                       </Fact>
                     )}
-                    {item.details && <Fact label="File">{describeFileDetails(item.details)}</Fact>}
                     {item.upload?.sharedBy && <Fact label="Shared by">{item.upload.sharedBy}</Fact>}
                     <Fact label="Added">
                       {new Date(item._creationTime).toLocaleDateString(undefined, {
@@ -769,6 +791,7 @@ export function LibraryItemView({
                       })}
                     </Fact>
                   </dl>
+                  {item.details && <FileFacts details={item.details} />}
 
                   <div className="flex flex-col items-start gap-2">
                     <h2 className="text-sm font-medium">Run an automation on it</h2>
@@ -806,29 +829,6 @@ export function LibraryItemView({
                       upload={{ _id: item.upload._id, fileName: item.upload.fileName }}
                     />
                   )}
-
-                  <div className="flex flex-wrap items-center gap-2 max-sm:grid max-sm:grid-cols-2">
-                    {item.upload && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="max-sm:h-11"
-                        onClick={() => void copyLink(item.upload!._id)}
-                      >
-                        <Copy />
-                        Copy link
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground max-sm:h-11"
-                      onClick={() => setDeleting(true)}
-                    >
-                      <Trash2 />
-                      Delete
-                    </Button>
-                  </div>
                 </div>
               </TabsContent>
             </div>
