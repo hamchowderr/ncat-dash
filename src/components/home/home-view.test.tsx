@@ -1,8 +1,8 @@
 import { api } from "@convex/_generated/api";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vitest";
 
-import { answerQuery, mutationOf, pushed } from "@/test/convex";
+import { answerQuery } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
 import { HomeView } from "./home-view";
@@ -35,7 +35,6 @@ function summary(overrides: Record<string, unknown> = {}) {
     failures: [run(2, "failed", { error: "The toolkit did not answer." })],
     automations: { total: 4, on: 3 },
     setup: SETUP_DONE,
-    contentKinds: [],
     ...overrides,
   };
 }
@@ -131,7 +130,7 @@ describe("the home page", () => {
     expect(links[0].textContent).toContain("episode 1.mp4");
   });
 
-  test("leads with ready-made automations until one is switched on, and starts one", async () => {
+  test("shows no templates: those live on the Automations page", () => {
     answerQuery(
       api.home.summary,
       summary({
@@ -142,28 +141,20 @@ describe("the home page", () => {
         setup: { ...SETUP_DONE, automationOn: false, firstRun: false },
       }),
     );
-    mutationOf(api.automations.create).mockResolvedValue("auto7");
     renderInApp(<HomeView />);
-    const regions = screen
-      .getAllByRole("region")
-      .map((region) => region.getAttribute("aria-labelledby"));
-    expect(regions.indexOf("home-ready-made-automations")).toBeLessThan(
-      regions.indexOf("home-latest-runs"),
+    expect(screen.getByTestId("home-week").textContent).toBe(
+      "No automations yet. Start from a template on the Automations page.",
     );
-    const ready = screen.getByRole("region", { name: "Ready-made automations" });
+    expect(screen.queryByRole("region", { name: /Ready-made/ })).toBeNull();
+    expect(screen.queryByRole("region", { name: /Goes well/ })).toBeNull();
+    expect(screen.queryByText("Podcast master and transcript")).toBeNull();
+    // Getting started still says where to find one.
+    const setup = screen.getByRole("region", { name: /Getting started/ });
     expect(
-      within(ready)
-        .getByRole("link", { name: /See all 89/ })
+      within(setup)
+        .getByRole("link", { name: /Switch on an automation/ })
         .getAttribute("href"),
     ).toBe("/automations/new");
-    fireEvent.click(within(ready).getByText("Podcast master and transcript"));
-    await waitFor(() => expect(pushed).toHaveBeenCalled());
-    expect(mutationOf(api.automations.create)).toHaveBeenCalledWith({
-      organizationId: TEAM.id,
-      name: "Podcast master and transcript",
-      starterId: "podcast-master",
-    });
-    expect(pushed.mock.calls[0][0]).toBe("/automations/auto7");
   });
 
   test("shows getting started only while something is left, with links to each step", () => {
@@ -205,22 +196,6 @@ describe("the home page", () => {
         .getByRole("link", { name: /Tell us what you make/ })
         .getAttribute("href"),
     ).toBe("/get-started");
-  });
-
-  test("puts the ready-made automations for what the team makes first", () => {
-    answerQuery(
-      api.home.summary,
-      summary({ automations: { total: 0, on: 0 }, contentKinds: ["coaching"] }),
-    );
-    renderInApp(<HomeView />);
-    const ready = screen.getByRole("region", { name: "Ready-made automations" });
-    const names = within(ready)
-      .getAllByRole("button")
-      .map((button) => button.textContent ?? "");
-    expect(names[0]).toContain("Coaching session pack");
-    expect(names[1]).toContain("Sermon, webinar or lecture pack");
-    // Still six to start from, the rest from the usual mix.
-    expect(names).toHaveLength(6);
   });
 
   test("keeps the toolkit to one line, and opens its details when it is not answering", () => {

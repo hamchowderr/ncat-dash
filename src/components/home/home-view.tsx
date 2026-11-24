@@ -2,22 +2,17 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { type Starter, STARTERS, suggestedStarters } from "@takewon/automation-core";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { ArrowRight, CircleAlert, Circle, Hourglass, RefreshCw, TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { RunStatusBadge } from "@/components/automations/run-status";
-import { TeamFollowOns } from "@/components/automations/follow-ons";
-import { TemplateCard } from "@/components/automations/template-gallery";
 import { FailureText } from "@/components/failure-text";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
@@ -33,29 +28,6 @@ function since(at: number, now = Date.now()) {
   const days = Math.round(hours / 24);
   if (Math.abs(days) < 7) return ago.format(days, "day");
   return when.format(at);
-}
-
-/**
- * One ready-made automation from each kind of job, to start from on the home page. A team
- * that said what it makes sees the ones for that first, and the rest of these after.
- */
-const FEATURED = [
-  "social-clips",
-  "every-shape",
-  "podcast-master",
-  "music-release-pack",
-  "delivery-pass",
-  "branded-clip",
-]
-  .map((id) => STARTERS.find((starter) => starter.id === id))
-  .filter((starter): starter is Starter => starter !== undefined);
-
-function featuredFor(kinds: string[]): Starter[] {
-  const first = suggestedStarters(kinds);
-  return [...first, ...FEATURED.filter((starter) => !first.includes(starter))].slice(
-    0,
-    FEATURED.length,
-  );
 }
 
 const plural = (count: number, one: string, many = `${one}s`) =>
@@ -88,61 +60,11 @@ function Section({
 
 export function HomeView() {
   const team = useActiveTeam();
-  const router = useRouter();
   const summary = useQuery(api.home.summary, { organizationId: team.id });
   const approvals = useQuery(api.runs.waitingApprovals, { organizationId: team.id });
   const connections = useQuery(api.toolkitConnections.list, { organizationId: team.id });
-  const create = useMutation(api.automations.create);
-  const [starting, setStarting] = useState(false);
-
-  async function start(starter: Starter) {
-    setStarting(true);
-    try {
-      const id = await create({
-        organizationId: team.id,
-        name: starter.name,
-        starterId: starter.id,
-      });
-      router.push(`/automations/${id}`, { transitionTypes: ["nav-forward"] });
-    } catch (caught) {
-      toast.error(errorMessage(caught, "The automation could not be created. Try again."));
-      setStarting(false);
-    }
-  }
-
   const loading = summary === undefined || approvals === undefined;
   const needsYou = (approvals?.length ?? 0) + (summary?.failures.length ?? 0);
-  // Until something is switched on, ready-made automations lead the page.
-  const readyFirst = summary !== undefined && summary.automations.on === 0;
-
-  const ready = (
-    <Section
-      title="Ready-made automations"
-      action={
-        <Button asChild variant="ghost" size="sm">
-          <Link href="/automations/new" transitionTypes={["nav-forward"]}>
-            See all {STARTERS.length}
-            <ArrowRight />
-          </Link>
-        </Button>
-      }
-    >
-      <p className="text-muted-foreground -mt-1 text-sm text-pretty">
-        Switch one on and it runs by itself on every file, with plain editing steps. No AI is spent
-        on each video.
-      </p>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {featuredFor(summary?.contentKinds ?? []).map((starter) => (
-          <TemplateCard
-            key={starter.id}
-            starter={starter}
-            disabled={starting}
-            onPick={() => start(starter)}
-          />
-        ))}
-      </div>
-    </Section>
-  );
 
   return (
     <>
@@ -249,8 +171,6 @@ export function HomeView() {
 
           <GettingStarted setup={summary.setup} />
 
-          {readyFirst && ready}
-
           <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <Section
               title="Latest runs"
@@ -314,10 +234,6 @@ export function HomeView() {
               </Button>
             </Section>
           </div>
-
-          <TeamFollowOns organizationId={team.id} />
-
-          {!readyFirst && ready}
         </div>
       )}
     </>
@@ -328,7 +244,8 @@ type Summary = FunctionReturnType<typeof api.home.summary>;
 
 function weekSentence(summary: Summary) {
   const { automations, week } = summary;
-  if (automations.total === 0) return "No automations yet. Start from a ready-made one below.";
+  if (automations.total === 0)
+    return "No automations yet. Start from a template on the Automations page.";
   const on =
     automations.on === 0
       ? "None of your automations are on yet."
@@ -389,7 +306,7 @@ function GettingStarted({ setup }: { setup: Summary["setup"] }) {
     {
       done: setup.automationOn,
       label: "Switch on an automation",
-      detail: "Start from a ready-made one and switch it on.",
+      detail: "Start from a template and switch it on.",
       href: "/automations/new",
     },
     {
