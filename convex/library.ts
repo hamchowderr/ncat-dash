@@ -275,6 +275,13 @@ export const get = query({
     const captionFormat = captionFileFormat(item.key ?? item.url ?? "");
     const captionsFor = captionFormat ? await videoCaptioned(ctx, item, parent) : null;
     const clients = await clientsOf(ctx, item.organizationId);
+    // An upload's storyboard is drafted once its transcript is in; this says whether it is.
+    const drafted =
+      item.source === "upload" &&
+      (await ctx.db
+        .query("storyboards")
+        .withIndex("by_library_item", (q) => q.eq("libraryItemId", item._id))
+        .first()) !== null;
     return {
       ...summaryOf(
         item,
@@ -284,6 +291,9 @@ export const get = query({
         await inReviewOf(ctx, item.organizationId),
       ),
       details: item.details ?? null,
+      storyboardDrafted: drafted,
+      // Where it is in the team's storage, for deleting it from there; null for a link.
+      key: item.key ?? null,
       runId: item.runId ?? null,
       automationId: item.runId ? ((await ctx.db.get(item.runId))?.automationId ?? null) : null,
       transcriptError:

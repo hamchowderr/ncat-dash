@@ -159,11 +159,13 @@ test("setting up never asks about a toolkit; a copy that lends none connects one
   await page.keyboard.press("Escape");
   await expect(page.locator("[data-tour-card]")).toHaveCount(0);
 
-  // Home's link goes to Settings, under Toolkit, where the steps and the form are open.
-  await page
-    .getByRole("link", { name: /Connect your toolkit/ })
-    .first()
-    .click();
+  // Home says nothing processes videos yet, and opens Settings, under Toolkit, where the
+  // steps and the form are.
+  const needs = page.getByRole("region", { name: "Needs you" });
+  await expect(needs.getByTestId("processing-status")).toHaveText(
+    "Video processing is not set up yet.",
+  );
+  await needs.getByRole("link", { name: "Open settings" }).click();
   await expect(page).toHaveURL(/\/settings\/toolkit$/);
   await expect(page.getByText("No toolkit yet", { exact: true })).toBeVisible();
   await expect(
@@ -183,5 +185,6 @@ test("setting up never asks about a toolkit; a copy that lends none connects one
   await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
   await expect(page.getByText("Working")).toBeVisible();
   await page.goto("/");
-  await expect(page.getByText("Toolkit connected")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByTestId("processing-status")).toHaveCount(0);
 });

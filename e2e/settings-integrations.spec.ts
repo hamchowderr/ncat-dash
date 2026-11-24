@@ -24,7 +24,9 @@ test("the settings menu is short, and every app lives under Integrations", async
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Harbour Light");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -51,24 +53,43 @@ test("the settings menu is short, and every app lives under Integrations", async
   await expect(menu.getByRole("link", { name: "Slack" })).toHaveCount(0);
   await slow(page, 1500);
 
-  // Integrations lists every app by group, with Email already set up by nobody yet.
+  // Integrations puts each group of apps in its own tab, so the page never runs long.
   await menu.getByRole("link", { name: "Integrations" }).click();
   await expect(page).toHaveURL(/\/settings\/integrations$/);
   await expect(page.getByRole("heading", { level: 1, name: "Integrations" })).toBeVisible();
-  for (const group of ["Chat", "Meeting Recordings", "Files", "AI Apps", "Sending Email"]) {
-    await expect(page.getByRole("heading", { level: 2, name: group })).toBeVisible();
-  }
+  const groups = page.getByRole("tablist", { name: "Integrations" });
+  await expect(groups.getByRole("tab")).toHaveText([
+    "Chat",
+    "Meeting Recordings",
+    "Files",
+    "AI Apps",
+    "Sending Email",
+  ]);
+  await expect(page.getByRole("img", { name: "Slack logo" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Zoom logo" })).toHaveCount(0);
+  // Everything on the open tab fits without scrolling.
+  expect(
+    await page.evaluate(() => document.scrollingElement!.scrollHeight <= window.innerHeight + 1),
+  ).toBe(true);
+  await slow(page, 1500);
+  await groups.getByRole("tab", { name: "Meeting Recordings" }).click();
+  await expect(page).toHaveURL(/\/settings\/integrations\?tab=meetings$/);
   await expect(page.getByRole("img", { name: "Zoom logo" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Slack logo" })).toHaveCount(0);
   await slow(page, 2000);
 
-  // An app opens its own page; Integrations stays lit and leads back.
+  // An app opens its own page; Integrations stays lit and leads back to the app's tab.
   await page.locator("[data-integration=zoom]").click();
   await expect(page).toHaveURL(/\/settings\/integrations\/zoom$/);
   await expect(page.getByRole("heading", { level: 1, name: "Zoom" })).toBeVisible();
   await expect(menu.locator("[aria-current=page]")).toHaveText("Integrations");
   await slow(page, 1500);
   await page.getByRole("link", { name: "Integrations", exact: true }).last().click();
-  await expect(page).toHaveURL(/\/settings\/integrations$/);
+  await expect(page).toHaveURL(/\/settings\/integrations\?tab=meetings$/);
+  await expect(groups.getByRole("tab", { name: "Meeting Recordings" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 
   // Old addresses still land on the app's page, with what they carried.
   await page.goto("/settings/slack");

@@ -14,7 +14,7 @@ import { PageTourButton } from "@/components/tours/page-tour";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
-import { settingsLocation } from "./settings-pages";
+import { integrationsTabHref, settingsLocation } from "./settings-pages";
 
 export function useTeamSettings() {
   const team = useActiveTeam();
@@ -57,7 +57,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
       {where?.app && (
         // An app's page sits under Integrations, and says so, the way Linear's do.
         <Link
-          href="/settings/integrations"
+          href={integrationsTabHref(where.app)}
           className="text-muted-foreground hover:text-foreground -mb-6 flex w-fit items-center gap-1 text-sm transition-colors"
         >
           <ChevronLeft className="size-4" aria-hidden="true" />
@@ -188,7 +188,8 @@ export function SettingsTabs({
   children,
   label,
 }: {
-  tabs: readonly { id: string; label: string }[];
+  /** `mark` sits after a tab's name, such as a dot for something connected in it. */
+  tabs: readonly { id: string; label: string; mark?: ReactNode }[];
   children: ReactNode;
   label: string;
 }) {
@@ -216,6 +217,7 @@ export function SettingsTabs({
               className="focus-visible:text-foreground flex-none focus-visible:border-transparent focus-visible:ring-0 focus-visible:outline-none focus-visible:after:opacity-100"
             >
               {tab.label}
+              {tab.mark}
             </TabsTrigger>
           ))}
         </TabsList>

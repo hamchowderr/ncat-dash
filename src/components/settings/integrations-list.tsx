@@ -7,10 +7,12 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { AppTile, type ConnectedApp } from "@/components/brand-logos";
+import { TabsContent } from "@/components/ui/tabs";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import { INTEGRATION_GROUPS, type IntegrationSlug, settingsHref } from "./settings-pages";
+import { SettingsTabs } from "./settings-shell";
 
 /** Where an app stands for this team: connected, not yet, or not set up on this dashboard. */
 export type AppState = "connected" | "off" | "unavailable";
@@ -81,18 +83,39 @@ export function useAppStates(): Partial<Record<IntegrationSlug, AppState>> {
   };
 }
 
+/** The green dot beside something connected. */
+function ConnectedDot({ label }: { label?: string }) {
+  return (
+    <span
+      aria-hidden={label ? undefined : true}
+      aria-label={label}
+      role={label ? "img" : undefined}
+      className="size-1.5 shrink-0 rounded-full bg-emerald-500"
+    />
+  );
+}
+
 /**
- * The Integrations page: every app the team can connect, in groups, each opening a page of
- * its own. Modelled on Linear's Integrations settings.
+ * The Integrations page: every app the team can connect, one tab per group so the page
+ * never runs long, each app opening a page of its own. Modelled on Linear's Integrations
+ * settings; a tab with something connected in it carries a green dot.
  */
 export function IntegrationsList() {
   const states = useAppStates();
   return (
-    <div className="flex flex-col gap-10">
+    <SettingsTabs
+      label="Integrations"
+      tabs={INTEGRATION_GROUPS.map((group) => ({
+        id: group.id,
+        label: group.label,
+        mark: group.apps.some((app) => states[app.slug] === "connected") ? (
+          <ConnectedDot label="Something connected" />
+        ) : undefined,
+      }))}
+    >
       {INTEGRATION_GROUPS.map((group) => (
-        <section key={group.label} className="flex flex-col gap-2" aria-label={group.label}>
-          <h2 className="text-muted-foreground px-3 text-xs font-medium">{group.label}</h2>
-          <ul className="flex flex-col">
+        <TabsContent key={group.id} value={group.id}>
+          <ul className="-mx-3 flex flex-col" aria-label={group.label}>
             {group.apps.map((app) => {
               const state = states[app.slug];
               const text = state ? STATE_TEXT[state] : null;
@@ -120,12 +143,7 @@ export function IntegrationsList() {
                             : "text-muted-foreground",
                         )}
                       >
-                        {state === "connected" && (
-                          <span
-                            aria-hidden="true"
-                            className="size-1.5 rounded-full bg-emerald-500"
-                          />
-                        )}
+                        {state === "connected" && <ConnectedDot />}
                         {text}
                       </span>
                     )}
@@ -138,8 +156,8 @@ export function IntegrationsList() {
               );
             })}
           </ul>
-        </section>
+        </TabsContent>
       ))}
-    </div>
+    </SettingsTabs>
   );
 }

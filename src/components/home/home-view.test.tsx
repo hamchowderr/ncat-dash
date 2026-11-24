@@ -1,8 +1,8 @@
 import { api } from "@convex/_generated/api";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vitest";
 
-import { answerQuery, mutationOf, pushed } from "@/test/convex";
+import { answerQuery } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
 import { HomeView } from "./home-view";
@@ -35,7 +35,6 @@ function summary(overrides: Record<string, unknown> = {}) {
     failures: [run(2, "failed", { error: "The toolkit did not answer." })],
     automations: { total: 4, on: 3 },
     setup: SETUP_DONE,
-    contentKinds: [],
     ...overrides,
   };
 }
@@ -131,7 +130,7 @@ describe("the home page", () => {
     expect(links[0].textContent).toContain("episode 1.mp4");
   });
 
-  test("leads with ready-made automations until one is switched on, and starts one", async () => {
+  test("shows no templates: those live on the Automations page", () => {
     answerQuery(
       api.home.summary,
       summary({
@@ -142,64 +141,49 @@ describe("the home page", () => {
         setup: { ...SETUP_DONE, automationOn: false, firstRun: false },
       }),
     );
-    mutationOf(api.automations.create).mockResolvedValue("auto7");
     renderInApp(<HomeView />);
-    const regions = screen
-      .getAllByRole("region")
-      .map((region) => region.getAttribute("aria-labelledby"));
-    expect(regions.indexOf("home-ready-made-automations")).toBeLessThan(
-      regions.indexOf("home-latest-runs"),
+    expect(screen.getByTestId("home-week").textContent).toBe(
+      "No automations yet. Start from a template on the Automations page.",
     );
-    const ready = screen.getByRole("region", { name: "Ready-made automations" });
+    expect(screen.queryByRole("region", { name: /Ready-made/ })).toBeNull();
+    expect(screen.queryByRole("region", { name: /Goes well/ })).toBeNull();
+    expect(screen.queryByText("Podcast master and transcript")).toBeNull();
+    // Getting started still says where to find one.
+    const setup = screen.getByRole("region", { name: /Getting started/ });
     expect(
-      within(ready)
-        .getByRole("link", { name: /See all 89/ })
+      within(setup)
+        .getByRole("link", { name: /Switch on an automation/ })
         .getAttribute("href"),
     ).toBe("/automations/new");
-    fireEvent.click(within(ready).getByText("Podcast master and transcript"));
-    await waitFor(() => expect(pushed).toHaveBeenCalled());
-    expect(mutationOf(api.automations.create)).toHaveBeenCalledWith({
-      organizationId: TEAM.id,
-      name: "Podcast master and transcript",
-      starterId: "podcast-master",
-    });
-    expect(pushed.mock.calls[0][0]).toBe("/automations/auto7");
   });
 
-  test("shows getting started only while something is left, with links to each step", () => {
+  test("shows getting started only while something is left, beside the page, with a bar", () => {
     answerQuery(
       api.home.summary,
       summary({ setup: { ...SETUP_DONE, brand: false, firstRun: false } }),
     );
     const { unmount } = renderInApp(<HomeView />);
-    const setup = screen.getByRole("region", { name: "Getting started, 4 of 6 done" });
+    const side = screen.getByRole("complementary", { name: "Your team at a glance" });
+    const setup = within(side).getByRole("region", { name: "Getting started, 2 of 4 done" });
+    expect(within(setup).getByRole("progressbar").getAttribute("aria-valuenow")).toBe("2");
     expect(
       within(setup)
         .getByRole("link", { name: /Add your logo/ })
         .getAttribute("href"),
     ).toBe("/settings/brand");
-    expect(within(setup).queryByRole("link", { name: /Connect your toolkit/ })).toBeNull();
+    expect(within(setup).getAllByRole("link")).toHaveLength(2);
+    // This week sits in the same column, under getting started.
+    expect(within(side).getByRole("region", { name: "This week" })).toBeTruthy();
     unmount();
     answerQuery(api.home.summary, summary());
     renderInApp(<HomeView />);
     expect(screen.queryByRole("region", { name: /Getting started/ })).toBeNull();
   });
 
-  test("Connect your toolkit opens Settings, under Toolkit", () => {
-    answerQuery(api.home.summary, summary({ setup: { ...SETUP_DONE, toolkit: false } }));
-    renderInApp(<HomeView />);
-    const setup = screen.getByRole("region", { name: /Getting started/ });
-    expect(
-      within(setup)
-        .getByRole("link", { name: /Connect your toolkit/ })
-        .getAttribute("href"),
-    ).toBe("/settings/toolkit");
-  });
-
   test("asks what the team makes until it is answered", () => {
     answerQuery(api.home.summary, summary({ setup: { ...SETUP_DONE, goals: false } }));
     renderInApp(<HomeView />);
-    const setup = screen.getByRole("region", { name: "Getting started, 5 of 6 done" });
+    const setup = screen.getByRole("region", { name: "Getting started, 3 of 4 done" });
     expect(
       within(setup)
         .getByRole("link", { name: /Tell us what you make/ })
@@ -207,63 +191,59 @@ describe("the home page", () => {
     ).toBe("/get-started");
   });
 
-  test("puts the ready-made automations for what the team makes first", () => {
+  test("never mentions the toolkit: no button, no setup steps, nothing while it works", () => {
     answerQuery(
       api.home.summary,
-      summary({ automations: { total: 0, on: 0 }, contentKinds: ["coaching"] }),
+      summary({
+        failures: [],
+        recentRuns: [run(1, "done")],
+        setup: { ...SETUP_DONE, toolkit: false, bucket: false, brand: false },
+      }),
     );
-    renderInApp(<HomeView />);
-    const ready = screen.getByRole("region", { name: "Ready-made automations" });
-    const names = within(ready)
-      .getAllByRole("button")
-      .map((button) => button.textContent ?? "");
-    expect(names[0]).toContain("Coaching session pack");
-    expect(names[1]).not.toContain("Sermon, webinar or lecture pack");
-    // Still six to start from, the rest from the usual mix.
-    expect(names).toHaveLength(6);
+    const { container } = renderInApp(<HomeView />);
+    expect(container.textContent).not.toMatch(/toolkit/i);
+    expect(screen.queryByRole("link", { name: /Connect/ })).toBeNull();
+    expect(screen.queryByTestId("processing-status")).toBeNull();
   });
 
-  test("keeps the toolkit to one line, and opens its details when it is not answering", () => {
-    answerQuery(api.home.summary, summary());
+  test("with nothing set up to process videos, Needs you points to Settings", () => {
+    answerQuery(api.home.summary, summary({ failures: [] }));
+    answerQuery(api.toolkitConnections.list, []);
+    const { container } = renderInApp(<HomeView />);
+    const needs = screen.getByRole("region", { name: "Needs you" });
+    expect(within(needs).getByTestId("processing-status").textContent).toBe(
+      "Video processing is not set up yet.",
+    );
+    expect(within(needs).getByRole("link", { name: "Open settings" }).getAttribute("href")).toBe(
+      "/settings/toolkit",
+    );
+    expect(container.textContent).not.toMatch(/toolkit/i);
+  });
+
+  test("when processing stops answering, Needs you says so and points to Settings", () => {
+    answerQuery(api.home.summary, summary({ failures: [] }));
     answerQuery(api.toolkitConnections.list, [
       { ...CONNECTION, status: "failing", lastError: "Connection refused." },
     ]);
     renderInApp(<HomeView />);
-    expect(screen.getByTestId("connection-status").textContent).toBe("Toolkit not responding");
-    expect(screen.getByText("https://toolkit.example")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "See how busy it is" }).getAttribute("href")).toBe(
-      "/toolkit",
+    const needs = screen.getByRole("region", { name: "Needs you" });
+    expect(within(needs).getByTestId("processing-status").textContent).toBe(
+      "Video processing is not answering.",
     );
-  });
-
-  test("leaves out the toolkit's load for a team whose toolkit is run for it", () => {
-    answerQuery(api.home.summary, summary());
-    answerQuery(api.toolkitHealth.shown, false);
-    answerQuery(api.toolkitConnections.list, [
-      { ...CONNECTION, status: "failing", lastError: "Connection refused." },
-    ]);
-    renderInApp(<HomeView />);
-    expect(screen.getByText("https://toolkit.example")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "See how busy it is" })).toBeNull();
-  });
-
-  test("our toolkit is looked after for the team: nothing to show while it works", () => {
-    answerQuery(api.home.summary, summary());
-    answerQuery(api.toolkitConnections.list, [{ ...CONNECTION, ours: true, apiKeyHint: "" }]);
-    renderInApp(<HomeView />);
-    expect(screen.queryByTestId("connection-status")).toBeNull();
+    expect(within(needs).getByRole("link", { name: "Open settings" }).getAttribute("href")).toBe(
+      "/settings/toolkit",
+    );
     expect(screen.queryByText("https://toolkit.example")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Check again/ })).toBeNull();
+    expect(screen.queryByText("Connection refused.")).toBeNull();
   });
 
-  test("when our toolkit stops answering, it says so without its details", () => {
-    answerQuery(api.home.summary, summary());
+  test("when ours stops answering, it says we're on it, with nothing to do", () => {
+    answerQuery(api.home.summary, summary({ failures: [] }));
     answerQuery(api.toolkitConnections.list, [
       { ...CONNECTION, ours: true, apiKeyHint: "", status: "failing", lastError: "Refused." },
     ]);
     renderInApp(<HomeView />);
-    expect(screen.getByTestId("connection-status").textContent).toMatch(/not answering/);
-    expect(screen.queryByText("https://toolkit.example")).toBeNull();
-    expect(screen.queryByText("Refused.")).toBeNull();
+    expect(screen.getByTestId("processing-status").textContent).toMatch(/We're on it/);
+    expect(screen.queryByRole("link", { name: "Open settings" })).toBeNull();
   });
 });
