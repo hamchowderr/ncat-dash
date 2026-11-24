@@ -137,13 +137,13 @@ describe("the Watched folder trigger panel", () => {
     expect(onChange).toHaveBeenCalledWith({ ...folderTrigger, prefix: "incoming/clips/" });
   });
 
-  test("sends people to connect a bucket when there is none", () => {
+  test("sends people to connect their toolkit when there is no storage", () => {
     answerQuery(api.storage.get, null);
     renderInApp(
       <TriggerPanel trigger={folderTrigger} onChange={vi.fn()} automationId="a" hookToken="t" />,
     );
-    expect(screen.getByRole("link", { name: "Uploads page" }).getAttribute("href")).toBe(
-      "/uploads",
+    expect(screen.getByRole("link", { name: "Connect your toolkit" }).getAttribute("href")).toBe(
+      "/",
     );
   });
 });

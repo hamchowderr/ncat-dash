@@ -34,7 +34,7 @@ type Past = {
 
 type Whose = "all" | "mine" | "shared";
 
-const STANDING_TEXT = { brought: "Brought in", duplicate: "Already in Uploads" } as const;
+const STANDING_TEXT = { brought: "Brought in", duplicate: "Already in the Library" } as const;
 
 /** Recordings shorter than this start unticked: they are nearly always false starts. */
 export const SHORT_MINUTES = 5;
@@ -84,7 +84,7 @@ function byYear(list: Past[]): [number, Past[]][] {
 
 /**
  * Every Meet recording in the person's Drive, found in one go: how many there are, which
- * are already in Uploads, and the rest ticked, ready to bring over with one press. Like a
+ * are already in the Library, and the rest ticked, ready to bring over with one press. Like a
  * migration screen: look through it all, untick what you do not want, bring the rest.
  * Each row has Drive's picture of the video, which opens it to watch; meetings with no
  * title are named from the person's calendar; recordings someone shared say who.
@@ -217,7 +217,7 @@ export function MeetPastRecordings({ organizationId }: { organizationId: string 
       const result = await bringIn({ organizationId, driveFileIds: ids });
       // Ones the team was already bringing in (the watcher can take them first) are on their way too.
       const said = [
-        `${plural(result.started + result.already, "recording")} on the way to Uploads`,
+        `${plural(result.started + result.already, "recording")} on the way to the Library`,
       ];
       if (result.duplicate) said.push(`${result.duplicate.toLocaleString()} already there`);
       if (result.missing) said.push(`${result.missing.toLocaleString()} no longer in Drive`);
@@ -237,15 +237,15 @@ export function MeetPastRecordings({ organizationId }: { organizationId: string 
           <p className="text-sm font-medium">Past recordings</p>
           <p className="text-muted-foreground text-sm">
             {past === null
-              ? "Finds every Meet recording in your Drive, however old, so you can bring them over at once. Ones already in Uploads are skipped."
+              ? "Finds every Meet recording in your Drive, however old, so you can bring them over at once. Ones already in the Library are skipped."
               : past.length === 0
                 ? "No Meet recordings in your Drive."
                 : `${plural(past.length, "recording")} in your Drive${
                     sharedCount ? `, ${sharedCount.toLocaleString()} shared with you` : ""
                   }. ${
                     fresh.length === 0
-                      ? "All of them are in Uploads."
-                      : `${fresh.length.toLocaleString()} not in Uploads yet.`
+                      ? "All of them are in the Library."
+                      : `${fresh.length.toLocaleString()} not in the Library yet.`
                   }${complete ? "" : " Showing the newest 2,000."}`}
           </p>
         </div>
@@ -312,8 +312,8 @@ export function MeetPastRecordings({ organizationId }: { organizationId: string 
               }
               aria-label={
                 filtering
-                  ? "Pick every recording shown that is not in Uploads"
-                  : "Pick every recording not in Uploads"
+                  ? "Pick every recording shown that is not in the Library"
+                  : "Pick every recording not in the Library"
               }
             />
             {pickedCount === fresh.length
@@ -358,7 +358,7 @@ export function MeetPastRecordings({ organizationId }: { organizationId: string 
                       on === true,
                     )
                   }
-                  aria-label={`Pick every ${year} recording not in Uploads`}
+                  aria-label={`Pick every ${year} recording not in the Library`}
                 />
               ) : (
                 <span className="size-4 shrink-0" />

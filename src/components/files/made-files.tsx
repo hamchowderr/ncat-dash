@@ -133,7 +133,12 @@ function ByRun({ automation }: { automation: string }) {
           action="Go to Automations"
         />
       ) : (
-        results.map((run) => <RunCard key={run.runId} run={run} review={review} />)
+        // Each run is as wide as its files, and runs sit side by side to fill the row.
+        <div data-runs className="flex flex-wrap items-start gap-4">
+          {results.map((run) => (
+            <RunCard key={run.runId} run={run} review={review} />
+          ))}
+        </div>
       )}
       <More status={status} onMore={() => loadMore(PAGE)} />
     </div>
@@ -151,7 +156,7 @@ function RunCard({ run, review }: { run: RunOutputs; review: ReturnType<typeof u
     <OutputNamesProvider names={run.names} platforms={run.platforms}>
       <section
         aria-label={`${run.automationName}, ${when.format(run.startedAt)}`}
-        className="flex flex-col gap-4 rounded-xl bg-surface p-4"
+        className="flex w-fit max-w-full flex-col gap-4 rounded-xl bg-surface p-4"
       >
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">
@@ -232,9 +237,9 @@ function Group({ group }: { group: FileGroup }) {
         {groupTitle(group)}{" "}
         <span className="text-muted-foreground font-normal">· {files(group.files.length)}</span>
       </h3>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="flex flex-wrap gap-3">
         {group.files.map((url) => (
-          <MediaPreview key={url} url={url} />
+          <MediaPreview key={url} url={url} compact />
         ))}
       </div>
     </div>
@@ -260,41 +265,43 @@ function ByHand() {
           action="Browse steps"
         />
       ) : (
-        results.map((job) => (
-          <section
-            key={job.jobId}
-            aria-label={stepTitle(job.stepId)}
-            className="flex flex-col gap-3 rounded-xl bg-surface p-4"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-medium">
-                {stepTitle(job.stepId)}
-                {job.finishedAt && (
-                  <span className="text-muted-foreground font-normal">
-                    {" "}
-                    · {when.format(job.finishedAt)}
-                  </span>
-                )}
-              </h2>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={review.sending !== null}
-                onClick={() => review.send(job.jobId, stepTitle(job.stepId), job.urls, job.names)}
-              >
-                <MessagesSquare />
-                Send to review
-              </Button>
-            </div>
-            <OutputNamesProvider names={job.names}>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {job.urls.map((url) => (
-                  <MediaPreview key={url} url={url} />
-                ))}
+        <div data-runs className="flex flex-wrap items-start gap-4">
+          {results.map((job) => (
+            <section
+              key={job.jobId}
+              aria-label={stepTitle(job.stepId)}
+              className="flex w-fit max-w-full flex-col gap-3 rounded-xl bg-surface p-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-medium">
+                  {stepTitle(job.stepId)}
+                  {job.finishedAt && (
+                    <span className="text-muted-foreground font-normal">
+                      {" "}
+                      · {when.format(job.finishedAt)}
+                    </span>
+                  )}
+                </h2>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={review.sending !== null}
+                  onClick={() => review.send(job.jobId, stepTitle(job.stepId), job.urls, job.names)}
+                >
+                  <MessagesSquare />
+                  Send to review
+                </Button>
               </div>
-            </OutputNamesProvider>
-          </section>
-        ))
+              <OutputNamesProvider names={job.names}>
+                <div className="flex flex-wrap gap-3">
+                  {job.urls.map((url) => (
+                    <MediaPreview key={url} url={url} compact />
+                  ))}
+                </div>
+              </OutputNamesProvider>
+            </section>
+          ))}
+        </div>
       )}
       <More status={status} onMore={() => loadMore(PAGE)} />
     </div>

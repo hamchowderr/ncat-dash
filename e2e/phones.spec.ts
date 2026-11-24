@@ -42,7 +42,9 @@ test.beforeAll(async ({ browser }) => {
   await expect(owner).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await owner.getByPlaceholder("Your company or channel").fill("Duarte Media");
   await owner.getByRole("button", { name: "Create team" }).click();
-  await expect(owner.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(owner.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await owner.goto("/settings/toolkit");
   await owner.locator("#baseUrl").fill(TOOLKIT);
   await owner.locator("#apiKey").fill("stand-in-key-1234");
@@ -54,8 +56,8 @@ test.afterAll(async () => {
   await owner?.context().close();
 });
 
-test("a video sent from the phone shows as a tile and opens on the whole screen", async () => {
-  await owner.goto("/uploads");
+test("a video sent from the phone shows as a tile and opens on its own page", async () => {
+  await owner.goto("/library");
   await expect(owner.getByText("Choose videos and photos from your phone.")).toBeVisible();
   await expect(owner.getByText(/Drop files here/)).toBeHidden();
   // The button is big enough for a thumb.
@@ -63,31 +65,20 @@ test("a video sent from the phone shows as a tile and opens on the whole screen"
   expect((await choose.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 
   await owner.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.webm");
-  const tile = owner.getByRole("button", { name: "Open clip.webm" });
+  const tile = owner.getByTestId("library-tile").filter({ hasText: "clip" });
   await expect(tile).toBeVisible({ timeout: 30_000 });
-  await expect(owner.getByText("Video · 0:06 · 180×320 · 45 KB")).toBeVisible({ timeout: 30_000 });
+  await expect(tile.getByText(/0:06/)).toBeVisible({ timeout: 30_000 });
   // Two across: a tile is about half the width.
   const width = (await tile.boundingBox())!.width;
   expect(width).toBeLessThan(200);
-  // No list to switch to: nine columns do not fit across a phone.
+  // No list to switch to: its columns do not fit across a phone.
   await expect(owner.getByRole("button", { name: "List", exact: true })).toBeHidden();
   await noSideways(owner);
 
-  await tile.tap();
-  const dialog = owner.getByRole("dialog");
-  await expect(dialog.getByTestId("upload-player")).toBeVisible();
-  // Once it has grown in, it is the whole screen.
-  await expect
-    .poll(async () => {
-      const box = (await dialog.boundingBox())!;
-      return [box.x, box.y, box.width, box.height].map(Math.round);
-    })
-    .toEqual([0, 0, 390, 844]);
-  const copy = dialog.getByRole("button", { name: "Copy link" });
-  await copy.scrollIntoViewIfNeeded();
-  expect((await copy.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  await dialog.getByRole("button", { name: "Close" }).tap();
-  await expect(dialog).toBeHidden();
+  await tile.getByLabel(/^Open V\d+ clip$/).tap();
+  await expect(owner).toHaveURL(/\/library\/[a-z0-9]+$/);
+  await expect(owner.getByTestId("library-player")).toBeVisible();
+  await noSideways(owner);
 });
 
 test("the review room fits the phone, with the decision along the bottom", async () => {

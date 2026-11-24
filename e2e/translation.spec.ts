@@ -31,9 +31,9 @@ test("a video is translated once, keeps its times, and a line can be corrected",
   await page.getByRole("button", { name: "Test and connect" }).click();
   await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
-  await page.goto("/uploads");
+  await page.goto("/library");
   await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.webm");
-  await expect(page.getByRole("button", { name: "Open clip.webm" })).toBeVisible({
+  await expect(page.getByLabel(/^Open V\d+ clip$/)).toBeVisible({
     timeout: 30_000,
   });
   await page.goto("/library");

@@ -93,6 +93,24 @@ describe("Recently made, by run", () => {
     );
   });
 
+  test("sizes each clip to its own shape, so a tall clip has no wide black frame", () => {
+    show([run()]);
+    const card = screen.getByRole("region", { name: /^Shorts, / });
+    const video = card.querySelector("video")!;
+    expect(video).toHaveClass("h-56", "w-auto");
+    expect(video).not.toHaveClass("aspect-video");
+    expect(video.closest("figure")).toHaveAttribute("data-compact", "true");
+  });
+
+  test("each run is only as wide as its files, and runs sit side by side", () => {
+    show([run(), run({ runId: "run_2" })]);
+    const cards = screen.getAllByRole("region", { name: /^Shorts, / });
+    expect(cards).toHaveLength(2);
+    for (const card of cards) expect(card).toHaveClass("w-fit");
+    expect(cards[0].parentElement).toHaveClass("flex-wrap");
+    expect(cards[1].parentElement).toBe(cards[0].parentElement);
+  });
+
   test("marks a run that did not finish, and a test of one step", () => {
     show([
       run({ status: "failed", runId: "run_2" }),

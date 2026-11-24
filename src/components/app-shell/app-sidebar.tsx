@@ -33,7 +33,6 @@ import {
   SquareFunction,
   UserPlus,
   Users,
-  UploadCloud,
   Waypoints,
 } from "lucide-react";
 import Link from "next/link";
@@ -85,7 +84,6 @@ const navEveryday: NavItem[] = [
   { title: "Clients", url: "/clients", icon: Contact },
   { title: "Creators", url: "/creators", icon: Camera },
   { title: "Library", url: "/library", icon: Library },
-  { title: "Uploads", url: "/uploads", icon: UploadCloud },
   { title: "Files", url: "/files", icon: FolderTree },
 ];
 

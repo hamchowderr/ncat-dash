@@ -53,9 +53,9 @@ test("a clip cut for TikTok says so everywhere it shows", async ({ page }) => {
   await expect(page.getByText("On", { exact: true })).toBeVisible();
   const automation = page.url();
 
-  await page.goto("/uploads");
+  await page.goto("/library");
   await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.webm");
-  await expect(page.getByRole("button", { name: "Open clip.webm" })).toBeVisible({
+  await expect(page.getByLabel(/^Open V\d+ clip$/)).toBeVisible({
     timeout: 30_000,
   });
   await page.goto(automation);

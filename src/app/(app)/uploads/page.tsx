@@ -1,10 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { UploadsView } from "@/components/uploads/uploads-view";
-
-export const metadata: Metadata = { title: "Uploads" };
-export const instant = false;
-
+// Uploading now happens on the Library; old links and bookmarks land there.
 export default function Page() {
-  return <UploadsView />;
+  redirect("/library");
 }

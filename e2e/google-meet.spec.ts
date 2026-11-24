@@ -29,7 +29,9 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill(`Harbour Films ${stamp}`);
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -66,7 +68,7 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
   await page.getByRole("button", { name: "Find recordings" }).click();
   const past = page.getByRole("region", { name: "Past recordings" });
   await expect(
-    past.getByText("4 recordings in your Drive, 1 shared with you. 4 not in Uploads yet."),
+    past.getByText("4 recordings in your Drive, 1 shared with you. 4 not in the Library yet."),
   ).toBeVisible();
   await expect(past.getByText("Client Kickoff")).toBeVisible();
   await expect(past.getByText(/37 min/)).toBeVisible();
@@ -93,14 +95,16 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
   await expect(past.getByText("All 4 picked")).toBeVisible();
   await past.getByRole("button", { name: "Bring over 4 recordings" }).click();
   // Answered once Drive has listed and started all four, which takes a while on a busy runner.
-  await expect(page.getByText("4 recordings on the way to Uploads")).toBeVisible({
+  await expect(page.getByText("4 recordings on the way to the Library")).toBeVisible({
     timeout: 45_000,
   });
   await expect(
-    past.getByText("4 recordings in your Drive, 1 shared with you. All of them are in Uploads."),
+    past.getByText(
+      "4 recordings in your Drive, 1 shared with you. All of them are in the Library.",
+    ),
   ).toBeVisible();
   const brought = page.getByRole("region", { name: "Brought in from Google Meet" });
-  await expect(brought.getByRole("link", { name: "In Uploads" })).toHaveCount(4, {
+  await expect(brought.getByRole("link", { name: "In the Library" })).toHaveCount(4, {
     timeout: 60_000,
   });
 
@@ -112,24 +116,26 @@ test("connects Google Meet, brings past meetings over at once, and a finished on
   execSync("npx convex run googleMeet:checkAll", { stdio: "pipe" });
   await expect(brought.getByText("Weekly Sync")).toBeVisible({ timeout: 30_000 });
 
-  // Both are uploads now, named after the meeting and its day.
-  await page.goto("/uploads");
-  const uploads = page.getByRole("region", { name: "Your uploads" });
-  await expect(uploads.getByText(/^Partner Sync \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  // Both are in the Library now, named after the meeting and its day.
+  await page.goto("/library");
+  const uploads = page.getByRole("region", { name: "Your library" });
+  await expect(uploads.getByText(/^Partner Sync \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(uploads.getByText(/^Design Review \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  await expect(uploads.getByText(/^Design Review \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(uploads.getByText(/Shared by Pat Rivera/)).toBeVisible();
-  await expect(uploads.getByText(/^Annual Review \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  await expect(uploads.getByText(/^Annual Review \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(uploads.getByText(/^Client Kickoff \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  await expect(uploads.getByText(/^Client Kickoff \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(uploads.getByText(/^Weekly Sync \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  await expect(uploads.getByText(/^Weekly Sync \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
+  // The one shared from someone else's Drive says who shared it, on its page.
+  await page.getByLabel(/^Open V\d+ Partner Sync \d{4}-\d{2}-\d{2}$/).click();
+  await expect(page.getByText("Pat Rivera", { exact: true })).toBeVisible();
   await page.waitForTimeout(1500);
 });

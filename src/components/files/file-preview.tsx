@@ -1,7 +1,6 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { fileDetailRows } from "@takewon/automation-core";
 import { useAction } from "convex/react";
 import { Download, Link2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -16,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FileFacts, fileFacts } from "@/components/library/file-facts";
 import { formatBytes } from "@/lib/catalog";
 
 import type { FileEntry } from "./files-view";
@@ -52,9 +52,10 @@ export function FilePreview({
   }, [file.key, linkFor, organizationId, playable]);
 
   const url = link?.key === file.key ? link.url : null;
+  // The numbers are labels, the same as on a file's page in the Library.
+  const facts = file.details ? fileFacts(file.details, file.size) : [];
   const rows: [string, string][] = [
-    ...(file.details ? fileDetailRows(file.details, file.name) : []),
-    ["File size", formatBytes(file.size)],
+    ...(facts.length === 0 ? [["File size", formatBytes(file.size)] as [string, string]] : []),
     ["Changed", changedAt.format(file.lastModified)],
     ["Where", file.key],
   ];
@@ -89,6 +90,8 @@ export function FilePreview({
             )}
           </div>
         )}
+
+        {file.details && <FileFacts details={file.details} size={file.size} />}
 
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
           {rows.map(([label, value]) => (

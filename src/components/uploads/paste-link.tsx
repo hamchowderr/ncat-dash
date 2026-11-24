@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
  * # A video from a link
  *
  * Paste a link to a post on TikTok, Instagram, YouTube, X, Facebook, LinkedIn or another
- * video site, and the toolkit brings the video into Uploads. Used on the Uploads page, and
+ * video site, and the toolkit brings the video into the Library. Used on the Library, and
  * in the Match A Saved Look step to copy the look of a video the team never had a file of.
  */
 
@@ -34,7 +34,10 @@ export function PasteLink({
   forLook = false,
   disabled = false,
   className,
+  onBrought,
 }: {
+  /** Called once the link is on its way, so a dialog holding the field can close. */
+  onBrought?: () => void;
   /** Study its look once it is in. */
   forLook?: boolean;
   disabled?: boolean;
@@ -53,7 +56,8 @@ export function PasteLink({
     try {
       await bringIn({ organizationId: team.id, url, forLook });
       setUrl("");
-      if (!forLook) toast.success("On its way. It shows in Uploads once it is in.");
+      if (!forLook) toast.success("On its way. It shows in the Library once it is in.");
+      onBrought?.();
     } catch (caught) {
       toast.error(errorMessage(caught, "The link could not be brought in. Try again."));
     } finally {
@@ -124,11 +128,30 @@ export function LinkRow({ link }: { link: LinkShown }) {
     <div className="flex flex-col items-start gap-1.5" data-link="failed">
       <p className="text-sm text-pretty">
         <span className="font-medium">{link.site}</span>{" "}
-        <span className="text-destructive">{link.error}</span>
+        <span className="text-destructive">
+          <WithSettingsLink text={link.error ?? ""} />
+        </span>
       </p>
       <Button variant="outline" size="sm" onClick={putAway}>
         {link.forLook ? "Try another link" : "Put away"}
       </Button>
     </div>
+  );
+}
+
+const VIDEO_LINKS = "Settings, Video Links";
+
+/** A message that sends the reader to Settings, Video Links links there, so it is one click away. */
+function WithSettingsLink({ text }: { text: string }) {
+  const at = text.indexOf(VIDEO_LINKS);
+  if (at === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <Link href="/settings/integrations/video-links" className="underline underline-offset-2">
+        {VIDEO_LINKS}
+      </Link>
+      {text.slice(at + VIDEO_LINKS.length)}
+    </>
   );
 }

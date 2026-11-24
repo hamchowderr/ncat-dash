@@ -53,12 +53,6 @@ export const DASHBOARD_TOUR: Tour = {
       side: "right",
     },
     {
-      id: "tour-uploads",
-      title: "Uploads",
-      content: "Drop a recording here and every automation that watches your uploads starts on it.",
-      side: "right",
-    },
-    {
       id: "tour-runs",
       title: "Runs",
       content:
@@ -76,7 +70,7 @@ export const DASHBOARD_TOUR: Tour = {
       id: "tour-library",
       title: "Library",
       content:
-        "Every video, transcript and caption file you have made, searchable and tagged with the client it is for.",
+        "Upload or drop a recording here and every automation that watches your uploads starts on it. Everything you have made lands here too, searchable and tagged with the client it is for.",
       side: "right",
     },
     {
