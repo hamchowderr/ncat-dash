@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { describeFileDetails, formatMoment } from "@takewon/automation-core";
+import { formatMoment } from "@takewon/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { ArrowLeft, AudioLines, Bot, Play, Trash2, X } from "lucide-react";
 import Link from "next/link";
@@ -47,6 +47,7 @@ import { UploadStoryboard } from "@/components/storyboard/storyboard-view";
 import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "./library-media";
 import { PickList } from "@/components/ui/pick-list";
 import { Segmented } from "@/components/ui/segmented";
+import { FileFacts } from "./file-facts";
 import { transcriptState, WorkRow, type Work } from "./work-status";
 
 type Tab = "words" | "storyboard" | "made" | "details";
@@ -748,7 +749,6 @@ export function LibraryItemView({
                         {item.made === 1 ? "1 file" : `${item.made} files`}
                       </Fact>
                     )}
-                    {item.details && <Fact label="File">{describeFileDetails(item.details)}</Fact>}
                     <Fact label="Added">
                       {new Date(item._creationTime).toLocaleDateString(undefined, {
                         month: "short",
@@ -757,6 +757,7 @@ export function LibraryItemView({
                       })}
                     </Fact>
                   </dl>
+                  {item.details && <FileFacts details={item.details} />}
 
                   <div className="flex flex-col items-start gap-2">
                     <h2 className="text-sm font-medium">Run an automation on it</h2>

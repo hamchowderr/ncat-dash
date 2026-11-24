@@ -382,6 +382,45 @@ describe("a library file", () => {
     );
   });
 
+  test("the file's numbers are labels, each with its own icon and name", () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      details: {
+        duration: 412,
+        hasVideo: true,
+        hasAudio: true,
+        width: 1920,
+        height: 1080,
+        fps: 29.97,
+        videoCodec: "h264",
+        audioCodec: "aac",
+        filesize: 48 * 1024 * 1024,
+      },
+    });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    const facts = within(screen.getByRole("list", { name: "About the file" })).getAllByRole(
+      "listitem",
+    );
+    expect(facts.map((fact) => fact.getAttribute("aria-label"))).toEqual([
+      "Length: 6:52",
+      "Picture size: 1920×1080",
+      "Frame rate: 29.97 fps",
+      "Format: h264",
+      "Sound: aac",
+      "File size: 48 MB",
+    ]);
+    expect(facts.every((fact) => fact.querySelector("svg"))).toBe(true);
+  });
+
+  test("a video with no sound says so", () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      details: { duration: 6, hasVideo: true, hasAudio: false, width: 180, height: 320 },
+    });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.getByRole("listitem", { name: "Sound: No sound" })).toBeTruthy();
+  });
+
   test("tags are added and taken off", async () => {
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
     openWords();
