@@ -36,7 +36,13 @@ import { useActiveTeam } from "@/lib/team-context";
 type NodeContent = Omit<AutomationNode, "position">;
 type Settings = Record<string, unknown>;
 
-export type Member = { userId: string; name: string; email: string; role: string };
+export type Member = {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  title?: string | null;
+};
 
 function isManager(member: Member): boolean {
   return member.role.split(",").some((role) => ALWAYS_DECIDE_ROLES.includes(role.trim()));
@@ -99,6 +105,9 @@ export function ApprovalSettings({
                   />
                   <label htmlFor={id} className="flex min-w-0 flex-1 items-baseline gap-2 text-sm">
                     <span className="truncate">{member.name}</span>
+                    {member.title && (
+                      <span className="text-muted-foreground truncate text-xs">{member.title}</span>
+                    )}
                     {isManager(member) && (
                       <span className="text-muted-foreground shrink-0 text-xs">
                         {member.role.includes("owner") ? "Owner" : "Admin"}

@@ -11,7 +11,8 @@ export const SETTINGS_GROUPS = [
       {
         slug: "account",
         title: "Account",
-        description: "Your name, email address and password, and where you are signed in.",
+        description:
+          "Your photo, name, job title, time zone, email address and password, and where you sign in.",
       },
       {
         slug: "notifications",

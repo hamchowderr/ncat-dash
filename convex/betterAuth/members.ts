@@ -90,7 +90,14 @@ export const peopleFor = query({
   args: { organizationId: v.string() },
   returns: v.object({
     members: v.array(
-      v.object({ id: v.string(), role: v.string(), name: v.string(), email: v.string() }),
+      v.object({
+        id: v.string(),
+        userId: v.string(),
+        role: v.string(),
+        name: v.string(),
+        email: v.string(),
+        image: v.union(v.string(), v.null()),
+      }),
     ),
     invitations: v.array(v.object({ id: v.string(), email: v.string(), role: v.string() })),
   }),
@@ -106,9 +113,11 @@ export const peopleFor = query({
       if (user) {
         members.push({
           id: membership._id,
+          userId: user._id,
           role: membership.role,
           name: user.name,
           email: user.email,
+          image: user.image ?? null,
         });
       }
     }

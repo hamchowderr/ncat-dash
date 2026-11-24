@@ -4439,8 +4439,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           members: Array<{
             email: string;
             id: string;
+            image: string | null;
             name: string;
             role: string;
+            userId: string;
           }>;
         },
         Name

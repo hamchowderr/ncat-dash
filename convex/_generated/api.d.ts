@@ -147,6 +147,7 @@ import type * as oauth from "../oauth.js";
 import type * as outputs from "../outputs.js";
 import type * as portal from "../portal.js";
 import type * as presence from "../presence.js";
+import type * as profiles from "../profiles.js";
 import type * as projects from "../projects.js";
 import type * as reviewAgent from "../reviewAgent.js";
 import type * as reviewChatPosts from "../reviewChatPosts.js";
@@ -327,6 +328,7 @@ declare const fullApi: ApiFromModules<{
   outputs: typeof outputs;
   portal: typeof portal;
   presence: typeof presence;
+  profiles: typeof profiles;
   projects: typeof projects;
   reviewAgent: typeof reviewAgent;
   reviewChatPosts: typeof reviewChatPosts;

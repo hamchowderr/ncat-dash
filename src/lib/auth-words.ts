@@ -31,6 +31,12 @@ export const LOCALIZATION = {
   settings: {
     currentPasswordPlaceholder: "",
     userProfile: "Profile",
+    avatar: "Photo",
+    changeAvatar: "Change photo",
+    uploadAvatar: "Upload a photo",
+    deleteAvatar: "Remove photo",
+    avatarChangedSuccess: "Photo updated.",
+    avatarDeletedSuccess: "Photo removed.",
     changeEmail: "Email address",
     changeEmailSuccess:
       "Check your inbox: approve the change from your current address, then confirm the new one.",

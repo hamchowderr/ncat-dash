@@ -11,6 +11,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { myTimeZone } from "@/lib/time-zone";
 
 /** "America/New_York" → "New York"; "UTC" stays "UTC". */
 export function zoneCity(zone: string) {
@@ -59,7 +60,7 @@ export function TimeZonePicker({
 }) {
   const [open, setOpen] = useState(false);
   const zones = useMemo(() => allZones(), []);
-  const here = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", []);
+  const here = useMemo(() => myTimeZone(), []);
   const offset = zoneOffset(value);
 
   return (

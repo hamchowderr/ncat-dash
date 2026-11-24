@@ -25,6 +25,7 @@ import { movePostLocally, setDueLocally } from "./optimistic";
 import { type Dragged, type Due, PlatformMark, type Post, type Waiting } from "./entries";
 import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
 import { PickList } from "@/components/ui/pick-list";
+import { myTimeZone } from "@/lib/time-zone";
 
 export type Panel =
   | { mode: "waiting" }
@@ -693,7 +694,7 @@ function RepeatingSlots({ clients }: { clients: Client[] }) {
         organizationId: team.id,
         weekday,
         time,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timeZone: myTimeZone(),
         platform,
         ...(clientId ? { clientId: clientId as Id<"clients"> } : {}),
       });

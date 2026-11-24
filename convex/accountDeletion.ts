@@ -3,6 +3,7 @@ import { components, internal } from "./_generated/api";
 import type { TableNames } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
 import { getCaller } from "./lib/caller";
+import { forgetProfile } from "./profiles";
 
 /**
  * Deleting your own account (Settings > Account > Password And Devices). Better Auth's
@@ -129,6 +130,8 @@ export const prepare = internalMutation({
       .withIndex("by_user_and_tour", (q) => q.eq("userId", args.userId))
       .take(100);
     for (const row of tours) await ctx.db.delete(row._id);
+    // Their time zone, what they do, and the stored file of their photo.
+    await forgetProfile(ctx, args.userId);
     return null;
   },
 });

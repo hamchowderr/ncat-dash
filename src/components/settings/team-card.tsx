@@ -6,6 +6,7 @@ import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -25,6 +26,18 @@ import { DeleteTeam } from "./delete-team";
 import { SettingsSection } from "./settings-shell";
 
 const roleNames: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member" };
+
+/** "Maya Ortiz" → "MO", for a teammate without a photo. */
+function initials(name: string) {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "?"
+  );
+}
 
 /** Who is on the team, and inviting more people by email. */
 export function TeamCard({ canEdit }: { canEdit: boolean }) {
@@ -129,9 +142,20 @@ export function TeamCard({ canEdit }: { canEdit: boolean }) {
         <ul aria-label="People on the team" className="flex flex-col gap-1 text-sm">
           {people.members.map((person) => (
             <li key={person.id} className="flex items-center justify-between gap-3 py-2">
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{person.name}</span>
-                <span className="text-muted-foreground block truncate">{person.email}</span>
+              <span className="flex min-w-0 items-center gap-3">
+                <Avatar className="size-8">
+                  {person.image && <AvatarImage src={person.image} alt="" />}
+                  <AvatarFallback>{initials(person.name)}</AvatarFallback>
+                </Avatar>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">
+                    {person.name}
+                    {person.title && (
+                      <span className="text-muted-foreground font-normal"> · {person.title}</span>
+                    )}
+                  </span>
+                  <span className="text-muted-foreground block truncate">{person.email}</span>
+                </span>
               </span>
               <Badge variant="secondary">{roleNames[person.role] ?? person.role}</Badge>
             </li>

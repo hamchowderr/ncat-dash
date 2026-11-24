@@ -1899,6 +1899,19 @@ export default defineSchema({
   // A person who has been through a guided tour of the dashboard, finished or closed, so
   // it does not start by itself again. Per person, not per team: the dashboard is the same
   // on every team. No row means they have not.
+  // A person's own profile, beside what Better Auth keeps (name, email, photo address):
+  // their time zone, what they do on a team, and the stored file of their photo.
+  profiles: defineTable({
+    userId: v.string(),
+    // An IANA zone such as "America/Los_Angeles". Summaries, calendar times, schedules
+    // and the agent go by it. Filled from the browser the first time.
+    timeZone: v.optional(v.string()),
+    // What they do, such as "Editor". Shown beside their name on Members and to the agent.
+    title: v.optional(v.string()),
+    // Their uploaded photo, in Convex file storage. Better Auth's `image` holds its address.
+    avatar: v.optional(v.id("_storage")),
+  }).index("by_user", ["userId"]),
+
   tourEnds: defineTable({
     userId: v.string(),
     tourId: tourIdValidator,
