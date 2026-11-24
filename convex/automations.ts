@@ -1170,6 +1170,9 @@ export const runNow = mutation({
   args: {
     automationId: v.id("automations"),
     fileUrl: v.optional(v.string()),
+    // The upload the file is, when one was picked: what the run makes is then named after
+    // it and joins the library as made from it.
+    uploadId: v.optional(v.id("uploads")),
     version: v.optional(v.union(v.literal("draft"), v.literal("live"))),
     // With several triggers: which one's steps to run, as if it had started it. The first
     // when left out.
@@ -1184,11 +1187,22 @@ export const runNow = mutation({
     }
     const version = args.version === "live" ? automation : withWorkingCopy(automation);
     const triggerId = knownTrigger(version, args.triggerId);
+    const upload = args.uploadId ? await ctx.db.get(args.uploadId) : null;
+    const picked =
+      fileUrl && upload && upload.organizationId === automation.organizationId
+        ? {
+            file_name: upload.fileName,
+            content_type: upload.contentType,
+            size: upload.size,
+            details: upload.details ?? null,
+            upload_id: upload._id,
+          }
+        : {};
     const started = await startRun(
       ctx,
       version,
       "manual",
-      fileUrl ? { file_url: fileUrl } : {},
+      fileUrl ? { file_url: fileUrl, ...picked } : {},
       userId,
       { triggerId },
     );
