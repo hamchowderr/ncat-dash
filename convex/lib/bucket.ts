@@ -286,6 +286,38 @@ export async function deleteObject(bucket: Bucket, key: string): Promise<void> {
     throw new BucketError("The toolkit would not delete the file.", 502);
 }
 
+/** The most keys the toolkit deletes in one request. */
+export const DELETE_AT_ONCE = 1000;
+
+async function deleteInBucket(bucket: Bucket, keys: string[]): Promise<string[]> {
+  if (keys.length === 0) return [];
+  const answer = await ask<{ failed: string[] }>(bucket, "delete", { keys }, 60_000);
+  return answer.failed;
+}
+
+/**
+ * Deletes up to DELETE_AT_ONCE files inside the team's folder in one request, and returns
+ * the keys the bucket would not delete.
+ */
+export async function deleteObjects(bucket: Bucket, keys: string[]): Promise<string[]> {
+  const failed = await deleteInBucket(
+    bucket,
+    keys.slice(0, DELETE_AT_ONCE).map((key) => inBucket(bucket, key)),
+  );
+  return failed.flatMap((key) => inTeam(bucket, key) ?? []);
+}
+
+/**
+ * Deletes files the toolkit wrote at the top of the bucket for this team's jobs: the
+ * toolkit names each result after its own job, outside any team's folder. Used only when
+ * the team is deleted (teamDeletion.ts), with keys taken from the team's own job records.
+ * Never touches a key in any team's folder.
+ */
+export async function deleteJobOutputs(bucket: Bucket, keys: string[]): Promise<string[]> {
+  const outside = keys.filter((key) => key && !key.startsWith("teams/"));
+  return await deleteInBucket(bucket, outside.slice(0, DELETE_AT_ONCE));
+}
+
 /**
  * Writes a small text file, such as a CSV list, through a short-lived upload link. The
  * toolkit has no request for writing a file's contents, so the bytes go straight to the

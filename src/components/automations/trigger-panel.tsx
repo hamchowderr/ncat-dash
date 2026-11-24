@@ -23,6 +23,7 @@ import { TRIGGER_ICONS, TRIGGER_TINT } from "./flow-nodes";
 import { TimeZonePicker, zoneCity } from "./time-zone-picker";
 import { LocalFolder } from "./local-folder";
 import { WatchedFolder } from "./watched-folder";
+import { myTimeZone } from "@/lib/time-zone";
 
 const UNITS = { minutes: 1, hours: 60, days: 1440 } as const;
 
@@ -475,10 +476,6 @@ export function TriggerPanel({
 
 type Schedule = Extract<Trigger, { kind: "schedule" }>["schedule"];
 
-function localZone() {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-}
-
 /** "09:00" → "9:00 AM", in the reader's own way of writing times. */
 function clockTime(time: string) {
   const [hours, minutes] = time.split(":").map(Number);
@@ -523,7 +520,7 @@ function ScheduleFields({
           onValueChange={(mode) =>
             onChange(
               mode === "daily"
-                ? { mode: "daily", time: "09:00", timeZone: localZone() }
+                ? { mode: "daily", time: "09:00", timeZone: myTimeZone() }
                 : { mode: "interval", minutes: 60 },
             )
           }

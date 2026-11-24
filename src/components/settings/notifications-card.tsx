@@ -21,6 +21,7 @@ import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
 import { SettingsSection } from "./settings-shell";
+import { myTimeZone } from "@/lib/time-zone";
 
 type Kind =
   | "run_failed"
@@ -47,15 +48,6 @@ const CHAT_APPS: Record<ChatApp, { name: string; Logo: ComponentType<SVGProps<SV
 /** "8 AM", "12 PM", in the reader's own way of writing times. */
 export function hourLabel(hour: number): string {
   return new Intl.DateTimeFormat(undefined, { hour: "numeric" }).format(new Date(2000, 0, 1, hour));
-}
-
-/** The browser's time zone, such as "America/Los_Angeles". */
-function browserZone(): string | undefined {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -85,7 +77,7 @@ export function NotificationsCard() {
         organizationId: team.id,
         emailTiming,
         digestHour,
-        timeZone: browserZone(),
+        timeZone: myTimeZone(),
       });
     } catch (caught) {
       toast.error(errorMessage(caught, "The setting could not be saved. Try again."));

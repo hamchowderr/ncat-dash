@@ -9,6 +9,7 @@
  */
 
 import type * as access from "../access.js";
+import type * as accountDeletion from "../accountDeletion.js";
 import type * as agentScreen from "../agentScreen.js";
 import type * as aiSpend from "../aiSpend.js";
 import type * as alerts from "../alerts.js";
@@ -115,6 +116,7 @@ import type * as lib_stepLog from "../lib/stepLog.js";
 import type * as lib_storyboard from "../lib/storyboard.js";
 import type * as lib_storyboards from "../lib/storyboards.js";
 import type * as lib_subtitles from "../lib/subtitles.js";
+import type * as lib_teamPurge from "../lib/teamPurge.js";
 import type * as lib_teamSteps from "../lib/teamSteps.js";
 import type * as lib_teamsApp from "../lib/teamsApp.js";
 import type * as lib_teamsPosts from "../lib/teamsPosts.js";
@@ -145,6 +147,7 @@ import type * as oauth from "../oauth.js";
 import type * as outputs from "../outputs.js";
 import type * as portal from "../portal.js";
 import type * as presence from "../presence.js";
+import type * as profiles from "../profiles.js";
 import type * as projects from "../projects.js";
 import type * as reviewAgent from "../reviewAgent.js";
 import type * as reviewChatPosts from "../reviewChatPosts.js";
@@ -161,6 +164,7 @@ import type * as storage from "../storage.js";
 import type * as storyboards from "../storyboards.js";
 import type * as stuck from "../stuck.js";
 import type * as subtitleTranslation from "../subtitleTranslation.js";
+import type * as teamDeletion from "../teamDeletion.js";
 import type * as teamSettings from "../teamSettings.js";
 import type * as teamSteps from "../teamSteps.js";
 import type * as teams from "../teams.js";
@@ -186,6 +190,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  accountDeletion: typeof accountDeletion;
   agentScreen: typeof agentScreen;
   aiSpend: typeof aiSpend;
   alerts: typeof alerts;
@@ -292,6 +297,7 @@ declare const fullApi: ApiFromModules<{
   "lib/storyboard": typeof lib_storyboard;
   "lib/storyboards": typeof lib_storyboards;
   "lib/subtitles": typeof lib_subtitles;
+  "lib/teamPurge": typeof lib_teamPurge;
   "lib/teamSteps": typeof lib_teamSteps;
   "lib/teamsApp": typeof lib_teamsApp;
   "lib/teamsPosts": typeof lib_teamsPosts;
@@ -322,6 +328,7 @@ declare const fullApi: ApiFromModules<{
   outputs: typeof outputs;
   portal: typeof portal;
   presence: typeof presence;
+  profiles: typeof profiles;
   projects: typeof projects;
   reviewAgent: typeof reviewAgent;
   reviewChatPosts: typeof reviewChatPosts;
@@ -338,6 +345,7 @@ declare const fullApi: ApiFromModules<{
   storyboards: typeof storyboards;
   stuck: typeof stuck;
   subtitleTranslation: typeof subtitleTranslation;
+  teamDeletion: typeof teamDeletion;
   teamSettings: typeof teamSettings;
   teamSteps: typeof teamSteps;
   teams: typeof teams;

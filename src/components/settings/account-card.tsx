@@ -5,6 +5,7 @@ import { SecuritySettings } from "@/components/auth/settings/security/security-s
 
 import { TabsContent } from "@/components/ui/tabs";
 
+import { ProfileDetails } from "./profile-details";
 import { SettingsSection, SettingsTabs } from "./settings-shell";
 
 /**
@@ -30,11 +31,15 @@ export function AccountCard() {
   );
 }
 
-/** Your name and email address. A new address is approved from the old one first. */
+/**
+ * Your photo, name and email address (a new address is approved from the old one first),
+ * then your role and time zone.
+ */
 export function AccountProfile() {
   return (
     <SettingsSection>
       <AccountSettings />
+      <ProfileDetails />
     </SettingsSection>
   );
 }

@@ -1,14 +1,15 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { deleteUserPlugin } from "@/lib/auth/delete-user-plugin";
 import { authClient } from "@/lib/auth-client";
-import { LOCALIZATION } from "@/lib/auth-words";
+import { DELETE_ACCOUNT_WORDS, LOCALIZATION } from "@/lib/auth-words";
 
 /**
  * The sign-in screens and account cards come from Better Auth UI (better-auth-ui.com),
@@ -21,6 +22,7 @@ import { LOCALIZATION } from "@/lib/auth-words";
 export function AuthUiProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const settings = useQuery(api.settings.get);
+  const avatar = useAvatarStorage();
   return (
     <AuthProvider
       authClient={authClient}
@@ -40,10 +42,45 @@ export function AuthUiProvider({ children }: { children: ReactNode }) {
         minPasswordLength: 8,
         maxPasswordLength: 128,
       }}
-      avatar={{ enabled: false }}
+      avatar={avatar}
+      // Delete account, at the foot of Settings > Account > Password And Devices.
+      plugins={[deleteUserPlugin({ localization: DELETE_ACCOUNT_WORDS })]}
       localization={LOCALIZATION}
     >
       {children}
     </AuthProvider>
+  );
+}
+
+/**
+ * Profile photos go to the app's own file storage, not into the account record: the page
+ * squares and shrinks the picture to 256 pixels, sends it straight to storage, and the
+ * account keeps its address. A new photo, or removing it, deletes the old file.
+ */
+function useAvatarStorage() {
+  const uploadUrl = useMutation(api.profiles.avatarUploadUrl);
+  const keep = useMutation(api.profiles.setAvatar);
+  const remove = useMutation(api.profiles.removeAvatar);
+  return useMemo(
+    () => ({
+      enabled: true,
+      extension: "webp" as const,
+      upload: async (file: File) => {
+        const response = await fetch(await uploadUrl(), {
+          method: "POST",
+          headers: { "Content-Type": file.type || "image/webp" },
+          body: file,
+        });
+        if (!response.ok) throw new Error("The photo did not upload.");
+        const { storageId } = (await response.json()) as { storageId: string };
+        const kept = await keep({ file: storageId as never });
+        if ("problem" in kept) throw new Error(kept.problem);
+        return kept.url;
+      },
+      delete: async () => {
+        await remove({});
+      },
+    }),
+    [uploadUrl, keep, remove],
   );
 }

@@ -11,6 +11,7 @@ import {
   uiMessagesToAgentController,
 } from './events';
 import { reduceAgentControllerEvent, reduceAgentControllerEvents } from './reduce';
+import { myTimeZone } from "@/lib/time-zone";
 
 export type AgentControllerStatus = 'ready' | 'streaming' | 'error';
 
@@ -119,15 +120,11 @@ export type UseAgentControllerChatOptions = {
 };
 
 /**
- * The browser's IANA time zone (e.g. `America/New_York`), sent with each turn so the
- * agent knows today's date where the user is. Undefined if the runtime can't say.
+ * The person's time zone (their profile's, else the browser's), sent with each turn so
+ * the agent knows today's date where they are.
  */
 export function browserTimeZone(): string | undefined {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
-  } catch {
-    return undefined;
-  }
+  return myTimeZone();
 }
 
 /**

@@ -3,6 +3,7 @@ import { components } from "./_generated/api";
 import { query } from "./_generated/server";
 import { getCaller } from "./lib/caller";
 import { requireMember } from "./lib/authz";
+import { titlesOf } from "./profiles";
 
 /** The signed-in user's teams. Null when nobody is signed in. */
 export const mine = query({
@@ -18,31 +19,55 @@ export const mine = query({
   },
 });
 
-/** Everyone on a team with their role, and its open invitations. For any member. */
+/**
+ * Everyone on a team with their role, photo and what they do, and its open invitations.
+ * For any member.
+ */
 export const people = query({
   args: { organizationId: v.string() },
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId);
-    return await ctx.runQuery(components.betterAuth.members.peopleFor, {
+    const people = await ctx.runQuery(components.betterAuth.members.peopleFor, {
       organizationId: args.organizationId,
     });
+    const titles = await titlesOf(
+      ctx,
+      people.members.map((person) => person.userId),
+    );
+    return {
+      ...people,
+      members: people.members.map((person) => ({
+        ...person,
+        title: titles.get(person.userId) ?? null,
+      })),
+    };
   },
 });
 
 /**
- * Everyone on a team as an Approval step names them: user id, name and role. For the
- * reviewer picker and the agent.
+ * Everyone on a team as an Approval step names them: user id, name, role and what they
+ * do. For the reviewer picker and the agent.
  */
 export const members = query({
   args: { organizationId: v.string() },
   returns: v.array(
-    v.object({ userId: v.string(), name: v.string(), email: v.string(), role: v.string() }),
+    v.object({
+      userId: v.string(),
+      name: v.string(),
+      email: v.string(),
+      role: v.string(),
+      title: v.union(v.string(), v.null()),
+    }),
   ),
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId);
     const team = await ctx.runQuery(components.betterAuth.members.contactsFor, {
       organizationId: args.organizationId,
     });
-    return team.members;
+    const titles = await titlesOf(
+      ctx,
+      team.members.map((person) => person.userId),
+    );
+    return team.members.map((person) => ({ ...person, title: titles.get(person.userId) ?? null }));
   },
 });

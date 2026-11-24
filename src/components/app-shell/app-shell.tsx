@@ -21,6 +21,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from "@/com
 import { showAgent, useAgentOpen } from "@/lib/agent-open";
 import { TeamContext } from "@/lib/team-context";
 import { TeamStepsSync } from "@/lib/team-steps-sync";
+import { TimeZoneSync } from "@/lib/time-zone";
 import { TranscriptCatchUp } from "@/lib/transcript-catch-up";
 import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
@@ -49,6 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <TeamContext.Provider value={state.team}>
       <Shell state={state} edition={settings?.edition === "hosted" ? "Hosted" : "Self-hosted"}>
         <TranscriptCatchUp organizationId={state.team.id} />
+        <TimeZoneSync />
         <TeamStepsSync organizationId={state.team.id}>{children}</TeamStepsSync>
       </Shell>
     </TeamContext.Provider>

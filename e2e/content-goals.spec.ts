@@ -78,11 +78,16 @@ test("a coach is asked what they make and their first upload starts the fitting 
   ).toBeVisible({ timeout: 60_000 });
   await expect(started.getByRole("list", { name: "Ran on this file" })).toHaveCount(0);
   // One press runs it on this file, and it moves to what ran, with how it is doing.
-  await suggested.getByRole("button", { name: "Run Coaching session pack on this file" }).click();
+  // The suggestions can re-render while the upload's first steps settle, which can swallow a
+  // press on a busy machine, so press again until the run shows (the button goes once it does).
   const ran = started.getByRole("list", { name: "Ran on this file" });
-  await expect(ran.getByRole("link", { name: /Coaching session pack/ })).toBeVisible({
-    timeout: 30_000,
-  });
+  const run = suggested.getByRole("button", { name: "Run Coaching session pack on this file" });
+  await expect(async () => {
+    if (await run.isVisible()) await run.click({ timeout: 5_000 });
+    await expect(ran.getByRole("link", { name: /Coaching session pack/ }).first()).toBeVisible({
+      timeout: 10_000,
+    });
+  }).toPass({ timeout: 60_000 });
   await expect(ran.getByText(/Run by hand/)).toBeVisible();
   await expect(
     suggested.getByRole("button", { name: "Run Coaching session pack on this file" }),

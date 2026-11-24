@@ -31,6 +31,12 @@ export const LOCALIZATION = {
   settings: {
     currentPasswordPlaceholder: "",
     userProfile: "Profile",
+    avatar: "Photo",
+    changeAvatar: "Change photo",
+    uploadAvatar: "Upload a photo",
+    deleteAvatar: "Remove photo",
+    avatarChangedSuccess: "Photo updated.",
+    avatarDeletedSuccess: "Photo removed.",
     changeEmail: "Email address",
     changeEmailSuccess:
       "Check your inbox: approve the change from your current address, then confirm the new one.",
@@ -44,3 +50,12 @@ export const LOCALIZATION = {
     linkedAccounts: "Sign in with",
   },
 } as const;
+
+/** Deleting your own account (Settings > Account > Password And Devices). */
+export const DELETE_ACCOUNT_WORDS = {
+  deleteAccount: "Delete account",
+  deleteAccountDescription:
+    "Deletes your account and signs you out everywhere. This can't be undone.",
+  deleteUserSuccess: "Your account is deleted.",
+  deleteUserVerificationSent: "Check your email to confirm deleting your account.",
+};
