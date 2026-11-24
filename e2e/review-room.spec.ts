@@ -482,7 +482,6 @@ test("Files shows the run's files and sends them to review", async () => {
   await expect(inReview).toBeVisible();
   await inReview.click();
   await expect(jordan.getByTestId("library-tile")).toHaveCount(2);
-  await jordan.screenshot({ path: "/mnt/project-files/upload-choices/Library In Review.png" });
 });
 
 test("someone on another team cannot open the room", async ({ browser }) => {
