@@ -36,7 +36,10 @@ describe("the Review list", () => {
     answerQuery(api.reviews.list, []);
     renderInApp(<ReviewsView />);
     expect(screen.getByText(/Nothing to review yet/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Go to Outputs" })).toHaveAttribute("href", "/outputs");
+    expect(screen.getByRole("link", { name: "Go to Files" })).toHaveAttribute(
+      "href",
+      "/files?tab=made",
+    );
   });
 
   test("lists each review with its status and what is left to do", () => {
