@@ -1542,19 +1542,26 @@ export const uploadFinished = internalAction({
     if (!found) return;
     const { upload, storage } = found;
     const fileUrl = await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
-    await ctx.runMutation(internal.automations.startFromUpload, {
-      starts: found.starts,
-      trigger: {
-        file_url: fileUrl,
-        file_name: upload.fileName,
-        content_type: upload.contentType,
-        size: upload.size,
-        // What the toolkit read from the file: duration, width, height and so on.
-        details: upload.details ?? null,
-        // So what the run makes joins the content library as made from this upload.
-        upload_id: upload._id,
-      },
-    });
+    const trigger = {
+      file_url: fileUrl,
+      file_name: upload.fileName,
+      content_type: upload.contentType,
+      size: upload.size,
+      // What the toolkit read from the file: duration, width, height and so on.
+      details: upload.details ?? null,
+      // So what the run makes joins the content library as made from this upload.
+      upload_id: upload._id,
+    };
+    // Each automation starts in its own small mutation, scheduled rather than called. One
+    // mutation starting them all read so much (the file's known words among it) that the
+    // words of the file, saved by its transcript at the same moment, kept conflicting with it until
+    // Convex gave up, and none of them started. A scheduled mutation runs exactly once.
+    for (const start of found.starts) {
+      await ctx.scheduler.runAfter(0, internal.automations.startFromUpload, {
+        starts: [start],
+        trigger,
+      });
+    }
   },
 });
 
