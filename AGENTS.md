@@ -32,6 +32,10 @@ Updating: pin `TOOLKIT_IMAGE`, `AGENT_IMAGE` and `WEB_IMAGE` to `sha-<commit>`, 
 
 `pnpm test` runs `scripts/docs.test.mjs`, which fails when a setting the code reads is missing from docs/self-hosting.md, when a setting in `deploy/compose.yml` is missing from `deploy/.env.example`, or when a link between the docs is broken. When you add a setting, document it there in the same change.
 
+## CI
+
+`.github/workflows/ci.yml` splits the checks so a pull request is done in under ten minutes: `check` (typecheck, lint, build), `test` in four parts (the agent's tests in two halves, the other packages, then Convex, screens and scripts; together exactly what `pnpm test` runs) and `browser` on five machines. `scripts/e2e-shard.mjs` gives each machine its browser test files by the seconds each took on CI (`e2e/timings.json`); every file runs on exactly one machine and a new file counts as an average one. When one browser machine starts taking much longer than the others, refresh `e2e/timings.json` from a recent run's log. A failing test is fixed, never re-run until it passes.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
