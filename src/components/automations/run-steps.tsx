@@ -51,7 +51,7 @@ type RunStep = RunDetails["steps"][number];
 const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 const timeOnly = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 
-/** How many files a step shows before pointing to Outputs for the rest. */
+/** How many files a step shows before pointing to Files for the rest. */
 const FILES_SHOWN = 8;
 
 const VIDEO = /\.(mp4|mov|webm|mkv|m4v)(\?|$)/i;
@@ -257,7 +257,7 @@ export function StepFacts({ facts }: { facts: { label: string; value: string }[]
 
 /**
  * The files a step made, as small tiles. Choosing one plays it larger. Past a handful,
- * the rest are left to Outputs.
+ * the rest are left to the Files page.
  */
 export function StepFiles({
   label,
@@ -287,8 +287,8 @@ export function StepFiles({
       {files.length > FILES_SHOWN && (
         <p className="text-muted-foreground text-sm">
           And {files.length - FILES_SHOWN} more in{" "}
-          <Link href="/outputs" className="underline underline-offset-4">
-            Outputs
+          <Link href="/files?tab=made" className="underline underline-offset-4">
+            Files
           </Link>
           .
         </p>

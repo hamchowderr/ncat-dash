@@ -776,7 +776,7 @@ const RECENT_REVIEWS = 100;
 
 /**
  * Moves the plain links that name a file by its address: the outputs of recent jobs and
- * run steps (what the Outputs page and a run show), the clips in recent review rooms, a
+ * run steps (what Files under Recently Made and a run show), the clips in recent review rooms, a
  * brand file kept as an address, and
  * the folder a watched-folder automation looks in. A link to a deleted file leaves the
  * outputs. Only links to this bucket at its own address are followed; a signed link, or

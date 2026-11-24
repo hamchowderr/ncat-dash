@@ -450,31 +450,11 @@ export function FilesView() {
     };
   }
 
-  const heading = (
-    <div className="flex flex-col gap-1">
-      <h1 className="text-2xl font-semibold tracking-tight">Files</h1>
-      <p className="text-muted-foreground text-sm">
-        Everything in your storage. Rename, move and sort files into folders here, and the
-        automations that use them keep working.
-      </p>
-    </div>
-  );
-
   if (storage === undefined) {
-    return (
-      <>
-        {heading}
-        <Skeleton className="h-64 rounded-xl" />
-      </>
-    );
+    return <Skeleton className="h-64 rounded-xl" />;
   }
   if (storage === null) {
-    return (
-      <>
-        {heading}
-        <NeedsToolkit />
-      </>
-    );
+    return <NeedsToolkit />;
   }
 
   const trail = folderTrail(prefix);
@@ -540,31 +520,6 @@ export function FilesView() {
 
   return (
     <>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        {heading}
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setNaming("folder")}>
-            <FolderPlus />
-            New folder
-          </Button>
-          <input
-            ref={input}
-            type="file"
-            multiple
-            className="sr-only"
-            aria-label="Choose files to upload"
-            onChange={(event) => {
-              if (event.target.files?.length) void upload(event.target.files);
-              event.target.value = "";
-            }}
-          />
-          <Button onClick={() => input.current?.click()}>
-            <Upload />
-            Upload
-          </Button>
-        </div>
-      </div>
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <nav aria-label="Folder" className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
           <button
@@ -617,18 +572,39 @@ export function FilesView() {
             </Button>
           </div>
         ) : (
-          <div className="relative w-full sm:w-64">
-            <Search
-              className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
-              aria-hidden="true"
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search
+                className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
+                aria-hidden="true"
+              />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Find in this folder"
+                aria-label="Find in this folder"
+                className="pl-8"
+              />
+            </div>
+            <Button variant="outline" onClick={() => setNaming("folder")}>
+              <FolderPlus />
+              New folder
+            </Button>
+            <input
+              ref={input}
+              type="file"
+              multiple
+              className="sr-only"
+              aria-label="Choose files to upload"
+              onChange={(event) => {
+                if (event.target.files?.length) void upload(event.target.files);
+                event.target.value = "";
+              }}
             />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Find in this folder"
-              aria-label="Find in this folder"
-              className="pl-8"
-            />
+            <Button onClick={() => input.current?.click()}>
+              <Upload />
+              Upload
+            </Button>
           </div>
         )}
       </div>

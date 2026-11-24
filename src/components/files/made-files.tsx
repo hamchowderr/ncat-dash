@@ -17,16 +17,16 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { nodeTitle, RUN_TRIGGER_LABELS } from "@/lib/automations";
 import { errorMessage, stepTitle } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
-import { MediaPreview, OutputNamesProvider } from "./media-preview";
+import { MediaPreview, OutputNamesProvider } from "@/components/jobs/media-preview";
 
 type RunOutputs = FunctionReturnType<typeof api.outputs.byRun>["page"][number];
 type FileGroup = RunOutputs["finished"][number];
@@ -65,36 +65,43 @@ function useSendToReview() {
   return { sending, send };
 }
 
-export function OutputsView() {
+const HAND = "hand";
+
+/**
+ * The files automations and steps made, newest first, by the run that made them. Lives on
+ * the Files page beside the folders, so there is one place for every file.
+ */
+export function MadeFiles() {
+  const team = useActiveTeam();
+  const [madeBy, setMadeBy] = useState(ALL);
+  const automations = useQuery(api.automations.list, { organizationId: team.id });
+
   return (
-    <>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Outputs</h1>
-        <p className="text-muted-foreground text-sm">
-          Every file your automations and steps have made, by the run that made it. The files live
-          in your own storage.
-        </p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={madeBy} onValueChange={setMadeBy}>
+          <SelectTrigger aria-label="Made by" className="min-w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All automations</SelectItem>
+            {(automations ?? []).map((item) => (
+              <SelectItem key={item._id} value={item._id}>
+                {item.name}
+              </SelectItem>
+            ))}
+            <SelectSeparator />
+            <SelectItem value={HAND}>Steps run by hand</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-      <Tabs defaultValue="runs" className="gap-4">
-        <TabsList>
-          <TabsTrigger value="runs">From automations</TabsTrigger>
-          <TabsTrigger value="hand">Steps run by hand</TabsTrigger>
-        </TabsList>
-        <TabsContent value="runs">
-          <ByRun />
-        </TabsContent>
-        <TabsContent value="hand">
-          <ByHand />
-        </TabsContent>
-      </Tabs>
-    </>
+      {madeBy === HAND ? <ByHand /> : <ByRun automation={madeBy} />}
+    </div>
   );
 }
 
-function ByRun() {
+function ByRun({ automation }: { automation: string }) {
   const team = useActiveTeam();
-  const [automation, setAutomation] = useState(ALL);
-  const automations = useQuery(api.automations.list, { organizationId: team.id });
   const { results, status, loadMore } = usePaginatedQuery(
     api.outputs.byRun,
     {
@@ -113,22 +120,6 @@ function ByRun() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={automation} onValueChange={setAutomation}>
-          <SelectTrigger aria-label="Automation" className="min-w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All automations</SelectItem>
-            {(automations ?? []).map((item) => (
-              <SelectItem key={item._id} value={item._id}>
-                {item.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {results.length === 0 && status !== "Exhausted" ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : results.length === 0 ? (
