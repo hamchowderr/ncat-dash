@@ -69,7 +69,7 @@ export function ChannelMeetings({
       <>
         <p className="text-muted-foreground text-sm">
           Meetings held in a Teams channel are saved to the channel&apos;s files, not your OneDrive.
-          Pick the channels whose recordings should come into Uploads. The first time, Microsoft
+          Pick the channels whose recordings should come into the Library. The first time, Microsoft
           asks you to allow reading your teams and their files.
         </p>
         <div>
@@ -165,7 +165,7 @@ export function ChannelMeetings({
             ? "Microsoft did not list your teams. Try again in a minute."
             : Array.isArray(listed) && all.length === 0
               ? "You are not in any Teams team yet."
-              : "Recordings of meetings held there from now on come into Uploads within 15 minutes of the meeting ending."}
+              : "Recordings of meetings held there from now on come into the Library within 15 minutes of the meeting ending."}
         </FieldDescription>
       </Field>
     </>

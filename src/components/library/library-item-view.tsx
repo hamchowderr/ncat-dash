@@ -4,12 +4,13 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { formatMoment } from "@takewon/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ArrowLeft, AudioLines, Bot, Play, Trash2, X } from "lucide-react";
+import { ArrowLeft, AudioLines, Bot, Copy, Play, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
+import { CopyLookFromUpload } from "@/components/looks/look-study";
 import { UploadFrame } from "@/components/uploads/upload-media";
 import { Button } from "@/components/ui/button";
 import {
@@ -286,6 +287,7 @@ export function LibraryItemView({
   const setRating = useMutation(api.library.setRating);
   const remove = useMutation(api.library.remove);
   const deleteFiles = useAction(api.files.remove);
+  const linkFor = useAction(api.storage.linkFor);
   const [deleting, setDeleting] = useState(false);
   const makeSearchable = useAction(api.library.makeSearchable);
   const media = useRef<HTMLVideoElement & HTMLAudioElement>(null);
@@ -329,6 +331,15 @@ export function LibraryItemView({
       ? pieces.filter((piece) => words.some((word) => piece.text.toLowerCase().includes(word)))
       : pieces;
   const playing = pieces.findLast((piece) => piece.start <= now)?.start;
+
+  async function copyLink(uploadId: Id<"uploads">) {
+    try {
+      await navigator.clipboard.writeText(await linkFor({ uploadId }));
+      toast.success("Link copied. It works for seven days.");
+    } catch {
+      toast.error("The link could not be copied.");
+    }
+  }
 
   function seek(seconds: number) {
     const element = media.current;
@@ -504,15 +515,28 @@ export function LibraryItemView({
               )}
             </p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground shrink-0"
-            onClick={() => setDeleting(true)}
-          >
-            <Trash2 />
-            Delete
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            {item.upload && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => void copyLink(item.upload!._id)}
+              >
+                <Copy />
+                Copy link
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => setDeleting(true)}
+            >
+              <Trash2 />
+              Delete
+            </Button>
+          </div>
         </div>
         <WorkRow works={works} />
       </header>
@@ -760,6 +784,7 @@ export function LibraryItemView({
                         {item.made === 1 ? "1 file" : `${item.made} files`}
                       </Fact>
                     )}
+                    {item.upload?.sharedBy && <Fact label="Shared by">{item.upload.sharedBy}</Fact>}
                     <Fact label="Added">
                       {new Date(item._creationTime).toLocaleDateString(undefined, {
                         month: "short",
@@ -799,6 +824,12 @@ export function LibraryItemView({
 
                   {item.broll && (
                     <BrollUse itemId={item._id} organizationId={team.id} broll={item.broll} />
+                  )}
+
+                  {item.upload && item.kind === "video" && item.details?.hasVideo !== false && (
+                    <CopyLookFromUpload
+                      upload={{ _id: item.upload._id, fileName: item.upload.fileName }}
+                    />
                   )}
                 </div>
               </TabsContent>

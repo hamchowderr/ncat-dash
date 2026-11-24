@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { actionOf, answerQuery, mutationOf, toastError } from "@/test/convex";
 import { renderInApp } from "@/test/render";
 
-import { UploadsView } from "./uploads-view";
+import { LibraryView } from "@/components/library/library-view";
+import { emptyLibrary } from "@/test/library";
+
+// Files are brought in on the Library page; it starts empty here.
+beforeEach(() => emptyLibrary());
 
 const MIB = 1024 * 1024;
 const STORAGE = { bucket: "ncat", publicUrl: null, baseUrl: "https://toolkit.example" };
@@ -73,7 +77,7 @@ describe("uploading in the desktop app", () => {
       if (command === "send_part") return `"e${String(args.partNumber)}"`;
       return null;
     });
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     fireEvent.click(screen.getByRole("button", { name: "Choose files" }));
 
     await waitFor(() =>
@@ -104,7 +108,7 @@ describe("uploading in the desktop app", () => {
       if (command === "forget_upload") stopped = [];
       return null;
     });
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
 
     const list = await screen.findByRole("region", { name: "Stopped uploads" });
     expect(list).toHaveTextContent("Keynote.mov stopped at 64%");
@@ -155,7 +159,7 @@ describe("uploading in the desktop app", () => {
         }
         return null;
       });
-      renderInApp(<UploadsView />);
+      renderInApp(<LibraryView />);
       fireEvent.click(screen.getByRole("button", { name: "Choose files" }));
 
       await waitFor(
@@ -175,7 +179,7 @@ describe("uploading in the desktop app", () => {
   test("a browser, or an app too old for its own picker, uses the page's file input", async () => {
     answerQuery(api.storage.listUploads, []);
     inApp((command) => (command === "choose_files" ? new Error("not allowed") : []));
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     const input = screen.getByLabelText("Choose files to upload") as HTMLInputElement;
     const clicked = vi.spyOn(input, "click");
     fireEvent.click(screen.getByRole("button", { name: "Choose files" }));

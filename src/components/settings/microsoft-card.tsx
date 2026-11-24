@@ -58,14 +58,14 @@ function when(at: number) {
 
 const STATUS_TEXT = {
   importing: "Coming in",
-  done: "In Uploads",
+  done: "In the Library",
   failed: "Did not come in",
 } as const;
 
 /**
  * Teams meetings, brought in by themselves. Each person who organizes meetings connects
  * their own Microsoft 365 account once; the recordings Teams saves to their OneDrive then
- * land in Uploads, ready to clip.
+ * land in the Library, ready to clip.
  */
 export function MicrosoftCard() {
   const team = useActiveTeam();
@@ -195,7 +195,7 @@ export function MicrosoftCard() {
                     <Label htmlFor="microsoft-auto">Bring in new recordings by themselves</Label>
                     <p className="text-muted-foreground text-sm">
                       When Teams saves the recording of a meeting you organize to your OneDrive, it
-                      goes to Uploads and starts any automation set to run on an upload.
+                      goes to the Library and starts any automation set to run on an upload.
                     </p>
                   </div>
                 </div>
@@ -226,7 +226,7 @@ export function MicrosoftCard() {
               <>
                 <p className="text-muted-foreground text-sm">
                   Connect the Microsoft account you hold Teams meetings with. The recordings Teams
-                  saves to your OneDrive then come into Uploads by themselves, ready to clip and
+                  saves to your OneDrive then come into the Library by themselves, ready to clip and
                   caption.
                 </p>
                 <div>
@@ -327,7 +327,7 @@ export function MicrosoftCard() {
                                     ),
                                   );
                                 },
-                                `${meeting.topic} is on its way to Uploads`,
+                                `${meeting.topic} is on its way to the Library`,
                               )
                             }
                           >
@@ -360,7 +360,7 @@ export function MicrosoftCard() {
                         }
                       >
                         {one.status === "done" ? (
-                          <Link href="/uploads" className="underline-offset-4 hover:underline">
+                          <Link href="/library" className="underline-offset-4 hover:underline">
                             {STATUS_TEXT.done}
                           </Link>
                         ) : (

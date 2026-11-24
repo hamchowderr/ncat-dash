@@ -53,7 +53,9 @@ test("connects Zoom, brings a past meeting in, and a finished one arrives by its
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill(`Harbour Films ${stamp}`);
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -82,9 +84,11 @@ test("connects Zoom, brings a past meeting in, and a finished one arrives by its
   await expect(past.getByText("Client Kickoff")).toBeVisible();
   await expect(past.getByText(/37 min/)).toBeVisible();
   await past.getByRole("button", { name: "Bring in" }).click();
-  await expect(page.getByText("Client Kickoff is on its way to Uploads")).toBeVisible();
+  await expect(page.getByText("Client Kickoff is on its way to the Library")).toBeVisible();
   const brought = page.getByRole("region", { name: "Brought in from Zoom" });
-  await expect(brought.getByRole("link", { name: "In Uploads" })).toBeVisible({ timeout: 30_000 });
+  await expect(brought.getByRole("link", { name: "In the Library" })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // A meeting Zoom says just finished comes in by itself.
   const finished = meeting(`just-finished-${stamp}==`, "Weekly Sync", zoomUser.id);
@@ -97,13 +101,13 @@ test("connects Zoom, brings a past meeting in, and a finished one arrives by its
   expect(answer.status).toBe(204);
   await expect(brought.getByText("Weekly Sync")).toBeVisible();
 
-  // Both are uploads now, named after the meeting and its day.
-  await page.goto("/uploads");
-  const uploads = page.getByRole("region", { name: "Your uploads" });
-  await expect(uploads.getByText(/^Client Kickoff \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  // Both are in the Library now, named after the meeting and its day.
+  await page.goto("/library");
+  const uploads = page.getByRole("region", { name: "Your library" });
+  await expect(uploads.getByText(/^Client Kickoff \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(uploads.getByText(/^Weekly Sync \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  await expect(uploads.getByText(/^Weekly Sync \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
   await page.waitForTimeout(1500);
@@ -121,7 +125,9 @@ test("an owner connects the whole Zoom account and every host's meetings come in
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill(`Harbour Studio ${run}`);
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -166,6 +172,8 @@ test("an owner connects the whole Zoom account and every host's meetings come in
   expect(answer.status).toBe(204);
   const brought = page.getByRole("region", { name: "Brought in from Zoom" });
   await expect(brought.getByText("Design Review")).toBeVisible();
-  await expect(brought.getByRole("link", { name: "In Uploads" })).toBeVisible({ timeout: 30_000 });
+  await expect(brought.getByRole("link", { name: "In the Library" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.waitForTimeout(1500);
 });

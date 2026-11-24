@@ -6,7 +6,11 @@ import { actionOf, answerQuery } from "@/test/convex";
 import { renderInApp } from "@/test/render";
 
 import { UploadingCard } from "./upload-media";
-import { UploadsView } from "./uploads-view";
+import { LibraryView } from "@/components/library/library-view";
+import { emptyLibrary } from "@/test/library";
+
+// Files are brought in on the Library page; it starts empty here.
+beforeEach(() => emptyLibrary());
 
 vi.mock("@/lib/upload", () => ({
   // Halfway there, and never finishing, so the page can be looked at mid-upload.
@@ -49,8 +53,8 @@ describe("a file being uploaded", () => {
     });
   });
 
-  test("takes its place among the files, not a bar of its own", async () => {
-    renderInApp(<UploadsView />);
+  test("shows above the library as a tile with its percentage, not a bar of its own", async () => {
+    renderInApp(<LibraryView />);
     expect(screen.queryByRole("progressbar")).toBeNull();
     // Someone else's or an abandoned upload is not shown.
     expect(screen.queryByText("Left half-way yesterday.mp4")).toBeNull();
@@ -62,31 +66,13 @@ describe("a file being uploaded", () => {
     const progress = await screen.findByRole("progressbar", { name: "Uploading Podcast 8.mp4" });
     expect(progress).toHaveAttribute("aria-valuenow", "37");
     expect(progress).toHaveTextContent("37%");
-
-    const tiles = within(screen.getByRole("region", { name: "Your uploads" })).getAllByRole(
-      "listitem",
-    );
-    expect(tiles).toHaveLength(2);
+    const tiles = within(screen.getByRole("list", { name: "Uploading" })).getAllByRole("listitem");
+    expect(tiles).toHaveLength(1);
     expect(tiles[0]).toContainElement(progress);
-    expect(tiles[1]).toHaveTextContent("Older.mp4");
-    expect(screen.getByText("2 files")).toBeInTheDocument();
+    // The empty library's big drop area steps aside while the file goes up.
+    await waitFor(() => expect(screen.queryByText("Nothing in the library yet")).toBeNull());
   });
 
-  test("shows the same way in the list view", async () => {
-    renderInApp(<UploadsView />);
-    fireEvent.click(screen.getByRole("button", { name: "List" }));
-    fireEvent.change(screen.getByLabelText("Choose files to upload"), {
-      target: { files: [new File(["x"], "Podcast 8.mp4", { type: "video/mp4" })] },
-    });
-    const progress = await screen.findByRole("progressbar", { name: "Uploading Podcast 8.mp4" });
-    const rows = screen.getAllByRole("row");
-    // The header, then the new file, then the older one.
-    await waitFor(() => expect(rows[1]).toContainElement(progress));
-    expect(rows[2]).toHaveTextContent("Older.mp4");
-  });
-});
-
-describe("the uploading card", () => {
   test("is a spinning circle with the percentage and the file's name", () => {
     render(<UploadingCard name="Podcast 8.mp4" percent={42.4} />);
     const progress = screen.getByRole("progressbar", { name: "Uploading Podcast 8.mp4" });
@@ -112,7 +98,7 @@ describe("a Zoom recording on its way", () => {
       row("u5", "Left half-way yesterday.mp4", "uploading"),
     ]);
     actionOf(api.storage.previewLinks).mockResolvedValue([]);
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     expect(
       screen.getByText(/Coming in from Zoom: Weekly Sync 2026-11-18\.mp4\./),
     ).toBeInTheDocument();
@@ -129,7 +115,7 @@ describe("a Google Meet recording on its way", () => {
       { ...row("g1", "Client Kickoff 2026-11-18.mp4", "uploading"), source: "google_meet" },
     ]);
     actionOf(api.storage.previewLinks).mockResolvedValue([]);
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     expect(
       screen.getByText(/Coming in from Google Meet: Client Kickoff 2026-11-18\.mp4\./),
     ).toBeInTheDocument();
@@ -146,7 +132,7 @@ describe("a Teams recording on its way", () => {
       { ...row("m1", "Client Kickoff 2026-11-18.mp4", "uploading"), source: "microsoft" },
     ]);
     actionOf(api.storage.previewLinks).mockResolvedValue([]);
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     expect(
       screen.getByText(/Coming in from Microsoft Teams: Client Kickoff 2026-11-18\.mp4\./),
     ).toBeInTheDocument();
@@ -164,7 +150,7 @@ describe("a Dropbox file on its way", () => {
       { ...row("d1", "Interview.mov", "uploading"), source: "dropbox" },
     ]);
     actionOf(api.storage.previewLinks).mockResolvedValue([]);
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     expect(screen.getByText(/Coming in from Dropbox: Interview\.mov\./)).toBeInTheDocument();
     expect(screen.queryByText(/Coming in from Microsoft Teams/)).toBeNull();
   });

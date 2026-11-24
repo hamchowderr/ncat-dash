@@ -56,7 +56,7 @@ describe("past Google Meet recordings", () => {
       recording("fileOwn2", "Client Kickoff"),
     ]);
     expect(
-      screen.getByText("3 recordings in your Drive, 1 shared with you. 3 not in Uploads yet."),
+      screen.getByText("3 recordings in your Drive, 1 shared with you. 3 not in the Library yet."),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Shared with you" }));
     expect(screen.getAllByRole("checkbox", { name: /^Pick .*,/ })).toHaveLength(1);
@@ -69,7 +69,9 @@ describe("past Google Meet recordings", () => {
     expect(screen.getAllByRole("checkbox", { name: /^Pick .*,/ })).toHaveLength(1);
     // Unpicking what is shown leaves the rest picked.
     await user.click(
-      screen.getByRole("checkbox", { name: "Pick every recording shown that is not in Uploads" }),
+      screen.getByRole("checkbox", {
+        name: "Pick every recording shown that is not in the Library",
+      }),
     );
     expect(screen.getByText("2 of 3 picked")).toBeInTheDocument();
     await user.clear(screen.getByRole("textbox", { name: "Search recordings" }));

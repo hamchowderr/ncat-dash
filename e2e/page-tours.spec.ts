@@ -35,7 +35,9 @@ async function setUpTeam(page: Page, who: string) {
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Grant Studio");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -129,9 +131,9 @@ test("each page's tour shows someone around on their first visit, and again when
   await takeAgain(page, PROJECT_TOUR);
 
   // The library, with one upload in it.
-  await page.goto("/uploads");
+  await page.goto("/library");
   await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.webm");
-  await expect(page.getByRole("button", { name: "Open clip.webm" })).toBeVisible({
+  await expect(page.getByLabel(/^Open V\d+ clip$/)).toBeVisible({
     timeout: 30_000,
   });
   await page.goto("/library");
