@@ -12,6 +12,8 @@ import { renderInApp, TEAM } from "@/test/render";
 import {
   INTEGRATION_GROUPS,
   INTEGRATIONS,
+  type IntegrationSlug,
+  integrationsTabHref,
   SETTINGS_GROUPS,
   SETTINGS_PAGES,
   settingsLocation,
@@ -76,10 +78,10 @@ describe("a settings page", () => {
       );
       const header = screen.getByRole("heading", { level: 1 }).closest("header")!;
       expect(within(header).getByRole("img", { name: `${name} logo` })).toBeInTheDocument();
-      // An app's page says it sits under Integrations, and leads back there.
+      // An app's page says it sits under Integrations, and leads back to its own tab there.
       expect(screen.getByRole("link", { name: "Integrations" })).toHaveAttribute(
         "href",
-        "/settings/integrations",
+        integrationsTabHref(slug as IntegrationSlug),
       );
       unmount();
     }

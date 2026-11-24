@@ -48,6 +48,14 @@ test("an owner sets word fixes, a style and a style per shape, and caption steps
 
   // A style of the team's own, started from Karaoke. The words typed on the other tab wait.
   await tab(page, "Styles");
+  // Pointing at a style plays it beside the styles, the clip the toolkit made with it.
+  const example = page.locator("figure[data-example]");
+  await page.getByRole("button", { name: "One word, built in" }).hover();
+  await expect(example.getByText("Example: One word")).toBeVisible();
+  await expect(example).toHaveAttribute("data-example", "/examples/captions/one-word.mp4");
+  await expect
+    .poll(() => example.locator("video").evaluate((video: HTMLVideoElement) => video.currentTime))
+    .toBeGreaterThan(0.3);
   await page.getByRole("button", { name: "Karaoke, built in" }).click();
   await page.getByRole("button", { name: "Make a copy to change" }).click();
   const editor = page.getByRole("group", { name: "Change Karaoke copy" });
@@ -56,6 +64,13 @@ test("an owner sets word fixes, a style and a style per shape, and caption steps
   await editor.getByLabel("Name").blur();
   const ours = page.getByRole("group", { name: "Change Night Shift" });
   await ours.getByRole("textbox", { name: "Highlight colour", exact: true }).fill("#FF4FA3");
+  // A style of your own is drawn live over the same clip, trying what the pointer is on.
+  // (The new tile can land under the resting pointer, so it moves off the tiles first.)
+  await ours.getByLabel("Name").hover();
+  await expect(example).toHaveAttribute("data-example", "live");
+  await ours.getByRole("radio", { name: "Top" }).hover();
+  await expect(example.locator("[data-caption-live]")).toHaveClass(/justify-start/);
+  await expect(example.locator("[data-caption-live] p").first()).toBeVisible({ timeout: 15_000 });
   await ours.getByRole("radio", { name: "Bottom" }).click();
   await ours.getByRole("switch", { name: "All capitals" }).click();
 
