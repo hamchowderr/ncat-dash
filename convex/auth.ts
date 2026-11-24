@@ -121,7 +121,7 @@ function database(ctx: GenericCtx<DataModel>): ReturnType<typeof authComponent.a
 /**
  * The addresses allowed to sign in: the dashboard's own address, plus any in
  * TRUSTED_ORIGINS (comma-separated, `*` allowed), such as a Vercel preview's
- * `https://takewon-*-otaku-solutions.vercel.app`. Without it, sign-in from any
+ * `https://takewon-app-*-otaku-solutions.vercel.app`. Without it, sign-in from any
  * other address fails with "Invalid origin".
  */
 export function trustedOrigins(env: Record<string, string | undefined> = process.env) {
