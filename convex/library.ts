@@ -33,8 +33,11 @@ import {
   addUploadToLibrary,
   deleteLibraryItem,
   deletePieces,
+  fromOf,
+  inReviewOf,
   kindOfMadeFile,
   librarySettingsOf,
+  type LibraryFrom,
   startingItemOf,
 } from "./lib/library";
 import { startingFiles } from "./lib/chain";
@@ -76,6 +79,9 @@ type Summary = {
   client: { _id: Id<"clients">; name: string } | null;
   made: number;
   searchable: "no" | "working" | "ready" | "failed";
+  /** Where an uploaded file came from; null for one an automation made. */
+  from: LibraryFrom | null;
+  inReview: boolean;
 };
 
 /** A library file as the page lists it. `byId` resolves its parent without another read. */
@@ -84,6 +90,7 @@ function summaryOf(
   byId: Map<string, Doc<"libraryItems">>,
   made: Map<string, number>,
   clients: Map<string, Doc<"clients">>,
+  inReview: (item: Doc<"libraryItems">) => boolean = () => false,
 ): Summary {
   const client = item.clientId ? clients.get(item.clientId) : undefined;
   const parent = item.parentId ? byId.get(item.parentId) : undefined;
@@ -102,6 +109,8 @@ function summaryOf(
     client: client ? { _id: client._id, name: client.name } : null,
     made: made.get(item._id) ?? 0,
     searchable: item.transcript?.status ?? "no",
+    from: fromOf(item),
+    inReview: inReview(item),
   };
 }
 
@@ -145,8 +154,9 @@ export const list = query({
     }
     const settings = await librarySettingsOf(ctx, args.organizationId);
     const clients = await clientsOf(ctx, args.organizationId);
+    const inReview = await inReviewOf(ctx, args.organizationId);
     return {
-      items: items.map((item) => summaryOf(item, byId, made, clients)),
+      items: items.map((item) => summaryOf(item, byId, made, clients, inReview)),
       searchNewFiles: settings.searchNewFiles,
       filled: settings.filledAt !== null,
       canChangeSettings: MANAGER_ROLES.includes(role),
@@ -266,7 +276,13 @@ export const get = query({
     const captionsFor = captionFormat ? await videoCaptioned(ctx, item, parent) : null;
     const clients = await clientsOf(ctx, item.organizationId);
     return {
-      ...summaryOf(item, byId, new Map([[item._id as string, children.length]]), clients),
+      ...summaryOf(
+        item,
+        byId,
+        new Map([[item._id as string, children.length]]),
+        clients,
+        await inReviewOf(ctx, item.organizationId),
+      ),
       details: item.details ?? null,
       runId: item.runId ?? null,
       automationId: item.runId ? ((await ctx.db.get(item.runId))?.automationId ?? null) : null,

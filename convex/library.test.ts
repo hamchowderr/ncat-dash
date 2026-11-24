@@ -191,6 +191,68 @@ describe("files join the library", () => {
   });
 });
 
+describe("where files came from, and what is in review", () => {
+  test("says which service an upload came from, by its record or its folder", async () => {
+    const { t, team, maya, upload, items, itemOf } = await studio();
+    const mine = await upload("episode.mp4");
+    // A recording a meeting app brought in, recorded as such.
+    const call = await t.run(async (ctx) => {
+      const uploadId = await ctx.db.insert("uploads", {
+        organizationId: team,
+        fileName: "Coaching call.mp4",
+        contentType: "video/mp4",
+        size: 9000,
+        key: "uploads/Zoom/abc/Coaching call.mp4",
+        status: "ready",
+        source: "zoom",
+        createdBy: maya.id,
+      } as never);
+      const { addUploadToLibrary } = await import("./lib/library");
+      await addUploadToLibrary(ctx, (await ctx.db.get(uploadId))!);
+      return uploadId;
+    });
+    // One added before the source was kept: its folder says where it came from.
+    await t.run((ctx) =>
+      ctx.db.insert("libraryItems", {
+        organizationId: team,
+        shortId: "V9",
+        kind: "video",
+        source: "upload",
+        title: "Old Teams call",
+        key: "uploads/Microsoft/x/Old Teams call.mp4",
+        tags: [],
+        searchText: "",
+        createdBy: maya.id,
+      }),
+    );
+    const listed = await items();
+    const fromOf = (title: string) => listed.find((item) => item.title === title)?.from;
+    expect(fromOf("episode")).toBe("computer");
+    expect(fromOf("Coaching call")).toBe("zoom");
+    expect(fromOf("Old Teams call")).toBe("microsoft");
+    expect((await itemOf(call)).importedFrom).toBe("zoom");
+    expect((await itemOf(mine)).importedFrom).toBeUndefined();
+  });
+
+  test("marks the files of an open review, and not once it is decided", async () => {
+    const { team, maya, upload, items, itemOf } = await studio();
+    const episode = await upload("episode.mp4");
+    await upload("other.mp4");
+    const key = (await itemOf(episode)).key!;
+    const reviewId = await maya.as.mutation(api.reviews.create, {
+      organizationId: team,
+      urls: [`https://files.example/teams/${team}/${encodeURI(key)}?X-Amz-Signature=1`],
+    });
+    const inReview = async () =>
+      (await items()).filter((item) => item.inReview).map((item) => item.title);
+    expect(await inReview()).toEqual(["episode"]);
+    const item = await itemOf(episode);
+    expect((await maya.as.query(api.library.get, { itemId: item._id }))?.inReview).toBe(true);
+    await maya.as.mutation(api.reviews.decide, { reviewId: reviewId!, approved: true });
+    expect(await inReview()).toEqual([]);
+  });
+});
+
 describe("files for a client", () => {
   test("what a client's run makes is for that client; the episode can be moved, clips follow", async () => {
     const { t, team, maya, olu, other, upload, itemOf, finishedRun, toolkit } = await studio();

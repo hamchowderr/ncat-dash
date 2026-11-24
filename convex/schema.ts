@@ -2231,6 +2231,17 @@ export default defineSchema({
     url: v.optional(v.string()),
     // The upload it is, for an uploaded file.
     uploadId: v.optional(v.id("uploads")),
+    // The service an upload came from (the upload's source), for the Library's From filter.
+    // Missing for one sent from a computer, and on files added before 2026-11-24.
+    importedFrom: v.optional(
+      v.union(
+        v.literal("zoom"),
+        v.literal("google_meet"),
+        v.literal("microsoft"),
+        v.literal("dropbox"),
+        v.literal("link"),
+      ),
+    ),
     // For a file an automation made: the run, and the automation's name at the time.
     runId: v.optional(v.id("runs")),
     automationName: v.optional(v.string()),

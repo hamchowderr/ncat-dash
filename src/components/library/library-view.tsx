@@ -39,6 +39,8 @@ import {
   KIND_LABELS,
   ShortId,
   sourceLabel,
+  FROM_LABELS,
+  type LibraryFrom,
   StarRating,
   useLibraryLinks,
   type LibraryKind,
@@ -60,6 +62,8 @@ type Item = {
   client: { _id: Id<"clients">; name: string } | null;
   made: number;
   searchable: "no" | "working" | "ready" | "failed";
+  from: LibraryFrom | null;
+  inReview: boolean;
 };
 
 type Shown = "all" | "videos" | "clips" | "audio" | "images" | "other";
@@ -196,6 +200,15 @@ function InlineTitle({ item }: { item: Item }) {
   );
 }
 
+/** Says a file is in an open review, beside its name. */
+function InReview() {
+  return (
+    <span className="bg-primary/10 text-primary shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium">
+      In review
+    </span>
+  );
+}
+
 function Tags({ tags }: { tags: string[] }) {
   if (tags.length === 0) return null;
   return (
@@ -277,7 +290,10 @@ function ItemList({
                 </TableCell>
               )}
               <TableCell className="max-w-72">
-                <InlineTitle item={item} />
+                <span className="flex items-center gap-2">
+                  <InlineTitle item={item} />
+                  {item.inReview && <InReview />}
+                </span>
               </TableCell>
               {on("client") && <TableCell className="text-sm">{item.client?.name ?? ""}</TableCell>}
               {on("kind") && <TableCell className="text-sm">{KIND_LABELS[item.kind]}</TableCell>}
@@ -361,6 +377,7 @@ function ItemTiles({ items, links }: { items: Item[]; links: Map<Id<"libraryItem
           <div className="flex min-w-0 items-center gap-2">
             <ShortId id={item.shortId} />
             <span className="truncate text-sm font-medium">{item.title}</span>
+            {item.inReview && <InReview />}
           </div>
           <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-xs">
             <span className="truncate">
@@ -472,6 +489,9 @@ export function LibraryView() {
   const [tag, setTag] = useState<string | null>(null);
   // A client's ID, TEAM_OWN for the team's own files, or null for every file.
   const [client, setClient] = useState<string | null>(null);
+  // Where uploads came from (a FROM_LABELS key), or null for anywhere.
+  const [from, setFrom] = useState<LibraryFrom | null>(null);
+  const [reviewOnly, setReviewOnly] = useState(false);
 
   // Searches once typing pauses, not on every key.
   useEffect(() => {
@@ -492,11 +512,17 @@ export function LibraryView() {
         (item) =>
           shows(item, shown) &&
           (tag === null || item.tags.includes(tag)) &&
-          (client === null || (item.client?._id ?? TEAM_OWN) === client),
+          (client === null || (item.client?._id ?? TEAM_OWN) === client) &&
+          (from === null || item.from === from) &&
+          (!reviewOnly || item.inReview),
       ),
-    [library, shown, tag, client],
+    [library, shown, tag, client, from, reviewOnly],
   );
   const clients = library?.clients ?? [];
+  // The places this team's uploads came from, in the order the filter lists them.
+  const froms = (Object.keys(FROM_LABELS) as LibraryFrom[]).filter((one) =>
+    (library?.items ?? []).some((item) => item.from === one),
+  );
   const chosenClient =
     client === TEAM_OWN ? "Your team" : clients.find((one) => one._id === client)?.name;
   // Each team sees a Client column and filter only once it has clients.
@@ -610,6 +636,42 @@ export function LibraryView() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
+              )}
+              {froms.length > 1 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant={from ? "secondary" : "ghost"}>
+                      {from ? `From: ${FROM_LABELS[from]}` : "From"}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuCheckboxItem
+                      checked={from === null}
+                      onCheckedChange={() => setFrom(null)}
+                    >
+                      Anywhere
+                    </DropdownMenuCheckboxItem>
+                    {froms.map((one) => (
+                      <DropdownMenuCheckboxItem
+                        key={one}
+                        checked={from === one}
+                        onCheckedChange={() => setFrom(from === one ? null : one)}
+                      >
+                        {FROM_LABELS[one]}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              {(reviewOnly || library.items.some((item) => item.inReview)) && (
+                <button
+                  type="button"
+                  aria-pressed={reviewOnly}
+                  onClick={() => setReviewOnly(!reviewOnly)}
+                  className="choice-chip focus-visible:ring-ring/50 h-8 rounded-lg px-3 text-sm outline-none focus-visible:ring-3"
+                >
+                  In review
+                </button>
               )}
               {library.tags.length > 0 && (
                 <DropdownMenu>
