@@ -70,9 +70,16 @@ async function studio() {
 
 describe("every upload gets a storyboard drafted from what was said", () => {
   test("a line per sentence with its own clip, the retake left out, chapters, Full Screen", async () => {
-    const { t, transcribed, draft } = await studio();
+    const { t, maya, transcribed, draft } = await studio();
     const { itemId, uploadId } = await transcribed("lesson.mp4");
+    // The file's page says the storyboard is still being drafted, then that it is in.
+    expect(await maya.as.query(api.library.get, { itemId })).toMatchObject({
+      storyboardDrafted: false,
+    });
     await t.mutation(internal.storyboards.draftForUpload, { itemId });
+    expect(await maya.as.query(api.library.get, { itemId })).toMatchObject({
+      storyboardDrafted: true,
+    });
 
     const board = (await draft(itemId))!;
     expect(board.libraryItemId).toBe(itemId);

@@ -177,10 +177,20 @@ export const get = query({
     const captionFormat = captionFileFormat(item.key ?? item.url ?? "");
     const captionsFor = captionFormat ? await videoCaptioned(ctx, item, parent) : null;
     const clients = await clientsOf(ctx, item.organizationId);
+    // An upload's storyboard is drafted once its transcript is in; this says whether it is.
+    const drafted =
+      item.source === "upload" &&
+      (await ctx.db
+        .query("storyboards")
+        .withIndex("by_library_item", (q) => q.eq("libraryItemId", item._id))
+        .first()) !== null;
     const upload = item.uploadId ? await ctx.db.get(item.uploadId) : null;
     return {
       ...summaryOf(item, byId, new Map([[item._id as string, children.length]]), clients),
       details: item.details ?? null,
+      storyboardDrafted: drafted,
+      // Where it is in the team's storage, for deleting it from there; null for a link.
+      key: item.key ?? null,
       // The upload it came in as: its link, its look, and who shared it.
       upload: upload
         ? {

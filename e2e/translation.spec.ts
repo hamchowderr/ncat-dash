@@ -38,6 +38,7 @@ test("a video is translated once, keeps its times, and a line can be corrected",
   });
   await page.goto("/library");
   await page.getByRole("link", { name: "Open V1 clip" }).click();
+  await page.getByRole("tab", { name: "Transcript" }).click();
   await expect(
     page.getByTestId("transcript").getByText("Today we talk about pricing your edits."),
   ).toBeVisible({ timeout: 30_000 });
@@ -47,7 +48,7 @@ test("a video is translated once, keeps its times, and a line can be corrected",
   const original = (await page.getByTestId("subtitle-text").textContent()) ?? "";
   const originalTimes = original.match(/\d\d:\d\d:\d\d,\d{3} --> \d\d:\d\d:\d\d,\d{3}/g) ?? [];
   expect(originalTimes.length).toBeGreaterThan(1);
-  await page.getByRole("radio", { name: "Transcript" }).click();
+  await page.getByRole("radio", { name: "Text" }).click();
 
   // Translated once, into a language picked from the list.
   await page.getByRole("button", { name: "Translate", exact: true }).click();
@@ -72,13 +73,14 @@ test("a video is translated once, keeps its times, and a line can be corrected",
   expect(await readFile((await download.path())!, "utf8")).toBe(spanish);
 
   // A line corrected by hand keeps its time.
-  await page.getByRole("radio", { name: "Transcript" }).click();
+  await page.getByRole("radio", { name: "Text" }).click();
   await lines.getByRole("listitem").first().hover();
   await page.getByRole("button", { name: "Correct the line at 0:00" }).click();
   await page.getByLabel("Line at 0:00").fill("Bienvenidos de nuevo a la estación.");
   await page.getByLabel("Line at 0:00").press("Enter");
   await expect(lines.getByText("Bienvenidos de nuevo a la estación.")).toBeVisible();
   await page.reload();
+  await page.getByRole("tab", { name: "Transcript" }).click();
   await pick(page.getByLabel("Language"), "Spanish");
   await expect(
     page.getByTestId("translation").getByText("Bienvenidos de nuevo a la estación."),
