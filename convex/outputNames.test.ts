@@ -84,17 +84,17 @@ describe("readable names for a run's files", () => {
       paginationOpts: PAGE,
     });
     expect(page[0].names).toEqual({
-      [made(0)]: "Space interviews clip 1",
-      [made(1)]: "Space interviews clip 2",
-      [captioned(0)]: "Space interviews clip 1",
-      [captioned(1)]: "Space interviews clip 2",
+      [made(0)]: "Space interviews part 1",
+      [made(1)]: "Space interviews part 2",
+      [captioned(0)]: "Space interviews part 1 captioned",
+      [captioned(1)]: "Space interviews part 2 captioned",
     });
   });
 
   test("the run page gets the same names", async () => {
     const { olu, runId } = await team();
     const run = await olu.as.query(api.runs.get, { runId });
-    expect(run?.outputNames[captioned(1)]).toBe("Space interviews clip 2");
+    expect(run?.outputNames[captioned(1)]).toBe("Space interviews part 2 captioned");
   });
 
   test("an approval's review room titles its clips by those names", async () => {
@@ -113,7 +113,10 @@ describe("readable names for a run's files", () => {
         .collect();
       return clips.map((clip) => clip.title);
     });
-    expect(titles).toEqual(["Space interviews clip 1", "Space interviews clip 2"]);
+    expect(titles).toEqual([
+      "Space interviews part 1 captioned",
+      "Space interviews part 2 captioned",
+    ]);
   });
 
   test("a review opened from Outputs keeps the names it was sent with", async () => {

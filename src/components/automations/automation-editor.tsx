@@ -766,12 +766,13 @@ function Editor({ automation }: { automation: Loaded }) {
 
   // With several triggers, which one's steps Run now runs.
   const [runTrigger, setRunTrigger] = useState<string>(TRIGGER_ID);
-  async function onRun(fileUrl?: string) {
+  async function onRun(fileUrl?: string, uploadId?: Id<"uploads">) {
     if (!(await persist(true))) return;
     const triggerId = several && runTrigger !== TRIGGER_ID ? runTrigger : undefined;
     const runId = await runNow({
       automationId: automation._id,
       fileUrl,
+      ...(uploadId ? { uploadId } : {}),
       ...(triggerId && triggersOf(triggers).some((each) => each.id === triggerId)
         ? { triggerId }
         : {}),
