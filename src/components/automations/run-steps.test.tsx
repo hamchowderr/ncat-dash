@@ -179,7 +179,7 @@ describe("what happened in a run", () => {
     expect(document.body.textContent).not.toContain("video-caption-29.mp4");
   });
 
-  test("past eight files, the rest are in Outputs", () => {
+  test("past eight files, the rest are in Files", () => {
     const many = Array.from({ length: 11 }, (_, i) => `https://files.example/out/clip-${i}.mp4`);
     renderInApp(
       <RunSteps
@@ -191,7 +191,9 @@ describe("what happened in a run", () => {
     );
     const files = screen.getByRole("list", { name: "Files from Caption video" });
     expect(within(files).getAllByRole("listitem")).toHaveLength(8);
-    expect(screen.getByRole("link", { name: "Outputs" }).getAttribute("href")).toBe("/outputs");
+    expect(screen.getByRole("link", { name: "Files" }).getAttribute("href")).toBe(
+      "/files?tab=made",
+    );
   });
 
   test("an approval waiting on someone can be decided from its row", () => {
