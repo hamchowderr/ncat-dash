@@ -38,6 +38,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { errorMessage } from "@/lib/catalog";
+import { followedMessage } from "@/components/library/followed";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
@@ -132,7 +133,8 @@ function Title({ itemId, title }: { itemId: Id<"libraryItems">; title: string })
     setEditing(null);
     if (!next || next === title) return;
     try {
-      await rename({ itemId, title: next });
+      const result = await rename({ itemId, title: next });
+      if (result?.followed) toast.success(followedMessage(result.followed));
     } catch (caught) {
       toast.error(errorMessage(caught, "The name could not be changed."));
     }

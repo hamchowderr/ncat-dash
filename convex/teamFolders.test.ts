@@ -223,8 +223,8 @@ describe("a finished run's files", () => {
   test("are copied into the team's folder with readable names", async () => {
     const { t, salt, runId, toolkit } = await finishedRun();
     const kept = await t.action(internal.files.keepFinished, { runId });
-    expect(kept).toEqual(["Finished/Shorts/Space clip.mp4"]);
-    expect(toolkit.files.has(`teams/${salt}/Finished/Shorts/Space clip.mp4`)).toBe(true);
+    expect(kept).toEqual(["Finished/Shorts/Space captioned.mp4"]);
+    expect(toolkit.files.has(`teams/${salt}/Finished/Shorts/Space captioned.mp4`)).toBe(true);
     // Only the run's finished files, not the ones made on the way.
     expect([...toolkit.files.keys()].filter((key) => key.includes("output_0"))).toEqual([
       `${JOB}_output_0.mp4`,
@@ -241,8 +241,8 @@ describe("a finished run's files", () => {
     const { t, salt, runId, toolkit } = await finishedRun();
     await t.action(internal.files.keepFinished, { runId });
     const again = await t.action(internal.files.keepFinished, { runId });
-    expect(again).toEqual(["Finished/Shorts/Space clip (2).mp4"]);
-    expect(toolkit.files.has(`teams/${salt}/Finished/Shorts/Space clip.mp4`)).toBe(true);
+    expect(again).toEqual(["Finished/Shorts/Space captioned (2).mp4"]);
+    expect(toolkit.files.has(`teams/${salt}/Finished/Shorts/Space captioned.mp4`)).toBe(true);
   });
 
   test("a run that did not finish keeps nothing", async () => {

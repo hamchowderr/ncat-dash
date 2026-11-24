@@ -28,6 +28,8 @@ import {
   renamedKey,
   teamFolder,
   type PartsPlan,
+  librarySearchText,
+  titleFromFileName,
 } from "@takewon/automation-core";
 import { callStep, getStep } from "@takewon/step-catalog";
 import { ConvexError, v } from "convex/values";
@@ -40,6 +42,7 @@ import {
   internalAction,
   internalMutation,
   internalQuery,
+  type MutationCtx,
   query,
   type QueryCtx,
 } from "./_generated/server";
@@ -61,6 +64,7 @@ import { AD_FILES_NAME, type AdFile, adFilesCsv, adFolder, takeFolder } from "./
 import { finishedFiles } from "./lib/exports";
 import { deliveryFolderOf } from "./lib/clients";
 import { followLibraryKey } from "./lib/library";
+import { followStartRename } from "./lib/followRename";
 import { outputNamesOf } from "./lib/outputs";
 import { hasTriggerOf } from "./lib/triggers";
 import { fileDetailsValidator } from "./schema";
@@ -406,6 +410,42 @@ export const rename = action({
   },
 });
 
+/**
+ * Renames the kept copies of files made from an upload after the upload was renamed
+ * (lib/followRename.ts). One at a time, so a name already taken leaves only that file as
+ * it was.
+ */
+export const followRenamedFiles = internalAction({
+  args: {
+    organizationId: v.string(),
+    moves: v.array(v.object({ from: v.string(), to: v.string() })),
+  },
+  returns: v.object({ moved: v.number(), skipped: v.number() }),
+  handler: async (ctx, args): Promise<{ moved: number; skipped: number }> => {
+    const storage = await ctx.runQuery(internal.storage.load, {
+      organizationId: args.organizationId,
+    });
+    if (!storage?.storage?.endpoint) return { moved: 0, skipped: args.moves.length };
+    const config = await bucketFor(storage);
+    let moved = 0;
+    let skipped = 0;
+    for (const pair of args.moves.slice(0, MAX_OBJECTS)) {
+      if (nameProblem(baseName(pair.to))) {
+        skipped++;
+        continue;
+      }
+      try {
+        await relocate(ctx, args.organizationId, config, [pair]);
+        moved++;
+      } catch {
+        // Gone already, or the new name is taken: that copy keeps its name.
+        skipped++;
+      }
+    }
+    return { moved, skipped };
+  },
+});
+
 /** Moves files and folders into another folder ("" is the top of the bucket). */
 export const move = action({
   args: { organizationId: v.string(), keys: v.array(v.string()), toFolder: v.string() },
@@ -671,6 +711,17 @@ export const brandFilesAmong = internalQuery({
  * what each watched folder has already seen (so a renamed file does not start a second
  * run). `to` is null for a deleted file, which drops its records.
  */
+async function followUploadRename(ctx: MutationCtx, upload: Doc<"uploads">, fileName: string) {
+  const item = await ctx.db
+    .query("libraryItems")
+    .withIndex("by_upload", (q) => q.eq("uploadId", upload._id))
+    .first();
+  if (!item || item.title !== titleFromFileName(upload.fileName)) return;
+  const title = titleFromFileName(fileName);
+  await ctx.db.patch(item._id, { title, searchText: librarySearchText({ ...item, title }) });
+  await followStartRename(ctx, item, item.title, title);
+}
+
 export const followRecords = internalMutation({
   args: {
     organizationId: v.string(),
@@ -700,6 +751,9 @@ export const followRecords = internalMutation({
             key: to,
             ...(renamed ? { fileName: baseName(to) } : {}),
           });
+          // Its library title follows, unless it was renamed there, and so does what was
+          // made from it.
+          if (renamed) await followUploadRename(ctx, upload, baseName(to));
         }
       }
 
