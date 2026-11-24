@@ -1,6 +1,6 @@
 "use client";
 
-import { formatMoment, momentPercent } from "@ncat-dash/review-core";
+import { formatMoment, momentPercent } from "@takewon/review-core";
 import { Columns2, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import { useRef, useState } from "react";
 

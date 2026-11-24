@@ -2,7 +2,7 @@ import {
   CANVAS_NOTE_SIDES,
   MAX_CANVAS_NOTE_CHARS,
   MAX_CANVAS_NOTES,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";

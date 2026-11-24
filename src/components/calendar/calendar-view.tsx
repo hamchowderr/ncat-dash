@@ -30,12 +30,13 @@ import { movePostLocally, setDueLocally } from "./optimistic";
 import { type Panel, SidePanel } from "./side-panel";
 import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
 import { PickList } from "@/components/ui/pick-list";
+import { readStored, writeStored } from "@/lib/stored";
 
-const VIEW_KEY = "ncat-dash:calendar-view";
+const VIEW_KEY = "calendar-view";
 
 function savedView(): View {
   try {
-    return window.localStorage.getItem(VIEW_KEY) === "week" ? "week" : "month";
+    return readStored(VIEW_KEY) === "week" ? "week" : "month";
   } catch {
     return "month";
   }
@@ -43,7 +44,7 @@ function savedView(): View {
 
 function keepView(view: View) {
   try {
-    window.localStorage.setItem(VIEW_KEY, view);
+    writeStored(VIEW_KEY, view);
   } catch {
     // Remembering the view is a convenience; the calendar works without it.
   }

@@ -1,4 +1,4 @@
-import { explainFailure } from "@ncat-dash/automation-core";
+import { explainFailure } from "@takewon/automation-core";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { ActionCtx, QueryCtx } from "../../_generated/server";
 import type { ChatApp } from "../notifications";

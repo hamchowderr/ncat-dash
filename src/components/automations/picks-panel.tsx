@@ -14,7 +14,7 @@ import {
   languageOf,
   showNotes,
   youtubeChapters,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { Check, CircleAlert, CircleCheck, Copy, Download, ListPlus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";

@@ -5,7 +5,7 @@ import {
   readUploadRef,
   timeRangeOf,
   type Word,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";

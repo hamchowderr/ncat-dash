@@ -1,4 +1,4 @@
-import { MOTTO, PRODUCT_NAME } from "@ncat-dash/automation-core";
+import { MOTTO, PRODUCT_NAME } from "@takewon/automation-core";
 import Link from "next/link";
 import type { ReactNode } from "react";
 

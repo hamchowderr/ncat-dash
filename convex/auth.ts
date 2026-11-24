@@ -9,7 +9,7 @@ import {
   passwordResetEmail,
   verificationEmail,
   type Composed,
-} from "@ncat-dash/email";
+} from "@takewon/email";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { cimd } from "@better-auth/cimd";
@@ -121,7 +121,7 @@ function database(ctx: GenericCtx<DataModel>): ReturnType<typeof authComponent.a
 /**
  * The addresses allowed to sign in: the dashboard's own address, plus any in
  * TRUSTED_ORIGINS (comma-separated, `*` allowed), such as a Vercel preview's
- * `https://ncat-dash-preview-*-otaku-solutions.vercel.app`. Without it, sign-in from any
+ * `https://takewon-*-otaku-solutions.vercel.app`. Without it, sign-in from any
  * other address fails with "Invalid origin".
  */
 export function trustedOrigins(env: Record<string, string | undefined> = process.env) {

@@ -1,5 +1,5 @@
 {
-  "name": "@ncat-dash/agent",
+  "name": "@takewon/agent",
   "version": "0.1.0",
   "description": "Agent server for the dashboard: Mastra AgentController with the mastra-chat-kit route contract",
   "scripts": {

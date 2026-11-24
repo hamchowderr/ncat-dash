@@ -1,5 +1,5 @@
-import type { AutomationNode, StarterTrigger } from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+import type { AutomationNode, StarterTrigger } from "@takewon/automation-core";
+import { getStep } from "@takewon/step-catalog";
 
 export type Trigger = StarterTrigger;
 

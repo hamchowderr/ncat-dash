@@ -10,8 +10,8 @@ import {
   readLookAnswer,
   shotSecondsFrom,
   tidyCaptionSetup,
-} from "@ncat-dash/automation-core";
-import { contactSheetRequest } from "@ncat-dash/step-catalog";
+} from "@takewon/automation-core";
+import { contactSheetRequest } from "@takewon/step-catalog";
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";

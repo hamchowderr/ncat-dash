@@ -9,7 +9,7 @@ import {
   WORKFLOW_KINDS,
   type WorkflowKind,
   type WorkflowReview,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import { ShieldCheck, Workflow } from "lucide-react";
 import { RadioGroup as RadioGroupPrimitive } from "radix-ui";
@@ -25,7 +25,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PickList } from "@/components/ui/pick-list";
 import { Switch } from "@/components/ui/switch";

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # The web app (the dashboard people sign in to), built from the repository root:
-#   docker build -t ncat-dash-web .
+#   docker build -t takewon-web .
 # GitHub Actions builds it for Intel/AMD and ARM and publishes it to GHCR
 # (.github/workflows/web-image.yml), so a machine only pulls the finished image.
 #
@@ -10,7 +10,7 @@
 #   NEXT_PUBLIC_CONVEX_URL, NEXT_PUBLIC_CONVEX_SITE_URL   (required)
 #   MASTRA_SERVER_URL, MASTRA_JWT_SECRET                  (for the agent)
 #
-# The `setup` stage is a second image, ghcr.io/hamchowderr/ncat-dash-setup: it pushes the
+# The `setup` stage is a second image, ghcr.io/hamchowderr/takewon-setup: it pushes the
 # backend (convex/) to a copy's Convex, so the machine needs no Node or clone of its own
 # (deploy/setup/setup.sh). Build it with --target setup.
 FROM node:22-bookworm-slim AS source
@@ -29,7 +29,7 @@ COPY packages/timeline-export/package.json packages/timeline-export/
 COPY packages/agent/package.json packages/agent/
 # Only the web app and the packages it uses; the agent server has its own image.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile --filter "ncat-dash..."
+    pnpm install --frozen-lockfile --filter "takewon..."
 COPY . .
 
 FROM source AS build

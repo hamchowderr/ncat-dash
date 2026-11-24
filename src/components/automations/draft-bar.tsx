@@ -1,6 +1,6 @@
 "use client";
 
-import { type AutomationDraft, draftChanges } from "@ncat-dash/automation-core";
+import { type AutomationDraft, draftChanges } from "@takewon/automation-core";
 import { ChevronDown, PencilLine, Upload } from "lucide-react";
 import { useMemo } from "react";
 

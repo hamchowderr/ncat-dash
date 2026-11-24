@@ -1,4 +1,4 @@
-import { STARTERS } from "@ncat-dash/automation-core";
+import { STARTERS } from "@takewon/automation-core";
 import { describe, expect, it } from "vitest";
 import { automationName, DEFAULT_CLIPS, DEFAULT_PLAN, planRuns, timeLimitMs } from "../src/plan";
 

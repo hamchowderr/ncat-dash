@@ -6,7 +6,7 @@ import {
   fileDetailRows,
   uploadKind,
   type FileDetails,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Copy, FileText, LayoutGrid, List, Trash2, UploadCloud } from "lucide-react";

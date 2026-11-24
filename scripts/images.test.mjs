@@ -105,7 +105,7 @@ test("compose runs the web app from its image, beside the rest", () => {
   const compose = read("deploy/compose.yml");
   assert.match(
     compose,
-    /^  web:\n    image: \$\{WEB_IMAGE:-ghcr\.io\/hamchowderr\/ncat-dash-web:latest\}/m,
+    /^  web:\n    image: \$\{WEB_IMAGE:-ghcr\.io\/hamchowderr\/takewon-web:latest\}/m,
   );
   assert.match(compose, /127\.0\.0\.1:3000:3000/);
   assert.match(compose, /NEXT_PUBLIC_CONVEX_URL: \$\{CONVEX_URL/);
@@ -121,7 +121,7 @@ test("compose runs the setup image only when asked, on the web image's commit", 
   const compose = read("deploy/compose.yml");
   assert.match(
     compose,
-    /^  setup:\n    image: \$\{SETUP_IMAGE:-ghcr\.io\/hamchowderr\/ncat-dash-setup:latest\}\n    profiles: \[setup\]/m,
+    /^  setup:\n    image: \$\{SETUP_IMAGE:-ghcr\.io\/hamchowderr\/takewon-setup:latest\}\n    profiles: \[setup\]/m,
   );
   assert.match(compose, /CONVEX_SELF_HOSTED_ADMIN_KEY: \$\{CONVEX_ADMIN_KEY/);
   assert.match(read("Dockerfile"), /^FROM source AS setup$/m);
@@ -129,7 +129,7 @@ test("compose runs the setup image only when asked, on the web image's commit", 
   assert.match(read("Dockerfile"), /^FROM node:22-bookworm-slim AS web$(?![\s\S]*^FROM )/m);
   const workflow = read(".github/workflows/web-image.yml");
   assert.match(workflow, /target: setup/);
-  assert.match(workflow, /SETUP_IMAGE: ncat-dash-setup:check/);
+  assert.match(workflow, /SETUP_IMAGE: takewon-setup:check/);
 });
 
 describe("the setup script", () => {

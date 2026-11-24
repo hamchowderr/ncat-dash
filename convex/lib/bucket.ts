@@ -1,4 +1,4 @@
-import { teamFolder } from "@ncat-dash/automation-core";
+import { teamFolder } from "@takewon/automation-core";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { decryptSecret } from "./crypto";

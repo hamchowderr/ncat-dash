@@ -1,4 +1,4 @@
-import { PRODUCT_NAME } from "@ncat-dash/automation-core";
+import { PRODUCT_NAME } from "@takewon/automation-core";
 
 /** The titles of the sign-in and sign-up screens; their buttons keep the short words. */
 export const HEADINGS = {

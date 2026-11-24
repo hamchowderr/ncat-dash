@@ -1,8 +1,8 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { KIND_WORDS, readUploadRef, uploadRef, wantedKind } from "@ncat-dash/automation-core";
-import { getStep, userInputJsonSchema } from "@ncat-dash/step-catalog";
+import { KIND_WORDS, readUploadRef, uploadRef, wantedKind } from "@takewon/automation-core";
+import { getStep, userInputJsonSchema } from "@takewon/step-catalog";
 import { useAction, useQuery } from "convex/react";
 import { FileCheck, FileX, Upload, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";

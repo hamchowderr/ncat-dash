@@ -18,7 +18,7 @@ import {
   PRESET_GROUPS,
   SOUND_LEVEL_LABELS,
   SOUND_LEVELS,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { useMutation } from "convex/react";
 import { Check } from "lucide-react";
 import { type FormEvent, useState } from "react";

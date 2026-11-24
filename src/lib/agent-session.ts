@@ -29,7 +29,7 @@ const FRESH_MS = 60_000;
 
 // Kept on globalThis for the same reason as the proxy's own settings: route handlers
 // and instrumentation.ts are bundled apart.
-const KEY = Symbol.for("ncat-dash.agent-session");
+const KEY = Symbol.for("takewon.agent-session");
 type Holder = { [KEY]?: Map<string, { sent: string; at: number }> };
 function sentSessions() {
   const holder = globalThis as Holder;

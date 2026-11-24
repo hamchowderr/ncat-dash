@@ -6,7 +6,7 @@ import {
   frameName,
   PLATFORMS,
   type PlatformName,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { RectangleHorizontal, RectangleVertical, Smartphone, Square } from "lucide-react";
 
 import { cn } from "@/lib/utils";

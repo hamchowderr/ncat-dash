@@ -287,7 +287,7 @@ test("the first-step hint and the On switches stay clear at a small laptop size"
   // cut off on the right or hidden behind a sideways scroll.
   // A long name and a long chain of steps are what pushed the column out.
   const long = {
-    format: "ncat-dash-automation",
+    format: "takewon-automation",
     version: 1,
     name: "Weekly podcast clips with captions, thumbnails and a review before posting",
     trigger: { kind: "webhook" },

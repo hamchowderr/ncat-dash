@@ -1,5 +1,5 @@
 import { api } from "@convex/_generated/api";
-import { MOTION_PRESETS, NO_MOTION_SETUP } from "@ncat-dash/automation-core";
+import { MOTION_PRESETS, NO_MOTION_SETUP } from "@takewon/automation-core";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";

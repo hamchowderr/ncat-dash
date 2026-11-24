@@ -1,5 +1,5 @@
-import { type AutomationNode, nodeTypeOf } from "@ncat-dash/automation-core";
-import { getStep, toolkitHealth } from "@ncat-dash/step-catalog";
+import { type AutomationNode, nodeTypeOf } from "@takewon/automation-core";
+import { getStep, toolkitHealth } from "@takewon/step-catalog";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";

@@ -28,8 +28,8 @@ import {
   renamedKey,
   teamFolder,
   type PartsPlan,
-} from "@ncat-dash/automation-core";
-import { callStep, getStep } from "@ncat-dash/step-catalog";
+} from "@takewon/automation-core";
+import { callStep, getStep } from "@takewon/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { backgroundPool } from "./lib/pools";

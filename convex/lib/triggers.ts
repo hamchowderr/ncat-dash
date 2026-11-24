@@ -6,7 +6,7 @@ import {
   nextRunAt,
   type StarterTrigger,
   triggersOf,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 

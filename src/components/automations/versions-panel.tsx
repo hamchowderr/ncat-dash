@@ -10,7 +10,7 @@ import {
   exportAutomation,
   startsByTrigger,
   triggersOf,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { Background, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
 import { Download, History, RotateCcw } from "lucide-react";

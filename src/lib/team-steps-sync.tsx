@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { setTeamSteps, TEAM_STEP_PREFIX } from "@ncat-dash/step-catalog";
+import { setTeamSteps, TEAM_STEP_PREFIX } from "@takewon/step-catalog";
 import { useQuery } from "convex/react";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 

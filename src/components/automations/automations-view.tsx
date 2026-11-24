@@ -9,7 +9,7 @@ import {
   MAX_AUTOMATION_FILE_CHARS,
   parseAutomationFile,
   type Starter,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {

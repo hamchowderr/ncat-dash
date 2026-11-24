@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { statusLabel } from "@ncat-dash/review-core";
+import { statusLabel } from "@takewon/review-core";
 import { useQuery } from "convex/react";
 import { Check, ChevronRight, Workflow } from "lucide-react";
 import Link from "next/link";

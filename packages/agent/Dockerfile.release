@@ -3,4 +3,4 @@
 # The workflow moves the `agent-release` branch to a commit once its image is published,
 # and Coolify passes that commit in as SOURCE_COMMIT.
 ARG SOURCE_COMMIT
-FROM ghcr.io/hamchowderr/ncat-dash-agent:sha-${SOURCE_COMMIT}
+FROM ghcr.io/hamchowderr/takewon-agent:sha-${SOURCE_COMMIT}

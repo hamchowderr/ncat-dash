@@ -1,6 +1,6 @@
 "use client";
 
-import { formatMoment, type Shape, splitBody, type Thread } from "@ncat-dash/review-core";
+import { formatMoment, type Shape, splitBody, type Thread } from "@takewon/review-core";
 import { Check, CircleCheck, CornerDownRight, PenLine, RotateCw, Trash2, X } from "lucide-react";
 import { useState } from "react";
 

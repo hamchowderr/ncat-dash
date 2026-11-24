@@ -1,5 +1,5 @@
 {
-  "name": "@ncat-dash/speed-test",
+  "name": "@takewon/speed-test",
   "version": "0.1.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
@@ -15,8 +15,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ncat-dash/automation-core": "workspace:*",
-    "@ncat-dash/step-catalog": "workspace:*",
+    "@takewon/automation-core": "workspace:*",
+    "@takewon/step-catalog": "workspace:*",
     "convex": "^1.50.0"
   },
   "devDependencies": {

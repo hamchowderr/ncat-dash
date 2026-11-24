@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { baseName, folderTrail } from "@ncat-dash/automation-core";
+import { baseName, folderTrail } from "@takewon/automation-core";
 import { useAction } from "convex/react";
 import { ChevronRight, Folder, FolderPlus, HardDrive } from "lucide-react";
 import { useEffect, useState } from "react";

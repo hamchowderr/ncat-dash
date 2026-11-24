@@ -10,7 +10,7 @@ import {
   type AutomationNode,
   failsOver,
   readClipsSetup,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { Background, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft, CircleStop, RotateCw, StepForward } from "lucide-react";

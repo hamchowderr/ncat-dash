@@ -1,5 +1,5 @@
 import { internal } from "../_generated/api";
-import { looksLikeBroll } from "@ncat-dash/automation-core";
+import { looksLikeBroll } from "@takewon/automation-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { failStep } from "./runner";

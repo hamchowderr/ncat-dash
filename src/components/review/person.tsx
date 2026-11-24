@@ -1,4 +1,4 @@
-import { AGENT, initialsOf } from "@ncat-dash/review-core";
+import { AGENT, initialsOf } from "@takewon/review-core";
 import { Bot } from "lucide-react";
 
 import { cn } from "@/lib/utils";

@@ -81,13 +81,13 @@ export default defineConfig({
       // (packages/agent/fixtures/recorded), so the run is free and needs no key. With
       // RECORD_AGENT=1 and ANTHROPIC_API_KEY set, a question not recorded yet goes to the
       // real model and its answer is saved there.
-      command: `pnpm --filter @ncat-dash/agent ${RECORD ? "dev:record" : "dev:replay"}`,
+      command: `pnpm --filter @takewon/agent ${RECORD ? "dev:record" : "dev:replay"}`,
       url: `${AIMOCK}/health`,
       reuseExistingServer: true,
     },
     {
       // The real agent server, answering "@Agent" through the model above.
-      command: "pnpm --filter @ncat-dash/agent dev",
+      command: "pnpm --filter @takewon/agent dev",
       env: {
         APP_SECRET: "browser-tests-app-secret-at-least-32-characters",
         MASTRA_JWT_SECRET: AGENT_SECRET,
@@ -101,7 +101,7 @@ export default defineConfig({
         ANTHROPIC_API_KEY: (RECORD && process.env.ANTHROPIC_API_KEY) || "stand-in",
         OPENAI_API_KEY: "stand-in",
         // test-results/ is emptied by Playwright as it starts, so the database lives elsewhere.
-        TURSO_DATABASE_URL: `file:${path.join(os.tmpdir(), "ncat-dash-e2e-agent.db")}`,
+        TURSO_DATABASE_URL: `file:${path.join(os.tmpdir(), "takewon-e2e-agent.db")}`,
       },
       url: `${AGENT}/health`,
       reuseExistingServer: true,

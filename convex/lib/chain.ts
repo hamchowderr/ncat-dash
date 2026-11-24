@@ -10,7 +10,7 @@ import {
   stepsBefore,
   targetOf,
   waitsForRun,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { reportRunEnd } from "./hooks";

@@ -1,4 +1,4 @@
-import { allSteps } from "@ncat-dash/step-catalog";
+import { allSteps } from "@takewon/step-catalog";
 import { describe, expect, it } from "vitest";
 
 import {

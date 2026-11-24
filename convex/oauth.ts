@@ -1,4 +1,4 @@
-import { PRODUCT_NAME } from "@ncat-dash/automation-core";
+import { PRODUCT_NAME } from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import { components } from "./_generated/api";
 import { httpAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";

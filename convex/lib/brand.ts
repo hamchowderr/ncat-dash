@@ -4,7 +4,7 @@ import {
   brandProblem,
   isBrandFile,
   readUploadRef,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { ConvexError } from "convex/values";
 import type { MutationCtx } from "../_generated/server";
 

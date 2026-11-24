@@ -59,7 +59,7 @@ const plainClip = process.env.STAND_IN_PLAIN ?? null;
 const clipFor = (url) => (plainClip && /plain/.test(url) ? plainClip : (ownClip ?? clip));
 const still = fileURLToPath(new URL("./fixtures/still.jpg", import.meta.url));
 // Files the real jobs make, served at /made/<name>.
-const made = mkdtempSync(join(tmpdir(), "ncat-dash-e2e-made-"));
+const made = mkdtempSync(join(tmpdir(), "takewon-e2e-made-"));
 let jobs = 0;
 // The bucket's folders, so a folder can be picked and made. Files are not kept.
 const folders = new Set(["incoming/", "podcast/", "podcast/raw/"]);

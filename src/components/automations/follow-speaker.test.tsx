@@ -1,4 +1,4 @@
-import { followShapeLine } from "@ncat-dash/automation-core";
+import { followShapeLine } from "@takewon/automation-core";
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 

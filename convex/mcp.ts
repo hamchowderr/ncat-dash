@@ -1,5 +1,5 @@
-import { PRODUCT_NAME } from "@ncat-dash/automation-core";
-import { getStep } from "@ncat-dash/step-catalog";
+import { PRODUCT_NAME } from "@takewon/automation-core";
+import { getStep } from "@takewon/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";

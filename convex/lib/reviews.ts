@@ -1,5 +1,5 @@
-import { fileNameOfLink, isMachineName } from "@ncat-dash/automation-core";
-import { clipTitleFrom, TITLE_LIMIT } from "@ncat-dash/review-core";
+import { fileNameOfLink, isMachineName } from "@takewon/automation-core";
+import { clipTitleFrom, TITLE_LIMIT } from "@takewon/review-core";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { outputNamesOf } from "./outputs";

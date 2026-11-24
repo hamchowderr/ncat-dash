@@ -11,7 +11,7 @@ import {
   type CaptionStyle,
   LOOK_WORDS,
   POSITION_WORDS,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { useMutation } from "convex/react";
 import { ArrowRight, ChevronRight, Copy, Plus, Trash2, X } from "lucide-react";
 import { type FormEvent, useState } from "react";

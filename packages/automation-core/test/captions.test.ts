@@ -1,4 +1,4 @@
-import { getStep } from "@ncat-dash/step-catalog";
+import { getStep } from "@takewon/step-catalog";
 import { describe, expect, it } from "vitest";
 import {
   BUILT_IN_STYLES,

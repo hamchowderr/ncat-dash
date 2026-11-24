@@ -89,6 +89,11 @@ fn is_private(ip: &IpAddr) -> bool {
     }
 }
 
+/// What the dashboard may say it is on [`CHECK_PATH`]. Dashboards from before the rename to
+/// Takewon say "ncat-dash", and so do current ones until every installed app accepts
+/// "takewon"; this list takes both.
+const ANSWERS: [&str; 2] = ["takewon", "ncat-dash"];
+
 /// What the dashboard answers on [`CHECK_PATH`].
 #[derive(Debug, serde::Deserialize)]
 struct CheckReply {
@@ -128,7 +133,7 @@ pub async fn check(url: &Url) -> Result<(), String> {
         return Err(not_ours());
     }
     match reply.json::<CheckReply>().await {
-        Ok(body) if body.app == "ncat-dash" => Ok(()),
+        Ok(body) if ANSWERS.contains(&body.app.as_str()) => Ok(()),
         _ => Err(not_ours()),
     }
 }
@@ -225,6 +230,15 @@ mod tests {
     async fn accepts_our_reply() {
         let url = serve_once(
             "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 19\r\nconnection: close\r\n\r\n{\"app\":\"ncat-dash\"}",
+        )
+        .await;
+        assert_eq!(check(&url).await, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn accepts_the_new_name() {
+        let url = serve_once(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 17\r\nconnection: close\r\n\r\n{\"app\":\"takewon\"}",
         )
         .await;
         assert_eq!(check(&url).await, Ok(()));

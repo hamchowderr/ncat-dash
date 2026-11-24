@@ -1,6 +1,6 @@
 // Makes the post for a Send to a URL step (lib/send.ts starts and ends the step).
 import { outboundProblem } from "./lib/outbound";
-import { type AutomationNode } from "@ncat-dash/automation-core";
+import { type AutomationNode } from "@takewon/automation-core";
 import { vOnCompleteArgs } from "@convex-dev/workpool";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";

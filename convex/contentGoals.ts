@@ -8,7 +8,7 @@ import {
   placementsFor,
   type Starter,
   STARTERS,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { automationProblem, followedBy, randomToken, storageProblem } from "./automations";

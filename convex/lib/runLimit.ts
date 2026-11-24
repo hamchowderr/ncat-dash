@@ -8,7 +8,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { advance } from "./runner";
 
-export { RUNS_AT_ONCE } from "@ncat-dash/automation-core";
+export { RUNS_AT_ONCE } from "@takewon/automation-core";
 
 // The most runs of one automation looked at to count those under way.
 const LOOKED_AT = 200;

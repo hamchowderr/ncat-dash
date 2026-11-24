@@ -1,4 +1,4 @@
-import { PRODUCT_NAME } from "@ncat-dash/automation-core";
+import { PRODUCT_NAME } from "@takewon/automation-core";
 
 /** Where a team's Slack app sends everything: the dashboard's own address. */
 export function slackEventsUrl(origin: string): string {

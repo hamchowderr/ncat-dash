@@ -1,5 +1,5 @@
 {
-  "name": "ncat-dash",
+  "name": "takewon",
   "version": "0.1.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
@@ -8,12 +8,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "next typegen && tsc --noEmit && tsc --noEmit -p convex && pnpm --filter @ncat-dash/agent typecheck && pnpm --filter @ncat-dash/desktop typecheck",
+    "typecheck": "next typegen && tsc --noEmit && tsc --noEmit -p convex && pnpm --filter @takewon/agent typecheck && pnpm --filter @takewon/desktop typecheck",
     "test": "pnpm -r test && vitest run --config vitest.convex.config.ts && vitest run --config vitest.screens.config.ts && node --test scripts/setup-agent.test.mjs scripts/setup-beads.test.mjs scripts/licence.test.mjs scripts/docs.test.mjs scripts/images.test.mjs scripts/desktop-release.test.mjs scripts/workflows.test.mjs",
     "test:e2e": "playwright test",
     "setup:agent": "node scripts/setup-agent.mjs",
     "setup:beads": "node scripts/setup-beads.mjs",
-    "speed-test": "pnpm --filter @ncat-dash/speed-test start"
+    "speed-test": "pnpm --filter @takewon/speed-test start"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -26,11 +26,11 @@
     "@convex-dev/presence": "0.4.0",
     "@convex-dev/rate-limiter": "0.4.3",
     "@convex-dev/workpool": "0.5.0",
-    "@ncat-dash/automation-core": "workspace:*",
-    "@ncat-dash/email": "workspace:*",
-    "@ncat-dash/review-core": "workspace:*",
-    "@ncat-dash/step-catalog": "workspace:*",
-    "@ncat-dash/timeline-export": "workspace:*",
+    "@takewon/automation-core": "workspace:*",
+    "@takewon/email": "workspace:*",
+    "@takewon/review-core": "workspace:*",
+    "@takewon/step-catalog": "workspace:*",
+    "@takewon/timeline-export": "workspace:*",
     "@radix-ui/react-use-controllable-state": "^1.3.0",
     "@streamdown/cjk": "^1.0.4",
     "@streamdown/code": "^2.0.0",

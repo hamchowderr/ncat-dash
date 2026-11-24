@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { type Starter, STARTERS } from "@ncat-dash/automation-core";
+import { type Starter, STARTERS } from "@takewon/automation-core";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowRight, Plus } from "lucide-react";
 import Link from "next/link";

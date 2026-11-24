@@ -1,4 +1,4 @@
-import { explainFailure } from "@ncat-dash/automation-core";
+import { explainFailure } from "@takewon/automation-core";
 import {
   checkKey,
   DEFAULT_APP_NAME,
@@ -25,7 +25,7 @@ import {
   withUnsubscribe,
   type Composed,
   type SendResult,
-} from "@ncat-dash/email";
+} from "@takewon/email";
 import { ConvexError, v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";

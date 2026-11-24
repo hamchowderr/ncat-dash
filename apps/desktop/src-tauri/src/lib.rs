@@ -640,6 +640,17 @@ fn apply(app: &AppHandle, prefs: awake::Prefs, login_too: bool) {
     refresh_tray(app);
 }
 
+/// Points "open at sign-in" at this copy of the app. An update can change the program's
+/// file name (it did when the app was renamed to Takewon), and the sign-in entry would
+/// otherwise still name the old file.
+fn refresh_open_at_login(app: &AppHandle) {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    if launcher.is_enabled().unwrap_or(false) {
+        let _ = launcher.enable();
+    }
+}
+
 fn refresh_tray(app: &AppHandle) {
     if let (Some(tray), Ok(menu)) = (app.tray_by_id(TRAY), tray_menu(app)) {
         let _ = tray.set_menu(Some(menu));
@@ -1179,6 +1190,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            refresh_open_at_login(&handle);
             app.set_menu(menu(&handle)?)?;
             app.on_menu_event(|app, event| match event.id().as_ref() {
                 SWITCH => go_home(app),

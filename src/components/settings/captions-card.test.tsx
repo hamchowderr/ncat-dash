@@ -4,7 +4,7 @@ import {
   BUILT_IN_STYLES,
   type CaptionSetup,
   NO_CAPTION_SETUP,
-} from "@ncat-dash/automation-core";
+} from "@takewon/automation-core";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 

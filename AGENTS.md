@@ -1,4 +1,4 @@
-# Takewon (ncat-dash): Notes for AI Agents
+# Takewon: Notes for AI Agents
 
 Takewon is a finished shell around the free, open-source NCA Toolkit: the toolkit processes media, Takewon builds, runs and reviews the automations that drive it. Product name Takewon; motto exactly "Your content, social media ready." Read [README.md](README.md) for how the code works and [docs/self-hosting.md](docs/self-hosting.md) for running a copy.
 

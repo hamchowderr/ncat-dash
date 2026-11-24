@@ -354,9 +354,9 @@ describe("the 2026-07-28 protocol", () => {
     expect(withPage).toEqual(["start_automation", "check_run", "list_approvals"]);
     expect(listed.body.result).toMatchObject({ ttlMs: expect.any(Number), resultType: "complete" });
 
-    const page = await modern(t, key, "resources/read", { uri: "ui://ncat-dash/run.html" });
+    const page = await modern(t, key, "resources/read", { uri: "ui://takewon/run.html" });
     expect(page.body.result.contents[0]).toMatchObject({
-      uri: "ui://ncat-dash/run.html",
+      uri: "ui://takewon/run.html",
       mimeType: "text/html;profile=mcp-app",
       text: expect.stringContaining("ui/initialize"),
     });
@@ -775,7 +775,7 @@ describe("approvals over MCP", () => {
 describe("clips playing in the chat", () => {
   test("lets the run page load media from the team's storage, and nothing else", async () => {
     const { t, team, key } = await setUp();
-    const before = await modern(t, key, "resources/read", { uri: "ui://ncat-dash/run.html" });
+    const before = await modern(t, key, "resources/read", { uri: "ui://takewon/run.html" });
     expect(before.body.result.contents[0]._meta.ui.csp.resourceDomains).toBeUndefined();
 
     await t.run(async (ctx) => {
@@ -791,7 +791,7 @@ describe("clips playing in the chat", () => {
         },
       });
     });
-    const page = await modern(t, key, "resources/read", { uri: "ui://ncat-dash/run.html" });
+    const page = await modern(t, key, "resources/read", { uri: "ui://takewon/run.html" });
     expect(page.body.result.contents[0]._meta.ui.csp.resourceDomains).toEqual([
       "https://media.saltho.use",
       "https://abc.r2.cloudflarestorage.com",

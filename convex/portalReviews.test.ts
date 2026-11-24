@@ -1,4 +1,4 @@
-import { teamFolder, uploadRef } from "@ncat-dash/automation-core";
+import { teamFolder, uploadRef } from "@takewon/automation-core";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { api } from "./_generated/api";

@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from "@convex/_generated/api";
-import { EDITORS, type EditorId } from "@ncat-dash/timeline-export";
+import { EDITORS, type EditorId } from "@takewon/timeline-export";
 import { useMutation } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";

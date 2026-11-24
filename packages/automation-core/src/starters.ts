@@ -7,7 +7,7 @@ import {
   moreRecipes,
   recipes,
   variantRecipes,
-} from "@ncat-dash/step-catalog";
+} from "@takewon/step-catalog";
 
 import { type AutomationEdge, type AutomationNode, NODE_GAP } from "./graph";
 import type { Schedule } from "./schedule";
