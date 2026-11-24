@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Gets this clone's Beads issues from DoltHub (chowderr/ncat-dash).
+// Gets this clone's Beads issues from DoltHub (chowderr/takewon).
 //
 // Dolt does not read a DoltHub API token. It signs in with a credential key
 // (a JWK file in ~/.dolt/creds). In a cloud session the key comes in as two

@@ -18,3 +18,9 @@ test("only a JWK with a private part counts as a Dolt key", () => {
   assert.equal(looksLikeJwk("dhat.v1.abcdef"), false);
   assert.equal(looksLikeJwk(""), false);
 });
+
+test("Beads syncs with the Takewon database on DoltHub", async () => {
+  const { readFileSync } = await import("node:fs");
+  const config = readFileSync(new URL("../.beads/config.yaml", import.meta.url), "utf8");
+  assert.match(config, /^ {4}remote: "https:\/\/doltremoteapi\.dolthub\.com\/chowderr\/takewon"$/m);
+});
