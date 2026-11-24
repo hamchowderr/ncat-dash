@@ -765,3 +765,93 @@ describe("caption files", () => {
     expect(jobs.filter((job) => job.stepId === "media-transcribe")).toEqual([]);
   });
 });
+
+describe("renaming an upload renames what was made from it", () => {
+  async function madeFromUpload(fileName = "IMG_4521.mp4") {
+    vi.useFakeTimers();
+    const s = await studio();
+    const shot = await s.upload(fileName);
+    await s.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000));
+    const parts = [0, 1].map((n) => `${LINK}/${JOB}_output_${n}.mp4`);
+    const { runId } = await s.finishedRun(shot, parts);
+    // The run started from the upload under the name it had then.
+    await s.t.run(async (ctx) => {
+      const run = (await ctx.db.get(runId))!;
+      await ctx.db.patch(runId, {
+        trigger: { ...(run.trigger as object), file_name: fileName },
+      });
+    });
+    for (const n of [0, 1]) s.toolkit.put(`${JOB}_output_${n}.mp4`);
+    await s.t.action(internal.files.keepFinished, { runId });
+    await s.t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000));
+    const parent = await s.itemOf(shot);
+    const made = async () =>
+      (
+        await s.t.run((ctx) =>
+          ctx.db
+            .query("libraryItems")
+            .withIndex("by_parent", (q) => q.eq("parentId", parent._id))
+            .collect(),
+        )
+      ).sort((a, b) => a.title.localeCompare(b.title));
+    return { ...s, shot, runId, parent, made };
+  }
+
+  test("each made file is named after the upload and what the step did", async () => {
+    const { made } = await madeFromUpload();
+    const files = await made();
+    expect(files.map((one) => one.title)).toEqual(["IMG 4521 part 1", "IMG 4521 part 2"]);
+    expect(files.map((one) => one.key)).toEqual([
+      "Finished/Podcast clips/IMG 4521 part 1.mp4",
+      "Finished/Podcast clips/IMG 4521 part 2.mp4",
+    ]);
+  });
+
+  test("renaming it in the library renames the made files, their copies and the run", async () => {
+    const { t, maya, team, runId, parent, made, toolkit } = await madeFromUpload();
+    const result = await maya.as.mutation(api.library.rename, {
+      itemId: parent._id,
+      title: "Moon interview",
+    });
+    expect(result).toEqual({ followed: 2 });
+    await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000));
+    const files = await made();
+    expect(files.map((one) => one.title)).toEqual([
+      "Moon interview part 1",
+      "Moon interview part 2",
+    ]);
+    expect(files.map((one) => one.key)).toEqual([
+      "Finished/Podcast clips/Moon interview part 1.mp4",
+      "Finished/Podcast clips/Moon interview part 2.mp4",
+    ]);
+    const root = `teams/${team}/`;
+    expect(toolkit.files.has(`${root}Finished/Podcast clips/Moon interview part 1.mp4`)).toBe(true);
+    expect(toolkit.files.has(`${root}Finished/Podcast clips/IMG 4521 part 1.mp4`)).toBe(false);
+    // The run's pages name its files after the new name too.
+    const run = await t.run((ctx) => ctx.db.get(runId));
+    expect((run!.trigger as { file_name: string }).file_name).toBe("Moon interview.mp4");
+    const view = await maya.as.query(api.library.get, { itemId: files[0]._id });
+    expect(view?.parent).toMatchObject({ title: "Moon interview" });
+  });
+
+  test("a made file someone renamed keeps their name", async () => {
+    const { maya, parent, made } = await madeFromUpload();
+    const [first] = await made();
+    await maya.as.mutation(api.library.rename, { itemId: first._id, title: "Best bit" });
+    await maya.as.mutation(api.library.rename, { itemId: parent._id, title: "Moon interview" });
+    expect((await made()).map((one) => one.title)).toEqual(["Best bit", "Moon interview part 2"]);
+  });
+
+  test("renaming the upload on the Files page carries over the same way", async () => {
+    const { t, team, parent, made } = await madeFromUpload();
+    await t.mutation(internal.files.followRecords, {
+      organizationId: team,
+      moves: [{ from: parent.key!, to: "uploads/x/moon-interview.mp4", etag: "e" }],
+    });
+    expect((await t.run((ctx) => ctx.db.get(parent._id)))?.title).toBe("moon-interview");
+    expect((await made()).map((one) => one.title)).toEqual([
+      "Moon interview part 1",
+      "Moon interview part 2",
+    ]);
+  });
+});

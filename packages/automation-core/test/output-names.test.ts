@@ -1,6 +1,11 @@
 import { describe, expect, it, test } from "vitest";
 
+import { allSteps } from "@takewon/step-catalog";
+
+import { stepsWithMadeWords } from "../src/made-words";
+
 import {
+  followedName,
   isMachineName,
   nameFiles,
   outputNoun,
@@ -90,8 +95,66 @@ test("runOutputNames names each file once, under the first step that made it", (
   expect(names).toEqual({
     [clips[0]]: "Space interviews clip 1",
     [clips[1]]: "Space interviews clip 2",
-    [captioned[0]]: "Space interviews clip 1",
-    [captioned[1]]: "Space interviews clip 2",
+    [captioned[0]]: "Space interviews clip 1 captioned",
+    [captioned[1]]: "Space interviews clip 2 captioned",
+  });
+});
+
+describe("names say what was done to each file", () => {
+  test("a known step's words follow the upload's name, however poor", () => {
+    const one = (stepId: string, ending = "mp4") =>
+      runOutputNames("IMG 4521", [{ stepId, outputs: [out(`${JOB}_output_0.${ending}`)] }])[
+        out(`${JOB}_output_0.${ending}`)
+      ];
+    expect(one("video-caption")).toBe("IMG 4521 captioned");
+    expect(one("video-trim")).toBe("IMG 4521 trimmed");
+    expect(one("recipe-logo")).toBe("IMG 4521 with logo");
+    expect(one("recipe-crop-vertical")).toBe("IMG 4521 vertical");
+    expect(one("media-to-mp3", "mp3")).toBe("IMG 4521 MP3");
+    expect(one("video-thumbnail", "jpg")).toBe("IMG 4521 thumbnail");
+    expect(one("media-transcribe", "txt")).toBe("IMG 4521 transcript");
+  });
+
+  test("a step that made several numbers them by what it did", () => {
+    const parts = [0, 1, 2].map((n) => out(`${JOB}_output_${n}.mp4`));
+    expect(nameFiles("IMG 4521", parts, "video-split")).toEqual([
+      "IMG 4521 part 1",
+      "IMG 4521 part 2",
+      "IMG 4521 part 3",
+    ]);
+  });
+
+  test("a step that works on each piece names its files after the piece", () => {
+    const parts = [0, 1].map((n) => out(`${JOB}_output_${n}.mp4`));
+    const captioned = [0, 1].map((n) => out(`${JOB}${n}_captioned.mp4`));
+    const thumbs = [0, 1].map((n) => out(`${JOB}${n}.jpg`));
+    const names = runOutputNames("IMG 4521", [
+      { stepId: "video-split", outputs: parts },
+      { stepId: "video-caption", outputs: captioned },
+      { stepId: "video-thumbnail", outputs: thumbs },
+    ]);
+    expect(captioned.map((file) => names[file])).toEqual([
+      "IMG 4521 part 1 captioned",
+      "IMG 4521 part 2 captioned",
+    ]);
+    expect(thumbs.map((file) => names[file])).toEqual([
+      "IMG 4521 part 1 captioned thumbnail",
+      "IMG 4521 part 2 captioned thumbnail",
+    ]);
+  });
+
+  test("one file after another keeps just the latest step's words", () => {
+    const trimmed = out(`${JOB}_output_0.mp4`);
+    const captioned = out(`${JOB}_captioned.mp4`);
+    const names = runOutputNames("IMG 4521", [
+      { stepId: "video-trim", outputs: [trimmed] },
+      { stepId: "video-caption", outputs: [captioned] },
+    ]);
+    expect(names[captioned]).toBe("IMG 4521 captioned");
+  });
+
+  test("a step it does not know says what the file is", () => {
+    expect(nameFiles("IMG 4521", [out(`${JOB}.mp4`)], "team-step-x")).toEqual(["IMG 4521 clip"]);
   });
 });
 
@@ -188,6 +251,36 @@ describe("variant codes in file names", () => {
     ).toEqual([]);
     expect(
       runOutputNames("Talk", [{ stepId: "recipe-blur-fill", outputs: [job("a")] }])[job("a")],
-    ).toBe("Talk clip");
+    ).toBe("Talk with blurred background");
+  });
+});
+
+test("every catalog step that makes files has words for what it did", () => {
+  const known = new Set(stepsWithMadeWords());
+  // Steps whose files are what they hand on, or are named by what they are.
+  const named = new Set(["storage-upload-gcp", "storage-upload-s3", "video-thumbnail"]);
+  const missing = allSteps
+    .filter((step) => step.output !== "json" && !named.has(step.id))
+    .map((step) => step.id)
+    .filter((id) => !known.has(id));
+  expect(missing).toEqual([]);
+});
+
+describe("followedName", () => {
+  test("swaps the old upload name for the new one", () => {
+    expect(followedName("IMG 4521 captioned", "IMG 4521", "Moon interview")).toBe(
+      "Moon interview captioned",
+    );
+    expect(followedName("img 4521 part 2.mp4", "IMG 4521", "Moon interview")).toBe(
+      "Moon interview part 2.mp4",
+    );
+    expect(followedName("IMG 4521", "IMG 4521", "Moon interview")).toBe("Moon interview");
+  });
+
+  test("leaves a name a person gave alone", () => {
+    expect(followedName("Best bit for TikTok", "IMG 4521", "Moon interview")).toBeNull();
+    // Only a whole word matches: "IMG 45210" was not made from "IMG 4521".
+    expect(followedName("IMG 45210 captioned", "IMG 4521", "Moon interview")).toBeNull();
+    expect(followedName("IMG 4521 captioned", "IMG 4521", "IMG 4521")).toBeNull();
   });
 });
