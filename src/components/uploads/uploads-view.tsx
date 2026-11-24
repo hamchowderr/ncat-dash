@@ -27,6 +27,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -56,6 +57,8 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { CopyLookFromUpload } from "@/components/looks/look-study";
 
 import { NeedsToolkit } from "./needs-toolkit";
+import { WorkChip } from "@/components/library/work-status";
+
 import { LinkRow, PasteLink, useLinks } from "./paste-link";
 import {
   UploadFrame,
@@ -145,7 +148,7 @@ function UploadActions({
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label={`Remove ${upload.fileName} from this list`}
+        aria-label={`Delete ${upload.fileName}`}
         onClick={onRemove}
       >
         <Trash2 />
@@ -164,6 +167,14 @@ export function UploadsView() {
   const cancelUpload = useAction(api.storage.cancelUpload);
   const finishUpload = useMutation(api.storage.finishUpload);
   const removeUpload = useMutation(api.storage.removeUpload);
+  const deleteFiles = useAction(api.files.remove);
+  // The upload being deleted, waiting for the person to say yes.
+  const [deleting, setDeleting] = useState<{
+    _id: Id<"uploads">;
+    fileName: string;
+    key: string;
+    status: string;
+  } | null>(null);
   const linkFor = useAction(api.storage.linkFor);
 
   const input = useRef<HTMLInputElement>(null);
@@ -633,7 +644,7 @@ export function UploadsView() {
                       <UploadActions
                         upload={upload}
                         onCopy={() => copyLink(upload._id)}
-                        onRemove={() => removeUpload({ uploadId: upload._id })}
+                        onRemove={() => setDeleting(upload)}
                       />
                     </div>
                   </li>
@@ -719,7 +730,7 @@ export function UploadsView() {
                           <UploadActions
                             upload={upload}
                             onCopy={() => copyLink(upload._id)}
-                            onRemove={() => removeUpload({ uploadId: upload._id })}
+                            onRemove={() => setDeleting(upload)}
                           />
                         </TableCell>
                       </TableRow>
@@ -748,6 +759,22 @@ export function UploadsView() {
                 ? "Read from the file when it was uploaded. A run this file starts is given the same details."
                 : "Your toolkit is still reading this file's details, or could not read them."}
             </DialogDescription>
+            {openedUpload?.libraryItemId &&
+              (openedUpload.kind === "video" || openedUpload.kind === "audio") && (
+                <WorkChip
+                  className="mt-1 self-start"
+                  work={{
+                    label: "Transcript and SRT",
+                    // Every upload is transcribed as it comes in, so none yet means on its way.
+                    state:
+                      openedUpload.transcript === "ready"
+                        ? "ready"
+                        : openedUpload.transcript === "failed"
+                          ? "failed"
+                          : "working",
+                  }}
+                />
+              )}
           </DialogHeader>
           {openedUpload && (
             <div
@@ -783,14 +810,15 @@ export function UploadsView() {
                     <Copy />
                     Copy link
                   </Button>
+                  {/* The chip at the top says while it is on its way; the link comes once
+                      there are words to read. */}
                   {openedUpload.libraryItemId &&
+                    openedUpload.transcript === "ready" &&
                     (openedUpload.kind === "video" || openedUpload.kind === "audio") && (
                       <Button asChild variant="secondary" size="sm" className="max-sm:h-11">
                         <Link href={`/library/${openedUpload.libraryItemId}`}>
                           <FileText />
-                          {openedUpload.transcript === "working"
-                            ? "Transcript on its way"
-                            : "Transcript and SRT"}
+                          Transcript and SRT
                         </Link>
                       </Button>
                     )}
@@ -798,14 +826,10 @@ export function UploadsView() {
                     variant="ghost"
                     size="sm"
                     className="max-sm:h-11"
-                    onClick={() => {
-                      const id = openedUpload._id;
-                      setOpened(null);
-                      void removeUpload({ uploadId: id });
-                    }}
+                    onClick={() => setDeleting(openedUpload)}
                   >
                     <Trash2 />
-                    Remove from this list
+                    Delete
                   </Button>
                 </div>
               </div>
@@ -816,6 +840,48 @@ export function UploadsView() {
           )}
         </DialogContent>
       </Dialog>
+      {deleting && (
+        <Dialog open onOpenChange={(open) => !open && setDeleting(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="break-words">Delete {deleting.fileName}?</DialogTitle>
+              <DialogDescription>
+                This removes it from your storage, the library and this list for good. It cannot be
+                undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleting(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  const upload = deleting;
+                  setDeleting(null);
+                  if (opened === upload._id) setOpened(null);
+                  // One that never finished sending has no file to delete, only its record.
+                  const done =
+                    upload.status === "ready"
+                      ? deleteFiles({ organizationId: team.id, keys: [upload.key] }).then(
+                          (result) => {
+                            if (result.leftBehind > 0) throw new Error("left behind");
+                          },
+                        )
+                      : removeUpload({ uploadId: upload._id });
+                  void done.then(
+                    () => toast.success(`Deleted ${upload.fileName}.`),
+                    (caught) =>
+                      toast.error(errorMessage(caught, `${upload.fileName} could not be deleted.`)),
+                  );
+                }}
+              >
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }

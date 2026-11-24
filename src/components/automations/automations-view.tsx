@@ -63,6 +63,7 @@ import { useActiveTeam } from "@/lib/team-context";
 import { dayOf, exactly, timeAgo } from "@/lib/when";
 
 import { FlowStrip } from "./flow-strip";
+import { TeamFollowOns } from "./follow-ons";
 import { RunStatusBadge } from "./run-status";
 import { TemplateGallery } from "./template-gallery";
 
@@ -381,6 +382,8 @@ export function AutomationsView() {
             </ItemList>
           )}
           <Pager {...pager} noun="automations" />
+          {/* Templates that follow on from the ones the team has, moved here from Home. */}
+          {!folder && <TeamFollowOns organizationId={team.id} />}
         </div>
       )}
 

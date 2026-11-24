@@ -88,9 +88,7 @@ describe("Uploads on a phone", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveClass("max-sm:inset-0", "max-sm:h-dvh", "max-sm:rounded-none");
     expect(within(dialog).getByRole("button", { name: "Copy link" })).toHaveClass("max-sm:h-11");
-    expect(within(dialog).getByRole("button", { name: "Remove from this list" })).toHaveClass(
-      "max-sm:h-11",
-    );
+    expect(within(dialog).getByRole("button", { name: "Delete" })).toHaveClass("max-sm:h-11");
   });
 
   test("keeps the screen on while a file sends, and says to keep the page open", async () => {

@@ -99,6 +99,6 @@ test("a clip cut for TikTok says so everywhere it shows", async ({ page }) => {
   await expect(libraryTile.getByTitle("Made for TikTok")).toBeVisible({ timeout: 30_000 });
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/Library.png` });
   await libraryTile.getByRole("link").first().click();
-  await expect(page.getByText("Made for", { exact: true })).toBeVisible();
+  await expect(page.getByRole("main").getByTitle("Made for TikTok").first()).toBeVisible();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/Library File.png` });
 });

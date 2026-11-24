@@ -324,6 +324,8 @@ export const listUploads = query({
       _id: upload._id,
       _creationTime: upload._creationTime,
       fileName: upload.fileName,
+      // Where it is in the team's storage, for deleting it from there.
+      key: upload.key,
       contentType: upload.contentType,
       size: upload.size,
       status: upload.status,
