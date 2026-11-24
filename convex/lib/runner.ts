@@ -101,6 +101,22 @@ const MAX_JOBS_PER_STEP = 100;
 export type TriggerKind = Doc<"runs">["triggerKind"];
 
 /**
+ * The upload a run works on: the trigger's `upload_id` when it names one of the uploads,
+ * or else the upload of the run it follows, so a follow-on counts as run on that file too.
+ */
+export async function uploadOfRun(
+  ctx: MutationCtx,
+  trigger: Record<string, unknown>,
+  parentRunId: Id<"runs"> | undefined,
+): Promise<Id<"uploads"> | null> {
+  const named =
+    typeof trigger.upload_id === "string" ? ctx.db.normalizeId("uploads", trigger.upload_id) : null;
+  if (named) return named;
+  if (!parentRunId) return null;
+  return (await ctx.db.get(parentRunId))?.uploadId ?? null;
+}
+
+/**
  * Starts a run of an automation: copies its steps into the run, then starts every step
  * that has nothing upstream. Returns the run id, or a reason it could not start.
  */
@@ -148,6 +164,7 @@ export async function startRun(
   const clientId = project ? project.clientId : automation.clientId;
   // A workflow's review, when the automation is part of one, is added to the run's steps.
   const graph = await workflowRunGraph(ctx, automation, nodes, edges, options.test !== undefined);
+  const uploadId = await uploadOfRun(ctx, trigger, parent?.runId);
 
   const runId = await ctx.db.insert("runs", {
     organizationId: automation.organizationId,
@@ -168,6 +185,7 @@ export async function startRun(
     ...(clientId ? { clientId } : {}),
     ...(graph.workflowId ? { workflowId: graph.workflowId } : {}),
     ...(options.callbackUrl ? { callbackUrl: options.callbackUrl } : {}),
+    ...(uploadId ? { uploadId } : {}),
     ...(project
       ? {
           projectId: project.projectId,

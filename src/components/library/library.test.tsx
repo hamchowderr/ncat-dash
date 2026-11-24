@@ -29,6 +29,8 @@ function item(id: string, shortId: string, title: string, extra: Record<string, 
     client: null,
     made: 0,
     searchable: "no",
+    from: "computer",
+    inReview: false,
     ...extra,
   };
 }
@@ -37,6 +39,7 @@ const EPISODE = item("i1", "V1", "Episode 4", { made: 2, tags: ["pricing"], sear
 const CLIP = item("i2", "C1", "Episode 4 clip 1", {
   source: "automation",
   automationName: "Podcast clips",
+  from: null,
   parent: { _id: "i1", shortId: "V1", title: "Episode 4" },
   rating: 4,
   duration: 45,
@@ -176,25 +179,36 @@ describe("the Library page", () => {
     );
   });
 
-  test("offers to transcribe what automations made, never what was brought in", async () => {
-    actionOf(api.library.makeSearchable).mockResolvedValue(1);
+  test("has nothing to press to make files searchable: every one is, by itself", () => {
     renderInApp(<LibraryView />);
-    // The clip (made by an automation) is offered; the uploaded theme is caught up by itself.
-    fireEvent.click(screen.getByRole("button", { name: "Transcribe 1 file" }));
-    await waitFor(() =>
-      expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
-        organizationId: "team_1",
-        itemIds: ["i2"],
-      }),
-    );
-    expect(toastSuccess).toHaveBeenCalledWith("1 file is being transcribed on your toolkit.");
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Transcribe/ })).toBeNull();
+    expect(screen.getByText(/uploaded or made by your automations, is transcribed once/)).toBeTruthy();
   });
 
-  test("the setting for new files is the owners' and admins'", () => {
-    answerQuery(api.library.list, { ...LIBRARY, canChangeSettings: false });
+  test("filters by where uploads came from and by what is in review, with a badge", () => {
+    const zoom = item("i4", "V2", "Coaching call", { from: "zoom", inReview: true });
+    answerQuery(api.library.list, { ...LIBRARY, items: [CLIP, THEME, EPISODE, zoom] });
     renderInApp(<LibraryView />);
-    expect(screen.getByRole("switch")).toBeDisabled();
-    expect(screen.getByText(/Only an owner or admin can change this/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Tiles" }));
+    const tiles = () => screen.getAllByTestId("library-tile");
+    expect(tiles()).toHaveLength(4);
+    const call = tiles().find((tile) => tile.textContent?.includes("Coaching call"))!;
+    expect(within(call).getByText("In review")).toBeTruthy();
+    expect(call.textContent).toContain("From Zoom");
+
+    fireEvent.click(screen.getByRole("button", { name: "In review" }));
+    expect(tiles().map((tile) => tile.textContent)).toEqual([
+      expect.stringContaining("Coaching call"),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "In review" }));
+    expect(tiles()).toHaveLength(4);
+  });
+
+  test("leaves the From filter out while every upload came from a computer", () => {
+    renderInApp(<LibraryView />);
+    expect(screen.queryByRole("button", { name: "From" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "In review" })).toBeNull();
   });
 
   test("brings in the files the team already had, the first time", async () => {
@@ -530,17 +544,30 @@ describe("a library file", () => {
     );
   });
 
-  test("a file an automation made can be transcribed by hand", async () => {
+  test("a file an automation made is transcribed by itself, with nothing to press", () => {
     answerQuery(api.library.get, {
       ...DETAIL,
       source: "automation",
       searchable: "no",
       pieces: [],
     });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    openWords();
+    expect(screen.getByText(/Being transcribed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Transcribe" })).toBeNull();
+  });
+
+  test("a transcript that failed can be tried again", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      source: "automation",
+      searchable: "failed",
+      pieces: [],
+    });
     actionOf(api.library.makeSearchable).mockResolvedValue(1);
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
     openWords();
-    fireEvent.click(screen.getByRole("button", { name: "Transcribe" }));
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() =>
       expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
         organizationId: "team_1",

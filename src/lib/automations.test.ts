@@ -31,4 +31,13 @@ describe("what a daily schedule says", () => {
       }),
     ).toBe("Every day at 18:30, UTC time");
   });
+
+  test("an upload trigger that asks first says it is offered, not started", () => {
+    expect(triggerSummary({ kind: "upload", fileType: "video", ask: true })).toBe(
+      "Offered on each video upload, to run with one press",
+    );
+    expect(triggerSummary({ kind: "upload", fileType: "video" })).toBe(
+      "Starts when a video file is uploaded",
+    );
+  });
 });

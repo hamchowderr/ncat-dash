@@ -155,10 +155,10 @@ describe("a video from a pasted link", () => {
     expect(stored.key).toMatch(/^uploads\/[\w-]+\/video\.webm$/);
     // Nothing left to show: the link is in.
     expect(await maya.as.query(api.links.recent, { organizationId: team })).toEqual([]);
-    // The download is not shown with step jobs. The only job there is the new upload's own
-    // transcript, which every upload gets once.
+    // The download is not shown with step jobs. The only jobs there are the new upload's own
+    // transcript and its look for B-Roll, which every video gets once.
     const jobs = await maya.as.query(api.jobs.list, { organizationId: team });
-    expect(jobs.map((job) => job.stepId)).toEqual(["media-transcribe"]);
+    expect(jobs.map((job) => job.stepId).sort()).toEqual(["media-look", "media-transcribe"]);
   });
 
   test("a site asking for a sign-in says to add cookies, and then gets them", async () => {

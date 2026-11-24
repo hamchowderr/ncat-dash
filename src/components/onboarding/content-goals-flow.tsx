@@ -4,11 +4,11 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
   CONTENT_KINDS,
-  followOnsOfPicks,
   POSTING_APPS,
   type PostingAppId,
   type Starter,
   STARTERS,
+  recordsMeetings,
   suggestedStarters,
 } from "@takewon/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -32,6 +32,8 @@ import { useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
 import { FlowStrip } from "@/components/automations/flow-strip";
+import { AppTile, type ConnectedApp } from "@/components/brand-logos";
+import { FileRuns } from "@/components/library/file-runs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
@@ -122,7 +124,8 @@ export function ContentGoalsFlow({
   const [stage, setStage] = useState<Stage>("kinds");
   const [kinds, setKinds] = useState<string[] | null>(null);
   const [apps, setApps] = useState<PostingAppId[] | null>(null);
-  const [skipped, setSkipped] = useState<string[]>([]);
+  // Nothing is picked until they tick it.
+  const [picked, setPicked] = useState<string[]>([]);
   const [made, setMade] = useState<Made[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -137,13 +140,8 @@ export function ContentGoalsFlow({
   const pickedKinds = kinds ?? saved.kinds;
   const pickedApps = apps ?? (saved.apps as PostingAppId[]);
   const suggested = suggestedStarters(pickedKinds);
-  const followOns = followOnsOfPicks(suggested);
-  const isOn = (starter: Starter) => !skipped.includes(starter.id);
-  // A follow-on is only made when what it runs after is made too.
-  const chosen = [
-    ...suggested.filter(isOn),
-    ...followOns.filter(({ starter, after }) => isOn(starter) && isOn(after)).map((f) => f.starter),
-  ];
+  const isOn = (starter: Starter) => picked.includes(starter.id);
+  const chosen = suggested.filter(isOn);
   const step = stepsBefore + STAGES.indexOf(stage) + 1;
 
   const toggle = <T extends string>(list: T[], id: T) =>
@@ -169,7 +167,7 @@ export function ContentGoalsFlow({
       setMade(await turnOn({ organizationId, starterIds: chosen.map((starter) => starter.id) }));
       setStage("upload");
     } catch (caught) {
-      toast.error(errorMessage(caught, "The automations could not be switched on. Try again."));
+      toast.error(errorMessage(caught, "The automations could not be added. Try again."));
     } finally {
       setBusy(false);
     }
@@ -184,8 +182,8 @@ export function ContentGoalsFlow({
       {stage === "kinds" && (
         <>
           <Heading title="What Do You Make?">
-            Pick everything that fits. We&apos;ll switch on ready-made automations made for it, so
-            your first upload is handled the way you would handle it.
+            Pick everything that fits. We&apos;ll suggest ready-made automations made for it on each
+            video you upload, ready to run with one press.
           </Heading>
           <div role="group" aria-label="What you make" className="grid gap-2 sm:grid-cols-2">
             {CONTENT_KINDS.map((kind) => {
@@ -264,34 +262,18 @@ export function ContentGoalsFlow({
 
       {stage === "turn-on" && (
         <>
-          <Heading title="Switch these on">
-            Each one runs by itself on every video you upload. Untick any you don&apos;t want.
+          <Heading title="Suggest these on your uploads">
+            One for each kind of content you make, none ticked. Tick any you want. None of them runs
+            by itself: each shows on your uploads, ready to run with one press.
           </Heading>
           <ul className="grid gap-2" aria-label="Ready-made automations for you">
             {suggested.map((starter) => (
-              <li key={starter.id} className="grid gap-2">
+              <li key={starter.id}>
                 <SuggestedRow
                   starter={starter}
                   on={isOn(starter)}
-                  onToggle={() => setSkipped(toggle(skipped, starter.id))}
+                  onToggle={() => setPicked(toggle(picked, starter.id))}
                 />
-                {followOns.some(({ after }) => after.id === starter.id) && (
-                  <ul className="grid gap-2 pl-6" aria-label={`Goes well after ${starter.name}`}>
-                    {followOns
-                      .filter(({ after }) => after.id === starter.id)
-                      .map(({ starter: followOn }) => (
-                        <li key={followOn.id}>
-                          <SuggestedRow
-                            starter={followOn}
-                            after={starter}
-                            on={isOn(followOn) && isOn(starter)}
-                            disabled={!isOn(starter)}
-                            onToggle={() => setSkipped(toggle(skipped, followOn.id))}
-                          />
-                        </li>
-                      ))}
-                  </ul>
-                )}
               </li>
             ))}
           </ul>
@@ -313,8 +295,8 @@ export function ContentGoalsFlow({
               {chosen.length === 0
                 ? "Continue without these"
                 : chosen.length === 1
-                  ? "Switch on 1 automation"
-                  : `Switch on ${chosen.length} automations`}
+                  ? "Add 1 automation"
+                  : `Add ${chosen.length} automations`}
               <ArrowRight />
             </Button>
           </div>
@@ -323,7 +305,12 @@ export function ContentGoalsFlow({
 
       {stage === "upload" &&
         (hasToolkit ? (
-          <FirstUpload organizationId={organizationId} made={made} onFinish={onFinish} />
+          <FirstUpload
+            organizationId={organizationId}
+            made={made}
+            meetings={recordsMeetings(pickedKinds)}
+            onFinish={onFinish}
+          />
         ) : (
           <ToolkitNext made={made} onFinish={onFinish} />
         ))}
@@ -331,22 +318,17 @@ export function ContentGoalsFlow({
   );
 }
 
-const RUN_WORDS: Record<string, string> = {
-  running: "Running",
-  waiting: "Waiting for you",
-  done: "Done",
-  failed: "Failed",
-  cancelled: "Stopped",
-};
-
 /** The last screen: one recording in, and the runs it starts as they begin. */
 function FirstUpload({
   organizationId,
   made,
+  meetings,
   onFinish,
 }: {
   organizationId: string;
   made: Made[];
+  /** The team records in online meetings, so connecting a meeting app is offered too. */
+  meetings: boolean;
   onFinish: () => void;
 }) {
   const startUpload = useAction(api.storage.startUpload);
@@ -357,10 +339,6 @@ function FirstUpload({
   const [going, setGoing] = useState<{ name: string; percent: number } | null>(null);
   const [uploaded, setUploaded] = useState<{ id: Id<"uploads">; name: string } | null>(null);
   const [dragging, setDragging] = useState(false);
-  const runs = useQuery(
-    api.contentGoals.runsForUpload,
-    uploaded ? { organizationId, uploadId: uploaded.id } : "skip",
-  );
   const on = made.filter((each) => each.on);
 
   async function send(file: File) {
@@ -401,7 +379,7 @@ function FirstUpload({
     <>
       <Heading title="Upload your first recording">
         It goes into your content library and is transcribed, so you can search for what was said.
-        {on.length > 0 && " The automations you switched on start on it by themselves."}
+        {on.length > 0 && " The automations you picked show on it, ready to run with one press."}
       </Heading>
 
       <MadeList made={made} />
@@ -414,30 +392,7 @@ function FirstUpload({
           <p className="text-sm">
             <span className="font-medium">{uploaded.name}</span> is in your library.
           </p>
-          {on.length > 0 &&
-            (runs === undefined || runs.length === 0 ? (
-              <p className="text-muted-foreground flex items-center gap-2 text-sm">
-                <Spinner className="size-4" />
-                Reading its details, then the automations start…
-              </p>
-            ) : (
-              <ul className="grid gap-1">
-                {runs.map((run) => (
-                  <li key={run.runId}>
-                    <Link
-                      href={`/automations/${run.automationId}/runs/${run.runId}`}
-                      className="hover:bg-muted -mx-2 flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm"
-                    >
-                      <span className="font-medium">{run.automationName}</span>
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        {RUN_WORDS[run.status] ?? run.status}
-                        <ArrowRight className="size-4" aria-hidden="true" />
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ))}
+          {on.length > 0 && <FileRuns uploadId={uploaded.id} />}
         </section>
       ) : going ? (
         <UploadingRow name={going.name} percent={going.percent} />
@@ -476,6 +431,8 @@ function FirstUpload({
         </div>
       )}
 
+      {meetings && <MeetingApps />}
+
       <div className="flex justify-end">
         {uploaded ? (
           <Button onClick={onFinish}>
@@ -492,24 +449,61 @@ function FirstUpload({
   );
 }
 
+// Teams recordings come in through the Microsoft 365 connection (Settings, Microsoft 365),
+// so the Teams tile, with the Teams logo, opens that page.
+const MEETING_APPS = [
+  { app: "zoom", tile: "zoom", name: "Zoom" },
+  { app: "google-meet", tile: "google-meet", name: "Google Meet" },
+  { app: "microsoft", tile: "teams", name: "Microsoft Teams" },
+] as const satisfies readonly { app: ConnectedApp; tile: ConnectedApp; name: string }[];
+
+/**
+ * For teams that record calls: connect a meeting app and each recording comes in by itself,
+ * like an upload. Each opens its page in a new tab, so setting up stays where it is.
+ */
+function MeetingApps() {
+  return (
+    <section aria-labelledby="meeting-apps" className="grid gap-3">
+      <div className="grid gap-1">
+        <h2 id="meeting-apps" className="text-sm font-medium">
+          Record your sessions on a call?
+        </h2>
+        <p className="text-muted-foreground text-sm">
+          Connect your meeting app and each recording comes in by itself, like an upload.
+        </p>
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-3">
+        {MEETING_APPS.map(({ app, tile, name }) => (
+          <li key={app}>
+            <a
+              href={`/settings/integrations/${app}`}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Connect ${name} (opens in a new tab)`}
+              className="bg-surface hover:bg-muted flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors"
+            >
+              <AppTile app={tile} small />
+              {name}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** What the turn-on screen made: each one on, or made but off with the reason. */
-/** One ready-made to tick on the "Switch these on" screen. */
+/** One ready-made to tick on the "Suggest these on your uploads" screen. */
 function SuggestedRow({
   starter,
-  after,
   on,
-  disabled = false,
   onToggle,
 }: {
   starter: Starter;
-  /** The pick it starts after, for a follow-on. */
-  after?: Starter;
   on: boolean;
-  disabled?: boolean;
   onToggle: () => void;
 }) {
   const id = `suggested-${starter.id}`;
-  const failed = starter.trigger.kind === "finished" && starter.trigger.when === "failed";
   return (
     <label
       htmlFor={id}
@@ -517,16 +511,9 @@ function SuggestedRow({
       className={cn(
         "bg-surface hover:bg-muted flex cursor-pointer items-center gap-3 rounded-xl px-4 py-3 transition-colors",
         on && "bg-primary/10 hover:bg-primary/15",
-        disabled && "cursor-default opacity-60 hover:bg-surface",
       )}
     >
-      <Checkbox
-        id={id}
-        checked={on}
-        disabled={disabled}
-        onCheckedChange={onToggle}
-        aria-describedby={after ? `${id}-after` : undefined}
-      />
+      <Checkbox id={id} checked={on} onCheckedChange={onToggle} />
       <span className="grid min-w-0 flex-1 gap-0.5">
         <span className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium">
           {starter.name}
@@ -534,12 +521,6 @@ function SuggestedRow({
             <span className="text-muted-foreground text-xs font-normal">AI picks the moments</span>
           )}
         </span>
-        {/* It names the pick, so it describes the row rather than naming it. */}
-        {after && (
-          <span id={`${id}-after`} aria-hidden="true" className="text-muted-foreground text-xs">
-            {failed ? `Runs if ${after.name} fails` : `Runs after ${after.name}`}
-          </span>
-        )}
         <span className="text-muted-foreground truncate text-sm">{starter.description}</span>
       </span>
       <FlowStrip
@@ -563,7 +544,7 @@ function MadeList({ made }: { made: Made[] }) {
         <li key={each.starterId} className="flex items-center gap-2">
           <span className="bg-emerald-600 size-2 rounded-full" aria-hidden="true" />
           <span>
-            <span className="font-medium">{each.name}</span> is on
+            <span className="font-medium">{each.name}</span> is ready for your uploads
           </span>
         </li>
       ))}

@@ -267,7 +267,13 @@ describe("Best moments", () => {
     const step = run.steps.find((one) => one.nodeId === "moments")!;
     expect(step.moments?.map((moment) => moment.text)).toEqual([SENTENCES[5], SENTENCES[3]]);
     expect(step.pickNote).toBe("1 pick was left out: 1 overlapped another moment.");
-    expect(sent.filter((one) => one.url.endsWith("/v1/media/transcribe"))).toHaveLength(1);
+    expect(
+      sent.filter(
+        (one) =>
+          one.url.endsWith("/v1/media/transcribe") &&
+          String(one.body.media_url).includes("/uploads/"),
+      ),
+    ).toHaveLength(1);
     const questions = sent.filter((one) => one.url === `${AGENT_URL}/ncat/moments`);
     expect((questions[1].body.avoid as unknown[]).length).toBe(2);
   });
@@ -279,7 +285,13 @@ describe("Best moments", () => {
     await settled(t);
     await start("https://files.example/uploads/podcast.mp4?X-Amz-Signature=second");
     await settled(t);
-    expect(sent.filter((one) => one.url.endsWith("/v1/media/transcribe"))).toHaveLength(1);
+    expect(
+      sent.filter(
+        (one) =>
+          one.url.endsWith("/v1/media/transcribe") &&
+          String(one.body.media_url).includes("/uploads/"),
+      ),
+    ).toHaveLength(1);
   });
 
   test("fails in plain words when no pick could be used", async () => {

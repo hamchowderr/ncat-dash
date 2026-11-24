@@ -43,6 +43,7 @@ import { followedMessage } from "@/components/library/followed";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
+import { FileRuns } from "./file-runs";
 import { SubtitleText, TranscriptDownload } from "./transcript-files";
 import { LanguagePicker, ORIGINAL, TranslatedWords } from "./translations";
 import { UploadStoryboard } from "@/components/storyboard/storyboard-view";
@@ -386,7 +387,7 @@ export function LibraryItemView({
     tab ?? (hasWords && (at !== undefined || search !== undefined) ? "words" : "details");
 
   // What is being done with the file in the background, each with its own colour.
-  const said = transcriptState(item.searchable, item.source);
+  const said = transcriptState(item.searchable);
   const works: Work[] = [];
   if (hasWords) {
     works.push({
@@ -712,17 +713,11 @@ export function LibraryItemView({
                         <p className="text-sm">
                           {item.searchable === "failed"
                             ? `The last try did not work${item.transcriptError ? `: ${item.transcriptError}` : "."}`
-                            : captions
-                              ? "The caption file has not been read yet."
-                              : "Transcribe this file to find any moment by what was said in it, and to get its SRT and VTT."}
+                            : "The caption file has not been read yet."}
                         </p>
                         <Button size="sm" variant="secondary" onClick={() => void sendToSearch()}>
                           <Bot />
-                          {item.searchable === "failed"
-                            ? "Try again"
-                            : captions
-                              ? "Read it"
-                              : "Transcribe"}
+                          {item.searchable === "failed" ? "Try again" : "Read it"}
                         </Button>
                         {!captions && (
                           <p className="text-muted-foreground text-xs">
@@ -810,6 +805,8 @@ export function LibraryItemView({
                     </p>
                     <RunMenu itemId={item._id} teamId={team.id} />
                   </div>
+
+                  <FileRuns itemId={item._id} />
 
                   <div className="flex flex-col gap-2">
                     <h2 className="text-sm font-medium">Stars</h2>
@@ -920,7 +917,7 @@ function BrollUse({
           : "It looks like someone talking, so Add B-Roll leaves it out."
         : broll.looked === "working"
           ? "Being looked at now."
-          : "Not looked at yet. Make it searchable and it will be.";
+          : "Not looked at yet. It will be shortly, by itself.";
   return (
     <div className="flex flex-col gap-2">
       <h2 className="text-sm font-medium" id="broll-use-label">

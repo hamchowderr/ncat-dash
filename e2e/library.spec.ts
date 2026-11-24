@@ -30,6 +30,12 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
   await page.goto("/library");
+  // What every upload gets, and that nothing else runs on it by itself yet.
+  const onUpload = page.getByRole("region", { name: "On this upload" });
+  await expect(onUpload).toContainText(
+    "Every upload gets its transcript, SRT and storyboard draft.",
+  );
+  await expect(onUpload).toContainText("No automation runs on uploads by itself.");
   await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.webm");
   await expect(page.getByLabel(/^Open V\d+ clip$/)).toBeVisible({
     timeout: 30_000,
@@ -44,10 +50,15 @@ test("an upload joins the library, is searched by what was said, and is tagged",
 
   // Transcribed on the toolkit as it came in: nothing to press.
   await expect(page.getByRole("button", { name: /Transcribe 1 file/ })).toHaveCount(0);
+  await expect(page.getByText("Make new files searchable")).toHaveCount(0);
   await page.getByRole("link", { name: "Open V1 clip" }).click();
-  // Details first, the words a tab away.
+  // Details first, the words a tab away. Nothing ran on it, and the file's page says so
+  // where the runs would be.
   await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("data-state", "active");
   await expect(page.getByRole("button", { name: "Pick an automation" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Automations on this file" })).toContainText(
+    "None yet.",
+  );
   await page.getByRole("tab", { name: "Transcript" }).click();
   const said = page.getByTestId("transcript");
   await expect(said.getByText("Today we talk about pricing your edits.")).toBeVisible({
