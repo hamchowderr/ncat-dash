@@ -47,6 +47,12 @@ export function triggerSummary(trigger: Trigger): string {
     case "webhook":
       return "Starts when its address is called";
     case "upload":
+      // Set to ask first, it never starts by itself: it is offered on each upload instead.
+      if (trigger.ask) {
+        return trigger.fileType === "any"
+          ? "Offered on each upload, to run with one press"
+          : `Offered on each ${trigger.fileType} upload, to run with one press`;
+      }
       return trigger.fileType === "any"
         ? "Starts when a file is uploaded"
         : `Starts when ${trigger.fileType === "image" ? "an" : "a"} ${trigger.fileType} file is uploaded`;

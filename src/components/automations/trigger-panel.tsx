@@ -346,7 +346,9 @@ export function TriggerPanel({
           </Select>
           <FieldDescription>
             {trigger.kind === "upload"
-              ? "Each matching file added on the Uploads page starts a run on that file."
+              ? trigger.ask
+                ? "Each matching file added on the Uploads page offers it on that file's page."
+                : "Each matching file added on the Uploads page starts a run on that file."
               : "Each matching file that lands in the folder starts a run on that file."}
           </FieldDescription>
         </Field>
