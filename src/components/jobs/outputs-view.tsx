@@ -157,7 +157,7 @@ function RunCard({ run, review }: { run: RunOutputs; review: ReturnType<typeof u
   const toReview = run.finished.flatMap((group) => group.files);
 
   return (
-    <OutputNamesProvider names={run.names}>
+    <OutputNamesProvider names={run.names} platforms={run.platforms}>
       <section
         aria-label={`${run.automationName}, ${when.format(run.startedAt)}`}
         className="flex flex-col gap-4 rounded-xl bg-surface p-4"

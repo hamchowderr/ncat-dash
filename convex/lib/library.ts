@@ -50,6 +50,7 @@ type NewItem = {
   uploadId?: Id<"uploads">;
   runId?: Id<"runs">;
   automationName?: string;
+  platform?: string;
   parentId?: Id<"libraryItems">;
   details?: Doc<"libraryItems">["details"];
   createdBy: string | null;

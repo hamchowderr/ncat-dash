@@ -76,10 +76,20 @@ export function outputNoun(link: string, stepId?: string | null): string {
 /**
  * Names for the files one step made, in their order. A file whose own name a person gave
  * keeps it; one named after a job id becomes `<stem> <noun>`, numbered when the step made
- * more than one of the same kind.
+ * more than one of the same kind. A clip made for a platform says so: "Space interviews
+ * TikTok clip 1".
  */
-export function nameFiles(stem: string, files: string[], stepId?: string | null): string[] {
-  const nouns = files.map((file) => outputNoun(file, stepId));
+export function nameFiles(
+  stem: string,
+  files: string[],
+  stepId?: string | null,
+  platforms?: Record<string, string>,
+): string[] {
+  const nouns = files.map((file) => {
+    const noun = outputNoun(file, stepId);
+    const platform = platforms?.[file];
+    return platform ? `${platform} ${noun}` : noun;
+  });
   const totals = new Map<string, number>();
   for (const noun of nouns) totals.set(noun, (totals.get(noun) ?? 0) + 1);
   const counts = new Map<string, number>();
@@ -101,16 +111,18 @@ export function runStem(startedWith: string | null | undefined, automationName: 
 /**
  * Readable names for every file a run made, by link. Steps are taken in the order given;
  * a file handed on unchanged keeps the name it got from the first step that made it.
+ * `platforms` holds the platform each clip was made for (platform-labels.ts runPlatforms).
  */
 export function runOutputNames(
   stem: string,
   steps: { stepId?: string | null; outputs: string[]; labels?: FileLabel[] }[],
+  platforms?: Record<string, string>,
 ): Record<string, string> {
   const names: Record<string, string> = {};
   for (const step of steps) {
     const labels = new Map((step.labels ?? []).map((item) => [item.url, item.label]));
     const fresh = [...new Set(step.outputs)].filter((file) => !(file in names));
-    nameFiles(stem, fresh, step.stepId).forEach((name, at) => {
+    nameFiles(stem, fresh, step.stepId, platforms).forEach((name, at) => {
       const label = labels.get(fresh[at]);
       names[fresh[at]] =
         label && isMachineName(fileNameOfLink(fresh[at])) ? `${stem} ${label}` : name;

@@ -82,6 +82,17 @@ describe("the Library page", () => {
     );
   });
 
+  test("a clip made for a platform says which one", () => {
+    answerQuery(api.library.list, {
+      ...LIBRARY,
+      items: [{ ...CLIP, platform: "YouTube Shorts" }, THEME, EPISODE],
+    });
+    renderInApp(<LibraryView />);
+    const tiles = screen.getAllByTestId("library-tile");
+    expect(within(tiles[0]!).getByTitle("Made for YouTube Shorts")).toBeTruthy();
+    expect(within(tiles[2]!).queryByTitle(/Made for/)).toBeNull();
+  });
+
   test("filters to clips, or to a tag", () => {
     renderInApp(<LibraryView />);
     fireEvent.click(screen.getByRole("button", { name: "Clips" }));

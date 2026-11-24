@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { SubtitleText, TranscriptDownload } from "./transcript-files";
 import { LanguagePicker, ORIGINAL, TranslatedWords } from "./translations";
 import { UploadStoryboard } from "@/components/storyboard/storyboard-view";
+import { PlatformTag } from "@/components/platform-tag";
 import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "./library-media";
 import { PickList } from "@/components/ui/pick-list";
 import { Segmented } from "@/components/ui/segmented";
@@ -606,6 +607,11 @@ export function LibraryItemView({
             <ClientFact itemId={item._id} teamId={team.id} client={item.client} />
             <Fact label="Kind">{KIND_LABELS[item.kind]}</Fact>
             <Fact label="Source">{sourceLabel(item)}</Fact>
+            {item.platform && (
+              <Fact label="Made for">
+                <PlatformTag platform={item.platform} />
+              </Fact>
+            )}
             {item.parent && (
               <Fact label="Made from">
                 <Link href={`/library/${item.parent._id}`} className="hover:underline">
