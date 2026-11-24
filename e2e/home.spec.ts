@@ -32,10 +32,20 @@ test("a new team's home shows getting set up, fits the window, and leaves templa
   await expect(page.getByTestId("home-week")).toHaveText(
     "No automations yet. Start from a template on the Automations page.",
   );
-  await expect(page.getByTestId("connection-status")).toHaveText("Toolkit connected");
-  const setup = page.getByRole("region", { name: /^Getting started, 2 of 6 done$/ });
+  // Nothing about the toolkit on Home: that is in Settings.
+  await expect(page.getByTestId("processing-status")).toHaveCount(0);
+  await expect(page.getByRole("main")).not.toContainText(/toolkit/i);
+  const glance = page.getByRole("complementary", { name: "Your team at a glance" });
+  const setup = glance.getByRole("region", { name: /^Getting started, 0 of 4 done$/ });
   await expect(setup.getByRole("link", { name: /Add your logo/ })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Latest runs" })).toBeVisible();
+  // Getting started and This week sit in a narrow column on the right, at the top.
+  const latest = page.getByRole("region", { name: "Latest runs" });
+  const side = (await glance.boundingBox())!;
+  const main = (await latest.boundingBox())!;
+  expect(side.x).toBeGreaterThan(main.x + main.width - 1);
+  expect(side.width).toBeLessThan(main.width / 2);
+  expect(Math.abs(side.y - main.y)).toBeLessThan(40);
+  await expect(glance.getByRole("region", { name: "This week" })).toBeVisible();
 
   // Templates are not on Home: they live on the Automations page.
   await expect(page.getByRole("region", { name: /Ready-made/ })).toHaveCount(0);
