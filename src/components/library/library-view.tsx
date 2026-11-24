@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/table";
 import { PlatformTag } from "@/components/platform-tag";
 import { errorMessage } from "@/lib/catalog";
+import { followedMessage } from "@/components/library/followed";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
@@ -165,7 +166,8 @@ function InlineTitle({ item }: { item: Item }) {
     setEditing(null);
     if (!next || next === item.title) return;
     try {
-      await rename({ itemId: item._id, title: next });
+      const result = await rename({ itemId: item._id, title: next });
+      if (result?.followed) toast.success(followedMessage(result.followed));
     } catch (caught) {
       toast.error(errorMessage(caught, "The name could not be changed."));
     }

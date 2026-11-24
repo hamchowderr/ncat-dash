@@ -160,7 +160,7 @@ describe("length cuts in a run", () => {
     });
   });
 
-  test("a shape on its own adds no code and names files as before", async () => {
+  test("a shape on its own adds no code and names files by what it did", async () => {
     const { t, maya, start, jobsOf } = await setUp([{ id: "shape_1", stepId: "recipe-blur-fill" }]);
     toolkit(FACTS);
     const runId = await start({ file_url: VIDEO, file_name: "Boots ad.mp4" });
@@ -168,7 +168,7 @@ describe("length cuts in a run", () => {
     const file = made("ccccccc1", 0);
     await t.mutation(internal.jobs.finish, { jobId: job._id, ok: true, result: file });
     const run = await maya.as.query(api.runs.get, { runId });
-    expect(run?.outputNames[file]).toBe("Boots ad clip");
+    expect(run?.outputNames[file]).toBe("Boots ad with blurred background");
     const labels = await t.run(
       async (ctx) =>
         (

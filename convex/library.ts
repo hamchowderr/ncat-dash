@@ -12,6 +12,7 @@ import {
 } from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
+import { followStartRename } from "./lib/followRename";
 import { backgroundPool } from "./lib/pools";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -350,6 +351,9 @@ export const rename = mutation({
       title,
       searchText: librarySearchText({ ...item, title }),
     });
+    // What was made from it follows, unless someone renamed those by hand.
+    const followed = await followStartRename(ctx, item, item.title, title);
+    return { followed };
   },
 });
 

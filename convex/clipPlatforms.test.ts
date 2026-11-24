@@ -97,7 +97,7 @@ describe("clips say which platform they were made for", () => {
       [captioned(1)]: "TikTok",
     });
     // And the names say it.
-    expect(run?.outputNames[captioned(1)]).toBe("Claude interview TikTok clip 2");
+    expect(run?.outputNames[captioned(1)]).toBe("Claude interview TikTok clip 2 captioned");
   });
 
   test("Outputs gets the same platforms", async () => {
@@ -114,25 +114,27 @@ describe("clips say which platform they were made for", () => {
     await t.mutation(internal.library.addFinished, {
       runId,
       kept: [
-        { link: captioned(0), key: "Finished/Shorts/Claude interview TikTok clip 1.mp4" },
-        { link: captioned(1), key: "Finished/Shorts/Claude interview TikTok clip 2.mp4" },
+        { link: captioned(0), key: "Finished/Shorts/Claude interview TikTok clip 1 captioned.mp4" },
+        { link: captioned(1), key: "Finished/Shorts/Claude interview TikTok clip 2 captioned.mp4" },
       ],
     });
     const { items } = await olu.as.query(api.library.list, { organizationId: teamId });
     expect(items.map((item) => item.platform)).toEqual(["TikTok", "TikTok"]);
     expect(items.map((item) => item.title).sort()).toEqual([
-      "Claude interview TikTok clip 1",
-      "Claude interview TikTok clip 2",
+      "Claude interview TikTok clip 1 captioned",
+      "Claude interview TikTok clip 2 captioned",
     ]);
 
     const found = await t.query(internal.files.platformsAt, {
       organizationId: teamId,
       keys: [
-        "Finished/Shorts/Claude interview TikTok clip 1.mp4",
+        "Finished/Shorts/Claude interview TikTok clip 1 captioned.mp4",
         "Finished/Shorts/somebody else.mp4",
       ],
     });
-    expect(found).toEqual({ "Finished/Shorts/Claude interview TikTok clip 1.mp4": "TikTok" });
+    expect(found).toEqual({
+      "Finished/Shorts/Claude interview TikTok clip 1 captioned.mp4": "TikTok",
+    });
   });
 
   test("another team's file at the same place is not looked at", async () => {

@@ -163,6 +163,19 @@ describe("the Library page", () => {
     expect(mutationOf(api.library.setRating)).toHaveBeenCalledWith({ itemId: "i1", rating: 5 });
   });
 
+  test("renaming an upload says what was renamed with it", async () => {
+    mutationOf(api.library.rename).mockResolvedValue({ followed: 2 });
+    renderInApp(<LibraryView />);
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename V1 Episode 4" }));
+    const box = screen.getByLabelText("Name of V1");
+    fireEvent.change(box, { target: { value: "Moon interview" } });
+    fireEvent.blur(box);
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Also renamed the 2 files made from it."),
+    );
+  });
+
   test("offers to transcribe what automations made, never what was brought in", async () => {
     actionOf(api.library.makeSearchable).mockResolvedValue(1);
     renderInApp(<LibraryView />);

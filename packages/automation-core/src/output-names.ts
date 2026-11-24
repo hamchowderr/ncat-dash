@@ -1,11 +1,13 @@
 import { getStep, userInputSchema } from "@takewon/step-catalog";
 
 import { isTakeLabel } from "./cleanup";
+import { madeWords } from "./made-words";
 
 // Readable names for the files a run makes. The toolkit names what it makes after its own
 // job ids ("ca4934e3-…_output_0.mp4", "…_captioned.mp4"), which tell a person nothing. A
 // run's files are shown under the name of the file that started it instead, with what
-// each one is: "Space interviews clip 1", "Space interviews thumbnail".
+// was done to each one: "Space interviews captioned", "Space interviews part 2",
+// "Space interviews thumbnail" (made-words.ts).
 
 const VIDEO = /\.(mp4|mov|webm|mkv|m4v|avi)$/i;
 const AUDIO = /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i;
@@ -73,35 +75,59 @@ export function outputNoun(link: string, stepId?: string | null): string {
   return "file";
 }
 
+// What a file is, as opposed to what was done to it: these keep their own word.
+const DOCUMENT_NOUNS = new Set(["captions", "text", "transcript", "files", "timeline", "file"]);
+
+/**
+ * What one file a step made is called after its stem: what the step did to it
+ * ("captioned", "part") when the step is known and the file is a picture, sound or video,
+ * else what the file is ("transcript", "clip").
+ */
+export function outputWords(link: string, stepId?: string | null): string {
+  const noun = outputNoun(link, stepId);
+  const words = madeWords(stepId);
+  return words && !DOCUMENT_NOUNS.has(noun) ? words : noun;
+}
+
 /**
  * Names for the files one step made, in their order. A file whose own name a person gave
- * keeps it; one named after a job id becomes `<stem> <noun>`, numbered when the step made
- * more than one of the same kind. A clip made for a platform says so: "Space interviews
- * TikTok clip 1".
+ * keeps it; one named after a job id becomes `<stem> <what was done>`, numbered when the
+ * step made more than one of the same kind: "Space interviews captioned",
+ * "Space interviews part 2". With `bases`, one name per file, each file is named after
+ * the file it was made from instead: "Space interviews part 2 captioned". A file made for
+ * a platform says so before the step's words: "Space interviews TikTok captioned".
  */
 export function nameFiles(
   stem: string,
   files: string[],
   stepId?: string | null,
+  bases?: string[],
   platforms?: Record<string, string>,
 ): string[] {
-  const nouns = files.map((file) => {
-    const noun = outputNoun(file, stepId);
+  // The platform goes before the step's words, unless the file is named after one that
+  // already says it.
+  const words = files.map((file, at) => {
+    const done = outputWords(file, stepId);
     const platform = platforms?.[file];
-    return platform ? `${platform} ${noun}` : noun;
+    return platform && !bases?.[at] ? `${platform} ${done}` : done;
   });
   const totals = new Map<string, number>();
-  for (const noun of nouns) totals.set(noun, (totals.get(noun) ?? 0) + 1);
+  for (const word of words) totals.set(word, (totals.get(word) ?? 0) + 1);
   const counts = new Map<string, number>();
   return files.map((file, at) => {
     const own = fileNameOfLink(file);
     if (!isMachineName(own)) return own;
-    const noun = nouns[at];
-    const count = (counts.get(noun) ?? 0) + 1;
-    counts.set(noun, count);
-    return (totals.get(noun) ?? 0) > 1 ? `${stem} ${noun} ${count}` : `${stem} ${noun}`;
+    const word = words[at];
+    const base = bases?.[at];
+    if (base) return base.endsWith(` ${word}`) ? base : `${base} ${word}`;
+    const count = (counts.get(word) ?? 0) + 1;
+    counts.set(word, count);
+    return (totals.get(word) ?? 0) > 1 ? `${stem} ${word} ${count}` : `${stem} ${word}`;
   });
 }
+
+const MEDIA_NOUNS = new Set(["clip", "audio", "image", "thumbnail"]);
+const isMedia = (link: string, stepId?: string | null) => MEDIA_NOUNS.has(outputNoun(link, stepId));
 
 /** What a run's files are named after: the file that started it, else the automation. */
 export function runStem(startedWith: string | null | undefined, automationName: string): string {
@@ -119,14 +145,22 @@ export function runOutputNames(
   platforms?: Record<string, string>,
 ): Record<string, string> {
   const names: Record<string, string> = {};
+  // The numbered pieces the last step made (clips, parts), so a step that works on each
+  // of them in turn names its files after them: "Space interviews part 2 captioned".
+  let pieces: string[] = [];
   for (const step of steps) {
     const labels = new Map((step.labels ?? []).map((item) => [item.url, item.label]));
     const fresh = [...new Set(step.outputs)].filter((file) => !(file in names));
-    nameFiles(stem, fresh, step.stepId, platforms).forEach((name, at) => {
+    const media = fresh.filter((file) => isMedia(file, step.stepId));
+    const follows = pieces.length > 1 && media.length === pieces.length;
+    const bases = follows ? fresh.map((file) => pieces[media.indexOf(file)] ?? "") : undefined;
+    const made = nameFiles(stem, fresh, step.stepId, bases, platforms);
+    made.forEach((name, at) => {
       const label = labels.get(fresh[at]);
       names[fresh[at]] =
         label && isMachineName(fileNameOfLink(fresh[at])) ? `${stem} ${label}` : name;
     });
+    if (media.length > 0) pieces = media.length > 1 ? media.map((file) => names[file]) : [];
   }
   return names;
 }
@@ -176,4 +210,19 @@ export function stepFileLabels(
     });
   }
   return made;
+}
+
+/**
+ * A made file's name after the file it was made from was renamed: the old stem it starts
+ * with gives way to the new one ("IMG 4521 captioned" becomes "Moon interview captioned").
+ * Null when the name does not start with the old stem, as when a person renamed it.
+ */
+export function followedName(name: string, oldStem: string, newStem: string): string | null {
+  const from = oldStem.trim();
+  const to = newStem.trim();
+  if (!from || !to || from === to) return null;
+  if (name.slice(0, from.length).toLowerCase() !== from.toLowerCase()) return null;
+  const rest = name.slice(from.length);
+  if (rest && !/^[\s._-]/.test(rest)) return null;
+  return `${to}${rest}`;
 }

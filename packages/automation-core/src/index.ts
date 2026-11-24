@@ -31,6 +31,7 @@ export * from "./chain";
 export * from "./follow-ons";
 export * from "./output-names";
 export * from "./platform-labels";
+export * from "./made-words";
 export * from "./captions";
 export * from "./share-links";
 export * from "./library";

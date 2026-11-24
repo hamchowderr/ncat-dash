@@ -92,6 +92,7 @@ export const SETTINGS_GROUPS = [
 /** The apps on the Integrations page, in the groups it lists them under. */
 export const INTEGRATION_GROUPS = [
   {
+    id: "chat",
     label: "Chat",
     apps: [
       {
@@ -118,6 +119,7 @@ export const INTEGRATION_GROUPS = [
     ],
   },
   {
+    id: "meetings",
     label: "Meeting Recordings",
     apps: [
       {
@@ -138,6 +140,7 @@ export const INTEGRATION_GROUPS = [
     ],
   },
   {
+    id: "files",
     label: "Files",
     apps: [
       {
@@ -155,6 +158,7 @@ export const INTEGRATION_GROUPS = [
     ],
   },
   {
+    id: "ai-apps",
     label: "AI Apps",
     apps: [
       {
@@ -166,6 +170,7 @@ export const INTEGRATION_GROUPS = [
     ],
   },
   {
+    id: "email",
     label: "Sending Email",
     apps: [
       {
@@ -194,6 +199,17 @@ export type IntegrationSlug = Integration["slug"];
 
 export const settingsPage = (slug: string) => SETTINGS_PAGES.find((page) => page.slug === slug);
 export const integration = (slug: string) => INTEGRATIONS.find((app) => app.slug === slug);
+
+/** The Integrations tab an app sits in, and the address that opens the page on it. */
+export function integrationsTabHref(slug: IntegrationSlug): string {
+  const index = INTEGRATION_GROUPS.findIndex((group) =>
+    group.apps.some((app) => app.slug === slug),
+  );
+  // The first tab is what the page opens on, so its address names no tab.
+  return index <= 0
+    ? "/settings/integrations"
+    : `/settings/integrations?tab=${INTEGRATION_GROUPS[index].id}`;
+}
 
 /** Where a team points at its own toolkit, or goes back to ours. */
 export const TOOLKIT_SETTINGS = "/settings/toolkit";
