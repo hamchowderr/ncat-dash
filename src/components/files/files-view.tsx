@@ -73,6 +73,8 @@ import { errorMessage, formatBytes } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { useSendFile } from "@/lib/send-file";
 
+import { PlatformFits, PlatformTag } from "@/components/platform-tag";
+
 import { FilePreview } from "./file-preview";
 import { MoveDialog } from "./move-dialog";
 
@@ -84,6 +86,7 @@ export type FileEntry = {
   kind: "video" | "audio" | "image" | "other";
   uploadId: Id<"uploads"> | null;
   details: FileDetails | null;
+  platform: string | null;
   usedAs: BrandFileKey | null;
 };
 type FolderEntry = { key: string; name: string };
@@ -212,6 +215,8 @@ export function FilesView() {
   const prefix = useSearchParams().get("path") ?? "";
 
   const storage = useQuery(api.storage.get, { organizationId: team.id });
+  // Where the team posts, so a video lists only the apps it is posted to that it fits.
+  const goals = useQuery(api.contentGoals.get, { organizationId: team.id });
   // Live, so a file's details appear as soon as they are read, without reading the folder again.
   const uploads = useQuery(api.storage.listUploads, connectedArgs(storage, team.id));
   // Also live: details of files that did not come through this app, as each is read.
@@ -661,6 +666,7 @@ export function FilesView() {
                 <TableHead>Type</TableHead>
                 <TableHead>Length</TableHead>
                 <TableHead>Picture size</TableHead>
+                <TableHead>Platforms</TableHead>
                 {sortHead("size", "Size")}
                 {sortHead("changed", "Changed")}
                 <TableHead>
@@ -699,6 +705,7 @@ export function FilesView() {
                     </button>
                   </TableCell>
                   <TableCell className="text-muted-foreground">Folder</TableCell>
+                  <TableCell className="text-muted-foreground">–</TableCell>
                   <TableCell className="text-muted-foreground">–</TableCell>
                   <TableCell className="text-muted-foreground">–</TableCell>
                   <TableCell className="text-muted-foreground">–</TableCell>
@@ -750,6 +757,13 @@ export function FilesView() {
                     <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
                       {columns?.picture ?? "–"}
                     </TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap">
+                      {file.platform ? (
+                        <PlatformTag platform={file.platform} />
+                      ) : file.kind === "video" && file.details ? (
+                        <PlatformFits video={file.details} apps={goals?.apps} />
+                      ) : null}
+                    </TableCell>
                     <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
                       {formatBytes(file.size)}
                     </TableCell>
@@ -762,7 +776,7 @@ export function FilesView() {
               })}
               {visibleKeys.length === 0 && (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={8} className="text-muted-foreground py-10 text-center">
+                  <TableCell colSpan={9} className="text-muted-foreground py-10 text-center">
                     {search.trim()
                       ? `Nothing in this folder matches "${search.trim()}".`
                       : "This folder is empty. Drop files here, or move some in."}

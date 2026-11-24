@@ -3,6 +3,7 @@
 import { ExternalLink } from "lucide-react";
 import { createContext, type ReactNode, useCallback, useContext } from "react";
 
+import { PlatformTag } from "@/components/platform-tag";
 import { cn } from "@/lib/utils";
 
 const VIDEO = /\.(mp4|mov|webm|mkv|m4v)(\?|$)/i;
@@ -28,24 +29,39 @@ export function fileNameOf(url: string): string {
 }
 
 const OutputNames = createContext<Record<string, string>>({});
+const OutputPlatforms = createContext<Record<string, string>>({});
 
 /**
  * Readable names for the files below, by link, such as "Space interviews clip 1" for a file
  * the toolkit named after its job id. Files it does not name keep their own names.
+ * `platforms` holds the platform each clip was made for, such as "TikTok".
  */
 export function OutputNamesProvider({
   names,
+  platforms,
   children,
 }: {
   names: Record<string, string> | undefined;
+  platforms?: Record<string, string> | undefined;
   children: ReactNode;
 }) {
   const outer = useContext(OutputNames);
+  const outerPlatforms = useContext(OutputPlatforms);
   return (
     <OutputNames.Provider value={names ? { ...outer, ...names } : outer}>
-      {children}
+      <OutputPlatforms.Provider
+        value={platforms ? { ...outerPlatforms, ...platforms } : outerPlatforms}
+      >
+        {children}
+      </OutputPlatforms.Provider>
     </OutputNames.Provider>
   );
+}
+
+/** The platform a file was made for, when one is known. */
+export function useFilePlatform(): (url: string) => string | null {
+  const platforms = useContext(OutputPlatforms);
+  return useCallback((url: string) => platforms[url] ?? null, [platforms]);
 }
 
 /** How to show a file's name: its readable name when one is known, else its own. */
@@ -61,6 +77,7 @@ export function useFileName(): (url: string) => string {
  */
 export function MediaPreview({ url, compact = false }: { url: string; compact?: boolean }) {
   const nameOf = useFileName();
+  const platform = useFilePlatform()(url);
   return (
     <figure
       data-compact={compact || undefined}
@@ -109,6 +126,7 @@ export function MediaPreview({ url, compact = false }: { url: string; compact?: 
           <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="sr-only">(opens in a new tab)</span>
         </a>
+        {platform && <PlatformTag platform={platform} className="ml-auto" />}
       </figcaption>
     </figure>
   );

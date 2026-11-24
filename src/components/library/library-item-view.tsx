@@ -47,6 +47,7 @@ import { FileRuns } from "./file-runs";
 import { SubtitleText, TranscriptDownload } from "./transcript-files";
 import { LanguagePicker, ORIGINAL, TranslatedWords } from "./translations";
 import { UploadStoryboard } from "@/components/storyboard/storyboard-view";
+import { PlatformTag } from "@/components/platform-tag";
 import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "./library-media";
 import { PickList } from "@/components/ui/pick-list";
 import { Segmented } from "@/components/ui/segmented";
@@ -489,6 +490,7 @@ export function LibraryItemView({
             <div className="flex min-w-0 items-center gap-2">
               <ShortId id={item.shortId} className="shrink-0" />
               <Title itemId={item._id} title={item.title} />
+              {item.platform && <PlatformTag platform={item.platform} />}
             </div>
             <p className="text-muted-foreground flex flex-wrap items-center gap-x-1.5 text-sm">
               <span>{KIND_LABELS[item.kind]}</span>
@@ -774,6 +776,11 @@ export function LibraryItemView({
                     <ClientFact itemId={item._id} teamId={team.id} client={item.client} />
                     <Fact label="Kind">{KIND_LABELS[item.kind]}</Fact>
                     <Fact label="Source">{sourceLabel(item)}</Fact>
+                    {item.platform && (
+                      <Fact label="Made for">
+                        <PlatformTag platform={item.platform} />
+                      </Fact>
+                    )}
                     {item.made > 0 && (
                       <Fact label="Made from this">
                         {item.made === 1 ? "1 file" : `${item.made} files`}

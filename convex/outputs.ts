@@ -5,7 +5,12 @@ import type { Doc } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { finishedFiles } from "./lib/exports";
-import { handOutputNames, outputNamesOf, startingFileName } from "./lib/outputs";
+import {
+  handOutputNames,
+  outputNamesOf,
+  outputPlatformsOf,
+  startingFileName,
+} from "./lib/outputs";
 
 /** Steps that hand on the files they were given rather than making new ones. */
 const PASSES_ON = new Set(["approval", "if", "wait"]);
@@ -99,6 +104,8 @@ export const byRun = query({
             along,
             // Readable names for the files, by link.
             names: outputNamesOf(run, steps),
+            // The platform each clip was made for, by link, such as "TikTok".
+            platforms: outputPlatformsOf(run, steps),
           };
         }),
     );

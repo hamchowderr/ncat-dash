@@ -2245,6 +2245,9 @@ export default defineSchema({
     // For a file an automation made: the run, and the automation's name at the time.
     runId: v.optional(v.id("runs")),
     automationName: v.optional(v.string()),
+    // For a clip an automation made for a platform: that platform, such as "TikTok"
+    // (one of the Clips platforms, clips.ts).
+    platform: v.optional(v.string()),
     // The file it was made from, such as the episode a clip was cut from.
     parentId: v.optional(v.id("libraryItems")),
     // The client it is for: copied from the run that made it (or the file it was made

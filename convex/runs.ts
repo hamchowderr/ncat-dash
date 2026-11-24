@@ -17,7 +17,7 @@ import {
   sourcesOf,
 } from "@takewon/timeline-export";
 import { captionsOf, cutListOf, editorsOf, finishedFiles } from "./lib/exports";
-import { outputNamesOf, startingFileName } from "./lib/outputs";
+import { outputNamesOf, outputPlatformsOf, startingFileName } from "./lib/outputs";
 import { aiLimitOf } from "./aiSpend";
 import {
   approvalTimeUp as decideWhenTimeIsUp,
@@ -150,6 +150,8 @@ export const get = query({
       startedWith: startingFileName(run.trigger),
       // Readable names for the run's files, by link.
       outputNames: outputNamesOf(run, steps),
+      // The platform each clip was made for, by link, such as "TikTok".
+      outputPlatforms: outputPlatformsOf(run, steps),
       // How many times a failed step tries again for this team.
       retryLimit: await retriesFor(ctx, run.organizationId),
       // Whether it can be picked up where it stopped, and from which step, or why not.

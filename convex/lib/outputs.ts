@@ -1,4 +1,10 @@
-import { fileNameOfLink, plainName, runOutputNames, runStem } from "@takewon/automation-core";
+import {
+  fileNameOfLink,
+  plainName,
+  runOutputNames,
+  runPlatforms,
+  runStem,
+} from "@takewon/automation-core";
 import { getStep } from "@takewon/step-catalog";
 
 /** Collects every http(s) URL inside a toolkit result, whatever its shape. */
@@ -18,9 +24,27 @@ export function collectUrls(value: unknown, found: string[] = [], depth = 0): st
  * Readable names for a run's files, by link: "Space interviews clip 1" rather than the
  * job id the toolkit named the file after. Steps are named in the canvas's order.
  */
+type RunStepFiles = {
+  nodeId: string;
+  outputs: string[];
+  labels?: { url: string; label: string }[];
+  items?: { url: string; from: string | null; kind?: string }[];
+};
+
+/** The platform each of a run's videos was made for, by link, such as "TikTok". */
+export function outputPlatformsOf(
+  run: { nodes: unknown[] },
+  steps: RunStepFiles[],
+): Record<string, string> {
+  return runPlatforms(
+    run.nodes as { id: string; kind: string; off?: boolean; input?: Record<string, unknown> }[],
+    steps,
+  );
+}
+
 export function outputNamesOf(
   run: { trigger: unknown; automationName: string; nodes: unknown[] },
-  steps: { nodeId: string; outputs: string[]; labels?: { url: string; label: string }[] }[],
+  steps: RunStepFiles[],
 ): Record<string, string> {
   const byNode = new Map(steps.map((step) => [step.nodeId, step]));
   const ordered = (run.nodes as { id: string; stepId?: string }[]).flatMap((node) => {
@@ -29,7 +53,11 @@ export function outputNamesOf(
       ? [{ stepId: node.stepId ?? null, outputs: step.outputs, labels: step.labels }]
       : [];
   });
-  return runOutputNames(runStem(startingFileName(run.trigger), run.automationName), ordered);
+  return runOutputNames(
+    runStem(startingFileName(run.trigger), run.automationName),
+    ordered,
+    outputPlatformsOf(run, steps),
+  );
 }
 
 /** The name of the file that started a run: as uploaded, or else from its address. */

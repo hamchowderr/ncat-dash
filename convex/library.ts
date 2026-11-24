@@ -42,7 +42,7 @@ import {
   startingItemOf,
 } from "./lib/library";
 import { startingFiles } from "./lib/chain";
-import { outputNamesOf } from "./lib/outputs";
+import { outputNamesOf, outputPlatformsOf } from "./lib/outputs";
 import { enqueueJob } from "./lib/queue";
 import { refreshBrollLike, usableAsBroll } from "./lib/broll";
 import { startRun } from "./lib/runner";
@@ -76,6 +76,8 @@ type Summary = {
   rating: number | null;
   duration: number | null;
   automationName: string | null;
+  // The platform a clip was made for, such as "TikTok".
+  platform: string | null;
   parent: { _id: Id<"libraryItems">; shortId: string; title: string } | null;
   client: { _id: Id<"clients">; name: string } | null;
   made: number;
@@ -106,6 +108,7 @@ function summaryOf(
     rating: item.rating ?? null,
     duration: item.details?.duration ?? null,
     automationName: item.automationName ?? null,
+    platform: item.platform ?? null,
     parent: parent ? { _id: parent._id, shortId: parent.shortId, title: parent.title } : null,
     client: client ? { _id: client._id, name: client.name } : null,
     made: made.get(item._id) ?? 0,
@@ -622,6 +625,7 @@ async function addRunFiles(
     .withIndex("by_run", (q) => q.eq("runId", run._id))
     .take(200);
   const names = outputNamesOf(run, steps);
+  const platforms = outputPlatformsOf(run, steps);
   const parentId = await startingItemOf(ctx, run);
   const parent = parentId ? await ctx.db.get(parentId) : null;
   // A file the run handed straight back (an approval of the upload) is not a new file.
@@ -640,6 +644,7 @@ async function addRunFiles(
       ...(key ? { key } : { url: link }),
       runId: run._id,
       automationName: run.automationName,
+      ...(platforms[link] ? { platform: platforms[link] } : {}),
       ...(parentId ? { parentId } : {}),
       ...(clientId ? { clientId } : {}),
       createdBy: null,

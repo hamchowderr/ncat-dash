@@ -40,6 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PlatformTag } from "@/components/platform-tag";
 import { errorMessage } from "@/lib/catalog";
 import { followedMessage } from "@/components/library/followed";
 import { useActiveTeam } from "@/lib/team-context";
@@ -69,6 +70,7 @@ type Item = {
   rating: number | null;
   duration: number | null;
   automationName: string | null;
+  platform?: string | null;
   parent: { _id: Id<"libraryItems">; shortId: string; title: string } | null;
   client: { _id: Id<"clients">; name: string } | null;
   made: number;
@@ -302,10 +304,11 @@ function ItemList({
                 </TableCell>
               )}
               <TableCell className="max-w-72">
-                <span className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <InlineTitle item={item} />
                   {item.inReview && <InReview />}
-                </span>
+                  {item.platform && <PlatformTag platform={item.platform} />}
+                </div>
               </TableCell>
               {on("client") && <TableCell className="text-sm">{item.client?.name ?? ""}</TableCell>}
               {on("kind") && <TableCell className="text-sm">{KIND_LABELS[item.kind]}</TableCell>}
@@ -390,6 +393,7 @@ function ItemTiles({ items, links }: { items: Item[]; links: Map<Id<"libraryItem
             <ShortId id={item.shortId} />
             <span className="truncate text-sm font-medium">{item.title}</span>
             {item.inReview && <InReview />}
+            {item.platform && <PlatformTag platform={item.platform} className="ml-auto" />}
           </div>
           <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-xs">
             <span className="truncate">
