@@ -3,6 +3,8 @@
 import { ExternalLink } from "lucide-react";
 import { createContext, type ReactNode, useCallback, useContext } from "react";
 
+import { cn } from "@/lib/utils";
+
 const VIDEO = /\.(mp4|mov|webm|mkv|m4v)(\?|$)/i;
 const AUDIO = /\.(mp3|wav|m4a|aac|ogg|flac)(\?|$)/i;
 const IMAGE = /\.(png|jpe?g|gif|webp|avif)(\?|$)/i;
@@ -53,12 +55,30 @@ export function useFileName(): (url: string) => string {
 }
 
 /** Plays or shows a result file where the browser can, with a link to open it either way. */
-export function MediaPreview({ url }: { url: string }) {
+/**
+ * A finished file, playable where it can be. `compact` sizes a video or picture to its own
+ * shape at a set height, so a tall phone clip is not boxed in a wide black frame.
+ */
+export function MediaPreview({ url, compact = false }: { url: string; compact?: boolean }) {
   const nameOf = useFileName();
   return (
-    <figure className="bg-surface flex flex-col overflow-hidden rounded-lg">
+    <figure
+      data-compact={compact || undefined}
+      className={cn(
+        "bg-surface flex flex-col overflow-hidden rounded-lg",
+        compact && "w-fit max-w-full",
+      )}
+    >
       {VIDEO.test(url) ? (
-        <video src={url} controls preload="metadata" className="aspect-video w-full bg-black" />
+        <video
+          src={url}
+          controls
+          preload="metadata"
+          className={cn(
+            "bg-black",
+            compact ? "h-56 w-auto max-w-full rounded-t-lg" : "aspect-video w-full",
+          )}
+        />
       ) : AUDIO.test(url) ? (
         <div className="p-3">
           <audio src={url} controls preload="metadata" className="w-full" />
@@ -66,9 +86,19 @@ export function MediaPreview({ url }: { url: string }) {
       ) : IMAGE.test(url) ? (
         // Result files live on the customer's own storage, so the domain is not known ahead of time.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" loading="lazy" className="aspect-video w-full object-contain" />
+        <img
+          src={url}
+          alt=""
+          loading="lazy"
+          className={cn(
+            compact ? "h-56 w-auto max-w-full" : "aspect-video w-full",
+            "object-contain",
+          )}
+        />
       ) : null}
-      <figcaption className="flex items-center gap-2 px-3 py-2 text-sm">
+      <figcaption
+        className={cn("flex items-center gap-2 px-3 py-2 text-sm", compact && "max-w-80")}
+      >
         <a
           href={url}
           target="_blank"
