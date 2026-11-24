@@ -109,20 +109,48 @@ export function contentGoalsProblem(goals: { kinds: string[]; apps: string[] }):
   return null;
 }
 
-/**
- * The ready-made automations that fit what a team makes: each kind's suggestions in turn,
- * each automation once, in the order the kinds are listed.
- */
-export function suggestedStarters(kinds: readonly string[]): Starter[] {
-  const ids = CONTENT_KINDS.filter((kind) => kinds.includes(kind.id)).flatMap(
-    (kind) => kind.starters,
-  );
-  return [...new Set(ids)]
-    .map((id) => STARTERS.find((starter) => starter.id === id))
-    .filter((starter): starter is Starter => starter !== undefined);
+const PICKS_A_PLATFORM = new Set<AutomationNode["kind"]>(["clips", "moments"]);
+
+/** The kinds of file an upload-started ready-made runs on, or none for any other start. */
+function uploadTypes(starter: Starter): Set<string> {
+  if (starter.trigger.kind !== "upload") return new Set();
+  const type = starter.trigger.fileType ?? "any";
+  return new Set(type === "any" ? ["video", "audio", "image"] : [type]);
 }
 
-const PICKS_A_PLATFORM = new Set<AutomationNode["kind"]>(["clips", "moments"]);
+/**
+ * Two ready-mades clash when both cut clips out of the same uploaded file: run together
+ * they make two sets of clips from one video.
+ */
+export function clashes(one: Starter, other: Starter): boolean {
+  const makesClips = (starter: Starter) =>
+    starter.nodes.some((node) => PICKS_A_PLATFORM.has(node.kind));
+  if (!makesClips(one) || !makesClips(other)) return false;
+  const types = uploadTypes(other);
+  return [...uploadTypes(one)].some((type) => types.has(type));
+}
+
+/**
+ * The ready-made automations that fit what a team makes: one for each kind picked, in the
+ * order the kinds are listed. Each kind gives its first suggestion that is not offered
+ * already and does not clash with one that is, so no two of them make clips from the same
+ * upload. A kind whose suggestions are all taken or clash adds none.
+ */
+export function suggestedStarters(kinds: readonly string[]): Starter[] {
+  const picked: Starter[] = [];
+  for (const kind of CONTENT_KINDS.filter((each) => kinds.includes(each.id))) {
+    const pick = kind.starters
+      .map((id) => STARTERS.find((starter) => starter.id === id))
+      .find(
+        (starter): starter is Starter =>
+          starter !== undefined &&
+          !picked.includes(starter) &&
+          !picked.some((other) => clashes(starter, other)),
+      );
+    if (pick) picked.push(pick);
+  }
+  return picked;
+}
 
 /**
  * A ready-made's steps made for where the team posts: every step that makes clips for a

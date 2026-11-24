@@ -218,7 +218,7 @@ describe("the home page", () => {
       .getAllByRole("button")
       .map((button) => button.textContent ?? "");
     expect(names[0]).toContain("Coaching session pack");
-    expect(names[1]).toContain("Sermon, webinar or lecture pack");
+    expect(names[1]).not.toContain("Sermon, webinar or lecture pack");
     // Still six to start from, the rest from the usual mix.
     expect(names).toHaveLength(6);
   });

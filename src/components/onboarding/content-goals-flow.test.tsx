@@ -59,7 +59,7 @@ describe("asking what the team makes", () => {
     expect(screen.getByText("Step 4 of 7")).toBeTruthy();
   });
 
-  test("saves the answers and offers the coaching pack ticked, saying where AI is used", async () => {
+  test("saves the answers and offers one pack for coaching, unticked, saying where AI is used", async () => {
     renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);
     pick(/Coaching or Courses/);
     pick(/Continue/);
@@ -75,42 +75,33 @@ describe("asking what the team makes", () => {
       apps: ["tiktok", "instagram"],
     });
     const list = within(screen.getByRole("list", { name: "Ready-made automations for you" }));
+    const boxes = list.getAllByRole("checkbox");
+    expect(boxes).toHaveLength(1);
     const pack = list.getByRole("checkbox", { name: /Coaching session pack/ });
-    expect(pack.getAttribute("aria-checked")).toBe("true");
-    expect(list.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ })).toBeTruthy();
+    expect(pack.getAttribute("aria-checked")).toBe("false");
     expect(list.getAllByText("AI picks the moments")).toHaveLength(1);
+    // Nothing that runs after another is offered while setting up.
+    expect(screen.queryByText(/Runs after/)).toBeNull();
     expect(
       screen.getByRole("link", { name: /See all 89 ready-made automations/ }).getAttribute("href"),
     ).toBe("/automations/new");
-    // What goes well after each pick is offered under it, ticked.
-    const after = within(
-      screen.getByRole("list", { name: "Goes well after Coaching session pack" }),
-    );
-    const brand = after.getByRole("checkbox", { name: /Brand Every Clip/ });
-    expect(brand.getAttribute("aria-checked")).toBe("true");
-    expect(after.getByText("Runs after Coaching session pack")).toBeTruthy();
-    expect(screen.getByRole("checkbox", { name: /Clips From The Episode/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add 4 automations" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Continue without these" })).toBeTruthy();
+    fireEvent.click(pack);
+    expect(screen.getByRole("button", { name: "Add 1 automation" })).toBeTruthy();
   });
 
-  test("makes a follow-on only with what it runs after", async () => {
-    mutationOf(api.contentGoals.turnOn).mockResolvedValue([]);
+  test("never offers two that make clips from the same upload", async () => {
     renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);
     pick(/Coaching or Courses/);
+    pick(/Entrepreneurs/);
     pick(/Continue/);
     pick(/Continue without one/);
     await screen.findByRole("heading", { name: "Suggest these on your uploads" });
-    fireEvent.click(screen.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ }));
-    const episode = screen.getByRole("checkbox", { name: /Clips From The Episode/ });
-    expect(episode.getAttribute("aria-checked")).toBe("false");
-    expect(episode).toBeDisabled();
-    fireEvent.click(screen.getByRole("checkbox", { name: /Brand Every Clip/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Add 1 automation" }));
-    await screen.findByRole("heading", { name: "Upload your first recording" });
-    expect(mutationOf(api.contentGoals.turnOn)).toHaveBeenCalledWith({
-      organizationId: TEAM.id,
-      starterIds: ["coaching-session-pack"],
-    });
+    const list = within(screen.getByRole("list", { name: "Ready-made automations for you" }));
+    expect(list.getAllByRole("checkbox")).toHaveLength(2);
+    expect(list.getByRole("checkbox", { name: /Coaching session pack/ })).toBeTruthy();
+    expect(list.getByRole("checkbox", { name: /Caption every new upload/ })).toBeTruthy();
+    expect(list.queryByRole("checkbox", { name: /Clips that follow the speaker/ })).toBeNull();
   });
 
   test("switches on only the ticked ones and says why any were left off", async () => {
@@ -128,7 +119,7 @@ describe("asking what the team makes", () => {
     pick(/Continue/);
     pick(/Continue without one/);
     await screen.findByRole("heading", { name: "Suggest these on your uploads" });
-    fireEvent.click(screen.getByRole("checkbox", { name: /Captioned video with your end card/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Captioned video with your logo/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add 1 automation" }));
     expect(
       await screen.findByRole("heading", { name: "Upload your first recording" }),
@@ -196,8 +187,7 @@ describe("the first upload", () => {
     pick(/Continue/);
     pick(/Continue without one/);
     await screen.findByRole("heading", { name: "Suggest these on your uploads" });
-    fireEvent.click(screen.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Brand Every Clip/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Coaching session pack/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add 1 automation" }));
     await screen.findByRole("heading", { name: "Upload your first recording" });
   }
@@ -293,8 +283,7 @@ describe("setting up without a toolkit", () => {
     pick(/Continue/);
     pick(/Continue without one/);
     await screen.findByRole("heading", { name: "Suggest these on your uploads" });
-    fireEvent.click(screen.getByRole("checkbox", { name: /Sermon, webinar or lecture pack/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /Brand Every Clip/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Coaching session pack/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add 1 automation" }));
     expect(
       await screen.findByRole("heading", { name: "Connect A Toolkit When You're Ready" }),

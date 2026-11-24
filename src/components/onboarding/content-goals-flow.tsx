@@ -4,7 +4,6 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
   CONTENT_KINDS,
-  followOnsOfPicks,
   POSTING_APPS,
   type PostingAppId,
   type Starter,
@@ -123,7 +122,8 @@ export function ContentGoalsFlow({
   const [stage, setStage] = useState<Stage>("kinds");
   const [kinds, setKinds] = useState<string[] | null>(null);
   const [apps, setApps] = useState<PostingAppId[] | null>(null);
-  const [skipped, setSkipped] = useState<string[]>([]);
+  // Nothing is picked until they tick it.
+  const [picked, setPicked] = useState<string[]>([]);
   const [made, setMade] = useState<Made[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -138,13 +138,8 @@ export function ContentGoalsFlow({
   const pickedKinds = kinds ?? saved.kinds;
   const pickedApps = apps ?? (saved.apps as PostingAppId[]);
   const suggested = suggestedStarters(pickedKinds);
-  const followOns = followOnsOfPicks(suggested);
-  const isOn = (starter: Starter) => !skipped.includes(starter.id);
-  // A follow-on is only made when what it runs after is made too.
-  const chosen = [
-    ...suggested.filter(isOn),
-    ...followOns.filter(({ starter, after }) => isOn(starter) && isOn(after)).map((f) => f.starter),
-  ];
+  const isOn = (starter: Starter) => picked.includes(starter.id);
+  const chosen = suggested.filter(isOn);
   const step = stepsBefore + STAGES.indexOf(stage) + 1;
 
   const toggle = <T extends string>(list: T[], id: T) =>
@@ -266,35 +261,17 @@ export function ContentGoalsFlow({
       {stage === "turn-on" && (
         <>
           <Heading title="Suggest these on your uploads">
-            None of them runs by itself. Each one shows on every video you upload, ready to run with
-            one press, and you can set any of them to run by itself later. Untick any you don&apos;t
-            want.
+            One for each kind of content you make, none ticked. Tick any you want. None of them runs
+            by itself: each shows on your uploads, ready to run with one press.
           </Heading>
           <ul className="grid gap-2" aria-label="Ready-made automations for you">
             {suggested.map((starter) => (
-              <li key={starter.id} className="grid gap-2">
+              <li key={starter.id}>
                 <SuggestedRow
                   starter={starter}
                   on={isOn(starter)}
-                  onToggle={() => setSkipped(toggle(skipped, starter.id))}
+                  onToggle={() => setPicked(toggle(picked, starter.id))}
                 />
-                {followOns.some(({ after }) => after.id === starter.id) && (
-                  <ul className="grid gap-2 pl-6" aria-label={`Goes well after ${starter.name}`}>
-                    {followOns
-                      .filter(({ after }) => after.id === starter.id)
-                      .map(({ starter: followOn }) => (
-                        <li key={followOn.id}>
-                          <SuggestedRow
-                            starter={followOn}
-                            after={starter}
-                            on={isOn(followOn) && isOn(starter)}
-                            disabled={!isOn(starter)}
-                            onToggle={() => setSkipped(toggle(skipped, followOn.id))}
-                          />
-                        </li>
-                      ))}
-                  </ul>
-                )}
               </li>
             ))}
           </ul>
@@ -464,20 +441,14 @@ function FirstUpload({
 /** One ready-made to tick on the "Suggest these on your uploads" screen. */
 function SuggestedRow({
   starter,
-  after,
   on,
-  disabled = false,
   onToggle,
 }: {
   starter: Starter;
-  /** The pick it starts after, for a follow-on. */
-  after?: Starter;
   on: boolean;
-  disabled?: boolean;
   onToggle: () => void;
 }) {
   const id = `suggested-${starter.id}`;
-  const failed = starter.trigger.kind === "finished" && starter.trigger.when === "failed";
   return (
     <label
       htmlFor={id}
@@ -485,16 +456,9 @@ function SuggestedRow({
       className={cn(
         "bg-surface hover:bg-muted flex cursor-pointer items-center gap-3 rounded-xl px-4 py-3 transition-colors",
         on && "bg-primary/10 hover:bg-primary/15",
-        disabled && "cursor-default opacity-60 hover:bg-surface",
       )}
     >
-      <Checkbox
-        id={id}
-        checked={on}
-        disabled={disabled}
-        onCheckedChange={onToggle}
-        aria-describedby={after ? `${id}-after` : undefined}
-      />
+      <Checkbox id={id} checked={on} onCheckedChange={onToggle} />
       <span className="grid min-w-0 flex-1 gap-0.5">
         <span className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium">
           {starter.name}
@@ -502,12 +466,6 @@ function SuggestedRow({
             <span className="text-muted-foreground text-xs font-normal">AI picks the moments</span>
           )}
         </span>
-        {/* It names the pick, so it describes the row rather than naming it. */}
-        {after && (
-          <span id={`${id}-after`} aria-hidden="true" className="text-muted-foreground text-xs">
-            {failed ? `Runs if ${after.name} fails` : `Runs after ${after.name}`}
-          </span>
-        )}
         <span className="text-muted-foreground truncate text-sm">{starter.description}</span>
       </span>
       <FlowStrip
