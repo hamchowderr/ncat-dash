@@ -15,6 +15,7 @@ const FILE: FileEntry = {
   lastModified: Date.UTC(2026, 10, 20),
   kind: "video",
   uploadId: null,
+  platform: null,
   details: {
     duration: 412,
     hasVideo: true,

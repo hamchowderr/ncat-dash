@@ -1514,13 +1514,16 @@ export const loadUploadForTrigger = internalQuery({
     if (!upload || upload.status !== "ready") return null;
     const automations = await teamEnabledWithTrigger(ctx, upload.organizationId, "upload");
     const family = upload.contentType.split("/")[0];
+    const skipped = new Set<string>(upload.skipAutomations ?? []);
     // One run for each upload trigger that wants the file; an automation with two that
-    // both want it runs both branches.
+    // both want it runs both branches. One set to ask first only shows on the file, and
+    // one unticked when the file was sent sits this one out.
     const matching = automations.flatMap((automation) =>
-      automation.enabled
+      automation.enabled && !skipped.has(automation._id)
         ? triggersOfKind(automation, "upload")
             .filter(
               ({ trigger }) =>
+                !trigger.ask &&
                 (trigger.fileType === "any" || trigger.fileType === family) &&
                 withinLength(trigger, upload.details),
             )
@@ -1640,5 +1643,32 @@ export const motionGuide = query({
     const user = await getCaller(ctx);
     if (!user) fail("unauthenticated", "Sign in first.");
     return { text: motionGuideText() };
+  },
+});
+
+/**
+ * The automations that run by themselves on an upload, for "On this upload" where each can
+ * be unticked for one file. Those set to ask first are left out: they never run by
+ * themselves. Members only.
+ */
+export const runOnUpload = query({
+  args: { organizationId: v.string() },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const automations = await teamEnabledWithTrigger(ctx, args.organizationId, "upload");
+    return automations
+      .flatMap((automation) => {
+        const fits = triggersOfKind(automation, "upload").filter(({ trigger }) => !trigger.ask);
+        if (fits.length === 0) return [];
+        const types = [...new Set(fits.map(({ trigger }) => trigger.fileType))];
+        return [
+          {
+            _id: automation._id,
+            name: automation.name,
+            fileTypes: types.includes("any") ? ["any" as const] : types,
+          },
+        ];
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   },
 });

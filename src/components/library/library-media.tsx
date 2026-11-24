@@ -68,13 +68,28 @@ export const KIND_LABELS: Record<LibraryKind, string> = {
   other: "File",
 };
 
+export type LibraryFrom = "computer" | "zoom" | "google_meet" | "microsoft" | "dropbox" | "link";
+
+/** Each place an upload can come from, as the From filter and the files name it. */
+export const FROM_LABELS: Record<LibraryFrom, string> = {
+  computer: "Uploaded",
+  zoom: "Zoom",
+  google_meet: "Google Meet",
+  microsoft: "Microsoft Teams",
+  dropbox: "Dropbox",
+  link: "Pasted link",
+};
+
 /** Where a file came from, in a few words. */
 export function sourceLabel(item: {
   source: "upload" | "automation";
   kind: LibraryKind;
   automationName: string | null;
+  from?: LibraryFrom | null;
 }): string {
-  if (item.source === "upload") return "Uploaded";
+  if (item.source === "upload") {
+    return !item.from || item.from === "computer" ? "Uploaded" : `From ${FROM_LABELS[item.from]}`;
+  }
   return item.automationName ? `Made by ${item.automationName}` : "Made by an automation";
 }
 

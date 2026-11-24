@@ -162,7 +162,14 @@ export const turnOn = mutation({
           : null;
       const content = {
         name: starter.name,
-        trigger: followed ? followOnTrigger(starter, followed) : starter.trigger,
+        // Picked at signup, a ready-made that starts on an upload asks first: it shows on
+        // each upload it fits, ready to run with one press, and never runs by itself until
+        // someone sets it to. Follow-ons still start when what they follow ends.
+        trigger: followed
+          ? followOnTrigger(starter, followed)
+          : starter.trigger.kind === "upload"
+            ? { ...starter.trigger, ask: true }
+            : starter.trigger,
         nodes: nodesForPlatform(starter.nodes, platform),
         edges: starter.edges,
       };
@@ -205,6 +212,8 @@ export const turnOn = mutation({
 /**
  * The runs a team's first upload started, newest first, so setting up can show them as
  * they begin. Runs start a moment after the upload is in, once its details are read.
+ * Kept for screens already open on an older version; setting up now reads
+ * library.runsOnUpload, which also lists what is one press away.
  */
 export const runsForUpload = query({
   args: { organizationId: v.string(), uploadId: v.id("uploads") },

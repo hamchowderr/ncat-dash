@@ -94,15 +94,23 @@ export function outputWords(link: string, stepId?: string | null): string {
  * keeps it; one named after a job id becomes `<stem> <what was done>`, numbered when the
  * step made more than one of the same kind: "Space interviews captioned",
  * "Space interviews part 2". With `bases`, one name per file, each file is named after
- * the file it was made from instead: "Space interviews part 2 captioned".
+ * the file it was made from instead: "Space interviews part 2 captioned". A file made for
+ * a platform says so before the step's words: "Space interviews TikTok captioned".
  */
 export function nameFiles(
   stem: string,
   files: string[],
   stepId?: string | null,
   bases?: string[],
+  platforms?: Record<string, string>,
 ): string[] {
-  const words = files.map((file) => outputWords(file, stepId));
+  // The platform goes before the step's words, unless the file is named after one that
+  // already says it.
+  const words = files.map((file, at) => {
+    const done = outputWords(file, stepId);
+    const platform = platforms?.[file];
+    return platform && !bases?.[at] ? `${platform} ${done}` : done;
+  });
   const totals = new Map<string, number>();
   for (const word of words) totals.set(word, (totals.get(word) ?? 0) + 1);
   const counts = new Map<string, number>();
@@ -129,10 +137,12 @@ export function runStem(startedWith: string | null | undefined, automationName: 
 /**
  * Readable names for every file a run made, by link. Steps are taken in the order given;
  * a file handed on unchanged keeps the name it got from the first step that made it.
+ * `platforms` holds the platform each clip was made for (platform-labels.ts runPlatforms).
  */
 export function runOutputNames(
   stem: string,
   steps: { stepId?: string | null; outputs: string[]; labels?: FileLabel[] }[],
+  platforms?: Record<string, string>,
 ): Record<string, string> {
   const names: Record<string, string> = {};
   // The numbered pieces the last step made (clips, parts), so a step that works on each
@@ -144,7 +154,7 @@ export function runOutputNames(
     const media = fresh.filter((file) => isMedia(file, step.stepId));
     const follows = pieces.length > 1 && media.length === pieces.length;
     const bases = follows ? fresh.map((file) => pieces[media.indexOf(file)] ?? "") : undefined;
-    const made = nameFiles(stem, fresh, step.stepId, bases);
+    const made = nameFiles(stem, fresh, step.stepId, bases, platforms);
     made.forEach((name, at) => {
       const label = labels.get(fresh[at]);
       names[fresh[at]] =

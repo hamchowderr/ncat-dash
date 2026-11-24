@@ -8,6 +8,7 @@ import {
   snippetAround,
   titleFromFileName,
   transcriptPieces,
+  withinLength,
   wordsFromSegments,
 } from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
@@ -33,15 +34,19 @@ import {
   addUploadToLibrary,
   deleteLibraryItem,
   deletePieces,
+  fromOf,
+  inReviewOf,
   kindOfMadeFile,
   librarySettingsOf,
+  type LibraryFrom,
   startingItemOf,
 } from "./lib/library";
 import { startingFiles } from "./lib/chain";
-import { outputNamesOf } from "./lib/outputs";
+import { outputNamesOf, outputPlatformsOf } from "./lib/outputs";
 import { enqueueJob } from "./lib/queue";
 import { refreshBrollLike, usableAsBroll } from "./lib/broll";
 import { startRun } from "./lib/runner";
+import { teamEnabledWithTrigger, triggersOfKind } from "./lib/triggers";
 
 // Links the library plays and shows files from: long enough for a working session.
 const PREVIEW_LINK_SECONDS = 6 * 60 * 60;
@@ -71,10 +76,15 @@ type Summary = {
   rating: number | null;
   duration: number | null;
   automationName: string | null;
+  // The platform a clip was made for, such as "TikTok".
+  platform: string | null;
   parent: { _id: Id<"libraryItems">; shortId: string; title: string } | null;
   client: { _id: Id<"clients">; name: string } | null;
   made: number;
   searchable: "no" | "working" | "ready" | "failed";
+  /** Where an uploaded file came from; null for one an automation made. */
+  from: LibraryFrom | null;
+  inReview: boolean;
 };
 
 /** A library file as the page lists it. `byId` resolves its parent without another read. */
@@ -83,6 +93,7 @@ function summaryOf(
   byId: Map<string, Doc<"libraryItems">>,
   made: Map<string, number>,
   clients: Map<string, Doc<"clients">>,
+  inReview: (item: Doc<"libraryItems">) => boolean = () => false,
 ): Summary {
   const client = item.clientId ? clients.get(item.clientId) : undefined;
   const parent = item.parentId ? byId.get(item.parentId) : undefined;
@@ -97,10 +108,13 @@ function summaryOf(
     rating: item.rating ?? null,
     duration: item.details?.duration ?? null,
     automationName: item.automationName ?? null,
+    platform: item.platform ?? null,
     parent: parent ? { _id: parent._id, shortId: parent.shortId, title: parent.title } : null,
     client: client ? { _id: client._id, name: client.name } : null,
     made: made.get(item._id) ?? 0,
     searchable: item.transcript?.status ?? "no",
+    from: fromOf(item),
+    inReview: inReview(item),
   };
 }
 
@@ -144,8 +158,9 @@ export const list = query({
     }
     const settings = await librarySettingsOf(ctx, args.organizationId);
     const clients = await clientsOf(ctx, args.organizationId);
+    const inReview = await inReviewOf(ctx, args.organizationId);
     return {
-      items: items.map((item) => summaryOf(item, byId, made, clients)),
+      items: items.map((item) => summaryOf(item, byId, made, clients, inReview)),
       searchNewFiles: settings.searchNewFiles,
       filled: settings.filledAt !== null,
       canChangeSettings: MANAGER_ROLES.includes(role),
@@ -158,6 +173,92 @@ export const list = query({
 });
 
 /** One library file: where it came from, what was made from it, and what was said in it. */
+/**
+ * The automations that ran on a file's upload, newest first: each run's automation, how it
+ * ended or that it is still going, how it started, and how many files it made. Test runs
+ * of one step are left out. Members only.
+ */
+export const runsOnFile = query({
+  args: { itemId: v.id("libraryItems") },
+  handler: async (ctx, args) => {
+    const item = await ctx.db.get(args.itemId);
+    if (!item) return null;
+    await requireMember(ctx, item.organizationId);
+    return await fileRunsOf(ctx, item);
+  },
+});
+
+/** The same as runsOnFile, found by the upload, for the first upload while setting up. */
+export const runsOnUpload = query({
+  args: { uploadId: v.id("uploads") },
+  handler: async (ctx, args) => {
+    const upload = await ctx.db.get(args.uploadId);
+    if (!upload) return null;
+    await requireMember(ctx, upload.organizationId);
+    const item = await ctx.db
+      .query("libraryItems")
+      .withIndex("by_upload", (q) => q.eq("uploadId", args.uploadId))
+      .first();
+    return item ? await fileRunsOf(ctx, item) : null;
+  },
+});
+
+async function fileRunsOf(ctx: QueryCtx, item: Doc<"libraryItems">) {
+  // Only a file brought in has runs on it; a file an automation made shows what made it.
+  const uploadId = item.uploadId;
+  if (!uploadId || item.runId) return null;
+  const runs = await ctx.db
+    .query("runs")
+    .withIndex("by_upload", (q) => q.eq("uploadId", uploadId))
+    .order("desc")
+    .take(50);
+  const shown = runs.filter((run) => !run.test && run.organizationId === item.organizationId);
+  const upload = await ctx.db.get(uploadId);
+  // Automations set to ask first that fit this file and have not run on it yet: each is
+  // one press away. One that already ran shows in the list instead.
+  const ran = new Set<string>(shown.map((run) => run.automationId));
+  const family = (upload?.contentType ?? "").split("/")[0];
+  const asking = upload
+    ? (await teamEnabledWithTrigger(ctx, item.organizationId, "upload")).filter(
+        (automation) =>
+          !ran.has(automation._id) &&
+          triggersOfKind(automation, "upload").some(
+            ({ trigger }) =>
+              trigger.ask === true &&
+              (trigger.fileType === "any" || trigger.fileType === family) &&
+              withinLength(trigger, upload.details),
+          ),
+      )
+    : [];
+  const done = await Promise.all(
+    shown.map(async (run) => {
+      const made = await ctx.db
+        .query("libraryItems")
+        .withIndex("by_run", (q) => q.eq("runId", run._id))
+        .take(100);
+      return {
+        _id: run._id,
+        automationId: run.automationId,
+        automationName: run.automationName,
+        status: run.status,
+        // By itself (the upload, a follow-on, another automation) or by someone's press.
+        byHand: run.startedBy !== null && run.triggerKind === "manual",
+        followed: run.parentRunId !== undefined,
+        startedAt: run._creationTime,
+        finishedAt: run.finishedAt,
+        made: made.length,
+      };
+    }),
+  );
+  return {
+    itemId: item._id,
+    runs: done,
+    suggested: asking
+      .map((automation) => ({ _id: automation._id, name: automation.name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
 export const get = query({
   args: { itemId: v.id("libraryItems") },
   handler: async (ctx, args) => {
@@ -187,7 +288,13 @@ export const get = query({
         .first()) !== null;
     const upload = item.uploadId ? await ctx.db.get(item.uploadId) : null;
     return {
-      ...summaryOf(item, byId, new Map([[item._id as string, children.length]]), clients),
+      ...summaryOf(
+        item,
+        byId,
+        new Map([[item._id as string, children.length]]),
+        clients,
+        await inReviewOf(ctx, item.organizationId),
+      ),
       details: item.details ?? null,
       storyboardDrafted: drafted,
       // Where it is in the team's storage, for deleting it from there; null for a link.
@@ -433,7 +540,10 @@ export const remove = mutation({
   },
 });
 
-/** Whether each new video and sound is transcribed so it can be searched. Owners and admins. */
+/**
+ * Kept for screens on an older version: every new video and sound is now transcribed, so
+ * the setting no longer changes anything.
+ */
 export const setSearchNewFiles = mutation({
   args: { organizationId: v.string(), on: v.boolean() },
   handler: async (ctx, args) => {
@@ -515,6 +625,7 @@ async function addRunFiles(
     .withIndex("by_run", (q) => q.eq("runId", run._id))
     .take(200);
   const names = outputNamesOf(run, steps);
+  const platforms = outputPlatformsOf(run, steps);
   const parentId = await startingItemOf(ctx, run);
   const parent = parentId ? await ctx.db.get(parentId) : null;
   // A file the run handed straight back (an approval of the upload) is not a new file.
@@ -533,6 +644,7 @@ async function addRunFiles(
       ...(key ? { key } : { url: link }),
       runId: run._id,
       automationName: run.automationName,
+      ...(platforms[link] ? { platform: platforms[link] } : {}),
       ...(parentId ? { parentId } : {}),
       ...(clientId ? { clientId } : {}),
       createdBy: null,
@@ -711,7 +823,7 @@ export const makeSearchable = action({
   },
 });
 
-/** Transcribes a new library file, when the team has asked for every new file to be. */
+/** Transcribes a new library file: every video and sound is, brought in or made. */
 export const transcribe = internalAction({
   args: { itemId: v.id("libraryItems") },
   handler: async (ctx, args) => {
@@ -755,7 +867,8 @@ export const transcriptNotStarted = internalMutation({
   },
 });
 
-// Files brought in before every upload was transcribed (2026-11-21) have no transcript.
+// Files brought in before every upload was transcribed (2026-11-21), and files automations
+// made before they were too (2026-11-24), have no transcript.
 // The first time anyone on the team opens the dashboard they are sent, a few at a time
 // (the background pool, lib/pools.ts).
 const CATCH_UP_AT_ONCE = 100;
@@ -777,7 +890,6 @@ export const catchUpTranscripts = mutation({
       .take(LIST_LIMIT);
     const missing = items.filter(
       (item) =>
-        item.source === "upload" &&
         (item.kind === "video" || item.kind === "audio") &&
         !item.transcript &&
         !captionFileFormat(item.key ?? item.url ?? ""),

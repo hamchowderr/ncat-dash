@@ -138,6 +138,8 @@ const fileValidator = v.object({
   // Set when the file came in through this app, which is when its details were read.
   uploadId: v.union(v.null(), v.id("uploads")),
   details: v.union(v.null(), fileDetailsValidator),
+  // For a clip an automation made for a platform: that platform, such as "TikTok".
+  platform: v.union(v.null(), v.string()),
   // Set when the team's brand uses this file, so it is not deleted by mistake.
   usedAs: v.union(
     v.null(),
@@ -195,6 +197,10 @@ export const list = action({
         )
         .map(({ key, etag }) => ({ key, etag })),
     });
+    const platforms: Record<string, string> = await ctx.runQuery(internal.files.platformsAt, {
+      organizationId: args.organizationId,
+      keys: objects.filter((object) => fileFamily(object.key) === "video").map((o) => o.key),
+    });
     for (const file of outside.fresh) {
       await backgroundPool.enqueueAction(ctx, internal.files.readOutside, {
         organizationId: args.organizationId,
@@ -212,6 +218,7 @@ export const list = action({
         kind: fileFamily(object.key),
         uploadId: known[object.key]?.uploadId ?? null,
         details: known[object.key]?.details ?? outside.details[object.key] ?? null,
+        platform: platforms[object.key] ?? null,
         usedAs: known[object.key]?.usedAs ?? null,
       })),
       next: page.next,
@@ -683,6 +690,25 @@ export const uploadsAt = internalQuery({
       };
     }
     return known;
+  },
+});
+
+/** The platform each of these files was made for, by key, for the clips that have one. */
+export const platformsAt = internalQuery({
+  args: { organizationId: v.string(), keys: v.array(v.string()) },
+  returns: v.record(v.string(), v.string()),
+  handler: async (ctx, args) => {
+    const found: Record<string, string> = {};
+    for (const key of args.keys) {
+      const item = await ctx.db
+        .query("libraryItems")
+        .withIndex("by_organization_and_key", (q) =>
+          q.eq("organizationId", args.organizationId).eq("key", key),
+        )
+        .first();
+      if (item?.platform) found[key] = item.platform;
+    }
+    return found;
   },
 });
 

@@ -122,6 +122,9 @@ export const triggerValidator = v.union(
     // Length limits in seconds, checked against the details read from the file.
     minSeconds: v.optional(v.number()),
     maxSeconds: v.optional(v.number()),
+    // True: it does not run by itself; each upload it fits shows it, ready to run with one
+    // press. Left out: it runs on every upload it fits.
+    ask: v.optional(v.boolean()),
   }),
   // A folder in the team's own bucket, checked every minute for new files.
   // With layout "creators", one folder per creator holds hooks/, body/ and endings/, and
@@ -711,8 +714,12 @@ export default defineSchema({
     // Waiting for one of the automation's runs under way to end, because it runs only a
     // few at a time (automations.runsAtOnce). Its steps have not started.
     heldForSlot: v.optional(v.boolean()),
+    // The upload the run works on: the one that started it, the one it was run on by
+    // hand, or the one the run it follows worked on. The file's page lists these runs.
+    uploadId: v.optional(v.id("uploads")),
   })
     .index("by_automation", ["automationId"])
+    .index("by_upload", ["uploadId"])
     .index("by_automation_and_status", ["automationId", "status"])
     .index("by_parentRun", ["parentRunId"])
     .index("by_organization", ["organizationId"])
@@ -1909,6 +1916,8 @@ export default defineSchema({
     details: v.optional(fileDetailsValidator),
     // The bucket's id for a file being sent in parts (a big file), until they are joined.
     partsUploadId: v.optional(v.string()),
+    // Automations that run on every upload, unticked for this one when it was sent.
+    skipAutomations: v.optional(v.array(v.id("automations"))),
   })
     .index("by_organization", ["organizationId"])
     // Finds the upload behind a file in the bucket, for the Files page.
@@ -2222,9 +2231,23 @@ export default defineSchema({
     url: v.optional(v.string()),
     // The upload it is, for an uploaded file.
     uploadId: v.optional(v.id("uploads")),
+    // The service an upload came from (the upload's source), for the Library's From filter.
+    // Missing for one sent from a computer, and on files added before 2026-11-24.
+    importedFrom: v.optional(
+      v.union(
+        v.literal("zoom"),
+        v.literal("google_meet"),
+        v.literal("microsoft"),
+        v.literal("dropbox"),
+        v.literal("link"),
+      ),
+    ),
     // For a file an automation made: the run, and the automation's name at the time.
     runId: v.optional(v.id("runs")),
     automationName: v.optional(v.string()),
+    // For a clip an automation made for a platform: that platform, such as "TikTok"
+    // (one of the Clips platforms, clips.ts).
+    platform: v.optional(v.string()),
     // The file it was made from, such as the episode a clip was cut from.
     parentId: v.optional(v.id("libraryItems")),
     // The client it is for: copied from the run that made it (or the file it was made

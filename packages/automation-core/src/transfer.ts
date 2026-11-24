@@ -229,7 +229,13 @@ function readTrigger(value: unknown, notes: string[]): StarterTrigger {
           ? { [name]: amount }
           : {};
       };
-      return { kind: "upload", fileType, ...seconds("minSeconds"), ...seconds("maxSeconds") };
+      return {
+        kind: "upload",
+        fileType,
+        ...seconds("minSeconds"),
+        ...seconds("maxSeconds"),
+        ...(value.ask === true ? { ask: true } : {}),
+      };
     }
     case "folder":
       return {

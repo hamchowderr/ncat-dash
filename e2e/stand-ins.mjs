@@ -5,6 +5,7 @@
 // Two toolkit jobs run for real, as the toolkit runs them, so the agent sees and measures
 // the clip: Python (/v1/code/execute/python) and FFmpeg compose (/v1/ffmpeg/compose).
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createReadStream, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -58,11 +59,15 @@ const ownClip = process.env.STAND_IN_CLIP ?? null;
 const plainClip = process.env.STAND_IN_PLAIN ?? null;
 const clipFor = (url) => (plainClip && /plain/.test(url) ? plainClip : (ownClip ?? clip));
 const still = fileURLToPath(new URL("./fixtures/still.jpg", import.meta.url));
-// Files the real jobs make, served at /made/<name>.
+// Files the real jobs make, served at /stand-in/made/<name>: inside the bucket, as the
+// toolkit puts them, so they can be kept in Finished/ like any other.
 const made = mkdtempSync(join(tmpdir(), "takewon-e2e-made-"));
 let jobs = 0;
 // The bucket's folders, so a folder can be picked and made. Files are not kept.
 const folders = new Set(["incoming/", "podcast/", "podcast/raw/"]);
+// Files copied inside the bucket, such as finished files kept in Finished/<automation>/,
+// by their whole key, so a list shows them where they were put.
+const copied = new Map();
 
 // Parts sent to the bucket for uploads in parts: upload id -> { key, parts: part -> bytes }.
 const partUploads = new Map();
@@ -133,16 +138,17 @@ async function compose(body) {
   for (const input of body.inputs) args.push(...flags(input.options), "-i", input.file_url);
   if (body.filters?.length)
     args.push("-filter_complex", body.filters.map((f) => f.filter).join(";"));
-  const job = ++jobs;
+  // Named as the real toolkit names them: the job id, then the output's number.
+  const job = randomUUID();
   const outputs = body.outputs.map((output, index) => {
     const format = output.options.find((o) => o.option === "-f")?.argument;
     const extension = format === "image2" ? "png" : (format ?? "mp4");
-    const file = join(made, `job-${job}-output-${index}.${extension}`);
+    const file = join(made, `${job}_output_${index}.${extension}`);
     args.push(...flags(output.options), file);
     return file;
   });
   await run("ffmpeg", args);
-  return outputs.map((file) => ({ file_url: `${FILES}/made/${basename(file)}` }));
+  return outputs.map((file) => ({ file_url: `${FILES}/stand-in/made/${basename(file)}` }));
 }
 
 // Every name serves the same short clip, and every .jpg the same still of it.
@@ -176,7 +182,7 @@ createServer((request, response) => {
     response.end(JSON.stringify(SEGMENTS));
     return;
   }
-  if (request.url.startsWith("/made/")) {
+  if (request.url.startsWith("/stand-in/made/")) {
     const file = join(made, basename(request.url));
     const type = TYPES[file.split(".").pop()] ?? "application/octet-stream";
     try {
@@ -376,6 +382,23 @@ createServer((request, response) => {
       const team = /^teams\/[^/]+\//.exec(asked)?.[0] ?? "";
       const prefix = asked.slice(team.length);
       if (request.url === "/v1/storage/folder" && prefix) folders.add(prefix);
+      if (request.url === "/v1/storage/copy") {
+        const to = String(body.destination);
+        copied.set(to, { key: to, etag: "stand-in", size: 48_213, last_modified: Date.now() });
+        const parts = to
+          .replace(/^teams\/[^/]+\//, "")
+          .split("/")
+          .slice(0, -1);
+        for (let depth = 1; depth <= parts.length; depth++) {
+          folders.add(`${parts.slice(0, depth).join("/")}/`);
+        }
+      }
+      // With folders asked for, only the files straight inside; otherwise all below.
+      const listed = [...copied.values()].filter(
+        (file) =>
+          file.key.startsWith(asked) &&
+          (!body.folders || !file.key.slice(asked.length).includes("/")),
+      );
       // The folders straight inside the one asked about.
       const inside = [...folders]
         .filter(
@@ -386,7 +409,7 @@ createServer((request, response) => {
       const answers = {
         info: { provider: "s3", bucket: "stand-in", endpoint: FILES, public_url: null },
         sign: { url: `${FILES}/${body.key}`, method: body.method ?? "GET" },
-        list: { files: [], folders: inside.sort(), next_token: null },
+        list: { files: listed, folders: inside.sort(), next_token: null },
         exists: { exists: false },
         copy: { key: body.destination, etag: "stand-in" },
         delete: { deleted: body.keys ?? [], failed: [] },

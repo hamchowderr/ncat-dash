@@ -413,7 +413,13 @@ describe("Plan Motion Graphics", () => {
       subtitle: "sales in one week",
     });
     // Both steps share one transcription.
-    expect(sent.filter((one) => one.url.endsWith("/v1/media/transcribe"))).toHaveLength(1);
+    expect(
+      sent.filter(
+        (one) =>
+          one.url.endsWith("/v1/media/transcribe") &&
+          String(one.body.media_url).includes("/uploads/"),
+      ),
+    ).toHaveLength(1);
   });
 });
 

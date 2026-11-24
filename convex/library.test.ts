@@ -212,6 +212,68 @@ describe("files join the library", () => {
   });
 });
 
+describe("where files came from, and what is in review", () => {
+  test("says which service an upload came from, by its record or its folder", async () => {
+    const { t, team, maya, upload, items, itemOf } = await studio();
+    const mine = await upload("episode.mp4");
+    // A recording a meeting app brought in, recorded as such.
+    const call = await t.run(async (ctx) => {
+      const uploadId = await ctx.db.insert("uploads", {
+        organizationId: team,
+        fileName: "Coaching call.mp4",
+        contentType: "video/mp4",
+        size: 9000,
+        key: "uploads/Zoom/abc/Coaching call.mp4",
+        status: "ready",
+        source: "zoom",
+        createdBy: maya.id,
+      } as never);
+      const { addUploadToLibrary } = await import("./lib/library");
+      await addUploadToLibrary(ctx, (await ctx.db.get(uploadId))!);
+      return uploadId;
+    });
+    // One added before the source was kept: its folder says where it came from.
+    await t.run((ctx) =>
+      ctx.db.insert("libraryItems", {
+        organizationId: team,
+        shortId: "V9",
+        kind: "video",
+        source: "upload",
+        title: "Old Teams call",
+        key: "uploads/Microsoft/x/Old Teams call.mp4",
+        tags: [],
+        searchText: "",
+        createdBy: maya.id,
+      }),
+    );
+    const listed = await items();
+    const fromOf = (title: string) => listed.find((item) => item.title === title)?.from;
+    expect(fromOf("episode")).toBe("computer");
+    expect(fromOf("Coaching call")).toBe("zoom");
+    expect(fromOf("Old Teams call")).toBe("microsoft");
+    expect((await itemOf(call)).importedFrom).toBe("zoom");
+    expect((await itemOf(mine)).importedFrom).toBeUndefined();
+  });
+
+  test("marks the files of an open review, and not once it is decided", async () => {
+    const { team, maya, upload, items, itemOf } = await studio();
+    const episode = await upload("episode.mp4");
+    await upload("other.mp4");
+    const key = (await itemOf(episode)).key!;
+    const reviewId = await maya.as.mutation(api.reviews.create, {
+      organizationId: team,
+      urls: [`https://files.example/teams/${team}/${encodeURI(key)}?X-Amz-Signature=1`],
+    });
+    const inReview = async () =>
+      (await items()).filter((item) => item.inReview).map((item) => item.title);
+    expect(await inReview()).toEqual(["episode"]);
+    const item = await itemOf(episode);
+    expect((await maya.as.query(api.library.get, { itemId: item._id }))?.inReview).toBe(true);
+    await maya.as.mutation(api.reviews.decide, { reviewId: reviewId!, approved: true });
+    expect(await inReview()).toEqual([]);
+  });
+});
+
 describe("files for a client", () => {
   test("what a client's run makes is for that client; the episode can be moved, clips follow", async () => {
     const { t, team, maya, olu, other, upload, itemOf, finishedRun, toolkit } = await studio();
@@ -477,28 +539,19 @@ describe("searching", () => {
     }
   });
 
-  test("a file an automation made is transcribed only with the setting on", async () => {
+  test("a file an automation made is transcribed by itself, like an upload", async () => {
     vi.useFakeTimers();
-    const { t, team, upload, finishedRun, toolkit } = await studio();
+    const { t, upload, finishedRun, toolkit } = await studio();
     const episode = await upload("episode.mp4");
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-    const { runId } = await finishedRun(episode, [`${LINK}/${JOB}_output_0.mp4`]);
-    toolkit.put(`${JOB}_output_0.mp4`);
-    await t.action(internal.files.keepFinished, { runId });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     const transcribed = async () =>
       (await t.run((ctx) => ctx.db.query("jobs").collect())).filter(
         (job) => job.stepId === "media-transcribe",
       ).length;
     expect(await transcribed()).toBe(1);
-
-    // Set straight in the table: the fake clock has run far past the sign-in by now.
-    await t.run((ctx) =>
-      ctx.db.insert("librarySettings", { organizationId: team, searchNewFiles: true }),
-    );
-    const second = await finishedRun(episode, [`${LINK}/${JOB}_output_1.mp4`]);
-    toolkit.put(`${JOB}_output_1.mp4`);
-    await t.action(internal.files.keepFinished, { runId: second.runId });
+    const { runId } = await finishedRun(episode, [`${LINK}/${JOB}_output_0.mp4`]);
+    toolkit.put(`${JOB}_output_0.mp4`);
+    await t.action(internal.files.keepFinished, { runId });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await transcribed()).toBe(2);
   });
@@ -572,7 +625,7 @@ describe("searching", () => {
 });
 
 describe("catching up files brought in before every upload was transcribed", () => {
-  test("each older video and sound brought in is transcribed once, by itself", async () => {
+  test("each older video and sound, brought in or made, is transcribed once, by itself", async () => {
     vi.useFakeTimers();
     const { t, team, maya, sam } = await studio();
     const old = (title: string, kind: "video" | "audio" | "image", extra = {}) =>
@@ -593,14 +646,14 @@ describe("catching up files brought in before every upload was transcribed", () 
     const episode = await old("episode.mp4", "video");
     const theme = await old("theme.mp3", "audio");
     await old("still.png", "image");
-    await old("clip.mp4", "video", { source: "automation" });
+    const clip = await old("clip.mp4", "video", { source: "automation" });
     await old("done.mp4", "video", { transcript: { status: "ready", at: 1 } });
     await old("failed.mp4", "video", {
       transcript: { status: "failed", error: "No sound.", at: 1 },
     });
 
     // Anyone on the team may set it off; it is what opening the dashboard does.
-    expect(await sam.as.mutation(api.library.catchUpTranscripts, { organizationId: team })).toBe(2);
+    expect(await sam.as.mutation(api.library.catchUpTranscripts, { organizationId: team })).toBe(3);
     // Already on their way: a second visit sends nothing more.
     expect(await maya.as.mutation(api.library.catchUpTranscripts, { organizationId: team })).toBe(
       0,
@@ -616,8 +669,8 @@ describe("catching up files brought in before every upload was transcribed", () 
     const jobs = (await t.run((ctx) => ctx.db.query("jobs").collect())).filter(
       (job) => job.stepId === "media-transcribe",
     );
-    expect(jobs.map((job) => job.libraryItemId).sort()).toEqual([episode, theme].sort());
-    for (const itemId of [episode, theme]) {
+    expect(jobs.map((job) => job.libraryItemId).sort()).toEqual([episode, theme, clip].sort());
+    for (const itemId of [episode, theme, clip]) {
       const item = await t.run((ctx) => ctx.db.get(itemId));
       expect(item?.transcript).toMatchObject({ status: "working" });
       expect(item?.transcript?.jobId).toBeTruthy();

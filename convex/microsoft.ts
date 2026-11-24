@@ -1177,7 +1177,7 @@ export const startImport = internalMutation({
     }
 
     const fileName = recordingFileName(recording.topic, recording.startTime, recording.extension);
-    const key = `uploads/Microsoft/${crypto.randomUUID()}/${safeName(fileName)}`;
+    const key = `uploads/Microsoft Teams/${crypto.randomUUID()}/${safeName(fileName)}`;
     const importId =
       before?._id ??
       (await ctx.db.insert("microsoftImports", {
