@@ -50,7 +50,8 @@ export function RunDialog({
   onOpenChange: (open: boolean) => void;
   /** The automation is on and starts on uploads, so a dropped file starts it by itself. */
   startsOnUpload: boolean;
-  start: (fileUrl?: string) => Promise<void>;
+  /** `uploadId` is the upload the file is, when one was picked or dropped. */
+  start: (fileUrl?: string, uploadId?: Id<"uploads">) => Promise<void>;
   /** Called when a dropped file started the run through the upload trigger. */
   onUploadedOnly: () => void;
   title?: string;
@@ -120,7 +121,10 @@ export function RunDialog({
       onUploadedOnly();
       return;
     }
-    await run(async () => start(await linkFor({ uploadId: id })), "The run could not be started.");
+    await run(
+      async () => start(await linkFor({ uploadId: id }), id),
+      "The run could not be started.",
+    );
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
@@ -232,7 +236,7 @@ export function RunDialog({
                     disabled={busy}
                     onClick={() =>
                       run(
-                        async () => start(await linkFor({ uploadId: upload._id })),
+                        async () => start(await linkFor({ uploadId: upload._id }), upload._id),
                         "The run could not be started.",
                       )
                     }

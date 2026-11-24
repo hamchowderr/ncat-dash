@@ -73,6 +73,7 @@ import type * as lib_edition from "../lib/edition.js";
 import type * as lib_emailKey from "../lib/emailKey.js";
 import type * as lib_exports from "../lib/exports.js";
 import type * as lib_facts from "../lib/facts.js";
+import type * as lib_followRename from "../lib/followRename.js";
 import type * as lib_footage from "../lib/footage.js";
 import type * as lib_googleMeet from "../lib/googleMeet.js";
 import type * as lib_hooks from "../lib/hooks.js";
@@ -249,6 +250,7 @@ declare const fullApi: ApiFromModules<{
   "lib/emailKey": typeof lib_emailKey;
   "lib/exports": typeof lib_exports;
   "lib/facts": typeof lib_facts;
+  "lib/followRename": typeof lib_followRename;
   "lib/footage": typeof lib_footage;
   "lib/googleMeet": typeof lib_googleMeet;
   "lib/hooks": typeof lib_hooks;

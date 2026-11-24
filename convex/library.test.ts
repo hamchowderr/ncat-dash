@@ -855,3 +855,52 @@ describe("renaming an upload renames what was made from it", () => {
     ]);
   });
 });
+
+describe("a run started by hand from an upload", () => {
+  test("carries the upload, so what it makes is named after it and made from it", async () => {
+    const { t, maya, olu, upload, finishedRun } = await studio();
+    const shot = await upload("IMG_4521.mp4");
+    const { automationId } = await finishedRun(null, []);
+    await t.run((ctx) =>
+      ctx.db.patch(automationId, {
+        nodes: [
+          {
+            id: "caps",
+            kind: "step",
+            stepId: "video-caption",
+            input: {},
+            position: { x: 0, y: 0 },
+          },
+        ],
+        edges: [],
+      }),
+    );
+    const runId = await maya.as.mutation(api.automations.runNow, {
+      automationId,
+      fileUrl: `${LINK}/uploads/x/IMG_4521.mp4?sig=1`,
+      uploadId: shot,
+    });
+    const run = await t.run((ctx) => ctx.db.get(runId));
+    expect(run?.trigger).toMatchObject({ file_name: "IMG_4521.mp4", upload_id: shot });
+
+    // Another team's upload is not carried.
+    const theirs = await t.run((ctx) =>
+      ctx.db.insert("uploads", {
+        organizationId: "someone-else",
+        key: "uploads/y/theirs.mp4",
+        fileName: "theirs.mp4",
+        contentType: "video/mp4",
+        size: 10,
+        status: "ready",
+        createdBy: olu.id,
+      }),
+    );
+    const other = await maya.as.mutation(api.automations.runNow, {
+      automationId,
+      fileUrl: `${LINK}/uploads/y/theirs.mp4?sig=1`,
+      uploadId: theirs,
+    });
+    const otherRun = await t.run((ctx) => ctx.db.get(other));
+    expect(otherRun?.trigger).toEqual({ file_url: `${LINK}/uploads/y/theirs.mp4?sig=1` });
+  });
+});

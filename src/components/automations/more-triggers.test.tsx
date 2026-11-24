@@ -1,8 +1,8 @@
 import { api } from "@convex/_generated/api";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
-import { answerQuery } from "@/test/convex";
+import { actionOf, answerQuery } from "@/test/convex";
 import { renderInApp } from "@/test/render";
 
 import { triggerEdges, triggerPositions } from "./flow-nodes";
@@ -151,5 +151,29 @@ describe("Run now with several triggers", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Run the steps of" }));
     fireEvent.click(screen.getByRole("option", { name: "Trigger 2: Webhook" }));
     expect(onTriggerChange).toHaveBeenCalledWith("__trigger_2");
+  });
+});
+
+describe("Run now on a file already uploaded", () => {
+  test("hands on which upload it is, so the run's files are made from it", async () => {
+    answerQuery(api.storage.get, { bucket: "media", endpoint: "https://s3.example.com" });
+    answerQuery(api.storage.listUploads, [
+      { _id: "u1", fileName: "IMG_4521.mp4", size: 5000, status: "ready" },
+    ]);
+    actionOf(api.storage.linkFor).mockResolvedValue("https://files.example/IMG_4521.mp4");
+    const start = vi.fn(async () => {});
+    renderInApp(
+      <RunDialog
+        open
+        onOpenChange={vi.fn()}
+        startsOnUpload={false}
+        start={start}
+        onUploadedOnly={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /IMG_4521\.mp4/ }));
+    await waitFor(() =>
+      expect(start).toHaveBeenCalledWith("https://files.example/IMG_4521.mp4", "u1"),
+    );
   });
 });
