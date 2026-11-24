@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
 import { FilesView } from "@/components/files/files-view";
-import { HomeView } from "@/components/home/home-view";
+import { ToolkitCard } from "@/components/settings/toolkit-card";
 import { ConnectToolkitForm } from "@/components/onboarding/connect-toolkit-form";
 import { actionOf, answerQuery } from "@/test/convex";
 import { renderInApp } from "@/test/render";
@@ -121,10 +121,13 @@ describe("once connected", () => {
     expect(screen.queryByText("Change storage")).toBeNull();
   });
 
-  test("the home page shows where files are kept", () => {
+  test("Settings, not Home, shows where files are kept", () => {
+    answerQuery(api.toolkitConnections.offersOurs, true);
+    answerQuery(api.teamSettings.get, { brand: null, music: null, canEdit: true });
     answerQuery(api.toolkitConnections.list, [
       {
         _id: "c1",
+        ours: false,
         baseUrl: "https://toolkit.example",
         apiKeyHint: "1234",
         status: "ok",
@@ -134,8 +137,7 @@ describe("once connected", () => {
         lastError: null,
       },
     ]);
-    renderInApp(<HomeView />);
-    fireEvent.click(screen.getByRole("button", { name: "Toolkit connected" }));
-    expect(screen.getByText("Kept in the toolkit's bucket, ncat")).toBeTruthy();
+    renderInApp(<ToolkitCard />);
+    expect(screen.getByText(/Files go to the ncat bucket\./)).toBeTruthy();
   });
 });
