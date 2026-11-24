@@ -19,6 +19,14 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -274,6 +282,8 @@ export function LibraryItemView({
   const item = useQuery(api.library.get, { itemId });
   const setRating = useMutation(api.library.setRating);
   const remove = useMutation(api.library.remove);
+  const deleteFiles = useAction(api.files.remove);
+  const [deleting, setDeleting] = useState(false);
   const makeSearchable = useAction(api.library.makeSearchable);
   const media = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const [now, setNow] = useState(0);
@@ -784,14 +794,11 @@ export function LibraryItemView({
                       variant="ghost"
                       size="sm"
                       className="text-muted-foreground -ml-2"
-                      onClick={() => {
-                        void remove({ itemId: item._id }).then(() => router.push("/library"));
-                      }}
+                      onClick={() => setDeleting(true)}
                     >
                       <Trash2 />
-                      Take out of the library
+                      Delete
                     </Button>
-                    <p className="text-muted-foreground text-xs">The file itself stays in Files.</p>
                   </div>
                 </div>
               </TabsContent>
@@ -799,6 +806,45 @@ export function LibraryItemView({
           </div>
         </div>
       </Tabs>
+      <Dialog open={deleting} onOpenChange={setDeleting}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="break-words">Delete {item.title}?</DialogTitle>
+            <DialogDescription>
+              {item.key
+                ? "This removes it from your storage and the library for good. It cannot be undone."
+                : "This takes it out of the library for good. It cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setDeleting(false);
+                // A file in the team's storage goes from there, and the library follows it.
+                const done = item.key
+                  ? deleteFiles({ organizationId: team.id, keys: [item.key] }).then((result) => {
+                      if (result.leftBehind > 0) throw new Error("left behind");
+                    })
+                  : remove({ itemId: item._id });
+                void done.then(
+                  () => {
+                    toast.success(`Deleted ${item.title}.`);
+                    router.push("/library");
+                  },
+                  (caught) =>
+                    toast.error(errorMessage(caught, `${item.title} could not be deleted.`)),
+                );
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

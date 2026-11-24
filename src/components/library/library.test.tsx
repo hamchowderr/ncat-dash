@@ -365,6 +365,23 @@ describe("a library file", () => {
     expect(screen.queryByLabelText("Client")).toBeNull();
   });
 
+  test("Delete asks first, then deletes the file from storage", async () => {
+    answerQuery(api.library.get, { ...DETAIL, key: "uploads/Episode 4.mp4" });
+    actionOf(api.files.remove).mockResolvedValue({ removed: 1, leftBehind: 0 });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const confirm = await screen.findByRole("dialog", { name: "Delete Episode 4?" });
+    expect(confirm.textContent).toContain("from your storage and the library for good");
+    expect(actionOf(api.files.remove)).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(actionOf(api.files.remove)).toHaveBeenCalledWith({
+        organizationId: "team_1",
+        keys: ["uploads/Episode 4.mp4"],
+      }),
+    );
+  });
+
   test("tags are added and taken off", async () => {
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
     openWords();

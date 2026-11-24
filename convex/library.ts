@@ -188,6 +188,8 @@ export const get = query({
       ...summaryOf(item, byId, new Map([[item._id as string, children.length]]), clients),
       details: item.details ?? null,
       storyboardDrafted: drafted,
+      // Where it is in the team's storage, for deleting it from there; null for a link.
+      key: item.key ?? null,
       runId: item.runId ?? null,
       automationId: item.runId ? ((await ctx.db.get(item.runId))?.automationId ?? null) : null,
       transcriptError:
