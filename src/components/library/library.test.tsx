@@ -152,25 +152,11 @@ describe("the Library page", () => {
     expect(mutationOf(api.library.setRating)).toHaveBeenCalledWith({ itemId: "i1", rating: 5 });
   });
 
-  test("offers to transcribe what automations made, never what was brought in", async () => {
-    actionOf(api.library.makeSearchable).mockResolvedValue(1);
+  test("has nothing to press to make files searchable: every one is, by itself", () => {
     renderInApp(<LibraryView />);
-    // The clip (made by an automation) is offered; the uploaded theme is caught up by itself.
-    fireEvent.click(screen.getByRole("button", { name: "Transcribe 1 file" }));
-    await waitFor(() =>
-      expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
-        organizationId: "team_1",
-        itemIds: ["i2"],
-      }),
-    );
-    expect(toastSuccess).toHaveBeenCalledWith("1 file is being transcribed on your toolkit.");
-  });
-
-  test("the setting for new files is the owners' and admins'", () => {
-    answerQuery(api.library.list, { ...LIBRARY, canChangeSettings: false });
-    renderInApp(<LibraryView />);
-    expect(screen.getByRole("switch")).toBeDisabled();
-    expect(screen.getByText(/Only an owner or admin can change this/)).toBeTruthy();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Transcribe/ })).toBeNull();
+    expect(screen.getByText(/uploaded or made by your automations, is transcribed once/)).toBeTruthy();
   });
 
   test("brings in the files the team already had, the first time", async () => {
@@ -396,16 +382,28 @@ describe("a library file", () => {
     );
   });
 
-  test("a file an automation made can be transcribed by hand", async () => {
+  test("a file an automation made is transcribed by itself, with nothing to press", () => {
     answerQuery(api.library.get, {
       ...DETAIL,
       source: "automation",
       searchable: "no",
       pieces: [],
     });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    expect(screen.getByText(/Being transcribed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Transcribe" })).toBeNull();
+  });
+
+  test("a transcript that failed can be tried again", async () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      source: "automation",
+      searchable: "failed",
+      pieces: [],
+    });
     actionOf(api.library.makeSearchable).mockResolvedValue(1);
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
-    fireEvent.click(screen.getByRole("button", { name: "Transcribe" }));
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() =>
       expect(actionOf(api.library.makeSearchable)).toHaveBeenCalledWith({
         organizationId: "team_1",

@@ -464,8 +464,6 @@ export function LibraryView() {
   const team = useActiveTeam();
   const library = useQuery(api.library.list, { organizationId: team.id });
   const fill = useMutation(api.library.fill);
-  const setSearchNewFiles = useMutation(api.library.setSearchNewFiles);
-  const makeSearchable = useAction(api.library.makeSearchable);
   const layout = useSyncExternalStore(layoutChoice.watch, layoutChoice.read, layoutChoice.server);
   const columns = useSyncExternalStore(columnChoice.watch, columnChoice.read, columnChoice.server);
   const [typed, setTyped] = useState("");
@@ -474,7 +472,6 @@ export function LibraryView() {
   const [tag, setTag] = useState<string | null>(null);
   // A client's ID, TEAM_OWN for the team's own files, or null for every file.
   const [client, setClient] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
 
   // Searches once typing pauses, not on every key.
   useEffect(() => {
@@ -508,31 +505,6 @@ export function LibraryView() {
   const onScreen = text ? hits : items;
   const links = useLibraryLinks(team.id, onScreen);
 
-  // What was brought in is transcribed by itself; this is for files automations made
-  // (when the setting is off) and for any transcript that failed.
-  const waiting = (library?.items ?? []).filter(
-    (item) =>
-      (item.kind === "video" || item.kind === "audio") &&
-      (item.searchable === "failed" || (item.searchable === "no" && item.source !== "upload")),
-  );
-
-  async function searchWaiting() {
-    setSending(true);
-    try {
-      const batch = waiting.slice(0, 25).map((item) => item._id);
-      const sent = await makeSearchable({ organizationId: team.id, itemIds: batch });
-      toast.success(
-        sent === 1
-          ? "1 file is being transcribed on your toolkit."
-          : `${sent} files are being transcribed on your toolkit.`,
-      );
-    } catch (caught) {
-      toast.error(errorMessage(caught, "The files could not be sent."));
-    } finally {
-      setSending(false);
-    }
-  }
-
   return (
     <>
       <StartPageTour tourId="library" ready={library !== undefined} />
@@ -562,45 +534,14 @@ export function LibraryView() {
             aria-label="Search the library"
           />
         </InputGroup>
-        {library && (
-          <div className="flex flex-1 flex-wrap items-center justify-end gap-x-5 gap-y-2">
-            {waiting.length > 0 && (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={sending}
-                onClick={() => void searchWaiting()}
-              >
-                <Bot />
-                {waiting.length === 1
-                  ? "Transcribe 1 file"
-                  : `Transcribe ${Math.min(waiting.length, 25)} files`}
-              </Button>
-            )}
-            <label
-              className="flex items-center gap-2 text-sm"
-              data-tour-step-id="tour-library-searchable"
-            >
-              <Switch
-                checked={library.searchNewFiles}
-                disabled={!library.canChangeSettings}
-                onCheckedChange={(on) =>
-                  void setSearchNewFiles({ organizationId: team.id, on }).catch((caught) =>
-                    toast.error(errorMessage(caught, "The setting could not be changed.")),
-                  )
-                }
-                aria-describedby="search-new-files-note"
-              />
-              Make new files searchable
-            </label>
-          </div>
-        )}
       </div>
-      <p id="search-new-files-note" className="text-muted-foreground -mt-3 text-xs">
-        Every video and sound you bring in is transcribed once on your own toolkit, with no AI
-        tokens spent. This also transcribes the files your automations make and looks at new videos
-        for B-Roll.
-        {library && !library.canChangeSettings && " Only an owner or admin can change this."}
+      <p
+        className="text-muted-foreground -mt-3 text-xs"
+        data-tour-step-id="tour-library-searchable"
+      >
+        Every video and sound, uploaded or made by your automations, is transcribed once by itself,
+        with no AI tokens spent, so you can search what was said. New videos are also looked at for
+        B-Roll.
       </p>
 
       {library === undefined ? (

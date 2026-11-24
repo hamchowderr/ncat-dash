@@ -8,6 +8,7 @@ import {
   type PostingAppId,
   type Starter,
   STARTERS,
+  recordsMeetings,
   suggestedStarters,
 } from "@takewon/automation-core";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -31,6 +32,7 @@ import { useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
 import { FlowStrip } from "@/components/automations/flow-strip";
+import { AppTile, type ConnectedApp } from "@/components/brand-logos";
 import { FileRuns } from "@/components/library/file-runs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -303,7 +305,12 @@ export function ContentGoalsFlow({
 
       {stage === "upload" &&
         (hasToolkit ? (
-          <FirstUpload organizationId={organizationId} made={made} onFinish={onFinish} />
+          <FirstUpload
+            organizationId={organizationId}
+            made={made}
+            meetings={recordsMeetings(pickedKinds)}
+            onFinish={onFinish}
+          />
         ) : (
           <ToolkitNext made={made} onFinish={onFinish} />
         ))}
@@ -315,10 +322,13 @@ export function ContentGoalsFlow({
 function FirstUpload({
   organizationId,
   made,
+  meetings,
   onFinish,
 }: {
   organizationId: string;
   made: Made[];
+  /** The team records in online meetings, so connecting a meeting app is offered too. */
+  meetings: boolean;
   onFinish: () => void;
 }) {
   const startUpload = useAction(api.storage.startUpload);
@@ -421,6 +431,8 @@ function FirstUpload({
         </div>
       )}
 
+      {meetings && <MeetingApps />}
+
       <div className="flex justify-end">
         {uploaded ? (
           <Button onClick={onFinish}>
@@ -434,6 +446,47 @@ function FirstUpload({
         )}
       </div>
     </>
+  );
+}
+
+const MEETING_APPS = [
+  { app: "zoom", name: "Zoom" },
+  { app: "google-meet", name: "Google Meet" },
+  { app: "microsoft", name: "Microsoft 365" },
+] as const satisfies readonly { app: ConnectedApp; name: string }[];
+
+/**
+ * For teams that record calls: connect a meeting app and each recording comes in by itself,
+ * like an upload. Each opens its page in a new tab, so setting up stays where it is.
+ */
+function MeetingApps() {
+  return (
+    <section aria-labelledby="meeting-apps" className="grid gap-3">
+      <div className="grid gap-1">
+        <h2 id="meeting-apps" className="text-sm font-medium">
+          Record your sessions on a call?
+        </h2>
+        <p className="text-muted-foreground text-sm">
+          Connect your meeting app and each recording comes in by itself, like an upload.
+        </p>
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-3">
+        {MEETING_APPS.map(({ app, name }) => (
+          <li key={app}>
+            <a
+              href={`/settings/integrations/${app}`}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Connect ${name} (opens in a new tab)`}
+              className="bg-surface hover:bg-muted flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors"
+            >
+              <AppTile app={app} small />
+              Connect {name}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

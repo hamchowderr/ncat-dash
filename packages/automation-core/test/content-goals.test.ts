@@ -13,6 +13,7 @@ import {
   STARTERS,
   suggestedStarters,
   clashes,
+  recordsMeetings,
 } from "../src";
 
 describe("content goals", () => {
@@ -38,6 +39,12 @@ describe("content goals", () => {
     expect(suggestedStarters(["entrepreneurs"]).map((starter) => starter.id)).toEqual([
       "clips-follow-speaker",
     ]);
+  });
+
+  it("knows which kinds are recorded on calls", () => {
+    expect(recordsMeetings(["coaching"])).toBe(true);
+    expect(recordsMeetings(["music", "business"])).toBe(false);
+    expect(recordsMeetings(["music", "podcast"])).toBe(true);
   });
 
   it("never offers two that make clips from the same upload", () => {

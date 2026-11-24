@@ -497,7 +497,10 @@ export const remove = mutation({
   },
 });
 
-/** Whether each new video and sound is transcribed so it can be searched. Owners and admins. */
+/**
+ * Kept for screens on an older version: every new video and sound is now transcribed, so
+ * the setting no longer changes anything.
+ */
 export const setSearchNewFiles = mutation({
   args: { organizationId: v.string(), on: v.boolean() },
   handler: async (ctx, args) => {
@@ -775,7 +778,7 @@ export const makeSearchable = action({
   },
 });
 
-/** Transcribes a new library file, when the team has asked for every new file to be. */
+/** Transcribes a new library file: every video and sound is, brought in or made. */
 export const transcribe = internalAction({
   args: { itemId: v.id("libraryItems") },
   handler: async (ctx, args) => {
@@ -819,7 +822,8 @@ export const transcriptNotStarted = internalMutation({
   },
 });
 
-// Files brought in before every upload was transcribed (2026-11-21) have no transcript.
+// Files brought in before every upload was transcribed (2026-11-21), and files automations
+// made before they were too (2026-11-24), have no transcript.
 // The first time anyone on the team opens the dashboard they are sent, a few at a time
 // (the background pool, lib/pools.ts).
 const CATCH_UP_AT_ONCE = 100;
@@ -841,7 +845,6 @@ export const catchUpTranscripts = mutation({
       .take(LIST_LIMIT);
     const missing = items.filter(
       (item) =>
-        item.source === "upload" &&
         (item.kind === "video" || item.kind === "audio") &&
         !item.transcript &&
         !captionFileFormat(item.key ?? item.url ?? ""),

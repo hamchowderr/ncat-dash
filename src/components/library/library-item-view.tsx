@@ -536,9 +536,8 @@ export function LibraryItemView({
                     })}
                   </ol>
                 )
-              ) : item.searchable === "working" ||
-                (item.searchable === "no" && item.source === "upload" && !captions) ? (
-                // Everything brought in is transcribed by itself; an older file is caught up.
+              ) : item.searchable === "working" || (item.searchable === "no" && !captions) ? (
+                // Every video and sound is transcribed by itself; an older file is caught up.
                 <p className="text-muted-foreground text-sm">
                   {captions
                     ? "Reading the caption file."
@@ -549,17 +548,11 @@ export function LibraryItemView({
                   <p className="text-sm">
                     {item.searchable === "failed"
                       ? `The last try did not work${item.transcriptError ? `: ${item.transcriptError}` : "."}`
-                      : captions
-                        ? "The caption file has not been read yet."
-                        : "Transcribe this file to find any moment by what was said in it, and to get its SRT and VTT."}
+                      : "The caption file has not been read yet."}
                   </p>
                   <Button size="sm" variant="secondary" onClick={() => void sendToSearch()}>
                     <Bot />
-                    {item.searchable === "failed"
-                      ? "Try again"
-                      : captions
-                        ? "Read it"
-                        : "Transcribe"}
+                    {item.searchable === "failed" ? "Try again" : "Read it"}
                   </Button>
                   {!captions && (
                     <p className="text-muted-foreground text-xs">
@@ -714,7 +707,7 @@ function BrollUse({
           : "It looks like someone talking, so Add B-Roll leaves it out."
         : broll.looked === "working"
           ? "Being looked at now."
-          : "Not looked at yet. Make it searchable and it will be.";
+          : "Not looked at yet. It will be shortly, by itself.";
   return (
     <div className="flex flex-col gap-2">
       <h2 className="text-sm font-medium" id="broll-use-label">

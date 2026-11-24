@@ -21,9 +21,9 @@ export const LIBRARY_TOUR: Tour = {
     },
     {
       id: "tour-library-searchable",
-      title: "Make Files Searchable",
+      title: "Searchable By Itself",
       content:
-        "New files are transcribed once on your own toolkit, with no AI tokens spent, so you can search what was said in them.",
+        "Every video and sound, uploaded or made by your automations, is transcribed once, with no AI tokens spent, so you can search what was said in them.",
       side: "bottom",
       align: "end",
     },

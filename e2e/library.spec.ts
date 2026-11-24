@@ -50,6 +50,7 @@ test("an upload joins the library, is searched by what was said, and is tagged",
 
   // Transcribed on the toolkit as it came in: nothing to press.
   await expect(page.getByRole("button", { name: /Transcribe 1 file/ })).toHaveCount(0);
+  await expect(page.getByText("Make new files searchable")).toHaveCount(0);
   await page.getByRole("link", { name: "Open V1 clip" }).click();
   // Nothing ran on it, and the file's page says so where the runs would be.
   await expect(page.getByRole("region", { name: "Automations on this file" })).toContainText(

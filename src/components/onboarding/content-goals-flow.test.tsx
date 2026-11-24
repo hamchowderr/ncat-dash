@@ -249,6 +249,33 @@ describe("the first upload", () => {
     expect(onFinish).toHaveBeenCalled();
   });
 
+  test("offers a coach their meeting app, each opening in a new tab", async () => {
+    renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);
+    await toUpload();
+    const apps = within(screen.getByRole("region", { name: "Record your sessions on a call?" }));
+    const zoom = apps.getByRole("link", { name: /Connect Zoom/ });
+    expect(zoom.getAttribute("href")).toBe("/settings/integrations/zoom");
+    expect(zoom.getAttribute("target")).toBe("_blank");
+    expect(apps.getByRole("link", { name: /Connect Google Meet/ }).getAttribute("href")).toBe(
+      "/settings/integrations/google-meet",
+    );
+    expect(apps.getByRole("link", { name: /Connect Microsoft 365/ }).getAttribute("href")).toBe(
+      "/settings/integrations/microsoft",
+    );
+  });
+
+  test("leaves meeting apps out for music", async () => {
+    mutationOf(api.contentGoals.turnOn).mockResolvedValue([]);
+    renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);
+    pick(/^Music/);
+    pick(/Continue/);
+    pick(/Continue without one/);
+    await screen.findByRole("heading", { name: "Suggest these on your uploads" });
+    fireEvent.click(screen.getByRole("button", { name: "Continue without these" }));
+    await screen.findByRole("heading", { name: "Upload your first recording" });
+    expect(screen.queryByRole("region", { name: "Record your sessions on a call?" })).toBeNull();
+  });
+
   test("can be skipped", async () => {
     const onFinish = vi.fn();
     renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={onFinish} />);

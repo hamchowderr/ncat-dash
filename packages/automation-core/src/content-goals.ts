@@ -14,6 +14,8 @@ export interface ContentKind {
   detail: string;
   /** Ready-made automations, by id, in the order they are offered. */
   starters: string[];
+  /** Recorded in online meetings, so connecting a meeting app is offered while setting up. */
+  meetings?: boolean;
 }
 
 export const CONTENT_KINDS: ContentKind[] = [
@@ -22,18 +24,21 @@ export const CONTENT_KINDS: ContentKind[] = [
     label: "Coaching or Courses",
     detail: "Sessions, group calls, webinars and lessons",
     starters: ["coaching-session-pack", "recording-pack"],
+    meetings: true,
   },
   {
     id: "podcast",
     label: "Podcast",
     detail: "Episodes recorded on video or audio",
     starters: ["podcast-master", "clips-follow-speaker"],
+    meetings: true,
   },
   {
     id: "talks",
     label: "Sermons or Talks",
     detail: "Services, keynotes, panels and lectures",
     starters: ["recording-pack", "social-clips"],
+    meetings: true,
   },
   {
     id: "music",
@@ -58,6 +63,7 @@ export const CONTENT_KINDS: ContentKind[] = [
     label: "Entrepreneurs",
     detail: "Founders, personal brands and solo businesses",
     starters: ["clips-follow-speaker", "caption-uploads"],
+    meetings: true,
   },
   {
     id: "business",
@@ -86,6 +92,11 @@ export const POSTING_APPS = [
 export type PostingAppId = (typeof POSTING_APPS)[number]["id"];
 
 export const MAX_CONTENT_KINDS = CONTENT_KINDS.length;
+
+/** Whether any kind picked is recorded in online meetings (Zoom, Google Meet, Teams). */
+export function recordsMeetings(kinds: readonly string[]): boolean {
+  return CONTENT_KINDS.some((kind) => kind.meetings === true && kinds.includes(kind.id));
+}
 
 /** The placements the picked apps stand for, in the order the apps are listed. */
 export function placementsFor(apps: readonly string[]): string[] {

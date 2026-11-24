@@ -79,13 +79,13 @@ export async function addLibraryItem(ctx: MutationCtx, item: NewItem): Promise<I
       automationName: item.automationName,
     }),
   });
-  const { searchNewFiles } = await librarySettingsOf(ctx, item.organizationId);
-  const transcribe = item.source === "upload" || searchNewFiles;
-  if (transcribe && (item.kind === "video" || item.kind === "audio")) {
+  // Every video and sound, brought in or made by an automation, is transcribed once, so it
+  // can be searched by what was said and has its SRT and VTT.
+  if (item.kind === "video" || item.kind === "audio") {
     await ctx.scheduler.runAfter(0, internal.library.transcribe, { itemId });
   }
   // A new video is also looked at by the picture model, so it can be found as B-Roll.
-  if (searchNewFiles && item.kind === "video") {
+  if (item.kind === "video") {
     await ctx.scheduler.runAfter(0, internal.broll.lookAt, { itemId });
   }
   // A caption file is read straight away: its lines are already timed, nothing to transcribe.

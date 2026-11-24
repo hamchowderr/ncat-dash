@@ -428,8 +428,11 @@ describe("Add B-Roll", () => {
     expect(step.cutaways?.map((one) => one.said)).toEqual(["plenty of patience to finish."]);
     const question = sent.find((one) => one.url === `${AGENT_URL}/ncat/moments`)!;
     expect(question.body.kind).toBe("broll");
-    // The video was transcribed once for both steps.
-    expect(sent.filter((one) => one.url.endsWith("/v1/media/transcribe"))).toHaveLength(1);
+    // The video was transcribed once for both steps; the finished video is too, as a new file.
+    const transcribed = sent
+      .filter((one) => one.url.endsWith("/v1/media/transcribe"))
+      .map((one) => String(one.body.media_url));
+    expect(transcribed.filter((url) => url.includes("/uploads/story.mp4"))).toHaveLength(1);
   });
 });
 

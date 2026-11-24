@@ -456,28 +456,19 @@ describe("searching", () => {
     }
   });
 
-  test("a file an automation made is transcribed only with the setting on", async () => {
+  test("a file an automation made is transcribed by itself, like an upload", async () => {
     vi.useFakeTimers();
-    const { t, team, upload, finishedRun, toolkit } = await studio();
+    const { t, upload, finishedRun, toolkit } = await studio();
     const episode = await upload("episode.mp4");
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-    const { runId } = await finishedRun(episode, [`${LINK}/${JOB}_output_0.mp4`]);
-    toolkit.put(`${JOB}_output_0.mp4`);
-    await t.action(internal.files.keepFinished, { runId });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     const transcribed = async () =>
       (await t.run((ctx) => ctx.db.query("jobs").collect())).filter(
         (job) => job.stepId === "media-transcribe",
       ).length;
     expect(await transcribed()).toBe(1);
-
-    // Set straight in the table: the fake clock has run far past the sign-in by now.
-    await t.run((ctx) =>
-      ctx.db.insert("librarySettings", { organizationId: team, searchNewFiles: true }),
-    );
-    const second = await finishedRun(episode, [`${LINK}/${JOB}_output_1.mp4`]);
-    toolkit.put(`${JOB}_output_1.mp4`);
-    await t.action(internal.files.keepFinished, { runId: second.runId });
+    const { runId } = await finishedRun(episode, [`${LINK}/${JOB}_output_0.mp4`]);
+    toolkit.put(`${JOB}_output_0.mp4`);
+    await t.action(internal.files.keepFinished, { runId });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect(await transcribed()).toBe(2);
   });
@@ -551,7 +542,7 @@ describe("searching", () => {
 });
 
 describe("catching up files brought in before every upload was transcribed", () => {
-  test("each older video and sound brought in is transcribed once, by itself", async () => {
+  test("each older video and sound, brought in or made, is transcribed once, by itself", async () => {
     vi.useFakeTimers();
     const { t, team, maya, sam } = await studio();
     const old = (title: string, kind: "video" | "audio" | "image", extra = {}) =>
@@ -572,14 +563,14 @@ describe("catching up files brought in before every upload was transcribed", () 
     const episode = await old("episode.mp4", "video");
     const theme = await old("theme.mp3", "audio");
     await old("still.png", "image");
-    await old("clip.mp4", "video", { source: "automation" });
+    const clip = await old("clip.mp4", "video", { source: "automation" });
     await old("done.mp4", "video", { transcript: { status: "ready", at: 1 } });
     await old("failed.mp4", "video", {
       transcript: { status: "failed", error: "No sound.", at: 1 },
     });
 
     // Anyone on the team may set it off; it is what opening the dashboard does.
-    expect(await sam.as.mutation(api.library.catchUpTranscripts, { organizationId: team })).toBe(2);
+    expect(await sam.as.mutation(api.library.catchUpTranscripts, { organizationId: team })).toBe(3);
     // Already on their way: a second visit sends nothing more.
     expect(await maya.as.mutation(api.library.catchUpTranscripts, { organizationId: team })).toBe(
       0,
@@ -595,8 +586,8 @@ describe("catching up files brought in before every upload was transcribed", () 
     const jobs = (await t.run((ctx) => ctx.db.query("jobs").collect())).filter(
       (job) => job.stepId === "media-transcribe",
     );
-    expect(jobs.map((job) => job.libraryItemId).sort()).toEqual([episode, theme].sort());
-    for (const itemId of [episode, theme]) {
+    expect(jobs.map((job) => job.libraryItemId).sort()).toEqual([episode, theme, clip].sort());
+    for (const itemId of [episode, theme, clip]) {
       const item = await t.run((ctx) => ctx.db.get(itemId));
       expect(item?.transcript).toMatchObject({ status: "working" });
       expect(item?.transcript?.jobId).toBeTruthy();
