@@ -110,7 +110,7 @@ function Shell({
           </header>
           <div
             data-page-frame
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable]"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto"
           >
             <PageTransition key={pathname}>
               <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">
