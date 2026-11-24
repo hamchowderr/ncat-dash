@@ -1,5 +1,5 @@
 import { api } from "@convex/_generated/api";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test } from "vitest";
 
@@ -68,6 +68,7 @@ describe("translating a file", () => {
   test("picks a language to translate into, once", async () => {
     const user = userEvent.setup();
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Transcript" }), { button: 0 });
     // No translations yet: only the Translate button, no language picker.
     expect(screen.queryByLabelText("Language")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Translate" }));
@@ -85,6 +86,7 @@ describe("translating a file", () => {
     answerQuery(api.translations.list, [SPANISH]);
     const user = userEvent.setup();
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Transcript" }), { button: 0 });
     await user.click(screen.getByRole("button", { name: "Translate" }));
     expect(screen.queryByRole("option", { name: "Spanish" })).toBeNull();
     expect(screen.getByRole("option", { name: "French" })).toBeTruthy();
@@ -94,6 +96,7 @@ describe("translating a file", () => {
     answerQuery(api.translations.list, [SPANISH]);
     const user = userEvent.setup();
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Transcript" }), { button: 0 });
     await pick(user, screen.getByLabelText("Language"), "Spanish");
     const lines = screen.getByTestId("translation");
     expect(within(lines).getByText("Hablemos de precios.")).toBeTruthy();
@@ -124,6 +127,7 @@ describe("translating a file", () => {
     try {
       const user = userEvent.setup();
       renderInApp(<LibraryItemView itemId={"i1" as never} />);
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Transcript" }), { button: 0 });
       await pick(user, screen.getByLabelText("Language"), "Spanish");
       await user.click(screen.getByRole("button", { name: "Download" }));
       await user.click(await screen.findByRole("menuitem", { name: "SRT subtitles (.srt)" }));
@@ -139,6 +143,7 @@ describe("translating a file", () => {
     answerQuery(api.translations.list, [SPANISH]);
     const user = userEvent.setup();
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Transcript" }), { button: 0 });
     await pick(user, screen.getByLabelText("Language"), "Spanish");
     await user.click(screen.getByRole("button", { name: "Correct the line at 12:31" }));
     const field = screen.getByLabelText("Line at 12:31");
@@ -169,6 +174,7 @@ describe("translating a file", () => {
     ]);
     const user = userEvent.setup();
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Transcript" }), { button: 0 });
     await pick(user, screen.getByLabelText("Language"), "Spanish (translating)");
     expect(screen.getByText(/Translating into Spanish: 1 of 2 lines/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Download" })).toBeNull();

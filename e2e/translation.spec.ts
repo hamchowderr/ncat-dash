@@ -22,7 +22,9 @@ test("a video is translated once, keeps its times, and a line can be corrected",
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Duarte Subtitles");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -36,6 +38,7 @@ test("a video is translated once, keeps its times, and a line can be corrected",
   });
   await page.goto("/library");
   await page.getByRole("link", { name: "Open V1 clip" }).click();
+  await page.getByRole("tab", { name: "Transcript" }).click();
   await expect(
     page.getByTestId("transcript").getByText("Today we talk about pricing your edits."),
   ).toBeVisible({ timeout: 30_000 });
@@ -77,6 +80,7 @@ test("a video is translated once, keeps its times, and a line can be corrected",
   await page.getByLabel("Line at 0:00").press("Enter");
   await expect(lines.getByText("Bienvenidos de nuevo a la estación.")).toBeVisible();
   await page.reload();
+  await page.getByRole("tab", { name: "Transcript" }).click();
   await pick(page.getByLabel("Language"), "Spanish");
   await expect(
     page.getByTestId("translation").getByText("Bienvenidos de nuevo a la estación."),

@@ -20,7 +20,9 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Duarte Media");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -43,6 +45,10 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   // Transcribed on the toolkit as it came in: nothing to press.
   await expect(page.getByRole("button", { name: /Transcribe 1 file/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Open V1 clip" }).click();
+  // Details first, the words a tab away.
+  await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("data-state", "active");
+  await expect(page.getByRole("button", { name: "Pick an automation" })).toBeVisible();
+  await page.getByRole("tab", { name: "Transcript" }).click();
   const said = page.getByTestId("transcript");
   await expect(said.getByText("Today we talk about pricing your edits.")).toBeVisible({
     timeout: 30_000,
@@ -146,7 +152,9 @@ test("a caption file shows its lines, and they are searched like what was said",
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Duarte Captions");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -163,7 +171,7 @@ test("a caption file shows its lines, and they are searched like what was said",
   await page.goto("/library");
   await page.getByRole("link", { name: "Open F1 clip" }).click();
   const lines = page.getByTestId("transcript");
-  await expect(page.getByRole("tab", { name: "Captions" })).toBeVisible();
+  await page.getByRole("tab", { name: "Captions" }).click();
   await expect(lines.getByText("Today we talk about pricing your edits.")).toBeVisible({
     timeout: 30_000,
   });

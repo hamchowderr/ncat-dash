@@ -180,9 +180,9 @@ function RunMenu({ itemId, teamId }: { itemId: Id<"libraryItems">; teamId: strin
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button disabled={running}>
+        <Button variant="secondary" size="sm" disabled={running}>
           <Play />
-          Run an automation on this
+          Pick an automation
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
@@ -355,7 +355,10 @@ export function LibraryItemView({
   const hasWords = speaks || captions;
   const hasStoryboard = item.source === "upload" && speaks && !captions;
   const wordsReady = item.searchable === "ready" && pieces.length > 0;
-  const openTab = tab ?? (hasWords ? "words" : "details");
+  // Details come first: what the file is, then its words and what was made from it.
+  // Opened from a search (at a moment, or for words) it goes straight to the words.
+  const openTab =
+    tab ?? (hasWords && (at !== undefined || search !== undefined) ? "words" : "details");
 
   // What is being done with the file in the background, each with its own colour.
   const said = transcriptState(item.searchable, item.source);
@@ -488,7 +491,6 @@ export function LibraryItemView({
               )}
             </p>
           </div>
-          <RunMenu itemId={item._id} teamId={team.id} />
         </div>
         <WorkRow works={works} />
       </header>
@@ -506,6 +508,7 @@ export function LibraryItemView({
           <div className={cn("min-w-0", openTab === "storyboard" && "hidden")}>{player}</div>
           <div className="flex min-w-0 flex-col gap-4">
             <TabsList variant="line" className="h-9 max-w-full justify-start overflow-x-auto">
+              <TabsTrigger value="details">Details</TabsTrigger>
               {hasWords && (
                 <TabsTrigger value="words">{captions ? "Captions" : "Transcript"}</TabsTrigger>
               )}
@@ -516,7 +519,6 @@ export function LibraryItemView({
                   <span className="text-muted-foreground tabular-nums">{item.children.length}</span>
                 </TabsTrigger>
               )}
-              <TabsTrigger value="details">Details</TabsTrigger>
             </TabsList>
             <div
               className={cn(
@@ -745,6 +747,15 @@ export function LibraryItemView({
                       })}
                     </Fact>
                   </dl>
+
+                  <div className="flex flex-col items-start gap-2">
+                    <h2 className="text-sm font-medium">Run an automation on it</h2>
+                    <p className="text-muted-foreground text-xs">
+                      Automations set to start on an upload run by themselves. This runs one of the
+                      others on this file now.
+                    </p>
+                    <RunMenu itemId={item._id} teamId={team.id} />
+                  </div>
 
                   <div className="flex flex-col gap-2">
                     <h2 className="text-sm font-medium">Stars</h2>

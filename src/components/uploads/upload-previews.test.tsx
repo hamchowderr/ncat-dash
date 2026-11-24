@@ -27,6 +27,7 @@ function upload(id: string, fileName: string, contentType: string, details: obje
     _id: id,
     _creationTime: 0,
     fileName,
+    key: `uploads/${fileName}`,
     contentType,
     size: 48 * 1024 * 1024,
     status: "ready",
@@ -155,7 +156,8 @@ describe("the Uploads page shows each file", () => {
     renderInApp(<UploadsView />);
     fireEvent.click(screen.getByRole("button", { name: "Open still-reading.mov" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("link", { name: "Transcript on its way" })).toBeTruthy();
+    // The chip says it is on its way; the link comes once there are words.
+    expect(within(dialog).queryByRole("link", { name: /Transcript/ })).toBeNull();
     // In amber while it is being made.
     const working = within(dialog).getByRole("status", { name: "Transcript and SRT: In progress" });
     expect(working.getAttribute("data-state")).toBe("working");
@@ -168,13 +170,33 @@ describe("the Uploads page shows each file", () => {
     expect(within(dialog).getByText(/still reading this file's details/)).toBeTruthy();
   });
 
-  test("removing from the open file closes it", async () => {
+  test("deleting the open file asks first, then deletes it from storage", async () => {
+    actionOf(api.files.remove).mockResolvedValue({ removed: 1, leftBehind: 0 });
     renderInApp(<UploadsView />);
     fireEvent.click(screen.getByRole("button", { name: "Open Big Talk.mp4" }));
     const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Remove from this list" }));
-    expect(mutationOf(api.storage.removeUpload)).toHaveBeenCalledWith({ uploadId: "u1" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    const confirm = await screen.findByRole("dialog", { name: "Delete Big Talk.mp4?" });
+    expect(confirm.textContent).toContain("from your storage, the library and this list for good");
+    expect(actionOf(api.files.remove)).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(actionOf(api.files.remove)).toHaveBeenCalledWith({
+        organizationId: "team_1",
+        keys: ["uploads/Big Talk.mp4"],
+      }),
+    );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(mutationOf(api.storage.removeUpload)).not.toHaveBeenCalled();
+  });
+
+  test("cancelling the question deletes nothing", async () => {
+    renderInApp(<UploadsView />);
+    fireEvent.click(screen.getByRole("button", { name: "Delete Big Talk.mp4" }));
+    const confirm = await screen.findByRole("dialog", { name: "Delete Big Talk.mp4?" });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(actionOf(api.files.remove)).not.toHaveBeenCalled();
   });
 
   test("a list keeps every column, with a frame at the start of each row", async () => {
