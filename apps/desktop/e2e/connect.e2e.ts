@@ -117,7 +117,7 @@ beforeAll(async () => {
   // A stand-in dashboard: answers the address check and serves a page.
   [server, serverAddress] = await listen((req, res) => {
     if (req.url === "/api/desktop") {
-      res.writeHead(200, { "content-type": "application/json" }).end('{"app":"ncat-dash"}');
+      res.writeHead(200, { "content-type": "application/json" }).end('{"app":"takewon"}');
     } else if (req.url === "/media/talk.mp4") {
       res.writeHead(200, { "content-type": "video/mp4" }).end("video bytes");
     } else {

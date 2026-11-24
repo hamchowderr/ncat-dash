@@ -12,6 +12,7 @@ on:
     branches: [main]
     paths:
       - "convex/**"
+      - "scripts/preview-origins.mjs"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/convex-preview.yml"
@@ -44,3 +45,5 @@ jobs:
           test -n "$CONVEX_SELF_HOSTED_URL" || { echo "Set the CONVEX_PREVIEW_URL variable."; exit 1; }
           test -n "$CONVEX_SELF_HOSTED_ADMIN_KEY" || { echo "Set the CONVEX_PREVIEW_ADMIN_KEY secret."; exit 1; }
           pnpm exec convex deploy -y --typecheck disable
+          # Previews of the takewon-app Vercel project come as takewon-<hash>-... and takewon-app-git-<branch>-...; this covers both.
+          node scripts/preview-origins.mjs "https://takewon-*-otaku-solutions.vercel.app"

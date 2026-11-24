@@ -6,6 +6,6 @@ describe("the address check the desktop app makes", () => {
   test("answers which app this is", async () => {
     const reply = GET();
     expect(reply.status).toBe(200);
-    expect(await reply.json()).toEqual({ app: "ncat-dash" });
+    expect(await reply.json()).toEqual({ app: "takewon" });
   });
 });
