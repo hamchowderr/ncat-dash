@@ -448,8 +448,14 @@ test("approving the room lets the automation finish", async () => {
   await expect(jordan.getByText("Done").filter({ visible: true }).first()).toBeVisible();
 });
 
-test("Outputs shows the run's files and sends them to review", async () => {
+test("Files shows the run's files and sends them to review", async () => {
+  // The old Outputs address lands on the Recently Made tab of Files.
   await jordan.goto("/outputs");
+  await expect(jordan).toHaveURL(/\/files\?tab=made$/);
+  await expect(jordan.getByRole("tab", { name: "Recently Made" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   const run = jordan.getByRole("region", { name: /^Weekly clips, / });
   await expect(run).toContainText("From station-interview.webm · Webhook");
   await expect(run.getByRole("heading", { name: "Split video · 2 files" })).toBeVisible();
