@@ -96,6 +96,18 @@ describe("the Automations page", () => {
     expect(within(reel).getByRole("switch", { name: "Daily reel is on" })).toBeChecked();
   });
 
+  test("suggests what goes well with the team's automations below the list, not in a folder", () => {
+    answerQuery(api.automations.teamFollowOns, [
+      { automationId: "a1", automationName: "Daily reel", starterId: "brand-every-clip" },
+    ]);
+    const { unmount } = show([automation("a1", { name: "Daily reel" })]);
+    const section = screen.getByRole("region", { name: "Goes well with what you have" });
+    expect(within(section).getByText("After Daily reel")).toBeInTheDocument();
+    unmount();
+    show([automation("a2", { folderId: "shorts" })], "?folder=shorts");
+    expect(screen.queryByRole("region", { name: "Goes well with what you have" })).toBeNull();
+  });
+
   test("a folder opens onto what is in it, with a way back", () => {
     show(
       [
