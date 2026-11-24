@@ -2,6 +2,7 @@ import { formatMoment } from "@takewon/review-core";
 import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { type Speaker, speakerOf } from "./lib/reviewSpeaker";
 import { type ReviewPost, reviewPostValidator } from "./lib/slackPosts";
 import { botToken, plain, site } from "./microsoftTeams";
 
@@ -53,7 +54,9 @@ export const postContext = internalQuery({
         mentioned.push({ name, aadObjectId: link?.aadObjectId ?? null });
       }
     }
+    const people = await ctx.runQuery(components.betterAuth.members.people, { organizationId });
     return {
+      speaker: speakerOf(post, people),
       // A reply goes into its thread, wherever that thread is; a new one to the channel.
       conversationId: thread?.conversationId ?? tenant.alertConversationId,
       serviceUrl: thread?.serviceUrl ?? tenant.alertServiceUrl,
@@ -78,22 +81,18 @@ function quoted(body: string): string {
     .join("\n");
 }
 
-/** The words of a post, in Teams markdown. Exported for the tests. */
-export function postText(
-  post: ReviewPost,
-  context: {
-    reviewTitle: string;
-    fromAutomation: boolean;
-    openedBy: string | null;
-    clipCount: number;
-    clipId: string | null;
-    clipTitle: string | null;
-    time: number | null;
-    rootActivityId: string | null;
-  },
-  tags: string[],
-  siteUrl: string,
-): string {
+type PostContext = {
+  reviewTitle: string;
+  fromAutomation: boolean;
+  openedBy: string | null;
+  clipCount: number;
+  clipId: string | null;
+  clipTitle: string | null;
+  time: number | null;
+  rootActivityId: string | null;
+};
+
+function linkAndWhere(post: ReviewPost, context: PostContext, siteUrl: string) {
   const query = new URLSearchParams();
   if (context.clipId) query.set("clip", context.clipId);
   if ("commentId" in post && post.commentId) query.set("comment", post.commentId);
@@ -105,6 +104,17 @@ export function postText(
     context.time === null
       ? link
       : `${link}, ${plain(context.clipTitle ?? "a clip")} at ${formatMoment(context.time)}`;
+  return { link, where };
+}
+
+/** The words of a post, in Teams markdown. Exported for the tests. */
+export function postText(
+  post: ReviewPost,
+  context: PostContext,
+  tags: string[],
+  siteUrl: string,
+): string {
+  const { link, where } = linkAndWhere(post, context, siteUrl);
   const inThread = context.rootActivityId !== null;
   const tagged = tags.length > 0 ? `${tags.join(" ")} ` : "";
 
@@ -131,6 +141,97 @@ export function postText(
     case "team_reply":
       return `**${plain(post.from)}**: ${plain(post.body)}`;
   }
+}
+
+/**
+ * Something a person wrote, as Teams shows it closest to coming from them: an Adaptive
+ * Card headed by their name and picture (clients as "Riley (client)"), then what they
+ * wrote. Teams has no way for a bot to post under someone else's name, so the card's
+ * header is how the writer is shown. Exported for the tests.
+ */
+export function speakerCard(
+  post: Exclude<ReviewPost, { kind: "review_opened" }>,
+  context: PostContext,
+  tags: string[],
+  siteUrl: string,
+  speaker: Speaker,
+  entities: unknown[],
+) {
+  const { link, where } = linkAndWhere(post, context, siteUrl);
+  const inThread = context.rootActivityId !== null;
+  const tagged = tags.length > 0 ? `${tags.join(" ")} ` : "";
+  const body = plain(post.body);
+  let lead: string;
+  let quote: string | null = null;
+  switch (post.kind) {
+    case "client_feedback":
+      if (inThread) lead = body;
+      else {
+        lead = post.commentId ? `Commented on ${where}` : `On ${link}`;
+        quote = body;
+      }
+      break;
+    case "mention":
+      if (inThread) lead = `${tagged}${body}`;
+      else {
+        lead = `Mentioned ${tags.length > 0 ? tags.join(" ") : "someone"} on ${where}`;
+        quote = body;
+      }
+      break;
+    case "team_reply":
+      lead = body;
+      break;
+  }
+  const header = {
+    type: "ColumnSet",
+    columns: [
+      ...(speaker.image
+        ? [
+            {
+              type: "Column",
+              width: "auto",
+              items: [
+                {
+                  type: "Image",
+                  url: speaker.image,
+                  altText: speaker.name,
+                  style: "Person",
+                  size: "Small",
+                },
+              ],
+            },
+          ]
+        : []),
+      {
+        type: "Column",
+        width: "stretch",
+        verticalContentAlignment: "Center",
+        items: [{ type: "TextBlock", text: plain(speaker.name), weight: "Bolder", wrap: true }],
+      },
+    ],
+  };
+  return {
+    contentType: "application/vnd.microsoft.card.adaptive",
+    content: {
+      $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+      type: "AdaptiveCard",
+      version: "1.4",
+      body: [
+        header,
+        { type: "TextBlock", text: lead, wrap: true },
+        ...(quote
+          ? [
+              {
+                type: "Container",
+                style: "emphasis",
+                items: [{ type: "TextBlock", text: quote, wrap: true }],
+              },
+            ]
+          : []),
+      ],
+      msteams: { width: "Full", ...(entities.length > 0 ? { entities } : {}) },
+    },
+  };
 }
 
 /** Posts one piece of review activity to the team's Teams channel. */
@@ -169,12 +270,23 @@ export const post = internalAction({
       {
         method: "POST",
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          type: "message",
-          textFormat: "markdown",
-          text: postText(args.post, context, tags, site()),
-          ...(entities.length > 0 ? { entities } : {}),
-        }),
+        body: JSON.stringify(
+          context.speaker && args.post.kind !== "review_opened"
+            ? {
+                // Shown under the writer's name and picture; a new review stays the bot's.
+                type: "message",
+                summary: `${context.speaker.name}: ${args.post.body}`.slice(0, 200),
+                attachments: [
+                  speakerCard(args.post, context, tags, site(), context.speaker, entities),
+                ],
+              }
+            : {
+                type: "message",
+                textFormat: "markdown",
+                text: postText(args.post, context, tags, site()),
+                ...(entities.length > 0 ? { entities } : {}),
+              },
+        ),
       },
     ).catch(() => null);
     if (!response?.ok) return;
