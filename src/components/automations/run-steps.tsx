@@ -31,7 +31,13 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { MediaPreview, OutputNamesProvider, useFileName } from "@/components/jobs/media-preview";
+import {
+  MediaPreview,
+  OutputNamesProvider,
+  useFileName,
+  useFilePlatform,
+} from "@/components/jobs/media-preview";
+import { PlatformTag } from "@/components/platform-tag";
 import { FailureText } from "@/components/failure-text";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -161,10 +167,15 @@ function stepSentence(
   if ((node.kind === "motion" || node.kind === "sound-effects") && step.pickNote) {
     return step.pickNote;
   }
-  const made = node.kind === "step" ? step.outputs.length : 0;
+  const made = showsFiles(node) ? step.outputs.length : 0;
   if (made === 1) return "Made 1 file.";
   if (made > 1) return `Made ${made} files.`;
   return "Finished.";
+}
+
+/** Steps whose own files are shown on the run page: plain steps and the clip cutters. */
+function showsFiles(node: AutomationNode) {
+  return node.kind === "step" || node.kind === "clips" || node.kind === "moments";
 }
 
 /** Counts down to a step's next try. */
@@ -195,6 +206,7 @@ function ReviewLink({ runStepId }: { runStepId: Id<"runSteps"> }) {
 /** A small picture of one file a step made. Choosing it plays the file in a larger view. */
 function FileTile({ url, onOpen }: { url: string; onOpen: () => void }) {
   const name = useFileName()(url);
+  const platform = useFilePlatform()(url);
   return (
     <li>
       <button
@@ -232,9 +244,14 @@ function FileTile({ url, onOpen }: { url: string; onOpen: () => void }) {
             <FileText className="text-muted-foreground size-5" aria-hidden="true" />
           )}
         </span>
-        <span className="truncate px-2 py-1.5 text-xs font-medium" title={name}>
+        <span className="truncate px-2 pt-1.5 text-xs font-medium" title={name}>
           {name}
         </span>
+        {platform ? (
+          <PlatformTag platform={platform} className="mx-2 mb-1.5 mt-1 self-start" />
+        ) : (
+          <span className="pb-1.5" />
+        )}
       </button>
     </li>
   );
@@ -471,7 +488,7 @@ export function RunSteps({
                 : [];
             // Only what the step made: not what it handed on while off or after failing.
             const files =
-              (node.kind === "step" || (node.kind === "automation" && waitsForRun(node))) &&
+              (showsFiles(node) || (node.kind === "automation" && waitsForRun(node))) &&
               !node.off &&
               step.status !== "failed"
                 ? step.outputs

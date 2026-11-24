@@ -179,6 +179,30 @@ describe("what happened in a run", () => {
     expect(document.body.textContent).not.toContain("video-caption-29.mp4");
   });
 
+  test("the clips a Clips for a platform step cut show as tiles tagged with the platform", () => {
+    const cut = "https://files.example/out/ca4934e3_output_0.mp4";
+    renderInApp(
+      <RunSteps
+        run={run({
+          steps: [step({ nodeId: "clips", outputs: [cut] })],
+          outputNames: { [cut]: "Long interview Instagram Reels clip 1" },
+          outputPlatforms: { [cut]: "Instagram Reels" },
+        })}
+        highlighted={null}
+        busy={false}
+        onDecide={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Made 1 file.")).toBeTruthy();
+    const files = screen.getByRole("list", { name: "Files from Clips for a platform" });
+    const tile = within(files).getByRole("button", {
+      name: /Long interview Instagram Reels clip 1/,
+    });
+    expect(within(tile).getByTitle("Made for Instagram Reels")).toBeTruthy();
+    fireEvent.click(tile);
+    expect(within(screen.getByRole("dialog")).getByTitle("Made for Instagram Reels")).toBeTruthy();
+  });
+
   test("past eight files, the rest are in Files", () => {
     const many = Array.from({ length: 11 }, (_, i) => `https://files.example/out/clip-${i}.mp4`);
     renderInApp(
