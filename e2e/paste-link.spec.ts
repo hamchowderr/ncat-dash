@@ -1,3 +1,5 @@
+import type { Page } from "@playwright/test";
+
 import { expect, test } from "./test";
 
 // A video from a pasted link, in a real browser against a real backend: the stand-in
@@ -12,6 +14,15 @@ if (process.env.RECORD_VIDEO === "1") {
     video: { mode: "on", size: { width: 1440, height: 900 } },
     launchOptions: { slowMo: 250 },
   });
+}
+
+/** Once the Library has files, Paste a link is a button at the top that opens a small window. */
+async function pasteInDialog(page: Page, url: string) {
+  await page.getByRole("button", { name: "Paste a link" }).click();
+  const dialog = page.getByRole("dialog", { name: "Bring in a video from a link" });
+  await dialog.getByLabel("Paste a link to a video").fill(url);
+  await dialog.getByRole("button", { name: "Bring in" }).click();
+  await expect(dialog).toBeHidden();
 }
 
 const COOKIES = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tabc\n";
@@ -46,8 +57,7 @@ test("a pasted link comes into the Library, and cookies get past a sign-in", asy
 
   // YouTube asks a server to sign in.
   const youtube = "https://www.youtube.com/watch?v=needs-sign-in";
-  await page.getByLabel("Paste a link to a video").fill(youtube);
-  await page.getByRole("button", { name: "Bring in" }).click();
+  await pasteInDialog(page, youtube);
   await expect(page.getByText(/asks for a sign-in before it shares this video/)).toBeVisible({
     timeout: 60_000,
   });
@@ -60,8 +70,7 @@ test("a pasted link comes into the Library, and cookies get past a sign-in", asy
   await page.goto("/library");
   await page.getByRole("button", { name: "Put away" }).click();
   await expect(page.getByText(/asks for a sign-in/)).toBeHidden();
-  await page.getByLabel("Paste a link to a video").fill(youtube);
-  await page.getByRole("button", { name: "Bring in" }).click();
+  await pasteInDialog(page, youtube);
   await expect(page.getByLabel(/^Open V\d+ Crew interview reel$/)).toHaveCount(2, {
     timeout: 60_000,
   });

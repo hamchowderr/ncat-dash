@@ -306,7 +306,7 @@ export function UploadButtons({ uploader }: { uploader: Uploader }) {
               shows in your Library once it is in.
             </DialogDescription>
           </DialogHeader>
-          <PasteLink />
+          <PasteLink onBrought={() => setPasting(false)} />
         </DialogContent>
       </Dialog>
     </div>

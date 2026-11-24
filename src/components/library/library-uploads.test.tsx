@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { actionOf, answerQuery } from "@/test/convex";
+import { actionOf, answerQuery, mutationOf } from "@/test/convex";
 import { EMPTY_LIBRARY, emptyLibrary } from "@/test/library";
 import { renderInApp } from "@/test/render";
 
@@ -67,6 +67,24 @@ describe("uploading on the Library", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Paste a link" }));
     const dialog = await screen.findByRole("dialog", { name: "Bring in a video from a link" });
     expect(dialog).toContainElement(screen.getByLabelText("Paste a link to a video"));
+  });
+
+  test("the window closes once the link is on its way, so the page shows it coming in", async () => {
+    answerQuery(api.library.list, { ...EMPTY_LIBRARY, items: [EPISODE] });
+    mutationOf(api.links.bringIn).mockResolvedValue(null);
+    renderInApp(<LibraryView />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Paste a link" }));
+    await screen.findByRole("dialog", { name: "Bring in a video from a link" });
+    await user.type(
+      screen.getByLabelText("Paste a link to a video"),
+      "https://www.tiktok.com/@a/video/1",
+    );
+    await user.click(screen.getByRole("button", { name: "Bring in" }));
+    expect(mutationOf(api.links.bringIn)).toHaveBeenCalledWith(
+      expect.objectContaining({ url: "https://www.tiktok.com/@a/video/1", forLook: false }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   test("files dropped anywhere on the page go up", async () => {

@@ -1,5 +1,5 @@
 import { api } from "@convex/_generated/api";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -93,6 +93,11 @@ describe("a video from a link, on the Library", () => {
     uploadsPage();
     expect(screen.getByText("Bringing in the video from tiktok.com.")).toBeInTheDocument();
     expect(screen.getByText(/asks for a sign-in before it shares this video/)).toBeInTheDocument();
+    // The Settings page it names is one click away, right in the message.
+    const failed = document.querySelector('[data-link="failed"]') as HTMLElement;
+    expect(
+      within(failed).getByRole("link", { name: "Settings, Video Links" }).getAttribute("href"),
+    ).toBe("/settings/integrations/video-links");
     await user.click(screen.getByRole("button", { name: "Put away" }));
     expect(dismiss).toHaveBeenCalledWith({ organizationId: TEAM.id, importId: "link_2" });
   });
