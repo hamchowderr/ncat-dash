@@ -12,6 +12,7 @@ import {
 } from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
+import { followStartRename } from "./lib/followRename";
 import { backgroundPool } from "./lib/pools";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -177,9 +178,29 @@ export const get = query({
     const captionFormat = captionFileFormat(item.key ?? item.url ?? "");
     const captionsFor = captionFormat ? await videoCaptioned(ctx, item, parent) : null;
     const clients = await clientsOf(ctx, item.organizationId);
+    // An upload's storyboard is drafted once its transcript is in; this says whether it is.
+    const drafted =
+      item.source === "upload" &&
+      (await ctx.db
+        .query("storyboards")
+        .withIndex("by_library_item", (q) => q.eq("libraryItemId", item._id))
+        .first()) !== null;
+    const upload = item.uploadId ? await ctx.db.get(item.uploadId) : null;
     return {
       ...summaryOf(item, byId, new Map([[item._id as string, children.length]]), clients),
       details: item.details ?? null,
+      storyboardDrafted: drafted,
+      // Where it is in the team's storage, for deleting it from there; null for a link.
+      key: item.key ?? null,
+      // The upload it came in as: its link, its look, and who shared it.
+      upload: upload
+        ? {
+            _id: upload._id,
+            fileName: upload.fileName,
+            size: upload.size,
+            sharedBy: upload.sharedBy ?? null,
+          }
+        : null,
       runId: item.runId ?? null,
       automationId: item.runId ? ((await ctx.db.get(item.runId))?.automationId ?? null) : null,
       transcriptError:
@@ -337,6 +358,9 @@ export const rename = mutation({
       title,
       searchText: librarySearchText({ ...item, title }),
     });
+    // What was made from it follows, unless someone renamed those by hand.
+    const followed = await followStartRename(ctx, item, item.title, title);
+    return { followed };
   },
 });
 

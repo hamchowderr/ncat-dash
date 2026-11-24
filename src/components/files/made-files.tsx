@@ -17,16 +17,16 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { nodeTitle, RUN_TRIGGER_LABELS } from "@/lib/automations";
 import { errorMessage, stepTitle } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 
-import { MediaPreview, OutputNamesProvider } from "./media-preview";
+import { MediaPreview, OutputNamesProvider } from "@/components/jobs/media-preview";
 
 type RunOutputs = FunctionReturnType<typeof api.outputs.byRun>["page"][number];
 type FileGroup = RunOutputs["finished"][number];
@@ -65,36 +65,43 @@ function useSendToReview() {
   return { sending, send };
 }
 
-export function OutputsView() {
+const HAND = "hand";
+
+/**
+ * The files automations and steps made, newest first, by the run that made them. Lives on
+ * the Files page beside the folders, so there is one place for every file.
+ */
+export function MadeFiles() {
+  const team = useActiveTeam();
+  const [madeBy, setMadeBy] = useState(ALL);
+  const automations = useQuery(api.automations.list, { organizationId: team.id });
+
   return (
-    <>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Outputs</h1>
-        <p className="text-muted-foreground text-sm">
-          Every file your automations and steps have made, by the run that made it. The files live
-          in your own storage.
-        </p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={madeBy} onValueChange={setMadeBy}>
+          <SelectTrigger aria-label="Made by" className="min-w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All automations</SelectItem>
+            {(automations ?? []).map((item) => (
+              <SelectItem key={item._id} value={item._id}>
+                {item.name}
+              </SelectItem>
+            ))}
+            <SelectSeparator />
+            <SelectItem value={HAND}>Steps run by hand</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-      <Tabs defaultValue="runs" className="gap-4">
-        <TabsList>
-          <TabsTrigger value="runs">From automations</TabsTrigger>
-          <TabsTrigger value="hand">Steps run by hand</TabsTrigger>
-        </TabsList>
-        <TabsContent value="runs">
-          <ByRun />
-        </TabsContent>
-        <TabsContent value="hand">
-          <ByHand />
-        </TabsContent>
-      </Tabs>
-    </>
+      {madeBy === HAND ? <ByHand /> : <ByRun automation={madeBy} />}
+    </div>
   );
 }
 
-function ByRun() {
+function ByRun({ automation }: { automation: string }) {
   const team = useActiveTeam();
-  const [automation, setAutomation] = useState(ALL);
-  const automations = useQuery(api.automations.list, { organizationId: team.id });
   const { results, status, loadMore } = usePaginatedQuery(
     api.outputs.byRun,
     {
@@ -113,22 +120,6 @@ function ByRun() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={automation} onValueChange={setAutomation}>
-          <SelectTrigger aria-label="Automation" className="min-w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All automations</SelectItem>
-            {(automations ?? []).map((item) => (
-              <SelectItem key={item._id} value={item._id}>
-                {item.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {results.length === 0 && status !== "Exhausted" ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : results.length === 0 ? (
@@ -142,7 +133,12 @@ function ByRun() {
           action="Go to Automations"
         />
       ) : (
-        results.map((run) => <RunCard key={run.runId} run={run} review={review} />)
+        // Each run is as wide as its files, and runs sit side by side to fill the row.
+        <div data-runs className="flex flex-wrap items-start gap-4">
+          {results.map((run) => (
+            <RunCard key={run.runId} run={run} review={review} />
+          ))}
+        </div>
       )}
       <More status={status} onMore={() => loadMore(PAGE)} />
     </div>
@@ -160,7 +156,7 @@ function RunCard({ run, review }: { run: RunOutputs; review: ReturnType<typeof u
     <OutputNamesProvider names={run.names}>
       <section
         aria-label={`${run.automationName}, ${when.format(run.startedAt)}`}
-        className="flex flex-col gap-4 rounded-xl bg-surface p-4"
+        className="flex w-fit max-w-full flex-col gap-4 rounded-xl bg-surface p-4"
       >
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">
@@ -241,9 +237,9 @@ function Group({ group }: { group: FileGroup }) {
         {groupTitle(group)}{" "}
         <span className="text-muted-foreground font-normal">· {files(group.files.length)}</span>
       </h3>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="flex flex-wrap gap-3">
         {group.files.map((url) => (
-          <MediaPreview key={url} url={url} />
+          <MediaPreview key={url} url={url} compact />
         ))}
       </div>
     </div>
@@ -269,41 +265,43 @@ function ByHand() {
           action="Browse steps"
         />
       ) : (
-        results.map((job) => (
-          <section
-            key={job.jobId}
-            aria-label={stepTitle(job.stepId)}
-            className="flex flex-col gap-3 rounded-xl bg-surface p-4"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-medium">
-                {stepTitle(job.stepId)}
-                {job.finishedAt && (
-                  <span className="text-muted-foreground font-normal">
-                    {" "}
-                    · {when.format(job.finishedAt)}
-                  </span>
-                )}
-              </h2>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={review.sending !== null}
-                onClick={() => review.send(job.jobId, stepTitle(job.stepId), job.urls, job.names)}
-              >
-                <MessagesSquare />
-                Send to review
-              </Button>
-            </div>
-            <OutputNamesProvider names={job.names}>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {job.urls.map((url) => (
-                  <MediaPreview key={url} url={url} />
-                ))}
+        <div data-runs className="flex flex-wrap items-start gap-4">
+          {results.map((job) => (
+            <section
+              key={job.jobId}
+              aria-label={stepTitle(job.stepId)}
+              className="flex w-fit max-w-full flex-col gap-3 rounded-xl bg-surface p-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-medium">
+                  {stepTitle(job.stepId)}
+                  {job.finishedAt && (
+                    <span className="text-muted-foreground font-normal">
+                      {" "}
+                      · {when.format(job.finishedAt)}
+                    </span>
+                  )}
+                </h2>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={review.sending !== null}
+                  onClick={() => review.send(job.jobId, stepTitle(job.stepId), job.urls, job.names)}
+                >
+                  <MessagesSquare />
+                  Send to review
+                </Button>
               </div>
-            </OutputNamesProvider>
-          </section>
-        ))
+              <OutputNamesProvider names={job.names}>
+                <div className="flex flex-wrap gap-3">
+                  {job.urls.map((url) => (
+                    <MediaPreview key={url} url={url} compact />
+                  ))}
+                </div>
+              </OutputNamesProvider>
+            </section>
+          ))}
+        </div>
       )}
       <More status={status} onMore={() => loadMore(PAGE)} />
     </div>

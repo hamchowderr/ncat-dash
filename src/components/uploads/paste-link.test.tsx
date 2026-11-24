@@ -1,5 +1,5 @@
 import { api } from "@convex/_generated/api";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -8,9 +8,10 @@ import { VideoLinksCard } from "@/components/settings/video-links-card";
 import { actionOf, answerQuery, mutationOf, resetConvex, toastSuccess } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
-import { UploadsView } from "./uploads-view";
+import { LibraryView } from "@/components/library/library-view";
+import { emptyLibrary } from "@/test/library";
 
-/** Pasting a link to a video: on the Uploads page, in the look step, and its Settings page. */
+/** Pasting a link to a video: on the Library, in the look step, and its Settings page. */
 
 const LINK = "https://www.tiktok.com/@salthouse/video/123";
 
@@ -31,7 +32,9 @@ function uploadsPage() {
   answerQuery(api.storage.listUploads, []);
   actionOf(api.storage.previewLinks).mockResolvedValue([]);
   answerQuery(api.looks.list, { canEdit: true, looks: [], study: null });
-  renderInApp(<UploadsView />);
+  // Files are brought in on the Library page; it starts empty here.
+  emptyLibrary();
+  renderInApp(<LibraryView />);
 }
 
 function lookStep() {
@@ -49,7 +52,7 @@ function lookStep() {
   );
 }
 
-describe("a video from a link, on Uploads", () => {
+describe("a video from a link, on the Library", () => {
   beforeEach(() => resetConvex());
 
   test("pasting a link brings the video in", async () => {
@@ -63,7 +66,9 @@ describe("a video from a link, on Uploads", () => {
     await user.click(screen.getByRole("button", { name: "Bring in" }));
     expect(bringIn).toHaveBeenCalledWith({ organizationId: TEAM.id, url: LINK, forLook: false });
     await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("On its way. It shows in Uploads once it is in."),
+      expect(toastSuccess).toHaveBeenCalledWith(
+        "On its way. It shows in the Library once it is in.",
+      ),
     );
     expect(field).toHaveValue("");
     expect(screen.getByRole("link", { name: "Settings, Video Links" })).toHaveAttribute(
@@ -88,6 +93,11 @@ describe("a video from a link, on Uploads", () => {
     uploadsPage();
     expect(screen.getByText("Bringing in the video from tiktok.com.")).toBeInTheDocument();
     expect(screen.getByText(/asks for a sign-in before it shares this video/)).toBeInTheDocument();
+    // The Settings page it names is one click away, right in the message.
+    const failed = document.querySelector('[data-link="failed"]') as HTMLElement;
+    expect(
+      within(failed).getByRole("link", { name: "Settings, Video Links" }).getAttribute("href"),
+    ).toBe("/settings/integrations/video-links");
     await user.click(screen.getByRole("button", { name: "Put away" }));
     expect(dismiss).toHaveBeenCalledWith({ organizationId: TEAM.id, importId: "link_2" });
   });

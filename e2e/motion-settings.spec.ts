@@ -17,7 +17,9 @@ test("the team picks a motion style, changes it, and it is kept", async ({ page 
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Moreno Studio");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -30,11 +32,32 @@ test("the team picks a motion style, changes it, and it is kept", async ({ page 
     "aria-checked",
     "true",
   );
+  // An example plays beside the styles: the picked one, or the one the pointer is on.
+  const example = card.locator("figure[data-example]");
+  await expect(example).toHaveAttribute(
+    "data-example",
+    "/examples/motion/preset-clean-talking-head.mp4",
+  );
+  await card.getByRole("radio", { name: /Big Word/ }).hover();
+  await expect(example).toHaveAttribute("data-example", "/examples/motion/preset-big-word.mp4");
+  await expect(example.getByText("Example: Big Word")).toBeVisible();
+  // It really plays: the clip loads and its time moves on.
+  await expect
+    .poll(() => example.locator("video").evaluate((video: HTMLVideoElement) => video.currentTime))
+    .toBeGreaterThan(0.3);
+  await expect(example).toBeInViewport();
+  // A look in its list plays too, while the pointer is on it.
+  await card.getByRole("combobox", { name: "Look" }).click();
+  await page.getByRole("option", { name: "Neon" }).hover();
+  await expect(example).toHaveAttribute("data-example", "/examples/motion/look-neon.mp4");
+  await page.keyboard.press("Escape");
   await slow(1200);
   await card.getByRole("radio", { name: /Bold Hook/ }).click();
   await slow(800);
   // Pieces and Names are tabs of their own; the picked style waits on its tab.
   await card.getByRole("tab", { name: "Pieces" }).click();
+  await card.getByRole("checkbox", { name: /Quote card/ }).hover();
+  await expect(example).toHaveAttribute("data-example", "/examples/motion/piece-quote.mp4");
   await card.getByRole("checkbox", { name: /Stat card/ }).click();
   await card.getByRole("tab", { name: "Style" }).click();
   await expect(card.getByText("Bold Hook, changed")).toBeVisible();

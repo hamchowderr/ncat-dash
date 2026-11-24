@@ -6,7 +6,7 @@ import { describe, expect, test } from "vitest";
 import { answerQuery, loadMore, mutationOf, pushed, toastError } from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
-import { OutputsView } from "./outputs-view";
+import { MadeFiles } from "./made-files";
 
 const captioned = [
   "https://files.example/clip-1-captioned.mp4",
@@ -43,10 +43,10 @@ function show(runs: unknown, byHand: unknown = []) {
   answerQuery(api.automations.list, AUTOMATIONS);
   answerQuery(api.outputs.byRun, runs);
   answerQuery(api.outputs.byHand, byHand);
-  renderInApp(<OutputsView />);
+  renderInApp(<MadeFiles />);
 }
 
-describe("Outputs, by run", () => {
+describe("Recently made, by run", () => {
   test("says which automation and file made the files, with a link to the run", () => {
     show([run()]);
     const card = screen.getByRole("region", { name: /^Shorts, / });
@@ -93,6 +93,24 @@ describe("Outputs, by run", () => {
     );
   });
 
+  test("sizes each clip to its own shape, so a tall clip has no wide black frame", () => {
+    show([run()]);
+    const card = screen.getByRole("region", { name: /^Shorts, / });
+    const video = card.querySelector("video")!;
+    expect(video).toHaveClass("h-56", "w-auto");
+    expect(video).not.toHaveClass("aspect-video");
+    expect(video.closest("figure")).toHaveAttribute("data-compact", "true");
+  });
+
+  test("each run is only as wide as its files, and runs sit side by side", () => {
+    show([run(), run({ runId: "run_2" })]);
+    const cards = screen.getAllByRole("region", { name: /^Shorts, / });
+    expect(cards).toHaveLength(2);
+    for (const card of cards) expect(card).toHaveClass("w-fit");
+    expect(cards[0].parentElement).toHaveClass("flex-wrap");
+    expect(cards[1].parentElement).toBe(cards[0].parentElement);
+  });
+
   test("marks a run that did not finish, and a test of one step", () => {
     show([
       run({ status: "failed", runId: "run_2" }),
@@ -134,7 +152,7 @@ describe("Outputs, by run", () => {
       return [run()];
     });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("combobox", { name: "Automation" }));
+    await user.click(screen.getByRole("combobox", { name: "Made by" }));
     await user.click(await screen.findByRole("option", { name: "Audio" }));
     expect(asked.at(-1)).toBe("auto_2");
     expect(asked[0]).toBeUndefined();
@@ -163,8 +181,8 @@ describe("Outputs, by run", () => {
   });
 });
 
-describe("Outputs, steps run by hand", () => {
-  test("lists them on their own tab and sends one to review", async () => {
+describe("Recently made, steps run by hand", () => {
+  test("are picked from the same Made by list, and one is sent to review", async () => {
     show(
       [],
       [
@@ -179,7 +197,8 @@ describe("Outputs, steps run by hand", () => {
     );
     mutationOf(api.reviews.create).mockResolvedValueOnce("rev_3");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("tab", { name: "Steps run by hand" }));
+    await user.click(screen.getByRole("combobox", { name: "Made by" }));
+    await user.click(await screen.findByRole("option", { name: "Steps run by hand" }));
     expect(await screen.findByText("a.mp4")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Send to review" }));
     expect(mutationOf(api.reviews.create)).toHaveBeenCalledWith({

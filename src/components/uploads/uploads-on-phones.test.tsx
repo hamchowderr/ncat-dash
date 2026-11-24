@@ -6,11 +6,14 @@ import { actionOf, answerQuery } from "@/test/convex";
 import { windowWidth } from "@/test/media";
 import { renderInApp } from "@/test/render";
 
-import { UploadsView } from "./uploads-view";
+import { LibraryView } from "@/components/library/library-view";
+import { EMPTY_LIBRARY, emptyLibrary } from "@/test/library";
 
-// Uploads from a phone: the camera roll's wording, tiles two across instead of a nine-column
-// list, the file opened on the whole screen with big buttons, and the screen kept on while
-// a file is still sending.
+// Files are brought in on the Library page; it starts empty here.
+beforeEach(() => emptyLibrary());
+
+// Uploading from a phone, on the Library: the camera roll's wording, tiles two across instead
+// of a list, and the screen kept on while a file is still sending.
 
 vi.mock("@/lib/upload", () => ({
   // Halfway there and never finishing, so the page can be looked at mid-upload.
@@ -49,48 +52,52 @@ afterEach(() => {
   release.mockClear();
 });
 
-describe("Uploads on a phone", () => {
+const tile = (id: string, title: string) => ({
+  _id: id,
+  _creationTime: 0,
+  shortId: "V1",
+  kind: "video",
+  source: "upload",
+  title,
+  tags: [],
+  rating: null,
+  duration: 60,
+  automationName: null,
+  parent: null,
+  client: null,
+  made: 0,
+  searchable: "no",
+});
+
+describe("Uploading from a phone", () => {
   test("says the files come from the phone on a touch screen, and from the computer otherwise", () => {
     windowWidth(390);
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     expect(screen.getByText("Choose videos and photos from your phone.")).toHaveClass(
       "pointer-coarse:block",
     );
-    expect(screen.getByText("Drop files here, or choose them from your computer.")).toHaveClass(
+    expect(screen.getByText(/^Drop files here, or choose them from your computer\./)).toHaveClass(
       "pointer-coarse:hidden",
     );
   });
 
   test("always shows tiles, two across, even when list was picked on a computer", () => {
-    window.localStorage.setItem("uploads-layout", "list");
+    answerQuery(api.library.list, { ...EMPTY_LIBRARY, items: [tile("i1", "Beach day")] });
+    window.localStorage.setItem("library-layout", JSON.stringify("list"));
     windowWidth(390);
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     expect(screen.queryByRole("table")).toBeNull();
-    const grid = within(screen.getByRole("region", { name: "Your uploads" })).getByRole("list");
+    const grid = within(screen.getByRole("region", { name: "Your library" })).getByRole("list");
     expect(grid).toHaveClass("grid-cols-2");
-    // The tile is just the picture and its name; the buttons are in the opened file.
-    expect(
-      screen.getByRole("button", { name: "Copy a link to Beach day.mp4" }).parentElement,
-    ).toHaveClass("max-sm:hidden");
+    expect(screen.getByRole("group", { name: "Show as" })).toHaveClass("max-sm:hidden");
   });
 
   test("the list picked on a computer still shows there", () => {
-    window.localStorage.setItem("uploads-layout", "list");
+    answerQuery(api.library.list, { ...EMPTY_LIBRARY, items: [tile("i1", "Beach day")] });
+    window.localStorage.setItem("library-layout", JSON.stringify("list"));
     windowWidth(1440);
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     expect(screen.getByRole("table")).toBeInTheDocument();
-  });
-
-  test("opens a file on the whole screen with big buttons", () => {
-    windowWidth(390);
-    renderInApp(<UploadsView />);
-    fireEvent.click(screen.getByRole("button", { name: "Open Beach day.mp4" }));
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveClass("max-sm:inset-0", "max-sm:h-dvh", "max-sm:rounded-none");
-    expect(within(dialog).getByRole("button", { name: "Copy link" })).toHaveClass("max-sm:h-11");
-    expect(within(dialog).getByRole("button", { name: "Remove from this list" })).toHaveClass(
-      "max-sm:h-11",
-    );
   });
 
   test("keeps the screen on while a file sends, and says to keep the page open", async () => {
@@ -99,7 +106,7 @@ describe("Uploads on a phone", () => {
       uploadId: "u9",
       uploadUrl: "https://r2.example/put",
     });
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     expect(screen.queryByText(/Keep this page open/)).toBeNull();
     expect(request).not.toHaveBeenCalled();
 

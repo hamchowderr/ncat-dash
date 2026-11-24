@@ -62,7 +62,9 @@ test.beforeAll(async ({ browser }) => {
   jordan = await signUp(browser, "Jordan Lee", jordanEmail);
   await jordan.getByPlaceholder("Your company or channel").fill("Salt House");
   await jordan.getByRole("button", { name: "Create team" }).click();
-  await expect(jordan.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(jordan.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await jordan.goto("/settings/toolkit");
   await jordan.locator("#baseUrl").fill(TOOLKIT);
   await jordan.locator("#apiKey").fill("stand-in-key-1234");
@@ -448,8 +450,14 @@ test("approving the room lets the automation finish", async () => {
   await expect(jordan.getByText("Done").filter({ visible: true }).first()).toBeVisible();
 });
 
-test("Outputs shows the run's files and sends them to review", async () => {
+test("Files shows the run's files and sends them to review", async () => {
+  // The old Outputs address lands on the Recently Made tab of Files.
   await jordan.goto("/outputs");
+  await expect(jordan).toHaveURL(/\/files\?tab=made$/);
+  await expect(jordan.getByRole("tab", { name: "Recently Made" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   const run = jordan.getByRole("region", { name: /^Weekly clips, / });
   await expect(run).toContainText("From station-interview.webm · Webhook");
   await expect(run.getByRole("heading", { name: "Split video · 2 files" })).toBeVisible();
@@ -473,7 +481,9 @@ test("someone on another team cannot open the room", async ({ browser }) => {
   const outsider = await signUp(browser, "Someone Else", `outsider.${stamp}@example.test`);
   await outsider.getByPlaceholder("Your company or channel").fill("Other Team");
   await outsider.getByRole("button", { name: "Create team" }).click();
-  await expect(outsider.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(outsider.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await outsider.goto("/settings/toolkit");
   await outsider.locator("#baseUrl").fill(TOOLKIT);
   await outsider.locator("#apiKey").fill("stand-in-key-1234");

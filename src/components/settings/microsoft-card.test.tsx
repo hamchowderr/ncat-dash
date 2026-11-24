@@ -84,7 +84,10 @@ describe("the Microsoft 365 card", () => {
     expect(screen.getByText(/Maya Ortiz \(Maya O\)/)).toBeInTheDocument();
     // What came in sits with the past recordings, a tab away from the connection.
     await openTab("Past Recordings");
-    expect(screen.getByRole("link", { name: "In Uploads" })).toHaveAttribute("href", "/uploads");
+    expect(screen.getByRole("link", { name: "In the Library" })).toHaveAttribute(
+      "href",
+      "/library",
+    );
     expect(screen.getByText("Did not come in")).toBeInTheDocument();
     expect(screen.getByText(/Connect your toolkit first/)).toBeInTheDocument();
     await openTab("Connection");
@@ -134,7 +137,7 @@ describe("the Microsoft 365 card", () => {
     await user.click(screen.getByRole("button", { name: "Bring in" }));
     expect(bring).toHaveBeenCalledWith({ organizationId: TEAM.id, itemId: "m1" });
     await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("Podcast Taping is on its way to Uploads"),
+      expect(toastSuccess).toHaveBeenCalledWith("Podcast Taping is on its way to the Library"),
     );
     expect(screen.getAllByText("Brought in")).toHaveLength(2);
   });

@@ -20,16 +20,18 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Duarte Media");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
   await page.getByRole("button", { name: "Test and connect" }).click();
   await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
-  await page.goto("/uploads");
+  await page.goto("/library");
   await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.webm");
-  await expect(page.getByRole("button", { name: "Open clip.webm" })).toBeVisible({
+  await expect(page.getByLabel(/^Open V\d+ clip$/)).toBeVisible({
     timeout: 30_000,
   });
 
@@ -43,12 +45,28 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   // Transcribed on the toolkit as it came in: nothing to press.
   await expect(page.getByRole("button", { name: /Transcribe 1 file/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Open V1 clip" }).click();
+  // Details first, the words a tab away.
+  await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("data-state", "active");
+  await expect(page.getByRole("button", { name: "Pick an automation" })).toBeVisible();
+  await page.getByRole("tab", { name: "Transcript" }).click();
   const said = page.getByTestId("transcript");
   await expect(said.getByText("Today we talk about pricing your edits.")).toBeVisible({
     timeout: 30_000,
   });
+  // What was done with it shows in colour at the top, green once it is in.
+  const work = page.getByRole("list", { name: "What is being done with this file" });
+  await expect(work.getByRole("button", { name: "Transcript and SRT: Ready" })).toBeVisible();
+  await expect(work.getByRole("button", { name: "Storyboard: Ready" })).toBeVisible({
+    timeout: 30_000,
+  });
+  // On a laptop screen the player, the words and the work fit without the page scrolling.
+  expect(
+    await page.evaluate(() => document.scrollingElement!.scrollHeight <= innerHeight + 1),
+    "the file's page scrolls",
+  ).toBe(true);
 
   // A storyboard drafted from it: a line for every sentence, each with its own clip.
+  await work.getByRole("button", { name: "Storyboard: Ready" }).click();
   const storyboard = page.getByRole("region", { name: "Storyboard" });
   await expect(storyboard.getByText("Today we talk about pricing your edits.")).toBeVisible({
     timeout: 30_000,
@@ -58,6 +76,7 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   await expect(storyboard.getByText(/From the upload, 0:00 to 0:0\d/)).toBeVisible();
 
   // The same words as SRT and VTT, to read, copy or download.
+  await page.getByRole("tab", { name: "Transcript" }).click();
   await page.getByRole("radio", { name: "SRT" }).click();
   const subtitles = page.getByTestId("subtitle-text");
   await expect(subtitles).toContainText(
@@ -74,9 +93,10 @@ test("an upload joins the library, is searched by what was said, and is tagged",
   expect(await readFile((await download.path())!, "utf8")).toContain(
     "Today we talk about pricing your edits.",
   );
-  await page.getByRole("radio", { name: "Transcript" }).click();
+  await page.getByRole("radio", { name: "Text" }).click();
 
   // Tags and stars, kept.
+  await page.getByRole("tab", { name: "Details" }).click();
   await page.getByLabel("Add a tag").fill("pricing, behind the scenes");
   await page.getByLabel("Add a tag").press("Enter");
   await expect(
@@ -132,24 +152,26 @@ test("a caption file shows its lines, and they are searched like what was said",
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill("Duarte Captions");
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
   await page.getByRole("button", { name: "Test and connect" }).click();
   await expect(page.getByText("Your own toolkit", { exact: true })).toBeVisible();
 
-  await page.goto("/uploads");
+  await page.goto("/library");
   await page.getByLabel("Choose files to upload").setInputFiles("e2e/fixtures/clip.srt");
   // Finished uploading (the name shows while it is still on its way).
-  await expect(page.getByRole("button", { name: "Open clip.srt" })).toBeVisible({
+  await expect(page.getByLabel("Open F1 clip")).toBeVisible({
     timeout: 30_000,
   });
 
   await page.goto("/library");
   await page.getByRole("link", { name: "Open F1 clip" }).click();
   const lines = page.getByTestId("transcript");
-  await expect(page.getByRole("heading", { name: "What the captions say" })).toBeVisible();
+  await page.getByRole("tab", { name: "Captions" }).click();
   await expect(lines.getByText("Today we talk about pricing your edits.")).toBeVisible({
     timeout: 30_000,
   });
@@ -166,6 +188,7 @@ test("a caption file shows its lines, and they are searched like what was said",
   await expect(page).toHaveURL(/\/clients\/[a-z0-9]+$/);
   await page.goto("/library");
   await page.getByRole("link", { name: "Open F1 clip" }).click();
+  await page.getByRole("tab", { name: "Details" }).click();
   await pick(page.getByLabel("Client", { exact: true }), "Acme Studio");
   await page.getByRole("link", { name: "Library", exact: true }).first().click();
   const tile = page.getByTestId("library-tile").filter({ hasText: "F1" });

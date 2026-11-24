@@ -28,7 +28,9 @@ test("connects Microsoft 365, brings a past meeting in, and a new one arrives by
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
   await page.getByPlaceholder("Your company or channel").fill(`Harbour Films ${stamp}`);
   await page.getByRole("button", { name: "Create team" }).click();
-  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.goto("/settings/toolkit");
   await page.locator("#baseUrl").fill(TOOLKIT);
   await page.locator("#apiKey").fill("stand-in-key-1234");
@@ -61,9 +63,11 @@ test("connects Microsoft 365, brings a past meeting in, and a new one arrives by
   await expect(past.getByText("Client Kickoff")).toBeVisible();
   await expect(past.getByText(/37 min/)).toBeVisible();
   await past.getByRole("button", { name: "Bring in" }).click();
-  await expect(page.getByText("Client Kickoff is on its way to Uploads")).toBeVisible();
+  await expect(page.getByText("Client Kickoff is on its way to the Library")).toBeVisible();
   const brought = page.getByRole("region", { name: "Brought in from Teams" });
-  await expect(brought.getByRole("link", { name: "In Uploads" })).toBeVisible({ timeout: 30_000 });
+  await expect(brought.getByRole("link", { name: "In the Library" })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // Teams saves a new recording, Microsoft tells the watch, and it comes in by itself.
   let told = 0;
@@ -118,19 +122,19 @@ test("connects Microsoft 365, brings a past meeting in, and a new one arrives by
     page.getByRole("region", { name: "Brought in from Teams" }).getByText("Edit Review"),
   ).toBeVisible({ timeout: 30_000 });
 
-  // All of them are uploads now, named after the meeting and its day.
-  await page.goto("/uploads");
-  const uploads = page.getByRole("region", { name: "Your uploads" });
-  await expect(uploads.getByText(/^Client Kickoff \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  // All of them are in the Library now, named after the meeting and its day.
+  await page.goto("/library");
+  const uploads = page.getByRole("region", { name: "Your library" });
+  await expect(uploads.getByText(/^Client Kickoff \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(uploads.getByText(/^Weekly Sync \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  await expect(uploads.getByText(/^Weekly Sync \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(uploads.getByText(/^Board Review \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  await expect(uploads.getByText(/^Board Review \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
-  await expect(uploads.getByText(/^Edit Review \d{4}-\d{2}-\d{2}\.mp4$/)).toBeVisible({
+  await expect(uploads.getByText(/^Edit Review \d{4}-\d{2}-\d{2}$/)).toBeVisible({
     timeout: 30_000,
   });
   await page.waitForTimeout(1500);

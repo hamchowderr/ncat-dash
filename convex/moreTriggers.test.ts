@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { encryptSecret } from "./lib/crypto";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 type Node = Doc<"automations">["nodes"][number];
@@ -70,6 +71,7 @@ const ids = (run: Doc<"runs">) => run.nodes.map((node) => node.id);
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("an automation with more than one trigger", () => {
@@ -128,6 +130,59 @@ describe("an automation with more than one trigger", () => {
     });
     const [run] = await runsOf();
     expect(ids(run)).toEqual(["transcribe", "thumb"]);
+  });
+
+  test("a finished upload starts each automation that wants it in its own mutation", async () => {
+    const { t, team, maya, automationId, runsOf } = await setUp();
+    // A real key, so a link to the file can be signed.
+    process.env.CONNECTIONS_SECRET ??= "a-test-secret-that-is-long-enough-1234";
+    const apiKeyCipher = await encryptSecret("toolkit-key");
+    await t.run(async (ctx) => {
+      const connection = await ctx.db.query("toolkitConnections").first();
+      await ctx.db.patch(connection!._id, { apiKeyCipher });
+    });
+    // The toolkit signs the link.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const { key } = JSON.parse(String(init.body)) as { key: string };
+        return Response.json({ response: { url: `https://files.example/${key}?signed` } });
+      }),
+    );
+    await maya.as.mutation(api.automations.setEnabled, { automationId, enabled: true });
+    const automation = (await t.run((ctx) => ctx.db.get(automationId)))!;
+    const { _id, _creationTime, ...copy } = automation;
+    const secondId = await t.run((ctx) =>
+      ctx.db.insert("automations", { ...copy, name: "Also on upload", hookToken: "token-2" }),
+    );
+    const uploadId = await t.run((ctx) =>
+      ctx.db.insert("uploads", {
+        organizationId: team,
+        key: "uploads/interview.mp4",
+        fileName: "interview.mp4",
+        contentType: "video/mp4",
+        size: 1000,
+        status: "ready",
+        createdBy: maya.id,
+      }),
+    );
+    await t.action(internal.automations.uploadFinished, { uploadId });
+    // Nothing has started yet: one start is waiting for each automation.
+    expect(await runsOf()).toHaveLength(0);
+    const waiting = await t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect());
+    const starts = waiting.filter((each) => each.name.includes("startFromUpload"));
+    expect(starts.map((each) => (each.args[0] as { starts: unknown[] }).starts)).toEqual([
+      [{ automationId, triggerId: "__trigger" }],
+      [{ automationId: secondId, triggerId: "__trigger" }],
+    ]);
+    for (const each of starts) {
+      await t.mutation(internal.automations.startFromUpload, each.args[0] as never);
+    }
+    const runs = await t.run((ctx) => ctx.db.query("runs").collect());
+    expect(runs.map((run) => run.automationId).sort()).toEqual([automationId, secondId].sort());
+    const { trigger } = starts[0]!.args[0] as { trigger: Record<string, unknown> };
+    expect(trigger).toMatchObject({ file_name: "interview.mp4", upload_id: uploadId });
+    expect(String(trigger.file_url)).toContain("uploads/interview.mp4");
   });
 
   test("saving keeps every trigger and refuses one that starts nothing when switching on", async () => {

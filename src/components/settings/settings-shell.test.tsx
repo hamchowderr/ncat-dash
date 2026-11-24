@@ -12,6 +12,8 @@ import { renderInApp, TEAM } from "@/test/render";
 import {
   INTEGRATION_GROUPS,
   INTEGRATIONS,
+  type IntegrationSlug,
+  integrationsTabHref,
   SETTINGS_GROUPS,
   SETTINGS_PAGES,
   settingsLocation,
@@ -76,10 +78,10 @@ describe("a settings page", () => {
       );
       const header = screen.getByRole("heading", { level: 1 }).closest("header")!;
       expect(within(header).getByRole("img", { name: `${name} logo` })).toBeInTheDocument();
-      // An app's page says it sits under Integrations, and leads back there.
+      // An app's page says it sits under Integrations, and leads back to its own tab there.
       expect(screen.getByRole("link", { name: "Integrations" })).toHaveAttribute(
         "href",
-        "/settings/integrations",
+        integrationsTabHref(slug as IntegrationSlug),
       );
       unmount();
     }
@@ -187,9 +189,9 @@ describe("settings in the sidebar", () => {
   });
 
   test("are not in the everyday menu; the team's menu opens them", async () => {
-    path.current = "/uploads";
+    path.current = "/library";
     sidebar();
-    expect(screen.getByRole("link", { name: "Uploads" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Library" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Settings" })).toBeNull();
 
@@ -224,7 +226,7 @@ describe("settings in the sidebar", () => {
     expect(within(menu).queryByRole("link", { name: "Slack" })).toBeNull();
 
     // The everyday pages are out of the way, and Back to app returns where you were.
-    expect(screen.queryByRole("link", { name: "Uploads" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Library" })).toBeNull();
     expect(screen.getByRole("link", { name: "Back to app" })).toHaveAttribute(
       "href",
       "/automations",

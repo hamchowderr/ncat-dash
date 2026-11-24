@@ -92,6 +92,7 @@ export const SETTINGS_GROUPS = [
 /** The apps on the Integrations page, in the groups it lists them under. */
 export const INTEGRATION_GROUPS = [
   {
+    id: "chat",
     label: "Chat",
     apps: [
       {
@@ -118,33 +119,35 @@ export const INTEGRATION_GROUPS = [
     ],
   },
   {
+    id: "meetings",
     label: "Meeting Recordings",
     apps: [
       {
         slug: "zoom",
         title: "Zoom",
-        description: "Meeting recordings come into Uploads by themselves, ready to clip.",
+        description: "Meeting recordings come into the Library by themselves, ready to clip.",
       },
       {
         slug: "google-meet",
         title: "Google Meet",
-        description: "Meet recordings come into Uploads by themselves, ready to clip.",
+        description: "Meet recordings come into the Library by themselves, ready to clip.",
       },
       {
         slug: "microsoft",
         title: "Microsoft 365",
-        description: "Teams meeting recordings come into Uploads by themselves, ready to clip.",
+        description: "Teams meeting recordings come into the Library by themselves, ready to clip.",
       },
     ],
   },
   {
+    id: "files",
     label: "Files",
     apps: [
       {
         slug: "dropbox",
         title: "Dropbox",
         description:
-          "Footage in the folders you pick comes into Uploads; finished clips can go back.",
+          "Footage in the folders you pick comes into the Library; finished clips can go back.",
       },
       {
         slug: "video-links",
@@ -155,6 +158,7 @@ export const INTEGRATION_GROUPS = [
     ],
   },
   {
+    id: "ai-apps",
     label: "AI Apps",
     apps: [
       {
@@ -166,6 +170,7 @@ export const INTEGRATION_GROUPS = [
     ],
   },
   {
+    id: "email",
     label: "Sending Email",
     apps: [
       {
@@ -194,6 +199,17 @@ export type IntegrationSlug = Integration["slug"];
 
 export const settingsPage = (slug: string) => SETTINGS_PAGES.find((page) => page.slug === slug);
 export const integration = (slug: string) => INTEGRATIONS.find((app) => app.slug === slug);
+
+/** The Integrations tab an app sits in, and the address that opens the page on it. */
+export function integrationsTabHref(slug: IntegrationSlug): string {
+  const index = INTEGRATION_GROUPS.findIndex((group) =>
+    group.apps.some((app) => app.slug === slug),
+  );
+  // The first tab is what the page opens on, so its address names no tab.
+  return index <= 0
+    ? "/settings/integrations"
+    : `/settings/integrations?tab=${INTEGRATION_GROUPS[index].id}`;
+}
 
 /** Where a team points at its own toolkit, or goes back to ours. */
 export const TOOLKIT_SETTINGS = "/settings/toolkit";

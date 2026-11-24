@@ -1,14 +1,18 @@
 import { api } from "@convex/_generated/api";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 
 import { FilesView } from "@/components/files/files-view";
-import { HomeView } from "@/components/home/home-view";
+import { ToolkitCard } from "@/components/settings/toolkit-card";
 import { ConnectToolkitForm } from "@/components/onboarding/connect-toolkit-form";
 import { actionOf, answerQuery } from "@/test/convex";
 import { renderInApp } from "@/test/render";
 
-import { UploadsView } from "./uploads-view";
+import { LibraryView } from "@/components/library/library-view";
+import { emptyLibrary } from "@/test/library";
+
+// Files are brought in on the Library page; it starts empty here.
+beforeEach(() => emptyLibrary());
 
 /** Files go to the toolkit's own storage: the toolkit is the only thing a team connects. */
 
@@ -69,7 +73,7 @@ describe("before a toolkit is connected", () => {
   test("Uploads points to the toolkit, with no storage form", () => {
     answerQuery(api.storage.get, null);
     answerQuery(api.storage.listUploads, []);
-    renderInApp(<UploadsView />);
+    renderInApp(<LibraryView />);
     expect(screen.getByText(/go to your toolkit's own storage/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Go to your toolkit" }).getAttribute("href")).toBe("/");
     expect(screen.queryByLabelText(/bucket/i)).toBeNull();
@@ -109,22 +113,27 @@ describe("once connected", () => {
     expect(screen.queryByText("ncat")).toBeNull();
   });
 
-  test("Uploads names the toolkit's bucket and offers no way to change storage", async () => {
+  test("the Library offers uploads without the shared bucket's name or a way to change storage", async () => {
     answerQuery(api.storage.get, {
       bucket: "ncat",
       publicUrl: null,
       baseUrl: "https://toolkit.example",
     });
     answerQuery(api.storage.listUploads, []);
-    renderInApp(<UploadsView />);
-    await waitFor(() => expect(screen.getByText(/toolkit's storage, bucket ncat/)).toBeTruthy());
+    renderInApp(<LibraryView />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Choose files" })).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Upload" })).toBeTruthy();
+    expect(screen.queryByText(/ncat/)).toBeNull();
     expect(screen.queryByText("Change storage")).toBeNull();
   });
 
-  test("the home page shows where files are kept", () => {
+  test("Settings, not Home, shows where files are kept", () => {
+    answerQuery(api.toolkitConnections.offersOurs, true);
+    answerQuery(api.teamSettings.get, { brand: null, music: null, canEdit: true });
     answerQuery(api.toolkitConnections.list, [
       {
         _id: "c1",
+        ours: false,
         baseUrl: "https://toolkit.example",
         apiKeyHint: "1234",
         status: "ok",
@@ -134,8 +143,7 @@ describe("once connected", () => {
         lastError: null,
       },
     ]);
-    renderInApp(<HomeView />);
-    fireEvent.click(screen.getByRole("button", { name: "Toolkit connected" }));
-    expect(screen.getByText("Kept in the toolkit's bucket, ncat")).toBeTruthy();
+    renderInApp(<ToolkitCard />);
+    expect(screen.getByText(/Files go to the ncat bucket\./)).toBeTruthy();
   });
 });
