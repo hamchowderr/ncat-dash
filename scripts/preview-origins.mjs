@@ -4,7 +4,7 @@
 // workflow after it pushes the functions, with CONVEX_SELF_HOSTED_URL and
 // CONVEX_SELF_HOSTED_ADMIN_KEY set.
 //
-//   node scripts/preview-origins.mjs "https://takewon-app-*-otaku-solutions.vercel.app"
+//   node scripts/preview-origins.mjs "https://takewon-*-otaku-solutions.vercel.app"
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 

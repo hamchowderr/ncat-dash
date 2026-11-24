@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { withOrigins } from "./preview-origins.mjs";
 
-const PREVIEWS = "https://takewon-app-*-otaku-solutions.vercel.app";
+const PREVIEWS = "https://takewon-*-otaku-solutions.vercel.app";
 
 test("adds the previews' pattern after what is there", () => {
   assert.equal(
@@ -29,6 +29,6 @@ test("the Preview backend workflow lets the Takewon previews sign in", () => {
   );
   assert.match(
     workflow,
-    /node scripts\/preview-origins\.mjs "https:\/\/takewon-app-\*-otaku-solutions\.vercel\.app"/,
+    /node scripts\/preview-origins\.mjs "https:\/\/takewon-\*-otaku-solutions\.vercel\.app"/,
   );
 });
