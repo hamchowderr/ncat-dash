@@ -1926,7 +1926,7 @@ export default defineSchema({
     .index("by_organization_and_size", ["organizationId", "size"]),
 
   // A review room: a set of clips a team looks at together, comments on, and approves.
-  // Opened by hand from Outputs, or by an approval step when a run reaches it.
+  // Opened by hand from Files (Recently Made), or by an approval step when a run reaches it.
   reviews: defineTable({
     organizationId: v.string(),
     title: v.string(),
