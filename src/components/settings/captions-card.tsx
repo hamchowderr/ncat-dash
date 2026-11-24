@@ -231,10 +231,10 @@ export function CaptionsCard({
                       onClick={() => setOpen(active ? null : style.name)}
                       {...hover(style.name)}
                       className={cn(
-                        "choice-tile focus-visible:ring-ring/50 flex w-24 flex-col gap-1.5 rounded-xl p-1.5 text-left focus-visible:ring-3",
+                        "choice-tile focus-visible:ring-ring/50 flex w-[5.25rem] flex-col gap-1.5 rounded-xl p-1.5 text-left focus-visible:ring-3",
                       )}
                     >
-                      <CaptionPreview look={style.look} font={font} zoom={0.75} />
+                      <CaptionPreview look={style.look} font={font} zoom={0.65} />
                       <span className="truncate px-0.5 text-xs font-medium">{style.name}</span>
                     </button>
                   );
