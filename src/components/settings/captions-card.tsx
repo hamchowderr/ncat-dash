@@ -35,7 +35,9 @@ import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
-import { CaptionPreview } from "./caption-preview";
+import { CAPTION_EXAMPLE_WORDS } from "./caption-example-words";
+import { CaptionLivePreview, CaptionPreview } from "./caption-preview";
+import { EXAMPLES, ExamplePane, useExample, WithExample } from "./example-pane";
 import { SettingRow, SettingsSection, SettingsTabs } from "./settings-shell";
 
 function same(a: CaptionSetup, b: CaptionSetup) {
@@ -49,6 +51,45 @@ function freeName(base: string, taken: string[]): string {
     name = `${base} ${n}`;
   }
   return name;
+}
+
+/** The example clip a built-in style was rendered to (public/examples/captions). */
+const builtInClip = (name: string) =>
+  `${EXAMPLES}/captions/${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.mp4`;
+
+/**
+ * The example beside the styles: a built-in style plays the clip the toolkit rendered with
+ * it; a style of your own, or one being changed, is drawn live over the same clip.
+ */
+function CaptionExample({
+  style,
+  look,
+  builtIn,
+  font,
+}: {
+  style: CaptionStyle | null;
+  /** The look to show, with anything being tried in the editor. */
+  look: CaptionLook | null;
+  builtIn: CaptionStyle[];
+  font?: string;
+}) {
+  if (!style || !look) return <ExamplePane src={null} label="Point at a style to see it." />;
+  const asBuilt = builtIn.find((each) => each.name === style.name);
+  // The rendered clip is only true to the style when nothing changes how it looks: a brand
+  // font is used by built-in looks, which name none, so that is drawn live too.
+  const real = asBuilt && !font && JSON.stringify(asBuilt.look) === JSON.stringify(look);
+  const label = `Example: ${style.name}`;
+  if (real) return <ExamplePane src={builtInClip(style.name)} label={label} />;
+  return (
+    <ExamplePane label={label}>
+      <CaptionLivePreview
+        look={look}
+        font={font}
+        video={`${EXAMPLES}/captions/plain.mp4`}
+        segments={CAPTION_EXAMPLE_WORDS}
+      />
+    </ExamplePane>
+  );
 }
 
 /**
@@ -80,6 +121,13 @@ export function CaptionsCard({
   const change = (next: Partial<CaptionSetup>) => setDraft({ ...shown, ...next });
   const all = [...shown.styles, ...builtIn];
   const opened = all.find((style) => style.name === open) ?? null;
+  // The style under the pointer plays its example; otherwise the open one does, with
+  // whatever the pointer is on in its editor (a word effect, a position) tried on it.
+  const { example, hover } = useExample<string>();
+  const [trying, setTrying] = useState<Partial<CaptionLook> | null>(null);
+  const pointed = example ? (all.find((style) => style.name === example) ?? null) : null;
+  const exampleStyle = pointed ?? opened;
+  const exampleLook = pointed ? pointed.look : opened ? { ...opened.look, ...trying } : null;
   const ownIndex = shown.styles.findIndex((style) => style.name === open);
   const shapeStyle = (shape: CaptionShape) => {
     const picked = shown.byShape[shape];
@@ -156,63 +204,76 @@ export function CaptionsCard({
         ]}
       >
         <TabsContent value="styles">
-          <SettingsSection
-            description="Pick one to see it. Copy a built-in one to make your own."
-            aria-label="Styles"
+          <WithExample
+            example={
+              <CaptionExample
+                style={exampleStyle}
+                look={exampleLook}
+                builtIn={builtIn}
+                font={font}
+              />
+            }
           >
-            <div className="flex flex-wrap gap-1">
-              {all.map((style) => {
-                const own = shown.styles.includes(style);
-                const active = style.name === open;
-                return (
-                  <button
-                    key={`${own ? "own" : "built"}:${style.name}`}
-                    type="button"
-                    aria-pressed={active}
-                    aria-label={`${style.name}${own ? "" : ", built in"}`}
-                    onClick={() => setOpen(active ? null : style.name)}
-                    className={cn(
-                      "choice-tile focus-visible:ring-ring/50 flex w-24 flex-col gap-1.5 rounded-xl p-1.5 text-left focus-visible:ring-3",
-                    )}
-                  >
-                    <CaptionPreview look={style.look} font={font} zoom={0.75} />
-                    <span className="truncate px-0.5 text-xs font-medium">{style.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {opened &&
-              (ownIndex >= 0 ? (
-                <StyleEditor
-                  key={ownIndex}
-                  style={opened}
-                  font={font}
-                  taken={all.map((style) => style.name).filter((name) => name !== opened.name)}
-                  canEdit={canEdit}
-                  onChange={updateStyle}
-                  onRemove={removeStyle}
-                />
-              ) : (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <p className="text-muted-foreground text-sm text-pretty">
-                    {opened.name}: {LOOK_WORDS[opened.look.style ?? "classic"].text.toLowerCase()}.
-                    Built in, so it stays as it is.
-                  </p>
-                  {canEdit && (
-                    <Button
+            <SettingsSection
+              description="Point at one to see it play, pick one to change it. Copy a built-in one to make your own."
+              aria-label="Styles"
+            >
+              <div className="flex flex-wrap gap-1">
+                {all.map((style) => {
+                  const own = shown.styles.includes(style);
+                  const active = style.name === open;
+                  return (
+                    <button
+                      key={`${own ? "own" : "built"}:${style.name}`}
                       type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addStyle(opened)}
+                      aria-pressed={active}
+                      aria-label={`${style.name}${own ? "" : ", built in"}`}
+                      onClick={() => setOpen(active ? null : style.name)}
+                      {...hover(style.name)}
+                      className={cn(
+                        "choice-tile focus-visible:ring-ring/50 flex w-24 flex-col gap-1.5 rounded-xl p-1.5 text-left focus-visible:ring-3",
+                      )}
                     >
-                      <Copy />
-                      Make a copy to change
-                    </Button>
-                  )}
-                </div>
-              ))}
-          </SettingsSection>
+                      <CaptionPreview look={style.look} font={font} zoom={0.75} />
+                      <span className="truncate px-0.5 text-xs font-medium">{style.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {opened &&
+                (ownIndex >= 0 ? (
+                  <StyleEditor
+                    key={ownIndex}
+                    style={opened}
+                    font={font}
+                    taken={all.map((style) => style.name).filter((name) => name !== opened.name)}
+                    canEdit={canEdit}
+                    onChange={updateStyle}
+                    onRemove={removeStyle}
+                    onTry={setTrying}
+                  />
+                ) : (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <p className="text-muted-foreground text-sm text-pretty">
+                      {opened.name}: {LOOK_WORDS[opened.look.style ?? "classic"].text.toLowerCase()}
+                      . Built in, so it stays as it is.
+                    </p>
+                    {canEdit && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addStyle(opened)}
+                      >
+                        <Copy />
+                        Make a copy to change
+                      </Button>
+                    )}
+                  </div>
+                ))}
+            </SettingsSection>
+          </WithExample>
         </TabsContent>
         <TabsContent value="shapes">
           <SettingsSection
@@ -364,6 +425,7 @@ function StyleEditor({
   canEdit,
   onChange,
   onRemove,
+  onTry,
 }: {
   style: CaptionStyle;
   font?: string;
@@ -371,6 +433,8 @@ function StyleEditor({
   canEdit: boolean;
   onChange: (style: CaptionStyle) => void;
   onRemove: () => void;
+  /** A change the pointer is on and not yet picked, played in the example beside. */
+  onTry: (look: Partial<CaptionLook> | null) => void;
 }) {
   const [name, setName] = useState(style.name);
   const look = style.look;
@@ -385,10 +449,8 @@ function StyleEditor({
     <div
       aria-label={`Change ${style.name}`}
       role="group"
-      className="bg-surface flex flex-col gap-6 rounded-xl p-5 sm:flex-row motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
+      className="bg-surface flex flex-col gap-6 rounded-xl p-5 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
     >
-      <CaptionPreview look={look} font={font} zoom={1.25} className="self-start" />
-
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <LookField
           label="Name"
@@ -416,13 +478,16 @@ function StyleEditor({
               value={effect}
               disabled={!canEdit}
               onValueChange={(value) => set({ style: value as CaptionLook["style"] })}
+              onOpenChange={(isOpen) => {
+                if (!isOpen) onTry(null);
+              }}
             >
               <SelectTrigger id={id("effect")} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {CAPTION_LOOKS.map((kind) => (
-                  <SelectItem key={kind} value={kind}>
+                  <SelectItem key={kind} value={kind} onFocus={() => onTry({ style: kind })}>
                     {LOOK_WORDS[kind].name}
                   </SelectItem>
                 ))}
@@ -459,6 +524,10 @@ function StyleEditor({
                   aria-checked={on}
                   disabled={!canEdit}
                   onClick={() => set({ position })}
+                  onPointerEnter={() => onTry({ position })}
+                  onPointerLeave={() => onTry(null)}
+                  onFocus={() => onTry({ position })}
+                  onBlur={() => onTry(null)}
                   className={cn(
                     "text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex-1 rounded-lg px-3 text-sm font-medium outline-none transition-[color,background-color,box-shadow] focus-visible:ring-3",
                     on &&

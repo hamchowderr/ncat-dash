@@ -18,3 +18,9 @@ packages/agent/LICENSE-mastra-chat-kit covers code from mastra-chat-kit (MIT).
 src/components/auth/LICENSE-better-auth-ui covers the sign-in screens and account cards
 from Better Auth UI (https://better-auth-ui.com, MIT), in src/components/auth and
 src/lib/auth.
+
+public/examples holds short example clips for the Motion and Captions settings, cut
+from a NASA interview recorded on the International Space Station. NASA footage is not
+copyrighted (https://www.nasa.gov/nasa-brand-center/images-and-media/); using it does
+not mean NASA endorses Takewon. The clips were drawn with the toolkit as described in
+scripts/settings-examples/README.md.
