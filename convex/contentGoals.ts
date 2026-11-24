@@ -208,3 +208,39 @@ export const turnOn = mutation({
     return made;
   },
 });
+
+/**
+ * The runs a team's first upload started, newest first, so setting up can show them as
+ * they begin. Runs start a moment after the upload is in, once its details are read.
+ * Kept for screens already open on an older version; setting up now reads
+ * library.runsOnUpload, which also lists what is one press away.
+ */
+export const runsForUpload = query({
+  args: { organizationId: v.string(), uploadId: v.id("uploads") },
+  returns: v.array(
+    v.object({
+      runId: v.id("runs"),
+      automationId: v.id("automations"),
+      automationName: v.string(),
+      status: v.string(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId);
+    const upload = await ctx.db.get(args.uploadId);
+    if (!upload || upload.organizationId !== args.organizationId) return [];
+    const runs = await ctx.db
+      .query("runs")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .order("desc")
+      .take(50);
+    return runs
+      .filter((run) => run.trigger?.upload_id === args.uploadId)
+      .map((run) => ({
+        runId: run._id,
+        automationId: run.automationId,
+        automationName: run.automationName,
+        status: run.status,
+      }));
+  },
+});
