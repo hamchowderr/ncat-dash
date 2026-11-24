@@ -56,6 +56,8 @@ import { useWakeLock } from "@/hooks/use-wake-lock";
 import { CopyLookFromUpload } from "@/components/looks/look-study";
 
 import { NeedsToolkit } from "./needs-toolkit";
+import { WorkChip } from "@/components/library/work-status";
+
 import { LinkRow, PasteLink, useLinks } from "./paste-link";
 import {
   UploadFrame,
@@ -748,6 +750,22 @@ export function UploadsView() {
                 ? "Read from the file when it was uploaded. A run this file starts is given the same details."
                 : "Your toolkit is still reading this file's details, or could not read them."}
             </DialogDescription>
+            {openedUpload?.libraryItemId &&
+              (openedUpload.kind === "video" || openedUpload.kind === "audio") && (
+                <WorkChip
+                  className="mt-1 self-start"
+                  work={{
+                    label: "Transcript and SRT",
+                    // Every upload is transcribed as it comes in, so none yet means on its way.
+                    state:
+                      openedUpload.transcript === "ready"
+                        ? "ready"
+                        : openedUpload.transcript === "failed"
+                          ? "failed"
+                          : "working",
+                  }}
+                />
+              )}
           </DialogHeader>
           {openedUpload && (
             <div

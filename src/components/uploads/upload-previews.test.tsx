@@ -144,6 +144,8 @@ describe("the Uploads page shows each file", () => {
     expect(
       within(dialog).getByRole("link", { name: "Transcript and SRT" }).getAttribute("href"),
     ).toBe("/library/i1");
+    const done = within(dialog).getByRole("status", { name: "Transcript and SRT: Ready" });
+    expect(done.getAttribute("data-state")).toBe("ready");
   });
 
   test("a transcript still being made says it is on its way", async () => {
@@ -154,6 +156,9 @@ describe("the Uploads page shows each file", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open still-reading.mov" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("link", { name: "Transcript on its way" })).toBeTruthy();
+    // In amber while it is being made.
+    const working = within(dialog).getByRole("status", { name: "Transcript and SRT: In progress" });
+    expect(working.getAttribute("data-state")).toBe("working");
   });
 
   test("a file still being read opens too, and says so", async () => {

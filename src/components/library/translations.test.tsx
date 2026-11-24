@@ -106,7 +106,7 @@ describe("translating a file", () => {
     );
     // Back to the original words.
     await pick(user, screen.getByLabelText("Language"), "Original");
-    await user.click(screen.getByRole("radio", { name: "Transcript" }));
+    await user.click(screen.getByRole("radio", { name: "Text" }));
     expect(screen.getByTestId("transcript")).toBeTruthy();
   });
 

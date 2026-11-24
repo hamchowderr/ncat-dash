@@ -45,7 +45,7 @@ test("a video is translated once, keeps its times, and a line can be corrected",
   const original = (await page.getByTestId("subtitle-text").textContent()) ?? "";
   const originalTimes = original.match(/\d\d:\d\d:\d\d,\d{3} --> \d\d:\d\d:\d\d,\d{3}/g) ?? [];
   expect(originalTimes.length).toBeGreaterThan(1);
-  await page.getByRole("radio", { name: "Transcript" }).click();
+  await page.getByRole("radio", { name: "Text" }).click();
 
   // Translated once, into a language picked from the list.
   await page.getByRole("button", { name: "Translate", exact: true }).click();
@@ -70,7 +70,7 @@ test("a video is translated once, keeps its times, and a line can be corrected",
   expect(await readFile((await download.path())!, "utf8")).toBe(spanish);
 
   // A line corrected by hand keeps its time.
-  await page.getByRole("radio", { name: "Transcript" }).click();
+  await page.getByRole("radio", { name: "Text" }).click();
   await lines.getByRole("listitem").first().hover();
   await page.getByRole("button", { name: "Correct the line at 0:00" }).click();
   await page.getByLabel("Line at 0:00").fill("Bienvenidos de nuevo a la estación.");
