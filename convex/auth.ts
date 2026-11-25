@@ -286,7 +286,10 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
           },
           after: async (user, endpoint) => {
             const run = runner(ctx);
-            if (!run || getEdition() !== "hosted") return;
+            if (!run) return;
+            // The business's Back Office (BACK_OFFICE_WEBHOOK_URL) keeps them as a contact.
+            await run.runMutation(internal.backOffice.tell, { event: "signedUp", userId: user.id });
+            if (getEdition() !== "hosted") return;
             await run.runMutation(internal.access.recordSignUp, {
               userId: user.id,
               email: user.email,
