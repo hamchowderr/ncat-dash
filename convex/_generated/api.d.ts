@@ -125,6 +125,7 @@ import type * as lib_storyboardVideos from "../lib/storyboardVideos.js";
 import type * as lib_storyboards from "../lib/storyboards.js";
 import type * as lib_subtitles from "../lib/subtitles.js";
 import type * as lib_support from "../lib/support.js";
+import type * as lib_supportCategories from "../lib/supportCategories.js";
 import type * as lib_teamPurge from "../lib/teamPurge.js";
 import type * as lib_teamSteps from "../lib/teamSteps.js";
 import type * as lib_teamsApp from "../lib/teamsApp.js";
@@ -319,6 +320,7 @@ declare const fullApi: ApiFromModules<{
   "lib/storyboards": typeof lib_storyboards;
   "lib/subtitles": typeof lib_subtitles;
   "lib/support": typeof lib_support;
+  "lib/supportCategories": typeof lib_supportCategories;
   "lib/teamPurge": typeof lib_teamPurge;
   "lib/teamSteps": typeof lib_teamSteps;
   "lib/teamsApp": typeof lib_teamsApp;

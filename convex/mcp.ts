@@ -12,6 +12,7 @@ import {
 } from "./_generated/server";
 import { APPS, OPERATION_SCHEMA, RUN_APP_URI, SKILLS } from "./lib/mcpContent";
 import { icon } from "./lib/mcpIcons";
+import { SUPPORT_CATEGORIES, SUPPORT_CATEGORY_IDS } from "./lib/supportCategories";
 import {
   EventRefused,
   handleMcp,
@@ -612,6 +613,32 @@ const TOOLS: McpTool[] = [
       skipped: { type: "array", items: { type: "integer" } },
       plain: { type: "array", items: { type: "integer" } },
       address: { type: "string" },
+    }),
+  },
+  {
+    name: "ask_for_help",
+    title: "Ask Takewon support",
+    description:
+      "Sends a help request to the people who run Takewon, as the person, when something is broken or you can't do what they need with the other tools. Only when the person asked for help from a human or agreed to it: show them the subject and message first. Write it as they would, in plain words: what they tried, what happened and what they expected, with names of automations and runs. Their team and latest runs travel with it. The answer reaches them in Takewon's Get Help and by email; give them the address.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        subject: { type: "string", maxLength: 200, description: "One short line." },
+        message: { type: "string", maxLength: 10000 },
+        category: {
+          type: "string",
+          enum: SUPPORT_CATEGORY_IDS,
+          description: SUPPORT_CATEGORIES.map((c) => `${c.id}: ${c.title}`).join("; "),
+        },
+      },
+      required: ["subject", "message", "category"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    icons: icon("life-buoy"),
+    outputSchema: shape({
+      number: { type: "integer", description: "The request's number, to quote." },
+      address: { type: "string", description: "The request in Takewon, where the answer shows." },
     }),
   },
 ];
@@ -1636,6 +1663,19 @@ async function callTool(
           plain: started.plain,
           address: storyboardLink(id),
         };
+      }
+      case "ask_for_help": {
+        const subject = text(args.subject);
+        const message = text(args.message);
+        if (!subject || !message) throw new ToolSaid("subject and message are both needed.");
+        const opened = await ctx.runMutation(internal.support.openAs, {
+          organizationId,
+          userId,
+          subject,
+          body: message,
+          ...(typeof args.category === "string" ? { category: args.category } : {}),
+        });
+        return { number: opened.number, address: `${site()}${opened.address}` };
       }
       case "set_up_workflow": {
         const review = (args.review ?? {}) as Record<string, unknown>;

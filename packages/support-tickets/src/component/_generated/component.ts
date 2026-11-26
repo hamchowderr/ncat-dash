@@ -31,6 +31,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null | {
           _creationTime: number;
           _id: string;
+          category?: string;
           closedAt?: number;
           context?: Record<string, string>;
           customerUnread: boolean;
@@ -46,6 +47,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           staffUnread: boolean;
           status: "open" | "closed";
           subject: string;
+          via?: string;
         },
         Name
       >;
@@ -74,6 +76,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           ticket: {
             _creationTime: number;
             _id: string;
+            category?: string;
             closedAt?: number;
             context?: Record<string, string>;
             customerUnread: boolean;
@@ -89,6 +92,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             staffUnread: boolean;
             status: "open" | "closed";
             subject: string;
+            via?: string;
           };
         },
         Name
@@ -100,6 +104,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Array<{
           _creationTime: number;
           _id: string;
+          category?: string;
           closedAt?: number;
           context?: Record<string, string>;
           customerUnread: boolean;
@@ -115,16 +120,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           staffUnread: boolean;
           status: "open" | "closed";
           subject: string;
+          via?: string;
         }>,
         Name
       >;
       listByStatus: FunctionReference<
         "query",
         "internal",
-        { limit?: number; status: "open" | "closed" },
+        { category?: string; limit?: number; status: "open" | "closed" },
         Array<{
           _creationTime: number;
           _id: string;
+          category?: string;
           closedAt?: number;
           context?: Record<string, string>;
           customerUnread: boolean;
@@ -140,6 +147,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           staffUnread: boolean;
           status: "open" | "closed";
           subject: string;
+          via?: string;
         }>,
         Name
       >;
@@ -155,12 +163,14 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           body: string;
+          category?: string;
           context?: Record<string, string>;
           requesterEmail: string;
           requesterId: string;
           requesterName: string;
           scope?: string;
           subject: string;
+          via?: string;
         },
         { number: number; ticketId: string },
         Name
@@ -193,6 +203,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         { messageId: string; reopened: boolean },
         Name
       >;
+      setCategory: FunctionReference<
+        "mutation",
+        "internal",
+        { category?: string; ticketId: string },
+        null,
+        Name
+      >;
       setStatus: FunctionReference<
         "mutation",
         "internal",
@@ -208,7 +225,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         {},
-        { open: number; unread: number },
+        {
+          byCategory: Array<{ category: string; open: number }>;
+          open: number;
+          unread: number;
+        },
         Name
       >;
     };

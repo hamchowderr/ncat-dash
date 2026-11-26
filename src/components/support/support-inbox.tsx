@@ -7,10 +7,19 @@ import { ArrowLeft, CheckCircle2, RotateCcw } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 
+import {
+  categoryTitle,
+  isSupportCategory,
+  SUPPORT_CATEGORIES,
+} from "@convex/lib/supportCategories";
+
 import { Button } from "@/components/ui/button";
+import { PickList } from "@/components/ui/pick-list";
+import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
+import { CategoryLabel, ViaLabel } from "./categories";
 import { Composer, listTime, MessageList } from "./conversation";
 
 type Row = FunctionReturnType<typeof api.support.inbox>["tickets"][number];
@@ -50,7 +59,11 @@ function Inbox() {
   const search = useSearchParams();
   const status: Status = search.get("status") === "closed" ? "closed" : "open";
   const selected = search.get("ticket");
-  const data = useQuery(api.support.inbox, { status });
+  const wanted = search.get("category");
+  const category = isSupportCategory(wanted) ? wanted : null;
+  const data = useQuery(api.support.inbox, { status, ...(category ? { category } : {}) });
+  const openIn = (id: string) =>
+    data?.counts.byCategory.find((each) => each.category === id)?.open ?? 0;
 
   const go = (params: Record<string, string | null>) => {
     const next = new URLSearchParams(search.toString());
@@ -67,8 +80,7 @@ function Inbox() {
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">Support</h1>
         <p className="text-muted-foreground max-w-prose text-sm">
-          Questions customers asked from Get Help. Your answers reach them in the app and by email;
-          private notes stay here.
+          Questions from Get Help and the assistant. Answers reach people in the app and by email.
         </p>
       </div>
 
@@ -77,39 +89,56 @@ function Inbox() {
           aria-label="Questions"
           className={cn("grid content-start gap-3", selected && "max-lg:hidden")}
         >
-          <div role="tablist" aria-label="Show" className="flex gap-1.5">
-            {(["open", "closed"] as const).map((each) => {
-              const active = status === each;
-              const count = each === "open" ? data?.counts.open : undefined;
-              return (
-                <button
-                  key={each}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => go({ status: each === "open" ? null : each, ticket: null })}
-                  className={cn(
-                    "focus-visible:ring-ring/50 inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-sm outline-none transition-colors focus-visible:ring-3",
-                    active
-                      ? "bg-foreground text-background"
-                      : "bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  {each === "open" ? "Open" : "Closed"}
-                  {count !== undefined && count > 0 && (
-                    <span className="tabular-nums opacity-70">{count}</span>
-                  )}
-                </button>
-              );
-            })}
+          <div className="grid gap-2">
+            <Segmented
+              aria-label="Show"
+              className="w-fit"
+              value={status}
+              onValueChange={(each) => go({ status: each === "open" ? null : each, ticket: null })}
+              options={[
+                {
+                  value: "open",
+                  label: (
+                    <span className="inline-flex items-center gap-1.5">
+                      Open
+                      {data && data.counts.open > 0 && (
+                        <span className="text-muted-foreground tabular-nums">
+                          {data.counts.open}
+                        </span>
+                      )}
+                    </span>
+                  ),
+                },
+                { value: "closed", label: "Closed" },
+              ]}
+            />
+            <PickList
+              aria-label="Category"
+              size="sm"
+              className="w-full"
+              value={category ?? ""}
+              onChange={(next) => go({ category: next || null, ticket: null })}
+              options={[
+                { value: "", label: "Every category" },
+                ...SUPPORT_CATEGORIES.map((each) => ({
+                  value: each.id,
+                  label:
+                    status === "open" && openIn(each.id) > 0
+                      ? `${each.title} · ${openIn(each.id)}`
+                      : each.title,
+                })),
+              ]}
+            />
           </div>
           {!data ? (
             [0, 1, 2].map((index) => <Skeleton key={index} className="h-20 rounded-xl" />)
           ) : data.tickets.length === 0 ? (
             <p className="text-muted-foreground bg-surface rounded-xl px-5 py-8 text-sm">
-              {status === "open"
-                ? "Nothing waiting. New questions from Get Help show up here, and you get an email for each."
-                : "No closed questions yet."}
+              {category
+                ? `Nothing ${status === "open" ? "open" : "closed"} under ${categoryTitle(category)}.`
+                : status === "open"
+                  ? "Nothing waiting. New questions show up here, and you get an email for each."
+                  : "No closed questions yet."}
             </p>
           ) : (
             <ul className="grid gap-1">
@@ -148,8 +177,8 @@ function InboxRow({ row, active, onOpen }: { row: Row; active: boolean; onOpen: 
         aria-current={active ? "true" : undefined}
         data-ticket={row.unread ? "new" : "seen"}
         className={cn(
-          "hover:bg-muted/60 focus-visible:ring-ring/50 grid w-full gap-0.5 rounded-xl px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-3",
-          active && "bg-muted",
+          "focus-visible:ring-ring/50 grid w-full gap-0.5 rounded-xl px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-3",
+          active ? "row-selected" : "hover:bg-muted/60",
         )}
       >
         <span className="flex items-baseline justify-between gap-3">
@@ -167,16 +196,19 @@ function InboxRow({ row, active, onOpen }: { row: Row; active: boolean; onOpen: 
           {row.subject}
         </span>
         <span className="text-muted-foreground line-clamp-1 text-sm">{row.preview}</span>
-        <span className="mt-0.5 flex items-center gap-1.5 text-xs">
+        <span className="mt-1 flex min-w-0 items-center gap-2 text-xs">
           {row.unread && (
-            <span className="bg-destructive size-1.5 rounded-full" aria-hidden="true" />
+            <span className="bg-destructive size-1.5 shrink-0 rounded-full" aria-hidden="true" />
           )}
           <span
-            className={row.waitingOnUs ? "text-foreground font-medium" : "text-muted-foreground"}
+            className={cn(
+              "shrink-0",
+              row.waitingOnUs ? "text-foreground font-medium" : "text-muted-foreground",
+            )}
           >
             {row.status === "closed" ? "Closed" : row.waitingOnUs ? "Needs an answer" : "Answered"}
           </span>
-          <span className="text-muted-foreground">· #{row.number}</span>
+          <CategoryLabel category={row.category} />
         </span>
       </button>
     </li>
@@ -188,6 +220,7 @@ function StaffConversation({ ticketId, onBack }: { ticketId: string; onBack: () 
   const answer = useMutation(api.support.answer);
   const setStatus = useMutation(api.support.setStatus);
   const markRead = useMutation(api.support.staffMarkRead);
+  const setCategory = useMutation(api.support.setCategory);
   const unread = data?.ticket.unread;
 
   useEffect(() => {
@@ -220,9 +253,14 @@ function StaffConversation({ ticketId, onBack }: { ticketId: string; onBack: () 
               <span className="sr-only">All questions</span>
             </Button>
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold tracking-tight break-words">{ticket.subject}</h2>
-              <p className="text-muted-foreground text-xs">
-                #{ticket.number} · {ticket.status === "closed" ? "Closed" : "Open"}
+              <h2 className="text-lg font-semibold tracking-tight text-balance break-words">
+                {ticket.subject}
+              </h2>
+              <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <span>
+                  #{ticket.number} · {ticket.status === "closed" ? "Closed" : "Open"}
+                </span>
+                <ViaLabel via={ticket.via} />
               </p>
             </div>
           </div>
@@ -264,6 +302,21 @@ function StaffConversation({ ticketId, onBack }: { ticketId: string; onBack: () 
           >
             {ticket.requesterEmail}
           </a>
+        </div>
+        <div className="grid gap-1">
+          <label htmlFor="support-category" className="text-muted-foreground text-xs">
+            Category
+          </label>
+          <PickList
+            id="support-category"
+            size="sm"
+            value={ticket.category ?? ""}
+            placeholder="None yet"
+            onChange={(next) => {
+              if (next) void setCategory({ ticketId, category: next });
+            }}
+            options={SUPPORT_CATEGORIES.map((each) => ({ value: each.id, label: each.title }))}
+          />
         </div>
         {facts.length > 0 && (
           <dl className="grid gap-3">

@@ -181,6 +181,7 @@ describe("the MCP server", () => {
       ["storyboard_from_upload", false],
       ["match_storyboard_takes", false],
       ["make_storyboard_video", false],
+      ["ask_for_help", false],
     ]);
     // Directories ask for explicit hints: anything that changes, stops or sends counts as
     // destructive; only adding a new draft is not.
@@ -212,6 +213,36 @@ describe("the MCP server", () => {
       "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] },
       "io.modelcontextprotocol/skills": {},
     });
+  });
+
+  test("asks Takewon support as the person, filed under the category given", async () => {
+    const { t, key } = await setUp();
+    const asked = await call(t, key, "ask_for_help", {
+      subject: "The Clips step keeps failing",
+      message: "Weekly clips failed twice on episode 12.",
+      category: "automations",
+    });
+    expect(asked.isError).toBe(false);
+    expect(asked.data).toMatchObject({
+      number: 1,
+      address: expect.stringMatching(/\/help\?ticket=/),
+    });
+    const ticket = await t.run(async (ctx) => {
+      const { support } = await import("./lib/support");
+      return (await support.listByStatus(ctx, "open"))[0];
+    });
+    expect(ticket).toMatchObject({
+      subject: "The Clips step keeps failing",
+      requesterName: "Maya Ortiz",
+      category: "automations",
+      via: "mcp",
+    });
+    const empty = await call(t, key, "ask_for_help", {
+      subject: " ",
+      message: "x",
+      category: "other",
+    });
+    expect(empty).toMatchObject({ isError: true, text: expect.stringMatching(/subject/) });
   });
 
   test("lists the team's automations and uploads, and only the team's", async () => {

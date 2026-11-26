@@ -31,7 +31,7 @@ export function listTime(at: number, now = Date.now()): string {
 
 /**
  * The messages of one request, oldest first, as a chat. `mine` is the side the viewer is
- * on: their messages sit on the right. A private note shows on a soft amber wash with a
+ * on: their messages sit on the right, a step darker. A private note shows on a soft amber wash with a
  * lock, as in Help Scout and Zendesk, so nobody mistakes it for an answer.
  */
 export function MessageList({
@@ -66,11 +66,7 @@ export function MessageList({
             <div
               className={cn(
                 "max-w-[min(36rem,100%)] rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words whitespace-pre-wrap",
-                message.private
-                  ? "bg-amber-50 text-amber-950"
-                  : own
-                    ? "bg-foreground text-background"
-                    : "bg-surface",
+                message.private ? "bg-amber-50 text-amber-950" : own ? "bg-selected" : "bg-surface",
               )}
             >
               {message.body}

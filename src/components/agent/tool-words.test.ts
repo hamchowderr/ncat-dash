@@ -23,6 +23,7 @@ const KNOWN_TOOL_IDS = [
   "make_folder",
   "move_files",
   "rename_file",
+  "ask_for_help",
   "switch_automation",
   "describe_workflow",
   "set_up_workflow",
@@ -346,6 +347,16 @@ describe("files and folders", () => {
     expect(
       resultWords("list_folder", { folders: ["Raw/"], files: [{ name: "a" }, { name: "b" }] }),
     ).toEqual(["1 folder, 2 files"]);
+    expect(resultWords("ask_for_help", { number: 12, address: "/help?ticket=t" })).toEqual([
+      "Sent as request #12",
+    ]);
+    expect(
+      toolWords("ask_for_help", { subject: "Slack stopped", category: "connections" }),
+    ).toEqual({
+      title: "Asking support",
+      question: "Send this to support?",
+      lines: ["Slack stopped", "About: Connected apps"],
+    });
     expect(resultWords("make_folder", { made: ["Podcasts/", "Podcasts/Raw/"] })).toEqual([
       "Made Podcasts, Podcasts/Raw",
     ]);

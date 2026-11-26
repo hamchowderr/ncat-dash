@@ -24,6 +24,8 @@ const request = (over: Record<string, unknown> = {}) => ({
   lastMessageAt: NOW,
   answered: true,
   unread: true,
+  category: "results",
+  via: null,
   ...over,
 });
 
@@ -44,21 +46,28 @@ beforeEach(() => {
 });
 
 describe("Get Help", () => {
-  test("with no questions yet, it opens on the form and sends what was written", async () => {
+  test("with no questions yet, it opens on the form, guesses the category from the page and sends", async () => {
     place.pathname = "/help";
     place.search = "from=%2Fruns";
     answerQuery(api.support.mine, []);
     const open = mutationOf(api.support.open);
-    open.mockResolvedValue({ ticketId: "t9", number: 9 });
+    open.mockResolvedValue({ ticketId: "t9", number: 9, address: "/help?ticket=t9" });
     renderInApp(<HelpView />);
 
-    expect(screen.getByRole("link", { name: /Or email support@example.test/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "support@example.test" })).toBeTruthy();
+    // Came from Runs, so it starts on Automations and runs.
+    expect(
+      screen.getByRole("radio", { name: /Automations and runs/ }).getAttribute("aria-checked"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: /Uploads and files/ }));
+    expect(
+      screen.getByRole("radio", { name: /Uploads and files/ }).getAttribute("aria-checked"),
+    ).toBe("true");
+
     const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("What is it about?"), {
-      target: { value: "Export fails" },
-    });
-    fireEvent.change(screen.getByLabelText("Tell us more"), {
+    fireEvent.change(screen.getByLabelText("Subject"), { target: { value: "Export fails" } });
+    fireEvent.change(screen.getByLabelText("Details"), {
       target: { value: "The CapCut pack never finishes." },
     });
     fireEvent.click(send);
@@ -71,11 +80,41 @@ describe("Get Help", () => {
     expect(open).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: TEAM.id,
+        category: "files",
         subject: "Export fails",
         body: "The CapCut pack never finishes.",
         page: "/runs",
       }),
     );
+  });
+
+  test("with no guess from the page, a category has to be picked before it sends", () => {
+    place.pathname = "/help";
+    place.search = "";
+    answerQuery(api.support.mine, []);
+    renderInApp(<HelpView />);
+    fireEvent.change(screen.getByLabelText("Subject"), { target: { value: "Hi" } });
+    fireEvent.change(screen.getByLabelText("Details"), { target: { value: "A question" } });
+    const send = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    // Arrow keys move through the choices, like any radio group.
+    const first = screen.getByRole("radio", { name: /Automations and runs/ });
+    expect(first.tabIndex).toBe(0);
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(
+      screen.getByRole("radio", { name: /Clips, captions and edits/ }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(send.disabled).toBe(false);
+  });
+
+  test("offers the assistant, which opens beside the page", () => {
+    place.pathname = "/help";
+    place.search = "";
+    answerQuery(api.support.mine, []);
+    localStorage.removeItem("ncat-agent-open");
+    renderInApp(<HelpView />);
+    fireEvent.click(screen.getByRole("button", { name: "Ask the assistant" }));
+    expect(localStorage.getItem("ncat-agent-open")).toBe("1");
   });
 
   test("lists questions with a new answer, and opening one shows it and counts it read", () => {
@@ -85,14 +124,19 @@ describe("Get Help", () => {
       request(),
       request({ id: "t2", subject: "Old one", status: "closed", unread: false }),
     ]);
-    answerQuery(api.support.conversation, { ticket: request(), messages });
+    answerQuery(api.support.conversation, {
+      ticket: request({ via: "assistant" }),
+      messages,
+    });
     const markRead = mutationOf(api.support.markRead);
     renderInApp(<HelpView />);
 
     expect(screen.getByText("New answer")).toBeTruthy();
     expect(screen.getByText("Solved")).toBeTruthy();
+    expect(screen.getAllByText("Clips, captions and edits").length).toBeGreaterThan(0);
     expect(screen.getByText("Fixed now.")).toBeTruthy();
     expect(markRead).toHaveBeenCalledWith({ ticketId: "t1" });
+    expect(screen.getByText("Opened by the assistant in chat")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "This is solved" }));
     expect(mutationOf(api.support.close)).toHaveBeenCalledWith({ ticketId: "t1" });
@@ -138,6 +182,8 @@ describe("Support under Admin", () => {
     lastMessageAt: NOW,
     waitingOnUs: true,
     unread: true,
+    category: "automations",
+    via: "mcp",
   };
 
   test("is only for the operator", () => {
@@ -151,7 +197,10 @@ describe("Support under Admin", () => {
     place.pathname = "/admin/support";
     place.search = "ticket=t1";
     answerQuery(api.operator.me, true);
-    answerQuery(api.support.inbox, { tickets: [row], counts: { open: 1, unread: 1 } });
+    answerQuery(api.support.inbox, {
+      tickets: [row],
+      counts: { open: 1, unread: 1, byCategory: [{ category: "automations", open: 1 }] },
+    });
     answerQuery(api.support.staffConversation, {
       ticket: row,
       context: { team: "Example Studio", page: "/runs", latestFailedRun: "Weekly clips (r1)" },
@@ -167,6 +216,7 @@ describe("Support under Admin", () => {
     expect(screen.getByText("Private note by Chris")).toBeTruthy();
     expect(screen.getByText("Weekly clips (r1)")).toBeTruthy();
     expect(screen.getByText("Came from")).toBeTruthy();
+    expect(screen.getByText("Opened by an AI app")).toBeTruthy();
     expect(markRead).toHaveBeenCalledWith({ ticketId: "t1" });
 
     fireEvent.click(screen.getByRole("radio", { name: "Private note" }));
@@ -193,7 +243,10 @@ describe("Support under Admin", () => {
     place.pathname = "/admin/support";
     place.search = "ticket=t1";
     answerQuery(api.operator.me, true);
-    answerQuery(api.support.inbox, { tickets: [row], counts: { open: 1, unread: 0 } });
+    answerQuery(api.support.inbox, {
+      tickets: [row],
+      counts: { open: 1, unread: 0, byCategory: [] },
+    });
     answerQuery(api.support.staffConversation, { ticket: row, context: {}, messages });
     renderInApp(<SupportInbox />);
     fireEvent.change(screen.getByLabelText("Your answer"), { target: { value: "Fixed." } });

@@ -4,7 +4,8 @@ import { api } from "@convex/_generated/api";
 import Bowser from "bowser";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { ArrowLeft, CheckCircle2, Mail, Plus, SendHorizontal } from "lucide-react";
+import { categoryForPage, type SupportCategory } from "@convex/lib/supportCategories";
+import { ArrowLeft, Bot, CheckCircle2, Mail, Plus, SendHorizontal } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -13,10 +14,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { showAgent } from "@/lib/agent-open";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
 import { cn } from "@/lib/utils";
 
+import { CategoryLabel, CategoryPicker, ViaLabel } from "./categories";
 import { Composer, listTime, MessageList } from "./conversation";
 
 type Request = FunctionReturnType<typeof api.support.mine>[number];
@@ -37,7 +40,8 @@ export function describeBrowser(userAgent: string): string | undefined {
  * Get help: the person's questions to support and the answers, like the Messages tab of
  * Intercom's messenger, as a page of its own so nothing covers what they were doing. A
  * new question keeps the page they came from, their browser and their team's latest
- * runs, so support doesn't need to ask.
+ * runs, so support doesn't need to ask. Before anyone has asked anything, the page is
+ * just the form, in one calm column.
  */
 export function HelpView() {
   const team = useActiveTeam();
@@ -47,7 +51,8 @@ export function HelpView() {
   const requests = useQuery(api.support.mine, {});
   const contact = useQuery(api.support.contact, {});
   const selected = search.get("ticket");
-  const writing = search.get("new") === "1" || (requests !== undefined && requests.length === 0);
+  const none = requests !== undefined && requests.length === 0;
+  const writing = search.get("new") === "1" || none;
   const cameFrom = search.get("from") ?? undefined;
 
   const go = (params: Record<string, string | null>) => {
@@ -61,75 +66,113 @@ export function HelpView() {
   };
 
   const showingDetail = Boolean(selected) || writing;
+  const form = (
+    <NewRequest
+      organizationId={team.id}
+      page={cameFrom}
+      canGoBack={!none}
+      onBack={() => go({ new: null })}
+      onSent={(ticketId) => go({ ticket: ticketId, new: null })}
+    />
+  );
 
   return (
-    <div className="flex w-full flex-col gap-6">
+    <div className="flex w-full flex-col gap-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Get Help</h1>
           <p className="text-muted-foreground max-w-prose text-sm">
-            Ask a question or tell us what went wrong. We answer here, and send you an email when we
-            do.
+            Ask a question or tell us what went wrong. We answer here, and email you when we do.
           </p>
         </div>
-        {contact?.email && (
-          <a
-            href={`mailto:${contact.email}`}
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
-          >
-            <Mail className="size-4" aria-hidden="true" />
-            Or email {contact.email}
-          </a>
+        {!none && requests !== undefined && !writing && (
+          <Button onClick={() => go({ new: "1", ticket: null })}>
+            <Plus />
+            New question
+          </Button>
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
-        <section
-          aria-label="Your questions"
-          className={cn("grid content-start gap-2", showingDetail && "max-lg:hidden")}
-        >
-          <Button
-            variant={writing ? "secondary" : "outline"}
-            className="justify-start"
-            onClick={() => go({ new: "1", ticket: null })}
+      {requests === undefined ? (
+        <Skeleton className="h-64 w-full max-w-2xl rounded-2xl" />
+      ) : none ? (
+        <div className="grid w-full max-w-2xl gap-8">
+          {form}
+          <OtherWays email={contact?.email ?? null} />
+        </div>
+      ) : (
+        <div className="grid gap-8 lg:grid-cols-[20rem_minmax(0,1fr)]">
+          <section
+            aria-label="Your questions"
+            className={cn("grid content-start gap-6", showingDetail && "max-lg:hidden")}
           >
-            <Plus />
-            Ask a new question
-          </Button>
-          {requests === undefined ? (
-            [0, 1].map((index) => <Skeleton key={index} className="h-16 rounded-xl" />)
-          ) : requests.length === 0 ? null : (
             <ul className="grid gap-1">
               {requests.map((request) => (
                 <RequestRow
                   key={request.id}
                   request={request}
-                  active={request.id === selected}
+                  active={request.id === selected && !writing}
                   onOpen={() => go({ ticket: request.id, new: null })}
                 />
               ))}
             </ul>
-          )}
-        </section>
+            <OtherWays email={contact?.email ?? null} />
+          </section>
 
-        <section aria-label={writing ? "New question" : "Conversation"} className="min-w-0">
-          {selected && !writing ? (
-            <RequestConversation ticketId={selected} onBack={() => go({ ticket: null })} />
-          ) : writing ? (
-            <NewRequest
-              organizationId={team.id}
-              page={cameFrom}
-              canGoBack={(requests?.length ?? 0) > 0}
-              onBack={() => go({ new: null })}
-              onSent={(ticketId) => go({ ticket: ticketId, new: null })}
-            />
-          ) : requests === undefined ? null : (
-            <p className="text-muted-foreground bg-surface rounded-xl px-5 py-8 text-sm max-lg:hidden">
-              Pick a question on the left to see the conversation.
-            </p>
-          )}
-        </section>
+          <section
+            aria-label={writing ? "New question" : "Conversation"}
+            className="min-w-0 max-w-3xl"
+          >
+            {writing ? (
+              form
+            ) : selected ? (
+              <RequestConversation ticketId={selected} onBack={() => go({ ticket: null })} />
+            ) : (
+              <p className="text-muted-foreground px-1 py-2 text-sm max-lg:hidden">
+                Pick a question to see the conversation.
+              </p>
+            )}
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The other ways in, kept quiet under the form or the list: the assistant, which can
+ * often fix things at once and sends a request here when it can't, and the email address.
+ */
+function OtherWays({ email }: { email: string | null }) {
+  return (
+    <div className="text-muted-foreground grid gap-3 text-sm" data-other-ways>
+      <div className="flex items-start gap-3">
+        <Bot className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <p className="min-w-0">
+          The assistant can often fix it right away, and sends it here for you when it can&apos;t.{" "}
+          <button
+            type="button"
+            onClick={() => showAgent(true)}
+            className="text-foreground font-medium underline-offset-4 hover:underline"
+          >
+            Ask the assistant
+          </button>
+        </p>
       </div>
+      {email && (
+        <div className="flex items-start gap-3">
+          <Mail className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <p className="min-w-0">
+            Or email{" "}
+            <a
+              href={`mailto:${email}`}
+              className="text-foreground font-medium underline-offset-4 hover:underline"
+            >
+              {email}
+            </a>
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -151,8 +194,8 @@ function RequestRow({
         aria-current={active ? "true" : undefined}
         data-request={request.unread ? "new" : "seen"}
         className={cn(
-          "hover:bg-muted/60 focus-visible:ring-ring/50 grid w-full gap-0.5 rounded-xl px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-3",
-          active && "bg-muted",
+          "focus-visible:ring-ring/50 grid w-full gap-0.5 rounded-xl px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-3",
+          active ? "row-selected" : "hover:bg-muted/60",
         )}
       >
         <span className="flex items-baseline justify-between gap-3">
@@ -164,12 +207,15 @@ function RequestRow({
           </span>
         </span>
         <span className="text-muted-foreground line-clamp-1 text-sm">{request.preview}</span>
-        <span className="mt-0.5 flex items-center gap-1.5 text-xs">
+        <span className="mt-1 flex min-w-0 items-center gap-2 text-xs">
           {request.unread && (
-            <span className="bg-destructive size-1.5 rounded-full" aria-hidden="true" />
+            <span className="bg-destructive size-1.5 shrink-0 rounded-full" aria-hidden="true" />
           )}
           <span
-            className={request.unread ? "text-foreground font-medium" : "text-muted-foreground"}
+            className={cn(
+              "shrink-0",
+              request.unread ? "text-foreground font-medium" : "text-muted-foreground",
+            )}
           >
             {request.status === "closed"
               ? "Solved"
@@ -179,7 +225,7 @@ function RequestRow({
                   : "Answered"
                 : "Waiting for an answer"}
           </span>
-          <span className="text-muted-foreground">· #{request.number}</span>
+          <CategoryLabel category={request.category} />
         </span>
       </button>
     </li>
@@ -220,9 +266,15 @@ function RequestConversation({ ticketId, onBack }: { ticketId: string; onBack: (
             <span className="sr-only">All questions</span>
           </Button>
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold tracking-tight break-words">{ticket.subject}</h2>
-            <p className="text-muted-foreground text-xs">
-              #{ticket.number} · {ticket.status === "closed" ? "Solved" : "Open"}
+            <h2 className="text-lg font-semibold tracking-tight text-balance break-words">
+              {ticket.subject}
+            </h2>
+            <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span>
+                #{ticket.number} · {ticket.status === "closed" ? "Solved" : "Open"}
+              </span>
+              <CategoryLabel category={ticket.category} />
+              <ViaLabel via={ticket.via} />
             </p>
           </div>
         </div>
@@ -260,18 +312,23 @@ function NewRequest({
   onSent: (ticketId: string) => void;
 }) {
   const open = useMutation(api.support.open);
+  // A first guess from the page they came from; one click picks another.
+  const [category, setCategory] = useState<SupportCategory | null>(() => categoryForPage(page));
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ready = category !== null && subject.trim() !== "" && body.trim() !== "";
 
   async function submit() {
+    if (!ready) return;
     setBusy(true);
     setError(null);
     try {
       const browser = describeBrowser(navigator.userAgent);
       const { ticketId } = await open({
         organizationId,
+        category,
         subject,
         body,
         ...(page ? { page } : {}),
@@ -287,14 +344,15 @@ function NewRequest({
 
   return (
     <form
-      className="bg-surface grid gap-4 rounded-2xl p-5"
+      className="grid gap-6"
+      aria-label="Ask a new question"
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
       }}
     >
-      <div className="flex items-center gap-2">
-        {canGoBack && (
+      {canGoBack && (
+        <div className="flex items-center gap-2">
           <Button
             type="button"
             variant="ghost"
@@ -305,39 +363,50 @@ function NewRequest({
             <ArrowLeft />
             <span className="sr-only">All questions</span>
           </Button>
-        )}
-        <h2 className="text-lg font-semibold tracking-tight">Ask a new question</h2>
-      </div>
+          <h2 className="text-lg font-semibold tracking-tight">New question</h2>
+        </div>
+      )}
+      <fieldset className="grid gap-2.5">
+        <legend className="mb-2.5 text-sm font-medium">What do you need help with?</legend>
+        <CategoryPicker value={category} onChange={setCategory} />
+      </fieldset>
       <div className="grid gap-1.5">
-        <Label htmlFor="help-subject">What is it about?</Label>
+        <Label htmlFor="help-subject">Subject</Label>
         <Input
           id="help-subject"
           value={subject}
           maxLength={200}
           onChange={(event) => setSubject(event.target.value)}
           placeholder="Captions are a second late"
-          className="bg-background"
         />
       </div>
       <div className="grid gap-1.5">
-        <Label htmlFor="help-body">Tell us more</Label>
+        <Label htmlFor="help-body">Details</Label>
         <Textarea
           id="help-body"
           value={body}
           onChange={(event) => setBody(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              void submit();
+            }
+          }}
           placeholder="What you did, what you expected, and what happened instead."
-          className="bg-background min-h-32"
+          className="min-h-36"
         />
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p
-          className={cn("text-xs", error ? "text-destructive" : "text-muted-foreground")}
-          role={error ? "alert" : undefined}
-        >
-          {error ??
-            "We see your team, the page you came from and your latest runs, so you don't have to explain them."}
+        <p className="text-muted-foreground text-xs">
+          Your team, the page you came from and your latest runs go with it, so there&apos;s no need
+          to explain them.
         </p>
-        <Button type="submit" disabled={busy || !subject.trim() || !body.trim()}>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {error && (
+          <p className="text-destructive mr-auto text-sm" role="alert">
+            {error}
+          </p>
+        )}
+        <Button type="submit" disabled={busy || !ready}>
           <SendHorizontal />
           Send
         </Button>

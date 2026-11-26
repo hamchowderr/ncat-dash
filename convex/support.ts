@@ -3,12 +3,13 @@ import type { Ticket } from "convex-support-tickets";
 import { ConvexError, v } from "convex/values";
 
 import { components, internal } from "./_generated/api";
-import { type MutationCtx, mutation, query } from "./_generated/server";
+import { type MutationCtx, internalMutation, mutation, query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { type Caller, getCaller } from "./lib/caller";
 import { limiter, waitLabel } from "./lib/limits";
 import { callerIsOperator, operatorEmails, requireOperator } from "./lib/operator";
 import { support } from "./lib/support";
+import { isSupportCategory, type SupportVia } from "./lib/supportCategories";
 
 // Support tickets. Customers ask for help from the Get help page (/help) and see the
 // answers there; whoever runs this copy (the operator, OPERATOR_EMAILS) answers from the
@@ -62,6 +63,8 @@ function customerView(ticket: Ticket) {
     lastMessageAt: ticket.lastMessageAt,
     answered: ticket.lastPublicFrom === "staff",
     unread: ticket.customerUnread,
+    category: ticket.category ?? null,
+    via: ticket.via ?? null,
   };
 }
 
@@ -74,6 +77,8 @@ const customerTicket = v.object({
   lastMessageAt: v.number(),
   answered: v.boolean(),
   unread: v.boolean(),
+  category: v.union(v.null(), v.string()),
+  via: v.union(v.null(), v.string()),
 });
 
 const shownMessage = v.object({
@@ -162,61 +167,121 @@ export const conversation = query({
   },
 });
 
+/** The person asking, as a request needs them. */
+type Asker = { _id: string; name: string; email: string };
+
 /**
- * Asks for help. Keeps the team, the page they were on and the team's latest runs with
- * the request, so support doesn't have to ask.
+ * Opens a request for someone on a team. Keeps the team, the page they were on and the
+ * team's latest runs with it, so support doesn't have to ask. Used by the Get Help form,
+ * by the assistant in chat (as the person) and by AI apps over MCP.
+ */
+async function openRequest(
+  ctx: MutationCtx,
+  asker: Asker,
+  args: {
+    organizationId: string;
+    subject: string;
+    body: string;
+    category?: string;
+    via?: SupportVia;
+    page?: string;
+    browser?: string;
+  },
+) {
+  await spend(ctx, asker._id);
+  const teams = await ctx.runQuery(components.betterAuth.members.teamsFor, {
+    userId: asker._id,
+  });
+  const team = teams.find((each) => each.id === args.organizationId);
+  const latest = await ctx.db
+    .query("runs")
+    .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+    .order("desc")
+    .first();
+  const failed = await ctx.db
+    .query("runs")
+    .withIndex("by_organization_and_status", (q) =>
+      q.eq("organizationId", args.organizationId).eq("status", "failed"),
+    )
+    .order("desc")
+    .first();
+  const context: Record<string, string> = {};
+  if (team) context.team = team.name;
+  if (args.page) context.page = args.page.slice(0, 300);
+  if (args.browser) context.browser = args.browser.slice(0, 300);
+  // Support can't open a team's runs, so the facts that matter travel with the request.
+  if (latest) {
+    context.latestRun = `${latest.automationName}: ${latest.status} (${latest._id})`;
+  }
+  if (failed) {
+    context.latestFailedRun = `${failed.automationName} (${failed._id})${failed.error ? `: ${failed.error.slice(0, 300)}` : ""}`;
+  }
+
+  const opened = await support.open(ctx, {
+    requester: { id: asker._id, name: asker.name || asker.email, email: asker.email },
+    scope: args.organizationId,
+    subject: args.subject,
+    body: args.body,
+    // Anything not on the list (an older screen, a guess) is filed as "Something else".
+    category: isSupportCategory(args.category) ? args.category : "other",
+    ...(args.via ? { via: args.via } : {}),
+    context,
+  });
+  const ticket = (await support.get(ctx, opened.ticketId))!.ticket;
+  await tellOperator(ctx, { kind: "new", ticket, from: ticket.requesterName, body: args.body });
+  return {
+    ticketId: opened.ticketId,
+    number: opened.number,
+    address: `${HELP_PATH}?ticket=${opened.ticketId}`,
+  };
+}
+
+const opened = v.object({ ticketId: v.string(), number: v.number(), address: v.string() });
+
+/**
+ * Asks for help, from the Get Help form or from the assistant in chat on the person's
+ * behalf (`via: "assistant"`, after they said yes to it on the assistant's card).
  */
 export const open = mutation({
   args: {
     organizationId: v.string(),
     subject: v.string(),
     body: v.string(),
+    category: v.optional(v.string()),
+    via: v.optional(v.literal("assistant")),
     page: v.optional(v.string()),
     browser: v.optional(v.string()),
   },
-  returns: v.object({ ticketId: v.string(), number: v.number() }),
+  returns: opened,
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId);
     const caller = await signedIn(ctx);
-    await spend(ctx, caller._id);
-    const teams = await ctx.runQuery(components.betterAuth.members.teamsFor, {
-      userId: caller._id,
-    });
-    const team = teams.find((each) => each.id === args.organizationId);
-    const latest = await ctx.db
-      .query("runs")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .order("desc")
-      .first();
-    const failed = await ctx.db
-      .query("runs")
-      .withIndex("by_organization_and_status", (q) =>
-        q.eq("organizationId", args.organizationId).eq("status", "failed"),
-      )
-      .order("desc")
-      .first();
-    const context: Record<string, string> = {};
-    if (team) context.team = team.name;
-    if (args.page) context.page = args.page.slice(0, 300);
-    if (args.browser) context.browser = args.browser.slice(0, 300);
-    // Support can't open a team's runs, so the facts that matter travel with the request.
-    if (latest) {
-      context.latestRun = `${latest.automationName}: ${latest.status} (${latest._id})`;
-    }
-    if (failed) {
-      context.latestFailedRun = `${failed.automationName} (${failed._id})${failed.error ? `: ${failed.error.slice(0, 300)}` : ""}`;
-    }
+    return await openRequest(ctx, caller, args);
+  },
+});
 
-    const opened = await support.open(ctx, {
-      requester: { id: caller._id, name: caller.name || caller.email, email: caller.email },
-      scope: args.organizationId,
-      subject: args.subject,
-      body: args.body,
-      context,
-    });
-    const ticket = (await support.get(ctx, opened.ticketId))!.ticket;
-    await tellOperator(ctx, { kind: "new", ticket, from: ticket.requesterName, body: args.body });
-    return { ticketId: opened.ticketId, number: opened.number };
+/** The same for an AI app over MCP, as the person who connected it. */
+export const openAs = internalMutation({
+  args: {
+    organizationId: v.string(),
+    userId: v.string(),
+    subject: v.string(),
+    body: v.string(),
+    category: v.optional(v.string()),
+  },
+  returns: opened,
+  handler: async (ctx, { userId, ...args }) => {
+    const [role, person] = await Promise.all([
+      ctx.runQuery(components.betterAuth.members.roleFor, {
+        userId,
+        organizationId: args.organizationId,
+      }),
+      ctx.runQuery(components.betterAuth.members.contact, { userId }),
+    ]);
+    if (!role || !person) {
+      throw new ConvexError({ code: "forbidden", message: "You are not on this team." });
+    }
+    return await openRequest(ctx, { _id: userId, ...person }, { ...args, via: "mcp" });
   },
 });
 
@@ -285,6 +350,8 @@ const staffTicket = v.object({
   lastMessageAt: v.number(),
   waitingOnUs: v.boolean(),
   unread: v.boolean(),
+  category: v.union(v.null(), v.string()),
+  via: v.union(v.null(), v.string()),
 });
 
 function staffView(ticket: Ticket) {
@@ -300,23 +367,49 @@ function staffView(ticket: Ticket) {
     lastMessageAt: ticket.lastMessageAt,
     waitingOnUs: ticket.status === "open" && ticket.lastPublicFrom === "customer",
     unread: ticket.staffUnread,
+    category: ticket.category ?? null,
+    via: ticket.via ?? null,
   };
 }
 
-/** Open or closed requests, the latest first, with how many are open and unread. */
+/**
+ * Open or closed requests, the latest first, with how many are open and unread and how
+ * many are open in each category. With `category`, only that category's.
+ */
 export const inbox = query({
-  args: { status: v.union(v.literal("open"), v.literal("closed")) },
+  args: {
+    status: v.union(v.literal("open"), v.literal("closed")),
+    category: v.optional(v.string()),
+  },
   returns: v.object({
     tickets: v.array(staffTicket),
-    counts: v.object({ open: v.number(), unread: v.number() }),
+    counts: v.object({
+      open: v.number(),
+      unread: v.number(),
+      byCategory: v.array(v.object({ category: v.string(), open: v.number() })),
+    }),
   }),
   handler: async (ctx, args) => {
     await requireOperator(ctx);
     const [tickets, counts] = await Promise.all([
-      support.listByStatus(ctx, args.status),
+      support.listByStatus(ctx, args.status, { category: args.category }),
       support.staffCounts(ctx),
     ]);
     return { tickets: tickets.map(staffView), counts };
+  },
+});
+
+/** Files a request under another category. Only sorts the inbox; nobody is told. */
+export const setCategory = mutation({
+  args: { ticketId: v.string(), category: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireOperator(ctx);
+    if (!isSupportCategory(args.category)) {
+      throw new ConvexError({ code: "invalid", message: "That category isn't on the list." });
+    }
+    await support.setCategory(ctx, args.ticketId, args.category);
+    return null;
   },
 });
 

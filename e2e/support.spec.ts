@@ -82,11 +82,16 @@ test("a customer asks from Get Help, which keeps the page they came from", async
   await ana.getByRole("link", { name: "Get Help" }).click();
   await expect(ana).toHaveURL(/\/help\?from=%2Fruns/);
   await expect(ana.getByRole("heading", { name: "Get Help" })).toBeVisible();
-  await expect(ana.getByRole("heading", { name: "Ask a new question" })).toBeVisible();
+  // They came from Runs, so the form starts on that category; they pick a closer one.
+  await expect(ana.getByRole("radio", { name: /Automations and runs/ })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
   await pause(ana);
-  await ana.getByLabel("What is it about?").fill("Captions are a second late");
+  await ana.getByRole("radio", { name: /Clips, captions and edits/ }).click();
+  await ana.getByLabel("Subject").fill("Captions are a second late");
   await ana
-    .getByLabel("Tell us more")
+    .getByLabel("Details")
     .fill(
       "On my last clip the captions show up about a second after the words.\nIt started today.",
     );
@@ -94,6 +99,7 @@ test("a customer asks from Get Help, which keeps the page they came from", async
   await ana.getByRole("button", { name: "Send" }).click();
   await expect(ana).toHaveURL(/ticket=/);
   await expect(ana.getByText("Waiting for an answer")).toBeVisible();
+  await expect(ana.getByText("Clips, captions and edits").first()).toBeVisible();
   await expect(thread(ana).getByText("It started today.", { exact: false })).toBeVisible();
   await pause(ana);
   // Away from the question: had it stayed open, the answer would count as read at once.
@@ -108,6 +114,10 @@ test("the operator sees it under Admin with who asked and from where, and answer
   await expect(support).toContainText(/\d+ unread/);
   await support.click();
   await expect(operator.getByRole("heading", { name: "Support", exact: true })).toBeVisible();
+  // Only that category's questions.
+  await operator.getByRole("combobox", { name: "Category" }).click();
+  await operator.getByRole("option", { name: /Clips, captions and edits/ }).click();
+  await expect(operator).toHaveURL(/category=results/);
   await expect(operator.getByText("Needs an answer").first()).toBeVisible();
   // The newest is at the top.
   await operator
@@ -159,4 +169,108 @@ test("the answer shows beside Get Help; the private note never reaches the custo
 
   await operator.goto("/admin/support?status=closed");
   await expect(operator.getByRole("button", { name: /Ana Reyes/ }).first()).toBeVisible();
+});
+
+const sse = (events: object[]) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
+const ASK = "The Clips step failed twice on my podcast. Can a person look at it?";
+
+/** The agent server, stood in for: it answers with a help request that waits for a yes. */
+async function agentAsksForHelp(page: Page) {
+  await page.route("**/api/agent-controller/**", async (route) => {
+    const path = new URL(route.request().url()).pathname.replace("/api/agent-controller", "");
+    if (path === "/stream") {
+      return route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body: sse([
+          { type: "__thread__", threadId: "t-help" },
+          {
+            type: "message_start",
+            message: { id: "u-1", role: "user", content: [{ type: "text", text: ASK }] },
+          },
+          {
+            type: "message_start",
+            message: {
+              id: "a-1",
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "I couldn't fix that from here: the toolkit stops the Clips step before it starts. I can ask Takewon support for you.",
+                },
+              ],
+            },
+          },
+          {
+            type: "tool_approval_required",
+            toolCallId: "call-help",
+            toolName: "ask_for_help",
+            category: null,
+            args: {
+              subject: "The Clips step fails on my podcast",
+              message:
+                "My Podcast Clips automation failed twice today on episode 12, both times at the Clips step.\nThe assistant tried it again and it failed the same way.",
+              category: "automations",
+            },
+          },
+        ]),
+      });
+    }
+    if (path === "/approve") return route.fulfill({ json: { ok: true } });
+    if (path === "/threads") return route.fulfill({ json: { threads: [] } });
+    if (path.endsWith("/pending")) return route.fulfill({ json: { running: false, events: [] } });
+    return route.fulfill({ json: {} });
+  });
+}
+
+test("the assistant shows a help request in full and sends it only on a yes", async () => {
+  await agentAsksForHelp(ana);
+  await ana.goto("/automations");
+  const agent = ana.getByRole("complementary", { name: "Agent" });
+  if (!(await agent.isVisible())) {
+    await ana.locator("header").getByRole("button", { name: "Open the agent" }).click();
+  }
+  await agent.getByPlaceholder("Describe an automation, or a change to this one").fill(ASK);
+  await agent.getByPlaceholder("Describe an automation, or a change to this one").press("Enter");
+  await expect(agent.getByText("Send this to support?")).toBeVisible({ timeout: 15_000 });
+  const card = agent.locator("[data-help-request]");
+  await expect(card.getByText("The Clips step fails on my podcast")).toBeVisible();
+  await expect(card.getByText("Automations and runs")).toBeVisible();
+  await expect(card.getByText(/failed the same way/)).toBeVisible();
+  await shot(ana, "Assistant Asks Before Sending A Help Request");
+  await pause(ana);
+  await agent.getByRole("button", { name: "Approve" }).click();
+  await expect(agent.getByText("Send this to support?")).toHaveCount(0);
+  await ana.unroute("**/api/agent-controller/**");
+});
+
+test("an AI app's request reaches the inbox, filed and marked as opened by an AI app", async () => {
+  const anaId = JSON.parse(
+    run(
+      "adapter:findOne",
+      { model: "user", where: [{ field: "email", value: emailOf("ana") }] },
+      "betterAuth",
+    ),
+  )._id as string;
+  const teams = JSON.parse(run("members:teamsFor", { userId: anaId }, "betterAuth")) as {
+    id: string;
+  }[];
+  run("support:openAs", {
+    organizationId: teams[0].id,
+    userId: anaId,
+    category: "connections",
+    subject: "Slack stopped posting new clips",
+    body: "Nothing has come through to #clips since this morning.",
+  });
+  await operator.goto("/admin/support");
+  await operator
+    .getByRole("button", { name: /Slack stopped posting/ })
+    .first()
+    .click();
+  await expect(operator.getByText("Opened by an AI app")).toBeVisible();
+  await expect(operator.getByRole("combobox", { name: "Category" }).last()).toContainText(
+    "Connected apps",
+  );
+  await shot(operator, "Support Inbox Request From An AI App");
+  await pause(operator);
 });

@@ -8,7 +8,13 @@ import { messageFields, side, status, ticketFields } from "./schema.js";
 // knows nothing about who is signed in. The app decides who may call what (a customer
 // sees only their own tickets, support staff see all) and passes plain ids and names in.
 
-export const LIMITS = { subject: 200, body: 10_000, preview: 160 } as const;
+export const LIMITS = { subject: 200, body: 10_000, preview: 160, label: 60 } as const;
+
+/** A category or channel name: short, or left out when empty. */
+function label(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.slice(0, LIMITS.label) : undefined;
+}
 
 const ticket = v.object({ _id: v.id("tickets"), _creationTime: v.number(), ...ticketFields });
 const message = v.object({ _id: v.id("messages"), _creationTime: v.number(), ...messageFields });
@@ -58,12 +64,16 @@ export const open = mutation({
     scope: v.optional(v.string()),
     subject: v.string(),
     body: v.string(),
+    category: v.optional(v.string()),
+    via: v.optional(v.string()),
     context: v.optional(v.record(v.string(), v.string())),
   },
   returns: v.object({ ticketId: v.id("tickets"), number: v.number() }),
   handler: async (ctx, args) => {
     const subject = clean(args.subject, LIMITS.subject, "subject");
     const body = clean(args.body, LIMITS.body, "message");
+    const category = label(args.category);
+    const via = label(args.via);
     const number = await nextNumber(ctx);
     const now = Date.now();
     const ticketId = await ctx.db.insert("tickets", {
@@ -74,6 +84,8 @@ export const open = mutation({
       requesterName: args.requesterName,
       requesterEmail: args.requesterEmail,
       ...(args.scope ? { scope: args.scope } : {}),
+      ...(category ? { category } : {}),
+      ...(via ? { via } : {}),
       ...(args.context && Object.keys(args.context).length ? { context: args.context } : {}),
       lastMessageAt: now,
       lastPublicFrom: "customer",
@@ -157,6 +169,17 @@ export const setStatus = mutation({
   },
 });
 
+/** Files a ticket under another category, or none. Nobody is told: it only sorts the inbox. */
+export const setCategory = mutation({
+  args: { ticketId: v.id("tickets"), category: v.optional(v.string()) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const found = await mustGet(ctx, args.ticketId);
+    await ctx.db.patch(found._id, { category: label(args.category) });
+    return null;
+  },
+});
+
 /** Counts the ticket as seen by one side. */
 export const markRead = mutation({
   args: { ticketId: v.id("tickets"), by: side },
@@ -212,28 +235,55 @@ export const listByRequester = query({
       .take(Math.min(args.limit ?? 50, 200)),
 });
 
-/** Open or closed tickets, the latest first, for support's inbox. */
+/** Open or closed tickets, the latest first, for support's inbox; one category's with `category`. */
 export const listByStatus = query({
-  args: { status, limit: v.optional(v.number()) },
+  args: { status, category: v.optional(v.string()), limit: v.optional(v.number()) },
   returns: v.array(ticket),
-  handler: async (ctx, args) =>
-    await ctx.db
+  handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? 100, 500);
+    const { category } = args;
+    if (category === undefined) {
+      return await ctx.db
+        .query("tickets")
+        .withIndex("by_status", (q) => q.eq("status", args.status))
+        .order("desc")
+        .take(limit);
+    }
+    return await ctx.db
       .query("tickets")
-      .withIndex("by_status", (q) => q.eq("status", args.status))
+      .withIndex("by_status_and_category", (q) =>
+        q.eq("status", args.status).eq("category", category),
+      )
       .order("desc")
-      .take(Math.min(args.limit ?? 100, 500)),
+      .take(limit);
+  },
 });
 
-/** How many open tickets there are, and how many of them have something support hasn't seen. */
+/**
+ * How many open tickets there are, how many of them have something support hasn't seen,
+ * and how many are open in each category (tickets with none are left out of that list).
+ */
 export const staffCounts = query({
   args: {},
-  returns: v.object({ open: v.number(), unread: v.number() }),
+  returns: v.object({
+    open: v.number(),
+    unread: v.number(),
+    byCategory: v.array(v.object({ category: v.string(), open: v.number() })),
+  }),
   handler: async (ctx) => {
     const open = await ctx.db
       .query("tickets")
       .withIndex("by_status", (q) => q.eq("status", "open"))
       .take(1000);
-    return { open: open.length, unread: open.filter((t) => t.staffUnread).length };
+    const counts = new Map<string, number>();
+    for (const each of open) {
+      if (each.category) counts.set(each.category, (counts.get(each.category) ?? 0) + 1);
+    }
+    return {
+      open: open.length,
+      unread: open.filter((t) => t.staffUnread).length,
+      byCategory: [...counts].map(([category, n]) => ({ category, open: n })),
+    };
   },
 });
 

@@ -106,7 +106,11 @@ describe("support tickets", () => {
     expect(
       await t.mutation(api.tickets.setStatus, { ticketId, status: "closed", by: "staff" }),
     ).toBe(true);
-    expect(await t.query(api.tickets.staffCounts, {})).toEqual({ open: 0, unread: 0 });
+    expect(await t.query(api.tickets.staffCounts, {})).toEqual({
+      open: 0,
+      unread: 0,
+      byCategory: [],
+    });
     expect((await t.query(api.tickets.listByStatus, { status: "closed" })).length).toBe(1);
 
     const { reopened } = await t.mutation(api.tickets.reply, {
@@ -117,7 +121,7 @@ describe("support tickets", () => {
       body: "Still broken",
     });
     expect(reopened).toBe(true);
-    expect(await t.query(api.tickets.staffCounts, {})).toEqual({ open: 1, unread: 1 });
+    expect(await t.query(api.tickets.staffCounts, {})).toEqual({ open: 1, unread: 1, byCategory: [] });
     const got = await t.query(api.tickets.get, { ticketId });
     expect(got?.ticket.closedAt).toBeUndefined();
   });
@@ -138,6 +142,56 @@ describe("support tickets", () => {
     const open = await t.query(api.tickets.listByStatus, { status: "open" });
     expect(open).toHaveLength(3);
     expect((await t.query(api.tickets.byNumber, { number: 1 }))?._id).toBe(a.ticketId);
+  });
+
+  test("categories file tickets: support filters by one, counts open ones and can refile", async () => {
+    const t = backend();
+    const late = await t.mutation(api.tickets.open, {
+      ...ana,
+      subject: "Captions late",
+      body: "B",
+      category: " results ",
+      via: "assistant",
+    });
+    await t.mutation(api.tickets.open, {
+      ...ana,
+      subject: "Card declined",
+      body: "B",
+      category: "billing",
+    });
+    await t.mutation(api.tickets.open, { ...ana, subject: "No category", body: "B" });
+
+    const got = await t.query(api.tickets.get, { ticketId: late.ticketId });
+    expect(got?.ticket).toMatchObject({ category: "results", via: "assistant" });
+
+    const billing = await t.query(api.tickets.listByStatus, {
+      status: "open",
+      category: "billing",
+    });
+    expect(billing.map((each) => each.subject)).toEqual(["Card declined"]);
+    expect((await t.query(api.tickets.listByStatus, { status: "open" })).length).toBe(3);
+
+    const counts = await t.query(api.tickets.staffCounts, {});
+    expect(counts.open).toBe(3);
+    expect(counts.byCategory).toEqual(
+      expect.arrayContaining([
+        { category: "results", open: 1 },
+        { category: "billing", open: 1 },
+      ]),
+    );
+    expect(counts.byCategory).toHaveLength(2);
+
+    await t.mutation(api.tickets.setCategory, { ticketId: late.ticketId, category: "billing" });
+    const refiled = await t.query(api.tickets.listByStatus, {
+      status: "open",
+      category: "billing",
+    });
+    // Latest message first: "Card declined" was asked after "Captions late".
+    expect(refiled.map((each) => each.subject)).toEqual(["Card declined", "Captions late"]);
+    await t.mutation(api.tickets.setCategory, { ticketId: late.ticketId });
+    expect(
+      (await t.query(api.tickets.get, { ticketId: late.ticketId }))?.ticket.category,
+    ).toBeUndefined();
   });
 
   test("removing by person or scope deletes the tickets and their messages", async () => {

@@ -59,6 +59,10 @@ export class SupportTickets {
       body: string;
       /** What it belongs to in your app, such as a team id. */
       scope?: string;
+      /** What kind of request it is, from a list your app keeps ("billing", "bug"). */
+      category?: string;
+      /** Where it came from when not the person's own form, such as "assistant". */
+      via?: string;
       /** Facts to keep with it: the page they were on, their browser, a job id. */
       context?: Record<string, string>;
     },
@@ -70,6 +74,8 @@ export class SupportTickets {
       subject: args.subject,
       body: args.body,
       ...(args.scope ? { scope: args.scope } : {}),
+      ...(args.category ? { category: args.category } : {}),
+      ...(args.via ? { via: args.via } : {}),
       ...(args.context ? { context: args.context } : {}),
     });
   }
@@ -111,6 +117,14 @@ export class SupportTickets {
     });
   }
 
+  /** Files a ticket under another category; leave `category` out for none. */
+  async setCategory(ctx: RunMutation, ticketId: string, category?: string): Promise<void> {
+    await ctx.runMutation(this.component.tickets.setCategory, {
+      ticketId,
+      ...(category ? { category } : {}),
+    });
+  }
+
   async markRead(ctx: RunMutation, ticketId: string, by: Side): Promise<void> {
     await ctx.runMutation(this.component.tickets.markRead, { ticketId, by });
   }
@@ -138,10 +152,15 @@ export class SupportTickets {
     });
   }
 
-  async listByStatus(ctx: RunAny, status: "open" | "closed", limit?: number): Promise<Ticket[]> {
+  async listByStatus(
+    ctx: RunAny,
+    status: "open" | "closed",
+    opts: { category?: string; limit?: number } = {},
+  ): Promise<Ticket[]> {
     return await ctx.runQuery(this.component.tickets.listByStatus, {
       status,
-      ...(limit ? { limit } : {}),
+      ...(opts.category ? { category: opts.category } : {}),
+      ...(opts.limit ? { limit: opts.limit } : {}),
     });
   }
 

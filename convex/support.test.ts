@@ -53,7 +53,11 @@ describe("support tickets in the app", () => {
     expect(mine).toMatchObject([{ id: ticketId, status: "open", answered: false, unread: false }]);
 
     const inbox = await staff.as.query(api.support.inbox, { status: "open" });
-    expect(inbox.counts).toEqual({ open: 1, unread: 1 });
+    expect(inbox.counts).toEqual({
+      open: 1,
+      unread: 1,
+      byCategory: [{ category: "other", open: 1 }],
+    });
     expect(inbox.tickets[0]).toMatchObject({
       requesterName: "Ana Lima",
       team: "Example Studio",
@@ -142,7 +146,97 @@ describe("support tickets in the app", () => {
     await expect(
       ana.as.mutation(api.support.setStatus, { ticketId, status: "closed" }),
     ).rejects.toThrow(/operator/);
+    await expect(
+      ana.as.mutation(api.support.setCategory, { ticketId, category: "billing" }),
+    ).rejects.toThrow(/operator/);
     expect(await bo.as.query(api.support.staffUnread, {})).toBe(0);
+  });
+
+  test("a request is filed under the category picked; support filters by it and can refile it", async () => {
+    const { teamId, ana, staff } = await setUp();
+    const late = await ana.as.mutation(api.support.open, {
+      organizationId: teamId,
+      category: "results",
+      subject: "Captions are late",
+      body: "B",
+    });
+    // Anything not on the list is filed as "Something else", never refused.
+    await ana.as.mutation(api.support.open, {
+      organizationId: teamId,
+      category: "refunds",
+      subject: "Old screen",
+      body: "B",
+    });
+    expect((await ana.as.query(api.support.mine, {})).map((each) => each.category)).toEqual([
+      "other",
+      "results",
+    ]);
+
+    const results = await staff.as.query(api.support.inbox, {
+      status: "open",
+      category: "results",
+    });
+    expect(results.tickets.map((each) => each.subject)).toEqual(["Captions are late"]);
+    expect(results.counts.byCategory).toEqual(
+      expect.arrayContaining([
+        { category: "results", open: 1 },
+        { category: "other", open: 1 },
+      ]),
+    );
+
+    await staff.as.mutation(api.support.setCategory, {
+      ticketId: late.ticketId,
+      category: "files",
+    });
+    const files = await staff.as.query(api.support.inbox, { status: "open", category: "files" });
+    expect(files.tickets.map((each) => each.subject)).toEqual(["Captions are late"]);
+    await expect(
+      staff.as.mutation(api.support.setCategory, { ticketId: late.ticketId, category: "refunds" }),
+    ).rejects.toThrow(/list/);
+  });
+
+  test("the assistant asks for help as the person, and the request says so", async () => {
+    const { t, teamId, ana, staff } = await setUp();
+    const opened = await ana.as.mutation(api.support.open, {
+      organizationId: teamId,
+      category: "automations",
+      via: "assistant",
+      subject: "My Podcast Clips run keeps failing",
+      body: "I tried it twice with the assistant; the Clips step fails both times.",
+    });
+    expect(opened.address).toBe(`/help?ticket=${opened.ticketId}`);
+    const [mine] = await ana.as.query(api.support.mine, {});
+    expect(mine).toMatchObject({ via: "assistant", category: "automations" });
+    const full = await staff.as.query(api.support.staffConversation, { ticketId: opened.ticketId });
+    expect(full?.ticket).toMatchObject({ requesterName: "Ana Lima", via: "assistant" });
+    expect(await emails(t)).toHaveLength(1);
+  });
+
+  test("an AI app over MCP asks as the person who connected it, only on their own team", async () => {
+    const { t, teamId, ana, staff } = await setUp();
+    const opened = await t.mutation(internal.support.openAs, {
+      organizationId: teamId,
+      userId: ana.id,
+      category: "connections",
+      subject: "Slack stopped posting",
+      body: "Nothing has come through since this morning.",
+    });
+    const full = await staff.as.query(api.support.staffConversation, { ticketId: opened.ticketId });
+    expect(full?.ticket).toMatchObject({
+      requesterName: "Ana Lima",
+      category: "connections",
+      via: "mcp",
+      team: "Example Studio",
+    });
+    const elsewhere = await addTeam(t, "Not Theirs");
+    await expect(
+      t.mutation(internal.support.openAs, {
+        organizationId: elsewhere,
+        userId: ana.id,
+        subject: "S",
+        body: "B",
+      }),
+    ).rejects.toThrow(/not on this team/);
   });
 
   test("you can only ask from a team you are on", async () => {

@@ -16,6 +16,13 @@ export const ticketFields = {
   requesterEmail: v.string(),
   /** What the ticket belongs to in the app, such as a team or workspace id. */
   scope: v.optional(v.string()),
+  /** What kind of request it is, from a short list the app chooses ("billing", "bug"). */
+  category: v.optional(v.string()),
+  /**
+   * Where it was opened, when not by the person themselves in a form: "assistant" when an
+   * AI assistant opened it for them, or whatever channel names the app uses.
+   */
+  via: v.optional(v.string()),
   /** Facts the app adds when the ticket is opened: the page, the latest run, the browser. */
   context: v.optional(v.record(v.string(), v.string())),
   /** When the last message (a private note included) was added. */
@@ -46,6 +53,7 @@ export default defineSchema({
   tickets: defineTable(ticketFields)
     .index("by_requester", ["requesterId", "lastMessageAt"])
     .index("by_status", ["status", "lastMessageAt"])
+    .index("by_status_and_category", ["status", "category", "lastMessageAt"])
     .index("by_scope", ["scope"])
     .index("by_number", ["number"]),
   messages: defineTable(messageFields).index("by_ticket", ["ticketId"]),
