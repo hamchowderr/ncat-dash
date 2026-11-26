@@ -66,7 +66,7 @@ import { startRun } from "./lib/runner";
 import { withTeamSteps } from "./lib/teamSteps";
 import { deleteVersions, recordVersion } from "./lib/versions";
 import { deleteNotes, notesOf } from "./notes";
-import { bucketOf, presign, storageConnection } from "./lib/bucket";
+import { bucketForFile, presign, storageConnection } from "./lib/bucket";
 import {
   edgeValidator,
   moreTriggersValidator,
@@ -1324,7 +1324,12 @@ export const tryOnUpload = action({
   returns: v.object({ runId: v.id("runs"), fileName: v.string() }),
   handler: async (ctx, args): Promise<{ runId: Id<"runs">; fileName: string }> => {
     const { upload, storage } = await ctx.runQuery(internal.automations.tryTarget, args);
-    const fileUrl = await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
+    const fileUrl = await presign(
+      await bucketForFile(storage, upload),
+      "GET",
+      upload.key,
+      READ_LINK_SECONDS,
+    );
     const runId: Id<"runs"> = await ctx.runMutation(internal.automations.startTry, {
       automationId: args.automationId,
       ...(args.triggerId ? { triggerId: args.triggerId } : {}),
@@ -1544,7 +1549,12 @@ export const uploadFinished = internalAction({
     const found = await ctx.runQuery(internal.automations.loadUploadForTrigger, args);
     if (!found) return;
     const { upload, storage } = found;
-    const fileUrl = await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
+    const fileUrl = await presign(
+      await bucketForFile(storage, upload),
+      "GET",
+      upload.key,
+      READ_LINK_SECONDS,
+    );
     const trigger = {
       file_url: fileUrl,
       file_name: upload.fileName,

@@ -43,6 +43,7 @@ import type * as hooks from "../hooks.js";
 import type * as http from "../http.js";
 import type * as inBetweenFiles from "../inBetweenFiles.js";
 import type * as jobs from "../jobs.js";
+import type * as leftBehind from "../leftBehind.js";
 import type * as lib_access from "../lib/access.js";
 import type * as lib_adFiles from "../lib/adFiles.js";
 import type * as lib_agentSignIn from "../lib/agentSignIn.js";
@@ -244,6 +245,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   inBetweenFiles: typeof inBetweenFiles;
   jobs: typeof jobs;
+  leftBehind: typeof leftBehind;
   "lib/access": typeof lib_access;
   "lib/adFiles": typeof lib_adFiles;
   "lib/agentSignIn": typeof lib_agentSignIn;

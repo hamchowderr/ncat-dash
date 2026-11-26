@@ -180,6 +180,61 @@ describe("files join the library", () => {
     expect((await maya.as.query(api.library.list, { organizationId: team })).items.length).toBe(2);
   });
 
+  test("a run that failed on one branch keeps what its other branch finished", async () => {
+    const { t, team, maya, upload, finishedRun, toolkit } = await studio();
+    const episode = await upload("episode.mp4");
+    const { runId } = await finishedRun(episode, [`${LINK}/${JOB}_output_0.mp4`]);
+    // A second branch that failed, so the run failed with one branch finished.
+    await t.run(async (ctx) => {
+      const run = (await ctx.db.get(runId))!;
+      await ctx.db.patch(runId, {
+        status: "failed",
+        partly: true,
+        nodes: [
+          ...run.nodes,
+          {
+            id: "tiktok",
+            kind: "step",
+            stepId: "video-split",
+            input: {},
+            position: { x: 0, y: 0 },
+          },
+        ],
+      });
+      await ctx.db.insert("runSteps", {
+        runId,
+        organizationId: team,
+        nodeId: "tiktok",
+        status: "failed",
+        jobIds: [],
+        outputs: [],
+        error: "No moment could be used.",
+        startedAt: 0,
+        finishedAt: 0,
+      });
+    });
+    toolkit.put(`${JOB}_output_0.mp4`);
+    await t.action(internal.files.keepFinished, { runId });
+    const list = async () =>
+      (await maya.as.query(api.library.list, { organizationId: team })).items;
+    expect((await list()).map((item) => item.source)).toEqual(["automation", "upload"]);
+
+    // Picked up and finished: the file kept before is not copied or added again.
+    await t.run((ctx) => ctx.db.patch(runId, { status: "done", partly: undefined, pickedUp: 1 }));
+    expect(await t.action(internal.files.keepFinished, { runId })).toEqual([]);
+    expect(await list()).toHaveLength(2);
+  });
+
+  test("a failed run with nothing finished keeps nothing", async () => {
+    const { t, team, maya, upload, finishedRun, toolkit } = await studio();
+    const episode = await upload("episode.mp4");
+    const { runId } = await finishedRun(episode, [`${LINK}/${JOB}_output_0.mp4`]);
+    await t.run((ctx) => ctx.db.patch(runId, { status: "failed" }));
+    toolkit.put(`${JOB}_output_0.mp4`);
+    expect(await t.action(internal.files.keepFinished, { runId })).toEqual([]);
+    expect((await maya.as.query(api.library.list, { organizationId: team })).items).toHaveLength(1);
+  });
+
   test("a run that hands back the file it started with adds nothing new", async () => {
     const { t, maya, team, upload, finishedRun } = await studio();
     const episode = await upload("episode.mp4");

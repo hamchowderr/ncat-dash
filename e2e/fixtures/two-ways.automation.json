@@ -1,0 +1,23 @@
+{
+  "format": "takewon-automation",
+  "version": 1,
+  "name": "Two ways",
+  "trigger": { "kind": "webhook" },
+  "nodes": [
+    {
+      "id": "trim",
+      "kind": "step",
+      "stepId": "video-trim",
+      "input": { "start": "00:00:01" },
+      "position": { "x": 0, "y": 0 }
+    },
+    {
+      "id": "thumbnail",
+      "kind": "step",
+      "stepId": "video-thumbnail",
+      "input": {},
+      "position": { "x": 0, "y": 160 }
+    }
+  ],
+  "edges": []
+}

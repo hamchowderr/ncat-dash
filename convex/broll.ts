@@ -39,7 +39,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
-import { bucketOf, presign } from "./lib/bucket";
+import { bucketForFile, presign, type StoredOn } from "./lib/bucket";
 import { refreshBrollLike, usableAsBroll } from "./lib/broll";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { heardFrom, MAX_VIDEOS_PER_PICK_STEP, wordsFor } from "./lib/moments";
@@ -114,11 +114,16 @@ async function readLink(ctx: ActionCtx, item: Doc<"libraryItems">): Promise<stri
   });
   if (!connection) return null;
   try {
-    return await presign(await bucketOf(connection), "GET", item.key, READ_LINK_SECONDS);
+    return await presign(await bucketForFile(connection, item), "GET", item.key, READ_LINK_SECONDS);
   } catch {
     return null;
   }
 }
+
+/** How many times a file's look is tried in all when the toolkit is busy or out of reach. */
+export const LOOK_TRIES = 3;
+/** The wait before the first try again; each later one waits four times as long. */
+export const LOOK_RETRY_MS = 2 * 60 * 1000;
 
 /** Queues the picture model's look at one file. False when there is nothing to do. */
 export const startLook = internalMutation({
@@ -143,7 +148,12 @@ export const startLook = internalMutation({
     }
     await ctx.db.patch(queued.jobId, { libraryItemId: item._id });
     await ctx.db.patch(item._id, {
-      look: { status: "working", jobId: queued.jobId, at: Date.now() },
+      look: {
+        status: "working",
+        jobId: queued.jobId,
+        ...(item.look?.tries ? { tries: item.look.tries } : {}),
+        at: Date.now(),
+      },
     });
     await pump(ctx, item.organizationId);
     return true;
@@ -191,14 +201,24 @@ export const saveLook = internalMutation({
     if (!item || item.look?.jobId !== job._id) return;
     const seen = job.status === "done" ? framesOf(job.result) : null;
     if (!seen || seen.frames.length === 0) {
+      // A toolkit that was busy (transcribing a long recording, say) or out of reach may
+      // take it a few minutes later: the look waits and tries again, a few times.
+      const tries = item.look?.tries ?? 0;
+      const again = job.status === "failed" && !job.permanent && tries + 1 < LOOK_TRIES;
       await ctx.db.patch(item._id, {
         look: {
           status: "failed",
           jobId: job._id,
           error: job.error ?? "The picture model's answer could not be read.",
+          ...(again ? { tries: tries + 1 } : tries ? { tries } : {}),
           at: Date.now(),
         },
       });
+      if (again) {
+        await ctx.scheduler.runAfter(LOOK_RETRY_MS * 4 ** tries, internal.broll.lookAt, {
+          itemId: item._id,
+        });
+      }
       return;
     }
     for (const old of await ctx.db
@@ -763,6 +783,7 @@ export const framesFound = internalQuery({
           title: item.title,
           key: item.key ?? null,
           url: item.url ?? null,
+          ...(item.storedOn ? { storedOn: item.storedOn } : {}),
           duration: item.details?.duration ?? 0,
           organizationId: item.organizationId,
         },
@@ -812,14 +833,19 @@ export const choose = internalAction({
       const connection = await ctx.runQuery(internal.storage.load, {
         organizationId: loaded.organizationId,
       });
-      const bucket = connection ? await bucketOf(connection) : null;
       const links = new Map<string, string | null>();
-      const linkOf = async (item: { key: string | null; url: string | null; shortId: string }) => {
+      const linkOf = async (item: {
+        key: string | null;
+        url: string | null;
+        shortId: string;
+        storedOn?: StoredOn;
+      }) => {
         if (!item.key) return item.url;
         if (links.has(item.shortId)) return links.get(item.shortId)!;
         let url: string | null = null;
-        if (bucket) {
+        if (connection) {
           try {
+            const bucket = await bucketForFile(connection, item);
             url = await presign(bucket, "GET", item.key, READ_LINK_SECONDS);
           } catch {
             url = null;

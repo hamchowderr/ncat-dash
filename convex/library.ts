@@ -27,7 +27,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
-import { bucketOf, presign, storageConnection } from "./lib/bucket";
+import { bucketForFile, bucketOf, presign, storageConnection, type StoredOn } from "./lib/bucket";
 import { finishedFiles } from "./lib/exports";
 import {
   addLibraryItem,
@@ -84,6 +84,15 @@ type Summary = {
   client: { _id: Id<"clients">; name: string } | null;
   made: number;
   searchable: "no" | "working" | "ready" | "failed";
+  /** Why its transcript did not work, when it did not. */
+  transcriptError: string | null;
+  /** When its transcript was started, while it is being made. */
+  transcriptSince: number | null;
+  /**
+   * Set when the file is still on the storage the team used before it switched servers:
+   * "hosted" (Takewon's, still read from there) or "earlier" (out of reach).
+   */
+  storedElsewhere: "hosted" | "earlier" | null;
   /** Where an uploaded file came from; null for one an automation made. */
   from: LibraryFrom | null;
   inReview: boolean;
@@ -115,6 +124,9 @@ function summaryOf(
     client: client ? { _id: client._id, name: client.name } : null,
     made: made.get(item._id) ?? 0,
     searchable: item.transcript?.status ?? "no",
+    transcriptError: item.transcript?.status === "failed" ? (item.transcript.error ?? null) : null,
+    transcriptSince: item.transcript?.status === "working" ? item.transcript.at : null,
+    storedElsewhere: item.storedOn ? (item.storedOn.hosted ? "hosted" : "earlier") : null,
     from: fromOf(item),
     inReview: inReview(item),
   };
@@ -641,12 +653,15 @@ async function addRunFiles(
   run: Doc<"runs">,
   kept: Map<string, string>,
 ) {
-  if (run.status !== "done" || run.test) return;
+  const partly = run.status === "failed" && run.partly === true;
+  if ((run.status !== "done" && !partly) || run.test) return;
+  // What this run already put in the library: a partly done run that was picked up and
+  // finished adds only the files it made since.
   const already = await ctx.db
     .query("libraryItems")
     .withIndex("by_run", (q) => q.eq("runId", run._id))
-    .first();
-  if (already) return;
+    .take(200);
+  const added = new Set(already.flatMap((item) => [item.key, item.url]).filter(Boolean));
   const steps = await ctx.db
     .query("runSteps")
     .withIndex("by_run", (q) => q.eq("runId", run._id))
@@ -661,6 +676,7 @@ async function addRunFiles(
   for (const link of finishedFiles(run, steps)) {
     if (started.has(link)) continue;
     const key = kept.get(link);
+    if (run.keptLinks?.includes(link) || added.has(key ?? link)) continue;
     if (key && (key === parent?.key || (await itemAtKey(ctx, run.organizationId, key)))) continue;
     const name = names[link] ?? fileNameOf(link);
     await addLibraryItem(ctx, {
@@ -706,6 +722,11 @@ export const addFinished = internalMutation({
     const run = await ctx.db.get(args.runId);
     if (!run) return;
     await addRunFiles(ctx, run, new Map(args.kept.map(({ link, key }) => [link, key])));
+    // Remembered so a later keep of the same run (after it is picked up) skips them.
+    const keptLinks = [
+      ...new Set([...(run.keptLinks ?? []), ...args.kept.map(({ link }) => link)]),
+    ];
+    await ctx.db.patch(run._id, { keptLinks });
   },
 });
 
@@ -714,11 +735,21 @@ export const locate = internalQuery({
   args: { organizationId: v.string(), itemIds: v.array(v.id("libraryItems")) },
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId);
-    const found: { itemId: Id<"libraryItems">; key: string | null; url: string | null }[] = [];
+    const found: {
+      itemId: Id<"libraryItems">;
+      key: string | null;
+      url: string | null;
+      storedOn?: StoredOn;
+    }[] = [];
     for (const itemId of new Set(args.itemIds)) {
       const item = await ctx.db.get(itemId);
       if (!item || item.organizationId !== args.organizationId) continue;
-      found.push({ itemId, key: item.key ?? null, url: item.url ?? null });
+      found.push({
+        itemId,
+        key: item.key ?? null,
+        url: item.url ?? null,
+        ...(item.storedOn ? { storedOn: item.storedOn } : {}),
+      });
     }
     return found;
   },
@@ -730,19 +761,23 @@ async function linksFor(
   itemIds: Id<"libraryItems">[],
   seconds: number,
 ): Promise<{ itemId: Id<"libraryItems">; url: string }[]> {
-  const targets: { itemId: Id<"libraryItems">; key: string | null; url: string | null }[] =
-    await ctx.runQuery(internal.library.locate, { organizationId, itemIds });
+  const targets: {
+    itemId: Id<"libraryItems">;
+    key: string | null;
+    url: string | null;
+    storedOn?: StoredOn;
+  }[] = await ctx.runQuery(internal.library.locate, { organizationId, itemIds });
   const needsSigning = targets.some((target) => target.key !== null);
   const connection = needsSigning
     ? await ctx.runQuery(internal.storage.load, { organizationId })
     : null;
-  const bucket = connection ? await bucketOf(connection) : null;
   const links = await Promise.all(
     targets.map(async (target) => {
       if (target.key === null)
         return target.url ? { itemId: target.itemId, url: target.url } : null;
-      if (!bucket) return null;
+      if (!connection) return null;
       try {
+        const bucket = await bucketForFile(connection, target);
         return { itemId: target.itemId, url: await presign(bucket, "GET", target.key, seconds) };
       } catch {
         return null;
@@ -862,7 +897,12 @@ export const transcribe = internalAction({
     let url = item.url ?? null;
     if (item.key && connection) {
       try {
-        url = await presign(await bucketOf(connection), "GET", item.key, READ_LINK_SECONDS);
+        url = await presign(
+          await bucketForFile(connection, item),
+          "GET",
+          item.key,
+          READ_LINK_SECONDS,
+        );
       } catch {
         url = null;
       }
@@ -1154,7 +1194,7 @@ export const readCaptions = internalAction({
       });
       const url =
         item.key && connection
-          ? await presign(await bucketOf(connection), "GET", item.key, 600)
+          ? await presign(await bucketForFile(connection, item), "GET", item.key, 600)
           : (item.url ?? null);
       if (url) {
         const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });

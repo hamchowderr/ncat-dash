@@ -1,4 +1,5 @@
 import { teamFolder } from "@takewon/automation-core";
+import { ConvexError } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { decryptSecret } from "./crypto";
@@ -179,6 +180,45 @@ export async function bucketOf(connection: Doc<"toolkitConnections">): Promise<B
     bucket: connection.storage?.bucket ?? "",
     root: teamFolder(connection.organizationId),
   };
+}
+
+/** Which storage a file was left on when the team switched servers (schema storedOn). */
+export interface StoredOn {
+  hosted: boolean;
+  bucket: string;
+  endpoint: string | null;
+}
+
+/** Whether a file left on `on` is on this storage after all. */
+export function sameStorage(
+  on: StoredOn,
+  storage: { bucket: string; endpoint: string | null } | undefined,
+): boolean {
+  return !!storage && storage.bucket === on.bucket && storage.endpoint === on.endpoint;
+}
+
+/** Said when a file is on a storage the team no longer has a way into. */
+export const LEFT_BEHIND_MESSAGE =
+  "This file is on the storage the team used before it switched servers, which can no longer be reached. Upload it again to use it.";
+
+/**
+ * The bucket a team's file is in. Usually the team's own storage now; a file left on the
+ * hosted storage after the team moved to its own server is read from there with the
+ * operator's server (still the team's own folder). A file left on another earlier storage
+ * cannot be reached, and says so.
+ */
+export async function bucketForFile(
+  connection: Doc<"toolkitConnections">,
+  file: { storedOn?: StoredOn },
+): Promise<Bucket> {
+  const on = file.storedOn;
+  if (!on || sameStorage(on, connection.storage)) return await bucketOf(connection);
+  const baseUrl = process.env.HOSTED_TOOLKIT_URL?.trim();
+  const apiKey = process.env.HOSTED_TOOLKIT_API_KEY?.trim();
+  if (on.hosted && baseUrl && apiKey) {
+    return { baseUrl, apiKey, bucket: on.bucket, root: teamFolder(connection.organizationId) };
+  }
+  throw new ConvexError({ code: "left_behind", message: LEFT_BEHIND_MESSAGE });
 }
 
 /** A link that lets its holder PUT or GET one file for a limited time. */

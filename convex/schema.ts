@@ -360,6 +360,18 @@ const chatAppValidator = v.union(
   v.literal("teams"),
 );
 
+/**
+ * Set on an uploaded or library file left on a storage the team used before it switched
+ * servers (convex/leftBehind.ts): which storage, so a file on the hosted storage can still
+ * be read from there, and one on another earlier storage is shown as out of reach.
+ */
+export const storedOnValidator = v.object({
+  // The storage of the server the operator lends (HOSTED_TOOLKIT_URL).
+  hosted: v.boolean(),
+  bucket: v.string(),
+  endpoint: v.union(v.null(), v.string()),
+});
+
 export default defineSchema({
   toolkitConnections: defineTable({
     organizationId: v.string(),
@@ -745,6 +757,12 @@ export default defineSchema({
     retries: v.optional(v.number()),
     // How many times someone picked this run up where it stopped after it failed.
     pickedUp: v.optional(v.number()),
+    // Set when the run failed but at least one of its branches finished: what that branch
+    // made is kept in Files and the run shows as partly done.
+    partly: v.optional(v.boolean()),
+    // The finished files already copied into the team's folder, so picking a partly done
+    // run up and finishing it does not copy them a second time.
+    keptLinks: v.optional(v.array(v.string())),
     // Set when someone tested one step on its own: that step's node id. Nobody is
     // alerted when a test fails, since the person testing is watching it.
     test: v.optional(v.string()),
@@ -2115,6 +2133,9 @@ export default defineSchema({
   uploads: defineTable({
     organizationId: v.string(),
     key: v.string(),
+    // Left on an earlier storage when the team switched servers; missing when it is on
+    // the team's storage now.
+    storedOn: v.optional(storedOnValidator),
     fileName: v.string(),
     contentType: v.string(),
     size: v.number(),
@@ -2558,6 +2579,9 @@ export default defineSchema({
     // or else the address the toolkit gave it.
     key: v.optional(v.string()),
     url: v.optional(v.string()),
+    // Left on an earlier storage when the team switched servers; missing when `key` is on
+    // the team's storage now.
+    storedOn: v.optional(storedOnValidator),
     // The upload it is, for an uploaded file.
     uploadId: v.optional(v.id("uploads")),
     // The service an upload came from (the upload's source), for the Library's From filter.
@@ -2608,6 +2632,8 @@ export default defineSchema({
         error: v.optional(v.string()),
         // Short, small faces, little said: it looks like B-Roll (broll.ts looksLikeBroll).
         brollLike: v.optional(v.boolean()),
+        // Looks tried again after the toolkit was busy or out of reach (broll.ts LOOK_TRIES).
+        tries: v.optional(v.number()),
         at: v.number(),
       }),
     ),
