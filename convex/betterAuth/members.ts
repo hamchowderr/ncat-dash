@@ -239,3 +239,16 @@ export const accountCount = query({
   returns: v.number(),
   handler: async (ctx) => (await ctx.db.query("user").take(10_000)).length,
 });
+
+/** The account with this address, or null. Used to tell whether a beta tester joined. */
+export const userByEmail = query({
+  args: { email: v.string() },
+  returns: v.union(v.null(), v.object({ id: v.string() })),
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("user")
+      .withIndex("email_name", (q) => q.eq("email", args.email.trim().toLowerCase()))
+      .first();
+    return user ? { id: user._id } : null;
+  },
+});

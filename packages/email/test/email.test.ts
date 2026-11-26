@@ -22,7 +22,11 @@ import {
   verificationEmail,
   trialEndedEmail,
   trialEndingEmail,
+  trialTipEmail,
+  thanksEmail,
   welcomeEmail,
+  betaInviteEmail,
+  betaCheckInEmail,
   withUnsubscribe,
   testEmail,
 } from "../src";
@@ -398,7 +402,10 @@ describe("the look", () => {
       { appName: "Takewon" },
     );
     expect(failed.html).toContain("Your content, social media ready.");
-    expect(failed.html).toContain("Made by Otaku Solutions.");
+    expect(failed.html).toContain(
+      "Made by Otaku Solutions, 10521 West Zamora Ave, Los Angeles, CA 90002.",
+    );
+    expect(failed.text).toContain("10521 West Zamora Ave, Los Angeles, CA 90002");
     expect(failed.html).toContain('href="https://d/settings/notifications"');
     expect(failed.html).toContain("Change your notification settings");
     expect(failed.text).toContain("Notification settings: https://d/settings/notifications");
@@ -446,6 +453,47 @@ describe("first days", () => {
     expect(noTrial.text).not.toContain("trial");
   });
 
+  it("tells a beta tester it's a beta instead of a trial", () => {
+    const beta = welcomeEmail(
+      { teamName: "Salt House", trialDays: 3, beta: true, ...links },
+      { appName: "Takewon" },
+    );
+    expect(beta.text).toContain("You're one of the first people testing Takewon");
+    expect(beta.text).not.toContain("trial");
+  });
+
+  it("invites a beta tester, naming where they met when it was an event", () => {
+    const invite = betaInviteEmail(
+      { name: "Ana Lopez", metAt: "The KINN", signUpUrl: "https://app/sign-up" },
+      { appName: "Takewon", supportEmail: "support@takewon.com" },
+    );
+    expect(invite.subject).toBe("You're in the Takewon beta");
+    expect(invite.text).toContain("Hi Ana, it was good to meet you at The KINN. Thanks for signing up");
+    expect(invite.text).toContain("https://app/sign-up");
+    expect(invite.text).toContain("Chowderr");
+    expect(invite.replyTo).toBe("support@takewon.com");
+    const plain = betaInviteEmail({ signUpUrl: "https://app/sign-up" }, { appName: "Takewon" });
+    expect(plain.text).toContain("Hi, thanks for signing up");
+    expect(plain.text).not.toContain("good to meet you");
+  });
+
+  it("checks in once, with questions that fit whether a video went through", () => {
+    const used = betaCheckInEmail(
+      { name: "Ana", uploaded: true, uploadsUrl: "https://app/library" },
+      { appName: "Takewon" },
+    );
+    expect(used.subject).toBe("How is Takewon going?");
+    expect(used.text).toContain("What would make you use it every week?");
+    expect(used.text).not.toContain("https://app/library");
+    const idle = betaCheckInEmail(
+      { name: "Ana", uploaded: false, uploadsUrl: "https://app/library" },
+      { appName: "Takewon" },
+    );
+    expect(idle.subject).toBe("Anything stopping you trying Takewon?");
+    expect(idle.text).toContain("What stopped you from trying it?");
+    expect(idle.text).toContain("https://app/library");
+  });
+
   it("warns a day before a trial ends, then says it has, pointing at where to buy", () => {
     const ending = trialEndingEmail(
       { teamName: "Salt House", buyUrl: "https://takewon.com/pricing", homeUrl: "https://d/" },
@@ -484,5 +532,134 @@ describe("unsubscribe", () => {
     expect(out.html).toContain(">Unsubscribe</a>");
     expect(out.html).not.toContain("<!--unsubscribe-->");
     expect(out.text).toContain(`Unsubscribe: ${url}`);
+  });
+});
+
+describe("trial tips", () => {
+  const base = {
+    teamName: "Salt House",
+    uploadsUrl: "https://d/library",
+    readyMadeUrl: "https://d/automations/new",
+    buyUrl: "https://takewon.com/pricing",
+    homeUrl: "https://d/",
+    settingsUrl: "https://d/settings/notifications",
+  };
+
+  it("each tip gives one next step, says why it came, and where to stop it", () => {
+    const first = trialTipEmail({ ...base, tip: "first_upload", name: "Maya" }, branding);
+    expect(first.subject).toBe("Your first video is one click away");
+    expect(first.text).toContain("Upload a video: https://d/library");
+    expect(first.text).toContain("You get these because you started a free trial.");
+    expect(first.text).toContain("Notification settings: https://d/settings/notifications");
+
+    const clips = trialTipEmail(
+      { ...base, tip: "clips_ready", runUrl: "https://d/runs/7" },
+      branding,
+    );
+    expect(clips.subject).toBe("Your first clips are ready");
+    expect(clips.text).toContain("See your clips: https://d/runs/7");
+
+    const every = trialTipEmail({ ...base, tip: "every_upload" }, branding);
+    expect(every.text).toContain("Pick a ready-made automation: https://d/automations/new");
+
+    const back = trialTipEmail({ ...base, tip: "come_back" }, branding);
+    expect(back.subject).toBe("Still want your content social media ready?");
+    expect(back.text).toContain("Your content, social media ready.");
+    expect(back.text).toContain("Get Takewon: https://takewon.com/pricing");
+  });
+
+  it("the thanks has no buy button and names the team", () => {
+    const thanks = thanksEmail(
+      { name: "Maya", teamName: "Salt House", homeUrl: "https://d/" },
+      branding,
+    );
+    expect(thanks.subject).toBe("Thanks for getting Takewon");
+    expect(thanks.text).toContain("Salt House is all set.");
+    expect(thanks.text).toContain("Open Takewon: https://d/");
+  });
+});
+
+describe("what every good email has", () => {
+  const links = {
+    homeUrl: "https://d/",
+    uploadsUrl: "https://d/uploads",
+    readyMadeUrl: "https://d/automations/new",
+    brandUrl: "https://d/settings/brand",
+  };
+
+  it("sends replies to the support inbox and says so in the footer", () => {
+    const email = welcomeEmail(
+      { teamName: "Salt House", trialDays: 3, ...links },
+      { appName: "Takewon", supportEmail: "support@takewon.com" },
+    );
+    expect(email.replyTo).toBe("support@takewon.com");
+    expect(email.text).toContain("Questions? Reply to this email or write to support@takewon.com.");
+    expect(email.html).toContain('href="mailto:support@takewon.com"');
+    // It survives the unsubscribe link being added.
+    expect(withUnsubscribe(email, "https://d/u").replyTo).toBe("support@takewon.com");
+    const without = welcomeEmail({ teamName: "Salt House", trialDays: 3, ...links }, branding);
+    expect(without.replyTo).toBeUndefined();
+    expect(without.text).not.toContain("Questions?");
+  });
+
+  it("signs the welcome from the founder, only in Takewon's own emails", () => {
+    const ours = welcomeEmail({ teamName: "Salt House", trialDays: 3, ...links }, branding);
+    expect(ours.text).toContain("just reply: it comes to me.");
+    expect(ours.text).toContain("Chowderr\nFounder, Takewon");
+    expect(ours.html).toContain("Founder, Takewon");
+    const theirs = welcomeEmail(
+      { teamName: "Salt House", trialDays: 3, ...links },
+      { appName: "Studio Desk" },
+    );
+    expect(theirs.text).not.toContain("Chowderr");
+  });
+
+  it("shows moving previews of the person's own clips, each with alt text, linked to the run", () => {
+    const email = trialTipEmail(
+      {
+        tip: "clips_ready",
+        teamName: "Salt House",
+        uploadsUrl: "https://d/library",
+        readyMadeUrl: "https://d/automations/new",
+        runUrl: "https://d/runs/r1",
+        previews: ["https://f/1.gif", "https://f/2.gif?a=1&b=2", "https://f/3.gif", "https://f/4.gif"],
+        buyUrl: null,
+        homeUrl: "https://d/",
+        settingsUrl: "https://d/settings/notifications",
+      },
+      branding,
+    );
+    const images = email.html.match(/<img [^>]*>/g) ?? [];
+    expect(images).toHaveLength(3);
+    expect(images[0]).toContain('src="https://f/1.gif"');
+    expect(images[0]).toContain('alt="Preview of clip 1"');
+    expect(images[0]).toContain('width="150"');
+    expect(images[1]).toContain('src="https://f/2.gif?a=1&amp;b=2"');
+    expect(email.html).toContain('<a href="https://d/runs/r1" style="text-decoration:none;"><img');
+    // No previews: no pictures.
+    const plain = trialTipEmail(
+      {
+        tip: "clips_ready",
+        teamName: "Salt House",
+        uploadsUrl: "https://d/library",
+        readyMadeUrl: "https://d/automations/new",
+        buyUrl: null,
+        homeUrl: "https://d/",
+        settingsUrl: "https://d/settings/notifications",
+      },
+      branding,
+    );
+    expect(plain.html).not.toContain("<img");
+  });
+
+  it("hands the reply-to to toSend", async () => {
+    const { calls } = answer(200, { message_id: "m1" });
+    await sendEmail(
+      "tsend_key",
+      { email: "no-reply@takewon.com", name: "Takewon" },
+      { to: "maya@example.test", subject: "Hi", text: "Hi", html: "<p>Hi</p>", replyTo: "support@takewon.com" },
+    );
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(body.reply_to).toEqual({ email: "support@takewon.com" });
   });
 });

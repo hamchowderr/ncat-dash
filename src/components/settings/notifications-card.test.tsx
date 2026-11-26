@@ -50,6 +50,36 @@ describe("notification settings", () => {
     ).toBeChecked();
   });
 
+  test("trial tips only come by email, so they have just an email switch", () => {
+    const base = settings({ chatApps: ["telegram"] });
+    answerQuery(api.notifications.get, {
+      ...base,
+      kinds: [
+        ...base.kinds,
+        {
+          kind: "trial_tips",
+          title: "Tips during my free trial",
+          description: "A few emails.",
+          bell: false,
+          email: true,
+          telegram: false,
+          slack: false,
+          discord: false,
+          teams: false,
+          alwaysRightAway: false,
+          emailOnly: true,
+        },
+      ],
+    });
+    renderInApp(<NotificationsCard />);
+    const row = screen.getAllByRole("row").at(-1)!;
+    expect(
+      within(row)
+        .getAllByRole("switch")
+        .map((one) => one.getAttribute("aria-label")),
+    ).toEqual(["Tips during my free trial: by email"]);
+  });
+
   test("a chat app the person linked gets its own column of switches", () => {
     answerQuery(api.notifications.get, settings({ chatApps: ["telegram"] }));
     renderInApp(<NotificationsCard />);

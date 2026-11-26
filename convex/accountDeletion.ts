@@ -3,6 +3,7 @@ import { components, internal } from "./_generated/api";
 import type { TableNames } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
 import { getCaller } from "./lib/caller";
+import { forgetBetaTester } from "./beta";
 import { forgetNews } from "./lib/news";
 import { forgetProfile } from "./profiles";
 
@@ -130,6 +131,8 @@ export const prepare = internalMutation({
       userId: args.userId,
     });
     await forgetNews(ctx, { userId: args.userId, email: contact?.email });
+    // Their beta sign-up: the answers they gave on the website.
+    if (contact?.email) await forgetBetaTester(ctx, contact.email);
     await ctx.runMutation(components.betterAuth.deletion.forgetPerson, { userId: args.userId });
     const tours = await ctx.db
       .query("tourEnds")

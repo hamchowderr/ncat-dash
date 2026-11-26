@@ -462,6 +462,8 @@ export default defineSchema({
     outputsClearedAt: v.optional(v.number()),
     // Set when the job makes a take of a storyboard's video, or joins its takes.
     storyboardVideoId: v.optional(v.id("storyboardVideos")),
+    // Set when the job makes a moving preview of a clip for the "clips ready" trial tip.
+    tipPreviewId: v.optional(v.id("tipPreviews")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
@@ -1939,6 +1941,32 @@ export default defineSchema({
 
   // Every time someone agreed to, confirmed or stopped product news: the proof of consent
   // EU and Canadian law ask for. Never changed or deleted, except with the person's account.
+  // People who asked to test Takewon in beta on the website (convex/beta.ts). The site
+  // sends each sign-up here server to server; the operator invites them from the Admin
+  // page Beta Testers, and the row turns "joined" when that address makes an account.
+  betaTesters: defineTable({
+    email: v.string(),
+    name: v.string(),
+    // Their answers as the form asked them: the question, then what they picked or wrote.
+    answers: v.array(v.object({ question: v.string(), answer: v.string() })),
+    link: v.optional(v.string()),
+    // Where they heard about it, as the form's own words ("The KINN").
+    source: v.optional(v.string()),
+    // Whether they ticked the form's newsletter box (that consent is in consentRecords).
+    newsletter: v.boolean(),
+    status: v.union(v.literal("applied"), v.literal("invited"), v.literal("joined")),
+    timesApplied: v.number(),
+    appliedAt: v.number(),
+    invitedAt: v.optional(v.number()),
+    joinedAt: v.optional(v.number()),
+    userId: v.optional(v.string()),
+    checkInSentAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_email", ["email"])
+    .index("by_status", ["status", "updatedAt"])
+    .index("by_updated", ["updatedAt"]),
+
   consentRecords: defineTable({
     email: v.string(),
     userId: v.optional(v.string()),
@@ -2031,6 +2059,7 @@ export default defineSchema({
         clip_finished: v.optional(kindChannels),
         footage_problem: v.optional(kindChannels),
         rights_ending: v.optional(kindChannels),
+        trial_tips: v.optional(kindChannels),
       }),
     ),
     // "now": each email as it happens. "daily": one summary a day at `digestHour` in
@@ -2728,6 +2757,31 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_email_key", ["emailKey"])
     .index("by_network_and_started", ["networkKey", "startedAt"]),
+
+  // The tips a team's owner was sent during its free trial (convex/trialTips.ts), so each
+  // goes once, and the thanks once the team bought.
+  trialTipsSent: defineTable({
+    organizationId: v.string(),
+    tip: v.union(
+      v.literal("first_upload"),
+      v.literal("clips_ready"),
+      v.literal("every_upload"),
+      v.literal("come_back"),
+      v.literal("come_back_later"),
+      v.literal("thanks"),
+    ),
+    sentAt: v.number(),
+  }).index("by_organization_and_tip", ["organizationId", "tip"]),
+
+  // The moving previews being made for a team's "clips ready" tip: one GIF job per clip
+  // (up to three). The tip goes once they are all finished, or after a few minutes with
+  // whatever is ready (trialTips.ts).
+  tipPreviews: defineTable({
+    organizationId: v.string(),
+    runId: v.id("runs"),
+    jobIds: v.array(v.id("jobs")),
+    status: v.union(v.literal("waiting"), v.literal("sent")),
+  }).index("by_organization", ["organizationId"]),
 
   // Where each person signed up from, on the hosted edition: their mailbox however it was
   // written and a keyed hash of their network, never the address itself.

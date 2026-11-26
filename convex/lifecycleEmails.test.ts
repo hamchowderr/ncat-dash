@@ -34,7 +34,24 @@ describe("welcome", () => {
       name: "Maya Ortiz",
       teamName: "Salt House",
       trialDays: 3,
+      beta: false,
     });
+  });
+
+  test("knows a beta tester from the website, so it says it's a beta", async () => {
+    const t = backend();
+    const team = await addTeam(t, "Salt House");
+    const maya = await addPerson(t, "Maya Ortiz", [team], "owner");
+    await t.mutation(internal.beta.apply, {
+      email: "Maya.Ortiz@example.test",
+      name: "Maya Ortiz",
+      answers: [],
+    });
+    const found = await t.query(internal.email.welcomeFor, {
+      organizationId: team,
+      userId: maya.id,
+    });
+    expect(found?.beta).toBe(true);
   });
 
   test("says nothing of a trial when there is none, and skips a second team", async () => {

@@ -1,4 +1,4 @@
-import { History, Send, Users, type LucideIcon } from "lucide-react";
+import { FlaskConical, History, Send, Users, type LucideIcon } from "lucide-react";
 
 /**
  * The Admin pages in the side menu. Only the operator (whoever runs this copy, see
@@ -10,6 +10,7 @@ export const adminRoutes: AdminRoute[] = [
   { title: "Send An Email", url: "/admin/emails/new", icon: Send },
   { title: "Sent Emails", url: "/admin/emails", icon: History },
   { title: "Subscribers", url: "/admin/subscribers", icon: Users },
+  { title: "Beta Testers", url: "/admin/beta", icon: FlaskConical },
 ];
 
 /** The Admin entry a path belongs to; the longest match wins, so a new email is not "Sent". */

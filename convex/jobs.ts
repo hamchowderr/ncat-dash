@@ -1,4 +1,5 @@
 import { onStoryboardVideoJob } from "./lib/storyboardVideos";
+import { onTipPreviewJob } from "./trialTips";
 import {
   failsTheSameEveryTime,
   getNodeType,
@@ -459,6 +460,8 @@ export const finish = internalMutation({
     await onLookJobFinished(ctx, job);
     // A take of a storyboard's video, or the join of its takes.
     await onStoryboardVideoJob(ctx, (await ctx.db.get(job._id))!);
+    // A moving preview of a clip for the "clips ready" trial tip.
+    await onTipPreviewJob(ctx, (await ctx.db.get(job._id))!);
     // A library file being made searchable: keep what was said in it.
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });

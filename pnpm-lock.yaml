@@ -176,9 +176,6 @@ importers:
       use-stick-to-bottom:
         specifier: ^1.1.6
         version: 1.1.6(react@19.3.0)
-      waas-provisioning-sdk:
-        specifier: 0.2.0
-        version: 0.2.0
     devDependencies:
       '@edge-runtime/vm':
         specifier: ^5.0.0
@@ -8972,10 +8969,6 @@ packages:
   w3c-xmlserializer@6.0.0:
     resolution: {integrity: sha512-4Nsy8K5Tr6SPDH9jhKJOHf7ChDrc1zufZTVSF7x72hwuEXBqxqk9G6cK+K2NRUtB3iELRJqjXb4JPDMBjMTl2Q==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
-
-  waas-provisioning-sdk@0.2.0:
-    resolution: {integrity: sha512-G4pOW4xQ6evqtN1v03j/FYfj2qcG2qkvyp9Fm1syVhs1Lh/f0/UPISATICvDt0rOZZPUilKw8+npTACBpWiBAg==}
-    engines: {node: '>=20'}
 
   wait-port@1.1.0:
     resolution: {integrity: sha512-3e04qkoN3LxTMLakdqeWth8nih8usyg+sf1Bgdf9wwUkp05iuK1eSY/QpLvscT/+F/gA89+LpUmmgBtesbqI2Q==}
@@ -18678,8 +18671,6 @@ snapshots:
   w3c-xmlserializer@6.0.0:
     dependencies:
       xml-name-validator: 5.0.0
-
-  waas-provisioning-sdk@0.2.0: {}
 
   wait-port@1.1.0:
     dependencies:

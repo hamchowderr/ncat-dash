@@ -33,7 +33,8 @@ type Kind =
   | "ready_for_review"
   | "clip_finished"
   | "footage_problem"
-  | "rights_ending";
+  | "rights_ending"
+  | "trial_tips";
 type ChatApp = "telegram" | "slack" | "discord" | "teams";
 type Channel = "bell" | "email" | ChatApp;
 
@@ -139,11 +140,13 @@ export function NotificationsCard() {
               </span>
             </span>
             <span role="cell" className="flex justify-center">
-              <Switch
-                checked={entry.bell}
-                onCheckedChange={(enabled) => onToggle(entry.kind, "bell", enabled)}
-                aria-label={`${entry.title}: in the Inbox`}
-              />
+              {entry.emailOnly ? null : (
+                <Switch
+                  checked={entry.bell}
+                  onCheckedChange={(enabled) => onToggle(entry.kind, "bell", enabled)}
+                  aria-label={`${entry.title}: in the Inbox`}
+                />
+              )}
             </span>
             <span role="cell" className="flex justify-center">
               <Switch
@@ -154,11 +157,13 @@ export function NotificationsCard() {
             </span>
             {apps.map((app) => (
               <span key={app} role="cell" className="flex justify-center">
-                <Switch
-                  checked={entry[app]}
-                  onCheckedChange={(enabled) => onToggle(entry.kind, app, enabled)}
-                  aria-label={`${entry.title}: in ${CHAT_APPS[app].name}`}
-                />
+                {entry.emailOnly ? null : (
+                  <Switch
+                    checked={entry[app]}
+                    onCheckedChange={(enabled) => onToggle(entry.kind, app, enabled)}
+                    aria-label={`${entry.title}: in ${CHAT_APPS[app].name}`}
+                  />
+                )}
               </span>
             ))}
           </div>
