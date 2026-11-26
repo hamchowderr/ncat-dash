@@ -289,6 +289,18 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
             if (!run) return;
             // The business's Back Office (BACK_OFFICE_WEBHOOK_URL) keeps them as a contact.
             await run.runMutation(internal.backOffice.tell, { event: "signedUp", userId: user.id });
+            // The sign-up form's product news box, unticked unless they ticked it.
+            const body = (endpoint as { body?: Record<string, unknown> } | null)?.body;
+            if (body?.productNews === true) {
+              const headers = endpoint?.headers ?? endpoint?.request?.headers;
+              await run.runMutation(internal.news.fromSignUp, {
+                userId: user.id,
+                email: user.email,
+                ...(user.name ? { name: user.name } : {}),
+                networkKey: await networkKey(headers),
+                ...(headers?.get("user-agent") ? { userAgent: headers.get("user-agent")! } : {}),
+              });
+            }
             if (getEdition() !== "hosted") return;
             await run.runMutation(internal.access.recordSignUp, {
               userId: user.id,

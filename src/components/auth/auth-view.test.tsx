@@ -1,8 +1,9 @@
 import { api } from "@convex/_generated/api";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import { AuthUiProvider } from "@/components/auth-ui-provider";
+import { authClient } from "@/lib/auth-client";
 import { answerQuery, replaced } from "@/test/convex";
 
 import { AuthView } from "./auth-view";
@@ -102,5 +103,34 @@ describe("creating an account", () => {
   test("on an invite-only copy, says an invitation is needed", () => {
     show("signUp", { inviteOnly: true });
     expect(screen.getByText(/invite-only/)).toBeTruthy();
+  });
+
+  test("offers product news with a box that starts unticked, where email is set up", () => {
+    show("signUp", { emailConfigured: true });
+    const box = screen.getByRole("checkbox", { name: /Send me product news and tips/ });
+    expect(box.getAttribute("aria-checked")).toBe("false");
+  });
+
+  test("has no product news box where email can't be sent", () => {
+    show("signUp");
+    expect(screen.queryByRole("checkbox", { name: /product news/ })).toBeNull();
+  });
+
+  test("sends what the box says with the sign-up", async () => {
+    show("signUp", { emailConfigured: true });
+    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Maya Ortiz" } });
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "maya@example.test" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Password/), {
+      target: { value: "a long enough password 1!" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: /product news/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await waitFor(() =>
+      expect(authClient.signUp.email).toHaveBeenCalledWith(
+        expect.objectContaining({ email: "maya@example.test", productNews: true }),
+      ),
+    );
   });
 });

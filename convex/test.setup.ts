@@ -23,7 +23,7 @@ export function backend() {
   presence.register(t, "presence");
   rateLimiter.register(t, "rateLimiter");
   supportTickets.register(t, "supportTickets");
-  for (const name of ["outboundPool", "toolkitPool", "backgroundPool", "chatPool"])
+  for (const name of ["outboundPool", "toolkitPool", "backgroundPool", "chatPool", "recordingPool"])
     workpool.register(t, name);
   return t;
 }

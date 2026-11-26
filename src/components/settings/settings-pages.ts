@@ -17,7 +17,7 @@ export const SETTINGS_GROUPS = [
       {
         slug: "notifications",
         title: "Notifications",
-        description: "What you hear about, and how. Everyone on the team picks their own.",
+        description: "What you hear about, and how, from your team's work and from Takewon itself.",
       },
     ],
   },

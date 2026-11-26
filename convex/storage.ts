@@ -538,8 +538,9 @@ export const readDetails = internalAction({
     if (upload.source === "link") {
       await ctx.runMutation(internal.links.detailsRead, { uploadId: upload._id });
     }
-    // A logo or music track is kept for steps to use and never starts an automation.
-    if (upload.purpose !== "brand") {
+    // A logo or music track is kept for steps to use, and a page recording is material for
+    // an edit: neither starts an automation.
+    if (!upload.purpose) {
       await ctx.runAction(internal.automations.uploadFinished, args);
     }
   },

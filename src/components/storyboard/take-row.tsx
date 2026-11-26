@@ -16,8 +16,11 @@ import { errorMessage } from "@/lib/catalog";
 import { useBrandUpload } from "@/lib/use-brand-upload";
 import { cn } from "@/lib/utils";
 
+import { PageRecording } from "./page-recording";
 import { SceneSketch } from "./scene-sketch";
-import type { Take } from "./types";
+import type { Board, Take } from "./types";
+
+type Where = { boardId: Board["_id"]; organizationId: string };
 
 /** The soft colour each part's chip wears, so a row reads at a glance. */
 export const PART_TONE: Record<Part, string> = {
@@ -49,7 +52,7 @@ function fileName(url: string) {
 }
 
 /** One part of a take: its file once it is in, or a way to upload or link one. */
-function PartFile({ take, part }: { take: Take; part: Part }) {
+function PartFile({ take, part, where }: { take: Take; part: Part; where: Where }) {
   const setFile = useMutation(api.storyboards.setTakeFile);
   const upload = useBrandUpload();
   const picker = useRef<HTMLInputElement>(null);
@@ -123,6 +126,7 @@ function PartFile({ take, part }: { take: Take; part: Part }) {
           </>
         )}
       </div>
+      {part === "recording" && <PageRecording take={take} {...where} />}
       {linking && !file && (
         <form onSubmit={onSubmit} className="flex gap-2">
           <Input
@@ -142,7 +146,17 @@ function PartFile({ take, part }: { take: Take; part: Part }) {
 }
 
 /** Everything about one take that can be changed, opened in place under its row. */
-function TakeEditor({ take, first, last }: { take: Take; first: boolean; last: boolean }) {
+function TakeEditor({
+  take,
+  first,
+  last,
+  where,
+}: {
+  take: Take;
+  first: boolean;
+  last: boolean;
+  where: Where;
+}) {
   const update = useMutation(api.storyboards.updateTake);
   const move = useMutation(api.storyboards.moveTake);
   const remove = useMutation(api.storyboards.removeTake);
@@ -209,7 +223,7 @@ function TakeEditor({ take, first, last }: { take: Take; first: boolean; last: b
       </div>
       <ul className="flex flex-col gap-2" aria-label="Files">
         {take.parts.map((part) => (
-          <PartFile key={part} take={take} part={part} />
+          <PartFile key={part} take={take} part={part} where={where} />
         ))}
       </ul>
       <div className="flex flex-wrap items-center gap-1">
@@ -248,12 +262,16 @@ function TakeEditor({ take, first, last }: { take: Take; first: boolean; last: b
 /** A take as a row: its scene drawn, what goes in, the line, and where it stands. */
 export function TakeRow({
   take,
+  boardId,
+  organizationId,
   open,
   onToggle,
   first,
   last,
 }: {
   take: Take;
+  boardId: Board["_id"];
+  organizationId: string;
   open: boolean;
   onToggle: () => void;
   first: boolean;
@@ -285,7 +303,15 @@ export function TakeRow({
           {take.status.label}
         </span>
       </button>
-      {open && <TakeEditor key={take._id + take.line} take={take} first={first} last={last} />}
+      {open && (
+        <TakeEditor
+          key={take._id + take.line}
+          take={take}
+          first={first}
+          last={last}
+          where={{ boardId, organizationId }}
+        />
+      )}
     </li>
   );
 }

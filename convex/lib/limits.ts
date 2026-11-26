@@ -18,6 +18,8 @@ import { components } from "../_generated/api";
  * - Help requests and messages on them: per person, since each one emails support.
  * - Emails sent on request (password resets, confirmation links): per address and per
  *   network, so the dashboard can't be used to flood someone's inbox.
+ * - Product news sign-ups from the website: a couple a day per address, so the box can't
+ *   be used to flood someone with confirmation emails, and a ceiling for all of them.
  */
 export const limiter = new RateLimiter(components.rateLimiter, {
   signUpFromNetwork: { kind: "fixed window", rate: 5, period: HOUR },
@@ -34,6 +36,8 @@ export const limiter = new RateLimiter(components.rateLimiter, {
   authEmailFromNetwork: { kind: "token bucket", rate: 10, period: HOUR, capacity: 5 },
   // Help requests and messages on them, per person: each one emails support.
   supportMessage: { kind: "token bucket", rate: 30, period: HOUR, capacity: 10 },
+  newsSignUpToAddress: { kind: "token bucket", rate: 3, period: DAY, capacity: 2 },
+  newsSignUps: { kind: "token bucket", rate: 300, period: HOUR, capacity: 60 },
 });
 
 /** "in about 3 minutes", "in about an hour", for a wait in milliseconds. */

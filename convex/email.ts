@@ -43,6 +43,7 @@ import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { getEdition } from "./lib/edition";
 import { isFor } from "./lib/alerts";
+import { noteProblem } from "./lib/news";
 import { buyUrl } from "./lib/trial";
 import {
   readUnsubscribeToken,
@@ -68,7 +69,7 @@ const outcome = v.union(
   v.object({ ok: v.literal(false), detail: v.string() }),
 );
 
-type Sending = { apiKey: string; fromEmail: string; fromName: string; saved: boolean };
+export type Sending = { apiKey: string; fromEmail: string; fromName: string; saved: boolean };
 
 function fromEnvironment(): Omit<Sending, "saved"> | null {
   const apiKey = process.env.TOSEND_API_KEY?.trim();
@@ -78,7 +79,7 @@ function fromEnvironment(): Omit<Sending, "saved"> | null {
 }
 
 /** Only for tests: points the app at a stand-in for toSend. */
-const apiBase = () => process.env.TOSEND_API_URL?.trim() || undefined;
+export const apiBase = () => process.env.TOSEND_API_URL?.trim() || undefined;
 
 /** Whether email is set up at all. Public: the sign-in page asks before offering a reset. */
 export const status = query({
@@ -250,7 +251,7 @@ export const send = internalAction({
 });
 
 /** Where a link in an email goes, on this dashboard's own address. */
-function siteUrl(path: string): string {
+export function siteUrl(path: string): string {
   return `${(process.env.SITE_URL ?? "").replace(/\/+$/, "")}${path}`;
 }
 
@@ -715,7 +716,7 @@ export const recordOutcome = internalMutation({
   },
 });
 
-async function loadSending(ctx: ActionCtx): Promise<Sending | null> {
+export async function loadSending(ctx: ActionCtx): Promise<Sending | null> {
   const environment = fromEnvironment();
   if (environment) return { ...environment, saved: false };
   const row = await ctx.runQuery(internal.email.saved, {});
@@ -790,6 +791,8 @@ export const recordProblem = internalMutation({
       .first();
     if (existing) await ctx.db.patch(existing._id, fields);
     else await ctx.db.insert("emailProblems", fields);
+    // Counted on the Sent Emails page; a complaint also stops product news.
+    await noteProblem(ctx, email, args.kind);
   },
 });
 

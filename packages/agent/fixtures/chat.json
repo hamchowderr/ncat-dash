@@ -1570,7 +1570,7 @@
     {
       "match": {
         "toolCallId": "toolu_br2_snap",
-        "toolResultContains": "@e2"
+        "toolResultContains": "@e6"
       },
       "response": {
         "toolCalls": [
@@ -1578,7 +1578,7 @@
             "id": "toolu_br2_click",
             "name": "browser_click",
             "arguments": {
-              "ref": "@e2"
+              "ref": "@e6"
             }
           }
         ]
@@ -1658,7 +1658,7 @@
             "id": "toolu_fork_click",
             "name": "browser_click",
             "arguments": {
-              "ref": "@e2"
+              "ref": "@e6"
             }
           }
         ]
