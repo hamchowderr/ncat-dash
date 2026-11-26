@@ -47,21 +47,6 @@ importers:
       '@convex-dev/workpool':
         specifier: 0.5.0
         version: 0.5.0(@standard-schema/spec@1.1.0)(convex-helpers@0.1.136(@standard-schema/spec@1.1.0)(convex@1.50.0(react@19.3.0))(hono@4.13.19)(prettier@3.10.1)(react@19.3.0)(typescript@5.9.3)(zod@4.6.7))(convex@1.50.0(react@19.3.0))(hono@4.13.19)(prettier@3.10.1)(react@19.3.0)(typescript@5.9.3)(zod@4.6.7)
-      '@takewon/automation-core':
-        specifier: workspace:*
-        version: link:packages/automation-core
-      '@takewon/email':
-        specifier: workspace:*
-        version: link:packages/email
-      '@takewon/review-core':
-        specifier: workspace:*
-        version: link:packages/review-core
-      '@takewon/step-catalog':
-        specifier: workspace:*
-        version: link:packages/step-catalog
-      '@takewon/timeline-export':
-        specifier: workspace:*
-        version: link:packages/timeline-export
       '@radix-ui/react-use-controllable-state':
         specifier: ^1.3.0
         version: 1.3.0(@types/react@19.3.0)(react@19.3.0)
@@ -77,6 +62,21 @@ importers:
       '@streamdown/mermaid':
         specifier: ^1.0.3
         version: 1.0.3(react@19.3.0)
+      '@takewon/automation-core':
+        specifier: workspace:*
+        version: link:packages/automation-core
+      '@takewon/email':
+        specifier: workspace:*
+        version: link:packages/email
+      '@takewon/review-core':
+        specifier: workspace:*
+        version: link:packages/review-core
+      '@takewon/step-catalog':
+        specifier: workspace:*
+        version: link:packages/step-catalog
+      '@takewon/timeline-export':
+        specifier: workspace:*
+        version: link:packages/timeline-export
       '@tanstack/react-form':
         specifier: ^1.33.5
         version: 1.33.5(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -176,6 +176,9 @@ importers:
       use-stick-to-bottom:
         specifier: ^1.1.6
         version: 1.1.6(react@19.3.0)
+      waas-provisioning-sdk:
+        specifier: 0.2.0
+        version: 0.2.0
     devDependencies:
       '@edge-runtime/vm':
         specifier: ^5.0.0
@@ -8953,6 +8956,10 @@ packages:
   w3c-xmlserializer@6.0.0:
     resolution: {integrity: sha512-4Nsy8K5Tr6SPDH9jhKJOHf7ChDrc1zufZTVSF7x72hwuEXBqxqk9G6cK+K2NRUtB3iELRJqjXb4JPDMBjMTl2Q==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
+
+  waas-provisioning-sdk@0.2.0:
+    resolution: {integrity: sha512-G4pOW4xQ6evqtN1v03j/FYfj2qcG2qkvyp9Fm1syVhs1Lh/f0/UPISATICvDt0rOZZPUilKw8+npTACBpWiBAg==}
+    engines: {node: '>=20'}
 
   wait-port@1.1.0:
     resolution: {integrity: sha512-3e04qkoN3LxTMLakdqeWth8nih8usyg+sf1Bgdf9wwUkp05iuK1eSY/QpLvscT/+F/gA89+LpUmmgBtesbqI2Q==}
@@ -18652,6 +18659,8 @@ snapshots:
   w3c-xmlserializer@6.0.0:
     dependencies:
       xml-name-validator: 5.0.0
+
+  waas-provisioning-sdk@0.2.0: {}
 
   wait-port@1.1.0:
     dependencies:
