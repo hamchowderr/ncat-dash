@@ -173,6 +173,9 @@ type Page = {
   setViewportSize(size: { width: number; height: number }): Promise<void>;
   evaluate(script: string): Promise<unknown>;
   context(): { addInitScript(script: string): Promise<void> };
+  url(): string;
+  title(): Promise<string>;
+  screenshot(options: { type: "jpeg"; quality: number }): Promise<Uint8Array>;
 };
 
 async function pageOf(browser: PassBrowser): Promise<Page> {
@@ -333,7 +336,7 @@ export function stepOfAction(
  * The browser's tools, each writing down the step it made when it worked. Every call runs
  * in the pass's own browser session, whatever thread the model's call names.
  */
-export function recordingTools(browser: PassBrowser, steps: WalkStep[]) {
+export function recordingTools(browser: PassBrowser, steps: WalkStep[], pages?: string[]) {
   const all = browser.getTools() as Record<string, ToolLike>;
   const tools: Record<string, unknown> = {};
   for (const name of REHEARSAL_TOOLS) {
@@ -351,7 +354,16 @@ export function recordingTools(browser: PassBrowser, steps: WalkStep[]) {
           ...(context as object),
           agent: { ...((context as { agent?: object })?.agent ?? {}), threadId: THREAD },
         });
-        if (step && ok(result) && steps.length < MAX_STEPS) steps.push(step);
+        if (step && ok(result) && steps.length < MAX_STEPS) {
+          steps.push(step);
+          // Where the browser is once the step is done, for finding a page by searching.
+          if (pages)
+            pages.push(
+              await pageOf(browser)
+                .then((page) => page.url())
+                .catch(() => ""),
+            );
+        }
         return result;
       },
     });
@@ -359,17 +371,22 @@ export function recordingTools(browser: PassBrowser, steps: WalkStep[]) {
   return tools;
 }
 
-const rehearsalAgent = (browser: PassBrowser, steps: WalkStep[]) =>
+const rehearsalAgent = (
+  browser: PassBrowser,
+  steps: WalkStep[],
+  pages?: string[],
+  instructions = REHEARSAL_INSTRUCTIONS,
+) =>
   new Agent({
     id: "page-recording",
     name: "Page recording",
     description: "Works out the clicks for a page recording on a storyboard.",
-    instructions: REHEARSAL_INSTRUCTIONS,
+    instructions,
     model: ({ requestContext }) => {
       const key = requestContext.get(TEAM_KEY);
       return onTeamKey(env.CHAT_MODEL, typeof key === "string" ? key : null);
     },
-    tools: recordingTools(browser, steps) as never,
+    tools: recordingTools(browser, steps, pages) as never,
   });
 
 /** Works out the click path for a take. */
@@ -407,6 +424,113 @@ export function pathFrom(steps: WalkStep[], url: string): WalkStep[] {
     );
   }
   return path.slice(0, MAX_STEPS);
+}
+
+// --- Finding the page ----------------------------------------------------------------
+
+/** Where the agent searches when a take has no page address. */
+export const SEARCH_PAGE = "https://duckduckgo.com/";
+
+export const findRequest = z.object({
+  organizationId: z.string().min(1).max(200),
+  line: z.string().min(1).max(2000),
+  notes: z.string().max(2000).default(""),
+  aspect: z.enum(["16:9", "9:16", "1:1", "4:5"]).default("16:9"),
+  profile: z.string().min(1).max(120).nullish(),
+  /** Pages found before that the person did not want. */
+  avoid: z.array(z.string().max(2000)).max(10).default([]),
+});
+export type FindRequest = z.infer<typeof findRequest>;
+
+export type FoundPage = {
+  /** The click path for the take, starting on the page found (the search left out). */
+  steps: WalkStep[];
+  url: string;
+  title: string;
+  /** A JPEG of where the clicks end, base64, for the person to check before recording. */
+  preview: string | null;
+};
+
+export const FIND_INSTRUCTIONS = `${REHEARSAL_INSTRUCTIONS}
+
+No page address was given for this take. Search for the right page first: type a short query into the search box and press Enter, then open the result from the site the line is about. Prefer the site's own page (the company's or project's official site) over articles about it, and the newest version of a page when the line says latest or newest. Once on that site, show what the line describes as above.`;
+
+/** What the model is told when it has to find the page. */
+export function findPrompt(request: Pick<FindRequest, "line" | "notes" | "avoid">): string {
+  return [
+    `The line said over the recording: "${request.line.trim()}"`,
+    `Start on: ${SEARCH_PAGE}`,
+    request.notes.trim() ? `Also: ${request.notes.trim()}` : "",
+    request.avoid.length
+      ? `The person did not want these pages, so find a different one: ${request.avoid.join(", ")}`
+      : "",
+    "Open the start page first.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+};
+
+/**
+ * The take's path from a search: everything up to leaving the search engine is dropped,
+ * and the path opens the page the search led to. Null when it never left the search.
+ */
+export function pathOffSearch(steps: WalkStep[], pages: string[]): WalkStep[] | null {
+  const search = hostOf(SEARCH_PAGE);
+  let last = -1;
+  pages.forEach((page, index) => {
+    if (!page || hostOf(page) === search) last = index;
+  });
+  const start = last + 1;
+  const landed = pages[start];
+  if (start >= steps.length || !landed || !/^https?:/.test(landed)) return null;
+  const rest = steps.slice(start + 1);
+  const path: WalkStep[] = [{ do: "goto", url: landed }, ...rest];
+  // A page that already shows it all still needs a moment on screen.
+  if (!rest.length) path.push({ do: "pause", ms: 4000 });
+  return path.slice(0, MAX_STEPS);
+}
+
+/** Finds the page for a take with no address by searching, without recording anything. */
+export async function findPage(request: FindRequest, teamKey: string | null): Promise<FoundPage> {
+  const steps: WalkStep[] = [];
+  const pages: string[] = [];
+  const browser = makeBrowser({ aspect: request.aspect, profile: request.profile ?? null });
+  let url = "";
+  let title = "";
+  let preview: string | null = null;
+  try {
+    const requestContext = new RequestContext();
+    if (teamKey) requestContext.set(TEAM_KEY, teamKey);
+    await rehearsalAgent(browser, steps, pages, FIND_INSTRUCTIONS).generate(
+      [{ role: "user", content: findPrompt(request) }],
+      { requestContext, maxSteps: REHEARSAL_MAX_STEPS },
+    );
+    const page = await pageOf(browser).catch(() => null);
+    if (page) {
+      url = page.url();
+      title = (await page.title().catch(() => "")).slice(0, 300);
+      const shot = await page.screenshot({ type: "jpeg", quality: 60 }).catch(() => null);
+      preview = shot ? Buffer.from(shot).toString("base64") : null;
+    }
+  } finally {
+    await browser.close().catch(() => undefined);
+  }
+  const path = pathOffSearch(steps, pages);
+  if (!path || !/^https?:/.test(url) || hostOf(url) === hostOf(SEARCH_PAGE)) {
+    throw new TakeProblem(
+      "The agent could not find a page for this line. Give the page's address, or say more about what to show.",
+      "no_path",
+    );
+  }
+  return { steps: path, url, title, preview };
 }
 
 // --- The take ------------------------------------------------------------------------

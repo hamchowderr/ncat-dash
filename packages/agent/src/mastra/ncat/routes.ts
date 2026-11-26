@@ -14,7 +14,7 @@ import {
   submitBatch,
 } from "./moments-batch";
 import { reviewPrompt, reviewQuestion } from "./review";
-import { makeTake, TakeProblem, takeRequest } from "./page-recording";
+import { findPage, findRequest, makeTake, TakeProblem, takeRequest } from "./page-recording";
 import { scenesAgent, scenesPrompt, scenesRequest } from "./scenes";
 import {
   finishSignIn,
@@ -39,9 +39,7 @@ const body = z.object({
   convexToken: z.string().min(20).max(8000),
   organizationId: z.string().max(200).nullish(),
   automationId: z.string().max(200).nullish(),
-  screen: z
-    .object({ kind: z.enum(SCREEN_KINDS), id: z.string().min(1).max(200) })
-    .nullish(),
+  screen: z.object({ kind: z.enum(SCREEN_KINDS), id: z.string().min(1).max(200) }).nullish(),
 });
 
 /**
@@ -225,6 +223,31 @@ export const createNcatRoutes = () => [
         }
         console.warn("[record] take failed", caught);
         return c.json({ error: "The recording could not be made." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/find-page: a "Page recording" take with no address. The agent searches for
+  // the page and works out the clicks without recording, and answers the page with a
+  // picture of it, so the person checks it before the take is recorded with /ncat/record.
+  registerApiRoute("/ncat/find-page", {
+    method: "POST",
+    handler: async (c) => {
+      if (!resourceIdOf(c)) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const parsed = findRequest.safeParse(await c.req.json().catch(() => undefined));
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        return c.json(await findPage(parsed.data, await teamKey(parsed.data.organizationId)));
+      } catch (caught) {
+        if (caught instanceof TakeProblem) {
+          return c.json({ error: caught.message, code: caught.code }, 422);
+        }
+        console.warn("[record] finding the page failed", caught);
+        return c.json({ error: "The agent could not look for the page." }, 502);
       }
     },
   }),

@@ -3,12 +3,15 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BrowserOptions,
+  findPrompt,
   makeTake,
   type PassBrowser,
   pathFrom,
+  pathOffSearch,
   recordingTools,
   recordPath,
   rehearsalPrompt,
+  SEARCH_PAGE,
   stepOfAction,
   TakeProblem,
   useBrowserForTests,
@@ -61,6 +64,7 @@ function fakeBrowser(
         log.push(script === PAGE_HELPERS ? "helpers" : "other script");
       },
     }),
+    url: () => "https://example.com/pricing",
   };
   const manager = {
     getPage: () => page,
@@ -362,5 +366,84 @@ describe("POST /ncat/record", () => {
       do: "click",
       target: { role: "link", name: "Pricing", nth: 0 },
     });
+  });
+});
+
+describe("finding the page when a take has none", () => {
+  const CLICK = (name: string) => ({
+    do: "click" as const,
+    target: { role: "link", name, nth: 0 },
+  });
+
+  it("tells the model to search, prefer the site's own page, and skip pages turned down", () => {
+    const prompt = findPrompt({
+      line: "Linear's changelog shows the newest features.",
+      notes: "",
+      avoid: ["https://example.com/old"],
+    });
+    expect(prompt).toContain(`Start on: ${SEARCH_PAGE}`);
+    expect(prompt).toContain("https://example.com/old");
+  });
+
+  it("starts the take on the page the search led to, leaving the search out", () => {
+    const steps = [
+      { do: "goto" as const, url: SEARCH_PAGE },
+      {
+        do: "type" as const,
+        target: { role: "textbox", name: "Search", nth: 0 },
+        text: "linear changelog",
+        clear: false,
+      },
+      { do: "press" as const, key: "Enter" },
+      CLICK("Changelog - Linear"),
+      CLICK("Latest"),
+    ];
+    const pages = [
+      SEARCH_PAGE,
+      SEARCH_PAGE,
+      "https://duckduckgo.com/?q=linear+changelog",
+      "https://linear.app/changelog",
+      "https://linear.app/changelog/latest",
+    ];
+    expect(pathOffSearch(steps, pages)).toEqual([
+      { do: "goto", url: "https://linear.app/changelog" },
+      CLICK("Latest"),
+    ]);
+  });
+
+  it("holds on a page that already shows it all, and finds nothing when the search was never left", () => {
+    expect(
+      pathOffSearch(
+        [{ do: "goto", url: SEARCH_PAGE }, CLICK("Pricing - Stripe")],
+        [SEARCH_PAGE, "https://stripe.com/pricing"],
+      ),
+    ).toEqual([
+      { do: "goto", url: "https://stripe.com/pricing" },
+      { do: "pause", ms: 4000 },
+    ]);
+    expect(pathOffSearch([{ do: "goto", url: SEARCH_PAGE }], [SEARCH_PAGE])).toBeNull();
+  });
+
+  it("writes down where the browser is after each step it keeps", async () => {
+    const fake = fakeBrowser();
+    const steps: never[] = [];
+    const pages: string[] = [];
+    const tools = recordingTools(fake.browser, steps, pages) as Record<
+      string,
+      { execute: (input: unknown, context: unknown) => Promise<unknown> }
+    >;
+    await tools.browser_click.execute({ ref: "@e1" }, {});
+    await tools.browser_click.execute({ ref: "@e9" }, {});
+    expect(pages).toEqual(["https://example.com/pricing"]);
+  });
+
+  it("POST /ncat/find-page refuses an unsigned call and a body it cannot read", async () => {
+    const route = find(createNcatRoutes(), "/ncat/find-page", "POST");
+    const unsigned = ctx({ body: { organizationId: "team_1", line: "Plans." } });
+    await route.handler(unsigned.c);
+    expect(unsigned.captured.status).toBe(401);
+    const bad = ctx({ resourceId: "u1", body: { organizationId: "team_1" } });
+    await route.handler(bad.c);
+    expect(bad.captured.status).toBe(400);
   });
 });

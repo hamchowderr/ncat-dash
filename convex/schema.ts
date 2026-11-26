@@ -2267,13 +2267,21 @@ export default defineSchema({
     signInId: v.optional(v.id("recordingSignIns")),
     // Set once a take has been recorded. Recording again with the same path plays these.
     steps: v.optional(v.array(walkStepValidator)),
+    // "finding" and "found": a take given no address, whose page the agent searches for
+    // and the person checks before it is recorded.
     status: v.union(
       v.literal("queued"),
+      v.literal("finding"),
+      v.literal("found"),
       v.literal("recording"),
       v.literal("saving"),
       v.literal("done"),
       v.literal("failed"),
     ),
+    // For a page the agent found: a picture of it and its title, and pages turned down.
+    previewId: v.optional(v.id("_storage")),
+    pageTitle: v.optional(v.string()),
+    avoid: v.optional(v.array(v.string())),
     // Why it was not recorded, in words a person can act on.
     problem: v.optional(v.string()),
     // The finished video, one of the team's uploads.

@@ -67,6 +67,18 @@ function stubs(agent?: (body: Record<string, unknown>) => Response) {
         ? agent(body)
         : Response.json({ steps: STEPS, rehearsed: true, durationMs: 8200, frames: 120 });
     }
+    if (url === `${AGENT_URL}/ncat/find-page`) {
+      const seen = sent.filter((call) => call.url === url).length;
+      return Response.json({
+        steps: [
+          { do: "goto", url: `https://example.com/pricing-${seen}` },
+          { do: "scroll", direction: "down", amount: 500 },
+        ],
+        url: `https://example.com/pricing-${seen}`,
+        title: "Pricing - Example",
+        preview: btoa("a picture of the page"),
+      });
+    }
     if (url === `${AGENT_URL}/ncat/sign-in/start`) {
       return Response.json({ sessionId: "session_1", liveViewUrl: "https://live.example/s1" });
     }
@@ -266,6 +278,73 @@ describe("recording a take", () => {
       result: { kind: "failed", error: "boom" },
     });
     expect((await t.run((ctx) => ctx.db.get(row._id)))?.status).toBe("failed");
+  });
+});
+
+describe("a take with no page address", () => {
+  test("has its page found by the agent and checked before it is recorded", async () => {
+    const { maya, shown, rows, run } = await setUp();
+    const { sent } = stubs();
+    await maya.as.mutation(api.pageRecordings.record, {
+      takeId: shown._id,
+      notes: "The yearly plans",
+    });
+    await run();
+    const asked = sent.filter((call) => call.url === `${AGENT_URL}/ncat/find-page`);
+    expect(asked).toHaveLength(1);
+    expect(asked[0].body).toMatchObject({
+      line: "Here are the plans.",
+      notes: "The yearly plans",
+      avoid: [],
+    });
+    // Found, not recorded: nothing goes to the recorder until the person says so.
+    expect(sent.some((call) => call.url === `${AGENT_URL}/ncat/record`)).toBe(false);
+    const [found] = await rows();
+    expect(found).toMatchObject({
+      status: "found",
+      url: "https://example.com/pricing-1",
+      pageTitle: "Pricing - Example",
+    });
+    expect(found.previewUrl).toBeTruthy();
+    expect(found.steps).toHaveLength(2);
+
+    // "Find another page" searches again, leaving that page out.
+    await maya.as.mutation(api.pageRecordings.record, {
+      takeId: shown._id,
+      notes: "The yearly plans",
+      findAnother: true,
+    });
+    await run();
+    const again = sent.filter((call) => call.url === `${AGENT_URL}/ncat/find-page`);
+    expect(again[1].body.avoid).toEqual(["https://example.com/pricing-1"]);
+    const [second] = await rows();
+    expect(second.url).toBe("https://example.com/pricing-2");
+
+    // "Record this" plays the clicks found, on the page found.
+    await maya.as.mutation(api.pageRecordings.record, { takeId: shown._id, again: true });
+    await run();
+    const recorded = sent.find((call) => call.url === `${AGENT_URL}/ncat/record`)!;
+    expect(recorded.body.url).toBe("https://example.com/pricing-2");
+    expect(recorded.body.steps).toEqual(second.steps);
+    const [done] = await rows();
+    expect(done).toMatchObject({ status: "done", previewUrl: null });
+  });
+
+  test("says so when the agent finds no page", async () => {
+    const { maya, shown, rows, run } = await setUp();
+    vi.stubGlobal("fetch", async () =>
+      Response.json(
+        { error: "The agent could not find a page for this line.", code: "no_path" },
+        { status: 422 },
+      ),
+    );
+    await maya.as.mutation(api.pageRecordings.record, { takeId: shown._id, url: "" });
+    await run();
+    const [row] = await rows();
+    expect(row).toMatchObject({
+      status: "failed",
+      problem: "The agent could not find a page for this line.",
+    });
   });
 });
 

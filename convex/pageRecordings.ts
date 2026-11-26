@@ -12,6 +12,7 @@
 import { vOnCompleteArgs } from "@convex-dev/workpool";
 import { freeName, keyOfUrl, uploadRef } from "@takewon/automation-core";
 import { callStep, getStep } from "@takewon/step-catalog";
+import type { FunctionReturnType } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -77,6 +78,8 @@ const recordingView = v.object({
   steps: v.array(walkStepValidator),
   status: v.union(
     v.literal("queued"),
+    v.literal("finding"),
+    v.literal("found"),
     v.literal("recording"),
     v.literal("saving"),
     v.literal("done"),
@@ -85,6 +88,9 @@ const recordingView = v.object({
   problem: v.union(v.null(), v.string()),
   uploadId: v.union(v.null(), v.id("uploads")),
   durationMs: v.union(v.null(), v.number()),
+  /** For a page the agent found by searching: a picture of it, and its title. */
+  previewUrl: v.union(v.null(), v.string()),
+  pageTitle: v.union(v.null(), v.string()),
   /** Where it is in the line: 1 for next. Only while it waits. */
   place: v.union(v.null(), v.number()),
   updatedAt: v.number(),
@@ -113,20 +119,24 @@ export const forStoryboard = query({
       .filter((row) => row.status === "queued")
       .sort((a, b) => a.updatedAt - b.updatedAt)
       .map((row) => row._id);
-    return rows.map((row) => ({
-      _id: row._id,
-      takeId: row.takeId,
-      url: row.url,
-      notes: row.notes,
-      signInId: row.signInId ?? null,
-      steps: row.steps ?? [],
-      status: row.status,
-      problem: row.problem ?? null,
-      uploadId: row.uploadId ?? null,
-      durationMs: row.durationMs ?? null,
-      place: row.status === "queued" ? line.indexOf(row._id) + 1 || null : null,
-      updatedAt: row.updatedAt,
-    }));
+    return await Promise.all(
+      rows.map(async (row) => ({
+        _id: row._id,
+        takeId: row.takeId,
+        url: row.url,
+        notes: row.notes,
+        signInId: row.signInId ?? null,
+        steps: row.steps ?? [],
+        status: row.status,
+        problem: row.problem ?? null,
+        uploadId: row.uploadId ?? null,
+        durationMs: row.durationMs ?? null,
+        previewUrl: row.previewId ? await ctx.storage.getUrl(row.previewId) : null,
+        pageTitle: row.pageTitle ?? null,
+        place: row.status === "queued" ? line.indexOf(row._id) + 1 || null : null,
+        updatedAt: row.updatedAt,
+      })),
+    );
   },
 });
 
@@ -135,15 +145,18 @@ export const forStoryboard = query({
 
 /**
  * Puts a take's page recording in line. `again` plays the clicks the last recording kept;
- * otherwise the agent works out new ones from the line, the page and the notes.
+ * otherwise the agent works out new ones from the line, the page and the notes. With no
+ * page address the agent searches for the page and stops at "found", for the person to
+ * check it; `again` then records it. `findAnother` searches again, leaving that page out.
  */
 export const record = mutation({
   args: {
     takeId: v.id("storyboardTakes"),
-    url: v.string(),
+    url: v.optional(v.string()),
     notes: v.optional(v.string()),
     signInId: v.optional(v.union(v.null(), v.id("recordingSignIns"))),
     again: v.optional(v.boolean()),
+    findAnother: v.optional(v.boolean()),
   },
   returns: v.id("takeRecordings"),
   handler: async (ctx, args): Promise<Id<"takeRecordings">> => {
@@ -153,8 +166,12 @@ export const record = mutation({
     if (!take.parts.includes("recording")) {
       return fail("invalid_input", "This take has no page recording. Add one to the take first.");
     }
-    const url = cleanPageUrl(args.url);
-    if (!url) return fail("invalid_input", "Give the page's web address, starting https://.");
+    const given = (args.url ?? "").trim();
+    // Left empty, the agent finds the page.
+    const url = given ? cleanPageUrl(given) : "";
+    if (url === null) {
+      return fail("invalid_input", "Give the page's web address, starting https://.");
+    }
     const notes = (args.notes ?? "").trim().slice(0, RECORDING_LIMITS.notes);
     let signInId: Id<"recordingSignIns"> | undefined;
     if (args.signInId) {
@@ -184,8 +201,13 @@ export const record = mutation({
     if (again && !before?.steps?.length) {
       return fail("invalid_input", "This take has no saved clicks yet. Record it first.");
     }
+    const findAnother = !again && args.findAnother === true && Boolean(before?.url);
+    const avoid =
+      findAnother && before ? [...(before.avoid ?? []), before.url].slice(-10) : undefined;
+    // A new page or a new search makes the picture of the old one out of date.
+    if (!again && before?.previewId) await ctx.storage.delete(before.previewId);
     const fields = {
-      url: again && before ? before.url : url,
+      url: again && before ? before.url : findAnother ? "" : url,
       notes,
       signInId,
       status: "queued" as const,
@@ -197,7 +219,10 @@ export const record = mutation({
     let recordingId: Id<"takeRecordings">;
     if (before) {
       // A new path is worked out from the page given now; recording again keeps the old one.
-      await ctx.db.patch(before._id, { ...fields, ...(again ? {} : { steps: undefined }) });
+      await ctx.db.patch(before._id, {
+        ...fields,
+        ...(again ? {} : { steps: undefined, previewId: undefined, pageTitle: undefined, avoid }),
+      });
       recordingId = before._id;
     } else {
       recordingId = await ctx.db.insert("takeRecordings", {
@@ -258,7 +283,7 @@ export const forMaking = internalQuery({
 export const setStatus = internalMutation({
   args: {
     recordingId: v.id("takeRecordings"),
-    status: v.union(v.literal("recording"), v.literal("saving")),
+    status: v.union(v.literal("finding"), v.literal("recording"), v.literal("saving")),
     steps: v.optional(v.array(walkStepValidator)),
   },
   handler: async (ctx, args) => {
@@ -303,6 +328,33 @@ export const ended = internalMutation({
   },
 });
 
+/** The page the agent found by searching, waiting for the person to check it. */
+export const found = internalMutation({
+  args: {
+    recordingId: v.id("takeRecordings"),
+    url: v.string(),
+    title: v.string(),
+    steps: v.array(walkStepValidator),
+    previewId: v.union(v.null(), v.id("_storage")),
+  },
+  handler: async (ctx, args) => {
+    const recording = await ctx.db.get(args.recordingId);
+    if (!recording || recording.status !== "finding") {
+      if (args.previewId) await ctx.storage.delete(args.previewId);
+      return;
+    }
+    await ctx.db.patch(recording._id, {
+      status: "found",
+      url: args.url,
+      pageTitle: args.title || undefined,
+      steps: args.steps,
+      previewId: args.previewId ?? undefined,
+      problem: undefined,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 /** Keeps the finished video as one of the team's uploads and puts it into the take. */
 export const saved = internalMutation({
   args: {
@@ -334,15 +386,25 @@ export const saved = internalMutation({
       await ctx.db.patch(take._id, { files: { ...take.files, recording: uploadRef(uploadId) } });
       await ctx.db.patch(take.storyboardId, { updatedAt: Date.now() });
     }
+    if (recording.previewId) await ctx.storage.delete(recording.previewId);
     await ctx.db.patch(recording._id, {
       status: "done",
       problem: undefined,
+      previewId: undefined,
       uploadId,
       durationMs: args.durationMs,
       updatedAt: Date.now(),
     });
   },
 });
+
+type FoundAnswer = {
+  steps?: WalkStep[];
+  url?: string;
+  title?: string;
+  preview?: string | null;
+  error?: string;
+};
 
 type AgentAnswer = {
   steps?: WalkStep[];
@@ -367,6 +429,55 @@ function linkOf(answer: unknown): string | null {
   if (typeof url?.file_url === "string") return url.file_url;
   if (typeof url?.url === "string") return url.url;
   return null;
+}
+
+type Making = NonNullable<FunctionReturnType<typeof internal.pageRecordings.forMaking>>;
+
+/** A take with no address: the agent searches for the page, and nothing is recorded yet. */
+async function findThePage(ctx: ActionCtx, found: Making, agentUrl: string, secret: string) {
+  const { recording } = found;
+  const recordingId = recording._id;
+  await ctx.runMutation(internal.pageRecordings.setStatus, { recordingId, status: "finding" });
+  let answer: FoundAnswer | null = null;
+  let status = 0;
+  try {
+    const response = await fetch(new URL("/ncat/find-page", agentUrl), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${await signAgentToken(secret, recording.requestedBy)}`,
+      },
+      body: JSON.stringify({
+        organizationId: recording.organizationId,
+        line: found.line,
+        notes: recording.notes,
+        aspect: found.aspect,
+        profile: found.profile,
+        avoid: recording.avoid ?? [],
+      }),
+      signal: AbortSignal.timeout(TAKE_TIMEOUT_MS),
+    });
+    status = response.status;
+    answer = (await response.json().catch(() => null)) as FoundAnswer | null;
+  } catch {
+    return await stop(ctx, recordingId, "The agent could not be reached. Try again in a moment.");
+  }
+  const url = answer?.url ? cleanPageUrl(answer.url) : null;
+  if (status !== 200 || !answer?.steps?.length || !url) {
+    return await stop(ctx, recordingId, answer?.error ?? "The agent did not find a page.");
+  }
+  let previewId: Id<"_storage"> | null = null;
+  if (answer.preview) {
+    const bytes = Uint8Array.from(atob(answer.preview.slice(0, 4_000_000)), (c) => c.charCodeAt(0));
+    previewId = await ctx.storage.store(new Blob([bytes], { type: "image/jpeg" }));
+  }
+  await ctx.runMutation(internal.pageRecordings.found, {
+    recordingId,
+    url,
+    title: (answer.title ?? "").slice(0, 300),
+    steps: answer.steps.slice(0, RECORDING_LIMITS.steps),
+    previewId,
+  });
 }
 
 /**
@@ -398,6 +509,9 @@ export const make = internalAction({
           recordingId,
           "The sign-in picked for this take is not saved, or is no longer shared with you. Pick a sign-in and record it again.",
         );
+      }
+      if (!recording.again && !recording.url) {
+        return await findThePage(ctx, found, agentUrl, secret);
       }
       await ctx.runMutation(internal.pageRecordings.setStatus, {
         recordingId,

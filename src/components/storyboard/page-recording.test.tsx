@@ -43,6 +43,8 @@ function row(over: Record<string, unknown> = {}) {
     problem: null,
     uploadId: null,
     durationMs: null,
+    previewUrl: null,
+    pageTitle: null,
     place: null,
     updatedAt: 0,
     ...over,
@@ -61,9 +63,10 @@ describe("a take's page recording", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Record the page" }));
     const form = screen.getByRole("form", { name: "Record the page" });
-    const record = within(form).getByRole("button", { name: "Record" });
-    expect(record).toHaveProperty("disabled", true);
+    // With no address the agent finds the page; with one, it records it.
+    expect(within(form).getByRole("button", { name: "Find the page" })).toBeTruthy();
     await user.type(within(form).getByRole("textbox", { name: "Page address" }), "example.com");
+    const record = within(form).getByRole("button", { name: "Record" });
     await user.type(
       within(form).getByRole("textbox", { name: /What to show/ }),
       "The yearly plans",
@@ -104,6 +107,53 @@ describe("a take's page recording", () => {
       signInId: null,
       again: true,
     });
+  });
+
+  test("with no address, has the agent find the page", async () => {
+    show([]);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Record the page" }));
+    await user.click(screen.getByRole("button", { name: "Find the page" }));
+    expect(mutationOf(api.pageRecordings.record)).toHaveBeenCalledWith(
+      expect.objectContaining({ takeId: "t2", url: "" }),
+    );
+  });
+
+  test("shows the page the agent found, to record it, find another, or give the address", async () => {
+    show([
+      row({
+        status: "found",
+        url: "https://example.com/pricing",
+        pageTitle: "Pricing - Example",
+        previewUrl: "https://files.example/preview.jpg",
+        steps: STEPS,
+      }),
+    ]);
+    const user = userEvent.setup();
+    expect(screen.getByRole("status").textContent).toBe(
+      "Found a page. Check it before it is recorded",
+    );
+    expect(
+      screen.getByRole("img", { name: "The page the agent found: Pricing - Example" }),
+    ).toHaveProperty("src", "https://files.example/preview.jpg");
+    expect(screen.getByRole("link", { name: "https://example.com/pricing" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Record again the same way" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Record this" }));
+    expect(mutationOf(api.pageRecordings.record)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ url: "https://example.com/pricing", again: true }),
+    );
+    await user.click(screen.getByRole("button", { name: "Find another page" }));
+    expect(mutationOf(api.pageRecordings.record)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ url: "", findAnother: true }),
+    );
+    await user.click(screen.getByRole("button", { name: "Give the address" }));
+    expect(screen.getByRole("form", { name: "Record the page" })).toBeTruthy();
+  });
+
+  test("says while the agent looks for the page", () => {
+    show([row({ status: "finding", url: "" })]);
+    expect(screen.getByRole("status").textContent).toBe("Finding the page");
+    expect(screen.getByText("No address given, the agent searches for the page")).toBeTruthy();
   });
 
   test("says why it was not recorded, and can be tried again", async () => {

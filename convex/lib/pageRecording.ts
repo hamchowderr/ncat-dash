@@ -41,12 +41,22 @@ export const RECORDING_LIMITS = {
   signIns: 30,
 } as const;
 
-export const RECORDING_STATUSES = ["queued", "recording", "saving", "done", "failed"] as const;
+export const RECORDING_STATUSES = [
+  "queued",
+  "finding",
+  "found",
+  "recording",
+  "saving",
+  "done",
+  "failed",
+] as const;
 export type RecordingStatus = (typeof RECORDING_STATUSES)[number];
 
 /** Where a recording stands, in words. */
 export const STATUS_WORDS: Record<RecordingStatus, string> = {
   queued: "Waiting its turn",
+  finding: "Finding the page",
+  found: "Found a page. Check it before it is recorded",
   recording: "Recording the page",
   saving: "Making the video",
   done: "Recorded",
@@ -55,7 +65,7 @@ export const STATUS_WORDS: Record<RecordingStatus, string> = {
 
 /** Whether a recording is still being made, so another for the same take must wait. */
 export const isUnderWay = (status: RecordingStatus) =>
-  status === "queued" || status === "recording" || status === "saving";
+  status === "queued" || status === "finding" || status === "recording" || status === "saving";
 
 const quoted = (target: StepTarget) => (target.name ? `"${target.name}"` : `the ${target.role}`);
 

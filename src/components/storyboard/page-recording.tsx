@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { describeStep, isUnderWay, STATUS_WORDS } from "@convex/lib/pageRecording";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Loader2, MonitorPlay, Repeat2 } from "lucide-react";
+import { Check, Loader2, MonitorPlay, Repeat2, Search } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -241,15 +241,22 @@ function RecordForm({
         className="flex flex-col gap-3 text-sm"
         aria-label="Record the page"
       >
-        <label className="flex flex-col gap-1">
-          <span className="font-medium">Page address</span>
-          <Input
-            value={url}
-            autoFocus
-            placeholder="https://example.com/pricing"
-            onChange={(event) => setUrl(event.target.value)}
-          />
-        </label>
+        <div className="flex flex-col gap-1">
+          <label className="flex flex-col gap-1">
+            <span className="font-medium">Page address</span>
+            <Input
+              value={url}
+              autoFocus
+              placeholder="https://example.com/pricing"
+              aria-describedby="page-address-hint"
+              onChange={(event) => setUrl(event.target.value)}
+            />
+          </label>
+          <span id="page-address-hint" className="text-muted-foreground text-xs">
+            Leave it empty and the agent searches for the page. You check what it found before it is
+            recorded.
+          </span>
+        </div>
         <label className="flex flex-col gap-1">
           <span className="font-medium">What to show</span>
           <Textarea
@@ -303,9 +310,9 @@ function RecordForm({
         </div>
         {signIn !== ADD && (
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit" size="sm" disabled={busy || !url.trim()}>
-              <MonitorPlay />
-              {busy ? "Starting…" : "Record"}
+            <Button type="submit" size="sm" disabled={busy}>
+              {url.trim() ? <MonitorPlay /> : <Search />}
+              {busy ? "Starting…" : url.trim() ? "Record" : "Find the page"}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={onDone}>
               Cancel
@@ -344,15 +351,15 @@ export function PageRecording({
   if (rows === undefined) return null;
   const row = rows.find((entry) => entry.takeId === take._id) ?? null;
 
-  async function again() {
+  async function again(how: "again" | "findAnother" = "again") {
     if (!row) return;
     try {
       await record({
         takeId: take._id,
-        url: row.url,
+        url: how === "again" ? row.url : "",
         notes: row.notes,
         signInId: row.signInId,
-        again: true,
+        ...(how === "again" ? { again: true } : { findAnother: true }),
       });
     } catch (caught) {
       toast.error(errorMessage(caught, "The recording could not start."));
@@ -395,12 +402,59 @@ export function PageRecording({
             ? waitWords(row.place)
             : `${STATUS_WORDS[row.status]}${row.status === "done" ? seconds(row.durationMs) : ""}`}
         </span>
-        <span className="text-muted-foreground min-w-0 truncate">{row.url}</span>
+        <span className="text-muted-foreground min-w-0 truncate">
+          {row.url || "No address given, the agent searches for the page"}
+        </span>
       </div>
       {row.status === "failed" && row.problem && (
         <p className="text-muted-foreground">{row.problem}</p>
       )}
-      {!underWay && (
+      {row.status === "found" && (
+        <div className="flex flex-col gap-2">
+          {row.previewUrl && (
+            // A picture from the agent's browser, kept in Convex storage: not a Next image.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={row.previewUrl}
+              alt={`The page the agent found: ${row.pageTitle ?? row.url}`}
+              className="bg-muted w-full max-w-md rounded-md"
+            />
+          )}
+          <p>
+            {row.pageTitle && <span className="font-medium">{row.pageTitle} </span>}
+            <a
+              href={row.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground break-all underline underline-offset-2"
+            >
+              {row.url}
+            </a>
+          </p>
+          <div className="flex flex-wrap items-center gap-1">
+            <Button size="sm" onClick={() => void again()}>
+              <Check />
+              Record this
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => void again("findAnother")}>
+              <Search />
+              Find another page
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setForm(true)}>
+              Give the address
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-expanded={clicks}
+              onClick={() => setClicks((shown) => !shown)}
+            >
+              {clicks ? "Hide the clicks" : `Show the clicks (${row.steps.length})`}
+            </Button>
+          </div>
+        </div>
+      )}
+      {!underWay && row.status !== "found" && (
         <div className="flex flex-wrap items-center gap-1">
           {row.steps.length > 0 && (
             <Button size="sm" variant="outline" onClick={() => void again()}>
