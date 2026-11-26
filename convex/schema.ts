@@ -442,6 +442,9 @@ export default defineSchema({
     music: v.optional(musicValidator),
     // How many times a failed step in a run tries again before the run fails.
     stepRetries: v.optional(v.number()),
+    // Days after a run finishes that its in-between files are taken away (inBetweenFiles.ts).
+    // Left out: never; the team has to switch the clean-up on.
+    clearInBetweenDays: v.optional(v.number()),
     // The most one run may spend on AI steps, in millionths of a dollar. Left out: no
     // limit (automation-core ai-spend.ts).
     aiLimit: v.optional(v.number()),

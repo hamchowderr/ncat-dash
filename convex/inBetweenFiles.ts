@@ -17,8 +17,9 @@ import { finishedFiles } from "./lib/exports";
  * it, and only the run's last files are kept, copied into the team's folder (files.ts,
  * keepFinished). The rest stay behind, and over time they are most of the bucket.
  *
- * Once a day, one team at a time, this takes away the files the team's own jobs wrote in
- * the middle of runs that finished well a week or more ago, when nothing of the team's
+ * It is off until a team switches it on (Settings > Runs), and then keeps the files as
+ * many days as the team chose. Once a day, one team at a time, it takes away the files the
+ * team's own jobs wrote in the middle of runs that finished well that long ago, when nothing of the team's
  * still points to them. It works from the team's job records, never from a folder: the
  * top of the bucket is shared by every team on the toolkit, so a file is only ever taken
  * away for the team whose job made it. Never taken away:
@@ -31,8 +32,6 @@ import { finishedFiles } from "./lib/exports";
  * - anything inside a team's folder (teams/<id>/).
  */
 
-/** How long after a run finishes its in-between files are kept, in days. */
-export const KEEP_IN_BETWEEN_DAYS = 7;
 const DAY = 24 * 60 * 60 * 1000;
 /** After this long a failed or stopped run's files are left for good and not looked at again. */
 const GIVE_UP_DAYS = 30;
@@ -43,14 +42,29 @@ const PAGES_PER_PASS = 10;
 /** Time between one team's turn and the next. */
 const TEAM_GAP_MS = 30_000;
 
-/** Every team with a toolkit connection, each given its turn a little after the last. */
+/** The days the team keeps in-between files, or null while its clean-up is off. */
+async function keepDaysOf(ctx: QueryCtx, organizationId: string): Promise<number | null> {
+  const settings = await ctx.db
+    .query("teamSettings")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .first();
+  return settings?.clearInBetweenDays ?? null;
+}
+
+/**
+ * Every team that switched the clean-up on and has storage, each given its turn a little
+ * after the last.
+ */
 export const daily = internalMutation({
   args: {},
   returns: v.number(),
   handler: async (ctx) => {
     const teams = new Set<string>();
-    for await (const connection of ctx.db.query("toolkitConnections")) {
-      if (connection.storage) teams.add(connection.organizationId);
+    for await (const settings of ctx.db.query("teamSettings")) {
+      if (settings.clearInBetweenDays === undefined) continue;
+      if (await storageConnection(ctx, settings.organizationId)) {
+        teams.add(settings.organizationId);
+      }
     }
     let at = 0;
     for (const organizationId of teams) {
@@ -115,13 +129,15 @@ export const findPage = internalQuery({
       .paginate({ numItems: JOB_PAGE, cursor: args.cursor });
     const connection = await storageConnection(ctx, args.organizationId);
     const storage = connection?.storage;
+    const keepDays = await keepDaysOf(ctx, args.organizationId);
     const found: PageFindings = {
       files: [],
       settled: [],
       isDone: page.isDone,
       continueCursor: page.continueCursor,
     };
-    if (!storage?.endpoint) return found;
+    // Switched off, or no storage: nothing is taken away and nothing is marked.
+    if (!storage?.endpoint || keepDays === null) return { ...found, isDone: true };
     const address = {
       endpoint: storage.endpoint,
       bucket: storage.bucket,
@@ -169,7 +185,7 @@ export const findPage = internalQuery({
         continue;
       }
       // Too new: looked at again tomorrow.
-      if (age < KEEP_IN_BETWEEN_DAYS * DAY) continue;
+      if (age < keepDays * DAY) continue;
       for (const link of job.outputs) {
         if (finished.has(link) || used.has(link)) continue;
         const inLibrary = await ctx.db

@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { KEEP_IN_BETWEEN_DAYS } from "./inBetweenFiles";
 import { addPerson, addTeam, backend } from "./test.setup";
 import { connectToolkit, fakeToolkitStorage } from "./test.toolkit";
 
@@ -16,7 +15,8 @@ afterEach(() => toolkit?.restore());
 
 const LINK = "https://r2.example/test-bucket";
 const DAY = 24 * 60 * 60 * 1000;
-const OLD = Date.now() - (KEEP_IN_BETWEEN_DAYS + 1) * DAY;
+const KEEP_DAYS = 7;
+const OLD = Date.now() - (KEEP_DAYS + 1) * DAY;
 
 async function setUp() {
   process.env.CONNECTIONS_SECRET = "a-test-secret-that-is-long-enough-1234";
@@ -28,6 +28,16 @@ async function setUp() {
   const pine = await addTeam(t, "Pine Studio");
   const olu = await addPerson(t, "Olu Bello", [pine], "owner");
   await connectToolkit(t, pine, olu.id);
+  // Both teams switch the clean-up on, keeping files a week; it is off until they do.
+  for (const [team, person] of [
+    [salt, maya],
+    [pine, olu],
+  ] as const) {
+    await person.as.mutation(api.teamSettings.setClearInBetween, {
+      organizationId: team,
+      days: KEEP_DAYS,
+    });
+  }
   return { t, salt, maya, pine, olu, toolkit };
 }
 
@@ -273,9 +283,58 @@ describe("the daily clean-up of in-between files", () => {
     expect(job?.outputsClearedAt).toBeUndefined();
   });
 
-  test("the daily run gives each team with storage its turn", async () => {
-    const { t } = await setUp();
-    const teams = await t.mutation(internal.inBetweenFiles.daily, {});
-    expect(teams).toBe(2);
+  test("the daily run gives a turn only to teams that switched it on", async () => {
+    const { t, pine, olu } = await setUp();
+    expect(await t.mutation(internal.inBetweenFiles.daily, {})).toBe(2);
+    await olu.as.mutation(api.teamSettings.setClearInBetween, { organizationId: pine, days: null });
+    expect(await t.mutation(internal.inBetweenFiles.daily, {})).toBe(1);
+  });
+
+  test("is off until the team switches it on: nothing is taken away or marked", async () => {
+    const { t, salt, maya } = await setUp();
+    await maya.as.mutation(api.teamSettings.setClearInBetween, {
+      organizationId: salt,
+      days: null,
+    });
+    const run = await addRun(t, salt, maya.id, "off");
+    expect(
+      await t.action(internal.inBetweenFiles.clearTeam, { organizationId: salt, cursor: null }),
+    ).toBe(0);
+    expect(inBucket("off-cut_output_0.mp4")).toBe(true);
+    const job = await t.run((ctx) => ctx.db.get(run.jobIds[0]!));
+    expect(job?.outputsClearedAt).toBeUndefined();
+  });
+
+  test("keeps files as many days as the team chose", async () => {
+    const { t, salt, maya } = await setUp();
+    await maya.as.mutation(api.teamSettings.setClearInBetween, { organizationId: salt, days: 30 });
+    await addRun(t, salt, maya.id, "month", { finishedAt: Date.now() - 10 * DAY });
+    await t.action(internal.inBetweenFiles.clearTeam, { organizationId: salt, cursor: null });
+    expect(inBucket("month-cut_output_0.mp4")).toBe(true);
+  });
+});
+
+describe("the clean-up setting", () => {
+  test("is off for a new team, and only owners and admins change it within range", async () => {
+    const t = backend();
+    const team = await addTeam(t, "Salt House");
+    const owner = await addPerson(t, "Maya Ortiz", [team], "owner");
+    const member = await addPerson(t, "Olu Bello", [team], "member");
+    const asOwner = owner.as;
+    const read = () => asOwner.query(api.teamSettings.get, { organizationId: team });
+    expect((await read()).clearInBetweenDays).toBeNull();
+    await expect(
+      member.as.mutation(api.teamSettings.setClearInBetween, { organizationId: team, days: 30 }),
+    ).rejects.toThrow();
+    await expect(
+      asOwner.mutation(api.teamSettings.setClearInBetween, { organizationId: team, days: 0 }),
+    ).rejects.toThrow(/whole number of days/);
+    await asOwner.mutation(api.teamSettings.setClearInBetween, { organizationId: team, days: 30 });
+    expect((await read()).clearInBetweenDays).toBe(30);
+    await asOwner.mutation(api.teamSettings.setClearInBetween, {
+      organizationId: team,
+      days: null,
+    });
+    expect((await read()).clearInBetweenDays).toBeNull();
   });
 });
