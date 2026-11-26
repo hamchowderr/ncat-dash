@@ -80,14 +80,18 @@ describe("the card that asks first", () => {
       "change_automation",
       "create_automation",
       "make_folder",
+      "make_storyboard_video",
+      "match_storyboard_takes",
       "move_files",
       "rename_file",
       "save_team_step",
       "set_up_workflow",
+      "storyboard_from_upload",
       "switch_automation",
       "switch_workflow",
       "try_automation",
       "try_team_step",
+      "write_storyboard",
     ]);
   });
 

@@ -372,6 +372,18 @@ describe("suggesting scenes", () => {
     expect(takes[1]!.files.you).toContain("#t=");
   });
 
+  test("follows the brief of the video it was drafted from", async () => {
+    process.env.AGENT_URL = AGENT_URL;
+    process.env.MASTRA_JWT_SECRET = "a-shared-secret-for-the-agent-server";
+    const { maya, itemId, storyboardId } = await drafted();
+    const sent = agentAnswers({ answer: JSON.stringify({ chapters: [], scenes: [] }) });
+    await maya.as.action(api.storyboards.suggestScenes, { storyboardId });
+    expect(sent[0]).not.toHaveProperty("brief");
+    await maya.as.mutation(api.library.setBrief, { itemId, brief: "Mostly screen, little face." });
+    await maya.as.action(api.storyboards.suggestScenes, { storyboardId });
+    expect(sent[1]?.brief).toBe("Mostly screen, little face.");
+  });
+
   test("says plainly when the agent is not set up or does not answer", async () => {
     const { maya, storyboardId } = await drafted();
     await expect(maya.as.action(api.storyboards.suggestScenes, { storyboardId })).rejects.toThrow(

@@ -10,11 +10,10 @@ configureAIMock();
 import { Mastra } from '@mastra/core/mastra';
 import type { MastraMCPToolset } from '@mastra/core/server';
 import { MastraCompositeStore } from '@mastra/core/storage';
-import { DuckDBStore } from '@mastra/duckdb';
 import { MastraEditor } from '@mastra/editor';
 import { fastembed } from '@mastra/fastembed';
 import { PinoLogger } from '@mastra/loggers';
-import { MastraStorageExporter, Observability, SensitiveDataFilter } from '@mastra/observability';
+import { Observability, SensitiveDataFilter } from '@mastra/observability';
 import { KNOWLEDGE_ROUTES, MASTRA_KNOWLEDGE_PRINCIPALS_KEY } from '@mastra/server/server-adapter';
 import { embed } from 'ai';
 import { chatAgent } from './agents/chat';
@@ -42,6 +41,11 @@ import { scheduleHooks } from './ncat/schedule-gate';
 import { MODEL_ALLOWLIST } from './lib/model-allowlist';
 import { teamModelFor, teamSection } from './ncat/team-brief';
 import { turnContextSections } from './lib/turn-context';
+import {
+  createObservabilityStore,
+  observabilityExporters,
+  startObservabilityPruning,
+} from './lib/observability-store';
 // The AgentController route contract, split by surface — see routes/. The modules
 // are FACTORIES over a dependency contract (routes/types.ts) rather than importers
 // of this file's wiring: the routes are the portable half (the HTTP contract the
@@ -72,11 +76,15 @@ const mcpServer = createMcpServer();
 // back those views on core 1.52, so they'd read "not available". Memory + the
 // controller use the same LibSQLStore (getSharedStore) directly, and the composite's
 // `default` IS that instance, so threads/messages stay on one libSQL DB.
+const observabilityStore = createObservabilityStore({
+  path: env.OBSERVABILITY_DB_PATH,
+  retention: env.TRACE_RETENTION,
+});
 const storage = new MastraCompositeStore({
   id: 'composite-storage',
   default: getSharedStore(),
   domains: {
-    observability: await new DuckDBStore().getStore('observability'),
+    observability: await observabilityStore.getStore('observability'),
   },
 });
 
@@ -191,13 +199,21 @@ export const mastra = new Mastra({
     configs: {
       default: {
         serviceName: 'mastra',
-        exporters: [new MastraStorageExporter()],
+        exporters: observabilityExporters(env),
         spanOutputProcessors: [new SensitiveDataFilter()],
+        // Server logs stored next to the traces (Studio's Logs), from this level up.
+        logging: { level: env.OBSERVABILITY_LOG_LEVEL },
       },
     },
   }),
   editor: new MastraEditor(),
 });
+
+// Trim traces and logs older than TRACE_RETENTION, now and every hour after. Not under
+// tests, which start and stop the server many times.
+if (env.NODE_ENV !== 'test') {
+  startObservabilityPruning(observabilityStore, mastra.getLogger());
+}
 
 // Mirror KNOWLEDGE_DIR into Knowledge before serving, so the agent answers from the
 // folder as it is now. A failed sync is logged and the pages already stored still serve.

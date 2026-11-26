@@ -183,7 +183,9 @@ describe("the Library page", () => {
     renderInApp(<LibraryView />);
     expect(screen.queryByRole("switch")).toBeNull();
     expect(screen.queryByRole("button", { name: /^Transcribe/ })).toBeNull();
-    expect(screen.getByText(/uploaded or made by your automations, is transcribed once/)).toBeTruthy();
+    expect(
+      screen.getByText(/uploaded or made by your automations, is transcribed once/),
+    ).toBeTruthy();
   });
 
   test("filters by where uploads came from and by what is in review, with a badge", () => {
@@ -394,6 +396,47 @@ describe("a library file", () => {
         clientId: null,
       }),
     );
+  });
+
+  test("a video's brief is written beside it and saved when the box is left", async () => {
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    openTab("Details");
+    const box = screen.getByRole("textbox", { name: "Brief" });
+    expect(screen.getByText(/Best Moments, Chapters, Plan B-Roll/)).toBeTruthy();
+    const user = userEvent.setup();
+    await user.type(box, "  Fast cuts. Keep the pricing story whole. ");
+    fireEvent.blur(box);
+    await waitFor(() =>
+      expect(mutationOf(api.library.setBrief)).toHaveBeenCalledWith({
+        itemId: "i1",
+        brief: "Fast cuts. Keep the pricing story whole.",
+      }),
+    );
+    expect(await screen.findByText(/^Saved\./)).toBeTruthy();
+  });
+
+  test("a clip without its own brief says whose brief it follows", () => {
+    answerQuery(api.library.get, {
+      ...DETAIL,
+      ...CLIP,
+      details: DETAIL.details,
+      brief: "",
+      briefFrom: { _id: "i1", shortId: "V1", title: "Episode 4" },
+      children: [],
+    });
+    renderInApp(<LibraryItemView itemId={"i2" as never} />);
+    openTab("Details");
+    const help = screen.getByText(/Follows the brief of/);
+    expect(within(help).getByRole("link", { name: "V1 Episode 4" }).getAttribute("href")).toBe(
+      "/library/i1",
+    );
+  });
+
+  test("a picture has no brief", () => {
+    answerQuery(api.library.get, { ...DETAIL, kind: "image", details: null });
+    renderInApp(<LibraryItemView itemId={"i1" as never} />);
+    openTab("Details");
+    expect(screen.queryByRole("textbox", { name: "Brief" })).toBeNull();
   });
 
   test("no client picker until the team has a client", () => {

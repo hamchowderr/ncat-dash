@@ -1,3 +1,4 @@
+import { audioAlign } from "./audio/align";
 import { audioBeats } from "./audio/beats";
 import { audioConcatenate } from "./audio/concatenate";
 import { codeExecutePython } from "./code/execute-python";
@@ -27,6 +28,7 @@ import { videoThumbnail } from "./video/thumbnail";
 import { videoTrim } from "./video/trim";
 
 export const steps = [
+  audioAlign,
   audioBeats,
   audioConcatenate,
   codeExecutePython,

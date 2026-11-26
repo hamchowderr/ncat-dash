@@ -32,6 +32,7 @@ import { finishedFiles } from "./lib/exports";
 import {
   addLibraryItem,
   addUploadToLibrary,
+  briefOf,
   deleteLibraryItem,
   deletePieces,
   fromOf,
@@ -39,6 +40,7 @@ import {
   kindOfMadeFile,
   librarySettingsOf,
   type LibraryFrom,
+  MAX_BRIEF,
   startingItemOf,
 } from "./lib/library";
 import { startingFiles } from "./lib/chain";
@@ -296,6 +298,12 @@ export const get = query({
         await inReviewOf(ctx, item.organizationId),
       ),
       details: item.details ?? null,
+      // Its own brief, and, when it has none, the one it follows from the file it was made from.
+      brief: item.brief ?? "",
+      briefFrom:
+        !item.brief?.trim() && parent && (await briefOf(ctx, parent._id))
+          ? { _id: parent._id, shortId: parent.shortId, title: parent.title }
+          : null,
       storyboardDrafted: drafted,
       // Where it is in the team's storage, for deleting it from there; null for a link.
       key: item.key ?? null,
@@ -478,6 +486,25 @@ export const setTags = mutation({
     const { item } = await loadItem(ctx, args.itemId);
     const tags = cleanTags(args.tags);
     await ctx.db.patch(item._id, { tags, searchText: librarySearchText({ ...item, tags }) });
+  },
+});
+
+/**
+ * Sets a video's brief: how it should be paced and cut, which Best Moments, Chapters, Plan
+ * B-Roll, Plan Motion Graphics and Suggest Scenes follow. Empty takes it away.
+ */
+export const setBrief = mutation({
+  args: { itemId: v.id("libraryItems"), brief: v.string() },
+  handler: async (ctx, args) => {
+    const { item } = await loadItem(ctx, args.itemId);
+    if (item.kind !== "video" && item.kind !== "audio") {
+      fail("invalid_input", "Only a video or a recording has a brief.");
+    }
+    const brief = args.brief.trim();
+    if (brief.length > MAX_BRIEF) {
+      fail("invalid_input", `A brief is at most ${MAX_BRIEF} letters.`);
+    }
+    await ctx.db.patch(item._id, { brief: brief || undefined });
   },
 });
 

@@ -36,6 +36,7 @@ import { teamLooksOf } from "./lib/looks";
 import { motionSetupOf } from "./lib/motion";
 import { checkedBrand, checkedMusic } from "./lib/brand";
 import { editorsOf } from "./lib/exports";
+import { DEFAULT_KEEP_DAYS, MAX_KEEP_DAYS, MIN_KEEP_DAYS } from "./lib/inBetween";
 import {
   agentSettingsValidator,
   brandValidator,
@@ -56,6 +57,10 @@ export const get = query({
     return {
       stepRetries: retryLimit(settings?.stepRetries),
       mostRetries: MAX_STEP_RETRIES,
+      // Days a finished run's in-between files are kept before the daily clean-up takes them
+      // away; null while the clean-up is off, which it is until the team switches it on.
+      clearInBetweenDays: settings?.clearInBetweenDays ?? null,
+      clearInBetweenRange: { min: MIN_KEEP_DAYS, max: MAX_KEEP_DAYS, usual: DEFAULT_KEEP_DAYS },
       // The most one run may spend on AI steps, in dollars; null for no limit.
       aiLimit: settings?.aiLimit === undefined ? null : settings.aiLimit / MICROS_PER_DOLLAR,
       aiLimitRange: { min: MIN_AI_LIMIT_DOLLARS, max: MAX_AI_LIMIT_DOLLARS },
@@ -161,6 +166,40 @@ export const setStepRetries = mutation({
         organizationId: args.organizationId,
         maxParallelJobs: DEFAULT_PARALLEL_JOBS,
         stepRetries: retries,
+      });
+    }
+  },
+});
+
+/**
+ * Switches the daily clean-up of in-between files on, keeping them `days` after their run
+ * finished, or off with null. Owners and admins only.
+ */
+export const setClearInBetween = mutation({
+  args: { organizationId: v.string(), days: v.union(v.null(), v.number()) },
+  handler: async (ctx, args) => {
+    await requireMember(ctx, args.organizationId, MANAGER_ROLES);
+    const days = args.days;
+    if (
+      days !== null &&
+      (!Number.isInteger(days) || days < MIN_KEEP_DAYS || days > MAX_KEEP_DAYS)
+    ) {
+      throw new ConvexError({
+        code: "invalid_input",
+        message: `Choose a whole number of days from ${MIN_KEEP_DAYS} to ${MAX_KEEP_DAYS}.`,
+      });
+    }
+    const existing = await ctx.db
+      .query("teamSettings")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .first();
+    const value = days ?? undefined;
+    if (existing) await ctx.db.patch(existing._id, { clearInBetweenDays: value });
+    else {
+      await ctx.db.insert("teamSettings", {
+        organizationId: args.organizationId,
+        maxParallelJobs: DEFAULT_PARALLEL_JOBS,
+        ...(value === undefined ? {} : { clearInBetweenDays: value }),
       });
     }
   },

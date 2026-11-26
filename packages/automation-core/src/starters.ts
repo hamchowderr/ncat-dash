@@ -4,8 +4,10 @@ import {
   VARIANT_MUSIC_STEP,
   beatRecipes,
   editingRecipes,
+  micRecipes,
   moreRecipes,
   recipes,
+  SEPARATE_MIC_STEP,
   variantRecipes,
 } from "@takewon/step-catalog";
 
@@ -850,6 +852,7 @@ const RECIPE_CATEGORY: Record<string, StarterCategory> = {
   "recipe-song-teasers": "music",
   "recipe-beat-cut": "music",
   "recipe-split-shots": "clips",
+  [SEPARATE_MIC_STEP]: "audio",
 };
 
 /** One automation per ready-made FFmpeg step: the toolkit's examples and the dashboard's own. */
@@ -859,6 +862,7 @@ const RECIPES: Starter[] = [
   ...editingRecipes,
   ...variantRecipes,
   ...beatRecipes,
+  ...micRecipes,
 ].map((recipe) => {
   // Cut To The Beat runs on an upload: the video is split at its own camera cuts first,
   // and those shots are what it cuts to the music.
@@ -882,11 +886,13 @@ const RECIPES: Starter[] = [
     };
   }
   // With no file to start from, or a list of them, the team starts it by hand.
-  // Hook And Ending Variants needs its other takes picked, so it is started by hand too.
+  // Hook And Ending Variants needs its other takes picked, and a separate mic its mic
+  // recording, so they are started by hand too.
   const many =
     Boolean(recipe.listInput) ||
     recipe.primaryInput === null ||
-    recipe.id === "recipe-hook-variants";
+    recipe.id === "recipe-hook-variants" ||
+    recipe.id === SEPARATE_MIC_STEP;
   return {
     id: recipe.id,
     name: recipe.title,

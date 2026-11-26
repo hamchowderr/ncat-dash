@@ -1850,6 +1850,41 @@
     },
     "type": "object"
   },
+  "/v1/audio/align": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "max_seconds": {
+        "maximum": 7200,
+        "minimum": 10,
+        "type": "number"
+      },
+      "max_shift": {
+        "maximum": 3600,
+        "minimum": 1,
+        "type": "number"
+      },
+      "media_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "reference_url": {
+        "format": "uri",
+        "type": "string"
+      },
+      "webhook_url": {
+        "format": "uri",
+        "type": "string"
+      }
+    },
+    "required": [
+      "reference_url",
+      "media_url"
+    ],
+    "type": "object"
+  },
   "/v1/audio/beats": {
     "additionalProperties": false,
     "properties": {

@@ -414,9 +414,16 @@ export default defineSchema({
     dropboxImportId: v.optional(v.id("dropboxImports")),
     // Set when the job brings a video from a pasted link into the team's folder.
     linkImportId: v.optional(v.id("linkImports")),
+    // When the daily clean-up looked at the job's in-between files and took away the ones
+    // nothing points to (inBetweenFiles.ts). Left out: not looked at yet.
+    outputsClearedAt: v.optional(v.number()),
+    // Set when the job makes a take of a storyboard's video, or joins its takes.
+    storyboardVideoId: v.optional(v.id("storyboardVideos")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
+    // The clean-up's list of a team's jobs it has not looked at yet.
+    .index("by_organization_and_outputsClearedAt", ["organizationId", "outputsClearedAt"])
     .index("by_status", ["status"])
     .index("by_sharedToolkit_and_status", ["sharedToolkit", "status"])
     // Jobs handed to be sent, by when: finds a send that broke without reading the queue.
@@ -437,6 +444,9 @@ export default defineSchema({
     music: v.optional(musicValidator),
     // How many times a failed step in a run tries again before the run fails.
     stepRetries: v.optional(v.number()),
+    // Days after a run finishes that its in-between files are taken away (inBetweenFiles.ts).
+    // Left out: never; the team has to switch the clean-up on.
+    clearInBetweenDays: v.optional(v.number()),
     // The most one run may spend on AI steps, in millionths of a dollar. Left out: no
     // limit (automation-core ai-spend.ts).
     aiLimit: v.optional(v.number()),
@@ -2229,6 +2239,34 @@ export default defineSchema({
     .index("by_chapter", ["chapterId"])
     .index("by_organization", ["organizationId"]),
 
+  // A storyboard made into one finished video: each take made in its scene, then the
+  // takes joined in order. Its file goes to Files once it is made.
+  storyboardVideos: defineTable({
+    organizationId: v.string(),
+    storyboardId: v.id("storyboards"),
+    // Only this chapter. Left out when it is the whole storyboard.
+    chapterId: v.optional(v.id("storyboardChapters")),
+    title: v.string(),
+    aspect: v.union(v.literal("16:9"), v.literal("9:16"), v.literal("1:1"), v.literal("4:5")),
+    status: v.union(v.literal("working"), v.literal("done"), v.literal("failed")),
+    // Each take going in, by its number in the storyboard, and the job that makes it.
+    takes: v.array(v.object({ number: v.number(), jobId: v.id("jobs") })),
+    // Takes left out because a file they need is not in yet, by number.
+    skipped: v.array(v.number()),
+    // Takes shown Full Screen because what goes beside you is not in yet, by number.
+    plain: v.array(v.number()),
+    // The job that joins the takes, once they are all made.
+    joinJobId: v.optional(v.id("jobs")),
+    // The finished file, once it is in Files.
+    libraryItemId: v.optional(v.id("libraryItems")),
+    url: v.optional(v.string()),
+    error: v.optional(v.string()),
+    startedBy: v.string(),
+    finishedAt: v.optional(v.number()),
+  })
+    .index("by_storyboard", ["storyboardId"])
+    .index("by_organization", ["organizationId"]),
+
   // A post planned on the content calendar: what goes out, where, and when. With no time
   // it waits in the calendar's side list; queued ones fill the team's repeating slots.
   // Nothing is posted for the team yet, so "posted" is set by hand.
@@ -2341,6 +2379,10 @@ export default defineSchema({
     ),
     // Set by a person: use it as B-Roll ("yes") or never ("no"), whatever it looks like.
     broll: v.optional(v.union(v.literal("yes"), v.literal("no"))),
+    // A video's own brief, written by a person: pacing and direction ("fast cuts, keep the
+    // pricing story, no jokes about the weather"). The AI planning steps follow it, on top
+    // of the team's house rules. Files made from it use it too (briefOf).
+    brief: v.optional(v.string()),
     // Who brought it in; null for a file an automation made.
     createdBy: v.union(v.null(), v.string()),
   })

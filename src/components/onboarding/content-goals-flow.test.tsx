@@ -83,7 +83,7 @@ describe("asking what the team makes", () => {
     // Nothing that runs after another is offered while setting up.
     expect(screen.queryByText(/Runs after/)).toBeNull();
     expect(
-      screen.getByRole("link", { name: /See all 89 ready-made automations/ }).getAttribute("href"),
+      screen.getByRole("link", { name: /See all 90 ready-made automations/ }).getAttribute("href"),
     ).toBe("/automations/new");
     expect(screen.getByRole("button", { name: "Continue without these" })).toBeTruthy();
     fireEvent.click(pack);

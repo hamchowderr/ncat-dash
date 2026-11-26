@@ -42,6 +42,22 @@ const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+
+    // Traces, logs and metrics (what Studio's Traces/Logs/Metrics show) live in a DuckDB
+    // file. Keep it on a volume: the image sets /data/observability.duckdb. A relative path
+    // resolves against this package. TRACE_RETENTION is how long they stay (e.g. 14d, 72h);
+    // OBSERVABILITY_LOG_LEVEL is the lowest server log level stored alongside them.
+    OBSERVABILITY_DB_PATH: z.string().default('./mastra.duckdb').transform((p) => packageRelative(p)),
+    TRACE_RETENTION: z
+      .string()
+      .regex(/^\d+(ms|s|m|h|d|w)$/, 'TRACE_RETENTION must look like 14d, 72h or 2w')
+      .default('14d')
+      .transform((v) => v as `${number}${'ms' | 's' | 'm' | 'h' | 'd' | 'w'}`),
+    OBSERVABILITY_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+    // Optional: also send each agent run to PostHog (its AI view). The project token
+    // (phc_...) and, for the EU cloud or your own PostHog, its address.
+    POSTHOG_API_KEY: z.string().optional(),
+    POSTHOG_HOST: z.string().url().optional(),
     APP_SECRET: z.string().min(32, 'APP_SECRET must be at least 32 chars'),
 
     // Storage + vectors run on libSQL/Turso. Local dev uses a file: DB (no

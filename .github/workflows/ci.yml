@@ -77,7 +77,10 @@ jobs:
       - name: Install FFmpeg
         run: |
           mkdir -p ~/apt-archives/partial
-          sudo apt-get update
+          # A third-party list on the runner image (packages.microsoft.com) sometimes refuses
+          # with a 403, which fails the whole update. Only Ubuntu's lists are needed here, and
+          # the install below still fails if those could not be read.
+          sudo apt-get update || true
           sudo apt-get install -y --no-install-recommends \
             -o Dir::Cache::Archives="$HOME/apt-archives" \
             -o Acquire::Retries=3 \
@@ -169,7 +172,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             -o Dir::Cache::Archives="$HOME/apt-archives" \
             -o Acquire::Retries=3 \
-            ffmpeg || (sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+            ffmpeg || ((sudo apt-get update || true) && sudo apt-get install -y --no-install-recommends \
             -o Dir::Cache::Archives="$HOME/apt-archives" -o Acquire::Retries=3 ffmpeg)
       - name: This machine's tests
         run: |
