@@ -41,34 +41,44 @@ type Logger = {
 export const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
 /**
- * Trim old observability rows now and then every `everyMs`. The tables are made first:
- * on a fresh file the first prune otherwise ran before Mastra had created them, and
- * failed with "Table with name span_events does not exist". The timer never holds the
- * process open, and a failed prune is logged and tried again on the next tick.
- * Returns a function that stops the timer.
+ * How long after start the first trim waits. Mastra makes the tables as the server starts,
+ * and a trim before that failed on a fresh file ("Table with name span_events does not
+ * exist"). Making the tables from here instead raced Mastra's own setup and crashed the
+ * server with a DuckDB write-write conflict, so the first trim just waits.
+ */
+export const PRUNE_FIRST_AFTER_MS = 60 * 1000;
+
+/**
+ * Trim old observability rows `firstAfterMs` after start and then every `everyMs`. The
+ * timers never hold the process open, and a failed prune is logged and tried again on the
+ * next tick. Returns a function that stops the timers.
  */
 export function startObservabilityPruning(
-  store: Pick<DuckDBStore, "prune" | "init">,
+  store: Pick<DuckDBStore, "prune">,
   logger: Logger,
   everyMs = PRUNE_EVERY_MS,
+  firstAfterMs = PRUNE_FIRST_AFTER_MS,
 ): () => void {
-  let ready: Promise<void> | null = null;
   const prune = async () => {
     try {
-      ready ??= store.init();
-      await ready;
       const results = await store.prune({ pauseMs: 50 });
       const deleted = results.reduce((sum, r) => sum + r.deleted, 0);
       if (deleted > 0) logger.info("Old traces and logs trimmed", { deleted });
     } catch (error) {
-      ready = null;
       logger.warn("Trimming old traces and logs failed; trying again next hour", { error });
     }
   };
-  void prune();
-  const timer = setInterval(prune, everyMs);
-  timer.unref?.();
-  return () => clearInterval(timer);
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const first = setTimeout(() => {
+    void prune();
+    timer = setInterval(prune, everyMs);
+    timer.unref?.();
+  }, firstAfterMs);
+  first.unref?.();
+  return () => {
+    clearTimeout(first);
+    if (timer) clearInterval(timer);
+  };
 }
 
 /**

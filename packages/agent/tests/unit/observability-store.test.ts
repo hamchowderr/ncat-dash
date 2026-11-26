@@ -66,35 +66,25 @@ describe("observability store", () => {
 });
 
 describe("startObservabilityPruning", () => {
-  const init = vi.fn().mockResolvedValue(undefined);
-
-  it("makes the tables before the first prune of a fresh file", async () => {
-    const store = createObservabilityStore({
-      path: path.join(tempDir(), "observability.duckdb"),
-      retention: "1d",
-    });
-    const logger = { info: vi.fn(), warn: vi.fn() };
-    const pruned: Promise<unknown>[] = [];
-    const prune = store.prune.bind(store);
-    const watched = {
-      init: store.init.bind(store),
-      prune: (...args: Parameters<typeof prune>) => {
-        const result = prune(...args);
-        pruned.push(result);
-        return result;
-      },
-    };
-    const stop = startObservabilityPruning(watched, logger);
-    await vi.waitFor(() => expect(pruned).toHaveLength(1));
-    const results = (await pruned[0]) as { table: string; error?: unknown }[];
-    expect(results.map((r) => r.table)).toContain("span_events");
-    expect(results.filter((r) => r.error)).toEqual([]);
-    expect(logger.warn).not.toHaveBeenCalled();
-    stop();
-    await store.close?.();
+  it("waits for Mastra to make the tables before the first prune", async () => {
+    vi.useFakeTimers();
+    try {
+      const prune = vi.fn().mockResolvedValue([]);
+      const logger = { info: vi.fn(), warn: vi.fn() };
+      const stop = startObservabilityPruning({ prune }, logger, 1000, 60_000);
+      await vi.advanceTimersByTimeAsync(59_000);
+      expect(prune).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(prune).toHaveBeenCalledTimes(1);
+      stop();
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(prune).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("prunes at once and then on every tick, and stops when asked", async () => {
+  it("prunes after the first wait and then on every tick, and stops when asked", async () => {
     vi.useFakeTimers();
     try {
       const prune = vi
@@ -103,7 +93,7 @@ describe("startObservabilityPruning", () => {
           { domain: "observability", table: "span_events", deleted: 2, done: true },
         ]);
       const logger = { info: vi.fn(), warn: vi.fn() };
-      const stop = startObservabilityPruning({ prune, init }, logger, 1000);
+      const stop = startObservabilityPruning({ prune }, logger, 1000, 0);
       await vi.advanceTimersByTimeAsync(0);
       expect(prune).toHaveBeenCalledTimes(1);
       expect(logger.info).toHaveBeenCalledWith("Old traces and logs trimmed", { deleted: 2 });
@@ -122,7 +112,7 @@ describe("startObservabilityPruning", () => {
     try {
       const prune = vi.fn().mockRejectedValueOnce(new Error("locked")).mockResolvedValue([]);
       const logger = { info: vi.fn(), warn: vi.fn() };
-      const stop = startObservabilityPruning({ prune, init }, logger, 1000);
+      const stop = startObservabilityPruning({ prune }, logger, 1000, 0);
       await vi.advanceTimersByTimeAsync(0);
       expect(logger.warn).toHaveBeenCalledOnce();
       await vi.advanceTimersByTimeAsync(1000);
