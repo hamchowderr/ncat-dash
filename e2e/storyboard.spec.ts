@@ -138,9 +138,11 @@ test("a lesson is planned line by line and its takes come in", async ({ page }) 
   // one still waiting for you left out and named.
   const finished = page.getByRole("region", { name: "Finished video" });
   await finished.getByRole("button", { name: "Just this chapter" }).click();
-  await expect(finished).toContainText(/Left out take 2/);
+  await expect(finished).toContainText(/Left out takes 2 and 3/);
   await expect(finished.locator("video")).toBeVisible({ timeout: 90_000 });
-  await expect(finished.getByRole("link", { name: /Open V\d+ in your Library/ })).toBeVisible();
+  await expect(
+    finished.getByRole("link", { name: /Open [A-Z]+\d+ in your Library/ }),
+  ).toBeVisible();
   await pause(3000);
 
   // It stays after a reload, on the Storyboard tab.

@@ -11,7 +11,7 @@ import {
   query,
 } from "./_generated/server";
 import { isMember, memberOrCaller, type TeamCaller } from "./lib/authz";
-import { bucketOf, copyObject, listObjects } from "./lib/bucket";
+import { bucketOf, copyObject, listObjects, storageConnection } from "./lib/bucket";
 import { addLibraryItem } from "./lib/library";
 import { brandOf, enqueueJob } from "./lib/queue";
 import type { Part, Scene, TakeFiles } from "./lib/storyboard";
@@ -229,12 +229,8 @@ export const toKeep = internalQuery({
   handler: async (ctx, args) => {
     const video = await ctx.db.get(args.videoId);
     if (!video || video.status !== "working" || !video.url) return null;
-    const connections = await ctx.db
-      .query("toolkitConnections")
-      .withIndex("by_organization", (q) => q.eq("organizationId", video.organizationId))
-      .take(50);
-    const connection = connections.find((one) => one.status === "ok") ?? connections[0] ?? null;
-    return { video, connection };
+    // The connection that keeps the team's files, as Files and the Library read them.
+    return { video, connection: await storageConnection(ctx, video.organizationId) };
   },
 });
 
