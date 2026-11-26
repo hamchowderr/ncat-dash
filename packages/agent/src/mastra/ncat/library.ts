@@ -25,6 +25,7 @@ type Hit = {
   searchable: string;
   transcriptError?: string | null;
   transcriptSince?: number | null;
+  storedElsewhere?: "hosted" | "earlier" | null;
   moments: { start: number; text: string }[];
 };
 
@@ -71,6 +72,12 @@ const fileOut = z.object({
     .describe(
       "Where its transcript stands, in words to pass on: ready, being made (and for how long), or why it did not work. When a file has no words, tell the person this.",
     ),
+  storage: z
+    .string()
+    .nullable()
+    .describe(
+      "Null when it is on the team's storage now. Otherwise it is on the storage the team used before it switched servers: a video uploaded again after switching then shows twice, so count it once and say so.",
+    ),
   said: z
     .array(z.object({ at: z.string(), seconds: z.number(), text: z.string() }))
     .describe("Moments where the words searched for were said."),
@@ -107,6 +114,12 @@ export const findInLibrary = createTool({
           length: hit.duration === null ? null : moment(hit.duration),
           searchable: hit.searchable === "ready",
           transcript: transcriptNote(hit),
+          storage:
+            hit.storedElsewhere === "hosted"
+              ? "On Takewon's storage, from before the team switched to its own server. It still works."
+              : hit.storedElsewhere === "earlier"
+                ? "On the storage the team used before it switched servers. It can no longer be reached; it must be uploaded again."
+                : null,
           said: hit.moments.map((one) => ({
             at: moment(one.start),
             seconds: Math.floor(one.start),

@@ -375,6 +375,27 @@ export const save = internalMutation({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .take(50);
     const same = existing.find((connection) => connection.baseUrl === args.baseUrl);
+    // The storage the team used until now, when it changes: its files stay there, and are
+    // marked so they are still found (leftBehind.ts).
+    const old =
+      existing.find((one) => one.storage && one._id !== same?._id) ??
+      (same?.storage ? same : undefined);
+    if (
+      old?.storage &&
+      (old.storage.bucket !== args.storage.bucket || old.storage.endpoint !== args.storage.endpoint)
+    ) {
+      await ctx.scheduler.runAfter(0, internal.leftBehind.mark, {
+        organizationId: args.organizationId,
+        left: {
+          hosted: isOurs(old.baseUrl),
+          bucket: old.storage.bucket,
+          endpoint: old.storage.endpoint,
+        },
+        now: { bucket: args.storage.bucket, endpoint: args.storage.endpoint },
+        table: "uploads",
+        cursor: null,
+      });
+    }
     for (const other of existing) {
       if (other._id !== same?._id) await ctx.db.delete(other._id);
     }

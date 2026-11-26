@@ -53,6 +53,7 @@ import { PickList } from "@/components/ui/pick-list";
 import { Segmented } from "@/components/ui/segmented";
 import { FileFacts } from "./file-facts";
 import { VideoBrief } from "./video-brief";
+import { StoredElsewhere } from "./stored-elsewhere";
 import { TranscriptWait } from "./transcript-wait";
 import { transcriptState, WorkRow, type Work } from "./work-status";
 
@@ -492,6 +493,7 @@ export function LibraryItemView({
             <div className="flex min-w-0 items-center gap-2">
               <ShortId id={item.shortId} className="shrink-0" />
               <Title itemId={item._id} title={item.title} />
+              <StoredElsewhere where={item.storedElsewhere} />
               {item.platform && <PlatformTag platform={item.platform} />}
             </div>
             <p className="text-muted-foreground flex flex-wrap items-center gap-x-1.5 text-sm">

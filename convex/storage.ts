@@ -25,6 +25,7 @@ import { MANAGER_ROLES, requireMember } from "./lib/authz";
 import {
   abortParts,
   BucketError,
+  bucketForFile,
   bucketOf,
   completeParts,
   presign,
@@ -33,6 +34,7 @@ import {
   startPartsUpload,
   storageConnection,
   type Bucket,
+  type StoredOn,
 } from "./lib/bucket";
 import { addUploadToLibrary, deleteLibraryItem } from "./lib/library";
 import { fileDetailsValidator } from "./schema";
@@ -376,7 +378,12 @@ export const linkFor = action({
     });
     if (!storage) throw new ConvexError({ code: "no_storage", message: NO_STORAGE });
     try {
-      return await presign(await bucketOf(storage), "GET", upload.key, READ_LINK_SECONDS);
+      return await presign(
+        await bucketForFile(storage, upload),
+        "GET",
+        upload.key,
+        READ_LINK_SECONDS,
+      );
     } catch (error) {
       // The link is made by the toolkit, so a toolkit that is down stops a run here. Say so.
       if (error instanceof BucketError) {
@@ -407,13 +414,17 @@ export const previewLinks = action({
       organizationId: args.organizationId,
     });
     if (!storage) return [];
-    const bucket = await bucketOf(storage);
     const links = await Promise.all(
       targets.map(async (target) => {
         try {
           return {
             uploadId: target.uploadId,
-            url: await presign(bucket, "GET", target.key, PREVIEW_LINK_SECONDS),
+            url: await presign(
+              await bucketForFile(storage, target),
+              "GET",
+              target.key,
+              PREVIEW_LINK_SECONDS,
+            ),
           };
         } catch {
           // One file the toolkit cannot sign should not keep the others from showing.
@@ -430,13 +441,17 @@ export const previewTargets = internalQuery({
   args: { organizationId: v.string(), uploadIds: v.array(v.id("uploads")) },
   handler: async (ctx, args) => {
     await requireMember(ctx, args.organizationId);
-    const targets: { uploadId: Doc<"uploads">["_id"]; key: string }[] = [];
+    const targets: { uploadId: Doc<"uploads">["_id"]; key: string; storedOn?: StoredOn }[] = [];
     for (const uploadId of new Set(args.uploadIds)) {
       const upload = await ctx.db.get(uploadId);
       if (!upload || upload.organizationId !== args.organizationId) continue;
       if (upload.status !== "ready") continue;
       if (uploadKind(upload.contentType, upload.details) === "other") continue;
-      targets.push({ uploadId, key: upload.key });
+      targets.push({
+        uploadId,
+        key: upload.key,
+        ...(upload.storedOn ? { storedOn: upload.storedOn } : {}),
+      });
     }
     return targets;
   },
@@ -525,7 +540,14 @@ export const readDetails = internalAction({
         const answer = (await callStep(
           bucket,
           step,
-          { media_url: await presign(bucket, "GET", upload.key, READ_LINK_SECONDS) },
+          {
+            media_url: await presign(
+              await bucketForFile(connection, upload),
+              "GET",
+              upload.key,
+              READ_LINK_SECONDS,
+            ),
+          },
           { signal: AbortSignal.timeout(60_000) },
         )) as { response?: unknown } | null;
         const details = readFileDetails(answer?.response);
@@ -553,7 +575,7 @@ export const uploadForTeam = internalQuery({
     const id = ctx.db.normalizeId("uploads", args.uploadId);
     const upload = id ? await ctx.db.get(id) : null;
     if (!upload || upload.organizationId !== args.organizationId) return null;
-    return { key: upload.key };
+    return { key: upload.key, ...(upload.storedOn ? { storedOn: upload.storedOn } : {}) };
   },
 });
 
@@ -580,14 +602,16 @@ export async function withUploadLinks(
 
   const storage = await ctx.runQuery(internal.storage.load, { organizationId });
   if (!storage) throw new UploadLinkError(NO_STORAGE);
-  const config = await bucketOf(storage);
   const links = new Map<string, string>();
   for (const uploadId of ids) {
     const upload = await ctx.runQuery(internal.storage.uploadForTeam, { uploadId, organizationId });
     if (!upload) {
       throw new UploadLinkError("A file this step uses is no longer in your uploads.");
     }
-    links.set(uploadId, await presign(config, "GET", upload.key, READ_LINK_SECONDS));
+    links.set(
+      uploadId,
+      await presign(await bucketForFile(storage, upload), "GET", upload.key, READ_LINK_SECONDS),
+    );
   }
   const swap = (value: unknown): unknown => {
     const id = readUploadRef(value);

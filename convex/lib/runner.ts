@@ -1100,7 +1100,8 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
         // A run for a project puts its finished files in the project's empty slots.
         if (!failed && run.projectId && !run.test) await fillProjectSlots(ctx, run);
         // Its finished files go into the team's folder, so they show in Files.
-        if (!failed || partly) await ctx.scheduler.runAfter(0, internal.files.keepFinished, { runId });
+        if (!failed || partly)
+          await ctx.scheduler.runAfter(0, internal.files.keepFinished, { runId });
         // A person who rejects at an approval step already knows, one that ran out of
         // time has its own alert, and a step with a way for when it fails was dealt with;
         // anything else that ends a run is something the team should hear about.

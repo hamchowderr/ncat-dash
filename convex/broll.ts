@@ -39,7 +39,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { MANAGER_ROLES, requireMember } from "./lib/authz";
-import { bucketOf, presign } from "./lib/bucket";
+import { bucketForFile, presign, type StoredOn } from "./lib/bucket";
 import { refreshBrollLike, usableAsBroll } from "./lib/broll";
 import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { heardFrom, MAX_VIDEOS_PER_PICK_STEP, wordsFor } from "./lib/moments";
@@ -114,7 +114,7 @@ async function readLink(ctx: ActionCtx, item: Doc<"libraryItems">): Promise<stri
   });
   if (!connection) return null;
   try {
-    return await presign(await bucketOf(connection), "GET", item.key, READ_LINK_SECONDS);
+    return await presign(await bucketForFile(connection, item), "GET", item.key, READ_LINK_SECONDS);
   } catch {
     return null;
   }
@@ -783,6 +783,7 @@ export const framesFound = internalQuery({
           title: item.title,
           key: item.key ?? null,
           url: item.url ?? null,
+          ...(item.storedOn ? { storedOn: item.storedOn } : {}),
           duration: item.details?.duration ?? 0,
           organizationId: item.organizationId,
         },
@@ -832,14 +833,19 @@ export const choose = internalAction({
       const connection = await ctx.runQuery(internal.storage.load, {
         organizationId: loaded.organizationId,
       });
-      const bucket = connection ? await bucketOf(connection) : null;
       const links = new Map<string, string | null>();
-      const linkOf = async (item: { key: string | null; url: string | null; shortId: string }) => {
+      const linkOf = async (item: {
+        key: string | null;
+        url: string | null;
+        shortId: string;
+        storedOn?: StoredOn;
+      }) => {
         if (!item.key) return item.url;
         if (links.has(item.shortId)) return links.get(item.shortId)!;
         let url: string | null = null;
-        if (bucket) {
+        if (connection) {
           try {
+            const bucket = await bucketForFile(connection, item);
             url = await presign(bucket, "GET", item.key, READ_LINK_SECONDS);
           } catch {
             url = null;

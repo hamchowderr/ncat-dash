@@ -360,6 +360,18 @@ const chatAppValidator = v.union(
   v.literal("teams"),
 );
 
+/**
+ * Set on an uploaded or library file left on a storage the team used before it switched
+ * servers (convex/leftBehind.ts): which storage, so a file on the hosted storage can still
+ * be read from there, and one on another earlier storage is shown as out of reach.
+ */
+export const storedOnValidator = v.object({
+  // The storage of the server the operator lends (HOSTED_TOOLKIT_URL).
+  hosted: v.boolean(),
+  bucket: v.string(),
+  endpoint: v.union(v.null(), v.string()),
+});
+
 export default defineSchema({
   toolkitConnections: defineTable({
     organizationId: v.string(),
@@ -2092,6 +2104,9 @@ export default defineSchema({
   uploads: defineTable({
     organizationId: v.string(),
     key: v.string(),
+    // Left on an earlier storage when the team switched servers; missing when it is on
+    // the team's storage now.
+    storedOn: v.optional(storedOnValidator),
     fileName: v.string(),
     contentType: v.string(),
     size: v.number(),
@@ -2535,6 +2550,9 @@ export default defineSchema({
     // or else the address the toolkit gave it.
     key: v.optional(v.string()),
     url: v.optional(v.string()),
+    // Left on an earlier storage when the team switched servers; missing when `key` is on
+    // the team's storage now.
+    storedOn: v.optional(storedOnValidator),
     // The upload it is, for an uploaded file.
     uploadId: v.optional(v.id("uploads")),
     // The service an upload came from (the upload's source), for the Library's From filter.

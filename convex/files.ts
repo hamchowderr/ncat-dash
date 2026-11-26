@@ -1162,12 +1162,13 @@ export const finishedOfRun = internalQuery({
         steps.flatMap((step) => step.cleaned ?? []).find((one) => one.creator)?.creator ??
         null,
       files: finishedFiles(run, steps)
-        .filter((link) => !run.keptLinks?.includes(link))
+        // A run picked up after it was partly done already kept what it finished then.
+        .filter((link) => !(run.pickedUp && run.keptLinks?.includes(link)))
         .map((link) => ({
-        link,
-        name: names[link] ?? fileNameOfLink(link),
-        label: labels.get(link) ?? null,
-      })),
+          link,
+          name: names[link] ?? fileNameOfLink(link),
+          label: labels.get(link) ?? null,
+        })),
     };
   },
 });

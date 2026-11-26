@@ -1,7 +1,7 @@
 import { keyOfUrl, readUploadRef, teamFolder } from "@takewon/automation-core";
 import { internal } from "../_generated/api";
 import type { ActionCtx, QueryCtx } from "../_generated/server";
-import { bucketOf, presign } from "./bucket";
+import { bucketForFile, bucketOf, presign, type StoredOn } from "./bucket";
 import { brandOf } from "./queue";
 
 // Links for people outside the team, who are not signed in: a client in their portal or a
@@ -11,7 +11,7 @@ import { brandOf } from "./queue";
 // Long enough for a client reading the page; it asks again when it next opens.
 export const CLIENT_LINK_SECONDS = 6 * 60 * 60;
 
-export type LogoTarget = { organizationId: string; key: string };
+export type LogoTarget = { organizationId: string; key: string; storedOn?: StoredOn };
 
 /** The team's logo file, when it is one of the team's own finished uploads. */
 export async function teamLogoFile(
@@ -24,7 +24,11 @@ export async function teamLogoFile(
   if (!upload || upload.organizationId !== organizationId || upload.status !== "ready") {
     return null;
   }
-  return { organizationId, key: upload.key };
+  return {
+    organizationId,
+    key: upload.key,
+    ...(upload.storedOn ? { storedOn: upload.storedOn } : {}),
+  };
 }
 
 /** The team's brand as a client sees it: its logo (an address or upload pointer) and colour. */
@@ -41,7 +45,12 @@ export async function signLogo(ctx: ActionCtx, target: LogoTarget | null): Promi
   });
   if (!connection) return null;
   try {
-    return await presign(await bucketOf(connection), "GET", target.key, CLIENT_LINK_SECONDS);
+    return await presign(
+      await bucketForFile(connection, target),
+      "GET",
+      target.key,
+      CLIENT_LINK_SECONDS,
+    );
   } catch {
     // A toolkit that is down only costs the page its logo.
     return null;

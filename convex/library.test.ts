@@ -192,7 +192,13 @@ describe("files join the library", () => {
         partly: true,
         nodes: [
           ...run.nodes,
-          { id: "tiktok", kind: "step", stepId: "video-split", input: {}, position: { x: 0, y: 0 } },
+          {
+            id: "tiktok",
+            kind: "step",
+            stepId: "video-split",
+            input: {},
+            position: { x: 0, y: 0 },
+          },
         ],
       });
       await ctx.db.insert("runSteps", {
@@ -214,7 +220,7 @@ describe("files join the library", () => {
     expect((await list()).map((item) => item.source)).toEqual(["automation", "upload"]);
 
     // Picked up and finished: the file kept before is not copied or added again.
-    await t.run((ctx) => ctx.db.patch(runId, { status: "done", partly: undefined }));
+    await t.run((ctx) => ctx.db.patch(runId, { status: "done", partly: undefined, pickedUp: 1 }));
     expect(await t.action(internal.files.keepFinished, { runId })).toEqual([]);
     expect(await list()).toHaveLength(2);
   });
