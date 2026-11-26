@@ -423,12 +423,12 @@ describe("searching", () => {
     await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1000));
     vi.stubGlobal("fetch", realFetch);
     vi.useRealTimers();
-    const job = (await t.run((ctx) =>
-      ctx.db
-        .query("jobs")
-        .filter((q) => q.eq(q.field("libraryItemId"), episode._id))
-        .first(),
-    ))!;
+    // The file's transcription job. A B-Roll look at the same file is a job of its own on
+    // the same file, and which of the two is added first depends on the pools.
+    const job = (await t.run(async (ctx) => {
+      const item = await ctx.db.get(episode._id);
+      return item?.transcript?.jobId ? await ctx.db.get(item.transcript.jobId) : null;
+    }))!;
     return { ...setup, episode: (await itemOf(episode.uploadId!))!, job };
   }
 
