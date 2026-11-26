@@ -156,3 +156,28 @@ test("a file on an earlier storage of the team's own is out of reach, and says s
   await expect(bucketForFile(connection!, item!)).rejects.toThrow(LEFT_BEHIND_MESSAGE);
   expect((await files()).item?.storedOn?.hosted).toBe(true);
 });
+
+test("files of a team that switched before marking began are marked by when they were made", async () => {
+  const { t, team, settle, files } = await setUp();
+  // The team's connection is replaced without the switch being noticed, as happened before.
+  await t.run(async (ctx) => {
+    const connection = await ctx.db
+      .query("toolkitConnections")
+      .withIndex("by_organization", (q) => q.eq("organizationId", team))
+      .first();
+    await ctx.db.patch(connection!._id, { baseUrl: OWN, storage: OWN_STORAGE });
+  });
+  const left = { hosted: true, bucket: "takewon-media", endpoint: "https://r2.takewon.example" };
+  await t.mutation(internal.leftBehind.markOlder, { organizationId: team, left, before: 0 });
+  await settle();
+  expect((await files()).item?.storedOn).toBeUndefined();
+  await t.mutation(internal.leftBehind.markOlder, {
+    organizationId: team,
+    left,
+    before: Date.now() + 1,
+  });
+  await settle();
+  const { upload, item } = await files();
+  expect(upload?.storedOn).toEqual(left);
+  expect(item?.storedOn).toEqual(left);
+});

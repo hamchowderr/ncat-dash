@@ -56,3 +56,45 @@ export const mark = internalMutation({
     return null;
   },
 });
+
+/**
+ * For a team that switched servers before files were marked: marks its files made before
+ * `before` (when it switched) with the storage it left. Run once by the operator, with
+ * `npx convex run leftBehind:markOlder`.
+ */
+export const markOlder = internalMutation({
+  args: {
+    organizationId: v.string(),
+    left: storedOnValidator,
+    before: v.number(),
+    table: v.optional(v.union(v.literal("uploads"), v.literal("libraryItems"))),
+    cursor: v.optional(v.union(v.null(), v.string())),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const table = args.table ?? "uploads";
+    const page = await ctx.db
+      .query(table)
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .paginate({ cursor: args.cursor ?? null, numItems: PAGE });
+    for (const file of page.page) {
+      if (file.key && !file.storedOn && file._creationTime < args.before) {
+        await ctx.db.patch(file._id, { storedOn: args.left });
+      }
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.leftBehind.markOlder, {
+        ...args,
+        table,
+        cursor: page.continueCursor,
+      });
+    } else if (table === "uploads") {
+      await ctx.scheduler.runAfter(0, internal.leftBehind.markOlder, {
+        ...args,
+        table: "libraryItems",
+        cursor: null,
+      });
+    }
+    return null;
+  },
+});
