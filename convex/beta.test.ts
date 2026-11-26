@@ -209,7 +209,7 @@ describe("where they met", () => {
     expect(metAtEvent("The KINN")).toBe("The KINN");
     expect(metAtEvent("a16z Tech Week Los Angeles")).toBe("a16z Tech Week Los Angeles");
     expect(metAtEvent("Claude Code Creators Summit")).toBe("Claude Code Creators Summit");
-    expect(metAtEvent("Chowderr's socials")).toBeUndefined();
+    expect(metAtEvent("Social media")).toBeUndefined();
     expect(metAtEvent("A friend or colleague")).toBeUndefined();
   });
 });

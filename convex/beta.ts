@@ -151,7 +151,7 @@ export const joined = internalMutation({
  * friends and "somewhere else" are not a meeting.
  */
 export function metAtEvent(source: string): string | undefined {
-  return /summit|tech week|kinn|hackathon|meetup|conference|event/i.test(source)
+  return /summit|tech week|kinn|meetup|conference|event/i.test(source)
     ? source.trim()
     : undefined;
 }
