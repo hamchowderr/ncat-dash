@@ -124,7 +124,9 @@ export async function onStoryboardVideoJob(ctx: MutationCtx, job: Doc<"jobs">): 
   if (job.status === "failed") {
     await ctx.db.patch(video._id, {
       status: "failed",
-      error: `Take ${entry.number} could not be made. ${job.error ?? ""}`.trim(),
+      error: /matches no streams/i.test(job.error ?? "")
+        ? `Take ${entry.number} could not be made: its file has no sound. Use a recording with sound in it.`
+        : `Take ${entry.number} could not be made. ${job.error ?? ""}`.trim(),
       finishedAt: Date.now(),
     });
     return;

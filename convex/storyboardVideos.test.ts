@@ -289,9 +289,19 @@ describe("making a storyboard into a video", () => {
       error: "Take 5 could not be made. The file could not be downloaded.",
     });
     // Once it has stopped, it can be made again.
-    await expect(
-      maya.as.mutation(api.storyboardVideos.start, { storyboardId }),
-    ).resolves.toMatchObject({ takes: 2 });
+    const again = await maya.as.mutation(api.storyboardVideos.start, { storyboardId });
+    expect(again).toMatchObject({ takes: 2 });
+    // A file with no sound is named in plain words.
+    await t.mutation(internal.jobs.finish, {
+      jobId: (await jobsOf(again.videoId)).jobs[0]._id,
+      ok: false,
+      error:
+        "Stream specifier ':a' in filtergraph description [0:a]aresample=48000 matches no streams.",
+    });
+    expect((await maya.as.query(api.storyboardVideos.list, { storyboardId }))[0]).toMatchObject({
+      status: "failed",
+      error: "Take 1 could not be made: its file has no sound. Use a recording with sound in it.",
+    });
   });
 
   test("nothing is made before any file is in, and other teams cannot start it", async () => {

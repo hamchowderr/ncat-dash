@@ -4,7 +4,7 @@
 //
 // Two toolkit jobs run for real, as the toolkit runs them, so the agent sees and measures
 // the clip: Python (/v1/code/execute/python) and FFmpeg compose (/v1/ffmpeg/compose).
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createReadStream, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -57,7 +57,21 @@ const clip = fileURLToPath(new URL("./fixtures/clip.webm", import.meta.url));
 // are then read from the files themselves.
 const ownClip = process.env.STAND_IN_CLIP ?? null;
 const plainClip = process.env.STAND_IN_PLAIN ?? null;
-const clipFor = (url) => (plainClip && /plain/.test(url) ? plainClip : (ownClip ?? clip));
+// The short clip has no sound; a name with "voiced" in it gets one that does, as a take
+// of someone talking would.
+const voiced = join(mkdtempSync(join(tmpdir(), "takewon-e2e-voiced-")), "voiced.webm");
+execFileSync(
+  "ffmpeg",
+  [
+    "-y",
+    ...["-f", "lavfi", "-i", "testsrc=size=320x180:rate=25:duration=6"],
+    ...["-f", "lavfi", "-i", "sine=frequency=220:duration=6"],
+    ...["-c:v", "libvpx", "-b:v", "300k", "-c:a", "libopus", "-shortest", voiced],
+  ],
+  { stdio: "ignore" },
+);
+const clipFor = (url) =>
+  /voiced/.test(url) ? voiced : plainClip && /plain/.test(url) ? plainClip : (ownClip ?? clip);
 const still = fileURLToPath(new URL("./fixtures/still.jpg", import.meta.url));
 // Files the real jobs make, served at /stand-in/made/<name>: inside the bucket, as the
 // toolkit puts them, so they can be kept in Finished/ like any other.
