@@ -253,7 +253,7 @@ function RecordForm({
             />
           </label>
           <span id="page-address-hint" className="text-muted-foreground text-xs">
-            Leave it empty and the agent searches for the page. You check what it found before it is
+            Leave it empty and the agent finds the page itself. You check what it found before it is
             recorded.
           </span>
         </div>
@@ -403,7 +403,7 @@ export function PageRecording({
             : `${STATUS_WORDS[row.status]}${row.status === "done" ? seconds(row.durationMs) : ""}`}
         </span>
         <span className="text-muted-foreground min-w-0 truncate">
-          {row.url || "No address given, the agent searches for the page"}
+          {row.url || "No address given, the agent finds the page"}
         </span>
       </div>
       {row.status === "failed" && row.problem && (

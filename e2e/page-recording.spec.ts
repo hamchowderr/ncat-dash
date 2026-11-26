@@ -62,11 +62,11 @@ test("a take is recorded from a web page by the agent, and says why when it cann
   await recording.getByRole("button", { name: "Try again" }).click();
   await expect(form.getByLabel("Page address")).toHaveValue("https://example.com/pricing");
 
-  // With no address the agent searches for the page first, which needs Firecrawl too.
+  // With no address the agent finds the page itself first, which needs Firecrawl too.
   await form.getByLabel("Page address").fill("");
   await form.getByRole("button", { name: "Find the page" }).click();
   await expect(recording.getByRole("status")).toHaveText("Not recorded", { timeout: 60_000 });
-  await expect(recording).toContainText("No address given, the agent searches for the page");
+  await expect(recording).toContainText("No address given, the agent finds the page");
   await expect(recording).toContainText("Page recordings need a Firecrawl key");
   await recording.getByRole("button", { name: "Try again" }).click();
 

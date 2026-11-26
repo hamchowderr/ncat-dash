@@ -7,11 +7,10 @@ import {
   makeTake,
   type PassBrowser,
   pathFrom,
-  pathOffSearch,
+  pathOnSite,
   recordingTools,
   recordPath,
   rehearsalPrompt,
-  SEARCH_PAGE,
   stepOfAction,
   TakeProblem,
   useBrowserForTests,
@@ -369,7 +368,24 @@ describe("POST /ncat/record", () => {
   });
 });
 
+const SEARCH = "https://duckduckgo.com/";
+
 describe("finding the page when a take has none", () => {
+  it("starts on the site the agent opened directly", () => {
+    expect(
+      pathOnSite(
+        [
+          { do: "goto", url: "https://linear.app/" },
+          { do: "click", target: { role: "link", name: "Changelog", nth: 0 } },
+        ],
+        ["https://linear.app/", "https://linear.app/changelog"],
+      ),
+    ).toEqual([
+      { do: "goto", url: "https://linear.app/" },
+      { do: "click", target: { role: "link", name: "Changelog", nth: 0 } },
+    ]);
+  });
+
   const CLICK = (name: string) => ({
     do: "click" as const,
     target: { role: "link", name, nth: 0 },
@@ -381,13 +397,14 @@ describe("finding the page when a take has none", () => {
       notes: "",
       avoid: ["https://example.com/old"],
     });
-    expect(prompt).toContain(`Start on: ${SEARCH_PAGE}`);
+    expect(prompt).not.toContain("Start on");
+    expect(prompt).toContain("No start page");
     expect(prompt).toContain("https://example.com/old");
   });
 
   it("starts the take on the page the search led to, leaving the search out", () => {
     const steps = [
-      { do: "goto" as const, url: SEARCH_PAGE },
+      { do: "goto" as const, url: SEARCH },
       {
         do: "type" as const,
         target: { role: "textbox", name: "Search", nth: 0 },
@@ -399,29 +416,29 @@ describe("finding the page when a take has none", () => {
       CLICK("Latest"),
     ];
     const pages = [
-      SEARCH_PAGE,
-      SEARCH_PAGE,
+      SEARCH,
+      SEARCH,
       "https://duckduckgo.com/?q=linear+changelog",
       "https://linear.app/changelog",
       "https://linear.app/changelog/latest",
     ];
-    expect(pathOffSearch(steps, pages)).toEqual([
+    expect(pathOnSite(steps, pages)).toEqual([
       { do: "goto", url: "https://linear.app/changelog" },
       CLICK("Latest"),
     ]);
   });
 
-  it("holds on a page that already shows it all, and finds nothing when the search was never left", () => {
+  it("holds on a page that already shows it all, and finds nothing when no page was reached", () => {
     expect(
-      pathOffSearch(
-        [{ do: "goto", url: SEARCH_PAGE }, CLICK("Pricing - Stripe")],
-        [SEARCH_PAGE, "https://stripe.com/pricing"],
+      pathOnSite(
+        [{ do: "goto", url: SEARCH }, CLICK("Pricing - Stripe")],
+        [SEARCH, "https://stripe.com/pricing"],
       ),
     ).toEqual([
       { do: "goto", url: "https://stripe.com/pricing" },
       { do: "pause", ms: 4000 },
     ]);
-    expect(pathOffSearch([{ do: "goto", url: SEARCH_PAGE }], [SEARCH_PAGE])).toBeNull();
+    expect(pathOnSite([], [])).toBeNull();
   });
 
   it("writes down where the browser is after each step it keeps", async () => {

@@ -428,9 +428,6 @@ export function pathFrom(steps: WalkStep[], url: string): WalkStep[] {
 
 // --- Finding the page ----------------------------------------------------------------
 
-/** Where the agent searches when a take has no page address. */
-export const SEARCH_PAGE = "https://duckduckgo.com/";
-
 export const findRequest = z.object({
   organizationId: z.string().min(1).max(200),
   line: z.string().min(1).max(2000),
@@ -453,44 +450,42 @@ export type FoundPage = {
 
 export const FIND_INSTRUCTIONS = `${REHEARSAL_INSTRUCTIONS}
 
-No page address was given for this take. Search for the right page first: type a short query into the search box and press Enter, then open the result from the site the line is about. Prefer the site's own page (the company's or project's official site) over articles about it, and the newest version of a page when the line says latest or newest. Once on that site, show what the line describes as above.`;
+No page address was given for this take, and there is no start page: you decide where to go. Your first action is opening a page. When you know the site the line is about, open it directly. When you are not sure where the page is, use a search engine to find it. Prefer the site's own page (the company's or project's official site) over articles about it, and the newest version of a page when the line says latest or newest. Once on that site, show what the line describes as above.`;
 
 /** What the model is told when it has to find the page. */
 export function findPrompt(request: Pick<FindRequest, "line" | "notes" | "avoid">): string {
   return [
     `The line said over the recording: "${request.line.trim()}"`,
-    `Start on: ${SEARCH_PAGE}`,
+    "No start page: open the page you judge right, or search for it.",
     request.notes.trim() ? `Also: ${request.notes.trim()}` : "",
     request.avoid.length
       ? `The person did not want these pages, so find a different one: ${request.avoid.join(", ")}`
       : "",
-    "Open the start page first.",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-const hostOf = (url: string) => {
+function hostOf(url: string) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return "";
   }
-};
+}
 
 /**
- * The take's path from a search: everything up to leaving the search engine is dropped,
- * and the path opens the page the search led to. Null when it never left the search.
+ * The take's path for a page the agent found: it starts on the site the agent ended on,
+ * at the first page of the last stretch on that site. Anything before (a search, say) is
+ * left out, so nothing about where to look is fixed in code. Null when no page was reached.
  */
-export function pathOffSearch(steps: WalkStep[], pages: string[]): WalkStep[] | null {
-  const search = hostOf(SEARCH_PAGE);
-  let last = -1;
-  pages.forEach((page, index) => {
-    if (!page || hostOf(page) === search) last = index;
-  });
-  const start = last + 1;
+export function pathOnSite(steps: WalkStep[], pages: string[]): WalkStep[] | null {
+  const site = hostOf(pages[pages.length - 1] ?? "");
+  if (!site) return null;
+  let start = pages.length - 1;
+  while (start > 0 && hostOf(pages[start - 1]) === site) start--;
   const landed = pages[start];
-  if (start >= steps.length || !landed || !/^https?:/.test(landed)) return null;
+  if (!/^https?:/.test(landed)) return null;
   const rest = steps.slice(start + 1);
   const path: WalkStep[] = [{ do: "goto", url: landed }, ...rest];
   // A page that already shows it all still needs a moment on screen.
@@ -523,8 +518,8 @@ export async function findPage(request: FindRequest, teamKey: string | null): Pr
   } finally {
     await browser.close().catch(() => undefined);
   }
-  const path = pathOffSearch(steps, pages);
-  if (!path || !/^https?:/.test(url) || hostOf(url) === hostOf(SEARCH_PAGE)) {
+  const path = pathOnSite(steps, pages);
+  if (!path || !/^https?:/.test(url)) {
     throw new TakeProblem(
       "The agent could not find a page for this line. Give the page's address, or say more about what to show.",
       "no_path",

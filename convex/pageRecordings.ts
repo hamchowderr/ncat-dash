@@ -146,7 +146,7 @@ export const forStoryboard = query({
 /**
  * Puts a take's page recording in line. `again` plays the clicks the last recording kept;
  * otherwise the agent works out new ones from the line, the page and the notes. With no
- * page address the agent searches for the page and stops at "found", for the person to
+ * page address the agent finds the page itself and stops at "found", for the person to
  * check it; `again` then records it. `findAnother` searches again, leaving that page out.
  */
 export const record = mutation({
@@ -433,7 +433,7 @@ function linkOf(answer: unknown): string | null {
 
 type Making = NonNullable<FunctionReturnType<typeof internal.pageRecordings.forMaking>>;
 
-/** A take with no address: the agent searches for the page, and nothing is recorded yet. */
+/** A take with no address: the agent finds the page itself, and nothing is recorded yet. */
 async function findThePage(ctx: ActionCtx, found: Making, agentUrl: string, secret: string) {
   const { recording } = found;
   const recordingId = recording._id;

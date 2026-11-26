@@ -153,7 +153,7 @@ describe("a take's page recording", () => {
   test("says while the agent looks for the page", () => {
     show([row({ status: "finding", url: "" })]);
     expect(screen.getByRole("status").textContent).toBe("Finding the page");
-    expect(screen.getByText("No address given, the agent searches for the page")).toBeTruthy();
+    expect(screen.getByText("No address given, the agent finds the page")).toBeTruthy();
   });
 
   test("says why it was not recorded, and can be tried again", async () => {
