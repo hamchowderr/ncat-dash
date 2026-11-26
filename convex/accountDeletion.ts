@@ -3,6 +3,7 @@ import { components, internal } from "./_generated/api";
 import type { TableNames } from "./_generated/dataModel";
 import { internalMutation, type MutationCtx, query, type QueryCtx } from "./_generated/server";
 import { getCaller } from "./lib/caller";
+import { forgetNews } from "./lib/news";
 import { forgetProfile } from "./profiles";
 
 /**
@@ -124,6 +125,11 @@ export const prepare = internalMutation({
         organizationId: team.id,
       });
     }
+    // Their product news subscription and its consent records.
+    const contact = await ctx.runQuery(components.betterAuth.members.contact, {
+      userId: args.userId,
+    });
+    await forgetNews(ctx, { userId: args.userId, email: contact?.email });
     await ctx.runMutation(components.betterAuth.deletion.forgetPerson, { userId: args.userId });
     const tours = await ctx.db
       .query("tourEnds")

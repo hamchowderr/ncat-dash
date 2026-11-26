@@ -301,6 +301,25 @@ export const motionSetupValidator = v.object({
 // organization id, and every read or write checks membership first (lib/authz.ts).
 // For one kind of news: whether it shows under the bell, is emailed, and goes to each
 // chat app the member linked. Left out: the kind's default.
+// Where someone asked for, or stopped, product news.
+const newsSource = v.union(
+  v.literal("signup"),
+  v.literal("website"),
+  v.literal("settings"),
+  v.literal("unsubscribe_link"),
+  v.literal("complaint"),
+  v.literal("operator"),
+);
+
+// Who a broadcast goes to: people who asked for product news, or account holders, for
+// notices about their account or the service (never marketing).
+const broadcastAudience = v.union(
+  v.literal("news"),
+  v.literal("accounts"),
+  v.literal("trial_teams"),
+  v.literal("paid_teams"),
+);
+
 const kindChannels = v.object({
   bell: v.optional(v.boolean()),
   email: v.optional(v.boolean()),
@@ -1873,6 +1892,102 @@ export default defineSchema({
     reason: v.string(),
     at: v.number(),
   }).index("by_email", ["email"]),
+
+  // Product news (newsletters): one row per email address that asked for it, with or
+  // without an account. Website sign-ups stay "pending" until they confirm by email
+  // (double opt-in). Only "subscribed" rows get product news. See convex/news.ts.
+  subscribers: defineTable({
+    email: v.string(),
+    userId: v.optional(v.string()),
+    name: v.optional(v.string()),
+    status: v.union(v.literal("pending"), v.literal("subscribed"), v.literal("unsubscribed")),
+    source: newsSource,
+    subscribedAt: v.optional(v.number()),
+    unsubscribedAt: v.optional(v.number()),
+    // When the confirmation email last went out, for a website sign-up.
+    confirmSentAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_email", ["email"])
+    .index("by_user", ["userId"])
+    .index("by_status", ["status", "updatedAt"])
+    .index("by_updated", ["updatedAt"]),
+
+  // Every time someone agreed to, confirmed or stopped product news: the proof of consent
+  // EU and Canadian law ask for. Never changed or deleted, except with the person's account.
+  consentRecords: defineTable({
+    email: v.string(),
+    userId: v.optional(v.string()),
+    action: v.union(v.literal("requested"), v.literal("given"), v.literal("withdrawn")),
+    source: newsSource,
+    // The exact words the person agreed to, where there were any.
+    wording: v.optional(v.string()),
+    // A keyed hash of their network (lib/clientIp.ts), never the address itself.
+    networkKey: v.optional(v.string()),
+    userAgent: v.optional(v.string()),
+    broadcastId: v.optional(v.id("broadcasts")),
+    at: v.number(),
+  })
+    .index("by_email", ["email", "at"])
+    .index("by_broadcast", ["broadcastId"]),
+
+  // Emails the operator writes on the Send An Email page (convex/broadcasts.ts).
+  broadcasts: defineTable({
+    subject: v.string(),
+    heading: v.optional(v.string()),
+    body: v.string(),
+    button: v.optional(v.object({ label: v.string(), url: v.string() })),
+    audience: broadcastAudience,
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("sending"),
+      v.literal("sent"),
+      v.literal("cancelled"),
+      v.literal("failed"),
+    ),
+    scheduledFor: v.optional(v.number()),
+    scheduledJob: v.optional(v.id("_scheduled_functions")),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    startedAt: v.optional(v.number()),
+    finishedAt: v.optional(v.number()),
+    // Why sending stopped, in plain words.
+    problem: v.optional(v.string()),
+    // Running counts, kept as each batch, bounce and unsubscribe comes in.
+    recipients: v.number(),
+    sent: v.number(),
+    failed: v.number(),
+    skipped: v.number(),
+    bounced: v.number(),
+    complaints: v.number(),
+    unsubscribed: v.number(),
+  })
+    .index("by_created", ["createdAt"])
+    .index("by_status", ["status"]),
+
+  // One row per person a broadcast goes to.
+  broadcastDeliveries: defineTable({
+    broadcastId: v.id("broadcasts"),
+    email: v.string(),
+    userId: v.optional(v.string()),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("sending"),
+      v.literal("sent"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    ),
+    // Which batch of up to 100 took it, while it is being sent.
+    batch: v.optional(v.number()),
+    detail: v.optional(v.string()),
+    messageId: v.optional(v.string()),
+    // What toSend reported later about this email.
+    problem: v.optional(v.union(v.literal("bounced"), v.literal("complaint"))),
+    at: v.number(),
+  })
+    .index("by_broadcast", ["broadcastId", "status"])
+    .index("by_broadcast_and_email", ["broadcastId", "email"])
+    .index("by_email", ["email", "at"]),
 
   notificationPreferences: defineTable({
     organizationId: v.string(),

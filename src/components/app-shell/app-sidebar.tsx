@@ -67,6 +67,7 @@ import { useActiveTeam } from "@/lib/team-context";
 import { useFileLink } from "@/lib/use-brand-upload";
 
 import { useUnseenAlerts } from "@/components/inbox/alert-notices";
+import { adminRouteFor, adminRoutes } from "@/components/admin/admin-routes";
 
 import { NavUser, type ShellUser } from "./nav-user";
 
@@ -206,6 +207,9 @@ export function AppSidebar({
   const toolkitShown = useQuery(api.toolkitHealth.shown, { organizationId: team.id });
   const builder =
     toolkitShown === false ? navBuilder.filter((item) => item.url !== "/toolkit") : navBuilder;
+  // Only whoever runs this copy sees the Admin pages.
+  const operator = useQuery(api.operator.me, {}) === true;
+  const activeUrl = adminRouteFor(pathname)?.url ?? navItemFor(pathname).url;
 
   return (
     <Sidebar variant="inset" collapsible="icon" {...props}>
@@ -219,6 +223,7 @@ export function AppSidebar({
           {[
             { label: null, items: navEveryday },
             { label: "Builder", items: builder },
+            ...(operator ? [{ label: "Admin", items: adminRoutes }] : []),
           ].map((group) => (
             <SidebarGroup
               key={group.label ?? "everyday"}
@@ -237,7 +242,7 @@ export function AppSidebar({
                       <SidebarMenuButton
                         asChild
                         tooltip={item.title}
-                        isActive={navItemFor(pathname).url === item.url}
+                        isActive={activeUrl === item.url}
                       >
                         <Link
                           href={item.url}

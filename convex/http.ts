@@ -881,6 +881,174 @@ http.route({
   }),
 });
 
+// Product news (news.ts). The unsubscribe link in every newsletter, the confirmation link
+// a website sign-up gets, and the address the website's newsletter box posts to. Opening
+// a link shows a page with one button, so a mail scanner that follows links changes
+// nothing.
+function hiddenTokenForm(token: string, label: string): string {
+  const value = token.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  return `<form method="post"><input type="hidden" name="token" value="${value}"><button type="submit" style="background:#5b3df5;color:#fff;border:0;border-radius:10px;padding:12px 20px;font-size:15px;font-weight:600;cursor:pointer;">${label}</button></form>`;
+}
+
+async function tokenOf(request: Request): Promise<{ token: string; oneClick: boolean }> {
+  let token = new URL(request.url).searchParams.get("token") ?? "";
+  let oneClick = false;
+  if ((request.headers.get("content-type") ?? "").includes("form")) {
+    const form = await request.formData();
+    oneClick = form.get("List-Unsubscribe") === "One-Click";
+    const fromForm = form.get("token");
+    if (typeof fromForm === "string" && fromForm) token = fromForm;
+  }
+  return { token, oneClick };
+}
+
+http.route({
+  path: "/email/news/unsubscribe",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) =>
+    unsubscribePage(
+      "Unsubscribe from product news",
+      "Stop getting product news emails? Emails about your account, like password resets, still come.",
+      hiddenTokenForm(new URL(request.url).searchParams.get("token") ?? "", "Unsubscribe"),
+    ),
+  ),
+});
+
+http.route({
+  path: "/email/news/unsubscribe",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const { token, oneClick } = await tokenOf(request);
+    const done = await ctx.runMutation(internal.news.unsubscribe, { token });
+    if (oneClick)
+      return new Response(done ? "Unsubscribed" : "Unknown link", { status: done ? 200 : 400 });
+    if (!done)
+      return unsubscribePage(
+        "That link didn't work",
+        "Write to us and we'll take you off the list.",
+      );
+    return unsubscribePage(
+      "You're unsubscribed",
+      `${done} won't get product news any more. If you have an account, you can switch it back on in Settings, Notifications.`,
+    );
+  }),
+});
+
+http.route({
+  path: "/email/news/confirm",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) =>
+    unsubscribePage(
+      "Confirm product news",
+      "Click below and we'll send the occasional email about new features and tips. You can stop any time.",
+      hiddenTokenForm(
+        new URL(request.url).searchParams.get("token") ?? "",
+        "Yes, send me product news",
+      ),
+    ),
+  ),
+});
+
+http.route({
+  path: "/email/news/confirm",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const { token } = await tokenOf(request);
+    const userAgent = request.headers.get("user-agent");
+    const done = await ctx.runMutation(internal.news.confirm, {
+      token,
+      ...(userAgent ? { userAgent } : {}),
+    });
+    if (!done)
+      return unsubscribePage(
+        "That link has expired",
+        "Sign up again on the website and we'll send a fresh link.",
+      );
+    return unsubscribePage(
+      "You're in",
+      `${done} will get product news. Every email has a link to stop.`,
+    );
+  }),
+});
+
+/** Websites allowed to post to the newsletter box from a browser (NEWS_SIGNUP_ORIGINS). */
+function newsOrigin(request: Request): string | null {
+  const origin = request.headers.get("origin");
+  if (!origin) return null;
+  const allowed = (process.env.NEWS_SIGNUP_ORIGINS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  return allowed.includes(origin) ? origin : null;
+}
+
+function newsCors(origin: string | null): Record<string, string> {
+  return origin
+    ? {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        Vary: "Origin",
+      }
+    : {};
+}
+
+http.route({
+  path: "/email/news/subscribe",
+  method: "OPTIONS",
+  handler: httpAction(async (_ctx, request) => {
+    const origin = newsOrigin(request);
+    return new Response(null, { status: origin ? 204 : 403, headers: newsCors(origin) });
+  }),
+});
+
+http.route({
+  path: "/email/news/subscribe",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const origin = newsOrigin(request);
+    const isForm = (request.headers.get("content-type") ?? "").includes("form");
+    let email = "";
+    let trap = "";
+    try {
+      if (isForm) {
+        const form = await request.formData();
+        email = String(form.get("email") ?? "");
+        trap = String(form.get("website") ?? "");
+      } else {
+        const body = (await request.json()) as { email?: unknown; website?: unknown };
+        email = typeof body.email === "string" ? body.email : "";
+        trap = typeof body.website === "string" ? body.website : "";
+      }
+    } catch {
+      email = "";
+    }
+    const userAgent = request.headers.get("user-agent");
+    // A filled-in hidden "website" field is a bot: say thanks and do nothing.
+    const outcome = trap
+      ? "ok"
+      : await ctx.runMutation(internal.news.requestFromWebsite, {
+          email,
+          ...(userAgent ? { userAgent } : {}),
+        });
+    if (isForm && !origin) {
+      return outcome === "invalid"
+        ? unsubscribePage("That address doesn't look right", "Go back and check the email address.")
+        : outcome === "busy"
+          ? unsubscribePage("Too many sign-ups right now", "Try again in a few minutes.")
+          : unsubscribePage(
+              "Check your inbox",
+              "We sent you an email. Click the button in it to confirm, and you're on the list.",
+            );
+    }
+    const status = outcome === "ok" ? 200 : outcome === "invalid" ? 400 : 429;
+    return new Response(JSON.stringify({ outcome }), {
+      status,
+      headers: { "Content-Type": "application/json", ...newsCors(origin) },
+    });
+  }),
+});
+
 // toSend tells us when an email bounces or is marked as spam (https://tosend.com/docs/guide/webhooks/).
 // Signed with TOSEND_WEBHOOK_SECRET: X-ToSend-Signature is sha256=<hex HMAC of the body>.
 http.route({
