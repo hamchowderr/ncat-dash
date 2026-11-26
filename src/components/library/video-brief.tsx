@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useMutation } from "convex/react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { errorMessage } from "@/lib/catalog";
@@ -28,8 +28,12 @@ export function VideoBrief({
   const setBrief = useMutation(api.library.setBrief);
   const [text, setText] = useState(brief);
   const [saved, setSaved] = useState(false);
-  // A change made elsewhere shows here, unless this box is being written in.
-  useEffect(() => setText(brief), [brief]);
+  // A change made elsewhere shows here: when the saved brief changes, the box follows it.
+  const [shown, setShown] = useState(brief);
+  if (shown !== brief) {
+    setShown(brief);
+    setText(brief);
+  }
 
   async function save() {
     const next = text.trim();

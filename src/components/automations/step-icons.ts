@@ -1,4 +1,5 @@
 import {
+  AlignHorizontalSpaceAround,
   AudioWaveform,
   BringToFront,
   Clapperboard,
@@ -65,7 +66,7 @@ import {
  * comes from the step's group. A step with no entry falls back to its group's icon.
  */
 export const STEP_ICONS: Record<string, LucideIcon> = {
-  "audio-align": AudioWaveform,
+  "audio-align": AlignHorizontalSpaceAround,
   "audio-beats": Metronome,
   "audio-concatenate": ListMusic,
   "code-execute-python": SquareTerminal,

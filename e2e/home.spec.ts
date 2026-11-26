@@ -81,14 +81,14 @@ test("a new team's home shows getting set up, fits the window, and leaves templa
   // Getting started points to every template, on one page, by category, and searchable.
   await setup.getByRole("link", { name: /Switch on an automation/ }).click();
   await expect(page).toHaveURL(/\/automations\/new$/);
-  await expect(page.getByRole("button", { name: /^All 89$/ })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: /^All 90$/ })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   await page.getByRole("button", { name: /^Music \d+$/ }).click();
   await expect(page.getByText("Lyric video with highlighted words")).toBeVisible();
   await expect(page.getByText("Clips for social")).toHaveCount(0);
-  await page.getByRole("button", { name: /^All 89$/ }).click();
+  await page.getByRole("button", { name: /^All 90$/ }).click();
   await page.getByLabel("Find a ready-made automation").fill("loudness");
   await expect(page.getByText("Even out loudness for platforms")).toBeVisible();
   await page.getByLabel("Find a ready-made automation").fill("");
