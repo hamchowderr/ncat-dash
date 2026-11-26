@@ -3,8 +3,11 @@ import { createNcatRoutes } from "../../src/mastra/ncat/routes";
 import {
   clockTime,
   dashboardUsage,
+  momentsMessage,
+  momentsParts,
   momentsPrompt,
   momentsRequest,
+  pickModel,
 } from "../../src/mastra/ncat/moments";
 import { useTeamKeysForTests } from "../../src/mastra/ncat/team-key";
 import { ctx, find } from "../helpers/route-harness";
@@ -164,7 +167,38 @@ describe("the moments prompt", () => {
       "What makes a good moment for this team: A tip that stands on its own",
     );
     expect(prompt).toContain("pick nothing that overlaps them: 0:30 to 0:52.");
-    expect(prompt.endsWith(MOMENTS.transcript)).toBe(true);
+    // Marked by first and last words: a long transcript made models quote only a clip's
+    // opening line, which came out seconds long.
+    expect(prompt).toContain('{"moments":[{"start":"…","end":"…","title":"…","why":"…"}]}');
+    expect(prompt).toContain("not after its first sentence");
+    // The recording and transcript come first, so they can be cached across questions.
+    expect(prompt.startsWith(`The recording: "Pricing talk", 2:05 long.\n\nThe transcript:\n${MOMENTS.transcript}`)).toBe(true);
+  });
+
+  it("caches the recording and its transcript apart from the question", () => {
+    const request = momentsRequest.parse(MOMENTS);
+    const { recording, ask } = momentsParts(request);
+    expect(recording).toContain(MOMENTS.transcript);
+    expect(ask).not.toContain(MOMENTS.transcript);
+    // The same recording asked with other settings is the same cached part.
+    const other = momentsParts(
+      momentsRequest.parse({ ...MOMENTS, settings: { ...MOMENTS.settings, count: 5 } }),
+    );
+    expect(other.recording).toBe(recording);
+    expect(other.ask).not.toBe(ask);
+    const message = momentsMessage(request);
+    expect(message.content[0]?.providerOptions).toEqual({
+      anthropic: { cacheControl: { type: "ephemeral" } },
+    });
+    expect(message.content[1]).not.toHaveProperty("providerOptions");
+  });
+
+  it("picks on the team's Claude model when the server allows it, else its own", () => {
+    const allowed = new Set(["anthropic/claude-opus-5-5", "openai/gpt-4.1-mini"]);
+    expect(pickModel("anthropic/claude-opus-5-5", allowed)).toBe("anthropic/claude-opus-5-5");
+    expect(pickModel("openai/gpt-4.1-mini", allowed)).not.toBe("openai/gpt-4.1-mini");
+    expect(pickModel("anthropic/claude-made-up", allowed)).not.toBe("anthropic/claude-made-up");
+    expect(pickModel(undefined, allowed)).toBe(pickModel("", allowed));
   });
 
   it("passes on the video's own brief after the house rules", () => {

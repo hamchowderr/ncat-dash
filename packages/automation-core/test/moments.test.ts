@@ -4,6 +4,7 @@ import {
   chapterSettings,
   clock,
   droppedWords,
+  findPick,
   findQuote,
   momentPicksFrom,
   momentSettings,
@@ -225,6 +226,69 @@ describe("planning the moments", () => {
   });
 });
 
+describe("picks marked by their first and last words", () => {
+  // A long lesson: the moment worth posting is a 20-second stretch in the middle of it,
+  // and its opening line is said again later on.
+  const filler = Array.from({ length: 40 }, (_, i) => `Here is filler line number ${i} for now.`);
+  const LESSON = spoken(
+    ...filler.slice(0, 20),
+    "So you see how it says main right here.",
+    "A branch is just a copy of your work.",
+    "You build the feature on the copy first.",
+    "Then you open a pull request to merge it.",
+    "Somebody checks it before it reaches production.",
+    "That is why you never push straight to main.",
+    ...filler.slice(20),
+    "So you see how it says main right here.",
+    "Thanks for coming.",
+  );
+  const lesson = momentSettings({ platform: "TikTok", minSeconds: 10, maxSeconds: 60 });
+  const marked = {
+    quote: "",
+    start: "So you see how it says main",
+    end: "never push straight to main.",
+    title: "What a branch is",
+    why: "It explains branches in one go.",
+  };
+
+  it("cuts from the first word of the start to the last word of the end", () => {
+    const plan = planMoments(LESSON, [marked], lesson);
+    expect(plan.moments).toHaveLength(1);
+    const [moment] = plan.moments;
+    expect(moment.text.startsWith("So you see how it says main right here.")).toBe(true);
+    expect(moment.text.endsWith("That is why you never push straight to main.")).toBe(true);
+    expect(moment.end - moment.start).toBeGreaterThan(10);
+  });
+
+  it("drops a moment quoted only by its opening line, as a long transcript used to get", () => {
+    // What the model sent back on a 64-minute recording: the first sentence alone.
+    const plan = planMoments(
+      LESSON,
+      [{ quote: "So you see how it says main right here.", title: "t", why: "w" }],
+      lesson,
+    );
+    expect(plan.moments).toHaveLength(0);
+    expect(plan.dropped.wrongLength).toBe(1);
+  });
+
+  it("uses the place where the start is followed by the end, when the start is said twice", () => {
+    const found = findPick(LESSON, marked, 60);
+    expect(found).not.toBeNull();
+    expect(LESSON[found!.last].text).toBe("main.");
+    expect(LESSON[found!.last].end - LESSON[found!.first].start).toBeLessThan(60);
+  });
+
+  it("does not find an end said only before the start", () => {
+    expect(
+      findPick(LESSON, { quote: "", start: "Thanks for coming.", end: "Here is filler line" }),
+    ).toBeNull();
+  });
+
+  it("falls back to the whole quote when a pick gives no start and end", () => {
+    expect(findPick(LESSON, { quote: "A branch is just a copy of your work." })).not.toBeNull();
+  });
+});
+
 describe("the settings a team controls", () => {
   it("fills blanks with the usual values", () => {
     expect(momentSettings({ platform: "Instagram Reels" })).toEqual({
@@ -321,6 +385,12 @@ describe("reading the model's answer", () => {
       moments: [{ quote: "a" }],
     });
     expect(readModelJson("no json at all")).toBeNull();
+    // An answer, then a note and a corrected answer: the last one is the final word.
+    expect(
+      readModelJson(
+        '{"moments":[{"quote":"a {b}"}]}\n\nCorrection: I need valid quotes. Final answer:\n\n{"moments":[{"quote":"c"}]}',
+      ),
+    ).toEqual({ moments: [{ quote: "c" }] });
     expect(readModelJson("{ broken")).toBeNull();
   });
 
@@ -331,6 +401,10 @@ describe("reading the model's answer", () => {
       }),
     ).toEqual([{ quote: "Never quote", title: "Rule", why: "" }]);
     expect(momentPicksFrom(null)).toEqual([]);
+    expect(
+      momentPicksFrom({ moments: [{ start: "So you see", end: "straight to main.", title: "t" }] }),
+    ).toEqual([{ quote: "", start: "So you see", end: "straight to main.", title: "t", why: "" }]);
+    expect(momentPicksFrom({ moments: [{ start: "only a start" }] })).toEqual([]);
     expect(
       chapterPicksFrom({ chapters: [{ title: "Intro", opening: "Hi", bullets: ["a", 3, ""] }] }),
     ).toEqual([{ title: "Intro", opening: "Hi", bullets: ["a"] }]);

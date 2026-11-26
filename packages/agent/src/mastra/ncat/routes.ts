@@ -5,7 +5,15 @@ import { env } from "../../lib/env";
 import { resourceIdOf } from "../routes/resource";
 import { reviewAgent } from "../agents/review";
 import { lookAgent, lookPrompt, lookRequest } from "./look";
-import { dashboardUsage, momentsAgent, momentsPrompt, momentsRequest } from "./moments";
+import { MODEL_ALLOWLIST } from "../lib/model-allowlist";
+import {
+  dashboardUsage,
+  momentsAgent,
+  momentsMessage,
+  momentsRequest,
+  PICK_MODEL,
+  pickModel,
+} from "./moments";
 import {
   batchAnswers,
   batchCheck,
@@ -137,16 +145,18 @@ export const createNcatRoutes = () => [
         const requestContext = new RequestContext();
         const key = await teamKey(organizationOf(body));
         if (key) requestContext.set(TEAM_KEY, key);
-        const result = await momentsAgent.generate(
-          [{ role: "user", content: momentsPrompt(parsed.data) }],
-          { requestContext },
-        );
+        // The model the team picked in Settings > Agent, when picks can run on it.
+        const model = pickModel(parsed.data.model, MODEL_ALLOWLIST);
+        requestContext.set(PICK_MODEL, model);
+        const result = await momentsAgent.generate([momentsMessage(parsed.data)], {
+          requestContext,
+        });
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);
         // What it used, so the dashboard can keep the run under its AI limit.
         return c.json({
           answer,
-          model: env.CHAT_MODEL,
+          model,
           usage: dashboardUsage(result.usage, result.providerMetadata),
         });
       } catch {

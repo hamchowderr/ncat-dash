@@ -1,12 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { env } from "../../lib/env";
+import { MODEL_ALLOWLIST } from "../lib/model-allowlist";
 import {
   type DashboardUsage,
   MOMENTS_EFFORT,
   MOMENTS_INSTRUCTIONS,
-  momentsPrompt,
+  type MomentsRequest,
+  momentsParts,
   momentsRequest,
+  pickModel,
 } from "./moments";
 
 /**
@@ -54,6 +57,15 @@ function anthropic(apiKey: string | null = null): Anthropic {
   return client;
 }
 
+/** The recording first, cached, so the batch's other questions about it read it cheaply. */
+function batchContent(request: MomentsRequest) {
+  const { recording, ask } = momentsParts(request);
+  return [
+    { type: "text" as const, text: recording, cache_control: { type: "ephemeral" as const } },
+    { type: "text" as const, text: ask },
+  ];
+}
+
 /** Sends the questions as one batch, on the team's own key when given. Returns its id. */
 export async function submitBatch(
   model: string,
@@ -64,12 +76,17 @@ export async function submitBatch(
     requests: requests.map(({ id, request }) => ({
       custom_id: id,
       params: {
-        model,
-        max_tokens: 16_000,
+        // The team's pick from Settings > Agent when picks can run on it.
+        model: request.model
+          ? pickModel(request.model, MODEL_ALLOWLIST).replace(/^anthropic\//, "")
+          : model,
+        // Thinking counts toward this. On a 64-minute transcript a pick thought for about
+        // 29,000 tokens, so 16,000 left no room for the answer at all.
+        max_tokens: 64_000,
         system: MOMENTS_INSTRUCTIONS,
         thinking: { type: "adaptive" },
         output_config: { effort: MOMENTS_EFFORT },
-        messages: [{ role: "user", content: momentsPrompt(request) }],
+        messages: [{ role: "user", content: batchContent(request) }],
       },
     })),
   });
