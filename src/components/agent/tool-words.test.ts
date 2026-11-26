@@ -379,3 +379,37 @@ describe("the workflow tools in plain words", () => {
     expect(toolWords("describe_workflow", {}).title).toBe("Reading the workflow");
   });
 });
+
+describe("the storyboard tools", () => {
+  test("reading says so, and writing, matching and making say what will happen", () => {
+    expect(toolWords("read_storyboard", {})).toEqual({
+      title: "Reading the storyboard",
+      question: "",
+      lines: [],
+    });
+    expect(
+      toolWords("write_storyboard", {
+        script: "## Open\n[Full Screen] Hello.\n[Panel · Graphic] Here is the plan.",
+        aspect: "9:16",
+      }),
+    ).toEqual({
+      title: "Writing the storyboard",
+      question: "Write this storyboard?",
+      lines: ["2 takes, in place of what is there", "Shaped 9:16"],
+    });
+    expect(toolWords("storyboard_from_upload", { file: "V12" }).lines).toEqual([
+      "From V12, after the takes already there",
+    ]);
+    expect(toolWords("match_storyboard_takes", { files: ["V3", "V4"] }).lines).toEqual([
+      "Found by what was said in V3 and V4",
+      "Lines that have a take keep it",
+    ]);
+    expect(toolWords("match_storyboard_takes", { files: ["V3"], replace: true }).lines[1]).toBe(
+      "Lines that have a take get picked again",
+    );
+    expect(toolWords("make_storyboard_video", { chapter: "Close" }).lines[0]).toBe(
+      'Just the chapter "Close"',
+    );
+    expect(toolWords("make_storyboard_video", {}).question).toBe("Make the video?");
+  });
+});

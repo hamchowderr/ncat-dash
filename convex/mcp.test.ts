@@ -175,6 +175,12 @@ describe("the MCP server", () => {
       ["list_workflows", true],
       ["set_up_workflow", false],
       ["switch_workflow", false],
+      ["list_projects", true],
+      ["read_storyboard", true],
+      ["write_storyboard", false],
+      ["storyboard_from_upload", false],
+      ["match_storyboard_takes", false],
+      ["make_storyboard_video", false],
     ]);
     // Directories ask for explicit hints: anything that changes, stops or sends counts as
     // destructive; only adding a new draft is not.
@@ -196,7 +202,12 @@ describe("the MCP server", () => {
     }
     expect(
       hints.filter(([, readOnly, destructive]) => !readOnly && !destructive).map(([name]) => name),
-    ).toEqual(["create_automation", "set_up_follow_on"]);
+    ).toEqual([
+      "create_automation",
+      "set_up_follow_on",
+      "storyboard_from_upload",
+      "make_storyboard_video",
+    ]);
     expect(hello.body.result.capabilities.extensions).toEqual({
       "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] },
       "io.modelcontextprotocol/skills": {},
@@ -619,7 +630,10 @@ describe("publishing and switching on over MCP", () => {
     const { t, automationId, key } = await setUp();
     // It starts on a new upload, and the team has no storage for uploads yet.
     const on = await call(t, key, "switch_automation", { automation_id: automationId, on: true });
-    expect(on).toMatchObject({ isError: true, text: "Connect a toolkit in Settings, under Toolkit, first." });
+    expect(on).toMatchObject({
+      isError: true,
+      text: "Connect a toolkit in Settings, under Toolkit, first.",
+    });
     expect((await t.run((ctx) => ctx.db.get(automationId)))?.enabled).toBe(false);
   });
 });
@@ -1438,5 +1452,159 @@ describe("autocomplete, attachable automations and runs, events and the server c
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("storyboards over MCP", () => {
+  const SCRIPT = [
+    "## Open",
+    "[Full Screen] I have never known how to code.",
+    "[Panel · Graphic] In 39 days we merged 881 changes.",
+  ].join("\n");
+
+  /** A recording in the Library with its words in, said from the start. */
+  const recording = (t: Backend, team: string, owner: { id: string }, text: string) =>
+    t.run(async (ctx) => {
+      const uploadId = await ctx.db.insert("uploads", {
+        organizationId: team,
+        key: "uploads/take.mp4",
+        fileName: "take.mp4",
+        contentType: "video/mp4",
+        size: 10,
+        status: "ready",
+        createdBy: owner.id,
+      });
+      const itemId = await ctx.db.insert("libraryItems", {
+        organizationId: team,
+        kind: "video",
+        source: "upload",
+        title: "take.mp4",
+        key: "uploads/take.mp4",
+        uploadId,
+        shortId: "V7",
+        tags: [],
+        searchText: "take.mp4",
+        createdBy: owner.id,
+        details: { duration: 30 },
+        transcript: { status: "ready", at: 1 },
+      });
+      const words = text.split(" ").map((word, index) => ({
+        t: word,
+        s: index * 0.4,
+        e: index * 0.4 + 0.32,
+      }));
+      await ctx.db.insert("transcriptPieces", {
+        organizationId: team,
+        itemId,
+        start: 0,
+        end: words.at(-1)!.e,
+        text,
+        words,
+      });
+      return uploadId;
+    });
+
+  test("lists projects, writes a storyboard from a script and reads it back", async () => {
+    const { t, team, owner, key } = await setUp();
+    const projectId = await owner.as.mutation(api.projects.create, {
+      organizationId: team,
+      name: "Launch Video",
+      package: "blank",
+    });
+    expect((await call(t, key, "list_projects")).data).toEqual([
+      expect.objectContaining({
+        project_id: projectId,
+        name: "Launch Video",
+        has_storyboard: false,
+      }),
+    ]);
+    const written = await call(t, key, "write_storyboard", {
+      project_id: projectId,
+      script: SCRIPT,
+      aspect: "9:16",
+      source: "From the script Launch Day",
+    });
+    expect(written.data).toMatchObject({ chapters: 1, takes: 2, started: true });
+    expect(written.data.address).toMatch(new RegExp(`/projects/${projectId}\\?view=storyboard$`));
+    const read = await call(t, key, "read_storyboard", { project_id: projectId });
+    expect(read.data).toMatchObject({
+      project: "Launch Video",
+      has_storyboard: true,
+      aspect: "9:16",
+      // Written back out with each line's parts named, you included.
+      script:
+        "## Open\n[Full Screen · You] I have never known how to code.\n[Panel · You · Graphic] In 39 days we merged 881 changes.",
+      takes: [
+        { number: 1, chapter: "Open", scene: "full", line: "I have never known how to code." },
+        { number: 2, chapter: "Open", scene: "panel" },
+      ],
+    });
+    expect((await call(t, key, "list_projects")).data[0].has_storyboard).toBe(true);
+  });
+
+  test("matches a recorded take by what was said, then makes the video", async () => {
+    const { t, team, owner, key } = await setUp();
+    const projectId = await owner.as.mutation(api.projects.create, {
+      organizationId: team,
+      name: "Launch Video",
+      package: "blank",
+    });
+    await call(t, key, "write_storyboard", { project_id: projectId, script: SCRIPT });
+    const nothing = await call(t, key, "make_storyboard_video", { project_id: projectId });
+    expect(nothing).toMatchObject({
+      isError: true,
+      text: expect.stringMatching(/nothing to make/),
+    });
+    const uploadId = await recording(t, team, owner, "I have never known how to code.");
+    const matched = await call(t, key, "match_storyboard_takes", {
+      project_id: projectId,
+      files: ["V7"],
+    });
+    expect(matched.data).toMatchObject({ matched: 1, picked: [], missing: [2], not_ready: [] });
+    const board = await owner.as.query(api.storyboards.get, { projectId });
+    expect(board!.chapters[0]!.takes[0]!.files.you).toBe(`upload:${uploadId}#t=0,2.87`);
+    const unknown = await call(t, key, "make_storyboard_video", {
+      project_id: projectId,
+      chapter: "Middle",
+    });
+    expect(unknown).toMatchObject({
+      isError: true,
+      text: expect.stringMatching(/no chapter called Middle/),
+    });
+    const made = await call(t, key, "make_storyboard_video", {
+      project_id: projectId,
+      chapter: "open",
+    });
+    // Take 2 shows a graphic beside you but has neither, so it waits for its file.
+    expect(made.data).toMatchObject({ takes: 1, skipped: [2], plain: [] });
+  });
+
+  test("keeps to the team, and names a file that is not in the Library", async () => {
+    const { t, team, owner, key, other, otherTeam } = await setUp();
+    const projectId = await owner.as.mutation(api.projects.create, {
+      organizationId: team,
+      name: "Launch Video",
+      package: "blank",
+    });
+    const missing = await call(t, key, "storyboard_from_upload", {
+      project_id: projectId,
+      file: "V404",
+    });
+    expect(missing).toMatchObject({ isError: true, text: expect.stringMatching(/no file V404/) });
+    const otherKey = await agentToken(t, other, otherTeam);
+    expect((await call(t, otherKey, "list_projects")).data).toEqual([]);
+    for (const [name, args] of [
+      ["read_storyboard", { project_id: projectId }],
+      ["write_storyboard", { project_id: projectId, script: SCRIPT }],
+    ] as const) {
+      expect(await call(t, otherKey, name, args)).toMatchObject({
+        isError: true,
+        text: expect.stringMatching(/not on this team/),
+      });
+    }
+    expect(await call(t, key, "read_storyboard", { project_id: "nonsense" })).toMatchObject({
+      isError: true,
+      text: expect.stringMatching(/That project is gone/),
+    });
   });
 });
