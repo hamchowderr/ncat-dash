@@ -65,7 +65,9 @@ export async function submitBatch(
       custom_id: id,
       params: {
         model,
-        max_tokens: 16_000,
+        // Thinking counts toward this. On a 64-minute transcript a pick thought for about
+        // 29,000 tokens, so 16,000 left no room for the answer at all.
+        max_tokens: 64_000,
         system: MOMENTS_INSTRUCTIONS,
         thinking: { type: "adaptive" },
         output_config: { effort: MOMENTS_EFFORT },
