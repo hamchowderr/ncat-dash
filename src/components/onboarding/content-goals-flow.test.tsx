@@ -161,6 +161,45 @@ describe("asking what the team makes", () => {
     );
   });
 
+  test("keeps the website for the agent, the person's own when there is no one to share with", async () => {
+    answerQuery(api.agentSites.canShare, false);
+    renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);
+    pick(/Coaching or Courses/);
+    pick(/Continue/);
+    expect(screen.queryByRole("checkbox", { name: /Share with the team/ })).toBeNull();
+    fireEvent.change(screen.getByRole("textbox", { name: "Your website" }), {
+      target: { value: "example.com" },
+    });
+    pick(/Continue without one/);
+    expect(
+      await screen.findByRole("heading", { name: "Suggest these on your uploads" }),
+    ).toBeTruthy();
+    expect(mutationOf(api.agentSites.remember)).toHaveBeenCalledWith({
+      organizationId: TEAM.id,
+      url: "example.com",
+      share: false,
+    });
+  });
+
+  test("shares the website with the team when ticked, and leaves an empty one out", async () => {
+    answerQuery(api.agentSites.canShare, true);
+    renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);
+    pick(/Music/);
+    pick(/Continue/);
+    fireEvent.change(screen.getByRole("textbox", { name: "Your website" }), {
+      target: { value: "https://example.com" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Share with the team/ }));
+    pick(/Continue without one/);
+    await waitFor(() =>
+      expect(mutationOf(api.agentSites.remember)).toHaveBeenCalledWith({
+        organizationId: TEAM.id,
+        url: "https://example.com",
+        share: true,
+      }),
+    );
+  });
+
   test("tells the person when the answers could not be saved", async () => {
     mutationOf(api.contentGoals.save).mockRejectedValue(new Error("boom"));
     renderInApp(<ContentGoalsFlow organizationId={TEAM.id} onFinish={() => {}} />);

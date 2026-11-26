@@ -33,6 +33,7 @@
   "more-triggers.spec.ts": 17,
   "motion-settings.spec.ts": 11,
   "notification-settings.spec.ts": 26,
+  "page-recording.spec.ts": 12,
   "page-tours.spec.ts": 48,
   "panel-no-sideways.spec.ts": 133,
   "paste-link.spec.ts": 14,
