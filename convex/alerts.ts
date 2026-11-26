@@ -3,6 +3,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { isFor, notify } from "./lib/alerts";
 import { requireMember } from "./lib/authz";
 import { alertHref, preferenceOf, wants } from "./lib/notifications";
+import { clipsReady } from "./trialTips";
 
 // The Inbox shows this many; older ones are still on each automation's list of runs.
 export const SHOWN = 100;
@@ -85,5 +86,6 @@ export const runFinished = internalMutation({
           : `${args.count} new files are ready in Files.`,
       retries: 0,
     });
+    await clipsReady(ctx, run.organizationId, run._id);
   },
 });

@@ -95,7 +95,23 @@ export const NOTIFICATION_KINDS = [
     email: true,
     chat: true,
   },
+  {
+    kind: "trial_tips",
+    title: "Tips during my free trial",
+    description:
+      "A few emails with the next step toward your first clips, sent only while it would help. Only while the team is on a free trial.",
+    bell: false,
+    email: true,
+    chat: false,
+    emailOnly: true,
+  },
 ] as const;
+
+/** Kinds that only ever come by email, so they have no Inbox or chat switch. */
+export function emailOnly(kind: NotificationKind): boolean {
+  const entry = NOTIFICATION_KINDS.find((one) => one.kind === kind);
+  return Boolean(entry && "emailOnly" in entry && entry.emailOnly);
+}
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number]["kind"];
 /** The chat apps an alert can go to, each on its own switch. */

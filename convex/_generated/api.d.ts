@@ -184,6 +184,7 @@ import type * as toolkitHealth from "../toolkitHealth.js";
 import type * as tours from "../tours.js";
 import type * as translations from "../translations.js";
 import type * as trial from "../trial.js";
+import type * as trialTips from "../trialTips.js";
 import type * as versions from "../versions.js";
 import type * as videoCookies from "../videoCookies.js";
 import type * as voiceNotes from "../voiceNotes.js";
@@ -374,6 +375,7 @@ declare const fullApi: ApiFromModules<{
   tours: typeof tours;
   translations: typeof translations;
   trial: typeof trial;
+  trialTips: typeof trialTips;
   versions: typeof versions;
   videoCookies: typeof videoCookies;
   voiceNotes: typeof voiceNotes;

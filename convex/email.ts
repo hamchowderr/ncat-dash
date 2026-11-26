@@ -19,6 +19,8 @@ import {
   sendEmail,
   senderProblem,
   testEmail,
+  thanksEmail,
+  trialTipEmail,
   trialEndedEmail,
   trialEndingEmail,
   welcomeEmail,
@@ -44,6 +46,7 @@ import { decryptSecret, encryptSecret } from "./lib/crypto";
 import { getEdition } from "./lib/edition";
 import { isFor } from "./lib/alerts";
 import { buyUrl } from "./lib/trial";
+import { tip as trialTip } from "./trialTips";
 import {
   readUnsubscribeToken,
   unsubscribeToken,
@@ -519,6 +522,54 @@ export const sendTrialReminder = internalAction({
         ? trialEndingEmail(details, branding)
         : trialEndedEmail(details, branding)),
     });
+  },
+});
+
+/**
+ * Sends one of the free trial's tips, or the thanks once a team bought, when
+ * trialTips.tipFor says it should still go (convex/trialTips.ts). Each goes once.
+ */
+export const sendTrialTip = internalAction({
+  args: { organizationId: v.string(), tip: trialTip, runId: v.optional(v.id("runs")) },
+  handler: async (ctx, args) => {
+    const sending = await loadSending(ctx);
+    if (!sending) return;
+    const found = await ctx.runQuery(internal.trialTips.tipFor, {
+      organizationId: args.organizationId,
+      tip: args.tip,
+    });
+    if (!found) return;
+    const branding = { appName: sending.fromName };
+    const name = found.name || undefined;
+    const composed =
+      args.tip === "thanks"
+        ? thanksEmail({ name, teamName: found.teamName, homeUrl: siteUrl("/") }, branding)
+        : await optOut(
+            trialTipEmail(
+              {
+                tip: args.tip === "come_back_later" ? "come_back" : args.tip,
+                name,
+                teamName: found.teamName,
+                uploadsUrl: siteUrl("/library"),
+                readyMadeUrl: siteUrl("/automations/new"),
+                ...(args.runId ? { runUrl: siteUrl(`/runs/${args.runId}`) } : {}),
+                buyUrl: buyUrl(),
+                homeUrl: siteUrl("/"),
+                settingsUrl: siteUrl(SETTINGS_PATH),
+              },
+              branding,
+            ),
+            found.userId,
+            args.organizationId,
+            "trial_tips",
+          );
+    const result = await deliver(ctx, sending, { to: found.email, ...composed });
+    if (result.ok) {
+      await ctx.runMutation(internal.trialTips.recordSent, {
+        organizationId: args.organizationId,
+        tip: args.tip,
+      });
+    }
   },
 });
 

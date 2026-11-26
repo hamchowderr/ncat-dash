@@ -1892,6 +1892,7 @@ export default defineSchema({
         clip_finished: v.optional(kindChannels),
         footage_problem: v.optional(kindChannels),
         rights_ending: v.optional(kindChannels),
+        trial_tips: v.optional(kindChannels),
       }),
     ),
     // "now": each email as it happens. "daily": one summary a day at `digestHour` in
@@ -2523,6 +2524,21 @@ export default defineSchema({
     .index("by_organization", ["organizationId"])
     .index("by_email_key", ["emailKey"])
     .index("by_network_and_started", ["networkKey", "startedAt"]),
+
+  // The tips a team's owner was sent during its free trial (convex/trialTips.ts), so each
+  // goes once, and the thanks once the team bought.
+  trialTipsSent: defineTable({
+    organizationId: v.string(),
+    tip: v.union(
+      v.literal("first_upload"),
+      v.literal("clips_ready"),
+      v.literal("every_upload"),
+      v.literal("come_back"),
+      v.literal("come_back_later"),
+      v.literal("thanks"),
+    ),
+    sentAt: v.number(),
+  }).index("by_organization_and_tip", ["organizationId", "tip"]),
 
   // Where each person signed up from, on the hosted edition: their mailbox however it was
   // written and a keyed hash of their network, never the address itself.

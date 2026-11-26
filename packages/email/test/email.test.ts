@@ -22,6 +22,8 @@ import {
   verificationEmail,
   trialEndedEmail,
   trialEndingEmail,
+  trialTipEmail,
+  thanksEmail,
   welcomeEmail,
   withUnsubscribe,
   testEmail,
@@ -398,7 +400,10 @@ describe("the look", () => {
       { appName: "Takewon" },
     );
     expect(failed.html).toContain("Your content, social media ready.");
-    expect(failed.html).toContain("Made by Otaku Solutions.");
+    expect(failed.html).toContain(
+      "Made by Otaku Solutions, 10521 West Zamora Ave, Los Angeles, CA 90002.",
+    );
+    expect(failed.text).toContain("10521 West Zamora Ave, Los Angeles, CA 90002");
     expect(failed.html).toContain('href="https://d/settings/notifications"');
     expect(failed.html).toContain("Change your notification settings");
     expect(failed.text).toContain("Notification settings: https://d/settings/notifications");
@@ -484,5 +489,49 @@ describe("unsubscribe", () => {
     expect(out.html).toContain(">Unsubscribe</a>");
     expect(out.html).not.toContain("<!--unsubscribe-->");
     expect(out.text).toContain(`Unsubscribe: ${url}`);
+  });
+});
+
+describe("trial tips", () => {
+  const base = {
+    teamName: "Salt House",
+    uploadsUrl: "https://d/library",
+    readyMadeUrl: "https://d/automations/new",
+    buyUrl: "https://takewon.com/pricing",
+    homeUrl: "https://d/",
+    settingsUrl: "https://d/settings/notifications",
+  };
+
+  it("each tip gives one next step, says why it came, and where to stop it", () => {
+    const first = trialTipEmail({ ...base, tip: "first_upload", name: "Maya" }, branding);
+    expect(first.subject).toBe("Your first video is one click away");
+    expect(first.text).toContain("Upload a video: https://d/library");
+    expect(first.text).toContain("You get these because you started a free trial.");
+    expect(first.text).toContain("Notification settings: https://d/settings/notifications");
+
+    const clips = trialTipEmail(
+      { ...base, tip: "clips_ready", runUrl: "https://d/runs/7" },
+      branding,
+    );
+    expect(clips.subject).toBe("Your first clips are ready");
+    expect(clips.text).toContain("See your clips: https://d/runs/7");
+
+    const every = trialTipEmail({ ...base, tip: "every_upload" }, branding);
+    expect(every.text).toContain("Pick a ready-made automation: https://d/automations/new");
+
+    const back = trialTipEmail({ ...base, tip: "come_back" }, branding);
+    expect(back.subject).toBe("Still want your content social media ready?");
+    expect(back.text).toContain("Your content, social media ready.");
+    expect(back.text).toContain("Get Takewon: https://takewon.com/pricing");
+  });
+
+  it("the thanks has no buy button and names the team", () => {
+    const thanks = thanksEmail(
+      { name: "Maya", teamName: "Salt House", homeUrl: "https://d/" },
+      branding,
+    );
+    expect(thanks.subject).toBe("Thanks for getting Takewon");
+    expect(thanks.text).toContain("Salt House is all set.");
+    expect(thanks.text).toContain("Open Takewon: https://d/");
   });
 });

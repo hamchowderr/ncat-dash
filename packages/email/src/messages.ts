@@ -61,6 +61,9 @@ export const MOTTO = "Your content, social media ready.";
 /** Who makes Takewon, named where a company normally is: an email's footer. */
 export const COMPANY = "Otaku Solutions";
 
+/** Where the company is, as the law on marketing email (CAN-SPAM) asks every email to say. */
+export const COMPANY_ADDRESS = "10521 West Zamora Ave, Los Angeles, CA 90002";
+
 /**
  * The mark beside the name: a violet square with a play shape, drawn in HTML rather than
  * an image, so it shows even where a mail app holds images back.
@@ -86,7 +89,9 @@ function compose(subject: string, layout: Layout, branding: Branding): Composed 
     "--",
     ...(reason ? [reason] : []),
     ...(settingsUrl ? [`Notification settings: ${settingsUrl}`] : []),
-    ours ? `${branding.appName}. ${MOTTO} Made by ${COMPANY}.` : `Sent by ${branding.appName}.`,
+    ...(ours
+      ? [`${branding.appName}. ${MOTTO} Made by ${COMPANY}.`, COMPANY_ADDRESS]
+      : [`Sent by ${branding.appName}.`]),
   ].join("\n");
 
   const p = (content: string, style = "") =>
@@ -142,7 +147,7 @@ function compose(subject: string, layout: Layout, branding: Branding): Composed 
         ]
       : []),
     ours
-      ? `<p style="margin:0;">${escapeHtml(branding.appName)}. ${escapeHtml(MOTTO)}<br>Made by ${escapeHtml(COMPANY)}.</p>`
+      ? `<p style="margin:0;">${escapeHtml(branding.appName)}. ${escapeHtml(MOTTO)}<br>Made by ${escapeHtml(COMPANY)}, ${escapeHtml(COMPANY_ADDRESS)}.</p>`
       : `<p style="margin:0;">Sent by ${escapeHtml(branding.appName)}.</p>`,
     "</div>",
     "</div>",
@@ -668,6 +673,120 @@ export function trialEndedEmail(
         ? { label: `Get ${app}`, url: args.buyUrl }
         : { label: `Open ${app}`, url: args.homeUrl },
       footnote: "You get this once, because you made this team.",
+    },
+    branding,
+  );
+}
+
+/** The steps of the trial's tips, sent only to someone who has not done the thing yet. */
+export type TrialTip = "first_upload" | "clips_ready" | "every_upload" | "come_back";
+
+const TIP_FOOTNOTE = "You get a few of these tips during your free trial.";
+
+/**
+ * A tip during the free trial (convex/trialTips.ts decides whether it goes): one next
+ * step each, toward a first finished clip and then toward it running by itself.
+ */
+export function trialTipEmail(
+  args: {
+    tip: TrialTip;
+    name?: string;
+    teamName: string;
+    uploadsUrl: string;
+    readyMadeUrl: string;
+    /** For clips_ready: the run whose files are ready. */
+    runUrl?: string;
+    buyUrl: string | null;
+    homeUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const app = branding.appName;
+  const hi = args.name ? `Hi ${oneLine(args.name, 60)}, ` : "";
+  const shared = {
+    footnote: TIP_FOOTNOTE,
+    reason: "You get these because you started a free trial.",
+    settingsUrl: args.settingsUrl,
+  };
+  if (args.tip === "first_upload") {
+    return compose(
+      "Your first video is one click away",
+      {
+        heading: "Your first video is one click away",
+        paragraphs: [
+          `${hi}drop a video into ${app} and it is transcribed as soon as it lands.`,
+          "From there, one ready-made automation turns it into captioned vertical clips.",
+        ],
+        button: { label: "Upload a video", url: args.uploadsUrl },
+        ...shared,
+      },
+      branding,
+    );
+  }
+  if (args.tip === "clips_ready") {
+    return compose(
+      "Your first clips are ready",
+      {
+        heading: "Your first clips are ready",
+        paragraphs: [
+          `${hi}your first run in ${oneLine(args.teamName, 60)} is done and its files are in Files.`,
+          "Next, try another ready-made automation on the same video: captions in your brand, a thumbnail, or best moments.",
+        ],
+        button: { label: "See your clips", url: args.runUrl ?? args.homeUrl },
+        ...shared,
+      },
+      branding,
+    );
+  }
+  if (args.tip === "every_upload") {
+    return compose(
+      "Let it run on every upload",
+      {
+        heading: "Let it run on every upload",
+        paragraphs: [
+          `${hi}switch on a ready-made automation and every new video gets the same treatment, with nobody pressing anything.`,
+          "Pick one, switch it on, and drop in your next video.",
+        ],
+        button: { label: "Pick a ready-made automation", url: args.readyMadeUrl },
+        ...shared,
+      },
+      branding,
+    );
+  }
+  return compose(
+    `Still want your content social media ready?`,
+    {
+      heading: MOTTO,
+      paragraphs: [
+        `${hi}your free trial of ${app} has ended, and everything you made in ${oneLine(args.teamName, 60)} is still there.`,
+        `It all starts again once you have ${app}.`,
+      ],
+      button: args.buyUrl
+        ? { label: `Get ${app}`, url: args.buyUrl }
+        : { label: `Open ${app}`, url: args.homeUrl },
+      ...shared,
+    },
+    branding,
+  );
+}
+
+/** Sent to a team's owner once the team has bought. */
+export function thanksEmail(
+  args: { name?: string; teamName: string; homeUrl: string },
+  branding: Branding,
+) {
+  const app = branding.appName;
+  return compose(
+    `Thanks for getting ${app}`,
+    {
+      heading: `Thanks for getting ${app}`,
+      paragraphs: [
+        `${args.name ? `Hi ${oneLine(args.name, 60)}, ` : ""}${oneLine(args.teamName, 60)} is all set. Automations and the agent run again, with no trial limits.`,
+        "Reply to this email if you need a hand with anything.",
+      ],
+      button: { label: `Open ${app}`, url: args.homeUrl },
+      footnote: "You get this once, because your team bought.",
     },
     branding,
   );
