@@ -1,3 +1,4 @@
+import { onStoryboardVideoJob } from "./lib/storyboardVideos";
 import {
   failsTheSameEveryTime,
   getNodeType,
@@ -456,6 +457,8 @@ export const finish = internalMutation({
     );
     // A sample being studied for its look.
     await onLookJobFinished(ctx, job);
+    // A take of a storyboard's video, or the join of its takes.
+    await onStoryboardVideoJob(ctx, (await ctx.db.get(job._id))!);
     // A library file being made searchable: keep what was said in it.
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
@@ -538,6 +541,7 @@ export const giveUp = internalMutation({
     );
     await onLinkJobFinished(ctx, job, null, "The toolkit never reported a result for this job.");
     await onLookJobFinished(ctx, job);
+    await onStoryboardVideoJob(ctx, (await ctx.db.get(job._id))!);
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
     }

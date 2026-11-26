@@ -48,3 +48,28 @@ export async function isMember(ctx: QueryCtx | MutationCtx, organizationId: stri
     throw error;
   }
 }
+
+/** A caller identified another way, such as an MCP client signed in for its team. */
+export type TeamCaller = { organizationId: string; userId: string };
+
+/**
+ * `requireMember` for functions both the dashboard and an MCP client call: the person
+ * from their sign-in, or the MCP caller, who must still be on the team that owns the thing.
+ */
+export async function memberOrCaller(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: string,
+  as?: TeamCaller,
+): Promise<{ userId: string; role: TeamRole }> {
+  if (!as) return requireMember(ctx, organizationId);
+  if (as.organizationId !== organizationId) {
+    throw new ConvexError({ code: "not_found", message: "That is not on this team." });
+  }
+  const role = (await ctx.runQuery(components.betterAuth.members.roleFor, {
+    userId: as.userId,
+    organizationId,
+  })) as TeamRole | null;
+  if (!role) throw new ConvexError({ code: "forbidden", message: "You are not on this team." });
+  await withTeamSteps(ctx, organizationId);
+  return { userId: as.userId, role };
+}

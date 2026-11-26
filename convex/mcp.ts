@@ -1,4 +1,4 @@
-import { PRODUCT_NAME } from "@takewon/automation-core";
+import { PRODUCT_NAME, readShortId } from "@takewon/automation-core";
 import { getStep } from "@takewon/step-catalog";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -53,11 +53,15 @@ import { withTeamSteps } from "./lib/teamSteps";
  */
 
 const INSTRUCTIONS =
-  "This is Takewon, a content automation dashboard. Each automation is a set of plain steps (cut clips, add captions, reframe, and so on) that runs by itself on the team's own toolkit, with no AI per video. Read the content-automations skill before building. list_automations and describe_automation show what the team has; create_automation and change_automation build (changes are kept as a draft until publish_automation makes them live); switch_automation switches one on or off; start_automation runs one on an upload or a file link; check_run shows how a run is going and the files it made. list_approvals shows what waits for someone to approve, and decide_approval approves it or sends it back when the person asks you to. A chain of linked automations can be one workflow (set_up_workflow) with a single review before its files go out.";
+  "This is Takewon, a content automation dashboard. Each automation is a set of plain steps (cut clips, add captions, reframe, and so on) that runs by itself on the team's own toolkit, with no AI per video. Read the content-automations skill before building. list_automations and describe_automation show what the team has; create_automation and change_automation build (changes are kept as a draft until publish_automation makes them live); switch_automation switches one on or off; start_automation runs one on an upload or a file link; check_run shows how a run is going and the files it made. list_approvals shows what waits for someone to approve, and decide_approval approves it or sends it back when the person asks you to. A chain of linked automations can be one workflow (set_up_workflow) with a single review before its files go out. A project's storyboard plans its video line by line: read_storyboard reads it, write_storyboard writes it from a script or a transcript you have read, storyboard_from_upload adds the lines said in an upload, match_storyboard_takes puts recorded takes in by what was said, and make_storyboard_video makes it into one finished video.";
 
 const SERVER_INFO = { name: "takewon", title: PRODUCT_NAME, version: "2.0.0" };
 
 const automationId = { type: "string", description: "From list_automations or create_automation." };
+const projectId = { type: "string", description: "From list_projects." };
+/** A storyboard's script, as write_storyboard takes it. */
+const SCRIPT_FORM =
+  'Write "## Chapter title" lines, then one take a line as "[Scene · Part] The line said.", such as "[Full Screen] Hello and welcome." or "[Panel · Graphic] Three things changed." Scenes are Full Screen, Panel, Centre, Full Graphic and Circle; parts are Graphic, Page recording and Your screen; add "· No voice" for a line shown only as a graphic. Keep each line to one or two spoken sentences.';
 
 /** An object's fields, for an output schema. Nothing is required, so extra fields still fit. */
 const shape = (properties: Record<string, unknown>) => ({ type: "object", properties });
@@ -447,6 +451,169 @@ const TOOLS: McpTool[] = [
     readOnly: false,
     icons: icon("power"),
   },
+  {
+    name: "list_projects",
+    title: "List projects",
+    description:
+      "The team's projects, most recently changed first, with the id the storyboard tools take and whether each has a storyboard.",
+    inputSchema: {
+      type: "object",
+      properties: { limit: { type: "integer", minimum: 1, maximum: 50, default: 20 } },
+      additionalProperties: false,
+    },
+    readOnly: true,
+    icons: icon("folder-open"),
+    outputSchema: list(
+      shape({
+        project_id: { type: "string" },
+        name: { type: "string" },
+        has_storyboard: { type: "boolean" },
+        address: { type: "string" },
+      }),
+    ),
+  },
+  {
+    name: "read_storyboard",
+    title: "Read a storyboard",
+    description:
+      "A project's storyboard: its script as text (the form write_storyboard takes) and each take's number, chapter, line, scene and where it stands (waiting for a take, needs a graphic, ready). Read it before changing one.",
+    inputSchema: {
+      type: "object",
+      properties: { project_id: projectId },
+      required: ["project_id"],
+      additionalProperties: false,
+    },
+    readOnly: true,
+    icons: icon("file-text"),
+    outputSchema: shape({
+      project: { type: "string" },
+      has_storyboard: { type: "boolean" },
+      aspect: textOrNull,
+      length: textOrNull,
+      script: textOrNull,
+      takes: {
+        type: "array",
+        items: shape({
+          number: { type: "integer" },
+          chapter: { type: "string" },
+          line: { type: "string" },
+          scene: { type: "string" },
+          status: { type: "string" },
+        }),
+      },
+      address: { type: "string" },
+    }),
+  },
+  {
+    name: "write_storyboard",
+    title: "Write a storyboard",
+    description: `Writes a project's storyboard from a script, starting it when the project has none and otherwise replacing its chapters and takes (lines kept word for word keep their files). Use it to plan a video from a script, or from a transcript you have read. ${SCRIPT_FORM}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: projectId,
+        script: { type: "string", minLength: 1, maxLength: 400000, description: SCRIPT_FORM },
+        aspect: {
+          type: "string",
+          enum: ["16:9", "9:16", "1:1", "4:5"],
+          description: "The video's shape. Left out: 16:9 for a new one, else unchanged.",
+        },
+        source: {
+          type: "string",
+          maxLength: 200,
+          description: 'Where the lines came from, such as "From the script Launch Day".',
+        },
+      },
+      required: ["project_id", "script"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    icons: icon("pencil"),
+    outputSchema: shape({
+      chapters: { type: "integer" },
+      takes: { type: "integer" },
+      started: { type: "boolean" },
+      address: { type: "string" },
+    }),
+  },
+  {
+    name: "storyboard_from_upload",
+    title: "Storyboard from an upload",
+    description:
+      "Adds the lines said in one of the team's uploads to a project's storyboard: a line for every sentence with its own clip, retakes left out, chapters at long pauses. Name the upload by its short ID from the Library, like V12.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: projectId,
+        file: { type: "string", description: "The upload's short ID, like V12." },
+      },
+      required: ["project_id", "file"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    destructive: false,
+    icons: icon("upload"),
+    outputSchema: shape({
+      chapters: { type: "integer" },
+      takes: { type: "integer" },
+      address: { type: "string" },
+    }),
+  },
+  {
+    name: "match_storyboard_takes",
+    title: "Match recorded takes",
+    description:
+      "Puts recorded takes into a project's storyboard by what was said in them: each line is found in the named recordings, and when a line was said more than once the best take is used. Lines with a take keep it unless replace is true.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: projectId,
+        files: {
+          type: "array",
+          items: { type: "string" },
+          minItems: 1,
+          maxItems: 20,
+          description: "The recordings' short IDs, like V12.",
+        },
+        replace: { type: "boolean", description: "Pick again for lines that already have a take." },
+      },
+      required: ["project_id", "files"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    icons: icon("list-checks"),
+    outputSchema: shape({
+      matched: { type: "integer" },
+      picked: { type: "array", items: { type: "integer" } },
+      missing: { type: "array", items: { type: "integer" } },
+      not_ready: { type: "array", items: { type: "string" } },
+      address: { type: "string" },
+    }),
+  },
+  {
+    name: "make_storyboard_video",
+    title: "Make the storyboard's video",
+    description:
+      "Makes a project's storyboard, or one chapter of it, into one finished video: every take in its scene, joined in order, kept in the Library. Takes still waiting for their file are left out and named. It runs in the background; the Storyboard tab shows how far it is.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: projectId,
+        chapter: { type: "string", description: "Only this chapter, by its title." },
+      },
+      required: ["project_id"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+    destructive: false,
+    icons: icon("play"),
+    outputSchema: shape({
+      takes: { type: "integer" },
+      skipped: { type: "array", items: { type: "integer" } },
+      plain: { type: "array", items: { type: "integer" } },
+      address: { type: "string" },
+    }),
+  },
 ];
 
 /** Slash commands: ready-made requests the person picks from the chat app's menu. */
@@ -562,6 +729,7 @@ export function linksOf(result: unknown): McpLink[] {
 
 const site = () => (process.env.SITE_URL ?? "").replace(/\/+$/, "");
 const automationLink = (id: string) => `${site()}/automations/${id}`;
+const storyboardLink = (id: string) => `${site()}/projects/${id}?view=storyboard`;
 const runLink = (automation: string, run: string) =>
   `${site()}/automations/${automation}/runs/${run}`;
 
@@ -644,6 +812,54 @@ export const automations = internalQuery({
         };
       }),
     );
+  },
+});
+
+/** The team's projects, for the storyboard tools. */
+export const projects = internalQuery({
+  args: { organizationId: v.string(), limit: v.number() },
+  handler: async (ctx, args) => {
+    const list = await ctx.db
+      .query("projects")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .collect();
+    const recent = list.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, args.limit);
+    const shown = [];
+    for (const project of recent) {
+      const board = await ctx.db
+        .query("storyboards")
+        .withIndex("by_project", (q) => q.eq("projectId", project._id))
+        .first();
+      shown.push({
+        project_id: project._id,
+        name: project.name,
+        has_storyboard: !!board,
+        address: storyboardLink(project._id),
+      });
+    }
+    return shown;
+  },
+});
+
+/** Library items by their short IDs (V12), for the storyboard tools. */
+export const libraryByShortId = internalQuery({
+  args: { organizationId: v.string(), shortIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const found: Id<"libraryItems">[] = [];
+    for (const asked of args.shortIds) {
+      const shortId = readShortId(asked);
+      const item = shortId
+        ? await ctx.db
+            .query("libraryItems")
+            .withIndex("by_organization_and_shortId", (q) =>
+              q.eq("organizationId", args.organizationId).eq("shortId", shortId),
+            )
+            .first()
+        : null;
+      if (!item) said(`There is no file ${asked} in the Library.`);
+      found.push(item!._id);
+    }
+    return found;
   },
 });
 
@@ -1118,6 +1334,13 @@ async function callTool(
     if (!id) throw new ToolSaid("automation_id is needed. list_automations gives the ids.");
     return id;
   };
+  const project = () => {
+    const id = text(args.project_id);
+    if (!id) throw new ToolSaid("project_id is needed. list_projects gives the ids.");
+    return id;
+  };
+  const board = (projectId: string) =>
+    ctx.runQuery(internal.storyboards.forProjectAs, { organizationId, userId, projectId });
   try {
     switch (name) {
       case "list_automations":
@@ -1303,6 +1526,117 @@ async function callTool(
         });
       case "list_workflows":
         return await ctx.runQuery(internal.workflows.listAs, { organizationId });
+      case "list_projects":
+        return await ctx.runQuery(internal.mcp.projects, {
+          organizationId,
+          limit: count(args.limit, 20, 50),
+        });
+      case "read_storyboard": {
+        const id = project();
+        const read = await board(id);
+        const found = read.storyboard;
+        return {
+          project: read.project,
+          has_storyboard: !!found,
+          aspect: found?.aspect ?? null,
+          length: found?.length ?? null,
+          script: found?.script ?? null,
+          takes: (found?.chapters ?? []).flatMap((chapter) =>
+            chapter.takes.map((take) => ({ ...take, chapter: chapter.title })),
+          ),
+          address: storyboardLink(id),
+        };
+      }
+      case "write_storyboard": {
+        const id = project();
+        const script = typeof args.script === "string" ? args.script : "";
+        if (!script.trim()) throw new ToolSaid("script is needed: the storyboard's lines.");
+        const aspect = text(args.aspect);
+        const source = text(args.source);
+        const written = await ctx.runMutation(internal.storyboards.writeForProjectAs, {
+          organizationId,
+          userId,
+          projectId: id,
+          script,
+          ...(aspect ? { aspect: aspect as "16:9" } : {}),
+          ...(source ? { source } : {}),
+        });
+        return {
+          chapters: written.chapters,
+          takes: written.takes,
+          started: written.started,
+          address: storyboardLink(id),
+        };
+      }
+      case "storyboard_from_upload": {
+        const id = project();
+        const file = text(args.file);
+        if (!file) throw new ToolSaid("file is needed: the upload's short ID, like V12.");
+        const [libraryItemId] = await ctx.runQuery(internal.mcp.libraryByShortId, {
+          organizationId,
+          shortIds: [file],
+        });
+        const added = await ctx.runMutation(internal.storyboards.gatherUploadDraftAs, {
+          organizationId,
+          userId,
+          projectId: id,
+          libraryItemId: libraryItemId!,
+        });
+        return { ...added, address: storyboardLink(id) };
+      }
+      case "match_storyboard_takes": {
+        const id = project();
+        const shortIds = Array.isArray(args.files)
+          ? args.files.filter((one): one is string => typeof one === "string" && !!one.trim())
+          : [];
+        if (shortIds.length === 0) {
+          throw new ToolSaid("files is needed: the recordings' short IDs, like V12.");
+        }
+        const found = (await board(id)).storyboard;
+        if (!found) throw new ToolSaid("This project has no storyboard yet. Write one first.");
+        const libraryItemIds = await ctx.runQuery(internal.mcp.libraryByShortId, {
+          organizationId,
+          shortIds,
+        });
+        const result = await ctx.runAction(internal.storyboardMatch.matchAs, {
+          organizationId,
+          userId,
+          storyboardId: found.storyboardId as Id<"storyboards">,
+          libraryItemIds,
+          ...(args.replace === true ? { replace: true } : {}),
+        });
+        return {
+          matched: result.matched,
+          picked: result.picked,
+          missing: result.missing,
+          not_ready: result.notReady,
+          address: storyboardLink(id),
+        };
+      }
+      case "make_storyboard_video": {
+        const id = project();
+        const found = (await board(id)).storyboard;
+        if (!found) throw new ToolSaid("This project has no storyboard yet. Write one first.");
+        const chapter = text(args.chapter);
+        let chapterId: string | undefined;
+        if (chapter) {
+          const wanted = chapter.toLowerCase();
+          chapterId = found.chapters.find((one) => one.title.toLowerCase() === wanted)?.chapterId;
+          if (!chapterId) throw new ToolSaid(`The storyboard has no chapter called ${chapter}.`);
+        }
+        const started = await ctx.runMutation(internal.storyboardVideos.startAs, {
+          organizationId,
+          userId,
+          storyboardId: found.storyboardId,
+          ...(chapterId ? { chapterId } : {}),
+        });
+        return {
+          takes: started.takes,
+          skipped: started.skipped,
+          plain: started.plain,
+          address: storyboardLink(id),
+        };
+      }
       case "set_up_workflow": {
         const review = (args.review ?? {}) as Record<string, unknown>;
         const kind = text(args.kind);
