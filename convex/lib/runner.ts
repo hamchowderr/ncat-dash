@@ -78,7 +78,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { notify } from "./alerts";
 import { earlierFiles, runEnded, startAutomationStep, startingFiles } from "./chain";
-import { cutListOf } from "./exports";
+import { cutListOf, finishedFiles } from "./exports";
 import { collectUrls } from "./outputs";
 import { captionSetupOf } from "./captions";
 import { knownWordsFor } from "./knownWords";
@@ -1086,17 +1086,21 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
         const failed = steps.find(
           (step) => step.status === "failed" && !failsOver(step.nodeId, edges),
         );
+        // A failed run where another branch got to its end still made something worth
+        // keeping, such as the YouTube Shorts clips when the TikTok ones failed.
+        const partly = failed !== undefined && finishedFiles(run, steps).length > 0;
         await ctx.db.patch(runId, {
           status: failed ? "failed" : "done",
           error: failed?.error ?? null,
           finishedAt: Date.now(),
+          ...(partly ? { partly: true } : {}),
         });
         // A step waiting on this run moves on, and automations that follow it start.
         await runEnded(ctx, run, failed ? "failed" : "done", failed?.error ?? null);
         // A run for a project puts its finished files in the project's empty slots.
         if (!failed && run.projectId && !run.test) await fillProjectSlots(ctx, run);
         // Its finished files go into the team's folder, so they show in Files.
-        if (!failed) await ctx.scheduler.runAfter(0, internal.files.keepFinished, { runId });
+        if (!failed || partly) await ctx.scheduler.runAfter(0, internal.files.keepFinished, { runId });
         // A person who rejects at an approval step already knows, one that ran out of
         // time has its own alert, and a step with a way for when it fails was dealt with;
         // anything else that ends a run is something the team should hear about.
@@ -1109,7 +1113,7 @@ export async function advance(ctx: MutationCtx, runId: Id<"runs">): Promise<void
             !step.footage?.stopped &&
             !failsOver(step.nodeId, edges),
         );
-        if (broken && !run.test) await alertTeam(ctx, run, broken);
+        if (broken && !run.test) await alertTeam(ctx, run, broken, partly);
       } else {
         const working = open.some((step) => step.status === "running");
         const next = working ? "running" : "waiting";
@@ -1178,7 +1182,12 @@ async function startApproval(
  * Tells the team a run has failed. Every member sees it under the bell until they open
  * it, and gets an email when email is set up.
  */
-async function alertTeam(ctx: MutationCtx, run: Doc<"runs">, step: Doc<"runSteps">) {
+async function alertTeam(
+  ctx: MutationCtx,
+  run: Doc<"runs">,
+  step: Doc<"runSteps">,
+  partly = false,
+) {
   const node = (run.nodes as AutomationNode[]).find((candidate) => candidate.id === step.nodeId);
   await notify(ctx, {
     organizationId: run.organizationId,
@@ -1189,7 +1198,9 @@ async function alertTeam(ctx: MutationCtx, run: Doc<"runs">, step: Doc<"runSteps
     stepName: node ? (node.label ?? nodeTypeOf(node)?.title) : undefined,
     // In plain words: the bell, email and Slack are read by people, not developers. The
     // run keeps the full text for "Show details".
-    message: explainFailure(step.error).reason,
+    message: partly
+      ? `${explainFailure(step.error).reason} The rest of the run finished, and what it made is in Files.`
+      : explainFailure(step.error).reason,
     retries: step.retries ?? 0,
   });
 }

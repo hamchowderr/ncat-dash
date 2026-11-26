@@ -1141,7 +1141,8 @@ export const finishedOfRun = internalQuery({
   args: { runId: v.id("runs") },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
-    if (!run || run.status !== "done") return null;
+    // A failed run keeps the files of the branches that finished (see `partly`).
+    if (!run || (run.status !== "done" && !(run.status === "failed" && run.partly))) return null;
     const steps = await ctx.db
       .query("runSteps")
       .withIndex("by_run", (q) => q.eq("runId", run._id))
@@ -1160,7 +1161,9 @@ export const finishedOfRun = internalQuery({
         creatorOf(run) ??
         steps.flatMap((step) => step.cleaned ?? []).find((one) => one.creator)?.creator ??
         null,
-      files: finishedFiles(run, steps).map((link) => ({
+      files: finishedFiles(run, steps)
+        .filter((link) => !run.keptLinks?.includes(link))
+        .map((link) => ({
         link,
         name: names[link] ?? fileNameOfLink(link),
         label: labels.get(link) ?? null,

@@ -522,7 +522,10 @@ createServer((request, response) => {
       ? CLIPS.map((name) => ({ file_url: `${FILES}/${name}.webm` }))
       : request.url.startsWith("/v1/video/thumbnail")
         ? `${FILES}/still.jpg`
-        : `${FILES}/tighter-cut.webm`;
+        : // A trim's cut sits inside the bucket, as the toolkit puts it, so it can be kept in Finished/.
+          request.url.startsWith("/v1/video/trim")
+          ? `${FILES}/stand-in/tighter-cut.webm`
+          : `${FILES}/tighter-cut.webm`;
     response.end(
       JSON.stringify({ code: 200, job_id: "stand-in", response: result, message: "success" }),
     );

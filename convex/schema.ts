@@ -700,6 +700,12 @@ export default defineSchema({
     retries: v.optional(v.number()),
     // How many times someone picked this run up where it stopped after it failed.
     pickedUp: v.optional(v.number()),
+    // Set when the run failed but at least one of its branches finished: what that branch
+    // made is kept in Files and the run shows as partly done.
+    partly: v.optional(v.boolean()),
+    // The finished files already copied into the team's folder, so picking a partly done
+    // run up and finishing it does not copy them a second time.
+    keptLinks: v.optional(v.array(v.string())),
     // Set when someone tested one step on its own: that step's node id. Nobody is
     // alerted when a test fails, since the person testing is watching it.
     test: v.optional(v.string()),

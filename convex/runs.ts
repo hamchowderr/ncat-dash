@@ -50,6 +50,8 @@ function summary(run: Doc<"runs">) {
     retries: run.retries ?? 0,
     // How many times someone picked it up where it stopped after it failed.
     pickedUp: run.pickedUp ?? 0,
+    // It failed, but a branch of it finished and its files were kept.
+    partly: run.status === "failed" && run.partly === true,
     // For a test of one step: that step's name, as it was when tested.
     testOf: run.test ? testName(run) : null,
   };

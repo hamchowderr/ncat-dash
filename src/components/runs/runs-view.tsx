@@ -273,7 +273,7 @@ function RunRow({
               {run.pickedUp === 1 ? "Picked up once" : `Picked up ${run.pickedUp} times`}
             </ItemBadge>
           )}
-          <RunStatusBadge status={run.status} />
+          <RunStatusBadge status={run.status} partly={run.partly} />
           {run.canPickUp && (
             <Button variant="outline" size="sm" disabled={busy} onClick={onPickUp}>
               <StepForward />

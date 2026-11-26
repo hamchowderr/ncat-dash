@@ -641,12 +641,15 @@ async function addRunFiles(
   run: Doc<"runs">,
   kept: Map<string, string>,
 ) {
-  if (run.status !== "done" || run.test) return;
+  const partly = run.status === "failed" && run.partly === true;
+  if ((run.status !== "done" && !partly) || run.test) return;
+  // What this run already put in the library: a partly done run that was picked up and
+  // finished adds only the files it made since.
   const already = await ctx.db
     .query("libraryItems")
     .withIndex("by_run", (q) => q.eq("runId", run._id))
-    .first();
-  if (already) return;
+    .take(200);
+  const added = new Set(already.flatMap((item) => [item.key, item.url]).filter(Boolean));
   const steps = await ctx.db
     .query("runSteps")
     .withIndex("by_run", (q) => q.eq("runId", run._id))
@@ -661,6 +664,7 @@ async function addRunFiles(
   for (const link of finishedFiles(run, steps)) {
     if (started.has(link)) continue;
     const key = kept.get(link);
+    if (run.keptLinks?.includes(link) || added.has(key ?? link)) continue;
     if (key && (key === parent?.key || (await itemAtKey(ctx, run.organizationId, key)))) continue;
     const name = names[link] ?? fileNameOf(link);
     await addLibraryItem(ctx, {
@@ -706,6 +710,9 @@ export const addFinished = internalMutation({
     const run = await ctx.db.get(args.runId);
     if (!run) return;
     await addRunFiles(ctx, run, new Map(args.kept.map(({ link, key }) => [link, key])));
+    // Remembered so a later keep of the same run (after it is picked up) skips them.
+    const keptLinks = [...new Set([...(run.keptLinks ?? []), ...args.kept.map(({ link }) => link)])];
+    await ctx.db.patch(run._id, { keptLinks });
   },
 });
 
