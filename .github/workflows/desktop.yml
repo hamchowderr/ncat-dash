@@ -125,10 +125,14 @@ jobs:
         run: |
           app=src-tauri/target/debug/takewon-desktop.exe
           "$app" > app.log 2>&1 &
-          sleep 20
-          tasklist | grep -iE "takewon|msedgewebview2" || true
+          # A cold runner can take well over 20 seconds to start the web view, so wait
+          # up to a minute for its debugging port instead of checking once.
           answered=0
-          curl -s --max-time 5 http://127.0.0.1:9222/json/list && answered=1
+          for _ in $(seq 1 30); do
+            if curl -s --max-time 5 http://127.0.0.1:9222/json/list; then answered=1; break; fi
+            sleep 2
+          done
+          tasklist | grep -iE "takewon|msedgewebview2" || true
           cat app.log
           taskkill //F //T //IM takewon-desktop.exe > /dev/null 2>&1 || true
           taskkill //F //IM msedgewebview2.exe > /dev/null 2>&1 || true
