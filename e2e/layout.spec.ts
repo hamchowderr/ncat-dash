@@ -32,7 +32,9 @@ async function covered(page: Page) {
           const pr = p.getBoundingClientRect();
           const cx = r.left + r.width / 2;
           const cy = r.top + r.height / 2;
-          if (cx < pr.left || cx > pr.right || cy < pr.top || cy > pr.bottom) hidden = true;
+          // A box's right and bottom edges belong to what comes after it (as for
+          // elementFromPoint), so a centre on them is already scrolled out.
+          if (cx < pr.left || cx >= pr.right || cy < pr.top || cy >= pr.bottom) hidden = true;
         }
       }
       if (hidden) continue;
