@@ -7,6 +7,8 @@ export type Composed = {
   html: string;
   /** Extra headers to send with it, such as one-click unsubscribe. */
   headers?: Record<string, string>;
+  /** Where a reply goes, when it should reach a person rather than the sending address. */
+  replyTo?: string;
 };
 
 /** Where `withUnsubscribe` puts its link in an email's footer. */
@@ -15,6 +17,11 @@ const UNSUBSCRIBE_SLOT = "<!--unsubscribe-->";
 export type Branding = {
   /** Shown as the sender's name and in the footer. */
   appName: string;
+  /**
+   * The address a person answers at (EMAIL_REPLY_TO). Replies go there, and the footer
+   * says so. Left out: no help line.
+   */
+  supportEmail?: string;
 };
 
 export const DEFAULT_APP_NAME = "Takewon";
@@ -42,6 +49,14 @@ type Layout = {
   /** Linked lines, such as the items of a daily summary. */
   items?: { title: string; detail?: string; url: string }[];
   button?: { label: string; url: string };
+  /**
+   * Pictures of the person's own work, such as a moving preview of each clip, each linked
+   * to where it is. Hosted images with alt text: a mail app that holds images back shows
+   * the words instead.
+   */
+  pictures?: { src: string; alt: string; url: string }[];
+  /** A signed line from a person, set under the button. Only in our own emails. */
+  signoff?: { lines: string[]; name: string; role: string };
   footnote?: string;
   /** Why this person gets the email, shown above the footer with a link to change it. */
   reason?: string;
@@ -75,6 +90,12 @@ function mark(): string {
 function compose(subject: string, layout: Layout, branding: Branding): Composed {
   const { heading, paragraphs, quote, items, button, footnote, reason, settingsUrl } = layout;
   const ours = branding.appName === DEFAULT_APP_NAME;
+  const pictures = (layout.pictures ?? []).slice(0, 3);
+  const signoff = ours ? layout.signoff : undefined;
+  const support = branding.supportEmail;
+  const helpText = support
+    ? `Questions? Reply to this email or write to ${support}.`
+    : null;
   const text = [
     heading,
     "",
@@ -85,8 +106,10 @@ function compose(subject: string, layout: Layout, branding: Branding): Composed 
     ]),
     ...(items?.length ? [""] : []),
     ...(button ? [`${button.label}: ${button.url}`, ""] : []),
+    ...(signoff ? [...signoff.lines.flatMap((line) => [line, ""]), signoff.name, signoff.role, ""] : []),
     ...(footnote ? [footnote, ""] : []),
     "--",
+    ...(helpText ? [helpText] : []),
     ...(reason ? [reason] : []),
     ...(settingsUrl ? [`Notification settings: ${settingsUrl}`] : []),
     ...(ours
@@ -128,12 +151,31 @@ function compose(subject: string, layout: Layout, branding: Branding): Composed 
           "</table>",
         ]
       : []),
+    ...(pictures.length
+      ? [
+          '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 8px;"><tr>',
+          ...pictures.map(
+            (picture, index) =>
+              `<td style="padding:0 ${index < pictures.length - 1 ? 10 : 0}px 0 0;vertical-align:top;"><a href="${escapeHtml(picture.url)}" style="text-decoration:none;"><img src="${escapeHtml(picture.src)}" width="150" alt="${escapeHtml(picture.alt)}" style="display:block;width:150px;max-width:100%;height:auto;border:0;border-radius:10px;background:#f4f4f7;color:${MUTE};font-size:13px;"></a></td>`,
+          ),
+          "</tr></table>",
+        ]
+      : []),
     ...(button
       ? [
           `<p style="margin:24px 0;"><a href="${escapeHtml(button.url)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 20px;border-radius:10px;">${escapeHtml(button.label)}</a></p>`,
           p(
             `If the button does not work, open this link: <a href="${escapeHtml(button.url)}" style="color:${ACCENT};word-break:break-all;">${escapeHtml(button.url)}</a>`,
             `font-size:13px;color:${MUTE};`,
+          ),
+        ]
+      : []),
+    ...(signoff
+      ? [
+          ...signoff.lines.map((line) => p(escapeHtml(line))),
+          p(
+            `<strong style="color:${INK};">${escapeHtml(signoff.name)}</strong><br>${escapeHtml(signoff.role)}`,
+            "margin:0 0 16px;",
           ),
         ]
       : []),
@@ -146,6 +188,11 @@ function compose(subject: string, layout: Layout, branding: Branding): Composed 
           `<p style="margin:0 0 8px;">${reason ? `${escapeHtml(reason)} ` : ""}${settingsUrl ? link(settingsUrl, "Change your notification settings") : ""}${UNSUBSCRIBE_SLOT}</p>`,
         ]
       : []),
+    ...(support
+      ? [
+          `<p style="margin:0 0 8px;">Questions? Reply to this email or write to ${link(`mailto:${support}`, support)}.</p>`,
+        ]
+      : []),
     ours
       ? `<p style="margin:0;">${escapeHtml(branding.appName)}. ${escapeHtml(MOTTO)}<br>Made by ${escapeHtml(COMPANY)}, ${escapeHtml(COMPANY_ADDRESS)}.</p>`
       : `<p style="margin:0;">Sent by ${escapeHtml(branding.appName)}.</p>`,
@@ -154,8 +201,16 @@ function compose(subject: string, layout: Layout, branding: Branding): Composed 
     "</body></html>",
   ].join("");
 
-  return { subject: oneLine(subject, 200), text, html };
+  return {
+    subject: oneLine(subject, 200),
+    text,
+    html,
+    ...(support ? { replyTo: support } : {}),
+  };
 }
+
+/** Who signs the welcome email in Takewon's own copy. */
+export const FOUNDER = { name: "Chowderr", role: "Founder, Takewon" } as const;
 
 export function verificationEmail(args: { name?: string; url: string }, branding: Branding) {
   return compose(
@@ -625,6 +680,12 @@ export function welcomeEmail(
         },
       ],
       button: { label: `Open ${app}`, url: args.homeUrl },
+      signoff: {
+        lines: [
+          "I built Takewon so your videos come out as clips ready to post, without an afternoon in an editor. If anything gets in your way, just reply: it comes to me.",
+        ],
+        ...FOUNDER,
+      },
     },
     branding,
   );
@@ -696,6 +757,8 @@ export function trialTipEmail(
     readyMadeUrl: string;
     /** For clips_ready: the run whose files are ready. */
     runUrl?: string;
+    /** For clips_ready: a moving preview of up to three of the clips. */
+    previews?: string[];
     buyUrl: string | null;
     homeUrl: string;
     settingsUrl: string;
@@ -733,6 +796,11 @@ export function trialTipEmail(
           `${hi}your first run in ${oneLine(args.teamName, 60)} is done and its files are in Files.`,
           "Next, try another ready-made automation on the same video: captions in your brand, a thumbnail, or best moments.",
         ],
+        pictures: (args.previews ?? []).map((src, index) => ({
+          src,
+          alt: `Preview of clip ${index + 1}`,
+          url: args.runUrl ?? args.homeUrl,
+        })),
         button: { label: "See your clips", url: args.runUrl ?? args.homeUrl },
         ...shared,
       },

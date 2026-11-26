@@ -16,6 +16,8 @@ export type EmailMessage = {
   html: string;
   /** Extra headers, such as List-Unsubscribe. */
   headers?: Record<string, string>;
+  /** Where replies go, such as a support inbox. */
+  replyTo?: string;
 };
 
 export type SendResult =
@@ -107,6 +109,7 @@ export async function sendEmail(
       html: message.html,
       text: message.text,
       ...(message.headers ? { headers: message.headers } : {}),
+      ...(message.replyTo ? { reply_to: { email: message.replyTo } } : {}),
     });
     return {
       ok: true,

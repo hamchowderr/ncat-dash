@@ -419,6 +419,8 @@ export default defineSchema({
     outputsClearedAt: v.optional(v.number()),
     // Set when the job makes a take of a storyboard's video, or joins its takes.
     storyboardVideoId: v.optional(v.id("storyboardVideos")),
+    // Set when the job makes a moving preview of a clip for the "clips ready" trial tip.
+    tipPreviewId: v.optional(v.id("tipPreviews")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
@@ -2539,6 +2541,16 @@ export default defineSchema({
     ),
     sentAt: v.number(),
   }).index("by_organization_and_tip", ["organizationId", "tip"]),
+
+  // The moving previews being made for a team's "clips ready" tip: one GIF job per clip
+  // (up to three). The tip goes once they are all finished, or after a few minutes with
+  // whatever is ready (trialTips.ts).
+  tipPreviews: defineTable({
+    organizationId: v.string(),
+    runId: v.id("runs"),
+    jobIds: v.array(v.id("jobs")),
+    status: v.union(v.literal("waiting"), v.literal("sent")),
+  }).index("by_organization", ["organizationId"]),
 
   // Where each person signed up from, on the hosted edition: their mailbox however it was
   // written and a keyed hash of their network, never the address itself.

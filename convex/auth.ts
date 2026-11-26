@@ -23,6 +23,7 @@ import { networkKey } from "./lib/clientIp";
 import { getEdition } from "./lib/edition";
 import { requireEmailVerification, socialProviders } from "./lib/signInOptions";
 import { isThrowawayEmail } from "./lib/emailKey";
+import { emailBranding } from "./lib/emailBranding";
 import {
   ACCESS_TOKEN_SECONDS,
   AGENT_SCOPES,
@@ -157,7 +158,7 @@ function runner(ctx: GenericCtx<DataModel>): Runner | null {
 
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  const branding = { appName: process.env.EMAIL_FROM_NAME?.trim() || DEFAULT_APP_NAME };
+  const branding = emailBranding(process.env.EMAIL_FROM_NAME?.trim() || DEFAULT_APP_NAME);
   return {
     baseURL: process.env.SITE_URL,
     trustedOrigins: trustedOrigins(),

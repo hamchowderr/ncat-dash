@@ -154,6 +154,7 @@ export const PURGE_TABLES: PurgeTable[] = [
   { table: "emailConnections", index: "by_organization" },
   { table: "notificationPreferences", index: "by_organization_and_user" },
   { table: "trialTipsSent", index: "by_organization_and_tip" },
+  { table: "tipPreviews", index: "by_organization" },
   { table: "teamSettings", index: "by_organization" },
   { table: "toolkitConnections", index: "by_organization" },
 ];

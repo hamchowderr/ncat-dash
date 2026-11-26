@@ -60,6 +60,7 @@ import {
   preferenceOf,
   wants,
 } from "./lib/notifications";
+import { emailBranding } from "./lib/emailBranding";
 
 // Email goes out through toSend (https://tosend.com). There is one sending account for
 // the whole dashboard, because sign-in emails are sent before anyone is on a team. It is
@@ -218,7 +219,7 @@ export const sendTest = action({
     if (!me) return { ok: false as const, detail: "Your account has no email address." };
     const result = await deliver(ctx, sending, {
       to: me.email,
-      ...testEmail({ teamName: team.teamName ?? undefined }, { appName: sending.fromName }),
+      ...testEmail({ teamName: team.teamName ?? undefined }, emailBranding(sending.fromName)),
     });
     return result.ok
       ? { ok: true as const }
@@ -241,7 +242,13 @@ export const remove = mutation({
 
 /** Sends one email. Does nothing, quietly, when email is not set up. */
 export const send = internalAction({
-  args: { to: v.string(), subject: v.string(), text: v.string(), html: v.string() },
+  args: {
+    to: v.string(),
+    subject: v.string(),
+    text: v.string(),
+    html: v.string(),
+    replyTo: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const sending = await loadSending(ctx);
     if (!sending) {
@@ -275,7 +282,7 @@ export const sendAlert = internalAction({
     const link = siteUrl(alertHref(alert));
     const settingsUrl = siteUrl(SETTINGS_PATH);
     const teamName = found.teamName ?? undefined;
-    const branding = { appName: sending.fromName };
+    const branding = emailBranding(sending.fromName);
     const composed =
       alert.kind === "approval_waiting"
         ? approvalWaitingEmail(
@@ -423,7 +430,7 @@ export const sendDigest = internalAction({
         items: found.items,
         settingsUrl: siteUrl(SETTINGS_PATH),
       },
-      { appName: sending.fromName },
+      emailBranding(sending.fromName),
     );
     await deliver(ctx, sending, {
       to: found.email,
@@ -458,7 +465,7 @@ export const sendWelcome = internalAction({
           readyMadeUrl: siteUrl("/automations/new"),
           brandUrl: siteUrl("/settings/brand"),
         },
-        { appName: sending.fromName },
+        emailBranding(sending.fromName),
       ),
     });
   },
@@ -515,7 +522,7 @@ export const sendTrialReminder = internalAction({
       buyUrl: buyUrl(),
       homeUrl: siteUrl("/"),
     };
-    const branding = { appName: sending.fromName };
+    const branding = emailBranding(sending.fromName);
     await deliver(ctx, sending, {
       to: found.email,
       ...(args.kind === "ending"
@@ -530,7 +537,13 @@ export const sendTrialReminder = internalAction({
  * trialTips.tipFor says it should still go (convex/trialTips.ts). Each goes once.
  */
 export const sendTrialTip = internalAction({
-  args: { organizationId: v.string(), tip: trialTip, runId: v.optional(v.id("runs")) },
+  args: {
+    organizationId: v.string(),
+    tip: trialTip,
+    runId: v.optional(v.id("runs")),
+    // Moving previews of the clips, for the "clips ready" tip.
+    previews: v.optional(v.array(v.string())),
+  },
   handler: async (ctx, args) => {
     const sending = await loadSending(ctx);
     if (!sending) return;
@@ -539,7 +552,7 @@ export const sendTrialTip = internalAction({
       tip: args.tip,
     });
     if (!found) return;
-    const branding = { appName: sending.fromName };
+    const branding = emailBranding(sending.fromName);
     const name = found.name || undefined;
     const composed =
       args.tip === "thanks"
@@ -553,6 +566,7 @@ export const sendTrialTip = internalAction({
                 uploadsUrl: siteUrl("/library"),
                 readyMadeUrl: siteUrl("/automations/new"),
                 ...(args.runId ? { runUrl: siteUrl(`/runs/${args.runId}`) } : {}),
+                ...(args.previews?.length ? { previews: args.previews } : {}),
                 buyUrl: buyUrl(),
                 homeUrl: siteUrl("/"),
                 settingsUrl: siteUrl(SETTINGS_PATH),
@@ -854,6 +868,7 @@ async function deliver(
     text: string;
     html: string;
     headers?: Record<string, string>;
+    replyTo?: string;
   },
 ): Promise<SendResult> {
   const result = await sendEmail(

@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, test } from "vitest";
 
+import type { Id } from "./_generated/dataModel";
+import { encryptSecret } from "./lib/crypto";
+
 import { api, internal } from "./_generated/api";
 import { addPerson, addTeam, backend } from "./test.setup";
-import { tipTimes } from "./trialTips";
+import { PREVIEW_WAIT_MS, previewRequest, tipTimes } from "./trialTips";
 
 // The tips between the welcome and the trial's end: each gives one next step, and only
 // goes while that step is still undone, once, to the team's owner.
@@ -252,5 +255,147 @@ describe("in Settings > Notifications", () => {
     expect(await rows()).toContain("trial_tips");
     await t.mutation(internal.trial.markPaid, { organizationId: team });
     expect(await rows()).not.toContain("trial_tips");
+  });
+});
+
+describe("the clips-ready tip shows the person's own clips", () => {
+  async function finishedRun(t: Backend, team: string, by: string, withToolkit: boolean) {
+    process.env.CONNECTIONS_SECRET ??= "a-test-secret-that-is-long-enough-1234";
+    const apiKeyCipher = await encryptSecret("toolkit-key");
+    return await t.run(async (ctx) => {
+      if (withToolkit) {
+        await ctx.db.insert("toolkitConnections", {
+          organizationId: team,
+          baseUrl: "https://toolkit.example",
+          apiKeyCipher,
+          apiKeyHint: "abcd",
+          status: "ok",
+          buildNumber: null,
+          lastCheckedAt: 0,
+          lastError: null,
+          createdBy: by,
+        });
+      }
+      const automationId = await ctx.db.insert("automations", {
+        organizationId: team,
+        name: "Clips",
+        enabled: true,
+        trigger: { kind: "manual" },
+        nodes: [],
+        edges: [],
+        hookToken: `token-${Math.random()}`,
+        nextRunAt: null,
+        createdBy: by,
+        updatedAt: Date.now(),
+      });
+      return await ctx.db.insert("runs", {
+        organizationId: team,
+        automationId,
+        automationName: "Clips",
+        status: "done",
+        triggerKind: "manual",
+        trigger: {},
+        nodes: [],
+        edges: [],
+        error: null,
+        startedBy: by,
+        finishedAt: Date.now(),
+      });
+    });
+  }
+
+  const FILES = [
+    "https://files.example/out/clip-1.mp4",
+    "https://files.example/out/clip-1.srt",
+    "https://files.example/out/clip-2.mp4",
+    "https://files.example/out/clip-3.mp4",
+    "https://files.example/out/clip-4.mp4",
+  ];
+
+  const previewJobs = (t: Backend) =>
+    t.run((ctx) =>
+      ctx.db
+        .query("jobs")
+        .collect()
+        .then((jobs) => jobs.filter((job) => job.tipPreviewId !== undefined)),
+    );
+
+  const finishJob = (t: Backend, jobId: Id<"jobs">, ok: boolean, url?: string) =>
+    t.mutation(internal.jobs.finish, {
+      jobId,
+      ok,
+      ...(ok ? { result: url } : { error: "No luck." }),
+    });
+
+  test("makes a moving preview of up to three clips, then books the tip with them", async () => {
+    const t = backend();
+    const { team, maya } = await freshTrial(t);
+    const runId = await finishedRun(t, team, maya.id, true);
+    await t.mutation(internal.alerts.runFinished, { runId, count: 5, files: FILES });
+
+    const jobs = await previewJobs(t);
+    expect(jobs).toHaveLength(3);
+    // The captions file is not a clip.
+    const made = jobs.map((job) => JSON.stringify(job.input));
+    expect(made[0]).toContain(FILES[0]);
+    expect(made[1]).toContain(FILES[2]);
+    expect(made[2]).toContain(FILES[3]);
+    expect(jobs[0].stepId).toBe("ffmpeg-compose");
+    expect(jobs[0].input).toMatchObject(previewRequest(FILES[0]));
+    // Nothing goes until the previews are made.
+    expect((await booked(t)).filter(([tip]) => tip === "clips_ready")).toHaveLength(0);
+
+    await finishJob(t, jobs[0]._id, true, "https://files.example/out/preview-1.gif");
+    await finishJob(t, jobs[1]._id, false);
+    expect((await booked(t)).filter(([tip]) => tip === "clips_ready")).toHaveLength(0);
+    await finishJob(t, jobs[2]._id, true, "https://files.example/out/preview-3.gif");
+
+    const sends = await t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+        (job) => job.name.includes("sendTrialTip") && job.args[0].tip === "clips_ready",
+      ),
+    );
+    expect(sends).toHaveLength(1);
+    expect(sends[0].args[0]).toMatchObject({
+      runId,
+      previews: [
+        "https://files.example/out/preview-1.gif",
+        "https://files.example/out/preview-3.gif",
+      ],
+    });
+  });
+
+  test("goes with whatever is ready when the previews take too long, once", async () => {
+    const t = backend();
+    const { team, maya } = await freshTrial(t);
+    const runId = await finishedRun(t, team, maya.id, true);
+    await t.mutation(internal.alerts.runFinished, { runId, count: 1, files: [FILES[0]] });
+    const due = await t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").collect()).find((job) =>
+        job.name.includes("previewsDue"),
+      ),
+    );
+    expect(due).toBeDefined();
+    expect(due!.scheduledTime - Date.now()).toBeGreaterThan(PREVIEW_WAIT_MS - 60_000);
+
+    await t.mutation(internal.trialTips.previewsDue, due!.args[0] as never);
+    const [job] = await previewJobs(t);
+    await finishJob(t, job._id, true, "https://files.example/out/late.gif");
+    const sends = await t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+        (one) => one.name.includes("sendTrialTip") && one.args[0].tip === "clips_ready",
+      ),
+    );
+    expect(sends).toHaveLength(1);
+    expect(sends[0].args[0].previews).toEqual([]);
+  });
+
+  test("without a toolkit, the tip goes at once without previews", async () => {
+    const t = backend();
+    const { team, maya } = await freshTrial(t);
+    const runId = await finishedRun(t, team, maya.id, false);
+    await t.mutation(internal.alerts.runFinished, { runId, count: 1, files: [FILES[0]] });
+    expect(await previewJobs(t)).toHaveLength(0);
+    expect((await booked(t)).filter(([tip]) => tip === "clips_ready")).toHaveLength(1);
   });
 });

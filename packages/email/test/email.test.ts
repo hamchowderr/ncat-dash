@@ -535,3 +535,88 @@ describe("trial tips", () => {
     expect(thanks.text).toContain("Open Takewon: https://d/");
   });
 });
+
+describe("what every good email has", () => {
+  const links = {
+    homeUrl: "https://d/",
+    uploadsUrl: "https://d/uploads",
+    readyMadeUrl: "https://d/automations/new",
+    brandUrl: "https://d/settings/brand",
+  };
+
+  it("sends replies to the support inbox and says so in the footer", () => {
+    const email = welcomeEmail(
+      { teamName: "Salt House", trialDays: 3, ...links },
+      { appName: "Takewon", supportEmail: "support@takewon.com" },
+    );
+    expect(email.replyTo).toBe("support@takewon.com");
+    expect(email.text).toContain("Questions? Reply to this email or write to support@takewon.com.");
+    expect(email.html).toContain('href="mailto:support@takewon.com"');
+    // It survives the unsubscribe link being added.
+    expect(withUnsubscribe(email, "https://d/u").replyTo).toBe("support@takewon.com");
+    const without = welcomeEmail({ teamName: "Salt House", trialDays: 3, ...links }, branding);
+    expect(without.replyTo).toBeUndefined();
+    expect(without.text).not.toContain("Questions?");
+  });
+
+  it("signs the welcome from the founder, only in Takewon's own emails", () => {
+    const ours = welcomeEmail({ teamName: "Salt House", trialDays: 3, ...links }, branding);
+    expect(ours.text).toContain("just reply: it comes to me.");
+    expect(ours.text).toContain("Chowderr\nFounder, Takewon");
+    expect(ours.html).toContain("Founder, Takewon");
+    const theirs = welcomeEmail(
+      { teamName: "Salt House", trialDays: 3, ...links },
+      { appName: "Studio Desk" },
+    );
+    expect(theirs.text).not.toContain("Chowderr");
+  });
+
+  it("shows moving previews of the person's own clips, each with alt text, linked to the run", () => {
+    const email = trialTipEmail(
+      {
+        tip: "clips_ready",
+        teamName: "Salt House",
+        uploadsUrl: "https://d/library",
+        readyMadeUrl: "https://d/automations/new",
+        runUrl: "https://d/runs/r1",
+        previews: ["https://f/1.gif", "https://f/2.gif?a=1&b=2", "https://f/3.gif", "https://f/4.gif"],
+        buyUrl: null,
+        homeUrl: "https://d/",
+        settingsUrl: "https://d/settings/notifications",
+      },
+      branding,
+    );
+    const images = email.html.match(/<img [^>]*>/g) ?? [];
+    expect(images).toHaveLength(3);
+    expect(images[0]).toContain('src="https://f/1.gif"');
+    expect(images[0]).toContain('alt="Preview of clip 1"');
+    expect(images[0]).toContain('width="150"');
+    expect(images[1]).toContain('src="https://f/2.gif?a=1&amp;b=2"');
+    expect(email.html).toContain('<a href="https://d/runs/r1" style="text-decoration:none;"><img');
+    // No previews: no pictures.
+    const plain = trialTipEmail(
+      {
+        tip: "clips_ready",
+        teamName: "Salt House",
+        uploadsUrl: "https://d/library",
+        readyMadeUrl: "https://d/automations/new",
+        buyUrl: null,
+        homeUrl: "https://d/",
+        settingsUrl: "https://d/settings/notifications",
+      },
+      branding,
+    );
+    expect(plain.html).not.toContain("<img");
+  });
+
+  it("hands the reply-to to toSend", async () => {
+    const { calls } = answer(200, { message_id: "m1" });
+    await sendEmail(
+      "tsend_key",
+      { email: "no-reply@takewon.com", name: "Takewon" },
+      { to: "maya@example.test", subject: "Hi", text: "Hi", html: "<p>Hi</p>", replyTo: "support@takewon.com" },
+    );
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(body.reply_to).toEqual({ email: "support@takewon.com" });
+  });
+});

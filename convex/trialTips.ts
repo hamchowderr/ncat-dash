@@ -1,9 +1,10 @@
 import { v } from "convex/values";
 
 import { components, internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { type MutationCtx, internalMutation, internalQuery } from "./_generated/server";
 import { preferenceOf, wants } from "./lib/notifications";
+import { enqueueJob, pump } from "./lib/queue";
 
 // The emails that follow a free trial between the welcome and the reminders that it ends
 // (trial.ts): each one gives a single next step toward a first finished clip, and is only
@@ -51,10 +52,52 @@ export async function bookTips(
 }
 
 /**
+ * The FFmpeg request for one clip's moving preview: its first three seconds as a looping
+ * GIF, 240 pixels wide at 8 frames a second with a 64-colour palette, which comes to a
+ * few hundred KB, light enough for an inbox (shown at 150 pixels, so sharp on a phone).
+ */
+export function previewRequest(videoUrl: string): Record<string, unknown> {
+  return {
+    inputs: [{ file_url: videoUrl }],
+    filters: [
+      {
+        filter:
+          "[0:v]trim=duration=3,fps=8,scale=240:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[palette];[b][palette]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle[v]",
+      },
+    ],
+    outputs: [
+      {
+        options: [
+          { option: "-map", argument: "[v]" },
+          { option: "-loop", argument: 0 },
+          { option: "-f", argument: "gif" },
+        ],
+      },
+    ],
+  };
+}
+/** Clips shown at most. */
+const PREVIEWS_AT_MOST = 3;
+/** How long the tip waits for its previews before going with whatever is ready. */
+export const PREVIEW_WAIT_MS = 10 * 60 * 1000;
+
+const VIDEO = /\.(mp4|mov|m4v|webm|mkv)(\?|#|$)/i;
+
+/**
  * Books the "clips ready" tip when a team on a free trial has its first run with files.
  * Called from alerts.runFinished; cheap when the team has no trial or already heard.
+ *
+ * With clips among the files, the toolkit first makes a short moving preview of each (a
+ * GIF, whose first frame is also what a mail app that does not play them shows), so the
+ * email shows the person their own clips. It goes once they are made, or after
+ * PREVIEW_WAIT_MS with what is ready; without a toolkit it goes at once, without them.
  */
-export async function clipsReady(ctx: MutationCtx, organizationId: string, runId: Id<"runs">) {
+export async function clipsReady(
+  ctx: MutationCtx,
+  organizationId: string,
+  runId: Id<"runs">,
+  files: string[] = [],
+) {
   const trial = await ctx.db
     .query("teamTrials")
     .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
@@ -68,12 +111,84 @@ export async function clipsReady(ctx: MutationCtx, organizationId: string, runId
     )
     .first();
   if (sent) return;
-  await ctx.scheduler.runAfter(0, internal.email.sendTrialTip, {
+  // A second run finishing while the first one's previews are being made.
+  const making = await ctx.db
+    .query("tipPreviews")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .first();
+  if (making) return;
+  const clips = files.filter((file) => VIDEO.test(file)).slice(0, PREVIEWS_AT_MOST);
+  const jobIds: Id<"jobs">[] = [];
+  if (trial.ownerId) {
+    for (const clip of clips) {
+      const queued = await enqueueJob(ctx, {
+        organizationId,
+        stepId: "ffmpeg-compose",
+        input: previewRequest(clip),
+        createdBy: trial.ownerId,
+      });
+      if (queued.ok) jobIds.push(queued.jobId);
+    }
+  }
+  if (jobIds.length === 0) {
+    await ctx.scheduler.runAfter(0, internal.email.sendTrialTip, {
+      organizationId,
+      tip: "clips_ready",
+      runId,
+    });
+    return;
+  }
+  const previewId = await ctx.db.insert("tipPreviews", {
     organizationId,
-    tip: "clips_ready",
     runId,
+    jobIds,
+    status: "waiting",
+  });
+  for (const jobId of jobIds) await ctx.db.patch(jobId, { tipPreviewId: previewId });
+  await pump(ctx, organizationId);
+  await ctx.scheduler.runAfter(PREVIEW_WAIT_MS, internal.trialTips.previewsDue, { previewId });
+}
+
+/** Sends the "clips ready" tip with the previews made so far, once. */
+async function sendWithPreviews(ctx: MutationCtx, previewId: Id<"tipPreviews">) {
+  const waiting = await ctx.db.get(previewId);
+  if (!waiting || waiting.status !== "waiting") return;
+  const previews: string[] = [];
+  for (const jobId of waiting.jobIds) {
+    const job = await ctx.db.get(jobId);
+    const gif = job?.status === "done" ? job.outputs[0] : undefined;
+    if (gif) previews.push(gif);
+  }
+  await ctx.db.patch(previewId, { status: "sent" });
+  await ctx.scheduler.runAfter(0, internal.email.sendTrialTip, {
+    organizationId: waiting.organizationId,
+    tip: "clips_ready",
+    runId: waiting.runId,
+    previews,
   });
 }
+
+/** Called whenever a job finishes: the tip goes once all its previews are finished. */
+export async function onTipPreviewJob(ctx: MutationCtx, job: Doc<"jobs">): Promise<void> {
+  if (!job.tipPreviewId) return;
+  const waiting = await ctx.db.get(job.tipPreviewId);
+  if (!waiting || waiting.status !== "waiting") return;
+  for (const jobId of waiting.jobIds) {
+    const one = jobId === job._id ? job : await ctx.db.get(jobId);
+    if (one && one.status !== "done" && one.status !== "failed") return;
+  }
+  await sendWithPreviews(ctx, waiting._id);
+}
+
+/** The previews took too long: the tip goes with what is ready. */
+export const previewsDue = internalMutation({
+  args: { previewId: v.id("tipPreviews") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await sendWithPreviews(ctx, args.previewId);
+    return null;
+  },
+});
 
 /**
  * Who a tip goes to, or null when it should not go: the team bought (except for the
