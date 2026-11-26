@@ -150,6 +150,42 @@ describe("a take's page recording", () => {
     expect(screen.getByRole("form", { name: "Record the page" })).toBeTruthy();
   });
 
+  test("asks which site the line is about, and finds the page there, kept for you alone", async () => {
+    answerQuery(api.agentSites.canShare, false);
+    show([row({ status: "asking", url: "", notes: "The plans" })]);
+    expect(screen.getByRole("status").textContent).toBe("Which site is this about?");
+    // On your own, there is no one to share it with.
+    expect(screen.queryByRole("checkbox", { name: /Share with the team/ })).toBeNull();
+    const user = userEvent.setup();
+    const find = screen.getByRole("button", { name: "Find the page there" });
+    expect((find as HTMLButtonElement).disabled).toBe(true);
+    await user.type(screen.getByRole("textbox", { name: "Your site's address" }), "example.com");
+    await user.click(find);
+    expect(mutationOf(api.pageRecordings.record)).toHaveBeenCalledWith({
+      takeId: "t2",
+      notes: "The plans",
+      site: { url: "example.com", share: false },
+    });
+    // No "Try again" while it asks.
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  });
+
+  test("with teammates, the site can be shared with the team", async () => {
+    answerQuery(api.agentSites.canShare, true);
+    show([row({ status: "asking", url: "" })]);
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("textbox", { name: "Your site's address" }), "example.com");
+    await user.click(screen.getByRole("checkbox", { name: /Share with the team/ }));
+    await user.click(screen.getByRole("button", { name: "Find the page there" }));
+    expect(mutationOf(api.pageRecordings.record)).toHaveBeenCalledWith({
+      takeId: "t2",
+      notes: "",
+      site: { url: "example.com", share: true },
+    });
+    await user.click(screen.getByRole("button", { name: "Give the page address instead" }));
+    expect(screen.getByRole("form", { name: "Record the page" })).toBeTruthy();
+  });
+
   test("says while the agent looks for the page", () => {
     show([row({ status: "finding", url: "" })]);
     expect(screen.getByRole("status").textContent).toBe("Finding the page");

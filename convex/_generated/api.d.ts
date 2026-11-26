@@ -11,6 +11,7 @@
 import type * as access from "../access.js";
 import type * as accountDeletion from "../accountDeletion.js";
 import type * as agentScreen from "../agentScreen.js";
+import type * as agentSites from "../agentSites.js";
 import type * as aiSpend from "../aiSpend.js";
 import type * as alerts from "../alerts.js";
 import type * as anthropicKey from "../anthropicKey.js";
@@ -203,6 +204,7 @@ declare const fullApi: ApiFromModules<{
   access: typeof access;
   accountDeletion: typeof accountDeletion;
   agentScreen: typeof agentScreen;
+  agentSites: typeof agentSites;
   aiSpend: typeof aiSpend;
   alerts: typeof alerts;
   anthropicKey: typeof anthropicKey;

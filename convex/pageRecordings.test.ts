@@ -348,6 +348,101 @@ describe("a take with no page address", () => {
   });
 });
 
+describe("a take about the person's own site", () => {
+  test("asks which site, then finds the page there and keeps the site for the agent", async () => {
+    const { maya, shown, rows, run } = await setUp();
+    const { sent } = stubs();
+    let first = true;
+    vi.stubGlobal(
+      "fetch",
+      ((original) => async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === `${AGENT_URL}/ncat/find-page` && first) {
+          first = false;
+          return Response.json(
+            { error: "Which site is this about? Give its address.", code: "need_site" },
+            { status: 422 },
+          );
+        }
+        return original(input, init);
+      })(globalThis.fetch),
+    );
+    await maya.as.mutation(api.pageRecordings.record, { takeId: shown._id });
+    await run();
+    const [asking] = await rows();
+    expect(asking).toMatchObject({
+      status: "asking",
+      problem: "Which site is this about? Give its address.",
+    });
+    // Nothing is recorded while the take waits for an answer.
+    expect(sent.some((call) => call.url === `${AGENT_URL}/ncat/record`)).toBe(false);
+
+    await expect(
+      maya.as.mutation(api.pageRecordings.record, {
+        takeId: shown._id,
+        site: { url: "not a site" },
+      }),
+    ).rejects.toThrow(/web address/);
+
+    await maya.as.mutation(api.pageRecordings.record, {
+      takeId: shown._id,
+      site: { url: "example.com", share: true },
+    });
+    await run();
+    const searches = sent.filter((call) => call.url === `${AGENT_URL}/ncat/find-page`);
+    expect(searches.at(-1)!.body.site).toEqual({
+      url: "https://example.com/",
+      share: true,
+      about: "",
+    });
+    const [found] = await rows();
+    expect(found.status).toBe("found");
+
+    // A search after that does not send the site again: the agent already keeps it.
+    await maya.as.mutation(api.pageRecordings.record, { takeId: shown._id, findAnother: true });
+    await run();
+    expect(
+      sent.filter((call) => call.url === `${AGENT_URL}/ncat/find-page`).at(-1)!.body.site,
+    ).toBe(null);
+  });
+});
+
+describe("sites the agent keeps for a person", () => {
+  test("go to the agent for the person who gave them, shared only when they say so", async () => {
+    const { t, team, maya, outsider } = await setUp();
+    const { sent } = stubs();
+    await maya.as.mutation(api.agentSites.remember, {
+      organizationId: team,
+      url: "example.com",
+      about: "Our shop",
+    });
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+    const kept = sent.find((call) => call.url === `${AGENT_URL}/ncat/knowledge/site`)!;
+    expect(kept.body).toEqual({
+      organizationId: team,
+      url: "https://example.com/",
+      about: "Our shop",
+      share: false,
+    });
+    await expect(
+      maya.as.mutation(api.agentSites.remember, { organizationId: team, url: "nope" }),
+    ).rejects.toThrow(/web address/);
+    await expect(
+      outsider.as.mutation(api.agentSites.remember, {
+        organizationId: team,
+        url: "example.com",
+      }),
+    ).rejects.toThrow();
+  });
+
+  test("offer sharing only when there is someone on the team to share with", async () => {
+    const { t, team, maya } = await setUp();
+    expect(await maya.as.query(api.agentSites.canShare, { organizationId: team })).toBe(true);
+    const solo = await addTeam(t, "Solo Studio");
+    const sam = await addPerson(t, "Sam Lee", [solo], "owner");
+    expect(await sam.as.query(api.agentSites.canShare, { organizationId: solo })).toBe(false);
+  });
+});
+
 describe("saved sign-ins", () => {
   test("open a browser to sign in, are kept once signed in, and recordings use them", async () => {
     const { maya, team, shown, run } = await setUp();

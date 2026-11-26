@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BrowserOptions,
+  askTool,
   findPrompt,
   makeTake,
   type PassBrowser,
@@ -12,10 +13,15 @@ import {
   recordPath,
   rehearsalPrompt,
   stepOfAction,
-  teamKnowledge,
+  rehearsalKnowledge,
+  saveSite,
+  SITE_QUESTION,
+  sitePage,
+  siteRequest,
   TakeProblem,
   useBrowserForTests,
   usePaceForTests,
+  useSiteWriterForTests,
 } from "../../src/mastra/ncat/page-recording";
 import { createNcatRoutes } from "../../src/mastra/ncat/routes";
 import {
@@ -466,16 +472,114 @@ describe("finding the page when a take has none", () => {
   });
 });
 
-describe("the team's Knowledge in a rehearsal", () => {
-  it("reads only the guide and that team's pages, with the read tools and never the write ones", async () => {
-    const knowledge = await teamKnowledge("team_1");
-    expect(knowledge?.scopes).toEqual(["docs:takewon", "team:team_1"]);
+describe("Knowledge in a rehearsal: the person's pages and the team's", () => {
+  it("reads only the guide, that person's pages in the team and the team's, with the read tools", async () => {
+    const knowledge = await rehearsalKnowledge("team_1", "user_1");
+    expect(knowledge?.scopes).toEqual(["docs:takewon", "resource:user_1~team_1", "team:team_1"]);
     const tools = Object.keys(knowledge?.tools ?? {});
     expect(tools).toContain("knowledge_search");
     expect(tools.some((name) => /write|note|pin|page_(create|update)/.test(name))).toBe(false);
   });
 
-  it("is left out for a team id that could reach another scope", async () => {
-    expect(await teamKnowledge("team:other")).toBeNull();
+  it("reads the team's pages alone when no person is known", async () => {
+    expect((await rehearsalKnowledge("team_1", null))?.scopes).toEqual([
+      "docs:takewon",
+      "team:team_1",
+    ]);
+  });
+
+  it("is left out for a team id that could reach another scope, and drops such a person id", async () => {
+    expect(await rehearsalKnowledge("team:other", "user_1")).toBeNull();
+    expect((await rehearsalKnowledge("team_1", "user_1~team_2"))?.scopes).toEqual([
+      "docs:takewon",
+      "team:team_1",
+    ]);
+  });
+});
+
+describe("sites the person gives, kept in Knowledge", () => {
+  const written: { scope: string; path: string; author: string; body: string }[] = [];
+  beforeEach(() => {
+    written.length = 0;
+    useSiteWriterForTests(async (input) => {
+      written.push(input);
+    });
+  });
+  afterEach(() => useSiteWriterForTests());
+
+  it("keeps a site in the person's own pages by default", async () => {
+    const site = siteRequest.parse({ organizationId: "team_1", url: "https://example.com/shop" });
+    expect(await saveSite(site, "user_1")).toEqual(["resource:user_1~team_1"]);
+    expect(written).toHaveLength(1);
+    expect(written[0]).toMatchObject({
+      scope: "resource:user_1~team_1",
+      path: "sites/example-com",
+      author: "person:user_1",
+    });
+    expect(written[0].body).toContain("https://example.com/shop");
+  });
+
+  it("puts it in the team's pages as well when the person shares it", async () => {
+    const site = siteRequest.parse({
+      organizationId: "team_1",
+      url: "https://www.example.com",
+      about: "Our studio's shop",
+      share: true,
+    });
+    expect(await saveSite(site, "user_1")).toEqual(["resource:user_1~team_1", "team:team_1"]);
+    expect(written.map((page) => page.scope)).toEqual(["resource:user_1~team_1", "team:team_1"]);
+    expect(written[1].body).toContain("What it is: Our studio's shop");
+  });
+
+  it("names one page per site, so giving it again updates it", () => {
+    expect(sitePage({ url: "https://www.Example.co.uk/a", about: "" }).path).toBe(
+      "sites/example-co-uk",
+    );
+    expect(sitePage({ url: "https://example.co.uk/b", about: "x" }).path).toBe(
+      "sites/example-co-uk",
+    );
+  });
+
+  it("refuses something that is not a web address", () => {
+    expect(siteRequest.safeParse({ organizationId: "team_1", url: "our site" }).success).toBe(
+      false,
+    );
+  });
+
+  it("POST /ncat/knowledge/site keeps the site for the signed-in person", async () => {
+    const route = find(createNcatRoutes(), "/ncat/knowledge/site", "POST");
+    const unsigned = ctx({ body: { organizationId: "team_1", url: "https://example.com" } });
+    await route.handler(unsigned.c);
+    expect(unsigned.captured.status).toBe(401);
+    const bad = ctx({ resourceId: "user_1", body: { organizationId: "team_1", url: "nope" } });
+    await route.handler(bad.c);
+    expect(bad.captured.status).toBe(400);
+    const good = ctx({
+      resourceId: "user_1",
+      body: { organizationId: "team_1", url: "https://example.com", share: true },
+    });
+    await route.handler(good.c);
+    expect(good.captured.body).toEqual({ scopes: ["resource:user_1~team_1", "team:team_1"] });
+  });
+});
+
+describe("asking which site, instead of guessing", () => {
+  it("offers the question only when no site was given, and says so in the prompt when one was", async () => {
+    const asked = { yes: false };
+    const tools = askTool(asked);
+    await (tools.ask_which_site.execute as (input: object, context: object) => Promise<unknown>)(
+      {},
+      {},
+    );
+    expect(asked.yes).toBe(true);
+    expect(SITE_QUESTION).toContain("Which site is this about?");
+    const prompt = findPrompt({
+      line: "Here's what our plans cost.",
+      notes: "",
+      avoid: [],
+      site: { url: "https://example.com", about: "our shop", share: false },
+    });
+    expect(prompt).toContain("https://example.com (our shop)");
+    expect(prompt).not.toContain("No start page");
   });
 });

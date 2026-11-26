@@ -45,6 +45,7 @@ import {
   RECORDING_LIMITS,
   RECORDINGS_FOLDER,
   recordingFileName,
+  STATUS_WORDS,
   type WalkStep,
 } from "./lib/pageRecording";
 import { recordingPool } from "./lib/pools";
@@ -80,6 +81,7 @@ const recordingView = v.object({
     v.literal("queued"),
     v.literal("finding"),
     v.literal("found"),
+    v.literal("asking"),
     v.literal("recording"),
     v.literal("saving"),
     v.literal("done"),
@@ -157,6 +159,8 @@ export const record = mutation({
     signInId: v.optional(v.union(v.null(), v.id("recordingSignIns"))),
     again: v.optional(v.boolean()),
     findAnother: v.optional(v.boolean()),
+    /** Answers "Which site is this about?": the agent finds the page there. */
+    site: v.optional(v.object({ url: v.string(), share: v.optional(v.boolean()) })),
   },
   returns: v.id("takeRecordings"),
   handler: async (ctx, args): Promise<Id<"takeRecordings">> => {
@@ -173,6 +177,11 @@ export const record = mutation({
       return fail("invalid_input", "Give the page's web address, starting https://.");
     }
     const notes = (args.notes ?? "").trim().slice(0, RECORDING_LIMITS.notes);
+    const siteUrl = args.site ? cleanPageUrl(args.site.url.trim()) : undefined;
+    if (siteUrl === null || (args.site && !siteUrl)) {
+      return fail("invalid_input", "Give the site's web address, starting https://.");
+    }
+    const site = siteUrl ? { url: siteUrl, share: args.site?.share === true } : undefined;
     let signInId: Id<"recordingSignIns"> | undefined;
     if (args.signInId) {
       const signIn = await ctx.db.get(args.signInId);
@@ -207,7 +216,9 @@ export const record = mutation({
     // A new page or a new search makes the picture of the old one out of date.
     if (!again && before?.previewId) await ctx.storage.delete(before.previewId);
     const fields = {
-      url: again && before ? before.url : findAnother ? "" : url,
+      url: again && before ? before.url : findAnother || site ? "" : url,
+      // Kept only for the search it answers; a later search or recording leaves it out.
+      site,
       notes,
       signInId,
       status: "queued" as const,
@@ -350,6 +361,21 @@ export const found = internalMutation({
       steps: args.steps,
       previewId: args.previewId ?? undefined,
       problem: undefined,
+      site: undefined,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/** The agent cannot tell whose site the line is about: the take asks the person. */
+export const asking = internalMutation({
+  args: { recordingId: v.id("takeRecordings"), question: v.string() },
+  handler: async (ctx, args) => {
+    const recording = await ctx.db.get(args.recordingId);
+    if (!recording || recording.status !== "finding") return;
+    await ctx.db.patch(recording._id, {
+      status: "asking",
+      problem: args.question.slice(0, 500),
       updatedAt: Date.now(),
     });
   },
@@ -404,6 +430,7 @@ type FoundAnswer = {
   title?: string;
   preview?: string | null;
   error?: string;
+  code?: string;
 };
 
 type AgentAnswer = {
@@ -454,6 +481,7 @@ async function findThePage(ctx: ActionCtx, found: Making, agentUrl: string, secr
         aspect: found.aspect,
         profile: found.profile,
         avoid: recording.avoid ?? [],
+        site: recording.site ? { ...recording.site, about: "" } : null,
       }),
       signal: AbortSignal.timeout(TAKE_TIMEOUT_MS),
     });
@@ -461,6 +489,13 @@ async function findThePage(ctx: ActionCtx, found: Making, agentUrl: string, secr
     answer = (await response.json().catch(() => null)) as FoundAnswer | null;
   } catch {
     return await stop(ctx, recordingId, "The agent could not be reached. Try again in a moment.");
+  }
+  if (status === 422 && answer?.code === "need_site") {
+    await ctx.runMutation(internal.pageRecordings.asking, {
+      recordingId,
+      question: answer.error ?? STATUS_WORDS.asking,
+    });
+    return;
   }
   const url = answer?.url ? cleanPageUrl(answer.url) : null;
   if (status !== 200 || !answer?.steps?.length || !url) {

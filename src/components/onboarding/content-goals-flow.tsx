@@ -36,6 +36,7 @@ import { AppTile, type ConnectedApp } from "@/components/brand-logos";
 import { FileRuns } from "@/components/library/file-runs";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { UploadingRow } from "@/components/uploads/upload-media";
 import { errorMessage } from "@/lib/catalog";
@@ -121,6 +122,10 @@ export function ContentGoalsFlow({
   const saved = useQuery(api.contentGoals.get, { organizationId });
   const save = useMutation(api.contentGoals.save);
   const turnOn = useMutation(api.contentGoals.turnOn);
+  const rememberSite = useMutation(api.agentSites.remember);
+  const canShare = useQuery(api.agentSites.canShare, { organizationId });
+  const [website, setWebsite] = useState("");
+  const [shareSite, setShareSite] = useState(false);
   const [stage, setStage] = useState<Stage>("kinds");
   const [kinds, setKinds] = useState<string[] | null>(null);
   const [apps, setApps] = useState<PostingAppId[] | null>(null);
@@ -153,6 +158,14 @@ export function ContentGoalsFlow({
       // A member who is not an owner or admin still gets the suggestions; the team's
       // answers are left for those who manage it.
       if (saved?.canEdit) await save({ organizationId, kinds: pickedKinds, apps: pickedApps });
+      // The agent keeps the site, for page recordings and chat: the person's own unless shared.
+      if (website.trim()) {
+        await rememberSite({
+          organizationId,
+          url: website.trim(),
+          share: canShare === true && shareSite,
+        });
+      }
       setStage("turn-on");
     } catch (caught) {
       toast.error(errorMessage(caught, "Your answers could not be saved. Try again."));
@@ -247,6 +260,30 @@ export function ContentGoalsFlow({
                 <Picked on={pickedApps.includes(app.id)} />
               </button>
             ))}
+          </div>
+          <div className="grid gap-2">
+            <label className="grid gap-1">
+              <span className="text-sm font-medium">Your website</span>
+              <Input
+                value={website}
+                placeholder="https://example.com"
+                aria-describedby="website-hint"
+                onChange={(event) => setWebsite(event.target.value)}
+              />
+            </label>
+            <p id="website-hint" className="text-muted-foreground text-sm">
+              Optional. When a video shows your site, the agent knows where to look.
+            </p>
+            {canShare && (
+              <label className="flex items-start gap-2 text-sm">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={shareSite}
+                  onCheckedChange={(on) => setShareSite(on === true)}
+                />
+                <span className="font-medium">Share with the team</span>
+              </label>
+            )}
           </div>
           <div className="flex justify-between gap-3">
             <Button variant="ghost" onClick={() => setStage("kinds")}>

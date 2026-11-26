@@ -96,7 +96,8 @@ export type TakeResult = {
 export class TakeProblem extends Error {
   constructor(
     message: string,
-    readonly code: "busy" | "no_browser" | "no_path" | "step_missing" | "recording" | "upload",
+    readonly code:
+      "busy" | "no_browser" | "no_path" | "need_site" | "step_missing" | "recording" | "upload",
   ) {
     super(message);
   }
@@ -371,44 +372,137 @@ export function recordingTools(browser: PassBrowser, steps: WalkStep[], pages?: 
   return tools;
 }
 
-/** How the rehearsal reads the team's Knowledge: its sites, products and pages. */
-export const KNOWLEDGE_NOTE = `Before opening a page, search the team's Knowledge (knowledge_search) for what the line is about: the team's own sites, products, docs and pages it has written down. When Knowledge names the site or page, go there. Knowledge is read only here.`;
+/** How the rehearsal reads Knowledge: the person's own sites and the team's. */
+export const KNOWLEDGE_NOTE = `Before opening a page, search Knowledge (knowledge_search) for what the line is about: the sites, products, docs and pages the person and their team have written down. The person's own pages and the team's pages are both searched. When Knowledge names the site or page, go there. Knowledge is read only here.`;
 
-/** Read-only Knowledge for one team's rehearsal: the Takewon guide and the team's pages. */
+/** The person's own pages in a team: Memory's resource scope for their dashboard chats. */
+export const personScope = (person: string, organizationId: string) =>
+  `resource:${person}~${organizationId}`;
+
+/** An id that can name a scope: nothing that would reach into another scope's address. */
+const plainId = (id: string | null | undefined): id is string =>
+  Boolean(id) && !/[:~#\s]/.test(id as string);
+
+/** Read-only Knowledge for a rehearsal: the Takewon guide, the person's pages and the team's. */
 type RehearsalKnowledge = {
   tools: Record<string, unknown>;
   instructions: string;
   scopes: string[];
 };
-type KnowledgeFor = (organizationId: string) => Promise<RehearsalKnowledge | null>;
+type KnowledgeFor = (
+  organizationId: string,
+  person: string | null,
+) => Promise<RehearsalKnowledge | null>;
 
-export const teamKnowledge: KnowledgeFor = async (organizationId) => {
-  if (!env.TOOL_KNOWLEDGE || !organizationId || organizationId.includes(":")) return null;
+export const rehearsalKnowledge: KnowledgeFor = async (organizationId, person) => {
+  if (!env.TOOL_KNOWLEDGE || !plainId(organizationId)) return null;
   // Loaded when used, so this file stays free of the knowledge store for its tests.
   const { chatKnowledge, GUIDE_SCOPE, teamScope } = await import("../lib/chat-knowledge");
   const { READ_ONLY_TOOLS } = await import("../lib/knowledge");
   return {
     tools: chatKnowledge.createTools(READ_ONLY_TOOLS) as Record<string, unknown>,
     instructions: chatKnowledge.getInstructions(READ_ONLY_TOOLS),
-    scopes: [GUIDE_SCOPE, teamScope(organizationId)],
+    scopes: [
+      GUIDE_SCOPE,
+      ...(plainId(person) ? [personScope(person, organizationId)] : []),
+      teamScope(organizationId),
+    ],
   };
 };
 
-let knowledgeFor: KnowledgeFor = teamKnowledge;
+let knowledgeFor: KnowledgeFor = rehearsalKnowledge;
 
 /** For tests: hand the rehearsal stand-in Knowledge, or none. Pass nothing to undo. */
 export function useKnowledgeForTests(make?: KnowledgeFor): void {
-  knowledgeFor = make ?? teamKnowledge;
+  knowledgeFor = make ?? rehearsalKnowledge;
+}
+
+// --- Sites in Knowledge --------------------------------------------------------------
+
+export const siteRequest = z.object({
+  organizationId: z.string().min(1).max(200),
+  url: z
+    .string()
+    .max(2000)
+    .refine((url) => /^https?:\/\/[^\s/]+\.[^\s]+/.test(url), "a web address"),
+  /** What the site is, in the person's words. */
+  about: z.string().max(500).default(""),
+  /** Also put it in the team's Knowledge, for everyone on the team. */
+  share: z.boolean().default(false),
+});
+export type SiteRequest = z.infer<typeof siteRequest>;
+
+/** The Knowledge page a site is kept on: one per site, so saving it again updates it. */
+export function sitePage(site: Pick<SiteRequest, "url" | "about">) {
+  const host = hostOf(site.url) || site.url;
+  const about = site.about.trim();
+  return {
+    path: `sites/${host
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}`,
+    name: `Website: ${host}`,
+    description: about ? `${host}: ${about}`.slice(0, 300) : `The website at ${host}.`,
+    body: [
+      `# Website: ${host}`,
+      "",
+      `Address: ${site.url}`,
+      about ? `What it is: ${about}` : "",
+      "",
+      "Page recordings about this site, its products or its pages start here.",
+    ]
+      .filter((line, index, all) => line || all[index - 1])
+      .join("\n"),
+  };
+}
+
+type SiteWriter = (input: {
+  scope: string;
+  path: string;
+  author: string;
+  name: string;
+  description: string;
+  body: string;
+}) => Promise<unknown>;
+
+const writeToKnowledge: SiteWriter = async (input) => {
+  const { chatKnowledge } = await import("../lib/chat-knowledge");
+  return chatKnowledge.upsertPage(input);
+};
+let writeSite: SiteWriter = writeToKnowledge;
+
+/** For tests: catch site writes instead of storing them. Pass nothing to undo. */
+export function useSiteWriterForTests(write?: SiteWriter): void {
+  writeSite = write ?? writeToKnowledge;
+}
+
+/**
+ * Keeps a site in Knowledge: in the person's own pages, and the team's as well when they
+ * share it. Answers the scopes written, none when Knowledge is off.
+ */
+export async function saveSite(site: SiteRequest, person: string | null): Promise<string[]> {
+  if (!env.TOOL_KNOWLEDGE || !plainId(site.organizationId)) return [];
+  const { teamScope } = await import("../lib/chat-knowledge");
+  const scopes = [
+    ...(plainId(person) ? [personScope(person, site.organizationId)] : []),
+    ...(site.share || !plainId(person) ? [teamScope(site.organizationId)] : []),
+  ];
+  const page = sitePage(site);
+  for (const scope of scopes) {
+    await writeSite({ scope, author: `person:${person ?? "team"}`, ...page });
+  }
+  return scopes;
 }
 
 async function rehearsalAgent(
-  organizationId: string,
+  who: { organizationId: string; person: string | null },
   browser: PassBrowser,
   steps: WalkStep[],
   pages?: string[],
   instructions = REHEARSAL_INSTRUCTIONS,
+  extraTools: Record<string, unknown> = {},
 ) {
-  const knowledge = await knowledgeFor(organizationId).catch(() => null);
+  const knowledge = await knowledgeFor(who.organizationId, who.person).catch(() => null);
   return new Agent({
     id: "page-recording",
     name: "Page recording",
@@ -420,21 +514,29 @@ async function rehearsalAgent(
       const key = requestContext.get(TEAM_KEY);
       return onTeamKey(env.CHAT_MODEL, typeof key === "string" ? key : null);
     },
-    tools: { ...recordingTools(browser, steps, pages), ...(knowledge?.tools ?? {}) } as never,
-    // Only this team's pages and the guide, whatever the call carries.
+    tools: {
+      ...recordingTools(browser, steps, pages),
+      ...(knowledge?.tools ?? {}),
+      ...extraTools,
+    } as never,
+    // Only the guide, this person's pages and this team's, whatever the call carries.
     ...(knowledge ? { scopes: () => knowledge.scopes } : {}),
   });
 }
 
 /** Works out the click path for a take. */
-export async function rehearse(request: TakeRequest, teamKey: string | null): Promise<WalkStep[]> {
+export async function rehearse(
+  request: TakeRequest,
+  teamKey: string | null,
+  person: string | null = null,
+): Promise<WalkStep[]> {
   const steps: WalkStep[] = [];
   const browser = makeBrowser({ aspect: request.aspect, profile: request.profile ?? null });
   try {
     const requestContext = new RequestContext();
     if (teamKey) requestContext.set(TEAM_KEY, teamKey);
     await (
-      await rehearsalAgent(request.organizationId, browser, steps)
+      await rehearsalAgent({ organizationId: request.organizationId, person }, browser, steps)
     ).generate([{ role: "user", content: rehearsalPrompt(request) }], {
       requestContext,
       maxSteps: REHEARSAL_MAX_STEPS,
@@ -475,6 +577,8 @@ export const findRequest = z.object({
   profile: z.string().min(1).max(120).nullish(),
   /** Pages found before that the person did not want. */
   avoid: z.array(z.string().max(2000)).max(10).default([]),
+  /** The site the person said the line is about, when the agent asked. Kept in Knowledge. */
+  site: siteRequest.pick({ url: true, about: true, share: true }).nullish(),
 });
 export type FindRequest = z.infer<typeof findRequest>;
 
@@ -489,13 +593,41 @@ export type FoundPage = {
 
 export const FIND_INSTRUCTIONS = `${REHEARSAL_INSTRUCTIONS}
 
-No page address was given for this take, and there is no start page: you decide where to go. When the team's Knowledge names the site or page the line is about, use it. Otherwise, when you know the site, open it directly. When you are not sure where the page is, use a search engine to find it. Prefer the site's own page (the company's or project's official site) over articles about it, and the newest version of a page when the line says latest or newest. Once on that site, show what the line describes as above.`;
+No page address was given for this take, and there is no start page: you decide where to go. When Knowledge (the person's own pages or the team's) names the site or page the line is about, use it. Otherwise, when you know the site, open it directly. When you are not sure where the page is, use a search engine to find it. Prefer the site's own page (the company's or project's official site) over articles about it, and the newest version of a page when the line says latest or newest. Once on that site, show what the line describes as above.`;
+
+/** What the model is told when it may ask which site, instead of guessing. */
+export const ASK_NOTE = `When the line is about a site, product or page that belongs to the person, their team or their client (it says our, my, we, us or the client's, say), or it only fits one particular business and does not name it, and neither Knowledge nor the notes say which site that is: do not guess and do not search for it. Call ask_which_site and stop. A line that names the site or product (Linear's changelog, say) needs no question.`;
+
+/** The question a take shows when the agent cannot tell whose site the line is about. */
+export const SITE_QUESTION =
+  "Which site is this about? The line is about a site nothing names yet, such as your own or a client's. Give its address and the agent finds the page there.";
+
+/** The finder's way to ask instead of guessing. Sets `asked` when the model calls it. */
+export function askTool(asked: { yes: boolean }) {
+  return {
+    ask_which_site: createTool({
+      id: "ask_which_site",
+      description:
+        "Ask the person which site the line is about. Only when the line is about their own or their team's site and Knowledge does not say which. Stop after calling it.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        asked.yes = true;
+        return { asked: true, next: "Stop here. The person is asked which site it is." };
+      },
+    }),
+  };
+}
 
 /** What the model is told when it has to find the page. */
-export function findPrompt(request: Pick<FindRequest, "line" | "notes" | "avoid">): string {
+export function findPrompt(
+  request: Pick<FindRequest, "line" | "notes" | "avoid" | "site">,
+): string {
+  const site = request.site;
   return [
     `The line said over the recording: "${request.line.trim()}"`,
-    "No start page: open the page you judge right, or search for it.",
+    site
+      ? `The person says the line is about this site: ${site.url}${site.about.trim() ? ` (${site.about.trim()})` : ""}. Find the page there.`
+      : "No start page: open the page you judge right, or search for it.",
     request.notes.trim() ? `Also: ${request.notes.trim()}` : "",
     request.avoid.length
       ? `The person did not want these pages, so find a different one: ${request.avoid.join(", ")}`
@@ -533,7 +665,18 @@ export function pathOnSite(steps: WalkStep[], pages: string[]): WalkStep[] | nul
 }
 
 /** Finds the page for a take with no address by searching, without recording anything. */
-export async function findPage(request: FindRequest, teamKey: string | null): Promise<FoundPage> {
+export async function findPage(
+  request: FindRequest,
+  teamKey: string | null,
+  person: string | null = null,
+): Promise<FoundPage> {
+  // The site the person named is kept for next time first, so it is there however this ends.
+  if (request.site) {
+    await saveSite({ organizationId: request.organizationId, ...request.site }, person).catch(
+      (caught) => console.warn("[record] keeping the site in Knowledge failed", caught),
+    );
+  }
+  const asked = { yes: false };
   const steps: WalkStep[] = [];
   const pages: string[] = [];
   const browser = makeBrowser({ aspect: request.aspect, profile: request.profile ?? null });
@@ -544,7 +687,14 @@ export async function findPage(request: FindRequest, teamKey: string | null): Pr
     const requestContext = new RequestContext();
     if (teamKey) requestContext.set(TEAM_KEY, teamKey);
     await (
-      await rehearsalAgent(request.organizationId, browser, steps, pages, FIND_INSTRUCTIONS)
+      await rehearsalAgent(
+        { organizationId: request.organizationId, person },
+        browser,
+        steps,
+        pages,
+        request.site ? FIND_INSTRUCTIONS : `${FIND_INSTRUCTIONS}\n\n${ASK_NOTE}`,
+        request.site ? {} : askTool(asked),
+      )
     ).generate([{ role: "user", content: findPrompt(request) }], {
       requestContext,
       maxSteps: REHEARSAL_MAX_STEPS,
@@ -559,6 +709,7 @@ export async function findPage(request: FindRequest, teamKey: string | null): Pr
   } finally {
     await browser.close().catch(() => undefined);
   }
+  if (asked.yes) throw new TakeProblem(SITE_QUESTION, "need_site");
   const path = pathOnSite(steps, pages);
   if (!path || !/^https?:/.test(url)) {
     throw new TakeProblem(
@@ -773,7 +924,11 @@ async function send(filePath: string, uploadUrl: string): Promise<number> {
  * Makes one take: works out the click path when there is none, records it, and sends the
  * video to the team's storage. One at a time per server.
  */
-export async function makeTake(request: TakeRequest, teamKey: string | null): Promise<TakeResult> {
+export async function makeTake(
+  request: TakeRequest,
+  teamKey: string | null,
+  person: string | null = null,
+): Promise<TakeResult> {
   if (busy) {
     throw new TakeProblem(
       "Another page recording is being made. It will be this one's turn next.",
@@ -784,7 +939,7 @@ export async function makeTake(request: TakeRequest, teamKey: string | null): Pr
   const dir = await mkdtemp(join(tmpdir(), "takewon-recording-"));
   try {
     const rehearsed = !request.steps;
-    const steps = request.steps ?? (await rehearse(request, teamKey));
+    const steps = request.steps ?? (await rehearse(request, teamKey, person));
     const take = await recordPath(request, steps, dir);
     const size = await send(take.filePath, request.uploadUrl);
     return {

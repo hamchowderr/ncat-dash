@@ -176,6 +176,89 @@ function AddSignIn({
   );
 }
 
+/**
+ * Answers "Which site is this about?": the line is about the person's own site and
+ * nothing says which. The agent keeps the answer in their Knowledge, and in the team's
+ * when they share it (only offered when there is someone to share with).
+ */
+function AskSite({
+  takeId,
+  organizationId,
+  notes,
+  onGiveAddress,
+}: {
+  takeId: Take["_id"];
+  organizationId: string;
+  notes: string;
+  onGiveAddress: () => void;
+}) {
+  const record = useMutation(api.pageRecordings.record);
+  const canShare = useQuery(api.agentSites.canShare, { organizationId });
+  const [site, setSite] = useState("");
+  const [share, setShare] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await record({
+        takeId,
+        notes,
+        site: { url: site.trim(), share: canShare === true && share },
+      });
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The agent could not look there."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="flex max-w-md flex-col gap-3" onSubmit={onSubmit}>
+      <p className="text-muted-foreground" id="ask-site-hint">
+        The line is about a site nothing names yet, such as your own or a client&apos;s. The agent
+        finds the page there, and remembers the site for next time.
+      </p>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Your site&apos;s address</span>
+        <Input
+          value={site}
+          placeholder="https://example.com"
+          aria-describedby="ask-site-hint"
+          onChange={(event) => setSite(event.target.value)}
+        />
+      </label>
+      {canShare && (
+        <label className="flex items-start gap-2">
+          <Checkbox
+            className="mt-0.5"
+            checked={share}
+            onCheckedChange={(on) => setShare(on === true)}
+            aria-describedby="ask-site-shared-hint"
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="font-medium">Share with the team</span>
+            <span id="ask-site-shared-hint" className="text-muted-foreground text-xs">
+              For the team&apos;s or brand&apos;s own site. Left off, the agent remembers it for you
+              only.
+            </span>
+          </span>
+        </label>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" size="sm" disabled={busy || !site.trim()}>
+          <Search />
+          {busy ? "Looking…" : "Find the page there"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onGiveAddress}>
+          Give the page address instead
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 /** What the agent should record: the page, what to show on it, and who to be signed in as. */
 function RecordForm({
   take,
@@ -454,7 +537,15 @@ export function PageRecording({
           </div>
         </div>
       )}
-      {!underWay && row.status !== "found" && (
+      {row.status === "asking" && (
+        <AskSite
+          takeId={take._id}
+          organizationId={organizationId}
+          notes={row.notes}
+          onGiveAddress={() => setForm(true)}
+        />
+      )}
+      {!underWay && row.status !== "found" && row.status !== "asking" && (
         <div className="flex flex-wrap items-center gap-1">
           {row.steps.length > 0 && (
             <Button size="sm" variant="outline" onClick={() => void again()}>

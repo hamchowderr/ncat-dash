@@ -2278,11 +2278,13 @@ export default defineSchema({
     // Set once a take has been recorded. Recording again with the same path plays these.
     steps: v.optional(v.array(walkStepValidator)),
     // "finding" and "found": a take given no address, whose page the agent searches for
-    // and the person checks before it is recorded.
+    // and the person checks before it is recorded. "asking": the line is about the
+    // person's own site and nothing says which, so the take asks them.
     status: v.union(
       v.literal("queued"),
       v.literal("finding"),
       v.literal("found"),
+      v.literal("asking"),
       v.literal("recording"),
       v.literal("saving"),
       v.literal("done"),
@@ -2292,6 +2294,9 @@ export default defineSchema({
     previewId: v.optional(v.id("_storage")),
     pageTitle: v.optional(v.string()),
     avoid: v.optional(v.array(v.string())),
+    // The site the person said the line is about, answering "Which site is this about?".
+    // Sent with the next search, which keeps it in their Knowledge (the team's, if shared).
+    site: v.optional(v.object({ url: v.string(), share: v.boolean() })),
     // Why it was not recorded, in words a person can act on.
     problem: v.optional(v.string()),
     // The finished video, one of the team's uploads.

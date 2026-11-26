@@ -14,7 +14,15 @@ import {
   submitBatch,
 } from "./moments-batch";
 import { reviewPrompt, reviewQuestion } from "./review";
-import { findPage, findRequest, makeTake, TakeProblem, takeRequest } from "./page-recording";
+import {
+  findPage,
+  findRequest,
+  makeTake,
+  saveSite,
+  siteRequest,
+  TakeProblem,
+  takeRequest,
+} from "./page-recording";
 import { scenesAgent, scenesPrompt, scenesRequest } from "./scenes";
 import {
   finishSignIn,
@@ -33,7 +41,7 @@ import {
   translateWordsRequest,
 } from "./translate";
 import { TEAM_KEY, teamKey } from "./team-key";
-import { rememberSession, SCREEN_KINDS } from "./session-store";
+import { personOf, rememberSession, SCREEN_KINDS } from "./session-store";
 
 const body = z.object({
   convexToken: z.string().min(20).max(8000),
@@ -212,7 +220,11 @@ export const createNcatRoutes = () => [
       const parsed = takeRequest.safeParse(await c.req.json().catch(() => undefined));
       if (!parsed.success) return c.json({ error: "invalid body" }, 400);
       try {
-        const take = await makeTake(parsed.data, await teamKey(parsed.data.organizationId));
+        const take = await makeTake(
+          parsed.data,
+          await teamKey(parsed.data.organizationId),
+          personOf(resourceIdOf(c) ?? ""),
+        );
         return c.json(take);
       } catch (caught) {
         if (caught instanceof TakeProblem) {
@@ -241,13 +253,42 @@ export const createNcatRoutes = () => [
       const parsed = findRequest.safeParse(await c.req.json().catch(() => undefined));
       if (!parsed.success) return c.json({ error: "invalid body" }, 400);
       try {
-        return c.json(await findPage(parsed.data, await teamKey(parsed.data.organizationId)));
+        return c.json(
+          await findPage(
+            parsed.data,
+            await teamKey(parsed.data.organizationId),
+            personOf(resourceIdOf(c) ?? ""),
+          ),
+        );
       } catch (caught) {
         if (caught instanceof TakeProblem) {
           return c.json({ error: caught.message, code: caught.code }, 422);
         }
         console.warn("[record] finding the page failed", caught);
         return c.json({ error: "The agent could not look for the page." }, 502);
+      }
+    },
+  }),
+  // POST /ncat/knowledge/site: keeps a site the person gave (setting up, or answering
+  // "Which site is this about?" on a take) in Knowledge, so the agent knows it from then
+  // on. It goes in the person's own pages; `share` puts it in the team's pages as well.
+  registerApiRoute("/ncat/knowledge/site", {
+    method: "POST",
+    handler: async (c) => {
+      const resourceId = resourceIdOf(c);
+      if (!resourceId) {
+        return c.json(
+          { error: "Set MASTRA_JWT_SECRET on the agent server and the dashboard." },
+          401,
+        );
+      }
+      const parsed = siteRequest.safeParse(await c.req.json().catch(() => undefined));
+      if (!parsed.success) return c.json({ error: "invalid body" }, 400);
+      try {
+        return c.json({ scopes: await saveSite(parsed.data, personOf(resourceId)) });
+      } catch (caught) {
+        console.warn("[knowledge] keeping a site failed", caught);
+        return c.json({ error: "The site could not be kept." }, 502);
       }
     },
   }),
