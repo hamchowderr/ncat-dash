@@ -11,3 +11,12 @@ describe("adminRouteFor", () => {
     expect(adminRouteFor("/files")).toBeUndefined();
   });
 });
+
+describe("the bar along the top", () => {
+  test("names an Admin page by its own title", async () => {
+    const { barTitle } = await import("@/components/app-shell/app-shell");
+    expect(barTitle("/admin/emails/new")).toBe("Send An Email");
+    expect(barTitle("/admin/subscribers")).toBe("Subscribers");
+    expect(barTitle("/files")).toBe("Files");
+  });
+});

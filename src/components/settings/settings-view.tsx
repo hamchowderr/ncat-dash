@@ -19,6 +19,7 @@ import { CaptionsCard } from "./captions-card";
 import { EditorsCard } from "./editors-card";
 import { EmailCard } from "./email-card";
 import { MotionCard } from "./motion-card";
+import { EmailPreferencesCard } from "./email-preferences-card";
 import { NotificationsCard } from "./notifications-card";
 import {
   SettingRow,
@@ -323,9 +324,19 @@ function RunsForms({ settings }: { settings: Loaded }) {
   );
 }
 
-/** What each person hears about, in the Inbox and by email. */
+/**
+ * What each person hears about, in the Inbox and by email, and below it their Email
+ * Preferences: emails from Takewon itself, like product news.
+ */
 export function NotificationsSettings() {
-  return <NotificationsCard />;
+  return (
+    <div className="flex flex-col gap-12">
+      <NotificationsCard />
+      <div id="email-preferences" className="scroll-mt-6">
+        <EmailPreferencesCard />
+      </div>
+    </div>
+  );
 }
 
 /** The email service the dashboard sends through. */

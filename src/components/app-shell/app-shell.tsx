@@ -27,6 +27,8 @@ import { useGuardRedirect } from "@/lib/use-guard-redirect";
 import { useTeam } from "@/lib/use-team";
 import { cn } from "@/lib/utils";
 
+import { adminRouteFor } from "@/components/admin/admin-routes";
+
 import { AppSidebar, isSettingsPath, navItemFor } from "./app-sidebar";
 import { DashboardTour } from "./dashboard-tour";
 import { LocalFolders } from "./local-folders";
@@ -97,7 +99,7 @@ function Shell({
             <MenuButton />
             {/* Settings name their page in the menu and the page itself, so the bar says nothing. */}
             {!isSettingsPath(pathname) && (
-              <span className="truncate text-sm font-medium">{navItemFor(pathname).title}</span>
+              <span className="truncate text-sm font-medium">{barTitle(pathname)}</span>
             )}
             <div className="ml-auto flex items-center gap-3">
               <WatchHowButton
@@ -110,10 +112,7 @@ function Shell({
               {!agentOpen && <AgentTrigger className="-mr-1" />}
             </div>
           </header>
-          <div
-            data-page-frame
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-          >
+          <div data-page-frame className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <PageTransition key={pathname}>
               <div className="flex flex-1 flex-col gap-4 p-4 pt-0 md:gap-6">
                 <TeamPaused organizationId={state.team.id} />
@@ -246,4 +245,9 @@ function MenuButton() {
       {hidden && unseen > 0 && <span className="sr-only">{`${unseen} new in your Inbox`}</span>}
     </span>
   );
+}
+
+/** The page's name in the bar along the top: an Admin page's own, or its menu entry's. */
+export function barTitle(pathname: string): string {
+  return adminRouteFor(pathname)?.title ?? navItemFor(pathname).title;
 }

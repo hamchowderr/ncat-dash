@@ -929,7 +929,7 @@ http.route({
       );
     return unsubscribePage(
       "You're unsubscribed",
-      `${done} won't get product news any more. If you have an account, you can switch it back on in Settings, Email Preferences.`,
+      `${done} won't get product news any more. If you have an account, you can switch it back on in Settings, Notifications.`,
     );
   }),
 });

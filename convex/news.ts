@@ -21,7 +21,7 @@ import { readNewsToken } from "./lib/newsToken";
 import { requireOperator } from "./lib/operator";
 
 // Product news (newsletters). People agree at sign-up (an unticked box), in Settings,
-// Email Preferences, or on the website (confirmed by email first). The rules are in
+// Notifications (Email Preferences), or on the website (confirmed by email first). The rules are in
 // lib/news.ts; the emails themselves go out from broadcasts.ts.
 
 async function signedIn(ctx: Parameters<typeof getCaller>[0]) {
