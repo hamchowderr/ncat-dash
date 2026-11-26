@@ -13,6 +13,7 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import { ShieldCheck, Workflow } from "lucide-react";
 import { RadioGroup as RadioGroupPrimitive } from "radix-ui";
+import posthog from "posthog-js";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -63,6 +64,9 @@ export function workflowMarks(
 }
 
 const ON_WORDS = { on: "On", off: "Off", partly: "Partly on" } as const;
+const posthogConfigured = Boolean(
+  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN && process.env.NEXT_PUBLIC_POSTHOG_HOST,
+);
 
 /**
  * The strip above the Chain tab's canvas: the workflow these automations make, with its
@@ -81,6 +85,11 @@ export function WorkflowBar({ automationId }: { automationId: Id<"automations"> 
     setSwitching(true);
     try {
       await setOn({ workflowId: workflow.workflowId, on });
+      if (posthogConfigured) {
+        posthog.capture(on ? "workflow_enabled" : "workflow_disabled", {
+          workflow_kind: workflow.kind,
+        });
+      }
     } catch (caught) {
       toast.error(errorMessage(caught, "The workflow could not be switched."));
     } finally {
@@ -228,9 +237,23 @@ export function WorkflowDialog({
     try {
       if (workflow) {
         await update({ workflowId: workflow.workflowId, ...sent });
+        if (posthogConfigured) {
+          posthog.capture("workflow_updated", {
+            has_client: Boolean(clientId),
+            review_enabled: review.on,
+            workflow_kind: kind,
+          });
+        }
         toast.success("Workflow saved");
       } else {
         await create({ automationId, ...sent });
+        if (posthogConfigured) {
+          posthog.capture("workflow_created", {
+            has_client: Boolean(clientId),
+            review_enabled: review.on,
+            workflow_kind: kind,
+          });
+        }
         toast.success(`${name || proposal.name} is now a workflow`);
       }
       onClose();

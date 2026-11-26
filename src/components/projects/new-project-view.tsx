@@ -7,6 +7,7 @@ import { useMutation, useQuery } from "convex/react";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -18,6 +19,10 @@ import { useActiveTeam } from "@/lib/team-context";
 
 import { KindIcon } from "./slot-status";
 import { PickList } from "@/components/ui/pick-list";
+
+const posthogConfigured = Boolean(
+  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN && process.env.NEXT_PUBLIC_POSTHOG_HOST,
+);
 
 /**
  * Starting a project: a name, the package that lays out its slots, and who it is for. Its
@@ -55,6 +60,13 @@ export function NewProjectView({ clientId }: { clientId?: string }) {
         ...(picked.shorts !== null && Number.isFinite(count) ? { shorts: count } : {}),
         ...(client ? { clientId: client as Id<"clients"> } : {}),
       });
+      if (posthogConfigured) {
+        posthog.capture("project_created", {
+          has_client: Boolean(client),
+          package_id: packageId,
+          slot_count: slots.length,
+        });
+      }
       router.replace(`/projects/${id}`, { transitionTypes: ["nav-forward"] });
     } catch (caught) {
       toast.error(errorMessage(caught, "The project could not be made. Try again."));

@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { PostHog } from "posthog-node";
 import { z } from "zod";
 import { env } from "../../lib/env";
 import {
@@ -30,6 +31,72 @@ export const batchSubmission = z.object({
 
 export const batchCheck = z.object({ batchId: z.string().regex(/^msgbatch_[\w-]{1,100}$/) });
 
+type BatchInput = { role: string; content: string };
+type PendingBatch = { model: string; distinctId: string; inputs: Map<string, BatchInput[]> };
+
+// The Anthropic batch endpoint does not expose the per-request wrapper hooks that Mastra uses.
+// Capture completed results directly instead; the client batches asynchronously and is never
+// awaited on the automation's path.
+const posthog =
+  env.POSTHOG_PROJECT_TOKEN && env.POSTHOG_HOST
+    ? new PostHog(env.POSTHOG_PROJECT_TOKEN, { host: env.POSTHOG_HOST, privacyMode: false })
+    : null;
+const pendingBatches = new Map<string, PendingBatch>();
+
+function captureBatchResult({
+  batchId,
+  requestId,
+  distinctId,
+  model,
+  input,
+  output,
+  inputTokens,
+  outputTokens,
+  cacheReadTokens,
+  cacheWriteTokens,
+  error,
+}: {
+  batchId: string;
+  requestId: string;
+  distinctId: string;
+  model: string;
+  input?: BatchInput[];
+  output?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  error?: string;
+}): void {
+  if (!posthog) return;
+  try {
+    posthog.capture({
+      distinctId,
+      event: "$ai_generation",
+      properties: {
+        $ai_trace_id: `${batchId}:${requestId}`,
+        $ai_session_id: null,
+        $ai_span_name: "anthropic_batch_message",
+        $ai_model: model,
+        $ai_provider: "anthropic",
+        $ai_input: input ?? [],
+        $ai_output_choices: output ? [{ role: "assistant", content: output }] : [],
+        ...(inputTokens !== undefined ? { $ai_input_tokens: inputTokens } : {}),
+        ...(outputTokens !== undefined ? { $ai_output_tokens: outputTokens } : {}),
+        ...(cacheReadTokens !== undefined
+          ? { $ai_cache_read_input_tokens: cacheReadTokens }
+          : {}),
+        ...(cacheWriteTokens !== undefined
+          ? { $ai_cache_creation_input_tokens: cacheWriteTokens }
+          : {}),
+        ...(error ? { $ai_is_error: true, $ai_error: error } : {}),
+      },
+    });
+  } catch {
+    // Observability never changes the result of a completed batch.
+  }
+}
+
 /** The Anthropic model batches go to, or null when this server cannot batch. */
 export function batchModel(): string | null {
   if (!env.CHAT_MODEL.startsWith("anthropic/") || !env.ANTHROPIC_API_KEY || env.USE_AIMOCK) {
@@ -59,6 +126,7 @@ export async function submitBatch(
   model: string,
   requests: z.infer<typeof batchSubmission>["requests"],
   apiKey: string | null = null,
+  distinctId?: string,
 ): Promise<string> {
   const batch = await anthropic(apiKey).messages.batches.create({
     requests: requests.map(({ id, request }) => ({
@@ -73,6 +141,19 @@ export async function submitBatch(
       },
     })),
   });
+  pendingBatches.set(batch.id, {
+    model,
+    distinctId: distinctId ?? batch.id,
+    inputs: new Map(
+      requests.map(({ id, request }) => [
+        id,
+        [
+          { role: "system", content: MOMENTS_INSTRUCTIONS },
+          { role: "user", content: momentsPrompt(request) },
+        ],
+      ]),
+    ),
+  });
   return batch.id;
 }
 
@@ -86,13 +167,24 @@ export type BatchAnswer = ({ id: string; answer: string } | { id: string; error:
 export async function batchAnswers(
   batchId: string,
   apiKey: string | null = null,
+  distinctId?: string,
 ): Promise<BatchAnswer[] | null> {
   const batches = anthropic(apiKey).messages.batches;
   const batch = await batches.retrieve(batchId);
   if (batch.processing_status !== "ended") return null;
+  const pending = pendingBatches.get(batchId);
+  const captureDistinctId = distinctId ?? pending?.distinctId ?? batchId;
   const answers: BatchAnswer[] = [];
   for await (const result of await batches.results(batchId)) {
     if (result.result.type !== "succeeded") {
+      captureBatchResult({
+        batchId,
+        requestId: result.custom_id,
+        distinctId: captureDistinctId,
+        model: pending?.model ?? env.CHAT_MODEL,
+        input: pending?.inputs.get(result.custom_id),
+        error: result.result.type,
+      });
       answers.push({ id: result.custom_id, error: result.result.type });
       continue;
     }
@@ -113,11 +205,25 @@ export async function batchAnswers(
       .map((block) => (block.type === "text" ? block.text : ""))
       .join("")
       .trim();
+    captureBatchResult({
+      batchId,
+      requestId: result.custom_id,
+      distinctId: captureDistinctId,
+      model: message.model,
+      input: pending?.inputs.get(result.custom_id),
+      output: text || undefined,
+      inputTokens: message.usage?.input_tokens ?? undefined,
+      outputTokens: message.usage?.output_tokens ?? undefined,
+      cacheReadTokens: message.usage?.cache_read_input_tokens ?? undefined,
+      cacheWriteTokens: message.usage?.cache_creation_input_tokens ?? undefined,
+      ...(message.stop_reason === "refusal" || !text ? { error: "empty" } : {}),
+    });
     answers.push(
       message.stop_reason === "refusal" || !text
         ? { id: result.custom_id, error: "empty", ...used }
         : { id: result.custom_id, answer: text, ...used },
     );
   }
+  pendingBatches.delete(batchId);
   return answers;
 }

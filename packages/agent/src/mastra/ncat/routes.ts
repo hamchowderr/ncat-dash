@@ -50,6 +50,11 @@ function organizationOf(body: unknown): string | undefined {
   return typeof id === "string" && id.length > 0 && id.length <= 200 ? id : undefined;
 }
 
+/** One-shot routes have no conversation, but their signed caller still identifies the trace. */
+function tracingOptions(userId: string, operation: string) {
+  return { tracingOptions: { metadata: { userId, operation } } };
+}
+
 export const createNcatRoutes = () => [
   registerApiRoute("/ncat/session", {
     method: "POST",
@@ -108,7 +113,7 @@ export const createNcatRoutes = () => [
                 ]
               : prompt,
           },
-        ]);
+        ], tracingOptions(resourceIdOf(c)!, "review_reply"));
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);
         return c.json({ answer });
@@ -139,7 +144,7 @@ export const createNcatRoutes = () => [
         if (key) requestContext.set(TEAM_KEY, key);
         const result = await momentsAgent.generate(
           [{ role: "user", content: momentsPrompt(parsed.data) }],
-          { requestContext },
+          { requestContext, ...tracingOptions(resourceIdOf(c)!, "moments") },
         );
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);
@@ -175,7 +180,7 @@ export const createNcatRoutes = () => [
         if (key) requestContext.set(TEAM_KEY, key);
         const result = await scenesAgent.generate(
           [{ role: "user", content: scenesPrompt(parsed.data) }],
-          { requestContext },
+          { requestContext, ...tracingOptions(resourceIdOf(c)!, "scenes") },
         );
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);
@@ -210,7 +215,7 @@ export const createNcatRoutes = () => [
         if (key) requestContext.set(TEAM_KEY, key);
         const result = await translateAgent.generate(
           [{ role: "user", content: translatePrompt(parsed.data) }],
-          { requestContext },
+          { requestContext, ...tracingOptions(resourceIdOf(c)!, "translate") },
         );
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);
@@ -245,7 +250,7 @@ export const createNcatRoutes = () => [
         if (key) requestContext.set(TEAM_KEY, key);
         const result = await translateWordsAgent.generate(
           [{ role: "user", content: translateWordsPrompt(parsed.data) }],
-          { requestContext },
+          { requestContext, ...tracingOptions(resourceIdOf(c)!, "translate_words") },
         );
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);
@@ -290,7 +295,7 @@ export const createNcatRoutes = () => [
               ],
             },
           ],
-          { requestContext },
+          { requestContext, ...tracingOptions(resourceIdOf(c)!, "look") },
         );
         const answer = result.text.trim();
         if (!answer) return c.json({ error: "empty answer" }, 502);
@@ -319,7 +324,9 @@ export const createNcatRoutes = () => [
       if (!parsed.success) return c.json({ error: "invalid body" }, 400);
       try {
         const key = await teamKey(organizationOf(body));
-        return c.json({ batchId: await submitBatch(model, parsed.data.requests, key) });
+        return c.json({
+          batchId: await submitBatch(model, parsed.data.requests, key, resourceIdOf(c)!),
+        });
       } catch {
         return c.json({ error: "The batch could not be sent." }, 502);
       }
@@ -343,7 +350,7 @@ export const createNcatRoutes = () => [
       try {
         // Read with the key it was sent with: the team's own, when it has one.
         const key = await teamKey(organizationOf(body));
-        const answers = await batchAnswers(parsed.data.batchId, key);
+        const answers = await batchAnswers(parsed.data.batchId, key, resourceIdOf(c)!);
         return c.json(answers ? { answers } : { pending: true });
       } catch {
         return c.json({ error: "The batch could not be read." }, 502);

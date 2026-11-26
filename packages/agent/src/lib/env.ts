@@ -167,6 +167,10 @@ const envSchema = z
     OPENAI_API_KEY: z.string().optional(),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
 
+    // Optional AI Observability exporter. Both must be set before the agent sends traces.
+    POSTHOG_PROJECT_TOKEN: z.string().optional(),
+    POSTHOG_HOST: z.string().optional(),
+
     // The model the chat agent uses (the Agent Controller wraps it).
     // `provider/model` form, resolved by Mastra's model router — set it to any provider
     // (see mastra.ai/models). Thread auto-titles derive a cheap model from this same

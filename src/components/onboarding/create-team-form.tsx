@@ -7,6 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
+import posthog from "posthog-js";
+
+const posthogConfigured = Boolean(
+  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN && process.env.NEXT_PUBLIC_POSTHOG_HOST,
+);
 
 function slugify(name: string) {
   const base = name
@@ -35,6 +40,7 @@ export function CreateTeamForm() {
       return;
     }
     await authClient.organization.setActive({ organizationId: created.data.id });
+    if (posthogConfigured) posthog.capture("team_created");
     // The page moves on by itself once the new team shows up as the active one.
   }
 

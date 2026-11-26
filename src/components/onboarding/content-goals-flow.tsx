@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import posthog from "posthog-js";
 import { useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
@@ -60,6 +61,9 @@ const tile =
 
 type Stage = "kinds" | "apps" | "turn-on" | "upload";
 const STAGES: Stage[] = ["kinds", "apps", "turn-on", "upload"];
+const posthogConfigured = Boolean(
+  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN && process.env.NEXT_PUBLIC_POSTHOG_HOST,
+);
 
 type Made = {
   starterId: string;
@@ -152,7 +156,15 @@ export function ContentGoalsFlow({
     try {
       // A member who is not an owner or admin still gets the suggestions; the team's
       // answers are left for those who manage it.
-      if (saved?.canEdit) await save({ organizationId, kinds: pickedKinds, apps: pickedApps });
+      if (saved?.canEdit) {
+        await save({ organizationId, kinds: pickedKinds, apps: pickedApps });
+        if (posthogConfigured) {
+          posthog.capture("onboarding_preferences_saved", {
+            content_kind_count: pickedKinds.length,
+            posting_app_count: pickedApps.length,
+          });
+        }
+      }
       setStage("turn-on");
     } catch (caught) {
       toast.error(errorMessage(caught, "Your answers could not be saved. Try again."));
@@ -165,6 +177,11 @@ export function ContentGoalsFlow({
     setBusy(true);
     try {
       setMade(await turnOn({ organizationId, starterIds: chosen.map((starter) => starter.id) }));
+      if (posthogConfigured) {
+        posthog.capture("onboarding_automations_enabled", {
+          automation_count: chosen.length,
+        });
+      }
       setStage("upload");
     } catch (caught) {
       toast.error(errorMessage(caught, "The automations could not be added. Try again."));
@@ -354,6 +371,7 @@ function FirstUpload({
       setGoing({ name: file.name, percent: 0 });
       await sendFile(started, file, (percent) => setGoing({ name: file.name, percent }));
       await finishUpload({ uploadId: started.uploadId });
+      if (posthogConfigured) posthog.capture("onboarding_first_upload_completed");
       setUploaded({ id: started.uploadId, name: file.name });
     } catch (caught) {
       if (uploadId) await removeUpload({ uploadId });

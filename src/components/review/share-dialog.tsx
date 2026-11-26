@@ -4,6 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { Check, Copy, Link2, Link2Off, RefreshCw } from "lucide-react";
+import posthog from "posthog-js";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -21,6 +22,10 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { errorMessage } from "@/lib/catalog";
 import { dayOf } from "@/lib/when";
+
+const posthogConfigured = Boolean(
+  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN && process.env.NEXT_PUBLIC_POSTHOG_HOST,
+);
 
 /** The address a client opens. */
 export function shareUrl(token: string): string {
@@ -97,6 +102,12 @@ export function ShareDialog({
     setBusy(true);
     try {
       await set({ reviewId, ...draft });
+      if (posthogConfigured) {
+        posthog.capture("review_share_created", {
+          allow_verdict: draft.allowVerdict,
+          show_team_comments: draft.showTeamComments,
+        });
+      }
     } catch (error) {
       toast.error(errorMessage(error, "The link could not be made."));
     } finally {

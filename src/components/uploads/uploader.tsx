@@ -4,6 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Link2, Upload, UploadCloud } from "lucide-react";
+import posthog from "posthog-js";
 import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -47,6 +48,10 @@ type Sendable = {
   size: number;
   go: (started: StartedUpload, onProgress: (percent: number) => void) => Promise<void>;
 };
+
+const posthogConfigured = Boolean(
+  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN && process.env.NEXT_PUBLIC_POSTHOG_HOST,
+);
 
 const SOURCES = [
   ["zoom", "Zoom"],
@@ -166,6 +171,7 @@ export function useUploader() {
         setInFlight((current) => ({ ...current, [id]: { name: record.name, percent } })),
       );
       await finishUpload({ uploadId: id });
+      if (posthogConfigured) posthog.capture("file_upload_completed", { upload_method: "desktop_resume" });
       refreshStopped();
     } catch (caught) {
       if (caught instanceof StoppedUpload) stoppedNotice(record.name);
@@ -205,6 +211,12 @@ export function useUploader() {
           setInFlight((current) => ({ ...current, [id]: { name: file.name, percent } })),
         );
         await finishUpload({ uploadId: id });
+        if (posthogConfigured) {
+          posthog.capture("file_upload_completed", {
+            skipped_automation_count: skipped.length,
+            upload_method: desktop ? "desktop" : "browser",
+          });
+        }
       } catch (caught) {
         // Stopped part way from disk: kept, to carry on from where it got to.
         if (caught instanceof StoppedUpload) {

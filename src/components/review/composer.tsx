@@ -8,12 +8,17 @@ import {
   mentionQuery,
 } from "@takewon/review-core";
 import { ArrowUp, AtSign, Clock } from "lucide-react";
+import posthog from "posthog-js";
 import { type ReactNode, useId, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { Face, type Person } from "./person";
+
+const posthogConfigured = Boolean(
+  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN && process.env.NEXT_PUBLIC_POSTHOG_HOST,
+);
 
 /**
  * Where a comment or a reply is written. Typing "@" offers the team's names; Enter
@@ -70,6 +75,9 @@ export function Composer({
     const saved = await onSend(body);
     setSending(false);
     if (saved) {
+      if (posthogConfigured) {
+        posthog.capture("review_comment_submitted", { has_timestamp: moment !== undefined });
+      }
       setText("");
       onTyping?.(false);
     }

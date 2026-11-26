@@ -72,3 +72,4 @@ next-env.d.ts
 # The agent image workflow's pnpm store
 pnpm-store/
 /speed-test-results/
+.env.local
