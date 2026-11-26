@@ -65,6 +65,7 @@ export const momentsRequest = z.discriminatedUnion("kind", [
     settings: momentSettings,
     avoid: z.array(span).max(500).default([]),
     houseRules: z.string().max(2000).default(""),
+    brief: z.string().max(2000).default(""),
   }),
   z.object({
     kind: z.literal("chapters"),
@@ -73,6 +74,7 @@ export const momentsRequest = z.discriminatedUnion("kind", [
     transcript: z.string().min(1).max(MAX_TRANSCRIPT),
     settings: chapterSettings,
     houseRules: z.string().max(2000).default(""),
+    brief: z.string().max(2000).default(""),
   }),
   z.object({
     kind: z.literal("motion"),
@@ -81,6 +83,7 @@ export const momentsRequest = z.discriminatedUnion("kind", [
     transcript: z.string().min(1).max(MAX_TRANSCRIPT),
     settings: motionSettings,
     houseRules: z.string().max(2000).default(""),
+    brief: z.string().max(2000).default(""),
   }),
   z.object({
     kind: z.literal("broll"),
@@ -89,6 +92,7 @@ export const momentsRequest = z.discriminatedUnion("kind", [
     transcript: z.string().min(1).max(MAX_TRANSCRIPT),
     settings: brollSettings,
     houseRules: z.string().max(2000).default(""),
+    brief: z.string().max(2000).default(""),
   }),
 ]);
 
@@ -143,6 +147,13 @@ export function momentsPrompt(request: MomentsRequest): string {
   lines.push(`The recording: ${about}${clockTime(request.duration)} long.`);
   if (request.houseRules.trim()) {
     lines.push("", "The team's house rules:", request.houseRules.trim());
+  }
+  if (request.brief.trim()) {
+    lines.push(
+      "",
+      "The brief for this video (pacing and direction from the team; follow it where it applies):",
+      request.brief.trim(),
+    );
   }
   if (request.kind === "moments") {
     const s = request.settings;

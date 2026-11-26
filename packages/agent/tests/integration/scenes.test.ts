@@ -77,4 +77,13 @@ describe("the scenes prompt", () => {
       ].join("\n"),
     );
   });
+
+  it("passes on the video's brief after the shape", () => {
+    const prompt = scenesPrompt(
+      scenesRequest.parse({ ...ASKED, brief: "Keep it calm; show the upload page on screen." }),
+    );
+    expect(prompt).toContain(
+      "Shape: 9:16 (upright, for phones).\n\nThe brief for this video (pacing and direction from the team; follow it where it applies):\nKeep it calm; show the upload page on screen.\n\nChapter 1",
+    );
+  });
 });

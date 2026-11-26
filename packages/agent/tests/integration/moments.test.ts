@@ -167,6 +167,17 @@ describe("the moments prompt", () => {
     expect(prompt.endsWith(MOMENTS.transcript)).toBe(true);
   });
 
+  it("passes on the video's own brief after the house rules", () => {
+    for (const asked of [MOMENTS, CHAPTERS]) {
+      const prompt = momentsPrompt(
+        momentsRequest.parse({ ...asked, brief: "Fast pacing. Keep the pricing story whole." }),
+      );
+      expect(prompt).toContain(
+        "The brief for this video (pacing and direction from the team; follow it where it applies):\nFast pacing. Keep the pricing story whole.",
+      );
+    }
+  });
+
   it("leaves out what the team did not set", () => {
     const prompt = momentsPrompt(
       momentsRequest.parse({
@@ -177,6 +188,7 @@ describe("the moments prompt", () => {
       }),
     );
     expect(prompt).not.toContain("house rules");
+    expect(prompt).not.toContain("brief");
     expect(prompt).not.toContain("Favour");
     expect(prompt).not.toContain("overlaps them");
   });

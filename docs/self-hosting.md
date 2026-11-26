@@ -260,22 +260,26 @@ In `deploy/compose.yml` the web app takes these from `deploy/.env` (`CONVEX_URL`
 
 ### Agent server
 
-| Name                                                                          | Needed           | What it does                                                                                                                                     |
-| ----------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `APP_SECRET`                                                                  | yes              | At least 32 characters. The server will not start without it.                                                                                    |
-| `MASTRA_JWT_SECRET`                                                           | yes              | The shared secret.                                                                                                                               |
-| `AGENT_CONVEX_SECRET`                                                         | no               | Signs this server's calls to Convex instead of `MASTRA_JWT_SECRET`; the same value as in Convex.                                                 |
-| `CONVEX_URL`                                                                  | yes              | The Convex API address. The agent calls it as the signed-in person; it has no key of its own.                                                    |
-| `CONVEX_SITE_URL`                                                             | when self-hosted | The Convex HTTP actions address. Worked out from `CONVEX_URL` only for Convex Cloud and local development.                                       |
-| `CHAT_MODEL`                                                                  | no               | `provider/model`; `anthropic/claude-sonnet-5-5` in `deploy/compose.yml`.                                                                         |
-| `SIMPLE_CHAT_MODEL`                                                           | no               | The cheaper model for simple turns and for translating subtitles (`anthropic/claude-haiku-5-5`).                                                 |
-| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`         | one of them      | The key for the provider `CHAT_MODEL` names.                                                                                                     |
-| `DISCORD_BOT_TOKEN`, `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY`           | Discord          |                                                                                                                                                  |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`                                 | Telegram         |                                                                                                                                                  |
-| `TEAMS_APP_ID`, `TEAMS_APP_PASSWORD`, `TEAMS_APP_TENANT_ID`, `TEAMS_APP_NAME` | Microsoft Teams  |                                                                                                                                                  |
-| `TURSO_DATABASE_URL`                                                          | no               | Where the agent keeps its memory. The image uses `file:/data/mastra.db`, so keep `/data` on a volume.                                            |
-| `WORKSPACE_SANDBOX`                                                           | no               | Lets the agent run shell commands on its own server. Off, and keep it off when more than one team uses it.                                       |
-| `FIRECRAWL_API_KEY`                                                           | page recordings  | Firecrawl's hosted browser, for the agent's browsing, page recordings on storyboards and the sign-ins they use. One recording is made at a time. |
+| Name                                                                          | Needed           | What it does                                                                                                                                                               |
+| ----------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_SECRET`                                                                  | yes              | At least 32 characters. The server will not start without it.                                                                                                              |
+| `MASTRA_JWT_SECRET`                                                           | yes              | The shared secret.                                                                                                                                                         |
+| `AGENT_CONVEX_SECRET`                                                         | no               | Signs this server's calls to Convex instead of `MASTRA_JWT_SECRET`; the same value as in Convex.                                                                           |
+| `CONVEX_URL`                                                                  | yes              | The Convex API address. The agent calls it as the signed-in person; it has no key of its own.                                                                              |
+| `CONVEX_SITE_URL`                                                             | when self-hosted | The Convex HTTP actions address. Worked out from `CONVEX_URL` only for Convex Cloud and local development.                                                                 |
+| `CHAT_MODEL`                                                                  | no               | `provider/model`; `anthropic/claude-sonnet-5-5` in `deploy/compose.yml`.                                                                                                   |
+| `SIMPLE_CHAT_MODEL`                                                           | no               | The cheaper model for simple turns and for translating subtitles (`anthropic/claude-haiku-5-5`).                                                                           |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`         | one of them      | The key for the provider `CHAT_MODEL` names.                                                                                                                               |
+| `DISCORD_BOT_TOKEN`, `DISCORD_APPLICATION_ID`, `DISCORD_PUBLIC_KEY`           | Discord          |                                                                                                                                                                            |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`                                 | Telegram         |                                                                                                                                                                            |
+| `TEAMS_APP_ID`, `TEAMS_APP_PASSWORD`, `TEAMS_APP_TENANT_ID`, `TEAMS_APP_NAME` | Microsoft Teams  |                                                                                                                                                                            |
+| `TURSO_DATABASE_URL`                                                          | no               | Where the agent keeps its memory. The image uses `file:/data/mastra.db`, so keep `/data` on a volume.                                                                      |
+| `OBSERVABILITY_DB_PATH`                                                       | no               | Where the agent keeps its traces and logs (what Studio shows). The image uses `/data/observability.duckdb`, on the same volume.                                            |
+| `TRACE_RETENTION`                                                             | no               | How long traces and logs stay, such as `14d` (the default), `72h` or `4w`. Older ones are trimmed every hour.                                                              |
+| `OBSERVABILITY_LOG_LEVEL`                                                     | no               | The lowest server log level kept with the traces: `info` (the default), `debug`, `warn` or `error`.                                                                        |
+| `POSTHOG_API_KEY`, `POSTHOG_HOST`                                             | no               | A PostHog project token (`phc_…`) to also send each agent run to PostHog's AI view. `POSTHOG_HOST` only for the EU cloud (`https://eu.i.posthog.com`) or your own PostHog. |
+| `WORKSPACE_SANDBOX`                                                           | no               | Lets the agent run shell commands on its own server. Off, and keep it off when more than one team uses it.                                                                 |
+| `FIRECRAWL_API_KEY`                                                           | page recordings  | Firecrawl's hosted browser, for the agent's browsing, page recordings on storyboards and the sign-ins they use. One recording is made at a time.                           |
 
 The agent server takes many more optional settings from the chat kit it is built on; they are listed with their defaults in [`packages/agent/.env.example`](../packages/agent/.env.example).
 
@@ -310,6 +314,12 @@ To see how long videos take on your machine, before and after an update or a cha
 - **What stays**: a keyed hash of the owner's mailbox and network in the trial record, so deleting and making a team again doesn't start a new free trial, and the record of each deletion (`teamDeletions`).
 - **How a deletion went**: `npx convex run teamDeletion:status '{"organizationId":"<team id>"}'`.
 - **Teams deleted before this existed** left their data behind. `npx convex run teamDeletion:findLeftovers` lists them, and `npx convex run teamDeletion:cleanUpLeftovers '{"organizationId":"<team id>"}'` takes each one's data away.
+
+## Logs And Traces
+
+Each run of the agent is kept as a trace, with the server's log lines beside it, for `TRACE_RETENTION` (14 days by default). Open them in Mastra Studio at `AGENT_URL` (sign in with a token signed by `MASTRA_JWT_SECRET`), under Traces and Logs. They live on the agent's `/data` volume, so they survive restarts and updates.
+
+Convex and the toolkit print their logs to the container output, which Docker drops when a container is replaced. To keep them, send the container output somewhere that stores it. Coolify has this built in (Server, Log Drains). Convex can also stream every function call, with its console lines and errors, to PostHog, Axiom, Datadog, Sentry or a webhook of your own.
 
 ## When Something Is Wrong
 

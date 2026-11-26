@@ -15,6 +15,7 @@ import {
   withDisclosure,
 } from "./disclosure";
 import { composeParts, wrapLines } from "./editing";
+import { duckedMix, MUSIC_UNDER_SPEECH } from "./ducking";
 
 /**
  * Variant steps: one finished video made into many to test. Other openings (hooks) and
@@ -846,7 +847,7 @@ export const variantRecipes: StepDefinition[] = [
     id: VARIANT_MUSIC_STEP,
     title: "Music Under Each Variant",
     description:
-      "Lays your team's background music from Settings quietly under each video, looped to its length and faded out at the end, so every ad variant comes as a copy with music next to the one without. Upload the copy without music where the platform wants its own cleared sounds, such as TikTok's Commercial Music Library or Meta's Sound Collection. Until your team adds background music in Settings it is passed over and only the copies without music are made.",
+      "Lays your team's background music from Settings under each video, looped to its length, dipping while someone talks and faded out at the end, so every ad variant comes as a copy with music next to the one without. Upload the copy without music where the platform wants its own cleared sounds, such as TikTok's Commercial Music Library or Meta's Sound Collection. Until your team adds background music in Settings it is passed over and only the copies without music are made.",
     primaryInput: "video_url",
     brandInputs: { music_url: "music" },
     readsFirst: ["video_url"],
@@ -860,10 +861,14 @@ export const variantRecipes: StepDefinition[] = [
         .optional()
         .describe("The music track. Left empty, your team's background music from Settings"),
       music_volume: number(
-        "Loudness of the music under the voice (1 is the track as it is)",
+        "Loudness of the music where nobody talks (1 is the track as it is)",
         0,
         2,
-      ).default(0.15),
+      ).default(0.25),
+      music_under_speech: z
+        .enum(MUSIC_UNDER_SPEECH)
+        .describe("Whether the music dips while someone talks")
+        .default("dips while someone talks"),
     },
     outputLabels: () => [MUSIC_CODE],
     toRequest: (b, facts) => {
@@ -882,7 +887,11 @@ export const variantRecipes: StepDefinition[] = [
             music,
             "[0:a]aresample=48000,aformat=channel_layouts=stereo[voice]",
             // The video's own length, and the voice left as loud as it was.
-            "[voice][music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]",
+            ...(b.music_under_speech === "stays at one level"
+              ? [
+                  "[voice][music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]",
+                ]
+              : duckedMix("voice", "music", "mixed")),
           ];
       return {
         inputs: [

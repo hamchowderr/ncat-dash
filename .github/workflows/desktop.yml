@@ -52,7 +52,10 @@ jobs:
           cache: pnpm
       - name: Install the system libraries and the WebKit driver
         run: |
-          sudo apt-get update
+          # A third-party list on the runner image (packages.microsoft.com) sometimes refuses
+          # with a 403, which fails the whole update. Only Ubuntu's lists are needed here, and
+          # the install below still fails if those could not be read.
+          sudo apt-get update || true
           sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES webkit2gtk-driver xvfb dbus
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
@@ -209,7 +212,10 @@ jobs:
       - name: Install the system libraries
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          # A third-party list on the runner image (packages.microsoft.com) sometimes refuses
+          # with a 403, which fails the whole update. Only Ubuntu's lists are needed here, and
+          # the install below still fails if those could not be read.
+          sudo apt-get update || true
           sudo apt-get install -y --no-install-recommends $LINUX_PACKAGES
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:

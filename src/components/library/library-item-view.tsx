@@ -52,6 +52,7 @@ import { KIND_LABELS, ShortId, sourceLabel, StarRating, useLibraryLinks } from "
 import { PickList } from "@/components/ui/pick-list";
 import { Segmented } from "@/components/ui/segmented";
 import { FileFacts } from "./file-facts";
+import { VideoBrief } from "./video-brief";
 import { transcriptState, WorkRow, type Work } from "./work-status";
 
 type Tab = "words" | "storyboard" | "made" | "details";
@@ -805,6 +806,14 @@ export function LibraryItemView({
                     </p>
                     <RunMenu itemId={item._id} teamId={team.id} />
                   </div>
+
+                  {(item.kind === "video" || item.kind === "audio") && (
+                    <VideoBrief
+                      itemId={item._id}
+                      brief={item.brief ?? ""}
+                      briefFrom={item.briefFrom ?? null}
+                    />
+                  )}
 
                   <FileRuns itemId={item._id} />
 

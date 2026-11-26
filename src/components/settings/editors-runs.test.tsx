@@ -23,6 +23,8 @@ const SETTINGS = {
   mostRetries: 10,
   aiLimit: null,
   aiLimitRange: { min: 0.05, max: 100 },
+  clearInBetweenDays: null,
+  clearInBetweenRange: { min: 1, max: 365, usual: 30 },
   brand: {},
 };
 
@@ -88,6 +90,37 @@ describe("Runs", () => {
     fireEvent.change(limit, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(save).toHaveBeenCalledWith({ organizationId: TEAM.id, dollars: null });
+  });
+
+  test("clearing in-between files is off, and switching it on keeps them 30 days", () => {
+    answerQuery(api.teamSettings.get, SETTINGS);
+    const save = mutationOf(api.teamSettings.setClearInBetween);
+    renderInApp(<RunsSettings />);
+    const toggle = screen.getByRole("switch", { name: "Clear in-between files" });
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByText(/Off: nothing is ever taken away/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Keep them for")).toBeNull();
+    fireEvent.click(toggle);
+    expect(save).toHaveBeenCalledWith({ organizationId: TEAM.id, days: 30 });
+  });
+
+  test("when on, the days can be changed", () => {
+    answerQuery(api.teamSettings.get, { ...SETTINGS, clearInBetweenDays: 30 });
+    const save = mutationOf(api.teamSettings.setClearInBetween);
+    renderInApp(<RunsSettings />);
+    const days = screen.getByLabelText("Keep them for");
+    expect(days).toHaveValue(30);
+    fireEvent.change(days, { target: { value: "14" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(save).toHaveBeenCalledWith({ organizationId: TEAM.id, days: 14 });
+  });
+
+  test("switching it off saves off", () => {
+    answerQuery(api.teamSettings.get, { ...SETTINGS, clearInBetweenDays: 30 });
+    const save = mutationOf(api.teamSettings.setClearInBetween);
+    renderInApp(<RunsSettings />);
+    fireEvent.click(screen.getByRole("switch", { name: "Clear in-between files" }));
+    expect(save).toHaveBeenCalledWith({ organizationId: TEAM.id, days: null });
   });
 
   test("someone who cannot change them gets no Save and is told why", () => {

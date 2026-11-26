@@ -524,7 +524,8 @@ describe("music under each variant", () => {
     });
     const graph = request.filters.map((item) => item.filter).join(";");
     expect(graph).toContain("atrim=duration=12");
-    expect(graph).toContain("volume=0.15");
+    expect(graph).toContain("volume=0.25");
+    expect(graph).toContain("sidechaincompress");
     expect(graph).toContain("amix=inputs=2:duration=first:dropout_transition=0:normalize=0");
     expect(request.outputs[0].options).toContainEqual({ option: "-c:v", argument: "copy" });
     expect(request.outputs[0].options).toContainEqual({ option: "-map", argument: "[mixed]" });

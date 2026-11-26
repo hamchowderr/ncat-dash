@@ -78,7 +78,9 @@ test("a lesson is planned line by line and its takes come in", async ({ page }) 
   await first.getByRole("button", { name: /Take 1/ }).click();
   await pause(1200);
   await first.getByRole("button", { name: "Link" }).click();
-  await first.getByLabel("You file link", { exact: true }).fill(`${FILES}/cold-open-take.webm`);
+  await first
+    .getByLabel("You file link", { exact: true })
+    .fill(`${FILES}/cold-open-take-voiced.webm`);
   await pause(800);
   await first.getByRole("button", { name: "Add" }).click();
   await expect(first.getByRole("button", { name: /Take 1/ })).toContainText("Take in");
@@ -131,6 +133,17 @@ test("a lesson is planned line by line and its takes come in", async ({ page }) 
   await cuts.getByRole("button", { name: "Add" }).click();
   await expect(cuts.getByRole("listitem")).toHaveCount(2);
   await pause(2500);
+
+  // The chapter made into one finished video: the take with its file in its scene, the
+  // one still waiting for you left out and named.
+  const finished = page.getByRole("region", { name: "Finished video" });
+  await finished.getByRole("button", { name: "Just this chapter" }).click();
+  await expect(finished).toContainText(/Left out takes 2 and 3/);
+  await expect(finished.locator("video")).toBeVisible({ timeout: 90_000 });
+  await expect(
+    finished.getByRole("link", { name: /Open [A-Z]+\d+ in your Library/ }),
+  ).toBeVisible();
+  await pause(3000);
 
   // It stays after a reload, on the Storyboard tab.
   await page.reload();

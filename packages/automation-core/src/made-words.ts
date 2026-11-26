@@ -76,6 +76,7 @@ const MADE_WORDS: Record<string, string> = {
   "recipe-saved-look": "styled",
   "recipe-split-shots": "shot",
   "recipe-beat-cut": "cut to the beat",
+  "recipe-separate-mic": "with mic sound",
 };
 
 /** What a step did to a file, such as "captioned", or null when it is not known. */

@@ -4,7 +4,6 @@ import {
   readClipRef,
   readUploadRef,
   timeRangeOf,
-  type Word,
 } from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 
@@ -20,8 +19,17 @@ import {
   query,
   type QueryCtx,
 } from "./_generated/server";
-import { isMember, MANAGER_ROLES, requireMember, type TeamRole } from "./lib/authz";
+import {
+  isMember,
+  MANAGER_ROLES,
+  memberOrCaller,
+  requireMember,
+  type TeamCaller,
+  type TeamRole,
+} from "./lib/authz";
 import { deleteBoard } from "./lib/storyboards";
+import { briefOf } from "./lib/library";
+import { spokenIn } from "./lib/spoken";
 import { signAgentToken } from "./reviewAgent";
 import {
   aboutLength,
@@ -352,6 +360,125 @@ export const writeFromScript = mutation({
   },
 });
 
+/**
+ * A project's storyboard as the agent and MCP clients read it: the script text in the form
+ * `readScript` reads, and each take's number, line, scene and where it stands.
+ */
+async function readForProject(ctx: QueryCtx, projectId: Id<"projects"> | null, as?: TeamCaller) {
+  const project = projectId ? await ctx.db.get(projectId) : null;
+  if (!project) return fail("not_found", "That project is gone.");
+  const { role } = await memberOrCaller(ctx, project.organizationId, as);
+  const board = await boardOf(ctx, project._id);
+  if (!board) return { project: project.name, storyboard: null };
+  const laidOut = await layOut(ctx, board, role);
+  const chapters = await chaptersOf(ctx, board._id);
+  const takes = await takesOf(ctx, board._id);
+  return {
+    project: project.name,
+    storyboard: {
+      storyboardId: board._id,
+      aspect: board.aspect,
+      length: laidOut.length,
+      script: writeScript({
+        chapters: chapters.map((chapter) => ({
+          title: chapter.title,
+          takes: takes
+            .filter((take) => take.chapterId === chapter._id)
+            .map((take) => ({ line: take.line, scene: take.scene as Scene, parts: take.parts })),
+        })),
+      }),
+      chapters: laidOut.chapters.map((chapter) => ({
+        chapterId: chapter._id,
+        title: chapter.title,
+        takes: chapter.takes.map((take) => ({
+          number: take.number,
+          line: take.line,
+          scene: take.scene,
+          status: take.status.label,
+        })),
+      })),
+    },
+  };
+}
+
+export const forProject = query({
+  args: { projectId: v.id("projects") },
+  handler: (ctx, args) => readForProject(ctx, args.projectId),
+});
+
+/** `forProject` for an MCP client, as the person it signed in as. */
+export const forProjectAs = internalQuery({
+  args: { organizationId: v.string(), userId: v.string(), projectId: v.string() },
+  handler: (ctx, { projectId, ...as }) =>
+    readForProject(ctx, ctx.db.normalizeId("projects", projectId), as),
+});
+
+/**
+ * Writes a project's storyboard from a script, starting it when the project has none and
+ * otherwise replacing its chapters and takes (lines said the same keep their files).
+ */
+const writeArgs = {
+  script: v.string(),
+  aspect: v.optional(aspectValidator),
+  source: v.optional(v.string()),
+};
+const written = v.object({
+  storyboardId: v.id("storyboards"),
+  chapters: v.number(),
+  takes: v.number(),
+  started: v.boolean(),
+});
+
+async function writeProjectBoard(
+  ctx: MutationCtx,
+  projectId: Id<"projects"> | null,
+  args: { script: string; aspect?: Doc<"storyboards">["aspect"]; source?: string },
+  as?: TeamCaller,
+) {
+  const project = projectId ? await ctx.db.get(projectId) : null;
+  if (!project) return fail("not_found", "That project is gone.");
+  await memberOrCaller(ctx, project.organizationId, as);
+  const source = args.source?.trim().replace(/\s+/g, " ").slice(0, LIMITS.source);
+  let board = await boardOf(ctx, project._id);
+  const started = !board;
+  if (!board) {
+    const storyboardId = await ctx.db.insert("storyboards", {
+      organizationId: project.organizationId,
+      projectId: project._id,
+      aspect: args.aspect ?? "16:9",
+      ...(source ? { source } : {}),
+      cuts: [],
+      updatedAt: Date.now(),
+    });
+    board = (await ctx.db.get(storyboardId))!;
+  } else if (args.aspect || source) {
+    await ctx.db.patch(board._id, {
+      ...(args.aspect ? { aspect: args.aspect } : {}),
+      ...(source ? { source } : {}),
+    });
+  }
+  const filled = await fillBoard(ctx, board, args.script);
+  await ctx.db.patch(project._id, { updatedAt: Date.now() });
+  return { storyboardId: board._id, ...filled, started };
+}
+
+export const writeForProject = mutation({
+  args: { projectId: v.id("projects"), ...writeArgs },
+  returns: written,
+  handler: (ctx, { projectId, ...args }) => writeProjectBoard(ctx, projectId, args),
+});
+
+/** `writeForProject` for an MCP client, as the person it signed in as. */
+export const writeForProjectAs = internalMutation({
+  args: { organizationId: v.string(), userId: v.string(), projectId: v.string(), ...writeArgs },
+  returns: written,
+  handler: (ctx, { organizationId, userId, projectId, ...args }) =>
+    writeProjectBoard(ctx, ctx.db.normalizeId("projects", projectId), args, {
+      organizationId,
+      userId,
+    }),
+});
+
 /** Changes the storyboard's shape, where its lines came from, or the cuts made from it. */
 export const setDetails = mutation({
   args: {
@@ -607,32 +734,6 @@ export const removeTake = mutation({
 
 // Drafts made from uploads ---------------------------------------------------------------
 
-/** The words said in an upload, from its transcript. Older transcripts kept no word
- *  timings, so their pieces' words are spread evenly over each piece. */
-async function spokenIn(ctx: QueryCtx, itemId: Id<"libraryItems">): Promise<Word[]> {
-  const pieces = await ctx.db
-    .query("transcriptPieces")
-    .withIndex("by_item_and_start", (q) => q.eq("itemId", itemId))
-    .take(4000);
-  const words: Word[] = [];
-  for (const piece of pieces) {
-    if (piece.words && piece.words.length > 0) {
-      for (const word of piece.words) words.push({ text: word.t, start: word.s, end: word.e });
-      continue;
-    }
-    const said = piece.text.split(/\s+/).filter(Boolean);
-    const each = Math.max(0, piece.end - piece.start) / Math.max(1, said.length);
-    said.forEach((text, index) =>
-      words.push({
-        text,
-        start: piece.start + index * each,
-        end: piece.start + (index + 1) * each,
-      }),
-    );
-  }
-  return words;
-}
-
 function aspectOf(item: Doc<"libraryItems">): (typeof ASPECTS)[number] {
   const width = item.details?.width;
   const height = item.details?.height;
@@ -791,73 +892,94 @@ export const uploadDrafts = query({
  * scenes and clips, starting the storyboard when the project has none yet. The upload's
  * draft stays as it is.
  */
+async function gatherDraft(
+  ctx: MutationCtx,
+  projectId: Id<"projects"> | null,
+  libraryItemId: Id<"libraryItems"> | null,
+  as?: TeamCaller,
+) {
+  const project = projectId ? await ctx.db.get(projectId) : null;
+  if (!project) return fail("not_found", "That project is gone.");
+  await memberOrCaller(ctx, project.organizationId, as);
+  const item = libraryItemId ? await ctx.db.get(libraryItemId) : null;
+  if (!item || item.organizationId !== project.organizationId) {
+    return fail("not_found", "That upload is gone.");
+  }
+  const draft = await draftOf(ctx, item._id);
+  if (!draft) return fail("not_ready", "That upload has no storyboard draft yet.");
+  const fromChapters = await chaptersOf(ctx, draft._id);
+  const fromTakes = await takesOf(ctx, draft._id);
+
+  let board = await boardOf(ctx, project._id);
+  if (!board) {
+    const storyboardId = await ctx.db.insert("storyboards", {
+      organizationId: project.organizationId,
+      projectId: project._id,
+      aspect: draft.aspect,
+      source: `Gathered from ${item.title}`.slice(0, LIMITS.source),
+      cuts: [],
+      updatedAt: Date.now(),
+    });
+    board = (await ctx.db.get(storyboardId))!;
+  }
+  const chapters = await chaptersOf(ctx, board._id);
+  const takes = await takesOf(ctx, board._id);
+  // A storyboard just started has one empty chapter to write in; the draft takes its place.
+  const empty = chapters.filter((chapter) => !takes.some((take) => take.chapterId === chapter._id));
+  const keptChapters = chapters.length - (takes.length === 0 ? empty.length : 0);
+  if (keptChapters + fromChapters.length > LIMITS.chapters) {
+    fail("limit", `A storyboard can have up to ${LIMITS.chapters} chapters.`);
+  }
+  if (takes.length + fromTakes.length > LIMITS.takes) {
+    fail("limit", `A storyboard can have up to ${LIMITS.takes} takes.`);
+  }
+  if (takes.length === 0) for (const chapter of empty) await ctx.db.delete(chapter._id);
+  let order = takes.length === 0 ? 0 : (chapters.at(-1)?.order ?? -1) + 1;
+  for (const chapter of fromChapters) {
+    const chapterId = await ctx.db.insert("storyboardChapters", {
+      storyboardId: board._id,
+      organizationId: board.organizationId,
+      title: chapter.title,
+      order: order++,
+    });
+    for (const take of fromTakes.filter((one) => one.chapterId === chapter._id)) {
+      await ctx.db.insert("storyboardTakes", {
+        storyboardId: board._id,
+        chapterId,
+        organizationId: board.organizationId,
+        order: take.order,
+        line: take.line,
+        scene: take.scene,
+        parts: take.parts,
+        files: take.files,
+      });
+    }
+  }
+  await touch(ctx, board._id);
+  await ctx.db.patch(project._id, { updatedAt: Date.now() });
+  return { chapters: fromChapters.length, takes: fromTakes.length };
+}
+
 export const gatherUploadDraft = mutation({
   args: { projectId: v.id("projects"), libraryItemId: v.id("libraryItems") },
   returns: v.object({ chapters: v.number(), takes: v.number() }),
-  handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId);
-    if (!project) return fail("not_found", "That project is gone.");
-    await requireMember(ctx, project.organizationId);
-    const item = await ctx.db.get(args.libraryItemId);
-    if (!item || item.organizationId !== project.organizationId) {
-      return fail("not_found", "That upload is gone.");
-    }
-    const draft = await draftOf(ctx, item._id);
-    if (!draft) return fail("not_ready", "That upload has no storyboard draft yet.");
-    const fromChapters = await chaptersOf(ctx, draft._id);
-    const fromTakes = await takesOf(ctx, draft._id);
+  handler: (ctx, args) => gatherDraft(ctx, args.projectId, args.libraryItemId),
+});
 
-    let board = await boardOf(ctx, project._id);
-    if (!board) {
-      const storyboardId = await ctx.db.insert("storyboards", {
-        organizationId: project.organizationId,
-        projectId: project._id,
-        aspect: draft.aspect,
-        source: `Gathered from ${item.title}`.slice(0, LIMITS.source),
-        cuts: [],
-        updatedAt: Date.now(),
-      });
-      board = (await ctx.db.get(storyboardId))!;
-    }
-    const chapters = await chaptersOf(ctx, board._id);
-    const takes = await takesOf(ctx, board._id);
-    // A storyboard just started has one empty chapter to write in; the draft takes its place.
-    const empty = chapters.filter(
-      (chapter) => !takes.some((take) => take.chapterId === chapter._id),
-    );
-    const keptChapters = chapters.length - (takes.length === 0 ? empty.length : 0);
-    if (keptChapters + fromChapters.length > LIMITS.chapters) {
-      fail("limit", `A storyboard can have up to ${LIMITS.chapters} chapters.`);
-    }
-    if (takes.length + fromTakes.length > LIMITS.takes) {
-      fail("limit", `A storyboard can have up to ${LIMITS.takes} takes.`);
-    }
-    if (takes.length === 0) for (const chapter of empty) await ctx.db.delete(chapter._id);
-    let order = takes.length === 0 ? 0 : (chapters.at(-1)?.order ?? -1) + 1;
-    for (const chapter of fromChapters) {
-      const chapterId = await ctx.db.insert("storyboardChapters", {
-        storyboardId: board._id,
-        organizationId: board.organizationId,
-        title: chapter.title,
-        order: order++,
-      });
-      for (const take of fromTakes.filter((one) => one.chapterId === chapter._id)) {
-        await ctx.db.insert("storyboardTakes", {
-          storyboardId: board._id,
-          chapterId,
-          organizationId: board.organizationId,
-          order: take.order,
-          line: take.line,
-          scene: take.scene,
-          parts: take.parts,
-          files: take.files,
-        });
-      }
-    }
-    await touch(ctx, board._id);
-    await ctx.db.patch(project._id, { updatedAt: Date.now() });
-    return { chapters: fromChapters.length, takes: fromTakes.length };
+/** `gatherUploadDraft` for an MCP client, as the person it signed in as. */
+export const gatherUploadDraftAs = internalMutation({
+  args: {
+    organizationId: v.string(),
+    userId: v.string(),
+    projectId: v.string(),
+    libraryItemId: v.id("libraryItems"),
   },
+  returns: v.object({ chapters: v.number(), takes: v.number() }),
+  handler: (ctx, { organizationId, userId, projectId, libraryItemId }) =>
+    gatherDraft(ctx, ctx.db.normalizeId("projects", projectId), libraryItemId, {
+      organizationId,
+      userId,
+    }),
 });
 
 // Suggest scenes ----------------------------------------------------------------------------
@@ -879,6 +1001,8 @@ export const sceneQuestion = internalQuery({
       userId,
       name: board.source ?? "A talking video",
       aspect: board.aspect,
+      // An upload's storyboard follows that video's brief.
+      brief: await briefOf(ctx, board.libraryItemId),
       chapters: chapters.map((chapter) => ({
         _id: chapter._id,
         title: chapter.title,
@@ -950,6 +1074,7 @@ export const suggestScenes = action({
           organizationId: question.organizationId,
           name: question.name,
           aspect: question.aspect,
+          ...(question.brief ? { brief: question.brief } : {}),
           chapters: question.chapters.map((chapter) => ({
             title: chapter.title,
             lines: chapter.lines.map(({ n, line }) => ({ n, line })),

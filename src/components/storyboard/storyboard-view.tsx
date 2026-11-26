@@ -36,6 +36,8 @@ import { errorMessage } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 import { ChapterPlayer } from "./chapter-player";
+import { MakeVideo } from "./make-video";
+import { useMatchTakes } from "./match-takes";
 import { PartChip, TakeRow } from "./take-row";
 import type { Board, Chapter } from "./types";
 
@@ -554,6 +556,7 @@ function SidePanel({ board, chapter }: { board: Board; chapter: Chapter }) {
         <h3 className="text-sm font-semibold">Preview</h3>
         <ChapterPlayer key={chapter._id} chapter={chapter} />
       </section>
+      <MakeVideo board={board} chapter={chapter} />
       <section aria-label="What goes in" className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold">What goes in</h3>
         {needs.length === 0 ? (
@@ -621,6 +624,7 @@ function StoryboardBoard({ board, actions }: { board: Board; actions?: ReactNode
   );
   const chapter = board.chapters[chapterIndex];
   const allTakes = board.chapters.flatMap((entry) => entry.takes);
+  const matcher = useMatchTakes(board);
 
   async function onAspect(aspect: Aspect) {
     try {
@@ -650,6 +654,7 @@ function StoryboardBoard({ board, actions }: { board: Board; actions?: ReactNode
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <SuggestScenes board={board} />
+          {matcher.button}
           {actions}
           <Segmented
             aria-label="Show"
@@ -663,6 +668,8 @@ function StoryboardBoard({ board, actions }: { board: Board; actions?: ReactNode
           />
         </div>
       </div>
+
+      {matcher.panel}
 
       {view === "script" ? (
         <ScriptEditor board={board} />
