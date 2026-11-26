@@ -164,6 +164,10 @@ describe("the moments prompt", () => {
       "What makes a good moment for this team: A tip that stands on its own",
     );
     expect(prompt).toContain("pick nothing that overlaps them: 0:30 to 0:52.");
+    // Marked by first and last words: a long transcript made models quote only a clip's
+    // opening line, which came out seconds long.
+    expect(prompt).toContain('{"moments":[{"start":"…","end":"…","title":"…","why":"…"}]}');
+    expect(prompt).toContain("not after its first sentence");
     expect(prompt.endsWith(MOMENTS.transcript)).toBe(true);
   });
 

@@ -165,7 +165,7 @@ export function momentsPrompt(request: MomentsRequest): string {
     }
     lines.push(
       "",
-      'Answer as {"moments":[{"quote":"…","title":"…","why":"…"}]}: quote is the moment\'s words from its first word to its last; title is a short title for the clip, at most 8 words; why is one sentence on why it works.',
+      'Answer as {"moments":[{"start":"…","end":"…","title":"…","why":"…"}]}: start is the moment\'s first 5 to 12 words and end is its last 5 to 12 words, each copied exactly from the transcript; the clip runs from the first word of start to the last word of end, so pick end where the moment really finishes, not after its first sentence. title is a short title for the clip, at most 8 words; why is one sentence on why it works.',
     );
   } else if (request.kind === "motion") {
     const s = request.settings;
