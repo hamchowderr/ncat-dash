@@ -110,6 +110,13 @@ async function tellOperator(
 // ---------------------------------------------------------------------------------------
 // The customer's side: the Get help page.
 
+/** The address people can also write to (SUPPORT_EMAIL), shown as a backup on Get help. */
+export const contact = query({
+  args: {},
+  returns: v.object({ email: v.union(v.null(), v.string()) }),
+  handler: async () => ({ email: process.env.SUPPORT_EMAIL?.trim() || null }),
+});
+
 /** The caller's requests, the latest first. */
 export const mine = query({
   args: {},
@@ -135,10 +142,7 @@ export const unread = query({
 /** One of the caller's requests and its messages. Never shows support's private notes. */
 export const conversation = query({
   args: { ticketId: v.string() },
-  returns: v.union(
-    v.null(),
-    v.object({ ticket: customerTicket, messages: v.array(shownMessage) }),
-  ),
+  returns: v.union(v.null(), v.object({ ticket: customerTicket, messages: v.array(shownMessage) })),
   handler: async (ctx, args) => {
     const caller = await getCaller(ctx);
     if (!caller) return null;
@@ -195,8 +199,13 @@ export const open = mutation({
     if (team) context.team = team.name;
     if (args.page) context.page = args.page.slice(0, 300);
     if (args.browser) context.browser = args.browser.slice(0, 300);
-    if (latest) context.latestRun = latest._id;
-    if (failed) context.latestFailedRun = failed._id;
+    // Support can't open a team's runs, so the facts that matter travel with the request.
+    if (latest) {
+      context.latestRun = `${latest.automationName}: ${latest.status} (${latest._id})`;
+    }
+    if (failed) {
+      context.latestFailedRun = `${failed.automationName} (${failed._id})${failed.error ? `: ${failed.error.slice(0, 300)}` : ""}`;
+    }
 
     const opened = await support.open(ctx, {
       requester: { id: caller._id, name: caller.name || caller.email, email: caller.email },

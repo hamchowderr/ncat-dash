@@ -45,7 +45,14 @@ describe("support emails", () => {
     expect(fresh.text).toContain("Where is my invoice?");
 
     const again = supportTicketEmail(
-      { kind: "message", number: 3, subject: "Billing", from: "Ana Lima", body: "Hi", ticketUrl: "u" },
+      {
+        kind: "message",
+        number: 3,
+        subject: "Billing",
+        from: "Ana Lima",
+        body: "Hi",
+        ticketUrl: "u",
+      },
       branding,
     );
     expect(again.subject).toBe("Ana Lima wrote again on #3: Billing");

@@ -103,9 +103,9 @@ describe("support tickets", () => {
     const t = backend();
     const { ticketId } = await t.mutation(api.tickets.open, { ...ana, subject: "S", body: "B" });
     await t.mutation(api.tickets.markRead, { ticketId, by: "staff" });
-    expect(await t.mutation(api.tickets.setStatus, { ticketId, status: "closed", by: "staff" })).toBe(
-      true,
-    );
+    expect(
+      await t.mutation(api.tickets.setStatus, { ticketId, status: "closed", by: "staff" }),
+    ).toBe(true);
     expect(await t.query(api.tickets.staffCounts, {})).toEqual({ open: 0, unread: 0 });
     expect((await t.query(api.tickets.listByStatus, { status: "closed" })).length).toBe(1);
 
@@ -145,7 +145,9 @@ describe("support tickets", () => {
     await t.mutation(api.tickets.open, { ...ana, scope: "team_1", subject: "A", body: "B" });
     await t.mutation(api.tickets.open, { ...ana, scope: "team_2", subject: "C", body: "D" });
     expect(await t.mutation(api.tickets.removeByScope, { scope: "team_1" })).toBe(1);
-    expect(await t.mutation(api.tickets.removeByRequester, { requesterId: ana.requesterId })).toBe(1);
+    expect(await t.mutation(api.tickets.removeByRequester, { requesterId: ana.requesterId })).toBe(
+      1,
+    );
     const left = await t.run(async (ctx) => [
       ...(await ctx.db.query("tickets").collect()),
       ...(await ctx.db.query("messages").collect()),

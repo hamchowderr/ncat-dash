@@ -17,4 +17,5 @@ export function register(
   t.registerComponent(name, schema, modules);
 }
 
-export default { register, schema, modules };
+const supportTickets = { register, schema, modules };
+export default supportTickets;
