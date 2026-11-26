@@ -66,7 +66,7 @@ import { startRun } from "./lib/runner";
 import { withTeamSteps } from "./lib/teamSteps";
 import { deleteVersions, recordVersion } from "./lib/versions";
 import { deleteNotes, notesOf } from "./notes";
-import { bucketForFile, bucketOf, presign, storageConnection } from "./lib/bucket";
+import { bucketForFile, presign, storageConnection } from "./lib/bucket";
 import {
   edgeValidator,
   moreTriggersValidator,
