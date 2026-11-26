@@ -2,6 +2,7 @@ import { freeName, keyOfUrl, nameProblem } from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import {
   internalAction,
   internalMutation,
@@ -9,7 +10,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import { isMember, requireMember } from "./lib/authz";
+import { isMember, memberOrCaller, type TeamCaller } from "./lib/authz";
 import { bucketOf, copyObject, listObjects } from "./lib/bucket";
 import { addLibraryItem } from "./lib/library";
 import { brandOf, enqueueJob } from "./lib/queue";
@@ -34,123 +35,151 @@ const FOLDER = "Finished/Storyboard/";
 const SHOWN = 5;
 
 /** Starts making the storyboard, or one chapter of it, into a video. */
+const started = v.object({
+  videoId: v.id("storyboardVideos"),
+  takes: v.number(),
+  skipped: v.array(v.number()),
+  plain: v.array(v.number()),
+});
+
+async function startVideo(
+  ctx: MutationCtx,
+  args: { storyboardId: Id<"storyboards"> | null; chapterId?: Id<"storyboardChapters"> | null },
+  as?: TeamCaller,
+) {
+  const board = args.storyboardId ? await ctx.db.get(args.storyboardId) : null;
+  if (!board) return fail("not_found", "That storyboard is gone.");
+  const { userId } = await memberOrCaller(ctx, board.organizationId, as);
+  const working = await ctx.db
+    .query("storyboardVideos")
+    .withIndex("by_storyboard", (q) => q.eq("storyboardId", board._id))
+    .order("desc")
+    .take(SHOWN);
+  if (working.some((video) => video.status === "working")) {
+    fail("busy", "A video of this storyboard is being made. Wait for it to finish first.");
+  }
+  const chapters = (
+    await ctx.db
+      .query("storyboardChapters")
+      .withIndex("by_storyboard", (q) => q.eq("storyboardId", board._id))
+      .collect()
+  ).sort((a, b) => a.order - b.order);
+  const chapter = args.chapterId ? chapters.find((one) => one._id === args.chapterId) : null;
+  if (args.chapterId !== undefined && !chapter) fail("not_found", "That chapter is gone.");
+  const takes = (
+    await ctx.db
+      .query("storyboardTakes")
+      .withIndex("by_storyboard", (q) => q.eq("storyboardId", board._id))
+      .collect()
+  ).sort((a, b) => a.order - b.order);
+
+  // Takes are numbered through the whole storyboard, as on the page.
+  const ordered: { take: Doc<"storyboardTakes">; number: number }[] = [];
+  let number = 0;
+  for (const each of chapters) {
+    for (const take of takes.filter((one) => one.chapterId === each._id)) {
+      number += 1;
+      if (!chapter || chapter._id === each._id) ordered.push({ take, number });
+    }
+  }
+  if (ordered.length === 0) fail("empty", "Add a take first, so there is something to make.");
+
+  const accent = (await brandOf(ctx, board.organizationId)).color;
+  const planned = [];
+  for (const { take, number: n } of ordered) {
+    planned.push(
+      await planTake(
+        ctx,
+        board.organizationId,
+        {
+          line: take.line,
+          scene: take.scene as Scene,
+          parts: take.parts as Part[],
+          files: take.files as TakeFiles,
+        },
+        n,
+        accent,
+      ),
+    );
+  }
+  const made = planned.flatMap((one) => ("segment" in one ? [one] : []));
+  const skipped = planned.flatMap((one) => ("skipped" in one ? [one.number] : []));
+  if (made.length === 0) {
+    fail(
+      "empty",
+      chapter
+        ? "None of this chapter's takes has its file in yet, so there is nothing to make."
+        : "None of the takes has its file in yet, so there is nothing to make.",
+    );
+  }
+
+  const project = board.projectId ? await ctx.db.get(board.projectId) : null;
+  const item = board.libraryItemId ? await ctx.db.get(board.libraryItemId) : null;
+  const name = project?.name ?? item?.title ?? "Storyboard";
+  const title = (chapter ? `${name}, ${chapter.title}` : name).slice(0, 160);
+  const videoId = await ctx.db.insert("storyboardVideos", {
+    organizationId: board.organizationId,
+    storyboardId: board._id,
+    ...(chapter ? { chapterId: chapter._id } : {}),
+    title,
+    aspect: board.aspect,
+    status: "working",
+    takes: [],
+    skipped,
+    plain: made.filter((one) => one.plain).map((one) => one.number),
+    startedBy: userId,
+  });
+  const jobs: { number: number; jobId: Id<"jobs"> }[] = [];
+  for (const one of made) {
+    const queued = await enqueueJob(ctx, {
+      organizationId: board.organizationId,
+      stepId: "ffmpeg-compose",
+      input: sceneRequest(one.segment, board.aspect),
+      createdBy: userId,
+    });
+    if (!queued.ok) return fail(queued.code, queued.message);
+    await ctx.db.patch(queued.jobId, { storyboardVideoId: videoId });
+    jobs.push({ number: one.number, jobId: queued.jobId });
+  }
+  await ctx.db.patch(videoId, { takes: jobs });
+  await ctx.scheduler.runAfter(0, internal.jobs.pumpTeam, {
+    organizationId: board.organizationId,
+  });
+  return {
+    videoId,
+    takes: jobs.length,
+    skipped,
+    plain: made.filter((one) => one.plain).map((one) => one.number),
+  };
+}
+
 export const start = mutation({
   args: {
     storyboardId: v.id("storyboards"),
     chapterId: v.optional(v.id("storyboardChapters")),
   },
-  returns: v.object({
-    videoId: v.id("storyboardVideos"),
-    takes: v.number(),
-    skipped: v.array(v.number()),
-    plain: v.array(v.number()),
-  }),
-  handler: async (ctx, args) => {
-    const board = await ctx.db.get(args.storyboardId);
-    if (!board) return fail("not_found", "That storyboard is gone.");
-    const { userId } = await requireMember(ctx, board.organizationId);
-    const working = await ctx.db
-      .query("storyboardVideos")
-      .withIndex("by_storyboard", (q) => q.eq("storyboardId", board._id))
-      .order("desc")
-      .take(SHOWN);
-    if (working.some((video) => video.status === "working")) {
-      fail("busy", "A video of this storyboard is being made. Wait for it to finish first.");
-    }
-    const chapters = (
-      await ctx.db
-        .query("storyboardChapters")
-        .withIndex("by_storyboard", (q) => q.eq("storyboardId", board._id))
-        .collect()
-    ).sort((a, b) => a.order - b.order);
-    const chapter = args.chapterId ? chapters.find((one) => one._id === args.chapterId) : null;
-    if (args.chapterId && !chapter) fail("not_found", "That chapter is gone.");
-    const takes = (
-      await ctx.db
-        .query("storyboardTakes")
-        .withIndex("by_storyboard", (q) => q.eq("storyboardId", board._id))
-        .collect()
-    ).sort((a, b) => a.order - b.order);
+  returns: started,
+  handler: (ctx, args) => startVideo(ctx, args),
+});
 
-    // Takes are numbered through the whole storyboard, as on the page.
-    const ordered: { take: Doc<"storyboardTakes">; number: number }[] = [];
-    let number = 0;
-    for (const each of chapters) {
-      for (const take of takes.filter((one) => one.chapterId === each._id)) {
-        number += 1;
-        if (!chapter || chapter._id === each._id) ordered.push({ take, number });
-      }
-    }
-    if (ordered.length === 0) fail("empty", "Add a take first, so there is something to make.");
-
-    const accent = (await brandOf(ctx, board.organizationId)).color;
-    const planned = [];
-    for (const { take, number: n } of ordered) {
-      planned.push(
-        await planTake(
-          ctx,
-          board.organizationId,
-          {
-            line: take.line,
-            scene: take.scene as Scene,
-            parts: take.parts as Part[],
-            files: take.files as TakeFiles,
-          },
-          n,
-          accent,
-        ),
-      );
-    }
-    const made = planned.flatMap((one) => ("segment" in one ? [one] : []));
-    const skipped = planned.flatMap((one) => ("skipped" in one ? [one.number] : []));
-    if (made.length === 0) {
-      fail(
-        "empty",
-        chapter
-          ? "None of this chapter's takes has its file in yet, so there is nothing to make."
-          : "None of the takes has its file in yet, so there is nothing to make.",
-      );
-    }
-
-    const project = board.projectId ? await ctx.db.get(board.projectId) : null;
-    const item = board.libraryItemId ? await ctx.db.get(board.libraryItemId) : null;
-    const name = project?.name ?? item?.title ?? "Storyboard";
-    const title = (chapter ? `${name}, ${chapter.title}` : name).slice(0, 160);
-    const videoId = await ctx.db.insert("storyboardVideos", {
-      organizationId: board.organizationId,
-      storyboardId: board._id,
-      ...(chapter ? { chapterId: chapter._id } : {}),
-      title,
-      aspect: board.aspect,
-      status: "working",
-      takes: [],
-      skipped,
-      plain: made.filter((one) => one.plain).map((one) => one.number),
-      startedBy: userId,
-    });
-    const jobs: { number: number; jobId: Id<"jobs"> }[] = [];
-    for (const one of made) {
-      const queued = await enqueueJob(ctx, {
-        organizationId: board.organizationId,
-        stepId: "ffmpeg-compose",
-        input: sceneRequest(one.segment, board.aspect),
-        createdBy: userId,
-      });
-      if (!queued.ok) return fail(queued.code, queued.message);
-      await ctx.db.patch(queued.jobId, { storyboardVideoId: videoId });
-      jobs.push({ number: one.number, jobId: queued.jobId });
-    }
-    await ctx.db.patch(videoId, { takes: jobs });
-    await ctx.scheduler.runAfter(0, internal.jobs.pumpTeam, {
-      organizationId: board.organizationId,
-    });
-    return {
-      videoId,
-      takes: jobs.length,
-      skipped,
-      plain: made.filter((one) => one.plain).map((one) => one.number),
-    };
+/** `start` for an MCP client, as the person it signed in as. */
+export const startAs = internalMutation({
+  args: {
+    organizationId: v.string(),
+    userId: v.string(),
+    storyboardId: v.string(),
+    chapterId: v.optional(v.string()),
   },
+  returns: started,
+  handler: (ctx, { organizationId, userId, storyboardId, chapterId }) =>
+    startVideo(
+      ctx,
+      {
+        storyboardId: ctx.db.normalizeId("storyboards", storyboardId),
+        ...(chapterId ? { chapterId: ctx.db.normalizeId("storyboardChapters", chapterId) } : {}),
+      },
+      { organizationId, userId },
+    ),
 });
 
 /** A storyboard's latest videos, newest first, with how far along each one is. */

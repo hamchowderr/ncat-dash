@@ -2,8 +2,14 @@ import { clipRef, matchTakes, timeRangeOf } from "@takewon/automation-core";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { action, internalMutation, internalQuery } from "./_generated/server";
-import { requireMember } from "./lib/authz";
+import {
+  type ActionCtx,
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
+import { memberOrCaller } from "./lib/authz";
 import { spokenIn } from "./lib/spoken";
 
 /**
@@ -20,12 +26,15 @@ const fail = (code: string, message: string): never => {
 export const MOST_RECORDINGS = 20;
 
 /** The storyboard's lines, numbered through the whole video, with whether each has a take. */
+/** Who is asking, when it is an MCP client rather than the person signed in. */
+const asCaller = v.optional(v.object({ organizationId: v.string(), userId: v.string() }));
+
 export const lines = internalQuery({
-  args: { storyboardId: v.id("storyboards") },
+  args: { storyboardId: v.id("storyboards"), as: asCaller },
   handler: async (ctx, args) => {
     const board = await ctx.db.get(args.storyboardId);
     if (!board) return null;
-    await requireMember(ctx, board.organizationId);
+    await memberOrCaller(ctx, board.organizationId, args.as);
     const chapters = (
       await ctx.db
         .query("storyboardChapters")
@@ -80,11 +89,12 @@ export const apply = internalMutation({
   args: {
     storyboardId: v.id("storyboards"),
     files: v.array(v.object({ takeId: v.id("storyboardTakes"), file: v.string() })),
+    as: asCaller,
   },
   handler: async (ctx, args) => {
     const board = await ctx.db.get(args.storyboardId);
     if (!board) return fail("not_found", "That storyboard is gone.");
-    await requireMember(ctx, board.organizationId);
+    await memberOrCaller(ctx, board.organizationId, args.as);
     for (const { takeId, file } of args.files) {
       const take = await ctx.db.get(takeId);
       if (!take || take.storyboardId !== board._id || !take.parts.includes("you")) continue;
@@ -109,94 +119,121 @@ type Result = {
  * and puts the best take of each line in. Lines that have a take already keep it unless
  * `replace` is set.
  */
-export const match = action({
+async function matchInto(
+  ctx: ActionCtx,
   args: {
-    storyboardId: v.id("storyboards"),
-    libraryItemIds: v.array(v.id("libraryItems")),
-    replace: v.optional(v.boolean()),
+    storyboardId: Id<"storyboards">;
+    libraryItemIds: Id<"libraryItems">[];
+    replace?: boolean;
   },
-  returns: v.object({
-    matched: v.number(),
-    picked: v.array(v.number()),
-    missing: v.array(v.number()),
-    notReady: v.array(v.string()),
-  }),
-  handler: async (ctx, args): Promise<Result> => {
-    const board = await ctx.runQuery(internal.storyboardMatch.lines, {
-      storyboardId: args.storyboardId,
+  as?: { organizationId: string; userId: string },
+): Promise<Result> {
+  const board = await ctx.runQuery(internal.storyboardMatch.lines, {
+    storyboardId: args.storyboardId,
+    ...(as ? { as } : {}),
+  });
+  if (!board) return fail("not_found", "That storyboard is gone.");
+  const ids = [...new Set(args.libraryItemIds)];
+  if (ids.length === 0) fail("invalid_input", "Pick at least one recording.");
+  if (ids.length > MOST_RECORDINGS) {
+    fail("limit", `Pick up to ${MOST_RECORDINGS} recordings at a time.`);
+  }
+  const recordings: {
+    id: string;
+    words: { text: string; start: number; end: number }[];
+    length?: number;
+    clip: (start: number, end: number) => string | null;
+  }[] = [];
+  const notReady: string[] = [];
+  for (const itemId of ids) {
+    const found = await ctx.runQuery(internal.storyboardMatch.recording, {
+      itemId,
+      organizationId: board.organizationId,
     });
-    if (!board) return fail("not_found", "That storyboard is gone.");
-    const ids = [...new Set(args.libraryItemIds)];
-    if (ids.length === 0) fail("invalid_input", "Pick at least one recording.");
-    if (ids.length > MOST_RECORDINGS) {
-      fail("limit", `Pick up to ${MOST_RECORDINGS} recordings at a time.`);
+    if (!found) continue;
+    if (!found.words) {
+      notReady.push(found.title);
+      continue;
     }
-    const recordings: {
-      id: string;
-      words: { text: string; start: number; end: number }[];
-      length?: number;
-      clip: (start: number, end: number) => string | null;
-    }[] = [];
-    const notReady: string[] = [];
-    for (const itemId of ids) {
-      const found = await ctx.runQuery(internal.storyboardMatch.recording, {
-        itemId,
-        organizationId: board.organizationId,
-      });
-      if (!found) continue;
-      if (!found.words) {
-        notReady.push(found.title);
-        continue;
-      }
-      const { uploadId, url } = found;
-      const round = (value: number) => Math.round(value * 1000) / 1000;
-      recordings.push({
-        id: itemId,
-        words: found.words,
-        ...(found.length ? { length: found.length } : {}),
-        clip: (start, end) =>
-          uploadId
-            ? clipRef(uploadId, start, end)
-            : url
-              ? `${url}#t=${round(start)},${round(end)}`
-              : null,
-      });
-    }
-    if (recordings.length === 0) {
-      return fail(
-        "not_ready",
-        notReady.length > 0
-          ? "Those recordings are still being transcribed. Try again once their words are in."
-          : "None of those recordings has anything said in it.",
-      );
-    }
-    const wanted = board.lines.filter((line) => line.needsYou && (args.replace || !line.hasYou));
-    const matched = matchTakes(
-      wanted.map((line) => line.line),
-      recordings,
+    const { uploadId, url } = found;
+    const round = (value: number) => Math.round(value * 1000) / 1000;
+    recordings.push({
+      id: itemId,
+      words: found.words,
+      ...(found.length ? { length: found.length } : {}),
+      clip: (start, end) =>
+        uploadId
+          ? clipRef(uploadId, start, end)
+          : url
+            ? `${url}#t=${round(start)},${round(end)}`
+            : null,
+    });
+  }
+  if (recordings.length === 0) {
+    return fail(
+      "not_ready",
+      notReady.length > 0
+        ? "Those recordings are still being transcribed. Try again once their words are in."
+        : "None of those recordings has anything said in it.",
     );
-    const byId = new Map(recordings.map((one) => [one.id, one]));
-    const files: { takeId: Id<"storyboardTakes">; file: string }[] = [];
-    const picked: number[] = [];
-    for (const one of matched) {
-      const line = wanted[one.line]!;
-      const file = byId.get(one.recording)?.clip(one.start, one.end);
-      if (!file) continue;
-      files.push({ takeId: line.takeId, file });
-      if (one.takes > 1) picked.push(line.number);
-    }
-    if (files.length > 0) {
-      await ctx.runMutation(internal.storyboardMatch.apply, {
-        storyboardId: args.storyboardId,
-        files,
-      });
-    }
-    const filled = new Set(files.map((one) => one.takeId));
-    return {
-      matched: files.length,
-      picked,
-      missing: wanted.filter((line) => !filled.has(line.takeId)).map((line) => line.number),
-      notReady,
-    };
+  }
+  const wanted = board.lines.filter((line) => line.needsYou && (args.replace || !line.hasYou));
+  const matched = matchTakes(
+    wanted.map((line) => line.line),
+    recordings,
+  );
+  const byId = new Map(recordings.map((one) => [one.id, one]));
+  const files: { takeId: Id<"storyboardTakes">; file: string }[] = [];
+  const picked: number[] = [];
+  for (const one of matched) {
+    const line = wanted[one.line]!;
+    const file = byId.get(one.recording)?.clip(one.start, one.end);
+    if (!file) continue;
+    files.push({ takeId: line.takeId, file });
+    if (one.takes > 1) picked.push(line.number);
+  }
+  if (files.length > 0) {
+    await ctx.runMutation(internal.storyboardMatch.apply, {
+      storyboardId: args.storyboardId,
+      files,
+      ...(as ? { as } : {}),
+    });
+  }
+  const filled = new Set(files.map((one) => one.takeId));
+  return {
+    matched: files.length,
+    picked,
+    missing: wanted.filter((line) => !filled.has(line.takeId)).map((line) => line.number),
+    notReady,
+  };
+}
+
+const matchArgs = {
+  libraryItemIds: v.array(v.id("libraryItems")),
+  replace: v.optional(v.boolean()),
+};
+const matched = v.object({
+  matched: v.number(),
+  picked: v.array(v.number()),
+  missing: v.array(v.number()),
+  notReady: v.array(v.string()),
+});
+
+export const match = action({
+  args: { storyboardId: v.id("storyboards"), ...matchArgs },
+  returns: matched,
+  handler: (ctx, args): Promise<Result> => matchInto(ctx, args),
+});
+
+/** `match` for an MCP client, as the person it signed in as. */
+export const matchAs = internalAction({
+  args: {
+    organizationId: v.string(),
+    userId: v.string(),
+    storyboardId: v.id("storyboards"),
+    ...matchArgs,
   },
+  returns: matched,
+  handler: (ctx, { organizationId, userId, ...args }): Promise<Result> =>
+    matchInto(ctx, args, { organizationId, userId }),
 });

@@ -245,6 +245,54 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
             : "It will stop starting by itself.",
         ],
       };
+    case "read_storyboard":
+      return { title: "Reading the storyboard", question: "", lines: [] };
+    case "write_storyboard": {
+      const script = isText(given?.script) ? given.script : "";
+      const takes = script.split("\n").filter((line) => line.trim().startsWith("[")).length;
+      return {
+        title: "Writing the storyboard",
+        question: "Write this storyboard?",
+        lines: [
+          takes > 0
+            ? `${takes} ${takes === 1 ? "take" : "takes"}, in place of what is there`
+            : "In place of what is there",
+          ...(isText(given?.aspect) ? [`Shaped ${given.aspect}`] : []),
+        ],
+      };
+    }
+    case "storyboard_from_upload":
+      return {
+        title: "Adding the lines said in an upload",
+        question: "Add the lines said in this upload to the storyboard?",
+        lines: [
+          `From ${isText(given?.file) ? given.file : "the upload"}, after the takes already there`,
+        ],
+      };
+    case "match_storyboard_takes": {
+      const files = Array.isArray(given?.files) ? given.files.filter(isText) : [];
+      return {
+        title: "Matching your takes to the lines",
+        question: "Put these takes into the storyboard?",
+        lines: [
+          files.length > 0
+            ? `Found by what was said in ${listWords(files)}`
+            : "Found by what was said",
+          given?.replace
+            ? "Lines that have a take get picked again"
+            : "Lines that have a take keep it",
+        ],
+      };
+    }
+    case "make_storyboard_video":
+      return {
+        title: "Making the storyboard's video",
+        question: "Make the video?",
+        lines: [
+          isText(given?.chapter) ? `Just the chapter "${given.chapter}"` : "The whole storyboard",
+          "Every take in its scene, joined in order and kept in your Library",
+        ],
+      };
     default:
       return { title: plainTitle(name), question: "", lines: [] };
   }
