@@ -2,6 +2,7 @@
 
 import type { ChatStatus } from 'ai';
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, GlobeIcon } from 'lucide-react';
+import posthog from 'posthog-js';
 import { type ReactNode, useEffect, useState } from 'react';
 import {
   Attachment,
@@ -58,6 +59,10 @@ export const MODELS: ModelOption[] = [
 // What the server's /agent-controller/stream accepts (server routes/stream-body.ts):
 // images, PDFs and plain text, at most 4 files of 5 MB each. Checked here too, so a file
 // the server would refuse is turned away when it is added, with a reason.
+const posthogConfigured = Boolean(
+  process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN && process.env.NEXT_PUBLIC_POSTHOG_HOST,
+);
+
 const ATTACH_ACCEPT =
   'image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain,text/markdown,text/csv';
 const MAX_FILES = 4;
@@ -259,6 +264,13 @@ export function Composer({
       // throw so PromptInput keeps the attachments instead of clearing them.
       setText((now) => now || typed);
       throw new Error('message not sent');
+    }
+    if (posthogConfigured) {
+      posthog.capture('chat_message_sent', {
+        attachment_count: message.files?.length ?? 0,
+        model,
+        web_search_enabled: showWebSearch && webSearch,
+      });
     }
   };
 

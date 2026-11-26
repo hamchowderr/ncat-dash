@@ -15,6 +15,7 @@ import { MastraEditor } from '@mastra/editor';
 import { fastembed } from '@mastra/fastembed';
 import { PinoLogger } from '@mastra/loggers';
 import { MastraStorageExporter, Observability, SensitiveDataFilter } from '@mastra/observability';
+import { PosthogExporter } from '@mastra/posthog';
 import { KNOWLEDGE_ROUTES, MASTRA_KNOWLEDGE_PRINCIPALS_KEY } from '@mastra/server/server-adapter';
 import { embed } from 'ai';
 import { chatAgent } from './agents/chat';
@@ -58,6 +59,22 @@ if (doltConfigured) {
 }
 
 const mcpServer = createMcpServer();
+
+const posthogExporter =
+  env.POSTHOG_PROJECT_TOKEN && env.POSTHOG_HOST
+    ? new PosthogExporter({ apiKey: env.POSTHOG_PROJECT_TOKEN, host: env.POSTHOG_HOST })
+    : undefined;
+
+if (env.NODE_ENV !== 'production') {
+  if (!env.POSTHOG_PROJECT_TOKEN)
+    console.warn(
+      'POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once POSTHOG_PROJECT_TOKEN is configured',
+    );
+  if (!env.POSTHOG_HOST)
+    console.warn(
+      'POSTHOG_HOST variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once POSTHOG_HOST is configured',
+    );
+}
 
 // libSQL is the primary store (default/editor/memory domains + vectors). Local dev
 // uses a file: DB — no server, no Docker; prod points TURSO_DATABASE_URL at a
@@ -205,7 +222,7 @@ export const mastra = new Mastra({
     configs: {
       default: {
         serviceName: 'mastra',
-        exporters: [new MastraStorageExporter()],
+        exporters: [new MastraStorageExporter(), ...(posthogExporter ? [posthogExporter] : [])],
         spanOutputProcessors: [new SensitiveDataFilter()],
       },
     },
