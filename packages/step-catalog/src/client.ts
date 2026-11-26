@@ -7,6 +7,7 @@ import {
   RUNNER_FIELDS,
   type SpokenWord,
   type StepDefinition,
+  type Sync,
   StepSetupError,
   userInputSchema,
 } from "./define";
@@ -159,6 +160,35 @@ export async function readFacts(
       // Without pauses the cuts land on the exact second instead.
     }
   }
+  const sync = step.readsSync;
+  const second = sync ? input[sync.field] : undefined;
+  const first = sync ? input[sync.against] : undefined;
+  if (
+    sync &&
+    typeof second === "string" &&
+    typeof first === "string" &&
+    /^https?:\/\//.test(second) &&
+    /^https?:\/\//.test(first) &&
+    facts[sync.field]?.hasAudio !== false &&
+    facts[sync.against]?.hasAudio !== false &&
+    (facts[sync.against]?.duration ?? 0) <= SYNC_READ_LIMIT
+  ) {
+    try {
+      const res = await doFetch(joinUrl(connection.baseUrl, "/v1/audio/align"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": connection.apiKey },
+        body: JSON.stringify({ reference_url: first, media_url: second }),
+        signal: options.signal,
+      });
+      if (res.ok) {
+        const envelope = (await res.json()) as { response?: unknown } | null;
+        const found = readSync(envelope?.response);
+        if (found) facts[sync.field] = { ...facts[sync.field], sync: found };
+      }
+    } catch {
+      // Left out: the step says the two could not be lined up.
+    }
+  }
   for (const field of step.readsWords?.(input) ?? []) {
     const words = options.words?.[field];
     if (words) facts[field] = { ...facts[field], words };
@@ -206,6 +236,25 @@ export function readBeats(raw: unknown): Beats | undefined {
   return found;
 }
 
+/** The toolkit's /v1/audio/align answer. Undefined when it is not one. */
+export function readSync(raw: unknown): Sync | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const answer = raw as Record<string, unknown>;
+  if (typeof answer.matched !== "boolean") return undefined;
+  const finite = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  const offset = finite(answer.offset);
+  const matched = answer.matched && offset !== undefined;
+  const drift = finite(answer.drift) ?? 0;
+  return {
+    matched,
+    offset: matched ? offset : 0,
+    // A clock never runs a tenth of a percent off; more would be a misread.
+    drift: Math.abs(drift) <= 0.001 ? drift : 0,
+    confidence: Math.min(1, Math.max(0, finite(answer.confidence) ?? 0)),
+  };
+}
+
 /** The camera cuts in a /v1/media/look answer, in order. Undefined when cuts were not found. */
 export function readCuts(raw: unknown): number[] | undefined {
   const media = raw && typeof raw === "object" ? (raw as Record<string, unknown>).media : null;
@@ -215,6 +264,9 @@ export function readCuts(raw: unknown): number[] | undefined {
     .filter((t): t is number => typeof t === "number" && Number.isFinite(t) && t > 0)
     .sort((a, b) => a - b);
 }
+
+/** Two recordings are lined up only when the first is up to this long, in seconds. */
+export const SYNC_READ_LIMIT = 2 * 60 * 60;
 
 /** Pauses are read only for files up to this long, in seconds, so a read stays quick. */
 export const PAUSE_READ_LIMIT = 20 * 60;

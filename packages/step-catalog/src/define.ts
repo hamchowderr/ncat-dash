@@ -81,6 +81,12 @@ export interface StepDefinition<TInput extends z.ZodObject = z.ZodObject> {
    */
   readsBeats?: string[];
   /**
+   * A second recording of the same moment and the file it is lined up against
+   * (/v1/audio/align), such as a separate mic against the camera video, so the two can be
+   * swapped in sync. Both must be among `readsFirst`; only read for files up to two hours.
+   */
+  readsSync?: { field: string; against: string };
+  /**
    * File settings among `readsFirst` whose camera cuts are read too (/v1/media/look with
    * `cuts`), so a step can split footage into its own shots. Videos up to 20 minutes long.
    */
@@ -133,6 +139,8 @@ export interface MediaFacts {
   pauses?: Pause[];
   /** Where the music's beats fall, for settings named in `readsBeats`. */
   beats?: Beats;
+  /** How this file lines up against the one `readsSync` names, when read. */
+  sync?: Sync;
   /** Where the camera cuts fall, in seconds, for settings named in `readsCuts`. */
   cuts?: number[];
   /** Each word heard, in order, for settings named by `readsWords`. */
@@ -157,6 +165,21 @@ export interface Beats {
   downbeats: number[];
   /** How loud each beat is, in dB below the song's loudest beat; one for each of `beats`. */
   loudness?: number[];
+}
+
+/**
+ * How a second recording lines up against the first: the sound at `t` seconds into the
+ * first is at `t * (1 + drift) + offset` seconds into the second.
+ */
+export interface Sync {
+  /** Whether the two share enough sound to trust the line-up; without it, offset is 0. */
+  matched: boolean;
+  /** Seconds; positive when the second recording started first. */
+  offset: number;
+  /** How much faster the second recording's clock runs, such as 0.00005. */
+  drift: number;
+  /** How far the best line-up stands above any other, 0 to 1. */
+  confidence: number;
 }
 
 /** A stretch of silence, from and to, in seconds. */

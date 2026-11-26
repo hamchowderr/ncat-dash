@@ -57,6 +57,7 @@ import {
   Drum,
   Metronome,
   SquareUser,
+  Mic,
 } from "lucide-react";
 
 /**
@@ -64,6 +65,7 @@ import {
  * comes from the step's group. A step with no entry falls back to its group's icon.
  */
 export const STEP_ICONS: Record<string, LucideIcon> = {
+  "audio-align": AudioWaveform,
   "audio-beats": Metronome,
   "audio-concatenate": ListMusic,
   "code-execute-python": SquareTerminal,
@@ -120,6 +122,7 @@ export const STEP_ICONS: Record<string, LucideIcon> = {
   "recipe-fit-to-voiceover": AudioWaveform,
   "recipe-slideshow": Presentation,
   "recipe-beat-cut": Drum,
+  "recipe-separate-mic": Mic,
   "recipe-split-shots": SquareSplitHorizontal,
   "recipe-intro-outro": Film,
   "recipe-change-format": FileCog,

@@ -184,7 +184,7 @@ describe("the ready-made list", () => {
 
   it("has every ready-made step and the researched workflows", () => {
     expect(STARTERS.filter((starter) => starter.group === "workflow")).toHaveLength(42);
-    expect(STARTERS.filter((starter) => starter.group === "recipe")).toHaveLength(47);
+    expect(STARTERS.filter((starter) => starter.group === "recipe")).toHaveLength(48);
   });
 
   it("starts audio-only automations from audio uploads", () => {
