@@ -2374,6 +2374,8 @@ export default defineSchema({
         error: v.optional(v.string()),
         // Short, small faces, little said: it looks like B-Roll (broll.ts looksLikeBroll).
         brollLike: v.optional(v.boolean()),
+        // Looks tried again after the toolkit was busy or out of reach (broll.ts LOOK_TRIES).
+        tries: v.optional(v.number()),
         at: v.number(),
       }),
     ),
