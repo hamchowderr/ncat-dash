@@ -107,11 +107,12 @@ Your answer is read by a program, so:
 - Every quote you give is copied exactly from the transcript, word for word, as one unbroken stretch: the same words in the same order, nothing added, left out, reworded or corrected. Leave out the [times]. A quote that is not in the transcript exactly is thrown away.`;
 
 /**
- * How hard the model thinks when it picks. Left out, Claude Sonnet 5.5 thinks at high,
- * which reads a long transcript at length for a short answer; medium picks as well for
- * far fewer thinking tokens.
+ * How hard the model thinks when it picks. At medium, Claude Sonnet 5.5 skipped thinking
+ * on a 64-minute recording: clips came out short, titles went missing, and it wrote an
+ * answer, then "Correction:" and a second one. At high it thought for about 2,000 tokens
+ * and every clip fit (checked 2026-11-26 on a real recording).
  */
-export const MOMENTS_EFFORT = "medium" as const;
+export const MOMENTS_EFFORT = "high" as const;
 
 export const momentsAgent = new Agent({
   id: "moments",
