@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { shapeCode } from "./codes";
 import { defineStep, type StepDefinition } from "./define";
+import { duckedMix, MUSIC_UNDER_SPEECH } from "./ducking";
 
 /**
  * Recipes: ready-made FFmpeg jobs with a few blanks to fill in. Each one sends a
@@ -349,21 +350,35 @@ export const recipes: StepDefinition[] = [
     id: "recipe-background-music",
     title: "Add background music",
     description:
-      "Mixes a music track under a video's own sound without re-encoding the picture. The video needs sound.",
+      "Mixes a music track under a video's own sound without re-encoding the picture. The music dips while someone talks and comes back up in the pauses, or stays at one level if you pick that. The video needs sound.",
     primaryInput: "video_url",
     brandInputs: { music_url: "music" },
     blanks: {
       video_url: url("The video"),
       music_url: url("The music track"),
       video_volume: number("Loudness of the video's own sound (1 is unchanged)", 0, 10).default(1),
-      music_volume: number("Loudness of the music (1 is unchanged)", 0, 10).default(0.6),
+      music_volume: number(
+        "Loudness of the music where nobody talks (1 is unchanged)",
+        0,
+        10,
+      ).default(0.6),
+      music_under_speech: z
+        .enum(MUSIC_UNDER_SPEECH)
+        .describe("Whether the music dips while someone talks")
+        .default("dips while someone talks"),
     },
     toRequest: (b) =>
       request(
         [b.video_url, b.music_url],
-        [
-          `[0:a]volume=${b.video_volume}[audio1];[1:a]volume=${b.music_volume}[audio2];[audio1][audio2]amix=inputs=2:duration=longest[outa]`,
-        ],
+        b.music_under_speech === "stays at one level"
+          ? [
+              `[0:a]volume=${b.video_volume}[audio1];[1:a]volume=${b.music_volume}[audio2];[audio1][audio2]amix=inputs=2:duration=longest[outa]`,
+            ]
+          : [
+              `[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=${b.video_volume}[voice]`,
+              `[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=${b.music_volume}[music]`,
+              ...duckedMix("voice", "music", "outa", "longest"),
+            ],
         [opt("-map", "0:v"), opt("-map", "[outa]"), opt("-c:v", "copy"), opt("-c:a", "aac")],
       ),
   }),
