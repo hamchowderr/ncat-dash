@@ -253,6 +253,29 @@ export const record = mutation({
   },
 });
 
+/** The video's other lines, in order, cut to what the agent reads (nearest lines first). */
+export function scriptAround(
+  takes: { _id: Id<"storyboardTakes">; line: string }[],
+  takeId: Id<"storyboardTakes">,
+  max = 3000,
+): string {
+  const at = takes.findIndex((one) => one._id === takeId);
+  const kept = new Set<number>();
+  let size = 0;
+  for (let gap = 1; gap < takes.length; gap++) {
+    for (const index of [at - gap, at + gap]) {
+      const line = takes[index]?.line.trim();
+      if (!line || index === at || kept.has(index) || size + line.length > max) continue;
+      kept.add(index);
+      size += line.length + 1;
+    }
+  }
+  return [...kept]
+    .sort((a, b) => a - b)
+    .map((index) => takes[index].line.trim())
+    .join("\n");
+}
+
 /** Everything making a recording needs, read in one go. */
 export const forMaking = internalQuery({
   args: { recordingId: v.id("takeRecordings") },
@@ -280,6 +303,8 @@ export const forMaking = internalQuery({
       recording,
       line: take.line,
       number: takes.findIndex((one) => one._id === take._id) + 1,
+      // The whole script, so a line like "his book" or "the docs" is read in its context.
+      script: scriptAround(takes, take._id),
       aspect: aspectOf(board.aspect),
       // Only a sign-in the person who asked may use: their own, or one shared with the team.
       profile:
@@ -481,6 +506,7 @@ async function findThePage(ctx: ActionCtx, found: Making, agentUrl: string, secr
         aspect: found.aspect,
         profile: found.profile,
         avoid: recording.avoid ?? [],
+        script: found.script,
         site: recording.site ? { ...recording.site, about: "" } : null,
       }),
       signal: AbortSignal.timeout(TAKE_TIMEOUT_MS),

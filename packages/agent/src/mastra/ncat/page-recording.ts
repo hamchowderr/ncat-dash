@@ -577,6 +577,8 @@ export const findRequest = z.object({
   profile: z.string().min(1).max(120).nullish(),
   /** Pages found before that the person did not want. */
   avoid: z.array(z.string().max(2000)).max(10).default([]),
+  /** The video's other lines, so "his book" or "the docs" is read in its context. */
+  script: z.string().max(4000).default(""),
   /** The site the person said the line is about, when the agent asked. Kept in Knowledge. */
   site: siteRequest.pick({ url: true, about: true, share: true }).nullish(),
 });
@@ -620,7 +622,7 @@ export function askTool(asked: { yes: boolean }) {
 
 /** What the model is told when it has to find the page. */
 export function findPrompt(
-  request: Pick<FindRequest, "line" | "notes" | "avoid" | "site">,
+  request: Pick<FindRequest, "line" | "notes" | "avoid" | "site"> & { script?: string },
 ): string {
   const site = request.site;
   return [
@@ -628,6 +630,9 @@ export function findPrompt(
     site
       ? `The person says the line is about this site: ${site.url}${site.about.trim() ? ` (${site.about.trim()})` : ""}. Find the page there.`
       : "No start page: open the page you judge right, or search for it.",
+    request.script?.trim()
+      ? `The rest of the video's script, for context (what it is about, whose site, product or book a line means):\n${request.script.trim()}`
+      : "",
     request.notes.trim() ? `Also: ${request.notes.trim()}` : "",
     request.avoid.length
       ? `The person did not want these pages, so find a different one: ${request.avoid.join(", ")}`

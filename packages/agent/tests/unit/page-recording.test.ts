@@ -564,6 +564,17 @@ describe("sites the person gives, kept in Knowledge", () => {
 });
 
 describe("asking which site, instead of guessing", () => {
+  it("gives the finder the rest of the script, so a vague line is read in context", () => {
+    const prompt = findPrompt({
+      line: "You can grab his book here.",
+      notes: "",
+      avoid: [],
+      script: "My guest today is James Clear, author of Atomic Habits.",
+    });
+    expect(prompt).toContain("The rest of the video's script");
+    expect(prompt).toContain("James Clear");
+  });
+
   it("offers the question only when no site was given, and says so in the prompt when one was", async () => {
     const asked = { yes: false };
     const tools = askTool(asked);

@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { encryptSecret } from "./lib/crypto";
 import { cleanPageUrl, describeStep, profileName, recordingFileName } from "./lib/pageRecording";
+import { scriptAround } from "./pageRecordings";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 /**
@@ -137,6 +138,15 @@ async function setUp() {
 }
 
 describe("the rules for page recordings", () => {
+  test("the script around a take keeps the nearest lines first, in order, within the cap", () => {
+    const takes = ["one", "two", "three", "four", "five"].map((line, n) => ({
+      _id: `t${n}` as never,
+      line,
+    }));
+    expect(scriptAround(takes, "t2" as never)).toBe("one\ntwo\nfour\nfive");
+    expect(scriptAround(takes, "t2" as never, 8)).toBe("two\nfour");
+  });
+
   test("a page address is http or https, and https is added when left out", () => {
     expect(cleanPageUrl("example.com/pricing")).toBe("https://example.com/pricing");
     expect(cleanPageUrl(" http://localhost:3000 ")).toBe("http://localhost:3000/");
@@ -296,6 +306,8 @@ describe("a take with no page address", () => {
       line: "Here are the plans.",
       notes: "The yearly plans",
       avoid: [],
+      // The other lines of the video, for context.
+      script: "Hi there.",
     });
     // Found, not recorded: nothing goes to the recorder until the person says so.
     expect(sent.some((call) => call.url === `${AGENT_URL}/ncat/record`)).toBe(false);
