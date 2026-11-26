@@ -696,6 +696,8 @@ function StoryboardBoard({ board, actions }: { board: Board; actions?: ReactNode
                     <TakeRow
                       key={take._id}
                       take={take}
+                      boardId={board._id}
+                      organizationId={board.organizationId}
                       open={openTake === take._id}
                       onToggle={() =>
                         setOpenTake((current) => (current === take._id ? null : take._id))

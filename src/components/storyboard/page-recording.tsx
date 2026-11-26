@@ -1,0 +1,389 @@
+"use client";
+
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
+import { describeStep, isUnderWay, STATUS_WORDS } from "@convex/lib/pageRecording";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { Loader2, MonitorPlay, Repeat2 } from "lucide-react";
+import { type FormEvent, useState } from "react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PickList } from "@/components/ui/pick-list";
+import { Textarea } from "@/components/ui/textarea";
+import { errorMessage } from "@/lib/catalog";
+
+import type { Board, Take } from "./types";
+
+type SignInId = Id<"recordingSignIns">;
+
+/** Picked in "Sign in as" to set up a new sign-in in place. */
+const ADD = "__add__";
+
+function waitWords(place: number | null) {
+  if (!place) return STATUS_WORDS.queued;
+  return place === 1
+    ? `${STATUS_WORDS.queued}, next up`
+    : `${STATUS_WORDS.queued}, ${place} in line`;
+}
+
+function seconds(ms: number | null) {
+  if (!ms) return "";
+  const whole = Math.max(1, Math.round(ms / 1000));
+  return `, ${whole} second${whole === 1 ? "" : "s"}`;
+}
+
+/**
+ * Setting up a saved sign-in: the site's sign-in page opens in a browser the person drives
+ * from a new tab, they sign in there themselves, and "I'm signed in" keeps it for the team.
+ */
+function AddSignIn({
+  organizationId,
+  onSaved,
+  onCancel,
+}: {
+  organizationId: string;
+  onSaved: (id: SignInId) => void;
+  onCancel: () => void;
+}) {
+  const start = useAction(api.pageRecordings.startSignIn);
+  const finish = useAction(api.pageRecordings.finishSignIn);
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState<{ signInId: SignInId; liveViewUrl: string } | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  async function onStart(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setProblem(null);
+    try {
+      const started = await start({ organizationId, name: name.trim(), url: url.trim() });
+      setOpen(started);
+      window.open(started.liveViewUrl, "_blank", "noopener,noreferrer");
+    } catch (caught) {
+      setProblem(errorMessage(caught, "The sign-in page could not be opened."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onFinished() {
+    if (!open) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await finish({ signInId: open.signInId });
+      toast.success(`Signed in as ${name.trim()}. Recordings can use it now.`);
+      onSaved(open.signInId);
+    } catch (caught) {
+      setProblem(errorMessage(caught, "The sign-in could not be kept."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (open) {
+    return (
+      <div
+        className="bg-surface flex flex-col gap-2 rounded-lg p-3 text-sm"
+        aria-label="New sign-in"
+      >
+        <p>
+          Sign in on the page that opened in a new tab, the way you always do. Your password goes
+          only to the site. Come back here when you are in.
+        </p>
+        {problem && (
+          <p role="alert" className="text-destructive">
+            {problem}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" disabled={busy} onClick={() => void onFinished()}>
+            {busy ? "Keeping it…" : "I'm signed in"}
+          </Button>
+          <Button size="sm" variant="ghost" asChild>
+            <a href={open.liveViewUrl} target="_blank" rel="noopener noreferrer">
+              Open the sign-in page again
+            </a>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(event) => void onStart(event)}
+      className="bg-surface flex flex-col gap-2 rounded-lg p-3 text-sm"
+      aria-label="New sign-in"
+    >
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">Name it</span>
+        <Input
+          value={name}
+          maxLength={80}
+          placeholder="Example Studio admin"
+          onChange={(event) => setName(event.target.value)}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">The site&apos;s sign-in page</span>
+        <Input
+          value={url}
+          placeholder="https://app.example.com/login"
+          onChange={(event) => setUrl(event.target.value)}
+        />
+      </label>
+      {problem && (
+        <p role="alert" className="text-destructive">
+          {problem}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" size="sm" disabled={busy || !name.trim() || !url.trim()}>
+          {busy ? "Opening…" : "Open the sign-in page"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** What the agent should record: the page, what to show on it, and who to be signed in as. */
+function RecordForm({
+  take,
+  organizationId,
+  start,
+  onDone,
+}: {
+  take: Take;
+  organizationId: string;
+  start: { url: string; notes: string; signInId: SignInId | null };
+  onDone: () => void;
+}) {
+  const record = useMutation(api.pageRecordings.record);
+  const signIns = useQuery(api.pageRecordings.signIns, { organizationId });
+  const removeSignIn = useMutation(api.pageRecordings.removeSignIn);
+  const [url, setUrl] = useState(start.url);
+  const [notes, setNotes] = useState(start.notes);
+  const [signIn, setSignIn] = useState<string>(start.signInId ?? "");
+  const [busy, setBusy] = useState(false);
+  const saved = (signIns ?? []).filter((entry) => entry.status === "saved");
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await record({
+        takeId: take._id,
+        url: url.trim(),
+        notes: notes.trim(),
+        signInId: signIn && signIn !== ADD ? (signIn as SignInId) : null,
+      });
+      onDone();
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The recording could not start."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemove(id: SignInId) {
+    try {
+      await removeSignIn({ signInId: id });
+      setSignIn("");
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The sign-in could not be removed."));
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <form
+        onSubmit={(event) => void onSubmit(event)}
+        className="flex flex-col gap-3 text-sm"
+        aria-label="Record the page"
+      >
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">Page address</span>
+          <Input
+            value={url}
+            autoFocus
+            placeholder="https://example.com/pricing"
+            onChange={(event) => setUrl(event.target.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">What to show</span>
+          <Textarea
+            value={notes}
+            maxLength={2000}
+            placeholder={take.line}
+            onChange={(event) => setNotes(event.target.value)}
+          />
+          <span className="text-muted-foreground text-xs">
+            Leave it empty to show what the line says.
+          </span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">Sign in as</span>
+          <PickList
+            aria-label="Sign in as"
+            size="sm"
+            value={signIn}
+            onChange={setSignIn}
+            options={[
+              { value: "", label: "Nobody, the page is public" },
+              ...saved.map((entry) => ({ value: entry._id, label: entry.name })),
+              { value: ADD, label: "Add a sign-in" },
+            ]}
+          />
+          {signIn && signIn !== ADD && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => void onRemove(signIn as SignInId)}
+            >
+              Remove this sign-in
+            </Button>
+          )}
+        </div>
+        {signIn !== ADD && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="submit" size="sm" disabled={busy || !url.trim()}>
+              <MonitorPlay />
+              {busy ? "Starting…" : "Record"}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={onDone}>
+              Cancel
+            </Button>
+          </div>
+        )}
+      </form>
+      {signIn === ADD && (
+        <AddSignIn
+          organizationId={organizationId}
+          onSaved={(id) => setSignIn(id)}
+          onCancel={() => setSignIn("")}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * A take's page recording, under its "Page recording" file: record the page with the
+ * agent, see where it stands, play the same clicks again, and read what they are.
+ */
+export function PageRecording({
+  take,
+  boardId,
+  organizationId,
+}: {
+  take: Take;
+  boardId: Board["_id"];
+  organizationId: string;
+}) {
+  const rows = useQuery(api.pageRecordings.forStoryboard, { storyboardId: boardId });
+  const record = useMutation(api.pageRecordings.record);
+  const [form, setForm] = useState(false);
+  const [clicks, setClicks] = useState(false);
+  if (rows === undefined) return null;
+  const row = rows.find((entry) => entry.takeId === take._id) ?? null;
+
+  async function again() {
+    if (!row) return;
+    try {
+      await record({
+        takeId: take._id,
+        url: row.url,
+        notes: row.notes,
+        signInId: row.signInId,
+        again: true,
+      });
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The recording could not start."));
+    }
+  }
+
+  if (form) {
+    return (
+      <RecordForm
+        take={take}
+        organizationId={organizationId}
+        start={{ url: row?.url ?? "", notes: row?.notes ?? "", signInId: row?.signInId ?? null }}
+        onDone={() => setForm(false)}
+      />
+    );
+  }
+
+  if (!row) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-muted-foreground">Or let the agent record it from a web page.</span>
+        <Button size="sm" variant="outline" onClick={() => setForm(true)}>
+          <MonitorPlay />
+          Record the page
+        </Button>
+      </div>
+    );
+  }
+
+  const underWay = isUnderWay(row.status);
+  return (
+    <div className="flex flex-col gap-2 text-sm" aria-label="Where the recording stands">
+      <div className="flex flex-wrap items-center gap-2">
+        {underWay && <Loader2 className="text-muted-foreground size-4 animate-spin" aria-hidden />}
+        <span
+          role="status"
+          className={row.status === "failed" ? "text-destructive font-medium" : "font-medium"}
+        >
+          {row.status === "queued"
+            ? waitWords(row.place)
+            : `${STATUS_WORDS[row.status]}${row.status === "done" ? seconds(row.durationMs) : ""}`}
+        </span>
+        <span className="text-muted-foreground min-w-0 truncate">{row.url}</span>
+      </div>
+      {row.status === "failed" && row.problem && (
+        <p className="text-muted-foreground">{row.problem}</p>
+      )}
+      {!underWay && (
+        <div className="flex flex-wrap items-center gap-1">
+          {row.steps.length > 0 && (
+            <Button size="sm" variant="outline" onClick={() => void again()}>
+              <Repeat2 />
+              Record again the same way
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => setForm(true)}>
+            <MonitorPlay />
+            {row.steps.length > 0 ? "Record with new clicks" : "Try again"}
+          </Button>
+          {row.steps.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-expanded={clicks}
+              onClick={() => setClicks((shown) => !shown)}
+            >
+              {clicks ? "Hide the clicks" : `Show the clicks (${row.steps.length})`}
+            </Button>
+          )}
+        </div>
+      )}
+      {clicks && row.steps.length > 0 && (
+        <ol className="text-muted-foreground list-decimal pl-5" aria-label="The clicks">
+          {row.steps.map((step, index) => (
+            <li key={index}>{describeStep(step)}</li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}

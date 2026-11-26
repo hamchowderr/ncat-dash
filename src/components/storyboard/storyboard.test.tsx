@@ -53,6 +53,7 @@ function boardFor(text: string, files: Record<number, Partial<Record<Part, strin
   });
   return {
     _id: "sb1",
+    organizationId: TEAM.id,
     projectId: "p1",
     libraryItemId: null,
     aspect: "16:9",
