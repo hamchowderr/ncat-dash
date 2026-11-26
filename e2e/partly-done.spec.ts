@@ -58,11 +58,21 @@ test("a run whose thumbnail fails but whose trim finishes is partly done", async
   await expect(runs.getByText("Partly done")).toBeVisible({ timeout: 90_000 });
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/Automation Runs.png` });
 
-  await page.getByRole("link", { name: /^View run/ }).first().click();
+  await page
+    .getByRole("link", { name: /^View run/ })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/runs\//);
   await expect(page.getByText("Partly done").first()).toBeVisible();
-  await expect(page.getByRole("group").filter({ hasText: "Video thumbnail" }).getByText("Failed", { exact: true })).toBeVisible();
-  await expect(page.getByRole("group").filter({ hasText: "Trim video" }).getByText("Done", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("group")
+      .filter({ hasText: "Video thumbnail" })
+      .getByText("Failed", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("group").filter({ hasText: "Trim video" }).getByText("Done", { exact: true }),
+  ).toBeVisible();
   if (SHOTS) {
     // Let the alert close, so the picture shows the run itself.
     // The alert closes on its own after 15 seconds.

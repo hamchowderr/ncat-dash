@@ -84,6 +84,10 @@ type Summary = {
   client: { _id: Id<"clients">; name: string } | null;
   made: number;
   searchable: "no" | "working" | "ready" | "failed";
+  /** Why its transcript did not work, when it did not. */
+  transcriptError: string | null;
+  /** When its transcript was started, while it is being made. */
+  transcriptSince: number | null;
   /** Where an uploaded file came from; null for one an automation made. */
   from: LibraryFrom | null;
   inReview: boolean;
@@ -115,6 +119,8 @@ function summaryOf(
     client: client ? { _id: client._id, name: client.name } : null,
     made: made.get(item._id) ?? 0,
     searchable: item.transcript?.status ?? "no",
+    transcriptError: item.transcript?.status === "failed" ? (item.transcript.error ?? null) : null,
+    transcriptSince: item.transcript?.status === "working" ? item.transcript.at : null,
     from: fromOf(item),
     inReview: inReview(item),
   };
@@ -711,7 +717,9 @@ export const addFinished = internalMutation({
     if (!run) return;
     await addRunFiles(ctx, run, new Map(args.kept.map(({ link, key }) => [link, key])));
     // Remembered so a later keep of the same run (after it is picked up) skips them.
-    const keptLinks = [...new Set([...(run.keptLinks ?? []), ...args.kept.map(({ link }) => link)])];
+    const keptLinks = [
+      ...new Set([...(run.keptLinks ?? []), ...args.kept.map(({ link }) => link)]),
+    ];
     await ctx.db.patch(run._id, { keptLinks });
   },
 });

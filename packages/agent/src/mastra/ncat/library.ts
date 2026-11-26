@@ -23,6 +23,8 @@ type Hit = {
   tags: string[];
   duration: number | null;
   searchable: string;
+  transcriptError?: string | null;
+  transcriptSince?: number | null;
   moments: { start: number; text: string }[];
 };
 
@@ -34,6 +36,27 @@ function moment(seconds: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
+/** Where a file's transcript stands, for the agent to tell the person. */
+export function transcriptNote(
+  hit: Pick<Hit, "kind" | "searchable" | "transcriptError" | "transcriptSince">,
+  now = Date.now(),
+): string {
+  if (hit.searchable === "ready") return "Ready.";
+  if (hit.searchable === "failed") {
+    return `It did not work${hit.transcriptError ? `: ${hit.transcriptError}` : "."} It can be tried again from the file's page.`;
+  }
+  if (hit.kind !== "video" && hit.kind !== "audio")
+    return "Not a video or sound: it has no transcript.";
+  if (hit.transcriptSince) {
+    const minutes = Math.max(1, Math.round((now - hit.transcriptSince) / 60_000));
+    const hours = Math.floor(minutes / 60);
+    const span =
+      hours === 0 ? `${minutes} min` : `${hours} h${minutes % 60 ? ` ${minutes % 60} min` : ""}`;
+    return `Being made now, ${span} so far. Its words cannot be read until it is done.`;
+  }
+  return "Waiting to be made. Its words cannot be read until it is done.";
+}
+
 const fileOut = z.object({
   id: z.string().describe("The short ID people use, like C99."),
   title: z.string(),
@@ -43,6 +66,11 @@ const fileOut = z.object({
   tags: z.array(z.string()),
   length: z.string().nullable(),
   searchable: z.boolean().describe("Whether what was said in it can be searched."),
+  transcript: z
+    .string()
+    .describe(
+      "Where its transcript stands, in words to pass on: ready, being made (and for how long), or why it did not work. When a file has no words, tell the person this.",
+    ),
   said: z
     .array(z.object({ at: z.string(), seconds: z.number(), text: z.string() }))
     .describe("Moments where the words searched for were said."),
@@ -78,6 +106,7 @@ export const findInLibrary = createTool({
           tags: hit.tags,
           length: hit.duration === null ? null : moment(hit.duration),
           searchable: hit.searchable === "ready",
+          transcript: transcriptNote(hit),
           said: hit.moments.map((one) => ({
             at: moment(one.start),
             seconds: Math.floor(one.start),
@@ -138,8 +167,7 @@ export const libraryFile = createTool({
       })) as { _id: string } | null;
       if (!found) return { found: false, file: null, madeFromIt: [] };
       const item = (await client.query(dash.library.get, { itemId: found._id })) as
-        | (Summary & { children: Summary[] })
-        | null;
+        (Summary & { children: Summary[] }) | null;
       if (!item) return { found: false, file: null, madeFromIt: [] };
       return {
         found: true,

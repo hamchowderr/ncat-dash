@@ -53,6 +53,7 @@ import { PickList } from "@/components/ui/pick-list";
 import { Segmented } from "@/components/ui/segmented";
 import { FileFacts } from "./file-facts";
 import { VideoBrief } from "./video-brief";
+import { TranscriptWait } from "./transcript-wait";
 import { transcriptState, WorkRow, type Work } from "./work-status";
 
 type Tab = "words" | "storyboard" | "made" | "details";
@@ -704,11 +705,11 @@ export function LibraryItemView({
                       )
                     ) : said === "working" ? (
                       // Everything brought in is transcribed by itself; an older file is caught up.
-                      <p className="text-muted-foreground text-sm">
-                        {captions
-                          ? "Reading the caption file."
-                          : "Being transcribed on your toolkit. The words, SRT and VTT show here when it is done."}
-                      </p>
+                      captions ? (
+                        <p className="text-muted-foreground text-sm">Reading the caption file.</p>
+                      ) : (
+                        <TranscriptWait since={item.transcriptSince} duration={item.duration} />
+                      )
                     ) : (
                       <div className="bg-surface flex flex-col items-start gap-3 rounded-xl p-5">
                         <p className="text-sm">
@@ -722,7 +723,7 @@ export function LibraryItemView({
                         </Button>
                         {!captions && (
                           <p className="text-muted-foreground text-xs">
-                            Transcribed once on your own toolkit, with no AI tokens spent.
+                            Transcribed once, with no AI tokens spent.
                           </p>
                         )}
                       </div>
