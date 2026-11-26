@@ -68,16 +68,55 @@ export function findQuote(
   quote: string,
   from = 0,
 ): { first: number; last: number } | null {
+  return findQuotes(words, quote, from, 1)[0] ?? null;
+}
+
+/** Every place a quote is said, word for word, in order (at most `limit`). */
+export function findQuotes(
+  words: Word[],
+  quote: string,
+  from = 0,
+  limit = Infinity,
+): { first: number; last: number }[] {
   const keys = quoteKeys(quote);
-  if (keys.length === 0) return null;
+  const found: { first: number; last: number }[] = [];
+  if (keys.length === 0) return found;
   const spoken = words.map((word) => wordKey(word.text));
   outer: for (let i = Math.max(0, from); i + keys.length <= spoken.length; i++) {
     for (let k = 0; k < keys.length; k++) {
       if (spoken[i + k] !== keys[k]) continue outer;
     }
-    return { first: i, last: i + keys.length - 1 };
+    found.push({ first: i, last: i + keys.length - 1 });
+    if (found.length >= limit) break;
   }
-  return null;
+  return found;
+}
+
+/**
+ * Where a pick is said: from its start words to its end words when it gives both, else
+ * its whole quote. When the start words are said more than once, the first place
+ * followed by the end words within the longest clip wins, then the first place followed
+ * by them at all. Null when it is not in the transcript word for word.
+ */
+export function findPick(
+  words: Word[],
+  pick: Pick<MomentPick, "quote" | "start" | "end">,
+  maxSeconds = Infinity,
+): { first: number; last: number } | null {
+  const start = pick.start?.trim() ?? "";
+  const end = pick.end?.trim() ?? "";
+  if (start && end) {
+    let fallback: { first: number; last: number } | null = null;
+    for (const opening of findQuotes(words, start)) {
+      const closing = findQuote(words, end, opening.first);
+      if (!closing) continue;
+      const span = { first: opening.first, last: Math.max(opening.last, closing.last) };
+      if (words[span.last].end - words[span.first].start <= maxSeconds) return span;
+      fallback ??= span;
+    }
+    if (fallback) return fallback;
+  }
+  return pick.quote.trim() ? findQuote(words, pick.quote) : null;
 }
 
 // A pause this long between two words also ends a sentence, for speech with no full stops.
@@ -208,8 +247,15 @@ export function momentSettings(input: Record<string, unknown>): MomentSettings {
 
 /** What the model hands back for one moment. */
 export interface MomentPick {
-  /** The moment's words, exactly as said, from its first word to its last. */
+  /**
+   * The moment's words, exactly as said, from its first word to its last. Older answers
+   * give only this; on a long transcript models tend to quote just the opening line.
+   */
   quote: string;
+  /** The moment's first few words, exactly as said. With `end`, it marks the clip. */
+  start?: string;
+  /** The moment's last few words, exactly as said. */
+  end?: string;
   title: string;
   why: string;
 }
@@ -288,7 +334,7 @@ export function planMoments(
   const slack = 0.05;
   for (const pick of picks) {
     if (moments.length >= settings.count) break;
-    const found = findQuote(words, pick.quote);
+    const found = findPick(words, pick, settings.maxSeconds);
     if (!found) {
       dropped.notInTranscript++;
       continue;
@@ -460,8 +506,45 @@ export function readModelJson(text: string): unknown {
   try {
     return JSON.parse(body.slice(start, end + 1));
   } catch {
+    // Sometimes the model answers, then adds a note or a corrected answer after it.
+    // The last whole object that reads is its final word.
+    const objects = jsonObjectsIn(body);
+    for (let i = objects.length - 1; i >= 0; i--) {
+      try {
+        return JSON.parse(objects[i]);
+      } catch {
+        // Not JSON after all; try the one before.
+      }
+    }
     return null;
   }
+}
+
+/** Each top-level {...} in a text, braces inside strings aside. */
+function jsonObjectsIn(text: string): string[] {
+  const found: string[] = [];
+  let depth = 0;
+  let opened = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"' && depth > 0) inString = true;
+    else if (char === "{") {
+      if (depth === 0) opened = i;
+      depth++;
+    } else if (char === "}" && depth > 0) {
+      depth--;
+      if (depth === 0) found.push(text.slice(opened, i + 1));
+    }
+  }
+  return found;
 }
 
 const str = (value: unknown, max: number) => (typeof value === "string" ? value.slice(0, max) : "");
@@ -471,12 +554,19 @@ export function momentPicksFrom(answer: unknown): MomentPick[] {
   const list = (answer as { moments?: unknown } | null)?.moments;
   if (!Array.isArray(list)) return [];
   return list
-    .map((item) => ({
-      quote: str((item as { quote?: unknown })?.quote, 8000),
-      title: str((item as { title?: unknown })?.title, 200),
-      why: str((item as { why?: unknown })?.why, 500),
-    }))
-    .filter((pick) => pick.quote.trim() !== "")
+    .map((item) => {
+      const raw = item as { quote?: unknown; start?: unknown; end?: unknown } | null;
+      const start = str(raw?.start, 1000);
+      const end = str(raw?.end, 1000);
+      return {
+        quote: str(raw?.quote, 8000),
+        ...(start.trim() ? { start } : {}),
+        ...(end.trim() ? { end } : {}),
+        title: str((item as { title?: unknown })?.title, 200),
+        why: str((item as { why?: unknown })?.why, 500),
+      };
+    })
+    .filter((pick) => pick.quote.trim() !== "" || (pick.start && pick.end))
     .slice(0, MAX_MOMENTS * 2);
 }
 
