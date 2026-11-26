@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 
@@ -197,4 +198,44 @@ export const signUpCheck = query({
     const invited = invitations.some((i) => i.status === "pending" && i.expiresAt > now);
     return { hasAccounts: someone !== null, invited };
   },
+});
+
+/**
+ * Every account, a page at a time, for announcements about the service (the operator's
+ * Send An Email page). Only the fields an email needs.
+ */
+export const accountsPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: v.object({
+    page: v.array(
+      v.object({
+        userId: v.string(),
+        email: v.string(),
+        name: v.string(),
+        emailVerified: v.boolean(),
+      }),
+    ),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const result = await ctx.db.query("user").paginate(args.paginationOpts);
+    return {
+      page: result.page.map((user) => ({
+        userId: user._id,
+        email: user.email,
+        name: user.name,
+        emailVerified: user.emailVerified === true,
+      })),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
+  },
+});
+
+/** How many accounts there are, counted up to 10,000, for the Send An Email page. */
+export const accountCount = query({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => (await ctx.db.query("user").take(10_000)).length,
 });

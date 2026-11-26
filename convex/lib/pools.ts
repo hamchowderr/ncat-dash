@@ -49,3 +49,14 @@ export const chatPool = new Workpool(components.chatPool, {
   maxParallelism: 10,
   retryActionsByDefault: false,
 });
+
+/**
+ * Page recordings for storyboard takes (pageRecordings.ts): one at a time. The agent
+ * server makes one recording at a time (Mastra's browser recording is one per process),
+ * and each holds a Firecrawl browser open while it runs. Not tried again: a take that
+ * failed says why, and the person records it again.
+ */
+export const recordingPool = new Workpool(components.recordingPool, {
+  maxParallelism: 1,
+  retryActionsByDefault: false,
+});

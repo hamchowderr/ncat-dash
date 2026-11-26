@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { encodeKnowledgeScopeId } from '@mastra/core/knowledge';
 import { LibSQLStore } from '@mastra/libsql';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -165,7 +166,13 @@ describe('who reaches which pages (Mastra Knowledge access rules)', () => {
   });
 
   it("a chat-app thread's resource (with colons in it) is a scope Knowledge accepts", async () => {
-    const run = ['resource:channel:slack:C1:1.2', GUIDE_SCOPE, teamScope('team_a')];
+    // Since Mastra 1.86 Knowledge builds a run's Memory scopes itself, with the id encoded
+    // (encodeKnowledgeScopeId), and drops the raw ones a run arrives with.
+    const run = [
+      `resource:${encodeKnowledgeScopeId('channel:slack:C1:1.2')}`,
+      GUIDE_SCOPE,
+      teamScope('team_a'),
+    ];
     expect(await role(run, 'team:team_a#style')).toBe('editor');
   });
 });

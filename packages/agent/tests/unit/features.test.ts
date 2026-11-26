@@ -226,7 +226,9 @@ describe('feature switches — a narrow assistant', () => {
   it('research keeps the Knowledge read tools without the demo tools, and never the write tools', () => {
     const f = resolveFeatures({ ...FULL_FEATURES, demoTools: false }, { dolt: false });
     const research = chatSubagents(f).find((s) => s.id === 'research');
+    // knowledge_activity (Mastra 1.86) reads what changed and when; it writes nothing.
     expect(Object.keys(research?.tools ?? {}).sort()).toEqual([
+      'knowledge_activity',
       'knowledge_list',
       'knowledge_read',
       'knowledge_search',

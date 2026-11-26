@@ -96,6 +96,30 @@ export const takePartValidator = v.union(
   v.literal("screen"),
 );
 
+const stepTargetValidator = v.object({ role: v.string(), name: v.string(), nth: v.number() });
+
+/** One step of a page recording's click path (lib/pageRecording.ts WalkStep). */
+export const walkStepValidator = v.union(
+  v.object({ do: v.literal("goto"), url: v.string() }),
+  v.object({ do: v.literal("click"), target: stepTargetValidator }),
+  v.object({ do: v.literal("hover"), target: stepTargetValidator }),
+  v.object({
+    do: v.literal("type"),
+    target: stepTargetValidator,
+    text: v.string(),
+    clear: v.boolean(),
+  }),
+  v.object({ do: v.literal("press"), key: v.string() }),
+  v.object({ do: v.literal("select"), target: stepTargetValidator, label: v.string() }),
+  v.object({
+    do: v.literal("scroll"),
+    direction: v.union(v.literal("up"), v.literal("down")),
+    amount: v.number(),
+  }),
+  v.object({ do: v.literal("back") }),
+  v.object({ do: v.literal("pause"), ms: v.number() }),
+);
+
 export const cutValidator = v.object({ what: v.string(), where: v.string() });
 
 export const deliverableStatusValidator = v.union(
@@ -301,6 +325,25 @@ export const motionSetupValidator = v.object({
 // organization id, and every read or write checks membership first (lib/authz.ts).
 // For one kind of news: whether it shows under the bell, is emailed, and goes to each
 // chat app the member linked. Left out: the kind's default.
+// Where someone asked for, or stopped, product news.
+const newsSource = v.union(
+  v.literal("signup"),
+  v.literal("website"),
+  v.literal("settings"),
+  v.literal("unsubscribe_link"),
+  v.literal("complaint"),
+  v.literal("operator"),
+);
+
+// Who a broadcast goes to: people who asked for product news, or account holders, for
+// notices about their account or the service (never marketing).
+const broadcastAudience = v.union(
+  v.literal("news"),
+  v.literal("accounts"),
+  v.literal("trial_teams"),
+  v.literal("paid_teams"),
+);
+
 const kindChannels = v.object({
   bell: v.optional(v.boolean()),
   email: v.optional(v.boolean()),
@@ -1880,6 +1923,102 @@ export default defineSchema({
     at: v.number(),
   }).index("by_email", ["email"]),
 
+  // Product news (newsletters): one row per email address that asked for it, with or
+  // without an account. Website sign-ups stay "pending" until they confirm by email
+  // (double opt-in). Only "subscribed" rows get product news. See convex/news.ts.
+  subscribers: defineTable({
+    email: v.string(),
+    userId: v.optional(v.string()),
+    name: v.optional(v.string()),
+    status: v.union(v.literal("pending"), v.literal("subscribed"), v.literal("unsubscribed")),
+    source: newsSource,
+    subscribedAt: v.optional(v.number()),
+    unsubscribedAt: v.optional(v.number()),
+    // When the confirmation email last went out, for a website sign-up.
+    confirmSentAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_email", ["email"])
+    .index("by_user", ["userId"])
+    .index("by_status", ["status", "updatedAt"])
+    .index("by_updated", ["updatedAt"]),
+
+  // Every time someone agreed to, confirmed or stopped product news: the proof of consent
+  // EU and Canadian law ask for. Never changed or deleted, except with the person's account.
+  consentRecords: defineTable({
+    email: v.string(),
+    userId: v.optional(v.string()),
+    action: v.union(v.literal("requested"), v.literal("given"), v.literal("withdrawn")),
+    source: newsSource,
+    // The exact words the person agreed to, where there were any.
+    wording: v.optional(v.string()),
+    // A keyed hash of their network (lib/clientIp.ts), never the address itself.
+    networkKey: v.optional(v.string()),
+    userAgent: v.optional(v.string()),
+    broadcastId: v.optional(v.id("broadcasts")),
+    at: v.number(),
+  })
+    .index("by_email", ["email", "at"])
+    .index("by_broadcast", ["broadcastId"]),
+
+  // Emails the operator writes on the Send An Email page (convex/broadcasts.ts).
+  broadcasts: defineTable({
+    subject: v.string(),
+    heading: v.optional(v.string()),
+    body: v.string(),
+    button: v.optional(v.object({ label: v.string(), url: v.string() })),
+    audience: broadcastAudience,
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("sending"),
+      v.literal("sent"),
+      v.literal("cancelled"),
+      v.literal("failed"),
+    ),
+    scheduledFor: v.optional(v.number()),
+    scheduledJob: v.optional(v.id("_scheduled_functions")),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    startedAt: v.optional(v.number()),
+    finishedAt: v.optional(v.number()),
+    // Why sending stopped, in plain words.
+    problem: v.optional(v.string()),
+    // Running counts, kept as each batch, bounce and unsubscribe comes in.
+    recipients: v.number(),
+    sent: v.number(),
+    failed: v.number(),
+    skipped: v.number(),
+    bounced: v.number(),
+    complaints: v.number(),
+    unsubscribed: v.number(),
+  })
+    .index("by_created", ["createdAt"])
+    .index("by_status", ["status"]),
+
+  // One row per person a broadcast goes to.
+  broadcastDeliveries: defineTable({
+    broadcastId: v.id("broadcasts"),
+    email: v.string(),
+    userId: v.optional(v.string()),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("sending"),
+      v.literal("sent"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    ),
+    // Which batch of up to 100 took it, while it is being sent.
+    batch: v.optional(v.number()),
+    detail: v.optional(v.string()),
+    messageId: v.optional(v.string()),
+    // What toSend reported later about this email.
+    problem: v.optional(v.union(v.literal("bounced"), v.literal("complaint"))),
+    at: v.number(),
+  })
+    .index("by_broadcast", ["broadcastId", "status"])
+    .index("by_broadcast_and_email", ["broadcastId", "email"])
+    .index("by_email", ["email", "at"]),
+
   notificationPreferences: defineTable({
     organizationId: v.string(),
     userId: v.string(),
@@ -1959,8 +2098,10 @@ export default defineSchema({
     status: v.union(v.literal("uploading"), v.literal("ready")),
     createdBy: v.string(),
     // "brand" for a logo or a music track added in Settings. Those are kept to be used
-    // by steps, so they never start an automation.
-    purpose: v.optional(v.literal("brand")),
+    // by steps, so they never start an automation. "recording" for a page recording the
+    // agent made for a storyboard take: in the library, but it starts no automation either
+    // (it has no voice to transcribe, and it is material for an edit).
+    purpose: v.optional(v.union(v.literal("brand"), v.literal("recording"))),
     // Where the file came from, when it was not the browser: a meeting recording brought
     // in from a connected Zoom or Google account.
     source: v.optional(
@@ -2244,6 +2385,70 @@ export default defineSchema({
     .index("by_storyboard", ["storyboardId"])
     .index("by_chapter", ["chapterId"])
     .index("by_organization", ["organizationId"]),
+
+  // A take's page recording (convex/pageRecordings.ts): the page it starts on, what to
+  // show, the saved sign-in to open it with, and the click path the agent worked out, kept
+  // so the take can be recorded again the same way. One row per take, the latest.
+  takeRecordings: defineTable({
+    organizationId: v.string(),
+    storyboardId: v.id("storyboards"),
+    takeId: v.id("storyboardTakes"),
+    url: v.string(),
+    notes: v.string(),
+    signInId: v.optional(v.id("recordingSignIns")),
+    // Set once a take has been recorded. Recording again with the same path plays these.
+    steps: v.optional(v.array(walkStepValidator)),
+    // "finding" and "found": a take given no address, whose page the agent searches for
+    // and the person checks before it is recorded. "asking": the line is about the
+    // person's own site and nothing says which, so the take asks them.
+    status: v.union(
+      v.literal("queued"),
+      v.literal("finding"),
+      v.literal("found"),
+      v.literal("asking"),
+      v.literal("recording"),
+      v.literal("saving"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    // For a page the agent found: a picture of it and its title, and pages turned down.
+    previewId: v.optional(v.id("_storage")),
+    pageTitle: v.optional(v.string()),
+    avoid: v.optional(v.array(v.string())),
+    // The site the person said the line is about, answering "Which site is this about?".
+    // Sent with the next search, which keeps it in their Knowledge (the team's, if shared).
+    site: v.optional(v.object({ url: v.string(), share: v.boolean() })),
+    // Why it was not recorded, in words a person can act on.
+    problem: v.optional(v.string()),
+    // The finished video, one of the team's uploads.
+    uploadId: v.optional(v.id("uploads")),
+    durationMs: v.optional(v.number()),
+    // Whether this one plays the saved path (true) or has the agent work one out.
+    again: v.boolean(),
+    requestedBy: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_take", ["takeId"])
+    .index("by_storyboard", ["storyboardId"])
+    .index("by_organization", ["organizationId"]),
+
+  // A team's saved sign-in for page recordings: a site someone signed in to once, kept as a
+  // named Firecrawl profile (cookies, local storage). The password never comes here.
+  recordingSignIns: defineTable({
+    organizationId: v.string(),
+    name: v.string(),
+    url: v.string(),
+    // The Firecrawl profile it is kept as (lib/pageRecording.ts profileName).
+    profile: v.string(),
+    status: v.union(v.literal("signing_in"), v.literal("saved")),
+    // The Firecrawl session someone is signing in with, while they are.
+    sessionId: v.optional(v.string()),
+    savedAt: v.optional(v.number()),
+    // Whose sign-in it is. Only they record with it, unless they share it with the team
+    // (a team account everyone may use). Left out: theirs alone.
+    createdBy: v.string(),
+    shared: v.optional(v.boolean()),
+  }).index("by_organization", ["organizationId"]),
 
   // A storyboard made into one finished video: each take made in its scene, then the
   // takes joined in order. Its file goes to Files once it is made.

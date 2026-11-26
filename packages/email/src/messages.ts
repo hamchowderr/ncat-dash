@@ -34,7 +34,7 @@ function oneLine(value: string, max = 120): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
-type Layout = {
+export type Layout = {
   heading: string;
   paragraphs: string[];
   /** Words someone wrote, such as a comment, set apart from ours. */
@@ -69,7 +69,7 @@ function mark(): string {
   return `<td style="width:28px;height:28px;background:${ACCENT};border-radius:8px;text-align:center;vertical-align:middle;color:#ffffff;font-size:12px;line-height:28px;font-family:${FONT};">&#9654;</td>`;
 }
 
-function compose(subject: string, layout: Layout, branding: Branding): Composed {
+export function compose(subject: string, layout: Layout, branding: Branding): Composed {
   const { heading, paragraphs, quote, items, button, footnote, reason, settingsUrl } = layout;
   const ours = branding.appName === DEFAULT_APP_NAME;
   const text = [
