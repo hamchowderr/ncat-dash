@@ -38,6 +38,7 @@ COPY --from=build /app/packages/agent/skills ./skills
 ENV NODE_ENV=production \
     PORT=4111 \
     TURSO_DATABASE_URL=file:/data/mastra.db \
+    OBSERVABILITY_DB_PATH=/data/observability.duckdb \
     WORKSPACE_ROOT=/data/workspace \
     WORKSPACE_SANDBOX=false \
     WORKSPACE_BROWSER=false
