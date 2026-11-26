@@ -12,6 +12,7 @@ import {
   recordPath,
   rehearsalPrompt,
   stepOfAction,
+  teamKnowledge,
   TakeProblem,
   useBrowserForTests,
   usePaceForTests,
@@ -462,5 +463,19 @@ describe("finding the page when a take has none", () => {
     const bad = ctx({ resourceId: "u1", body: { organizationId: "team_1" } });
     await route.handler(bad.c);
     expect(bad.captured.status).toBe(400);
+  });
+});
+
+describe("the team's Knowledge in a rehearsal", () => {
+  it("reads only the guide and that team's pages, with the read tools and never the write ones", async () => {
+    const knowledge = await teamKnowledge("team_1");
+    expect(knowledge?.scopes).toEqual(["docs:takewon", "team:team_1"]);
+    const tools = Object.keys(knowledge?.tools ?? {});
+    expect(tools).toContain("knowledge_search");
+    expect(tools.some((name) => /write|note|pin|page_(create|update)/.test(name))).toBe(false);
+  });
+
+  it("is left out for a team id that could reach another scope", async () => {
+    expect(await teamKnowledge("team:other")).toBeNull();
   });
 });

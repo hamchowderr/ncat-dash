@@ -371,23 +371,60 @@ export function recordingTools(browser: PassBrowser, steps: WalkStep[], pages?: 
   return tools;
 }
 
-const rehearsalAgent = (
+/** How the rehearsal reads the team's Knowledge: its sites, products and pages. */
+export const KNOWLEDGE_NOTE = `Before opening a page, search the team's Knowledge (knowledge_search) for what the line is about: the team's own sites, products, docs and pages it has written down. When Knowledge names the site or page, go there. Knowledge is read only here.`;
+
+/** Read-only Knowledge for one team's rehearsal: the Takewon guide and the team's pages. */
+type RehearsalKnowledge = {
+  tools: Record<string, unknown>;
+  instructions: string;
+  scopes: string[];
+};
+type KnowledgeFor = (organizationId: string) => Promise<RehearsalKnowledge | null>;
+
+export const teamKnowledge: KnowledgeFor = async (organizationId) => {
+  if (!env.TOOL_KNOWLEDGE || !organizationId || organizationId.includes(":")) return null;
+  // Loaded when used, so this file stays free of the knowledge store for its tests.
+  const { chatKnowledge, GUIDE_SCOPE, teamScope } = await import("../lib/chat-knowledge");
+  const { READ_ONLY_TOOLS } = await import("../lib/knowledge");
+  return {
+    tools: chatKnowledge.createTools(READ_ONLY_TOOLS) as Record<string, unknown>,
+    instructions: chatKnowledge.getInstructions(READ_ONLY_TOOLS),
+    scopes: [GUIDE_SCOPE, teamScope(organizationId)],
+  };
+};
+
+let knowledgeFor: KnowledgeFor = teamKnowledge;
+
+/** For tests: hand the rehearsal stand-in Knowledge, or none. Pass nothing to undo. */
+export function useKnowledgeForTests(make?: KnowledgeFor): void {
+  knowledgeFor = make ?? teamKnowledge;
+}
+
+async function rehearsalAgent(
+  organizationId: string,
   browser: PassBrowser,
   steps: WalkStep[],
   pages?: string[],
   instructions = REHEARSAL_INSTRUCTIONS,
-) =>
-  new Agent({
+) {
+  const knowledge = await knowledgeFor(organizationId).catch(() => null);
+  return new Agent({
     id: "page-recording",
     name: "Page recording",
     description: "Works out the clicks for a page recording on a storyboard.",
-    instructions,
+    instructions: knowledge
+      ? `${instructions}\n\n${KNOWLEDGE_NOTE}\n\n${knowledge.instructions}`
+      : instructions,
     model: ({ requestContext }) => {
       const key = requestContext.get(TEAM_KEY);
       return onTeamKey(env.CHAT_MODEL, typeof key === "string" ? key : null);
     },
-    tools: recordingTools(browser, steps, pages) as never,
+    tools: { ...recordingTools(browser, steps, pages), ...(knowledge?.tools ?? {}) } as never,
+    // Only this team's pages and the guide, whatever the call carries.
+    ...(knowledge ? { scopes: () => knowledge.scopes } : {}),
   });
+}
 
 /** Works out the click path for a take. */
 export async function rehearse(request: TakeRequest, teamKey: string | null): Promise<WalkStep[]> {
@@ -396,10 +433,12 @@ export async function rehearse(request: TakeRequest, teamKey: string | null): Pr
   try {
     const requestContext = new RequestContext();
     if (teamKey) requestContext.set(TEAM_KEY, teamKey);
-    await rehearsalAgent(browser, steps).generate(
-      [{ role: "user", content: rehearsalPrompt(request) }],
-      { requestContext, maxSteps: REHEARSAL_MAX_STEPS },
-    );
+    await (
+      await rehearsalAgent(request.organizationId, browser, steps)
+    ).generate([{ role: "user", content: rehearsalPrompt(request) }], {
+      requestContext,
+      maxSteps: REHEARSAL_MAX_STEPS,
+    });
   } finally {
     await browser.close().catch(() => undefined);
   }
@@ -450,7 +489,7 @@ export type FoundPage = {
 
 export const FIND_INSTRUCTIONS = `${REHEARSAL_INSTRUCTIONS}
 
-No page address was given for this take, and there is no start page: you decide where to go. Your first action is opening a page. When you know the site the line is about, open it directly. When you are not sure where the page is, use a search engine to find it. Prefer the site's own page (the company's or project's official site) over articles about it, and the newest version of a page when the line says latest or newest. Once on that site, show what the line describes as above.`;
+No page address was given for this take, and there is no start page: you decide where to go. When the team's Knowledge names the site or page the line is about, use it. Otherwise, when you know the site, open it directly. When you are not sure where the page is, use a search engine to find it. Prefer the site's own page (the company's or project's official site) over articles about it, and the newest version of a page when the line says latest or newest. Once on that site, show what the line describes as above.`;
 
 /** What the model is told when it has to find the page. */
 export function findPrompt(request: Pick<FindRequest, "line" | "notes" | "avoid">): string {
@@ -504,10 +543,12 @@ export async function findPage(request: FindRequest, teamKey: string | null): Pr
   try {
     const requestContext = new RequestContext();
     if (teamKey) requestContext.set(TEAM_KEY, teamKey);
-    await rehearsalAgent(browser, steps, pages, FIND_INSTRUCTIONS).generate(
-      [{ role: "user", content: findPrompt(request) }],
-      { requestContext, maxSteps: REHEARSAL_MAX_STEPS },
-    );
+    await (
+      await rehearsalAgent(request.organizationId, browser, steps, pages, FIND_INSTRUCTIONS)
+    ).generate([{ role: "user", content: findPrompt(request) }], {
+      requestContext,
+      maxSteps: REHEARSAL_MAX_STEPS,
+    });
     const page = await pageOf(browser).catch(() => null);
     if (page) {
       url = page.url();
