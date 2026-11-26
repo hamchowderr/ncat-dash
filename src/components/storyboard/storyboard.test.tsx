@@ -5,7 +5,15 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { LESSON_STORYBOARD } from "../../../e2e/fixtures/lesson-storyboard";
-import { answerQuery, mutationOf, place, replaced, toastError } from "@/test/convex";
+import {
+  actionOf,
+  answerQuery,
+  mutationOf,
+  place,
+  replaced,
+  toastError,
+  toastSuccess,
+} from "@/test/convex";
 import { renderInApp, TEAM } from "@/test/render";
 
 import { ProjectView } from "@/components/projects/project-view";
@@ -53,6 +61,7 @@ function boardFor(text: string, files: Record<number, Partial<Record<Part, strin
   });
   return {
     _id: "sb1",
+    organizationId: TEAM.id,
     projectId: "p1",
     libraryItemId: null,
     aspect: "16:9",
@@ -376,5 +385,90 @@ describe("the project page", () => {
       "true",
     );
     expect(screen.getByText("Plan the video line by line")).toBeTruthy();
+  });
+});
+
+describe("making the storyboard into a finished video", () => {
+  const VIDEO = {
+    _id: "v1",
+    _creationTime: 0,
+    title: "Part 1: AnyPress",
+    chapterId: null,
+    aspect: "16:9",
+    status: "working",
+    total: 5,
+    made: 2,
+    joining: false,
+    skipped: [3, 9],
+    plain: [4],
+    error: null,
+    file: null,
+    finishedAt: null,
+  };
+
+  test("starts the whole video, or just the chapter on screen", async () => {
+    answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
+    answerQuery(api.storyboardVideos.list, []);
+    mutationOf(api.storyboardVideos.start).mockResolvedValue({
+      videoId: "v1",
+      takes: 2,
+      skipped: [],
+      plain: [],
+    });
+    const user = userEvent.setup();
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
+    const section = screen.getByRole("region", { name: "Finished video" });
+    await user.click(within(section).getByRole("button", { name: "Make the video" }));
+    expect(mutationOf(api.storyboardVideos.start)).toHaveBeenCalledWith({ storyboardId: "sb1" });
+    expect(toastSuccess).toHaveBeenCalledWith("Making 2 takes into one video.");
+    await user.click(within(section).getByRole("button", { name: "Just this chapter" }));
+    expect(mutationOf(api.storyboardVideos.start)).toHaveBeenLastCalledWith({
+      storyboardId: "sb1",
+      chapterId: "c1",
+    });
+  });
+
+  test("shows how far a video is, and what was left out or shown plainly", () => {
+    answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
+    answerQuery(api.storyboardVideos.list, [VIDEO]);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
+    const section = screen.getByRole("region", { name: "Finished video" });
+    expect(section.textContent).toContain("Making the takes: 2 of 5 done");
+    expect(section.textContent).toContain("Left out takes 3 and 9");
+    expect(section.textContent).toContain("Shown Full Screen for now: take 4");
+    // One video at a time.
+    expect(within(section).getByRole("button", { name: "Make the video" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+  });
+
+  test("a made video plays in place and opens in the Library; a failed one says why", async () => {
+    answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
+    actionOf(api.library.previewLinks).mockResolvedValue([
+      { itemId: "li1", url: "https://cdn.example/joined.mp4" },
+    ]);
+    answerQuery(api.storyboardVideos.list, [
+      {
+        ...VIDEO,
+        status: "done",
+        made: 5,
+        skipped: [],
+        plain: [],
+        file: { _id: "li1", shortId: "V12", title: "Part 1: AnyPress" },
+      },
+      { ...VIDEO, _id: "v0", status: "failed", error: "Take 5 could not be made." },
+    ]);
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
+    const section = screen.getByRole("region", { name: "Finished video" });
+    expect(within(section).getByRole("link", { name: "Open V12 in your Library" })).toHaveProperty(
+      "href",
+      expect.stringContaining("/library/li1"),
+    );
+    expect(section.textContent).toContain("Take 5 could not be made.");
+    await act(async () => {});
+    expect(section.querySelector("video")?.getAttribute("src")).toBe(
+      "https://cdn.example/joined.mp4",
+    );
   });
 });

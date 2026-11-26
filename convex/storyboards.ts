@@ -243,6 +243,7 @@ async function layOut(ctx: QueryCtx, board: Doc<"storyboards">, role: TeamRole) 
   const seconds = secondsFor(takes.map((take) => take.line));
   return {
     _id: board._id,
+    organizationId: board.organizationId,
     projectId: board.projectId ?? null,
     libraryItemId: board.libraryItemId ?? null,
     aspect: board.aspect,

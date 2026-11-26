@@ -36,6 +36,7 @@ import { errorMessage } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 
 import { ChapterPlayer } from "./chapter-player";
+import { MakeVideo } from "./make-video";
 import { PartChip, TakeRow } from "./take-row";
 import type { Board, Chapter } from "./types";
 
@@ -554,6 +555,7 @@ function SidePanel({ board, chapter }: { board: Board; chapter: Chapter }) {
         <h3 className="text-sm font-semibold">Preview</h3>
         <ChapterPlayer key={chapter._id} chapter={chapter} />
       </section>
+      <MakeVideo board={board} chapter={chapter} />
       <section aria-label="What goes in" className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold">What goes in</h3>
         {needs.length === 0 ? (

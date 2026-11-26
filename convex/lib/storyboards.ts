@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { deleteBoardVideos } from "./storyboardVideos";
 
 /** Deletes a storyboard with its chapters and its takes. */
 export async function deleteBoard(ctx: MutationCtx, board: Doc<"storyboards">) {
@@ -13,6 +14,7 @@ export async function deleteBoard(ctx: MutationCtx, board: Doc<"storyboards">) {
     .withIndex("by_storyboard", (q) => q.eq("storyboardId", board._id))
     .collect();
   for (const chapter of chapters) await ctx.db.delete(chapter._id);
+  await deleteBoardVideos(ctx, board._id);
   await ctx.db.delete(board._id);
 }
 
