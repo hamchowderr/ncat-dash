@@ -28,6 +28,12 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/** Shortens someone's message but keeps its line breaks, for a quote. */
+function clip(value: string, max: number): string {
+  const tidy = value.replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return tidy.length > max ? `${tidy.slice(0, max - 1)}…` : tidy;
+}
+
 /** Keeps a name from carrying line breaks into a subject line. */
 function oneLine(value: string, max = 120): string {
   const flat = value.replace(/\s+/g, " ").trim();
@@ -110,7 +116,7 @@ function compose(subject: string, layout: Layout, branding: Branding): Composed 
     ...paragraphs.map((paragraph) => p(escapeHtml(paragraph))),
     ...(quote
       ? [
-          `<div style="margin:0 0 16px;padding:14px 16px;background:#f4f4f7;border-radius:10px;font-size:15px;line-height:1.6;color:${INK};">${escapeHtml(quote)}</div>`,
+          `<div style="margin:0 0 16px;padding:14px 16px;background:#f4f4f7;border-radius:10px;font-size:15px;line-height:1.6;color:${INK};white-space:pre-wrap;">${escapeHtml(quote)}</div>`,
         ]
       : []),
     ...(items?.length
@@ -556,6 +562,69 @@ export function digestEmail(
       reason:
         "You get one summary a day because you chose it. You can get emails as they happen instead.",
       settingsUrl: args.settingsUrl,
+    },
+    branding,
+  );
+}
+
+/**
+ * Support answered someone's help request. Transactional: it is the answer they asked
+ * for, so it has no unsubscribe. Replying to the email reaches nobody (toSend has no
+ * inbound mail), so it sends them back to the app to answer.
+ */
+export function supportReplyEmail(
+  args: {
+    name?: string;
+    number: number;
+    subject: string;
+    from: string;
+    reply: string;
+    ticketUrl: string;
+  },
+  branding: Branding,
+) {
+  const subject = oneLine(args.subject, 80);
+  return compose(
+    `Re: ${subject} [#${args.number}]`,
+    {
+      heading: `${oneLine(args.from, 60)} answered your question`,
+      paragraphs: [
+        `${args.name ? `Hi ${oneLine(args.name, 40)}, here` : "Here"} is the answer to "${subject}" (request #${args.number}):`,
+      ],
+      quote: clip(args.reply, 2000),
+      button: { label: "Open the conversation", url: args.ticketUrl },
+      footnote: `To answer, write in ${branding.appName} with the button above. Replies to this email are not read.`,
+    },
+    branding,
+  );
+}
+
+/** For the people who answer support: a new help request, or a new message on one. */
+export function supportTicketEmail(
+  args: {
+    kind: "new" | "message";
+    number: number;
+    subject: string;
+    from: string;
+    teamName?: string;
+    body: string;
+    ticketUrl: string;
+  },
+  branding: Branding,
+) {
+  const subject = oneLine(args.subject, 80);
+  const from = oneLine(args.from, 60);
+  const team = args.teamName ? ` from ${oneLine(args.teamName, 60)}` : "";
+  return compose(
+    args.kind === "new"
+      ? `New help request #${args.number}: ${subject}`
+      : `${from} wrote again on #${args.number}: ${subject}`,
+    {
+      heading: args.kind === "new" ? "A new help request" : `${from} wrote again`,
+      paragraphs: [`${from}${team}, about "${subject}" (#${args.number}):`],
+      quote: clip(args.body, 2000),
+      button: { label: "Answer it", url: args.ticketUrl },
+      reason: "You get this because you answer support for this copy of the app.",
     },
     branding,
   );
