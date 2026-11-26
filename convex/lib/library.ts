@@ -270,3 +270,23 @@ export async function followLibraryKey(
     else await ctx.db.patch(item._id, { key: to });
   }
 }
+
+/** The longest brief kept for one video, in letters. */
+export const MAX_BRIEF = 2000;
+
+/**
+ * The brief for a library file: its own, else the nearest one of the files it was made
+ * from (a clip follows the episode's brief). Empty when none has one.
+ */
+export async function briefOf(
+  ctx: QueryCtx,
+  itemId: Id<"libraryItems"> | null | undefined,
+): Promise<string> {
+  let current = itemId ? await ctx.db.get(itemId) : null;
+  for (let depth = 0; current && depth < 10; depth++) {
+    const brief = current.brief?.trim();
+    if (brief) return brief.slice(0, MAX_BRIEF);
+    current = current.parentId ? await ctx.db.get(current.parentId) : null;
+  }
+  return "";
+}

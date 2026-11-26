@@ -22,6 +22,7 @@ import {
 } from "./_generated/server";
 import { isMember, MANAGER_ROLES, requireMember, type TeamRole } from "./lib/authz";
 import { deleteBoard } from "./lib/storyboards";
+import { briefOf } from "./lib/library";
 import { signAgentToken } from "./reviewAgent";
 import {
   aboutLength,
@@ -878,6 +879,8 @@ export const sceneQuestion = internalQuery({
       userId,
       name: board.source ?? "A talking video",
       aspect: board.aspect,
+      // An upload's storyboard follows that video's brief.
+      brief: await briefOf(ctx, board.libraryItemId),
       chapters: chapters.map((chapter) => ({
         _id: chapter._id,
         title: chapter.title,
@@ -949,6 +952,7 @@ export const suggestScenes = action({
           organizationId: question.organizationId,
           name: question.name,
           aspect: question.aspect,
+          ...(question.brief ? { brief: question.brief } : {}),
           chapters: question.chapters.map((chapter) => ({
             title: chapter.title,
             lines: chapter.lines.map(({ n, line }) => ({ n, line })),

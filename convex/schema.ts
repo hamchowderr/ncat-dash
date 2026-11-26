@@ -2341,6 +2341,10 @@ export default defineSchema({
     ),
     // Set by a person: use it as B-Roll ("yes") or never ("no"), whatever it looks like.
     broll: v.optional(v.union(v.literal("yes"), v.literal("no"))),
+    // A video's own brief, written by a person: pacing and direction ("fast cuts, keep the
+    // pricing story, no jokes about the weather"). The AI planning steps follow it, on top
+    // of the team's house rules. Files made from it use it too (briefOf).
+    brief: v.optional(v.string()),
     // Who brought it in; null for a file an automation made.
     createdBy: v.union(v.null(), v.string()),
   })
