@@ -2300,7 +2300,10 @@ export default defineSchema({
     // The Firecrawl session someone is signing in with, while they are.
     sessionId: v.optional(v.string()),
     savedAt: v.optional(v.number()),
+    // Whose sign-in it is. Only they record with it, unless they share it with the team
+    // (a team account everyone may use). Left out: theirs alone.
     createdBy: v.string(),
+    shared: v.optional(v.boolean()),
   }).index("by_organization", ["organizationId"]),
 
   // A post planned on the content calendar: what goes out, where, and when. With no time

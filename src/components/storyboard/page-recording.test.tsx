@@ -143,6 +143,7 @@ describe("signing in for a recording", () => {
       organizationId: TEAM.id,
       name: "Example Studio admin",
       url: "https://app.example.com/login",
+      shared: false,
     });
     expect(opened).toHaveBeenCalledWith("https://live.example/s1", "_blank", "noopener,noreferrer");
     expect(screen.getByRole("link", { name: "Open the sign-in page again" })).toHaveProperty(
@@ -164,12 +165,18 @@ describe("signing in for a recording", () => {
           url: "https://app.example.com",
           status: "saved",
           savedAt: 1,
+          mine: true,
+          shared: false,
         },
       ],
     );
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Record the page" }));
-    await pick(user, screen.getByRole("combobox", { name: "Sign in as" }), "Example Studio admin");
+    await pick(
+      user,
+      screen.getByRole("combobox", { name: "Sign in as" }),
+      "Example Studio admin (yours)",
+    );
     await user.type(
       screen.getByRole("textbox", { name: "Page address" }),
       "https://app.example.com",
@@ -178,5 +185,69 @@ describe("signing in for a recording", () => {
     expect(mutationOf(api.pageRecordings.record)).toHaveBeenCalledWith(
       expect.objectContaining({ signInId: "s1" }),
     );
+  });
+
+  test("a new sign-in is the person's own unless shared with the team", async () => {
+    vi.spyOn(window, "open").mockReturnValue(null);
+    actionOf(api.pageRecordings.startSignIn).mockResolvedValueOnce({
+      signInId: "s2",
+      liveViewUrl: "https://live.example/s2",
+    });
+    show([]);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Record the page" }));
+    await pick(user, screen.getByRole("combobox", { name: "Sign in as" }), "Add a sign-in");
+    const setUp = screen.getByRole("form", { name: "New sign-in" });
+    const share = within(setUp).getByRole("checkbox", { name: /Share with the team/ });
+    expect(share.getAttribute("aria-checked")).toBe("false");
+    await user.type(within(setUp).getByRole("textbox", { name: "Name it" }), "Team admin");
+    await user.type(
+      within(setUp).getByRole("textbox", { name: "The site's sign-in page" }),
+      "https://app.example.com/login",
+    );
+    await user.click(share);
+    await user.click(within(setUp).getByRole("button", { name: "Open the sign-in page" }));
+    expect(actionOf(api.pageRecordings.startSignIn)).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Team admin", shared: true }),
+    );
+    vi.mocked(window.open).mockRestore();
+  });
+
+  test("the owner can share or stop sharing a sign-in; a teammate's shows as a team account", async () => {
+    show(
+      [],
+      [
+        {
+          _id: "s1",
+          name: "My admin",
+          url: "https://a.example",
+          status: "saved",
+          savedAt: 1,
+          mine: true,
+          shared: false,
+        },
+        {
+          _id: "s3",
+          name: "Studio login",
+          url: "https://b.example",
+          status: "saved",
+          savedAt: 1,
+          mine: false,
+          shared: true,
+        },
+      ],
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Record the page" }));
+    const picker = screen.getByRole("combobox", { name: "Sign in as" });
+    await pick(user, picker, "My admin (yours)");
+    await user.click(screen.getByRole("button", { name: "Share with the team" }));
+    expect(mutationOf(api.pageRecordings.shareSignIn)).toHaveBeenCalledWith({
+      signInId: "s1",
+      shared: true,
+    });
+    await pick(user, picker, "Studio login (team account)");
+    expect(screen.queryByRole("button", { name: "Share with the team" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove this sign-in" })).toBeNull();
   });
 });

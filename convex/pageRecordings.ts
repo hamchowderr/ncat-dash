@@ -24,6 +24,7 @@ import {
   internalQuery,
   mutation,
   query,
+  type QueryCtx,
 } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import {
@@ -161,6 +162,12 @@ export const record = mutation({
       if (!signIn || signIn.organizationId !== take.organizationId) {
         return fail("not_found", "That saved sign-in is gone.");
       }
+      if (!canUseSignIn(signIn, userId)) {
+        return fail(
+          "forbidden",
+          `${signIn.name} is a teammate's own sign-in. Pick your own, or ask them to share it with the team.`,
+        );
+      }
       if (signIn.status !== "saved") {
         return fail("invalid_input", `Finish signing in to ${signIn.name} first.`);
       }
@@ -238,7 +245,11 @@ export const forMaking = internalQuery({
       line: take.line,
       number: takes.findIndex((one) => one._id === take._id) + 1,
       aspect: aspectOf(board.aspect),
-      profile: signIn?.status === "saved" ? signIn.profile : null,
+      // Only a sign-in the person who asked may use: their own, or one shared with the team.
+      profile:
+        signIn?.status === "saved" && canUseSignIn(signIn, recording.requestedBy)
+          ? signIn.profile
+          : null,
       connection: await storageConnection(ctx, recording.organizationId),
     };
   },
@@ -379,6 +390,13 @@ export const make = internalAction({
           ctx,
           recordingId,
           "This team has no storage for files yet, so there is nowhere to keep the video.",
+        );
+      }
+      if (recording.signInId && !found.profile) {
+        return await stop(
+          ctx,
+          recordingId,
+          "The sign-in picked for this take is not saved, or is no longer shared with you. Pick a sign-in and record it again.",
         );
       }
       await ctx.runMutation(internal.pageRecordings.setStatus, {
@@ -533,18 +551,34 @@ const signInView = v.object({
   url: v.string(),
   status: v.union(v.literal("signing_in"), v.literal("saved")),
   savedAt: v.union(v.null(), v.number()),
+  /** Whether it is the person's own (only they may change, share or remove it). */
+  mine: v.boolean(),
+  shared: v.boolean(),
 });
 
-/** The team's saved sign-ins for page recordings. */
+/** Whether a person may record with a sign-in: their own, or one shared with the team. */
+export const canUseSignIn = (signIn: Doc<"recordingSignIns">, userId: string) =>
+  signIn.createdBy === userId || signIn.shared === true;
+
+async function teamSignIns(ctx: QueryCtx, organizationId: string) {
+  return await ctx.db
+    .query("recordingSignIns")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .take(500);
+}
+
+/**
+ * The sign-ins a person may record with: their own, and the ones teammates shared with
+ * the team. A teammate's own sign-in is never listed: it is theirs.
+ */
 export const signIns = query({
   args: { organizationId: v.string() },
   returns: v.array(signInView),
   handler: async (ctx, args) => {
-    await requireMember(ctx, args.organizationId);
-    const rows = await ctx.db
-      .query("recordingSignIns")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .take(RECORDING_LIMITS.signIns + 10);
+    const { userId } = await requireMember(ctx, args.organizationId);
+    const rows = (await teamSignIns(ctx, args.organizationId)).filter((row) =>
+      canUseSignIn(row, userId),
+    );
     return rows
       .map((row) => ({
         _id: row._id,
@@ -552,13 +586,20 @@ export const signIns = query({
         url: row.url,
         status: row.status,
         savedAt: row.savedAt ?? null,
+        mine: row.createdBy === userId,
+        shared: row.shared === true,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 
 export const addSignIn = internalMutation({
-  args: { organizationId: v.string(), name: v.string(), url: v.string() },
+  args: {
+    organizationId: v.string(),
+    name: v.string(),
+    url: v.string(),
+    shared: v.optional(v.boolean()),
+  },
   handler: async (ctx, args): Promise<{ signInId: Id<"recordingSignIns">; profile: string }> => {
     const { userId } = await requireMember(ctx, args.organizationId);
     const name = args.name.trim().replace(/\s+/g, " ");
@@ -569,14 +610,13 @@ export const addSignIn = internalMutation({
     const url = cleanPageUrl(args.url);
     if (!url)
       return fail("invalid_input", "Give the sign-in page's web address, starting https://.");
-    const rows = await ctx.db
-      .query("recordingSignIns")
-      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
-      .take(RECORDING_LIMITS.signIns + 1);
-    if (rows.length >= RECORDING_LIMITS.signIns) {
-      return fail("limit", `A team can keep up to ${RECORDING_LIMITS.signIns} sign-ins.`);
+    const team = await teamSignIns(ctx, args.organizationId);
+    if (team.filter((row) => row.createdBy === userId).length >= RECORDING_LIMITS.signIns) {
+      return fail("limit", `You can keep up to ${RECORDING_LIMITS.signIns} sign-ins.`);
     }
-    if (rows.some((row) => row.name.toLowerCase() === name.toLowerCase())) {
+    // Names are told apart among the sign-ins this person sees.
+    const seen = team.filter((row) => canUseSignIn(row, userId));
+    if (seen.some((row) => row.name.toLowerCase() === name.toLowerCase())) {
       return fail("exists", `There is already a sign-in called ${name}.`);
     }
     const signInId = await ctx.db.insert("recordingSignIns", {
@@ -586,6 +626,7 @@ export const addSignIn = internalMutation({
       profile: "",
       status: "signing_in",
       createdBy: userId,
+      shared: args.shared === true,
     });
     const profile = profileName(args.organizationId, signInId);
     await ctx.db.patch(signInId, { profile });
@@ -593,12 +634,16 @@ export const addSignIn = internalMutation({
   },
 });
 
+/** A sign-in its owner is changing: signing in to it again, or saving it. */
 export const signInFor = internalQuery({
   args: { signInId: v.id("recordingSignIns") },
   handler: async (ctx, args) => {
     const signIn = await ctx.db.get(args.signInId);
     if (!signIn) return null;
     const { userId } = await requireMember(ctx, signIn.organizationId);
+    if (signIn.createdBy !== userId) {
+      return fail("forbidden", `Only the person who saved ${signIn.name} can change it.`);
+    }
     return { signIn, userId };
   },
 });
@@ -664,6 +709,8 @@ export const startSignIn = action({
     name: v.optional(v.string()),
     url: v.optional(v.string()),
     signInId: v.optional(v.id("recordingSignIns")),
+    /** A team account everyone on the team may record with. Left out: theirs alone. */
+    shared: v.optional(v.boolean()),
   },
   returns: v.object({ signInId: v.id("recordingSignIns"), liveViewUrl: v.string() }),
   handler: async (
@@ -685,6 +732,7 @@ export const startSignIn = action({
         organizationId: args.organizationId,
         name: args.name ?? "",
         url: args.url ?? "",
+        shared: args.shared,
       });
       signInId = made.signInId;
       profile = made.profile;
@@ -740,14 +788,33 @@ export const finishSignIn = action({
   },
 });
 
-/** Forgets a saved sign-in. Recordings that used it record without signing in. */
+/** Its owner shares a sign-in with the team, as a team account, or stops sharing it. */
+export const shareSignIn = mutation({
+  args: { signInId: v.id("recordingSignIns"), shared: v.boolean() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const signIn = await ctx.db.get(args.signInId);
+    if (!signIn) return fail("not_found", "That saved sign-in is gone.");
+    const { userId } = await requireMember(ctx, signIn.organizationId);
+    if (signIn.createdBy !== userId) {
+      return fail("forbidden", `Only the person who saved ${signIn.name} can share it.`);
+    }
+    await ctx.db.patch(signIn._id, { shared: args.shared });
+    return null;
+  },
+});
+
+/** Its owner forgets a saved sign-in. Recordings that used it record without signing in. */
 export const removeSignIn = mutation({
   args: { signInId: v.id("recordingSignIns") },
   returns: v.null(),
   handler: async (ctx, args) => {
     const signIn = await ctx.db.get(args.signInId);
     if (!signIn) return null;
-    await requireMember(ctx, signIn.organizationId);
+    const { userId } = await requireMember(ctx, signIn.organizationId);
+    if (signIn.createdBy !== userId) {
+      return fail("forbidden", `Only the person who saved ${signIn.name} can remove it.`);
+    }
     const using = await ctx.db
       .query("takeRecordings")
       .withIndex("by_organization", (q) => q.eq("organizationId", signIn.organizationId))

@@ -9,6 +9,7 @@ import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { PickList } from "@/components/ui/pick-list";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,7 +37,8 @@ function seconds(ms: number | null) {
 
 /**
  * Setting up a saved sign-in: the site's sign-in page opens in a browser the person drives
- * from a new tab, they sign in there themselves, and "I'm signed in" keeps it for the team.
+ * from a new tab, they sign in there themselves, and "I'm signed in" keeps it. It is
+ * theirs alone unless they share it with the team, for a team account everyone may use.
  */
 function AddSignIn({
   organizationId,
@@ -51,6 +53,7 @@ function AddSignIn({
   const finish = useAction(api.pageRecordings.finishSignIn);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [shared, setShared] = useState(false);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<{ signInId: SignInId; liveViewUrl: string } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -60,7 +63,12 @@ function AddSignIn({
     setBusy(true);
     setProblem(null);
     try {
-      const started = await start({ organizationId, name: name.trim(), url: url.trim() });
+      const started = await start({
+        organizationId,
+        name: name.trim(),
+        url: url.trim(),
+        shared,
+      });
       setOpen(started);
       window.open(started.liveViewUrl, "_blank", "noopener,noreferrer");
     } catch (caught) {
@@ -137,6 +145,20 @@ function AddSignIn({
           onChange={(event) => setUrl(event.target.value)}
         />
       </label>
+      <label className="flex items-start gap-2">
+        <Checkbox
+          className="mt-0.5"
+          checked={shared}
+          onCheckedChange={(on) => setShared(on === true)}
+          aria-describedby="sign-in-shared-hint"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="font-medium">Share with the team</span>
+          <span id="sign-in-shared-hint" className="text-muted-foreground text-xs">
+            Only for a team account everyone may use. Left off, only you can record with it.
+          </span>
+        </span>
+      </label>
       {problem && (
         <p role="alert" className="text-destructive">
           {problem}
@@ -169,11 +191,13 @@ function RecordForm({
   const record = useMutation(api.pageRecordings.record);
   const signIns = useQuery(api.pageRecordings.signIns, { organizationId });
   const removeSignIn = useMutation(api.pageRecordings.removeSignIn);
+  const shareSignIn = useMutation(api.pageRecordings.shareSignIn);
   const [url, setUrl] = useState(start.url);
   const [notes, setNotes] = useState(start.notes);
   const [signIn, setSignIn] = useState<string>(start.signInId ?? "");
   const [busy, setBusy] = useState(false);
   const saved = (signIns ?? []).filter((entry) => entry.status === "saved");
+  const picked = saved.find((entry) => entry._id === signIn) ?? null;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -190,6 +214,14 @@ function RecordForm({
       toast.error(errorMessage(caught, "The recording could not start."));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onShare(id: SignInId, shared: boolean) {
+    try {
+      await shareSignIn({ signInId: id, shared });
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The sign-in could not be changed."));
     }
   }
 
@@ -239,19 +271,34 @@ function RecordForm({
             onChange={setSignIn}
             options={[
               { value: "", label: "Nobody, the page is public" },
-              ...saved.map((entry) => ({ value: entry._id, label: entry.name })),
+              ...saved.map((entry) => ({
+                value: entry._id,
+                label: entry.mine
+                  ? `${entry.name}${entry.shared ? " (shared with the team)" : " (yours)"}`
+                  : `${entry.name} (team account)`,
+              })),
               { value: ADD, label: "Add a sign-in" },
             ]}
           />
-          {signIn && signIn !== ADD && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => void onRemove(signIn as SignInId)}
-            >
-              Remove this sign-in
-            </Button>
+          {picked?.mine && (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => void onShare(picked._id, !picked.shared)}
+              >
+                {picked.shared ? "Stop sharing with the team" : "Share with the team"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => void onRemove(picked._id)}
+              >
+                Remove this sign-in
+              </Button>
+            </>
           )}
         </div>
         {signIn !== ADD && (

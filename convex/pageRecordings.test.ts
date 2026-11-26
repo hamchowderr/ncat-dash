@@ -86,6 +86,7 @@ async function setUp() {
   const team = await addTeam(t, "Example Studio");
   const maya = await addPerson(t, "Maya Ortiz", [team], "owner");
   const outsider = await addPerson(t, "Someone Else", [await addTeam(t, "Other Team")]);
+  const dev = await addPerson(t, "Dev Patel", [team]);
   await t.run((ctx) =>
     ctx.db.insert("toolkitConnections", {
       organizationId: team,
@@ -120,7 +121,7 @@ async function setUp() {
       await t.finishInProgressScheduledFunctions();
     }
   };
-  return { t, team, maya, outsider, storyboardId, board, said, shown, rows, run };
+  return { t, team, maya, dev, outsider, storyboardId, board, said, shown, rows, run };
 }
 
 describe("the rules for page recordings", () => {
@@ -322,6 +323,74 @@ describe("saved sign-ins", () => {
     await expect(ask()).rejects.toThrow(/Firecrawl key/);
     await expect(ask()).rejects.toThrow(/Firecrawl key/);
     expect(await maya.as.query(api.pageRecordings.signIns, { organizationId: team })).toEqual([]);
+  });
+
+  test("are the person's own unless they share it with the team", async () => {
+    const { maya, dev, team, shown, run, t } = await setUp();
+    const { sent } = stubs();
+    const started = await maya.as.action(api.pageRecordings.startSignIn, {
+      organizationId: team,
+      name: "Maya's admin",
+      url: "https://app.example.com",
+    });
+    await maya.as.action(api.pageRecordings.finishSignIn, { signInId: started.signInId });
+    expect(await maya.as.query(api.pageRecordings.signIns, { organizationId: team })).toEqual([
+      expect.objectContaining({ mine: true, shared: false }),
+    ]);
+
+    // A teammate does not see it, cannot record with it, and cannot remove or share it.
+    expect(await dev.as.query(api.pageRecordings.signIns, { organizationId: team })).toEqual([]);
+    const devRecords = () =>
+      dev.as.mutation(api.pageRecordings.record, {
+        takeId: shown._id,
+        url: "https://app.example.com",
+        signInId: started.signInId,
+      });
+    await expect(devRecords()).rejects.toThrow(/teammate's own sign-in/);
+    await expect(
+      dev.as.mutation(api.pageRecordings.removeSignIn, { signInId: started.signInId }),
+    ).rejects.toThrow();
+    await expect(
+      dev.as.mutation(api.pageRecordings.shareSignIn, { signInId: started.signInId, shared: true }),
+    ).rejects.toThrow();
+    await expect(
+      dev.as.action(api.pageRecordings.finishSignIn, { signInId: started.signInId }),
+    ).rejects.toThrow();
+
+    // Shared as a team account, the teammate may record with it.
+    await maya.as.mutation(api.pageRecordings.shareSignIn, {
+      signInId: started.signInId,
+      shared: true,
+    });
+    expect(await dev.as.query(api.pageRecordings.signIns, { organizationId: team })).toEqual([
+      expect.objectContaining({ name: "Maya's admin", mine: false, shared: true }),
+    ]);
+    await devRecords();
+
+    // Unshared before its turn comes, the recording does not use it.
+    await maya.as.mutation(api.pageRecordings.shareSignIn, {
+      signInId: started.signInId,
+      shared: false,
+    });
+    await run();
+    expect(sent.some((call) => call.url === `${AGENT_URL}/ncat/record`)).toBe(false);
+    const [row] = await t.run((ctx) => ctx.db.query("takeRecordings").collect());
+    expect(row.status).toBe("failed");
+    expect(row.problem).toMatch(/no longer shared with you/);
+  });
+
+  test("can be shared with the team from the start", async () => {
+    const { maya, dev, team } = await setUp();
+    stubs();
+    const started = await maya.as.action(api.pageRecordings.startSignIn, {
+      organizationId: team,
+      name: "Team admin",
+      url: "https://app.example.com",
+      shared: true,
+    });
+    expect(await dev.as.query(api.pageRecordings.signIns, { organizationId: team })).toEqual([
+      expect.objectContaining({ _id: started.signInId, mine: false, shared: true }),
+    ]);
   });
 
   test("are the team's own", async () => {
