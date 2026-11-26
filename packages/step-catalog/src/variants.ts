@@ -888,7 +888,9 @@ export const variantRecipes: StepDefinition[] = [
             "[0:a]aresample=48000,aformat=channel_layouts=stereo[voice]",
             // The video's own length, and the voice left as loud as it was.
             ...(b.music_under_speech === "stays at one level"
-              ? ["[voice][music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]"]
+              ? [
+                  "[voice][music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]",
+                ]
               : duckedMix("voice", "music", "mixed")),
           ];
       return {

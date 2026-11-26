@@ -179,7 +179,12 @@ describe.skipIf(!hasFfmpeg)("on a real FFmpeg", () => {
       ["late.wav", 0.5],
     ] as const) {
       await ffmpeg([
-        ...["-f", "lavfi", "-i", `aevalsrc='0.8*sin(2*PI*1000*t)*between(t,${beep},${beep + 0.2})':s=48000:d=8`],
+        ...[
+          "-f",
+          "lavfi",
+          "-i",
+          `aevalsrc='0.8*sin(2*PI*1000*t)*between(t,${beep},${beep + 0.2})':s=48000:d=8`,
+        ],
         path.join(dir, name),
       ]);
     }
@@ -249,7 +254,11 @@ describe.skipIf(!hasFfmpeg)("on a real FFmpeg", () => {
       const file = await run(
         step.toRequest!(input, {
           video_url: { duration: 6, hasAudio: true },
-          mic_url: { duration: 8, hasAudio: true, sync: { matched: true, offset, drift: 0, confidence: 0.9 } },
+          mic_url: {
+            duration: 8,
+            hasAudio: true,
+            sync: { matched: true, offset, drift: 0, confidence: 0.9 },
+          },
         }) as ComposeRequest,
         `mic-${name}`,
       );
@@ -285,7 +294,9 @@ describe.skipIf(!hasFfmpeg)("on a real FFmpeg", () => {
       // About 10 dB lower under the voice than in the pause...
       expect(pause - talking).toBeGreaterThan(6);
       // ...while at one level it barely changes.
-      expect(Math.abs(bandLevel(level, 2.8, 3.8, 2000) - bandLevel(level, 0.5, 1.8, 2000))).toBeLessThan(2);
+      expect(
+        Math.abs(bandLevel(level, 2.8, 3.8, 2000) - bandLevel(level, 0.5, 1.8, 2000)),
+      ).toBeLessThan(2);
       // The voice itself is left as loud as it was (the test voice is mono, and spreading
       // it over two channels takes 3 dB off each).
       const voice = bandLevel(path.join(dir, "talk.mp4"), 0.5, 1.8, 300);

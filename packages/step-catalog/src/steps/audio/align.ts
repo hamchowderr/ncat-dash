@@ -12,7 +12,10 @@ export const audioAlign = defineStep({
   output: "json",
   primaryInput: "reference_url",
   input: z.object({
-    reference_url: z.string().url().describe("The recording to line up against, such as the camera video"),
+    reference_url: z
+      .string()
+      .url()
+      .describe("The recording to line up against, such as the camera video"),
     media_url: z.string().url().describe("The recording to line up, such as the mic's own file"),
     max_seconds: z
       .number()
