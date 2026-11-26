@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { dash, dashFor, plainError } from "./convex";
 import { LIBRARY_INSTRUCTIONS, libraryTools } from "./library";
+import { STORYBOARD_INSTRUCTIONS, storyboardTools } from "./storyboard";
 import { triggerAsSent } from "./trigger-shape";
 import { rememberMade, workingAutomationOf } from "./session-store";
 import { TEAM_STEP_INSTRUCTIONS, teamStepTools } from "./team-steps";
@@ -836,6 +837,7 @@ export const ncatTools = {
   rename_file: renameFile,
   ...teamStepTools,
   ...libraryTools,
+  ...storyboardTools,
 };
 
 /** Tools that only look. They run without an approval card and are offered in Plan mode. */
@@ -852,6 +854,7 @@ export const NCAT_READ_TOOLS = [
   "check_job",
   "find_in_library",
   "library_file",
+  "read_storyboard",
 ] as const;
 
 /** Tools that change an automation's design: one "Always allow" covers them together. */
@@ -887,4 +890,5 @@ ${MOTION_INSTRUCTIONS}
 - Say what you built in plain words: what starts it and what each step does. No ids, no JSON, no jargon unless they ask. After making a new automation, link to it with the address create_automation returned, like [Open it](/automations/...).
 - Knowledge: when someone tells you how their team likes things done, or what a client wants or avoids, offer to keep it: a page in the team's scope (team:...) for the team, in the client's scope (client:...) when that client's work is on screen, with what the client wants on its "brief" page. Read those pages before working for that team or client, and follow them. A page in one client's scope is about that client only.
 ${LIBRARY_INSTRUCTIONS}
+${STORYBOARD_INSTRUCTIONS}
 - You do not post to social platforms, generate video from text, dub voices or make avatars. Say so if asked.`;

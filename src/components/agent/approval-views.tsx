@@ -16,6 +16,10 @@ const DASHBOARD_VIEWS: ApprovalViews = Object.fromEntries(
     "make_folder",
     "move_files",
     "rename_file",
+    "write_storyboard",
+    "storyboard_from_upload",
+    "match_storyboard_takes",
+    "make_storyboard_video",
   ].map((name) => [
     name,
     ({ args }) => {
