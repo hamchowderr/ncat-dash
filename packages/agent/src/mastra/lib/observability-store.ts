@@ -41,21 +41,27 @@ type Logger = {
 export const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
 /**
- * Trim old observability rows now and then every `everyMs`. The timer never holds the
+ * Trim old observability rows now and then every `everyMs`. The tables are made first:
+ * on a fresh file the first prune otherwise ran before Mastra had created them, and
+ * failed with "Table with name span_events does not exist". The timer never holds the
  * process open, and a failed prune is logged and tried again on the next tick.
  * Returns a function that stops the timer.
  */
 export function startObservabilityPruning(
-  store: Pick<DuckDBStore, "prune">,
+  store: Pick<DuckDBStore, "prune" | "init">,
   logger: Logger,
   everyMs = PRUNE_EVERY_MS,
 ): () => void {
+  let ready: Promise<void> | null = null;
   const prune = async () => {
     try {
+      ready ??= store.init();
+      await ready;
       const results = await store.prune({ pauseMs: 50 });
       const deleted = results.reduce((sum, r) => sum + r.deleted, 0);
       if (deleted > 0) logger.info("Old traces and logs trimmed", { deleted });
     } catch (error) {
+      ready = null;
       logger.warn("Trimming old traces and logs failed; trying again next hour", { error });
     }
   };
