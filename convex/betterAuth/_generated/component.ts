@@ -4394,6 +4394,32 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       >;
     };
     members: {
+      accountCount: FunctionReference<"query", "internal", {}, number, Name>;
+      accountsPage: FunctionReference<
+        "query",
+        "internal",
+        {
+          paginationOpts: {
+            cursor: string | null;
+            endCursor?: string | null;
+            id?: number;
+            maximumBytesRead?: number;
+            maximumRowsRead?: number;
+            numItems: number;
+          };
+        },
+        {
+          continueCursor: string;
+          isDone: boolean;
+          page: Array<{
+            email: string;
+            emailVerified: boolean;
+            name: string;
+            userId: string;
+          }>;
+        },
+        Name
+      >;
       caller: FunctionReference<
         "query",
         "internal",

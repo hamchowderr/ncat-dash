@@ -160,3 +160,58 @@ export function senderProblem(
   }
   return null;
 }
+
+/** The most emails toSend takes in one batch call. */
+export const BATCH_LIMIT = 100;
+
+export type BatchResult =
+  | {
+      ok: true;
+      results: ({ ok: true; messageId: string | null } | { ok: false; detail: string })[];
+    }
+  | { ok: false; status: number; reason: SendFailure; detail: string };
+
+/**
+ * Sends up to 100 different emails in one call (each its own person, subject and
+ * headers). Never throws. When the call as a whole is refused, nothing was sent; when it
+ * is taken, each email has its own outcome, in the order given.
+ */
+export async function sendBatch(
+  apiKey: string,
+  from: Sender,
+  messages: EmailMessage[],
+  options: Options = {},
+): Promise<BatchResult> {
+  if (messages.length === 0) return { ok: true, results: [] };
+  if (messages.length > BATCH_LIMIT) throw new Error(`At most ${BATCH_LIMIT} emails per batch.`);
+  const sender = from.name ? { email: from.email, name: from.name } : { email: from.email };
+  try {
+    const answer = await clientFor(apiKey, options).batch(
+      messages.map((message) => ({
+        from: sender,
+        to: [{ email: message.to }],
+        subject: message.subject,
+        html: message.html,
+        text: message.text,
+        ...(message.headers ? { headers: message.headers } : {}),
+      })),
+    );
+    const results = messages.map((_, index) => {
+      const result = answer?.results?.[index];
+      if (result?.status === "success")
+        return { ok: true as const, messageId: result.message_id ?? null };
+      return {
+        ok: false as const,
+        detail: (result?.message || (result ? `toSend said ${result.status}` : "No answer")).slice(
+          0,
+          300,
+        ),
+      };
+    });
+    return { ok: true, results };
+  } catch (error) {
+    const { status, message: detail } = failureOf(error);
+    if (status === 0) return { ok: false, status: 0, reason: "unreachable", detail };
+    return { ok: false, status, reason: reasonFor(status, detail), detail };
+  }
+}

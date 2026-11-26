@@ -4,6 +4,7 @@ import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { SIGN_UP_WORDING } from "@convex/lib/news";
 import { type ReactNode, useMemo } from "react";
 
 import { AuthProvider } from "@/components/auth/auth-provider";
@@ -43,6 +44,9 @@ export function AuthUiProvider({ children }: { children: ReactNode }) {
         maxPasswordLength: 128,
       }}
       avatar={avatar}
+      // An unticked box on the sign-up form, only where email can be sent: product news
+      // needs the person to agree first. auth.ts keeps the consent (news.fromSignUp).
+      additionalFields={settings?.emailConfigured ? PRODUCT_NEWS_FIELD : undefined}
       // Delete account, at the foot of Settings > Account > Password And Devices.
       plugins={[deleteUserPlugin({ localization: DELETE_ACCOUNT_WORDS })]}
       localization={LOCALIZATION}
@@ -51,6 +55,18 @@ export function AuthUiProvider({ children }: { children: ReactNode }) {
     </AuthProvider>
   );
 }
+
+const PRODUCT_NEWS_FIELD = [
+  {
+    name: "productNews",
+    type: "boolean" as const,
+    inputType: "checkbox" as const,
+    label: SIGN_UP_WORDING,
+    defaultValue: false,
+    signUp: true,
+    profile: false,
+  },
+];
 
 /**
  * Profile photos go to the app's own file storage, not into the account record: the page

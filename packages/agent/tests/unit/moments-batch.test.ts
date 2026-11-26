@@ -70,6 +70,29 @@ describe("moments batches", () => {
       output_config: { effort: MOMENTS_EFFORT },
     });
     expect(JSON.stringify(body.requests[0]?.params)).not.toContain("budget_tokens");
+    // Room for the answer after thinking on a long recording.
+    expect(body.requests[0]?.params.max_tokens).toBe(64_000);
+    // The recording first, cached, then the question.
+    const content = (
+      body.requests[0]?.params.messages as { content: Record<string, unknown>[] }[]
+    )[0]?.content;
+    expect(content?.[0]?.cache_control).toEqual({ type: "ephemeral" });
+    expect(String(content?.[0]?.text)).toContain("The transcript:");
+    expect(content?.[1]?.cache_control).toBeUndefined();
+  });
+
+  it("asks on the model the team picked, when it is a Claude model the server allows", async () => {
+    const created = stand({ status: "in_progress" });
+    const ask = (model?: string) =>
+      request.map((r) => ({ ...r, request: { ...r.request, ...(model ? { model } : {}) } }));
+    await submitBatch("claude-sonnet-5-5", ask("anthropic/claude-opus-5-5"));
+    await submitBatch("claude-sonnet-5-5", ask("openai/gpt-4.1-mini"));
+    const models = created.map(
+      (body) => (body as { requests: { params: { model: string } }[] }).requests[0]?.params.model,
+    );
+    expect(models[0]).toBe("claude-opus-5-5");
+    // Another provider's model, so the server's own Claude model.
+    expect(models[1]).not.toContain("gpt");
   });
 
   it("sends and reads a team's batch on the team's own key", async () => {
