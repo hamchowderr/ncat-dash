@@ -114,6 +114,8 @@ export const PURGE_TABLES: PurgeTable[] = [
   { table: "storyboards", index: "by_organization" },
   { table: "storyboardChapters", index: "by_organization" },
   { table: "storyboardTakes", index: "by_organization" },
+  { table: "takeRecordings", index: "by_organization" },
+  { table: "recordingSignIns", index: "by_organization" },
   { table: "calendarPosts", index: "by_organization_and_at" },
   { table: "calendarSlots", index: "by_organization" },
   { table: "creators", index: "by_organization" },
