@@ -11,6 +11,7 @@
 import type * as access from "../access.js";
 import type * as accountDeletion from "../accountDeletion.js";
 import type * as agentScreen from "../agentScreen.js";
+import type * as agentSites from "../agentSites.js";
 import type * as aiSpend from "../aiSpend.js";
 import type * as alerts from "../alerts.js";
 import type * as anthropicKey from "../anthropicKey.js";
@@ -104,6 +105,7 @@ import type * as lib_operator from "../lib/operator.js";
 import type * as lib_outbound from "../lib/outbound.js";
 import type * as lib_outputs from "../lib/outputs.js";
 import type * as lib_packages from "../lib/packages.js";
+import type * as lib_pageRecording from "../lib/pageRecording.js";
 import type * as lib_pickUp from "../lib/pickUp.js";
 import type * as lib_pools from "../lib/pools.js";
 import type * as lib_projects from "../lib/projects.js";
@@ -159,6 +161,7 @@ import type * as notifications from "../notifications.js";
 import type * as oauth from "../oauth.js";
 import type * as operator from "../operator.js";
 import type * as outputs from "../outputs.js";
+import type * as pageRecordings from "../pageRecordings.js";
 import type * as portal from "../portal.js";
 import type * as presence from "../presence.js";
 import type * as profiles from "../profiles.js";
@@ -209,6 +212,7 @@ declare const fullApi: ApiFromModules<{
   access: typeof access;
   accountDeletion: typeof accountDeletion;
   agentScreen: typeof agentScreen;
+  agentSites: typeof agentSites;
   aiSpend: typeof aiSpend;
   alerts: typeof alerts;
   anthropicKey: typeof anthropicKey;
@@ -302,6 +306,7 @@ declare const fullApi: ApiFromModules<{
   "lib/outbound": typeof lib_outbound;
   "lib/outputs": typeof lib_outputs;
   "lib/packages": typeof lib_packages;
+  "lib/pageRecording": typeof lib_pageRecording;
   "lib/pickUp": typeof lib_pickUp;
   "lib/pools": typeof lib_pools;
   "lib/projects": typeof lib_projects;
@@ -357,6 +362,7 @@ declare const fullApi: ApiFromModules<{
   oauth: typeof oauth;
   operator: typeof operator;
   outputs: typeof outputs;
+  pageRecordings: typeof pageRecordings;
   portal: typeof portal;
   presence: typeof presence;
   profiles: typeof profiles;
@@ -432,4 +438,5 @@ export declare const components: {
   toolkitPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"toolkitPool">;
   backgroundPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"backgroundPool">;
   chatPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"chatPool">;
+  recordingPool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"recordingPool">;
 };

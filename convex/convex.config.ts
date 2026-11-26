@@ -15,5 +15,6 @@ app.use(workpool, { name: "outboundPool" });
 app.use(workpool, { name: "toolkitPool" });
 app.use(workpool, { name: "backgroundPool" });
 app.use(workpool, { name: "chatPool" });
+app.use(workpool, { name: "recordingPool" });
 
 export default app;

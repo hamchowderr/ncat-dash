@@ -97,7 +97,7 @@
   "packageManager": "pnpm@10.28.0",
   "pnpm": {
     "overrides": {
-      "@mastra/deployer": "1.83.0",
+      "@mastra/deployer": "1.86.0",
       "lodash@<4.18.0": "^4.18.1",
       "linkify-it@<5.0.2": "^5.0.2",
       "basic-ftp@<6.2.4": "^6.2.6",
