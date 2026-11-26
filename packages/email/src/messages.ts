@@ -854,13 +854,13 @@ export function betaInviteEmail(
 ) {
   const app = branding.appName;
   const first = firstName(args.name);
-  const met = args.metAt ? ` It was good to meet you at ${oneLine(args.metAt, 80)}.` : "";
+  const met = args.metAt ? `it was good to meet you at ${oneLine(args.metAt, 80)}. Thanks` : "thanks";
   return compose(
     `You're in the ${app} beta`,
     {
       heading: `You're in the ${app} beta`,
       paragraphs: [
-        `${first ? `Hi ${first},` : "Hi,"}${met} Thanks for signing up to test ${app}.`,
+        `${first ? `Hi ${first}, ` : "Hi, "}${met} for signing up to test ${app}.`,
         `${app} turns your long videos into clips that are ready to post: cut, captioned and shaped for each platform. It's a beta, so some things will change, and what you tell me decides what I build next.`,
         "Make your account with this email address, then upload one video you would normally edit by hand.",
       ],

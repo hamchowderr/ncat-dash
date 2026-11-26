@@ -468,12 +468,12 @@ describe("first days", () => {
       { appName: "Takewon", supportEmail: "support@takewon.com" },
     );
     expect(invite.subject).toBe("You're in the Takewon beta");
-    expect(invite.text).toContain("Hi Ana, It was good to meet you at The KINN.");
+    expect(invite.text).toContain("Hi Ana, it was good to meet you at The KINN. Thanks for signing up");
     expect(invite.text).toContain("https://app/sign-up");
     expect(invite.text).toContain("Chowderr");
     expect(invite.replyTo).toBe("support@takewon.com");
     const plain = betaInviteEmail({ signUpUrl: "https://app/sign-up" }, { appName: "Takewon" });
-    expect(plain.text).toContain("Hi, Thanks for signing up");
+    expect(plain.text).toContain("Hi, thanks for signing up");
     expect(plain.text).not.toContain("good to meet you");
   });
 
