@@ -28,6 +28,7 @@ import {
 import { advance, bookAgentRetry, failStep } from "./lib/runner";
 import { finishPicking, heardFrom, MAX_WORDS, wordsFor } from "./lib/moments";
 import { motionPlanOf } from "./lib/motion";
+import { briefOf, startingItemOf } from "./lib/library";
 import { startingFileName } from "./lib/outputs";
 import { signAgentToken } from "./reviewAgent";
 
@@ -138,6 +139,8 @@ export const loadPick = internalQuery({
       askedBy: run.startedBy ?? "automation",
       unattended: run.startedBy === null && run.test === undefined,
       houseRules: settings?.agent?.houseRules ?? "",
+      // The brief of the video the run started from (or of the file that was made from).
+      brief: await briefOf(ctx, await startingItemOf(ctx, run)),
       videos,
     };
   },
@@ -580,6 +583,7 @@ export const pick = internalAction({
           settings,
           ...(loaded.kind === "moments" ? { avoid: video.avoid } : {}),
           houseRules: loaded.houseRules.slice(0, 2000),
+          ...(loaded.brief ? { brief: loaded.brief } : {}),
         };
         questions.push({ url: video.url, key: await questionKey(body), body });
       }

@@ -18,6 +18,8 @@ export const scenesRequest = z.object({
   /** Where the storyboard's lines came from, such as "Drafted from lesson.mp4". */
   name: z.string().max(300),
   aspect: z.enum(["16:9", "9:16", "1:1", "4:5"]),
+  /** The video's own brief: pacing and direction written by the team. */
+  brief: z.string().max(2000).default(""),
   chapters: z
     .array(
       z.object({
@@ -73,6 +75,13 @@ export function scenesPrompt(request: ScenesRequest): string {
     `Storyboard: ${request.name.trim() || "a talking video"}`,
     `Shape: ${request.aspect}${request.aspect === "9:16" ? " (upright, for phones)" : ""}.`,
   ];
+  if (request.brief.trim()) {
+    lines.push(
+      "",
+      "The brief for this video (pacing and direction from the team; follow it where it applies):",
+      request.brief.trim(),
+    );
+  }
   request.chapters.forEach((chapter, index) => {
     lines.push("", `Chapter ${index + 1}: ${chapter.title.trim()}`);
     for (const line of chapter.lines) lines.push(`${line.n}. ${line.line.trim()}`);

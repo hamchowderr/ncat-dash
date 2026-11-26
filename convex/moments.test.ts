@@ -246,6 +246,55 @@ describe("Best moments", () => {
     expect(run.hasCuts).toBe(true);
   });
 
+  test("the model gets the brief of the video the run started from, or of the file it was made from", async () => {
+    const sent = fakeServers([answerWith("Never quote a price on the first call")]);
+    const { t, team, maya } = await setUp([momentsNode()]);
+    const { clipId, automationId } = await t.run(async (ctx) => {
+      const common = { organizationId: team, kind: "video" as const, tags: [], createdBy: maya.id };
+      const episodeId = await ctx.db.insert("libraryItems", {
+        ...common,
+        shortId: "V1",
+        source: "upload",
+        title: "Episode 4",
+        searchText: "V1 Episode 4",
+        brief: "  Fast pacing. Keep the pricing story whole.  ",
+      });
+      const clipId = await ctx.db.insert("libraryItems", {
+        ...common,
+        shortId: "C1",
+        source: "automation",
+        title: "Episode 4 clip",
+        searchText: "C1 Episode 4 clip",
+        parentId: episodeId,
+      });
+      const automation = (await ctx.db.query("automations").first())!;
+      return { clipId, automationId: automation._id };
+    });
+    await t.run(async (ctx) => {
+      const automation = (await ctx.db.get(automationId))!;
+      const started = await startRun(
+        ctx,
+        automation,
+        "webhook",
+        { file_url: FILE, library_item: clipId },
+        maya.id,
+      );
+      if (!started.ok) throw new Error(started.message);
+    });
+    await settled(t);
+    const question = sent.find((one) => one.url === `${AGENT_URL}/ncat/moments`)!;
+    expect(question.body.brief).toBe("Fast pacing. Keep the pricing story whole.");
+  });
+
+  test("a run on a video without a brief sends none", async () => {
+    const sent = fakeServers([answerWith("Never quote a price on the first call")]);
+    const { t, start } = await setUp([momentsNode()]);
+    await start();
+    await settled(t);
+    const question = sent.find((one) => one.url === `${AGENT_URL}/ncat/moments`)!;
+    expect(question.body).not.toHaveProperty("brief");
+  });
+
   test("finding more on the same video skips what was picked and does not transcribe it again", async () => {
     const sent = fakeServers([
       answerWith("Never quote a price on the first call", "Most creators charge far too little"),

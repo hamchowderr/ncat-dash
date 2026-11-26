@@ -414,11 +414,16 @@ export default defineSchema({
     dropboxImportId: v.optional(v.id("dropboxImports")),
     // Set when the job brings a video from a pasted link into the team's folder.
     linkImportId: v.optional(v.id("linkImports")),
+    // When the daily clean-up looked at the job's in-between files and took away the ones
+    // nothing points to (inBetweenFiles.ts). Left out: not looked at yet.
+    outputsClearedAt: v.optional(v.number()),
     // Set when the job makes a take of a storyboard's video, or joins its takes.
     storyboardVideoId: v.optional(v.id("storyboardVideos")),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
+    // The clean-up's list of a team's jobs it has not looked at yet.
+    .index("by_organization_and_outputsClearedAt", ["organizationId", "outputsClearedAt"])
     .index("by_status", ["status"])
     .index("by_sharedToolkit_and_status", ["sharedToolkit", "status"])
     // Jobs handed to be sent, by when: finds a send that broke without reading the queue.
@@ -439,6 +444,9 @@ export default defineSchema({
     music: v.optional(musicValidator),
     // How many times a failed step in a run tries again before the run fails.
     stepRetries: v.optional(v.number()),
+    // Days after a run finishes that its in-between files are taken away (inBetweenFiles.ts).
+    // Left out: never; the team has to switch the clean-up on.
+    clearInBetweenDays: v.optional(v.number()),
     // The most one run may spend on AI steps, in millionths of a dollar. Left out: no
     // limit (automation-core ai-spend.ts).
     aiLimit: v.optional(v.number()),
@@ -2371,6 +2379,10 @@ export default defineSchema({
     ),
     // Set by a person: use it as B-Roll ("yes") or never ("no"), whatever it looks like.
     broll: v.optional(v.union(v.literal("yes"), v.literal("no"))),
+    // A video's own brief, written by a person: pacing and direction ("fast cuts, keep the
+    // pricing story, no jokes about the weather"). The AI planning steps follow it, on top
+    // of the team's house rules. Files made from it use it too (briefOf).
+    brief: v.optional(v.string()),
     // Who brought it in; null for a file an automation made.
     createdBy: v.union(v.null(), v.string()),
   })

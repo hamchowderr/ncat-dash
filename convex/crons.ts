@@ -65,4 +65,12 @@ crons.daily(
   {},
 );
 
+// Takes away in-between files of runs that finished a week ago, one team at a time.
+crons.daily(
+  "clear in-between files",
+  { hourUTC: 10, minuteUTC: 15 },
+  internal.inBetweenFiles.daily,
+  {},
+);
+
 export default crons;

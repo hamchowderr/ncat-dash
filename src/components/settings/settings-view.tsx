@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { TabsContent } from "@/components/ui/tabs";
 import { errorMessage } from "@/lib/catalog";
 import { useActiveTeam } from "@/lib/team-context";
@@ -120,6 +121,30 @@ function RunsForms({ settings }: { settings: Loaded }) {
   const [typedLimit, setTypedLimit] = useState<string | null>(null);
   const [savingLimit, setSavingLimit] = useState(false);
   const savedLimit = settings.aiLimit === null ? "" : settings.aiLimit.toFixed(2);
+  const setClear = useMutation(api.teamSettings.setClearInBetween);
+  const [typedDays, setTypedDays] = useState<string | null>(null);
+  const [savingDays, setSavingDays] = useState(false);
+  const keepDays = settings.clearInBetweenDays;
+  const keepRange = settings.clearInBetweenRange;
+
+  async function saveClear(days: number | null) {
+    setSavingDays(true);
+    try {
+      await setClear({ organizationId: team.id, days });
+      setTypedDays(null);
+      toast.success(days === null ? "In-between files are kept" : "Saved");
+    } catch (caught) {
+      toast.error(errorMessage(caught, "The setting could not be saved. Try again."));
+    } finally {
+      setSavingDays(false);
+    }
+  }
+
+  async function onSubmitDays(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (typedDays === null) return;
+    await saveClear(Number(typedDays));
+  }
 
   async function onSubmitLimit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -251,6 +276,48 @@ function RunsForms({ settings }: { settings: Loaded }) {
           )}
         </SettingRow>
       </form>
+      <SettingRow
+        label="Clear in-between files"
+        htmlFor="clear-in-between"
+        description="Each step of a run leaves a file behind for the next one. When this is on, those are taken away once a day after the run finished well, to save storage. A run's results, files in your Library, reviews and projects, and files of failed runs are always kept. Off: nothing is ever taken away."
+      >
+        <Switch
+          id="clear-in-between"
+          checked={keepDays !== null}
+          disabled={!settings.canEdit || savingDays}
+          onCheckedChange={(on) => void saveClear(on ? keepRange.usual : null)}
+        />
+      </SettingRow>
+      {keepDays !== null && (
+        <form onSubmit={onSubmitDays}>
+          <SettingRow
+            label="Keep them for"
+            htmlFor="keep-days"
+            description={`Days after the run finished. ${keepRange.min} to ${keepRange.max}.`}
+          >
+            <div className="flex items-center gap-2">
+              <Input
+                id="keep-days"
+                type="number"
+                min={keepRange.min}
+                max={keepRange.max}
+                step={1}
+                className="w-20 tabular-nums"
+                value={typedDays ?? String(keepDays)}
+                onChange={(event) => setTypedDays(event.target.value)}
+                disabled={!settings.canEdit}
+                required
+              />
+              <span className="text-muted-foreground text-sm">days</span>
+            </div>
+            {settings.canEdit && typedDays !== null && (
+              <Button type="submit" disabled={savingDays}>
+                {savingDays ? "Saving" : "Save"}
+              </Button>
+            )}
+          </SettingRow>
+        </form>
+      )}
       {!settings.canEdit && <p className="text-muted-foreground text-sm">{onlyManagers}</p>}
     </SettingsSection>
   );

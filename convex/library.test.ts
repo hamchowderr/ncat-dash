@@ -381,6 +381,55 @@ describe("names, tags and stars", () => {
     ).toBeNull();
   });
 
+  test("a video's brief is kept, shown on its page, and followed by files made from it", async () => {
+    const { t, team, sam, olu, upload, itemOf } = await studio();
+    const episode = await itemOf(await upload("episode.mp4"));
+    await sam.as.mutation(api.library.setBrief, {
+      itemId: episode._id,
+      brief: "  Fast cuts. Keep the pricing story whole.  ",
+    });
+    expect((await sam.as.query(api.library.get, { itemId: episode._id }))?.brief).toBe(
+      "Fast cuts. Keep the pricing story whole.",
+    );
+    const clipId = await t.run((ctx) =>
+      ctx.db.insert("libraryItems", {
+        organizationId: team,
+        shortId: "C1",
+        kind: "video",
+        source: "automation",
+        title: "Episode clip",
+        tags: [],
+        searchText: "C1 Episode clip",
+        parentId: episode._id,
+        createdBy: null,
+      }),
+    );
+    const clip = await sam.as.query(api.library.get, { itemId: clipId });
+    expect(clip?.brief).toBe("");
+    expect(clip?.briefFrom).toMatchObject({ _id: episode._id, title: episode.title });
+    // A clip with its own brief follows that instead.
+    await sam.as.mutation(api.library.setBrief, { itemId: clipId, brief: "Slower." });
+    expect((await sam.as.query(api.library.get, { itemId: clipId }))?.briefFrom).toBeNull();
+    // Emptied, it is gone.
+    await sam.as.mutation(api.library.setBrief, { itemId: episode._id, brief: "   " });
+    expect((await t.run((ctx) => ctx.db.get(episode._id)))?.brief).toBeUndefined();
+    // Too long, or someone from another team, is refused.
+    await expect(
+      sam.as.mutation(api.library.setBrief, { itemId: episode._id, brief: "x".repeat(2001) }),
+    ).rejects.toThrow(/at most 2000/);
+    await expect(
+      olu.as.mutation(api.library.setBrief, { itemId: episode._id, brief: "Mine" }),
+    ).rejects.toThrow();
+  });
+
+  test("only a video or a recording has a brief", async () => {
+    const { maya, upload, itemOf } = await studio();
+    const picture = await itemOf(await upload("cover.png", "image/png"));
+    await expect(
+      maya.as.mutation(api.library.setBrief, { itemId: picture._id, brief: "Bold." }),
+    ).rejects.toThrow(/video or a recording/);
+  });
+
   test("a rating is a whole number of stars from one to five", async () => {
     const { maya, upload, itemOf } = await studio();
     const item = await itemOf(await upload("episode.mp4"));

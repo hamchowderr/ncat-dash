@@ -1,4 +1,5 @@
 import { beatRecipes } from "./beats";
+import { micRecipes } from "./mic";
 import type { StepDefinition } from "./define";
 import { editingRecipes } from "./editing";
 import { moreRecipes, recipes } from "./recipes";
@@ -19,6 +20,8 @@ export * from "./disclosure";
 export * from "./codes";
 export * from "./looks";
 export * from "./beats";
+export * from "./ducking";
+export * from "./mic";
 
 /** Every step a person can run: the toolkit's endpoints, then the ready-made recipes. */
 export const allSteps: StepDefinition[] = [
@@ -29,6 +32,7 @@ export const allSteps: StepDefinition[] = [
   ...variantRecipes,
   savedLookStep,
   ...beatRecipes,
+  ...micRecipes,
 ];
 
 // Steps only other steps send, such as the motion graphics render: known by id, not listed.
