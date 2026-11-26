@@ -472,3 +472,64 @@ describe("making the storyboard into a finished video", () => {
     );
   });
 });
+
+describe("matching recorded takes to the lines", () => {
+  test("picks recordings and says what was put in, picked and still missing", async () => {
+    answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
+    answerQuery(api.storyboards.uploadDrafts, [
+      {
+        storyboardId: "d1",
+        libraryItemId: "li1",
+        shortId: "V3",
+        title: "Monday takes",
+        duration: 60,
+      },
+      {
+        storyboardId: "d2",
+        libraryItemId: "li2",
+        shortId: "V4",
+        title: "Tuesday takes",
+        duration: 90,
+      },
+    ]);
+    actionOf(api.storyboardMatch.match).mockResolvedValue({
+      matched: 12,
+      picked: [1, 5],
+      missing: [4],
+      notReady: [],
+    });
+    const user = userEvent.setup();
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
+    await user.click(screen.getByRole("button", { name: "Match takes" }));
+    const panel = screen.getByRole("region", { name: "Match takes" });
+    const go = within(panel).getByRole("button", { name: "Match 0 recordings" });
+    expect(go).toHaveProperty("disabled", true);
+    await user.click(within(panel).getByRole("checkbox", { name: /Monday takes/ }));
+    await user.click(within(panel).getByRole("checkbox", { name: /Tuesday takes/ }));
+    await user.click(within(panel).getByRole("button", { name: "Match 2 recordings" }));
+    expect(actionOf(api.storyboardMatch.match)).toHaveBeenCalledWith({
+      storyboardId: "sb1",
+      libraryItemIds: ["li1", "li2"],
+    });
+    expect(panel.textContent).toContain(
+      "Put in 12 takes. Picked the best of several for takes 1 and 5. Not found yet: take 4.",
+    );
+  });
+
+  test("can pick again for lines that have a take, and says when nothing is transcribed", async () => {
+    answerQuery(api.storyboards.get, boardFor(LESSON_STORYBOARD));
+    answerQuery(api.storyboards.uploadDrafts, []);
+    const user = userEvent.setup();
+    renderInApp(<StoryboardView projectId={PROJECT} organizationId={TEAM.id} />);
+    await user.click(screen.getByRole("button", { name: "Match takes" }));
+    const panel = screen.getByRole("region", { name: "Match takes" });
+    expect(panel.textContent).toContain("No recordings with their words in yet.");
+    await user.click(
+      within(panel).getByRole("checkbox", {
+        name: "Pick again for lines that already have a take",
+      }),
+    );
+    await user.click(within(panel).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("region", { name: "Match takes" })).toBeNull();
+  });
+});

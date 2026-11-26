@@ -50,6 +50,7 @@ export * from "./triggers";
 export * from "./workflows";
 export * from "./cleanup";
 export * from "./storyboard-draft";
+export * from "./take-match";
 export * from "./creator-folders";
 export * from "./footage";
 export * from "./ai-spend";
