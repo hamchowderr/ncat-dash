@@ -414,9 +414,14 @@ export default defineSchema({
     dropboxImportId: v.optional(v.id("dropboxImports")),
     // Set when the job brings a video from a pasted link into the team's folder.
     linkImportId: v.optional(v.id("linkImports")),
+    // When the daily clean-up looked at the job's in-between files and took away the ones
+    // nothing points to (inBetweenFiles.ts). Left out: not looked at yet.
+    outputsClearedAt: v.optional(v.number()),
   })
     .index("by_organization", ["organizationId"])
     .index("by_organization_and_status", ["organizationId", "status"])
+    // The clean-up's list of a team's jobs it has not looked at yet.
+    .index("by_organization_and_outputsClearedAt", ["organizationId", "outputsClearedAt"])
     .index("by_status", ["status"])
     .index("by_sharedToolkit_and_status", ["sharedToolkit", "status"])
     // Jobs handed to be sent, by when: finds a send that broke without reading the queue.

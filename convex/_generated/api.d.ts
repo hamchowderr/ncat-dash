@@ -39,6 +39,7 @@ import type * as googleMeet from "../googleMeet.js";
 import type * as home from "../home.js";
 import type * as hooks from "../hooks.js";
 import type * as http from "../http.js";
+import type * as inBetweenFiles from "../inBetweenFiles.js";
 import type * as jobs from "../jobs.js";
 import type * as lib_access from "../lib/access.js";
 import type * as lib_adFiles from "../lib/adFiles.js";
@@ -222,6 +223,7 @@ declare const fullApi: ApiFromModules<{
   home: typeof home;
   hooks: typeof hooks;
   http: typeof http;
+  inBetweenFiles: typeof inBetweenFiles;
   jobs: typeof jobs;
   "lib/access": typeof lib_access;
   "lib/adFiles": typeof lib_adFiles;
