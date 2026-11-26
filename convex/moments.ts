@@ -139,6 +139,9 @@ export const loadPick = internalQuery({
       askedBy: run.startedBy ?? "automation",
       unattended: run.startedBy === null && run.test === undefined,
       houseRules: settings?.agent?.houseRules ?? "",
+      // The model the team picked in Settings > Agent; the agent server decides whether
+      // picks can run on it.
+      model: settings?.agent?.model ?? null,
       // The brief of the video the run started from (or of the file that was made from).
       brief: await briefOf(ctx, await startingItemOf(ctx, run)),
       videos,
@@ -583,6 +586,8 @@ export const pick = internalAction({
           settings,
           ...(loaded.kind === "moments" ? { avoid: video.avoid } : {}),
           houseRules: loaded.houseRules.slice(0, 2000),
+          // Only when the team picked one, so saved answers made on the default still match.
+          ...(loaded.model ? { model: loaded.model } : {}),
           ...(loaded.brief ? { brief: loaded.brief } : {}),
         };
         questions.push({ url: video.url, key: await questionKey(body), body });

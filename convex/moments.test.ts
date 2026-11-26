@@ -233,6 +233,8 @@ describe("Best moments", () => {
     expect(String(question.body.transcript)).toContain("[0:01] Welcome back to the show.");
     // The team goes with it, so its own Anthropic key is used when it has one.
     expect(typeof question.body.organizationId).toBe("string");
+    // No model picked in Settings > Agent, so none is sent and the server's own is used.
+    expect(question.body).not.toHaveProperty("model");
 
     // Each cut starts in the gap before the sentence's first word and ends in the gap after
     // its last, never inside a word.
@@ -496,6 +498,25 @@ describe("what a pick costs", () => {
     await start();
     await settled(t);
     expect(live(sent)).toHaveLength(2);
+  });
+
+  test("asks on the model the team picked in Settings > Agent, as a new question", async () => {
+    const sent = fakeServers([chaptersAnswer]);
+    const { t, start } = await setUp([chaptersNode]);
+    await start();
+    await settled(t);
+    await t.run(async (ctx) => {
+      const settings = (await ctx.db.query("teamSettings").first())!;
+      await ctx.db.patch(settings._id, {
+        agent: { model: "anthropic/claude-opus-5-5", houseRules: "Never all capitals.", platforms: [] },
+      } as never);
+    });
+    await start();
+    await settled(t);
+    const asked = live(sent);
+    expect(asked).toHaveLength(2);
+    expect(asked[0].body).not.toHaveProperty("model");
+    expect(asked[1].body.model).toBe("anthropic/claude-opus-5-5");
   });
 
   test("a run nobody is watching sends its questions as one batch and picks once answered", async () => {

@@ -65,6 +65,7 @@ export const momentsRequest = z.discriminatedUnion("kind", [
     settings: momentSettings,
     avoid: z.array(span).max(500).default([]),
     houseRules: z.string().max(2000).default(""),
+    model: z.string().max(100).optional(),
     brief: z.string().max(2000).default(""),
   }),
   z.object({
@@ -74,6 +75,7 @@ export const momentsRequest = z.discriminatedUnion("kind", [
     transcript: z.string().min(1).max(MAX_TRANSCRIPT),
     settings: chapterSettings,
     houseRules: z.string().max(2000).default(""),
+    model: z.string().max(100).optional(),
     brief: z.string().max(2000).default(""),
   }),
   z.object({
@@ -83,6 +85,7 @@ export const momentsRequest = z.discriminatedUnion("kind", [
     transcript: z.string().min(1).max(MAX_TRANSCRIPT),
     settings: motionSettings,
     houseRules: z.string().max(2000).default(""),
+    model: z.string().max(100).optional(),
     brief: z.string().max(2000).default(""),
   }),
   z.object({
@@ -92,6 +95,7 @@ export const momentsRequest = z.discriminatedUnion("kind", [
     transcript: z.string().min(1).max(MAX_TRANSCRIPT),
     settings: brollSettings,
     houseRules: z.string().max(2000).default(""),
+    model: z.string().max(100).optional(),
     brief: z.string().max(2000).default(""),
   }),
 ]);
@@ -107,11 +111,12 @@ Your answer is read by a program, so:
 - Every quote you give is copied exactly from the transcript, word for word, as one unbroken stretch: the same words in the same order, nothing added, left out, reworded or corrected. Leave out the [times]. A quote that is not in the transcript exactly is thrown away.`;
 
 /**
- * How hard the model thinks when it picks. Left out, Claude Sonnet 5.5 thinks at high,
- * which reads a long transcript at length for a short answer; medium picks as well for
- * far fewer thinking tokens.
+ * How hard the model thinks when it picks. At medium, Claude Sonnet 5.5 skipped thinking
+ * on a 64-minute recording: clips came out short, titles went missing, and it wrote an
+ * answer, then "Correction:" and a second one. At high it thought for about 2,000 tokens
+ * and every clip fit (checked 2026-11-26 on a real recording).
  */
-export const MOMENTS_EFFORT = "medium" as const;
+export const MOMENTS_EFFORT = "high" as const;
 
 export const momentsAgent = new Agent({
   id: "moments",
@@ -122,7 +127,11 @@ export const momentsAgent = new Agent({
   // On the team's own Anthropic key when the dashboard sent the team and it has one.
   model: ({ requestContext }) => {
     const key = requestContext.get(TEAM_KEY);
-    return onTeamKey(env.CHAT_MODEL, typeof key === "string" ? key : null);
+    const picked = requestContext.get(PICK_MODEL);
+    return onTeamKey(
+      typeof picked === "string" ? picked : env.CHAT_MODEL,
+      typeof key === "string" ? key : null,
+    );
   },
   defaultOptions: {
     providerOptions: {
@@ -130,6 +139,20 @@ export const momentsAgent = new Agent({
     },
   },
 });
+
+/**
+ * The model a pick runs on: the team's pick from Settings > Agent when it is a Claude
+ * model the server allows, else the server's own. Picks lean on Claude's adaptive
+ * thinking and its batch service, so a team on another provider's model picks on Claude.
+ */
+export function pickModel(teamModel: string | undefined, allowed: ReadonlySet<string>): string {
+  return teamModel && teamModel.startsWith("anthropic/") && allowed.has(teamModel)
+    ? teamModel
+    : env.CHAT_MODEL;
+}
+
+/** Request context key for the model one pick runs on. */
+export const PICK_MODEL = "pickModel";
 
 /** "1:05" or "1:02:03". */
 export function clockTime(seconds: number): string {
@@ -140,13 +163,53 @@ export function clockTime(seconds: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
-/** The request as one message for the model. */
-export function momentsPrompt(request: MomentsRequest): string {
-  const lines: string[] = [];
+/**
+ * The request as the model reads it, in two parts. The recording and its transcript come
+ * first and are the same for every question about that recording (moments with other
+ * settings, chapters, B-Roll, motion), so they are cached and a re-run reads them at a
+ * tenth of the price. What this question asks comes after, where the model reads it last.
+ */
+export function momentsParts(request: MomentsRequest): { recording: string; ask: string } {
   const about = request.title ? `"${request.title}", ` : "";
-  lines.push(`The recording: ${about}${clockTime(request.duration)} long.`);
+  const recording = [
+    `The recording: ${about}${clockTime(request.duration)} long.`,
+    "",
+    "The transcript:",
+    request.transcript,
+  ].join("\n");
+  return { recording, ask: momentsAsk(request) };
+}
+
+/**
+ * The request as the agent's user message: the recording and transcript first, behind a
+ * cache breakpoint, then the question.
+ */
+export function momentsMessage(request: MomentsRequest) {
+  const { recording, ask } = momentsParts(request);
+  return {
+    role: "user" as const,
+    content: [
+      {
+        type: "text" as const,
+        text: recording,
+        providerOptions: { anthropic: { cacheControl: { type: "ephemeral" as const } } },
+      },
+      { type: "text" as const, text: ask },
+    ],
+  };
+}
+
+/** The request as one message for the model, recording first. */
+export function momentsPrompt(request: MomentsRequest): string {
+  const { recording, ask } = momentsParts(request);
+  return `${recording}\n\n${ask}`;
+}
+
+/** What this question asks, without the transcript. */
+function momentsAsk(request: MomentsRequest): string {
+  const lines: string[] = [];
   if (request.houseRules.trim()) {
-    lines.push("", "The team's house rules:", request.houseRules.trim());
+    lines.push("The team's house rules:", request.houseRules.trim(), "");
   }
   if (request.brief.trim()) {
     lines.push(
@@ -176,7 +239,7 @@ export function momentsPrompt(request: MomentsRequest): string {
     }
     lines.push(
       "",
-      'Answer as {"moments":[{"quote":"…","title":"…","why":"…"}]}: quote is the moment\'s words from its first word to its last; title is a short title for the clip, at most 8 words; why is one sentence on why it works.',
+      'Answer as {"moments":[{"start":"…","end":"…","title":"…","why":"…"}]}: start is the moment\'s first 5 to 12 words and end is its last 5 to 12 words, each copied exactly from the transcript; the clip runs from the first word of start to the last word of end, so pick end where the moment really finishes, not after its first sentence. title is a short title for the clip, at most 8 words; why is one sentence on why it works.',
     );
   } else if (request.kind === "motion") {
     const s = request.settings;
@@ -242,8 +305,7 @@ export function momentsPrompt(request: MomentsRequest): string {
       'Answer as {"chapters":[{"title":"…","opening":"…","bullets":["…"]}]}.',
     );
   }
-  lines.push("", "The transcript:", request.transcript);
-  return lines.join("\n");
+  return lines.join("\n").trim();
 }
 
 /** What one answer used, in the names the dashboard reads (convex/moments.ts there). */
