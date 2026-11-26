@@ -24,6 +24,8 @@ import {
   trialEndedEmail,
   trialEndingEmail,
   welcomeEmail,
+  betaInviteEmail,
+  betaCheckInEmail,
   withUnsubscribe,
   type Composed,
   type SendResult,
@@ -461,11 +463,53 @@ export const sendWelcome = internalAction({
           name: found.name || undefined,
           teamName: found.teamName,
           trialDays: found.trialDays,
+          beta: found.beta,
           homeUrl: siteUrl("/"),
           uploadsUrl: siteUrl("/library"),
           readyMadeUrl: siteUrl("/automations/new"),
           brandUrl: siteUrl("/settings/brand"),
         },
+        emailBranding(sending.fromName),
+      ),
+    });
+  },
+});
+
+/** The beta invite (beta.invite): a link to make an account. */
+export const sendBetaInvite = internalAction({
+  args: { testerId: v.id("betaTesters") },
+  handler: async (ctx, args) => {
+    const sending = await loadSending(ctx);
+    if (!sending) return;
+    const found = await ctx.runQuery(internal.beta.inviteFor, args);
+    if (!found) return;
+    await deliver(ctx, sending, {
+      to: found.email,
+      ...betaInviteEmail(
+        {
+          name: found.name,
+          ...(found.metAt ? { metAt: found.metAt } : {}),
+          signUpUrl: siteUrl("/sign-up"),
+        },
+        emailBranding(sending.fromName),
+      ),
+    });
+  },
+});
+
+/** The one check-in a beta tester gets a few days after joining (beta.joined). */
+export const sendBetaCheckIn = internalAction({
+  args: { testerId: v.id("betaTesters") },
+  handler: async (ctx, args) => {
+    const sending = await loadSending(ctx);
+    if (!sending) return;
+    const found = await ctx.runQuery(internal.beta.checkInFor, args);
+    if (!found) return;
+    await ctx.runMutation(internal.beta.markCheckIn, args);
+    await deliver(ctx, sending, {
+      to: found.email,
+      ...betaCheckInEmail(
+        { name: found.name, uploaded: found.uploaded, uploadsUrl: siteUrl("/library") },
         emailBranding(sending.fromName),
       ),
     });
@@ -494,6 +538,11 @@ export const welcomeFor = internalQuery({
       name: person.name,
       teamName: team.name,
       trialDays: fresh ? Math.max(1, Math.round((trial.endsAt - trial.startedAt) / DAY)) : null,
+      beta:
+        (await ctx.db
+          .query("betaTesters")
+          .withIndex("by_email", (q) => q.eq("email", person.email.trim().toLowerCase()))
+          .first()) !== null,
     };
   },
 });

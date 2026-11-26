@@ -8,6 +8,7 @@ describe("adminRouteFor", () => {
     expect(adminRouteFor("/admin/emails")?.title).toBe("Sent Emails");
     expect(adminRouteFor("/admin/emails/abc")?.title).toBe("Sent Emails");
     expect(adminRouteFor("/admin/subscribers")?.title).toBe("Subscribers");
+    expect(adminRouteFor("/admin/beta")?.title).toBe("Beta Testers");
     expect(adminRouteFor("/files")).toBeUndefined();
   });
 });

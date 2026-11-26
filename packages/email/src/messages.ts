@@ -644,6 +644,8 @@ export function welcomeEmail(
     teamName: string;
     /** Whole days of free trial, or null when the team has none. */
     trialDays: number | null;
+    /** They signed up for the beta on the website: the welcome says it's a beta. */
+    beta?: boolean;
     homeUrl: string;
     uploadsUrl: string;
     readyMadeUrl: string;
@@ -653,8 +655,9 @@ export function welcomeEmail(
 ) {
   const app = branding.appName;
   const team = oneLine(args.teamName, 60);
-  const trial =
-    args.trialDays === null
+  const trial = args.beta
+    ? ` You're one of the first people testing ${app}, so some things will change, and what you tell me decides what comes next.`
+    : args.trialDays === null
       ? ""
       : ` Your free trial runs for ${args.trialDays} ${args.trialDays === 1 ? "day" : "days"}, and no card is needed.`;
   return compose(
@@ -834,6 +837,72 @@ export function trialTipEmail(
         ? { label: `Get ${app}`, url: args.buyUrl }
         : { label: `Open ${app}`, url: args.homeUrl },
       ...shared,
+    },
+    branding,
+  );
+}
+
+const firstName = (name: string | undefined) => oneLine(name ?? "", 60).split(" ")[0] ?? "";
+
+/**
+ * Sent when the operator invites someone who asked to join the beta on the website.
+ * `metAt` is where they met, when the person said it was one of the operator's talks.
+ */
+export function betaInviteEmail(
+  args: { name?: string; metAt?: string; signUpUrl: string },
+  branding: Branding,
+) {
+  const app = branding.appName;
+  const first = firstName(args.name);
+  const met = args.metAt ? ` It was good to meet you at ${oneLine(args.metAt, 80)}.` : "";
+  return compose(
+    `You're in the ${app} beta`,
+    {
+      heading: `You're in the ${app} beta`,
+      paragraphs: [
+        `${first ? `Hi ${first},` : "Hi,"}${met} Thanks for signing up to test ${app}.`,
+        `${app} turns your long videos into clips that are ready to post: cut, captioned and shaped for each platform. It's a beta, so some things will change, and what you tell me decides what I build next.`,
+        "Make your account with this email address, then upload one video you would normally edit by hand.",
+      ],
+      button: { label: "Create your account", url: args.signUpUrl },
+      signoff: { lines: ["Reply to this email any time. It comes straight to me."], ...FOUNDER },
+      footnote: `You get this because you asked to join the ${app} beta.`,
+    },
+    branding,
+  );
+}
+
+/**
+ * The one check-in a beta tester gets a few days after making their account. It asks
+ * different questions depending on whether a video has gone through yet.
+ */
+export function betaCheckInEmail(
+  args: { name?: string; uploaded: boolean; uploadsUrl: string },
+  branding: Branding,
+) {
+  const app = branding.appName;
+  const first = firstName(args.name);
+  const hi = first ? `Hi ${first}, ` : "";
+  const paragraphs = args.uploaded
+    ? [
+        `${hi}you've had ${app} for a few days, and I'd love to hear how it went. Reply with a line or two for each, as short as you like:`,
+        "1. What did you put through it, and did the clips come out the way you'd post them?",
+        "2. What got in your way, or didn't make sense?",
+        "3. What would make you use it every week?",
+      ]
+    : [
+        `${hi}you made your ${app} account a few days ago, but no video has gone through yet. That's fine, and I'd love to know why. Reply with a line or two:`,
+        "1. What stopped you from trying it? \"Too busy\" is a good answer.",
+        "2. What would you want it to do with your first video?",
+      ];
+  return compose(
+    args.uploaded ? `How is ${app} going?` : `Anything stopping you trying ${app}?`,
+    {
+      heading: args.uploaded ? "How is it going so far?" : "Anything in the way?",
+      paragraphs,
+      ...(args.uploaded ? {} : { button: { label: "Upload a video", url: args.uploadsUrl } }),
+      signoff: { lines: ["Every reply comes to me, and I read them all."], ...FOUNDER },
+      footnote: `You get this once, because you're testing the ${app} beta.`,
     },
     branding,
   );

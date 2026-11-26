@@ -17,6 +17,7 @@ import { DEFAULT_BOT_NAME, teamsAppPackage } from "./lib/teamsApp";
 import { settingsUrl as dropboxSettingsUrl } from "./dropbox";
 import { settingsUrl as zoomSettingsUrl } from "./zoom";
 import { preflight, protectedResource } from "./oauth";
+import { hasBetaSecret, readBetaSignUp } from "./lib/betaSignUp";
 
 const http = httpRouter();
 
@@ -1046,6 +1047,32 @@ http.route({
       status,
       headers: { "Content-Type": "application/json", ...newsCors(origin) },
     });
+  }),
+});
+
+// The website's "Join the beta" form, server to server (lib/betaSignUp.ts, convex/beta.ts).
+http.route({
+  path: "/beta/apply",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const json = (status: number, body: Record<string, unknown>) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    if (!(await hasBetaSecret(request.headers.get("authorization")))) {
+      return json(401, { outcome: "unauthorized" });
+    }
+    let body: unknown = null;
+    try {
+      body = await request.json();
+    } catch {
+      body = null;
+    }
+    const signUp = readBetaSignUp(body);
+    if (!signUp) return json(400, { outcome: "invalid" });
+    const outcome = await ctx.runMutation(internal.beta.apply, signUp);
+    return json(outcome === "ok" ? 200 : outcome === "invalid" ? 400 : 429, { outcome });
   }),
 });
 

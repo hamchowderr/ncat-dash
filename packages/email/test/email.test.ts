@@ -25,6 +25,8 @@ import {
   trialTipEmail,
   thanksEmail,
   welcomeEmail,
+  betaInviteEmail,
+  betaCheckInEmail,
   withUnsubscribe,
   testEmail,
 } from "../src";
@@ -449,6 +451,47 @@ describe("first days", () => {
     for (const url of Object.values(links)) expect(welcome.text).toContain(url);
     const noTrial = welcomeEmail({ teamName: "Salt House", trialDays: null, ...links }, branding);
     expect(noTrial.text).not.toContain("trial");
+  });
+
+  it("tells a beta tester it's a beta instead of a trial", () => {
+    const beta = welcomeEmail(
+      { teamName: "Salt House", trialDays: 3, beta: true, ...links },
+      { appName: "Takewon" },
+    );
+    expect(beta.text).toContain("You're one of the first people testing Takewon");
+    expect(beta.text).not.toContain("trial");
+  });
+
+  it("invites a beta tester, naming where they met when it was an event", () => {
+    const invite = betaInviteEmail(
+      { name: "Ana Lopez", metAt: "The KINN", signUpUrl: "https://app/sign-up" },
+      { appName: "Takewon", supportEmail: "support@takewon.com" },
+    );
+    expect(invite.subject).toBe("You're in the Takewon beta");
+    expect(invite.text).toContain("Hi Ana, It was good to meet you at The KINN.");
+    expect(invite.text).toContain("https://app/sign-up");
+    expect(invite.text).toContain("Chowderr");
+    expect(invite.replyTo).toBe("support@takewon.com");
+    const plain = betaInviteEmail({ signUpUrl: "https://app/sign-up" }, { appName: "Takewon" });
+    expect(plain.text).toContain("Hi, Thanks for signing up");
+    expect(plain.text).not.toContain("good to meet you");
+  });
+
+  it("checks in once, with questions that fit whether a video went through", () => {
+    const used = betaCheckInEmail(
+      { name: "Ana", uploaded: true, uploadsUrl: "https://app/library" },
+      { appName: "Takewon" },
+    );
+    expect(used.subject).toBe("How is Takewon going?");
+    expect(used.text).toContain("What would make you use it every week?");
+    expect(used.text).not.toContain("https://app/library");
+    const idle = betaCheckInEmail(
+      { name: "Ana", uploaded: false, uploadsUrl: "https://app/library" },
+      { appName: "Takewon" },
+    );
+    expect(idle.subject).toBe("Anything stopping you trying Takewon?");
+    expect(idle.text).toContain("What stopped you from trying it?");
+    expect(idle.text).toContain("https://app/library");
   });
 
   it("warns a day before a trial ends, then says it has, pointing at where to buy", () => {

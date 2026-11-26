@@ -1917,6 +1917,32 @@ export default defineSchema({
 
   // Every time someone agreed to, confirmed or stopped product news: the proof of consent
   // EU and Canadian law ask for. Never changed or deleted, except with the person's account.
+  // People who asked to test Takewon in beta on the website (convex/beta.ts). The site
+  // sends each sign-up here server to server; the operator invites them from the Admin
+  // page Beta Testers, and the row turns "joined" when that address makes an account.
+  betaTesters: defineTable({
+    email: v.string(),
+    name: v.string(),
+    // Their answers as the form asked them: the question, then what they picked or wrote.
+    answers: v.array(v.object({ question: v.string(), answer: v.string() })),
+    link: v.optional(v.string()),
+    // Where they heard about it, as the form's own words ("The KINN").
+    source: v.optional(v.string()),
+    // Whether they ticked the form's newsletter box (that consent is in consentRecords).
+    newsletter: v.boolean(),
+    status: v.union(v.literal("applied"), v.literal("invited"), v.literal("joined")),
+    timesApplied: v.number(),
+    appliedAt: v.number(),
+    invitedAt: v.optional(v.number()),
+    joinedAt: v.optional(v.number()),
+    userId: v.optional(v.string()),
+    checkInSentAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_email", ["email"])
+    .index("by_status", ["status", "updatedAt"])
+    .index("by_updated", ["updatedAt"]),
+
   consentRecords: defineTable({
     email: v.string(),
     userId: v.optional(v.string()),
