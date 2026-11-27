@@ -546,7 +546,7 @@ describe("a library file", () => {
     answerQuery(api.library.get, { ...DETAIL, searchable: "no", pieces: [] });
     renderInApp(<LibraryItemView itemId={"i1" as never} />);
     openWords();
-    expect(screen.getByText(/Being transcribed on your toolkit/)).toBeTruthy();
+    expect(screen.getByText(/Being transcribed\./)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Transcribe" })).toBeNull();
   });
 

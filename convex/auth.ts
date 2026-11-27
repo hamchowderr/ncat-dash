@@ -23,6 +23,7 @@ import { networkKey } from "./lib/clientIp";
 import { getEdition } from "./lib/edition";
 import { requireEmailVerification, socialProviders } from "./lib/signInOptions";
 import { isThrowawayEmail } from "./lib/emailKey";
+import { emailBranding } from "./lib/emailBranding";
 import {
   ACCESS_TOKEN_SECONDS,
   AGENT_SCOPES,
@@ -157,7 +158,7 @@ function runner(ctx: GenericCtx<DataModel>): Runner | null {
 
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
   const site = (process.env.SITE_URL ?? "").replace(/\/+$/, "");
-  const branding = { appName: process.env.EMAIL_FROM_NAME?.trim() || DEFAULT_APP_NAME };
+  const branding = emailBranding(process.env.EMAIL_FROM_NAME?.trim() || DEFAULT_APP_NAME);
   return {
     baseURL: process.env.SITE_URL,
     trustedOrigins: trustedOrigins(),
@@ -287,8 +288,8 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => {
           after: async (user, endpoint) => {
             const run = runner(ctx);
             if (!run) return;
-            // The business's Back Office (BACK_OFFICE_WEBHOOK_URL) keeps them as a contact.
-            await run.runMutation(internal.backOffice.tell, { event: "signedUp", userId: user.id });
+            // Someone who asked to join the beta on the website has now joined.
+            await run.runMutation(internal.beta.joined, { userId: user.id, email: user.email });
             // The sign-up form's product news box, unticked unless they ticked it.
             const body = (endpoint as { body?: Record<string, unknown> } | null)?.body;
             if (body?.productNews === true) {

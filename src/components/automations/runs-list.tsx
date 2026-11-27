@@ -56,7 +56,7 @@ export function RunsList({ automationId }: { automationId: Id<"automations"> }) 
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap items-center gap-2">
-                  <RunStatusBadge status={run.status} />
+                  <RunStatusBadge status={run.status} partly={run.partly} />
                   {run.retries > 0 && (
                     <span className="text-muted-foreground text-xs">
                       {run.retries === 1 ? "Tried again once" : `Tried again ${run.retries} times`}

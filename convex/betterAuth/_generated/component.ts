@@ -4494,5 +4494,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Array<{ id: string; name: string; role: string }>,
         Name
       >;
+      userByEmail: FunctionReference<
+        "query",
+        "internal",
+        { email: string },
+        null | { id: string },
+        Name
+      >;
     };
   };

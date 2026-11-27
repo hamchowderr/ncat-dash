@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import { tellBackOffice } from "./backOffice";
+import { bookTips } from "./trialTips";
 import { internalMutation, query } from "./_generated/server";
 import { requireMember } from "./lib/authz";
 import { UNKNOWN_NETWORK } from "./lib/clientIp";
@@ -115,7 +115,6 @@ export const begin = internalMutation({
     // A fresh trial's owner hears a day before it ends, and again when it has. A shared
     // or used-up trial was told about already, under the team that started it.
     if (!repeatOf) {
-      if (args.ownerId) await tellBackOffice(ctx, "trialStarted", args.ownerId);
       const reminder = { organizationId: args.organizationId, endsAt };
       if (endsAt - DAY > startedAt) {
         await ctx.scheduler.runAt(endsAt - DAY, internal.email.sendTrialReminder, {
@@ -127,6 +126,7 @@ export const begin = internalMutation({
         ...reminder,
         kind: "ended" as const,
       });
+      await bookTips(ctx, args.organizationId, startedAt, endsAt);
     }
     return null;
   },
@@ -145,8 +145,14 @@ export const markPaid = internalMutation({
       .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
       .unique();
     if (!trial) return false;
+    const firstTime = trial.paidAt === undefined;
     await ctx.db.patch(trial._id, { paidAt: Date.now() });
-    if (trial.ownerId) await tellBackOffice(ctx, "paid", trial.ownerId);
+    if (firstTime) {
+      await ctx.scheduler.runAfter(0, internal.email.sendTrialTip, {
+        organizationId: args.organizationId,
+        tip: "thanks" as const,
+      });
+    }
     return true;
   },
 });

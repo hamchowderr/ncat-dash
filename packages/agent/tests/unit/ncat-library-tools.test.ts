@@ -146,6 +146,8 @@ describe("find_in_library", () => {
           tags: ["pricing"],
           length: "0:45",
           searchable: true,
+          transcript: "Ready.",
+          storage: null,
           said: [{ at: "12:31", seconds: 751, text: "Let's talk about pricing." }],
           link: "/library/item_1",
         },

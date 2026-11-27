@@ -1117,6 +1117,7 @@ export const keepFinished = internalAction({
     await ctx.runMutation(internal.alerts.runFinished, {
       runId: args.runId,
       count: placed.length,
+      files: placed.map((one) => one.link),
     });
     // An automation switched to send its files to Dropbox: the kept copies go there too.
     await ctx.runMutation(internal.dropbox.queueSends, {
@@ -1141,7 +1142,8 @@ export const finishedOfRun = internalQuery({
   args: { runId: v.id("runs") },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
-    if (!run || run.status !== "done") return null;
+    // A failed run keeps the files of the branches that finished (see `partly`).
+    if (!run || (run.status !== "done" && !(run.status === "failed" && run.partly))) return null;
     const steps = await ctx.db
       .query("runSteps")
       .withIndex("by_run", (q) => q.eq("runId", run._id))
@@ -1160,11 +1162,14 @@ export const finishedOfRun = internalQuery({
         creatorOf(run) ??
         steps.flatMap((step) => step.cleaned ?? []).find((one) => one.creator)?.creator ??
         null,
-      files: finishedFiles(run, steps).map((link) => ({
-        link,
-        name: names[link] ?? fileNameOfLink(link),
-        label: labels.get(link) ?? null,
-      })),
+      files: finishedFiles(run, steps)
+        // A run picked up after it was partly done already kept what it finished then.
+        .filter((link) => !(run.pickedUp && run.keptLinks?.includes(link)))
+        .map((link) => ({
+          link,
+          name: names[link] ?? fileNameOfLink(link),
+          label: labels.get(link) ?? null,
+        })),
     };
   },
 });

@@ -80,10 +80,26 @@ const LOOK: Record<
   },
 };
 
-export function RunStatusBadge({ status }: { status: RunStatus | ShownStepStatus }) {
-  const { label, icon: Icon, tone, variant } = LOOK[status];
+/** A failed run where another branch got to its end: what that branch made is in Files. */
+const PARTLY = {
+  label: "Partly done",
+  icon: CircleAlert,
+  tone: "text-amber-600 dark:text-amber-400",
+  variant: "secondary" as const,
+};
+
+export function RunStatusBadge({
+  status,
+  partly = false,
+}: {
+  status: RunStatus | ShownStepStatus;
+  /** The run failed but a branch of it finished. */
+  partly?: boolean;
+}) {
+  const shown = partly && status === "failed";
+  const { label, icon: Icon, tone, variant } = shown ? PARTLY : LOOK[status];
   return (
-    <Badge variant={variant} data-status={status}>
+    <Badge variant={variant} data-status={shown ? "partly" : status}>
       <Icon className={tone} />
       {label}
     </Badge>

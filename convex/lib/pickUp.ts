@@ -126,6 +126,8 @@ export async function pickUp(
     error: null,
     finishedAt: null,
     pickedUp: (run.pickedUp ?? 0) + 1,
+    // Decided again when it ends. What it kept stays kept (keptLinks).
+    partly: undefined,
     ...(withCurrentSettings && automation
       ? { nodes: automation.nodes, automationName: automation.name }
       : {}),

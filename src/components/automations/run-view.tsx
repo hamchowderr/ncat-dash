@@ -192,7 +192,7 @@ export function RunView({
           </p>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <RunStatusBadge status={run.status} />
+          <RunStatusBadge status={run.status} partly={run.partly} />
           {run.hasCuts && <EditorExport runId={runId} />}
           {clipsSetup && (
             <Button variant="ghost" size="sm" onClick={() => setShowClips((shown) => !shown)}>

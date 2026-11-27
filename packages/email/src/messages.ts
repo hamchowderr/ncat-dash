@@ -7,6 +7,8 @@ export type Composed = {
   html: string;
   /** Extra headers to send with it, such as one-click unsubscribe. */
   headers?: Record<string, string>;
+  /** Where a reply goes, when it should reach a person rather than the sending address. */
+  replyTo?: string;
 };
 
 /** Where `withUnsubscribe` puts its link in an email's footer. */
@@ -15,6 +17,11 @@ const UNSUBSCRIBE_SLOT = "<!--unsubscribe-->";
 export type Branding = {
   /** Shown as the sender's name and in the footer. */
   appName: string;
+  /**
+   * The address a person answers at (EMAIL_REPLY_TO). Replies go there, and the footer
+   * says so. Left out: no help line.
+   */
+  supportEmail?: string;
 };
 
 export const DEFAULT_APP_NAME = "Takewon";
@@ -48,6 +55,14 @@ export type Layout = {
   /** Linked lines, such as the items of a daily summary. */
   items?: { title: string; detail?: string; url: string }[];
   button?: { label: string; url: string };
+  /**
+   * Pictures of the person's own work, such as a moving preview of each clip, each linked
+   * to where it is. Hosted images with alt text: a mail app that holds images back shows
+   * the words instead.
+   */
+  pictures?: { src: string; alt: string; url: string }[];
+  /** A signed line from a person, set under the button. Only in our own emails. */
+  signoff?: { lines: string[]; name: string; role: string };
   footnote?: string;
   /** Why this person gets the email, shown above the footer with a link to change it. */
   reason?: string;
@@ -67,6 +82,9 @@ export const MOTTO = "Your content, social media ready.";
 /** Who makes Takewon, named where a company normally is: an email's footer. */
 export const COMPANY = "Otaku Solutions";
 
+/** Where the company is, as the law on marketing email (CAN-SPAM) asks every email to say. */
+export const COMPANY_ADDRESS = "10521 West Zamora Ave, Los Angeles, CA 90002";
+
 /**
  * The mark beside the name: a violet square with a play shape, drawn in HTML rather than
  * an image, so it shows even where a mail app holds images back.
@@ -78,6 +96,12 @@ function mark(): string {
 export function compose(subject: string, layout: Layout, branding: Branding): Composed {
   const { heading, paragraphs, quote, items, button, footnote, reason, settingsUrl } = layout;
   const ours = branding.appName === DEFAULT_APP_NAME;
+  const pictures = (layout.pictures ?? []).slice(0, 3);
+  const signoff = ours ? layout.signoff : undefined;
+  const support = branding.supportEmail;
+  const helpText = support
+    ? `Questions? Reply to this email or write to ${support}.`
+    : null;
   const text = [
     heading,
     "",
@@ -88,11 +112,15 @@ export function compose(subject: string, layout: Layout, branding: Branding): Co
     ]),
     ...(items?.length ? [""] : []),
     ...(button ? [`${button.label}: ${button.url}`, ""] : []),
+    ...(signoff ? [...signoff.lines.flatMap((line) => [line, ""]), signoff.name, signoff.role, ""] : []),
     ...(footnote ? [footnote, ""] : []),
     "--",
+    ...(helpText ? [helpText] : []),
     ...(reason ? [reason] : []),
     ...(settingsUrl ? [`Notification settings: ${settingsUrl}`] : []),
-    ours ? `${branding.appName}. ${MOTTO} Made by ${COMPANY}.` : `Sent by ${branding.appName}.`,
+    ...(ours
+      ? [`${branding.appName}. ${MOTTO} Made by ${COMPANY}.`, COMPANY_ADDRESS]
+      : [`Sent by ${branding.appName}.`]),
   ].join("\n");
 
   const p = (content: string, style = "") =>
@@ -129,12 +157,31 @@ export function compose(subject: string, layout: Layout, branding: Branding): Co
           "</table>",
         ]
       : []),
+    ...(pictures.length
+      ? [
+          '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 8px;"><tr>',
+          ...pictures.map(
+            (picture, index) =>
+              `<td style="padding:0 ${index < pictures.length - 1 ? 10 : 0}px 0 0;vertical-align:top;"><a href="${escapeHtml(picture.url)}" style="text-decoration:none;"><img src="${escapeHtml(picture.src)}" width="150" alt="${escapeHtml(picture.alt)}" style="display:block;width:150px;max-width:100%;height:auto;border:0;border-radius:10px;background:#f4f4f7;color:${MUTE};font-size:13px;"></a></td>`,
+          ),
+          "</tr></table>",
+        ]
+      : []),
     ...(button
       ? [
           `<p style="margin:24px 0;"><a href="${escapeHtml(button.url)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 20px;border-radius:10px;">${escapeHtml(button.label)}</a></p>`,
           p(
             `If the button does not work, open this link: <a href="${escapeHtml(button.url)}" style="color:${ACCENT};word-break:break-all;">${escapeHtml(button.url)}</a>`,
             `font-size:13px;color:${MUTE};`,
+          ),
+        ]
+      : []),
+    ...(signoff
+      ? [
+          ...signoff.lines.map((line) => p(escapeHtml(line))),
+          p(
+            `<strong style="color:${INK};">${escapeHtml(signoff.name)}</strong><br>${escapeHtml(signoff.role)}`,
+            "margin:0 0 16px;",
           ),
         ]
       : []),
@@ -147,16 +194,29 @@ export function compose(subject: string, layout: Layout, branding: Branding): Co
           `<p style="margin:0 0 8px;">${reason ? `${escapeHtml(reason)} ` : ""}${settingsUrl ? link(settingsUrl, "Change your notification settings") : ""}${UNSUBSCRIBE_SLOT}</p>`,
         ]
       : []),
+    ...(support
+      ? [
+          `<p style="margin:0 0 8px;">Questions? Reply to this email or write to ${link(`mailto:${support}`, support)}.</p>`,
+        ]
+      : []),
     ours
-      ? `<p style="margin:0;">${escapeHtml(branding.appName)}. ${escapeHtml(MOTTO)}<br>Made by ${escapeHtml(COMPANY)}.</p>`
+      ? `<p style="margin:0;">${escapeHtml(branding.appName)}. ${escapeHtml(MOTTO)}<br>Made by ${escapeHtml(COMPANY)}, ${escapeHtml(COMPANY_ADDRESS)}.</p>`
       : `<p style="margin:0;">Sent by ${escapeHtml(branding.appName)}.</p>`,
     "</div>",
     "</div>",
     "</body></html>",
   ].join("");
 
-  return { subject: oneLine(subject, 200), text, html };
+  return {
+    subject: oneLine(subject, 200),
+    text,
+    html,
+    ...(support ? { replyTo: support } : {}),
+  };
 }
+
+/** Who signs the welcome email in Takewon's own copy. */
+export const FOUNDER = { name: "Chowderr", role: "Founder, Takewon" } as const;
 
 export function verificationEmail(args: { name?: string; url: string }, branding: Branding) {
   return compose(
@@ -653,6 +713,8 @@ export function welcomeEmail(
     teamName: string;
     /** Whole days of free trial, or null when the team has none. */
     trialDays: number | null;
+    /** They signed up for the beta on the website: the welcome says it's a beta. */
+    beta?: boolean;
     homeUrl: string;
     uploadsUrl: string;
     readyMadeUrl: string;
@@ -662,8 +724,9 @@ export function welcomeEmail(
 ) {
   const app = branding.appName;
   const team = oneLine(args.teamName, 60);
-  const trial =
-    args.trialDays === null
+  const trial = args.beta
+    ? ` You're one of the first people testing ${app}, so some things will change, and what you tell me decides what comes next.`
+    : args.trialDays === null
       ? ""
       : ` Your free trial runs for ${args.trialDays} ${args.trialDays === 1 ? "day" : "days"}, and no card is needed.`;
   return compose(
@@ -689,6 +752,12 @@ export function welcomeEmail(
         },
       ],
       button: { label: `Open ${app}`, url: args.homeUrl },
+      signoff: {
+        lines: [
+          "I built Takewon so your videos come out as clips ready to post, without an afternoon in an editor. If anything gets in your way, just reply: it comes to me.",
+        ],
+        ...FOUNDER,
+      },
     },
     branding,
   );
@@ -737,6 +806,193 @@ export function trialEndedEmail(
         ? { label: `Get ${app}`, url: args.buyUrl }
         : { label: `Open ${app}`, url: args.homeUrl },
       footnote: "You get this once, because you made this team.",
+    },
+    branding,
+  );
+}
+
+/** The steps of the trial's tips, sent only to someone who has not done the thing yet. */
+export type TrialTip = "first_upload" | "clips_ready" | "every_upload" | "come_back";
+
+const TIP_FOOTNOTE = "You get a few of these tips during your free trial.";
+
+/**
+ * A tip during the free trial (convex/trialTips.ts decides whether it goes): one next
+ * step each, toward a first finished clip and then toward it running by itself.
+ */
+export function trialTipEmail(
+  args: {
+    tip: TrialTip;
+    name?: string;
+    teamName: string;
+    uploadsUrl: string;
+    readyMadeUrl: string;
+    /** For clips_ready: the run whose files are ready. */
+    runUrl?: string;
+    /** For clips_ready: a moving preview of up to three of the clips. */
+    previews?: string[];
+    buyUrl: string | null;
+    homeUrl: string;
+    settingsUrl: string;
+  },
+  branding: Branding,
+) {
+  const app = branding.appName;
+  const hi = args.name ? `Hi ${oneLine(args.name, 60)}, ` : "";
+  const shared = {
+    footnote: TIP_FOOTNOTE,
+    reason: "You get these because you started a free trial.",
+    settingsUrl: args.settingsUrl,
+  };
+  if (args.tip === "first_upload") {
+    return compose(
+      "Your first video is one click away",
+      {
+        heading: "Your first video is one click away",
+        paragraphs: [
+          `${hi}drop a video into ${app} and it is transcribed as soon as it lands.`,
+          "From there, one ready-made automation turns it into captioned vertical clips.",
+        ],
+        button: { label: "Upload a video", url: args.uploadsUrl },
+        ...shared,
+      },
+      branding,
+    );
+  }
+  if (args.tip === "clips_ready") {
+    return compose(
+      "Your first clips are ready",
+      {
+        heading: "Your first clips are ready",
+        paragraphs: [
+          `${hi}your first run in ${oneLine(args.teamName, 60)} is done and its files are in Files.`,
+          "Next, try another ready-made automation on the same video: captions in your brand, a thumbnail, or best moments.",
+        ],
+        pictures: (args.previews ?? []).map((src, index) => ({
+          src,
+          alt: `Preview of clip ${index + 1}`,
+          url: args.runUrl ?? args.homeUrl,
+        })),
+        button: { label: "See your clips", url: args.runUrl ?? args.homeUrl },
+        ...shared,
+      },
+      branding,
+    );
+  }
+  if (args.tip === "every_upload") {
+    return compose(
+      "Let it run on every upload",
+      {
+        heading: "Let it run on every upload",
+        paragraphs: [
+          `${hi}switch on a ready-made automation and every new video gets the same treatment, with nobody pressing anything.`,
+          "Pick one, switch it on, and drop in your next video.",
+        ],
+        button: { label: "Pick a ready-made automation", url: args.readyMadeUrl },
+        ...shared,
+      },
+      branding,
+    );
+  }
+  return compose(
+    `Still want your content social media ready?`,
+    {
+      heading: MOTTO,
+      paragraphs: [
+        `${hi}your free trial of ${app} has ended, and everything you made in ${oneLine(args.teamName, 60)} is still there.`,
+        `It all starts again once you have ${app}.`,
+      ],
+      button: args.buyUrl
+        ? { label: `Get ${app}`, url: args.buyUrl }
+        : { label: `Open ${app}`, url: args.homeUrl },
+      ...shared,
+    },
+    branding,
+  );
+}
+
+const firstName = (name: string | undefined) => oneLine(name ?? "", 60).split(" ")[0] ?? "";
+
+/**
+ * Sent when the operator invites someone who asked to join the beta on the website.
+ * `metAt` is where they met, when the person said it was one of the operator's talks.
+ */
+export function betaInviteEmail(
+  args: { name?: string; metAt?: string; signUpUrl: string },
+  branding: Branding,
+) {
+  const app = branding.appName;
+  const first = firstName(args.name);
+  const met = args.metAt ? `it was good to meet you at ${oneLine(args.metAt, 80)}. Thanks` : "thanks";
+  return compose(
+    `You're in the ${app} beta`,
+    {
+      heading: `You're in the ${app} beta`,
+      paragraphs: [
+        `${first ? `Hi ${first}, ` : "Hi, "}${met} for signing up to test ${app}.`,
+        `${app} turns your long videos into clips that are ready to post: cut, captioned and shaped for each platform. It's a beta, so some things will change, and what you tell me decides what I build next.`,
+        "Make your account with this email address, then upload one video you would normally edit by hand.",
+      ],
+      button: { label: "Create your account", url: args.signUpUrl },
+      signoff: { lines: ["Reply to this email any time. It comes straight to me."], ...FOUNDER },
+      footnote: `You get this because you asked to join the ${app} beta.`,
+    },
+    branding,
+  );
+}
+
+/**
+ * The one check-in a beta tester gets a few days after making their account. It asks
+ * different questions depending on whether a video has gone through yet.
+ */
+export function betaCheckInEmail(
+  args: { name?: string; uploaded: boolean; uploadsUrl: string },
+  branding: Branding,
+) {
+  const app = branding.appName;
+  const first = firstName(args.name);
+  const hi = first ? `Hi ${first}, ` : "";
+  const paragraphs = args.uploaded
+    ? [
+        `${hi}you've had ${app} for a few days, and I'd love to hear how it went. Reply with a line or two for each, as short as you like:`,
+        "1. What did you put through it, and did the clips come out the way you'd post them?",
+        "2. What got in your way, or didn't make sense?",
+        "3. What would make you use it every week?",
+      ]
+    : [
+        `${hi}you made your ${app} account a few days ago, but no video has gone through yet. That's fine, and I'd love to know why. Reply with a line or two:`,
+        "1. What stopped you from trying it? \"Too busy\" is a good answer.",
+        "2. What would you want it to do with your first video?",
+      ];
+  return compose(
+    args.uploaded ? `How is ${app} going?` : `Anything stopping you trying ${app}?`,
+    {
+      heading: args.uploaded ? "How is it going so far?" : "Anything in the way?",
+      paragraphs,
+      ...(args.uploaded ? {} : { button: { label: "Upload a video", url: args.uploadsUrl } }),
+      signoff: { lines: ["Every reply comes to me, and I read them all."], ...FOUNDER },
+      footnote: `You get this once, because you're testing the ${app} beta.`,
+    },
+    branding,
+  );
+}
+
+/** Sent to a team's owner once the team has bought. */
+export function thanksEmail(
+  args: { name?: string; teamName: string; homeUrl: string },
+  branding: Branding,
+) {
+  const app = branding.appName;
+  return compose(
+    `Thanks for getting ${app}`,
+    {
+      heading: `Thanks for getting ${app}`,
+      paragraphs: [
+        `${args.name ? `Hi ${oneLine(args.name, 60)}, ` : ""}${oneLine(args.teamName, 60)} is all set. Automations and the agent run again, with no trial limits.`,
+        "Reply to this email if you need a hand with anything.",
+      ],
+      button: { label: `Open ${app}`, url: args.homeUrl },
+      footnote: "You get this once, because your team bought.",
     },
     branding,
   );

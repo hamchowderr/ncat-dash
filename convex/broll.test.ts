@@ -489,6 +489,119 @@ describe("The library and B-Roll", () => {
     expect((await maya.as.query(api.broll.status, { organizationId: team })).broll).toBe(0);
   });
 
+  test("a look the toolkit was too busy to take tries again later, a few times", async () => {
+    fakeServers();
+    const { t, team } = await setUp([brollNode()]);
+    const itemId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("libraryItems", {
+        organizationId: team,
+        shortId: "V1",
+        kind: "video",
+        source: "upload",
+        title: "Drone over the hills",
+        url: "https://files.example/library/drone.mp4",
+        tags: [],
+        searchText: "drone",
+        createdBy: null,
+      });
+      return id;
+    });
+    /** The look's job failed with `error`; permanent when trying again cannot help. */
+    const failWith = async (error: string, permanent = false) => {
+      const jobId = await t.run(async (ctx) => {
+        const item = (await ctx.db.get(itemId))!;
+        const id = await ctx.db.insert("jobs", {
+          organizationId: team,
+          connectionId: (await ctx.db.query("toolkitConnections").first())!._id,
+          stepId: "media-look",
+          input: { media_url: "https://files.example/library/drone.mp4" },
+          status: "failed",
+          toolkitJobId: null,
+          startedAt: null,
+          finishedAt: null,
+          webhookToken: "token",
+          outputs: [],
+          error,
+          ...(permanent ? { permanent: true } : {}),
+          libraryItemId: itemId,
+          createdBy: "library",
+        });
+        await ctx.db.patch(itemId, {
+          look: {
+            status: "working",
+            jobId: id,
+            ...(item.look?.tries ? { tries: item.look.tries } : {}),
+            at: Date.now(),
+          },
+        });
+        return id;
+      });
+      await t.mutation(internal.broll.saveLook, { jobId });
+      const item = (await t.run((ctx) => ctx.db.get(itemId)))!;
+      const again = await t.run(async (ctx) =>
+        (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+          (one) => one.name.includes("lookAt") && one.state.kind === "pending",
+        ),
+      );
+      for (const one of again) await t.run((ctx) => ctx.scheduler.cancel(one._id));
+      return { look: item.look, again: again.length };
+    };
+
+    const busy = "The job could not be sent to the toolkit.";
+    expect(await failWith(busy)).toMatchObject({ look: { status: "failed", tries: 1 }, again: 1 });
+    expect(await failWith(busy)).toMatchObject({ look: { status: "failed", tries: 2 }, again: 1 });
+    // The third time it is left failed, with the reason, and not tried again.
+    expect(await failWith(busy)).toMatchObject({
+      look: { status: "failed", tries: 2, error: busy },
+      again: 0,
+    });
+  });
+
+  test("a look the toolkit turned down is not tried again", async () => {
+    fakeServers();
+    const { t, team } = await setUp([brollNode()]);
+    const itemId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("libraryItems", {
+        organizationId: team,
+        shortId: "V1",
+        kind: "video",
+        source: "upload",
+        title: "Drone over the hills",
+        url: "https://files.example/library/drone.mp4",
+        tags: [],
+        searchText: "drone",
+        createdBy: null,
+      });
+      const jobId = await ctx.db.insert("jobs", {
+        organizationId: team,
+        connectionId: (await ctx.db.query("toolkitConnections").first())!._id,
+        stepId: "media-look",
+        input: { media_url: "https://files.example/library/drone.mp4" },
+        status: "failed",
+        toolkitJobId: null,
+        startedAt: null,
+        finishedAt: null,
+        webhookToken: "token",
+        outputs: [],
+        error: "The toolkit refused the job (HTTP 400).",
+        permanent: true,
+        libraryItemId: id,
+        createdBy: "library",
+      });
+      await ctx.db.patch(id, { look: { status: "working", jobId, at: Date.now() } });
+      return id;
+    });
+    const job = (await t.run((ctx) => ctx.db.query("jobs").first()))!;
+    await t.mutation(internal.broll.saveLook, { jobId: job._id });
+    const pending = await t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").collect()).filter(
+        (one) => one.name.includes("lookAt") && one.state.kind === "pending",
+      ),
+    );
+    expect(pending).toHaveLength(0);
+    expect((await t.run((ctx) => ctx.db.get(itemId)))!.look).toMatchObject({ status: "failed" });
+  });
+
   test("files already looked at are judged again when the rules change", async () => {
     const { t, team } = await setUp([brollNode()]);
     const insert = (title: string, faces: number[], brollLike: boolean) =>

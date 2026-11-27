@@ -1,8 +1,12 @@
 import { onStoryboardVideoJob } from "./lib/storyboardVideos";
+import { onTipPreviewJob } from "./trialTips";
 import {
   failsTheSameEveryTime,
   getNodeType,
   isTransientStatus,
+  TRANSCRIPT_MIN_MS,
+  transcriptLimitMs,
+  transcriptTooSlowError,
   withBrand,
   wrongKindOfFile,
 } from "@takewon/automation-core";
@@ -18,6 +22,7 @@ import {
   mutation,
   query,
   type ActionCtx,
+  type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
 import { requireMember } from "./lib/authz";
@@ -459,6 +464,8 @@ export const finish = internalMutation({
     await onLookJobFinished(ctx, job);
     // A take of a storyboard's video, or the join of its takes.
     await onStoryboardVideoJob(ctx, (await ctx.db.get(job._id))!);
+    // A moving preview of a clip for the "clips ready" trial tip.
+    await onTipPreviewJob(ctx, (await ctx.db.get(job._id))!);
     // A library file being made searchable: keep what was said in it.
     if (job.libraryItemId) {
       await ctx.scheduler.runAfter(0, internal.library.readTranscript, { jobId: job._id });
@@ -597,6 +604,7 @@ export const checkLate = internalMutation({
       .withIndex("by_status", (q) => q.eq("status", "running"))
       .take(500);
     for (const job of running) {
+      if (await stopSlowTranscript(ctx, job, now)) continue;
       if (!job.toolkitJobId) continue;
       if ((job.startedAt ?? now) > now - ASK_AFTER_MS) continue;
       if ((job.lastAskedAt ?? 0) > now - ASK_EVERY_MS) continue;
@@ -605,6 +613,33 @@ export const checkLate = internalMutation({
     }
   },
 });
+
+/**
+ * A library file's transcript that has run past its limit for the video's length
+ * (transcriptLimitMs) is stopped, even while the toolkit still says it is running: a slow
+ * or busy server once kept a 64-minute video "running" for four hours. Returns whether it
+ * was stopped.
+ */
+async function stopSlowTranscript(
+  ctx: MutationCtx,
+  job: Doc<"jobs">,
+  now: number,
+): Promise<boolean> {
+  if (job.stepId !== "media-transcribe" || !job.libraryItemId) return false;
+  const since = job.startedAt ?? job.dispatchedAt;
+  if (since === null || since === undefined) return false;
+  // Cheap first: no video is allowed under the shortest limit.
+  if (now - since < TRANSCRIPT_MIN_MS) return false;
+  const item = await ctx.db.get(job.libraryItemId);
+  const duration = item?.details?.duration ?? null;
+  if (now - since < transcriptLimitMs(duration)) return false;
+  await ctx.scheduler.runAfter(0, internal.jobs.finish, {
+    jobId: job._id,
+    ok: false,
+    error: transcriptTooSlowError(now - since, duration),
+  });
+  return true;
+}
 
 export const loadForAsking = internalQuery({
   args: { jobId: v.id("jobs") },

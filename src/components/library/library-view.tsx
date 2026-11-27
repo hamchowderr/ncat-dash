@@ -58,6 +58,7 @@ import {
   type LibraryKind,
 } from "./library-media";
 import { SegmentedButton, SegmentedGroup } from "@/components/ui/segmented";
+import { StoredElsewhere } from "./stored-elsewhere";
 
 type Item = {
   _id: Id<"libraryItems">;
@@ -77,6 +78,7 @@ type Item = {
   searchable: "no" | "working" | "ready" | "failed";
   from: LibraryFrom | null;
   inReview: boolean;
+  storedElsewhere?: "hosted" | "earlier" | null;
 };
 
 type Shown = "all" | "videos" | "clips" | "audio" | "images" | "other";
@@ -307,6 +309,7 @@ function ItemList({
                 <div className="flex min-w-0 items-center gap-2">
                   <InlineTitle item={item} />
                   {item.inReview && <InReview />}
+                  <StoredElsewhere where={item.storedElsewhere} />
                   {item.platform && <PlatformTag platform={item.platform} />}
                 </div>
               </TableCell>
@@ -393,6 +396,7 @@ function ItemTiles({ items, links }: { items: Item[]; links: Map<Id<"libraryItem
             <ShortId id={item.shortId} />
             <span className="truncate text-sm font-medium">{item.title}</span>
             {item.inReview && <InReview />}
+            <StoredElsewhere where={item.storedElsewhere} />
             {item.platform && <PlatformTag platform={item.platform} className="ml-auto" />}
           </div>
           <div className="text-muted-foreground flex min-w-0 items-center gap-2 text-xs">

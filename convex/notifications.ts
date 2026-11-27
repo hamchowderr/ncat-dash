@@ -8,6 +8,7 @@ import {
   DEFAULT_DIGEST_HOUR,
   digestDue,
   NOTIFICATION_KINDS,
+  emailOnly,
   preferenceOf,
   wants,
 } from "./lib/notifications";
@@ -27,6 +28,7 @@ const kind = v.union(
   v.literal("clip_finished"),
   v.literal("footage_problem"),
   v.literal("rights_ending"),
+  v.literal("trial_tips"),
 );
 
 /** The person asking's notification settings on a team, with every kind spelled out. */
@@ -47,23 +49,32 @@ export const get = query({
           .withIndex("by_email", (q) => q.eq("email", me.email.trim().toLowerCase()))
           .first()
       : null;
+    // Trial tips only mean something while the team is on a free trial it has not bought.
+    const trial = await ctx.db
+      .query("teamTrials")
+      .withIndex("by_organization", (q) => q.eq("organizationId", args.organizationId))
+      .unique();
+    const onTrial = trial !== null && trial.paidAt === undefined;
     return {
       emailProblem:
         problem && (problem.kind === "complaint" || problem.permanent)
           ? { email: problem.email, kind: problem.kind, at: problem.at }
           : null,
-      kinds: NOTIFICATION_KINDS.map((entry) => ({
-        kind: entry.kind,
-        title: entry.title,
-        description: entry.description,
-        bell: wants(preference, entry.kind, "bell"),
-        email: wants(preference, entry.kind, "email"),
-        telegram: wants(preference, entry.kind, "telegram"),
-        slack: wants(preference, entry.kind, "slack"),
-        discord: wants(preference, entry.kind, "discord"),
-        teams: wants(preference, entry.kind, "teams"),
-        alwaysRightAway: ALWAYS_RIGHT_AWAY.includes(entry.kind),
-      })),
+      kinds: NOTIFICATION_KINDS.filter((entry) => entry.kind !== "trial_tips" || onTrial).map(
+        (entry) => ({
+          kind: entry.kind,
+          title: entry.title,
+          description: entry.description,
+          bell: wants(preference, entry.kind, "bell"),
+          email: wants(preference, entry.kind, "email"),
+          telegram: wants(preference, entry.kind, "telegram"),
+          slack: wants(preference, entry.kind, "slack"),
+          discord: wants(preference, entry.kind, "discord"),
+          teams: wants(preference, entry.kind, "teams"),
+          alwaysRightAway: ALWAYS_RIGHT_AWAY.includes(entry.kind),
+          emailOnly: emailOnly(entry.kind),
+        }),
+      ),
       emailTiming: preference?.emailTiming ?? ("now" as const),
       digestHour: preference?.digestHour ?? DEFAULT_DIGEST_HOUR,
       timeZone: preference?.timeZone ?? null,

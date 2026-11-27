@@ -19,9 +19,13 @@ import {
   sendEmail,
   senderProblem,
   testEmail,
+  thanksEmail,
+  trialTipEmail,
   trialEndedEmail,
   trialEndingEmail,
   welcomeEmail,
+  betaInviteEmail,
+  betaCheckInEmail,
   withUnsubscribe,
   type Composed,
   type SendResult,
@@ -45,6 +49,7 @@ import { getEdition } from "./lib/edition";
 import { isFor } from "./lib/alerts";
 import { noteProblem } from "./lib/news";
 import { buyUrl } from "./lib/trial";
+import { tip as trialTip } from "./trialTips";
 import {
   readUnsubscribeToken,
   unsubscribeToken,
@@ -58,6 +63,7 @@ import {
   preferenceOf,
   wants,
 } from "./lib/notifications";
+import { emailBranding } from "./lib/emailBranding";
 
 // Email goes out through toSend (https://tosend.com). There is one sending account for
 // the whole dashboard, because sign-in emails are sent before anyone is on a team. It is
@@ -216,7 +222,7 @@ export const sendTest = action({
     if (!me) return { ok: false as const, detail: "Your account has no email address." };
     const result = await deliver(ctx, sending, {
       to: me.email,
-      ...testEmail({ teamName: team.teamName ?? undefined }, { appName: sending.fromName }),
+      ...testEmail({ teamName: team.teamName ?? undefined }, emailBranding(sending.fromName)),
     });
     return result.ok
       ? { ok: true as const }
@@ -239,7 +245,13 @@ export const remove = mutation({
 
 /** Sends one email. Does nothing, quietly, when email is not set up. */
 export const send = internalAction({
-  args: { to: v.string(), subject: v.string(), text: v.string(), html: v.string() },
+  args: {
+    to: v.string(),
+    subject: v.string(),
+    text: v.string(),
+    html: v.string(),
+    replyTo: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const sending = await loadSending(ctx);
     if (!sending) {
@@ -273,7 +285,7 @@ export const sendAlert = internalAction({
     const link = siteUrl(alertHref(alert));
     const settingsUrl = siteUrl(SETTINGS_PATH);
     const teamName = found.teamName ?? undefined;
-    const branding = { appName: sending.fromName };
+    const branding = emailBranding(sending.fromName);
     const composed =
       alert.kind === "approval_waiting"
         ? approvalWaitingEmail(
@@ -421,7 +433,7 @@ export const sendDigest = internalAction({
         items: found.items,
         settingsUrl: siteUrl(SETTINGS_PATH),
       },
-      { appName: sending.fromName },
+      emailBranding(sending.fromName),
     );
     await deliver(ctx, sending, {
       to: found.email,
@@ -451,12 +463,54 @@ export const sendWelcome = internalAction({
           name: found.name || undefined,
           teamName: found.teamName,
           trialDays: found.trialDays,
+          beta: found.beta,
           homeUrl: siteUrl("/"),
           uploadsUrl: siteUrl("/library"),
           readyMadeUrl: siteUrl("/automations/new"),
           brandUrl: siteUrl("/settings/brand"),
         },
-        { appName: sending.fromName },
+        emailBranding(sending.fromName),
+      ),
+    });
+  },
+});
+
+/** The beta invite (beta.invite): a link to make an account. */
+export const sendBetaInvite = internalAction({
+  args: { testerId: v.id("betaTesters") },
+  handler: async (ctx, args) => {
+    const sending = await loadSending(ctx);
+    if (!sending) return;
+    const found = await ctx.runQuery(internal.beta.inviteFor, args);
+    if (!found) return;
+    await deliver(ctx, sending, {
+      to: found.email,
+      ...betaInviteEmail(
+        {
+          name: found.name,
+          ...(found.metAt ? { metAt: found.metAt } : {}),
+          signUpUrl: siteUrl("/sign-up"),
+        },
+        emailBranding(sending.fromName),
+      ),
+    });
+  },
+});
+
+/** The one check-in a beta tester gets a few days after joining (beta.joined). */
+export const sendBetaCheckIn = internalAction({
+  args: { testerId: v.id("betaTesters") },
+  handler: async (ctx, args) => {
+    const sending = await loadSending(ctx);
+    if (!sending) return;
+    const found = await ctx.runQuery(internal.beta.checkInFor, args);
+    if (!found) return;
+    await ctx.runMutation(internal.beta.markCheckIn, args);
+    await deliver(ctx, sending, {
+      to: found.email,
+      ...betaCheckInEmail(
+        { name: found.name, uploaded: found.uploaded, uploadsUrl: siteUrl("/library") },
+        emailBranding(sending.fromName),
       ),
     });
   },
@@ -484,6 +538,11 @@ export const welcomeFor = internalQuery({
       name: person.name,
       teamName: team.name,
       trialDays: fresh ? Math.max(1, Math.round((trial.endsAt - trial.startedAt) / DAY)) : null,
+      beta:
+        (await ctx.db
+          .query("betaTesters")
+          .withIndex("by_email", (q) => q.eq("email", person.email.trim().toLowerCase()))
+          .first()) !== null,
     };
   },
 });
@@ -513,13 +572,68 @@ export const sendTrialReminder = internalAction({
       buyUrl: buyUrl(),
       homeUrl: siteUrl("/"),
     };
-    const branding = { appName: sending.fromName };
+    const branding = emailBranding(sending.fromName);
     await deliver(ctx, sending, {
       to: found.email,
       ...(args.kind === "ending"
         ? trialEndingEmail(details, branding)
         : trialEndedEmail(details, branding)),
     });
+  },
+});
+
+/**
+ * Sends one of the free trial's tips, or the thanks once a team bought, when
+ * trialTips.tipFor says it should still go (convex/trialTips.ts). Each goes once.
+ */
+export const sendTrialTip = internalAction({
+  args: {
+    organizationId: v.string(),
+    tip: trialTip,
+    runId: v.optional(v.id("runs")),
+    // Moving previews of the clips, for the "clips ready" tip.
+    previews: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const sending = await loadSending(ctx);
+    if (!sending) return;
+    const found = await ctx.runQuery(internal.trialTips.tipFor, {
+      organizationId: args.organizationId,
+      tip: args.tip,
+    });
+    if (!found) return;
+    const branding = emailBranding(sending.fromName);
+    const name = found.name || undefined;
+    const composed =
+      args.tip === "thanks"
+        ? thanksEmail({ name, teamName: found.teamName, homeUrl: siteUrl("/") }, branding)
+        : await optOut(
+            trialTipEmail(
+              {
+                tip: args.tip === "come_back_later" ? "come_back" : args.tip,
+                name,
+                teamName: found.teamName,
+                uploadsUrl: siteUrl("/library"),
+                readyMadeUrl: siteUrl("/automations/new"),
+                ...(args.runId ? { runUrl: siteUrl(`/runs/${args.runId}`) } : {}),
+                ...(args.previews?.length ? { previews: args.previews } : {}),
+                buyUrl: buyUrl(),
+                homeUrl: siteUrl("/"),
+                settingsUrl: siteUrl(SETTINGS_PATH),
+              },
+              branding,
+            ),
+            found.userId,
+            args.organizationId,
+            "trial_tips",
+          );
+    const result = await deliver(ctx, sending, { to: found.email, ...composed });
+    if (result.ok) {
+      await ctx.runMutation(internal.trialTips.recordSent, {
+        organizationId: args.organizationId,
+        tip: args.tip,
+      });
+    }
   },
 });
 
@@ -806,6 +920,7 @@ async function deliver(
     text: string;
     html: string;
     headers?: Record<string, string>;
+    replyTo?: string;
   },
 ): Promise<SendResult> {
   const result = await sendEmail(
