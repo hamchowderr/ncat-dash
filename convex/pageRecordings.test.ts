@@ -159,6 +159,10 @@ describe("the rules for page recordings", () => {
     expect(recordingFileName(4, "Open the pricing page: plans/prices?")).toBe(
       "Take 4 - Open the pricing page plans prices.mp4",
     );
+    expect(recordingFileName(2, "Here's Neon's pricing for the free tier.")).toBe(
+      "Take 2 - Here's Neon's pricing for the free tier.mp4",
+    );
+    expect(recordingFileName(3, "...")).toBe("Take 3.mp4");
     expect(profileName("org/1", "abc 2")).toBe("takewon-org1-abc2");
     expect(describeStep({ do: "scroll", direction: "down", amount: 400 })).toBe("Scroll down");
   });
@@ -193,7 +197,7 @@ describe("recording a take", () => {
     const convert = sent.find((call) => call.url === `${TOOLKIT}/v1/media/convert`)!;
     expect(convert.body).toMatchObject({ format: "mp4", video_codec: "libx264" });
     expect(
-      put.some((key) => key.endsWith("Page Recordings/Take 2 - Here are the plans..mp4")),
+      put.some((key) => key.endsWith("Page Recordings/Take 2 - Here are the plans.mp4")),
     ).toBe(true);
 
     const [row] = await rows();
@@ -203,7 +207,7 @@ describe("recording a take", () => {
       purpose: "recording",
       contentType: "video/mp4",
       size: 4321,
-      fileName: "Take 2 - Here are the plans..mp4",
+      fileName: "Take 2 - Here are the plans.mp4",
     });
     const take = (await board()).chapters[0].takes[1];
     expect(take.files.recording).toBe(`upload:${row.uploadId}`);

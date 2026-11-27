@@ -115,7 +115,9 @@ export function recordingFileName(takeNumber: number, line: string): string {
     .replace(/[\\/:*?"<>|#%]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const short = words.length > 48 ? `${words.slice(0, 48).replace(/\s+\S*$/, "")}…` : words;
+  // A line ending in "." would otherwise give "..mp4".
+  const ended = words.replace(/[.\s…]+$/, "");
+  const short = ended.length > 48 ? `${ended.slice(0, 48).replace(/\s+\S*$/, "")}…` : ended;
   return `Take ${takeNumber}${short ? ` - ${short}` : ""}.mp4`;
 }
 
