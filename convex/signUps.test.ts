@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, test } from "vitest";
 
 import { api, components, internal } from "./_generated/api";
-import { BETA_FORM_URL, CLOSED_BETA_MESSAGE, INVITE_ONLY_MESSAGE, signUpsMode } from "./lib/signUps";
+import {
+  BETA_FORM_URL,
+  CLOSED_BETA_MESSAGE,
+  INVITE_ONLY_MESSAGE,
+  signUpsMode,
+} from "./lib/signUps";
 import { addPerson, addTeam, backend } from "./test.setup";
 
 // A self-hosted copy is reachable by anyone who has its address. With SIGN_UPS=invite-only
@@ -130,7 +135,11 @@ describe("who may make an account", () => {
 });
 
 describe("beta testers on an invite-only copy", () => {
-  async function tester(t: ReturnType<typeof backend>, email: string, status: "applied" | "invited") {
+  async function tester(
+    t: ReturnType<typeof backend>,
+    email: string,
+    status: "applied" | "invited",
+  ) {
     await t.run((ctx) =>
       ctx.db.insert("betaTesters", {
         email,
@@ -152,6 +161,8 @@ describe("beta testers on an invite-only copy", () => {
     await addPerson(t, "Maya Ortiz", [await addTeam(t, "Salt House")], "owner");
     await tester(t, "jo@studio.example", "invited");
     expect(await t.query(internal.access.signUpRefusal, { email: "jo@studio.example" })).toBeNull();
+    // the sign-up form asks the same before sending anything
+    expect(await t.query(api.access.signUpAllowed, { email: "jo@studio.example" })).toBeNull();
     expect(
       await t.query(internal.access.signUpRefusal, { email: " Jo@Studio.Example " }),
     ).toBeNull();
@@ -164,6 +175,9 @@ describe("beta testers on an invite-only copy", () => {
     await addPerson(t, "Maya Ortiz", [await addTeam(t, "Salt House")], "owner");
     await tester(t, "jo@studio.example", "applied");
     expect(await t.query(internal.access.signUpRefusal, { email: "jo@studio.example" })).toBe(
+      CLOSED_BETA_MESSAGE,
+    );
+    expect(await t.query(api.access.signUpAllowed, { email: "jo@studio.example" })).toBe(
       CLOSED_BETA_MESSAGE,
     );
   });

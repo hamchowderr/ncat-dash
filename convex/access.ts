@@ -1,7 +1,13 @@
 import { v } from "convex/values";
 
 import { components } from "./_generated/api";
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  type QueryCtx,
+} from "./_generated/server";
 import { blockOf, rateLimitedMessage, refusalFor, takeAgentTurn } from "./lib/access";
 import { requireMember } from "./lib/authz";
 import { emailKey } from "./lib/emailKey";
@@ -84,22 +90,34 @@ export const userBlocked = internalQuery({
 export const signUpRefusal = internalQuery({
   args: { email: v.string() },
   returns: v.union(v.null(), v.string()),
-  handler: async (ctx, args) => {
-    if (signUpsMode() !== "invite-only") return null;
-    const check = await ctx.runQuery(components.betterAuth.members.signUpCheck, {
-      email: args.email,
-    });
-    if (!check.hasAccounts || check.invited) return null;
-    // Someone the operator invited from Admin, Beta Testers may make their account.
-    const email = normalEmail(args.email);
-    const tester = await ctx.db
-      .query("betaTesters")
-      .withIndex("by_email", (q) => q.eq("email", email))
-      .first();
-    if (tester?.status === "invited") return null;
-    return getEdition() === "hosted" ? CLOSED_BETA_MESSAGE : INVITE_ONLY_MESSAGE;
-  },
+  handler: async (ctx, args) => await refusalForSignUp(ctx, args.email),
 });
+
+/**
+ * The same answer for the sign-up form, asked before it sends anything: with email
+ * confirmation on, a refused sign-up would otherwise look like it worked.
+ */
+export const signUpAllowed = query({
+  args: { email: v.string() },
+  returns: v.union(v.null(), v.string()),
+  handler: async (ctx, args) => await refusalForSignUp(ctx, args.email.slice(0, 254)),
+});
+
+async function refusalForSignUp(ctx: QueryCtx, address: string): Promise<string | null> {
+  if (signUpsMode() !== "invite-only") return null;
+  const check = await ctx.runQuery(components.betterAuth.members.signUpCheck, {
+    email: address,
+  });
+  if (!check.hasAccounts || check.invited) return null;
+  // Someone the operator invited from Admin, Beta Testers may make their account.
+  const email = normalEmail(address);
+  const tester = await ctx.db
+    .query("betaTesters")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .first();
+  if (tester?.status === "invited") return null;
+  return getEdition() === "hosted" ? CLOSED_BETA_MESSAGE : INVITE_ONLY_MESSAGE;
+}
 
 /**
  * Takes one sign-up from the network's allowance and everyone's, on the hosted edition.
