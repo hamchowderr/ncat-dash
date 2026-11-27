@@ -91,6 +91,15 @@ export const convexReact = {
   useAction(action: FunctionReference<"action">) {
     return actionOf(action);
   },
+  /** The client itself, for a one-off query a screen asks for when something is clicked. */
+  useConvex() {
+    return {
+      async query(query: FunctionReference<"query">, args: Record<string, unknown>) {
+        const answer = queries.get(getFunctionName(query));
+        return typeof answer === "function" ? answer(args) : (answer ?? null);
+      },
+    };
+  },
 };
 
 export const presenceReact = { default: () => present };

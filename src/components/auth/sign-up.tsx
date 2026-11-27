@@ -17,7 +17,9 @@ import {
   useFetchOptions,
   useSignUpEmail
 } from "@better-auth-ui/react"
+import { api } from "@convex/_generated/api"
 import { useIsMutating } from "@tanstack/react-query"
+import { useConvex } from "convex/react"
 import { Eye, EyeOff } from "lucide-react"
 import { useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -138,6 +140,11 @@ export function SignUp({
     useState(false)
 
   const [isCompromised, setIsCompromised] = useState(false)
+  // Takewon: on an invite-only copy, why this address can't make an account. Asked
+  // before sending, because with email confirmation on a refused sign-up looks like
+  // it worked ("we sent you a link") when nothing was made.
+  const convex = useConvex()
+  const [refusal, setRefusal] = useState<string | null>(null)
   const signUpFields = useMemo(
     () => additionalFields?.filter((field) => field.signUp) ?? [],
     [additionalFields]
@@ -151,6 +158,11 @@ export function SignUp({
       password: ""
     },
     onSubmit: async ({ value }) => {
+      const refused = await convex
+        .query(api.access.signUpAllowed, { email: value.email.trim() })
+        .catch(() => null)
+      setRefusal(refused)
+      if (refused) return
       try {
         await signUpEmail({
           name: emailAndPassword.name === false ? "" : value.name,
@@ -286,6 +298,7 @@ export function SignUp({
                           />
 
                           <field.AuthFormFieldError />
+                          {refusal && <FieldError>{refusal}</FieldError>}
                         </Field>
                       )
                     }}

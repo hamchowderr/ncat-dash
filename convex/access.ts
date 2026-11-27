@@ -1,14 +1,21 @@
 import { v } from "convex/values";
 
 import { components } from "./_generated/api";
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  type QueryCtx,
+} from "./_generated/server";
 import { blockOf, rateLimitedMessage, refusalFor, takeAgentTurn } from "./lib/access";
 import { requireMember } from "./lib/authz";
 import { emailKey } from "./lib/emailKey";
 import { UNKNOWN_NETWORK } from "./lib/clientIp";
 import { getEdition } from "./lib/edition";
-import { INVITE_ONLY_MESSAGE, signUpsMode } from "./lib/signUps";
+import { CLOSED_BETA_MESSAGE, INVITE_ONLY_MESSAGE, signUpsMode } from "./lib/signUps";
 import { limiter, waitLabel } from "./lib/limits";
+import { normalEmail } from "./lib/news";
 
 const refusal = v.object({
   reason: v.union(
@@ -76,20 +83,41 @@ export const userBlocked = internalQuery({
 
 /**
  * On an invite-only copy (SIGN_UPS=invite-only), what to tell someone who may not make an
- * account: everyone but the first person needs an open invitation to a team. Null when
- * they may.
+ * account: everyone but the first person needs an open invitation to a team, or a beta
+ * invite sent from Admin, Beta Testers. On the hosted Takewon (a closed beta) a stranger
+ * is sent to the beta form on takewon.com. Null when they may.
  */
 export const signUpRefusal = internalQuery({
   args: { email: v.string() },
   returns: v.union(v.null(), v.string()),
-  handler: async (ctx, args) => {
-    if (signUpsMode() !== "invite-only") return null;
-    const check = await ctx.runQuery(components.betterAuth.members.signUpCheck, {
-      email: args.email,
-    });
-    return !check.hasAccounts || check.invited ? null : INVITE_ONLY_MESSAGE;
-  },
+  handler: async (ctx, args) => await refusalForSignUp(ctx, args.email),
 });
+
+/**
+ * The same answer for the sign-up form, asked before it sends anything: with email
+ * confirmation on, a refused sign-up would otherwise look like it worked.
+ */
+export const signUpAllowed = query({
+  args: { email: v.string() },
+  returns: v.union(v.null(), v.string()),
+  handler: async (ctx, args) => await refusalForSignUp(ctx, args.email.slice(0, 254)),
+});
+
+async function refusalForSignUp(ctx: QueryCtx, address: string): Promise<string | null> {
+  if (signUpsMode() !== "invite-only") return null;
+  const check = await ctx.runQuery(components.betterAuth.members.signUpCheck, {
+    email: address,
+  });
+  if (!check.hasAccounts || check.invited) return null;
+  // Someone the operator invited from Admin, Beta Testers may make their account.
+  const email = normalEmail(address);
+  const tester = await ctx.db
+    .query("betaTesters")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .first();
+  if (tester?.status === "invited") return null;
+  return getEdition() === "hosted" ? CLOSED_BETA_MESSAGE : INVITE_ONLY_MESSAGE;
+}
 
 /**
  * Takes one sign-up from the network's allowance and everyone's, on the hosted edition.
