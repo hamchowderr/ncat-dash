@@ -27,6 +27,7 @@ type Settings = {
   edition: string;
   trialDays: number | null;
   inviteOnly: boolean;
+  betaFormUrl: string | null;
   signInWith: { google: boolean };
   emailConfigured: boolean;
   emailVerification: boolean;
@@ -36,6 +37,7 @@ const base: Settings = {
   edition: "self-hosted",
   trialDays: null,
   inviteOnly: false,
+  betaFormUrl: null,
   signInWith: { google: false },
   emailConfigured: false,
   emailVerification: false,
@@ -103,6 +105,21 @@ describe("creating an account", () => {
   test("on an invite-only copy, says an invitation is needed", () => {
     show("signUp", { inviteOnly: true });
     expect(screen.getByText(/invite-only/)).toBeTruthy();
+  });
+
+  test("on the hosted Takewon in its closed beta, points strangers at the beta form", () => {
+    show("signUp", {
+      edition: "hosted",
+      trialDays: 3,
+      inviteOnly: true,
+      betaFormUrl: "https://takewon.com/#early",
+    });
+    expect(screen.getByText(/closed beta/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "join the beta" }).getAttribute("href")).toBe(
+      "https://takewon.com/#early",
+    );
+    // no trial during the beta
+    expect(screen.queryByText(/Free for/)).toBeNull();
   });
 
   test("offers product news with a box that starts unticked, where email is set up", () => {

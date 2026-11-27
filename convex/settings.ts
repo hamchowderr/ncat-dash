@@ -3,7 +3,7 @@ import { requireEmailVerification, socialProviders } from "./lib/signInOptions";
 import { emailConfigured } from "./email";
 import { query } from "./_generated/server";
 import { getEdition } from "./lib/edition";
-import { signUpsMode } from "./lib/signUps";
+import { BETA_FORM_URL, signUpsMode } from "./lib/signUps";
 import { trialDays } from "./lib/trial";
 
 /** Deployment-wide settings the interface needs before anyone signs in. Nothing secret. */
@@ -22,6 +22,8 @@ export const get = query({
       edition: getEdition(),
       trialDays: trialDays(),
       inviteOnly,
+      // On the hosted Takewon, invite-only means a closed beta: strangers ask on the website.
+      betaFormUrl: inviteOnly && getEdition() === "hosted" ? BETA_FORM_URL : null,
       signInWith: { google: "google" in socialProviders() },
       emailConfigured: await emailConfigured(ctx),
       emailVerification: requireEmailVerification(),
