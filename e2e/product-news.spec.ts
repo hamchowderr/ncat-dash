@@ -3,8 +3,8 @@ import { execSync } from "node:child_process";
 import { type Browser, expect, type Page, test } from "./test";
 
 // Product news and announcements in a real browser against a real backend, with toSend
-// played by e2e/tosend-stand-in.mjs: a customer ticks the product news box at sign-up and
-// sees it on in Settings; the operator (OPERATOR_EMAILS) finds them on Subscribers with
+// played by e2e/tosend-stand-in.mjs: sign-up never asks about product news; a customer
+// turns it on in Settings; the operator (OPERATOR_EMAILS) finds them on Subscribers with
 // the words they agreed to, writes an email, sends a test, sends it, and sees it on Sent
 // Emails; the customer's one-click unsubscribe is counted there.
 
@@ -35,19 +35,17 @@ async function signUp(
   browser: Browser,
   name: string,
   email: string,
-  options: { news: boolean; team: string },
+  team: string,
 ): Promise<Page> {
   const page = await (await browser.newContext()).newPage();
   await page.goto("/sign-up");
   await page.locator("#name").fill(name);
   await page.locator("#email").fill(email);
   await page.locator("#password").fill(PASSWORD);
-  const box = page.getByRole("checkbox", { name: /Send me product news and tips/ });
-  await expect(box).not.toBeChecked();
-  if (options.news) await box.check();
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page).toHaveURL(/\/onboarding/, { timeout: 60_000 });
-  await page.getByPlaceholder("Your company or channel").fill(options.team);
+  await page.getByPlaceholder("Your company or channel").fill(team);
   await page.getByRole("button", { name: "Create team" }).click();
   await expect(page.getByRole("heading", { name: "Add your brand" })).toBeVisible({
     timeout: 30_000,
@@ -65,8 +63,8 @@ test.beforeAll(async ({ browser }) => {
   env("TOSEND_API_KEY", "tsend_stand_in");
   env("EMAIL_FROM", "news@example.test");
   env("OPERATOR_EMAILS", OPERATOR);
-  customer = await signUp(browser, "Rosa Lin", CUSTOMER, { news: true, team: "Lin Studio" });
-  operator = await signUp(browser, "Opal Grant", OPERATOR, { news: false, team: "Back Office" });
+  customer = await signUp(browser, "Rosa Lin", CUSTOMER, "Lin Studio");
+  operator = await signUp(browser, "Opal Grant", OPERATOR, "Back Office");
   // Only a confirmed address counts as the operator; these tests don't confirm by email.
   execSync("npx convex run access:confirmExistingEmails", { stdio: "ignore" });
 });
@@ -77,9 +75,11 @@ test.afterAll(async () => {
     env(name);
 });
 
-test("the ticked box at sign-up shows as on in Settings, and only the operator sees Admin", async () => {
+test("product news starts off, the customer turns it on in Settings, and only the operator sees Admin", async () => {
   await customer.goto("/settings/notifications");
   const toggle = customer.getByRole("switch", { name: "Product news" });
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
   await expect(toggle).toBeChecked();
   await expect(customer.getByText(/On since/)).toBeVisible();
   await customer.goto("/");
@@ -99,9 +99,9 @@ test("Subscribers finds the customer, with when and where they agreed", async ()
     .or(operator.getByRole("button", { name: new RegExp(CUSTOMER) }));
   await expect(row.first()).toBeVisible();
   await row.first().click();
-  await expect(operator.getByText("Agreed · Sign-up form")).toBeVisible();
+  await expect(operator.getByText("Agreed · Settings")).toBeVisible();
   await expect(
-    operator.getByText(/Send me product news and tips by email\. I can stop any time\./),
+    operator.getByText(/Product news: new features and tips, a few times a month at most\./),
   ).toBeVisible();
 });
 
