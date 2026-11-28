@@ -113,7 +113,9 @@ describe("who may make an account", () => {
     expect(await t.query(internal.access.signUpRefusal, { email: "stranger@example.test" })).toBe(
       CLOSED_BETA_MESSAGE,
     );
-    expect(CLOSED_BETA_MESSAGE).toMatch(/takewon\.com/);
+    // the beta page, which says what the beta is and what happens after applying
+    expect(CLOSED_BETA_MESSAGE).toMatch(/takewon\.com\/beta/);
+    expect(BETA_FORM_URL).toBe("https://takewon.com/beta");
     const settings = await t.query(api.settings.get, {});
     expect(settings.inviteOnly).toBe(true);
     expect(settings.betaFormUrl).toBe(BETA_FORM_URL);
