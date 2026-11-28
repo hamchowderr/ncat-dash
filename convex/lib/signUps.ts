@@ -1,15 +1,15 @@
 export const INVITE_ONLY_MESSAGE =
   "This dashboard is invite-only. Ask someone on a team here to invite this email address.";
 
-/** The website's "Join the beta" form, where people ask for an invite to the hosted Takewon. */
-export const BETA_FORM_URL = "https://takewon.com/#early";
+/** The website's beta page: what the beta is, what happens after applying, and the form to ask for an invite. */
+export const BETA_FORM_URL = "https://takewon.com/beta";
 
 /**
  * What a stranger is told on the hosted Takewon when sign-ups are invite-only: it is a
  * closed beta, so they ask on the website first and get an invite by email.
  */
 export const CLOSED_BETA_MESSAGE =
-  "Takewon is in a closed beta. Join the beta at takewon.com and you'll get an invite by email.";
+  "Takewon is in a closed beta. Join the beta at takewon.com/beta and you'll get an invite by email.";
 
 /**
  * Who may make an account, set with SIGN_UPS:

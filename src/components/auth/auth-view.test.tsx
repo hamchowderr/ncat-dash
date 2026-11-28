@@ -112,11 +112,11 @@ describe("creating an account", () => {
       edition: "hosted",
       trialDays: 3,
       inviteOnly: true,
-      betaFormUrl: "https://takewon.com/#early",
+      betaFormUrl: "https://takewon.com/beta",
     });
     expect(screen.getByText(/closed beta/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "join the beta" }).getAttribute("href")).toBe(
-      "https://takewon.com/#early",
+      "https://takewon.com/beta",
     );
     // no trial during the beta
     expect(screen.queryByText(/Free for/)).toBeNull();
@@ -126,11 +126,11 @@ describe("creating an account", () => {
     show("signUp", {
       edition: "hosted",
       inviteOnly: true,
-      betaFormUrl: "https://takewon.com/#early",
+      betaFormUrl: "https://takewon.com/beta",
     });
     answerQuery(api.access.signUpAllowed, ({ email }: Record<string, unknown>) =>
       email === "stranger@example.test"
-        ? "Takewon is in a closed beta. Join the beta at takewon.com and you'll get an invite by email."
+        ? "Takewon is in a closed beta. Join the beta at takewon.com/beta and you'll get an invite by email."
         : null,
     );
     fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam Lee" } });
@@ -149,7 +149,7 @@ describe("creating an account", () => {
     show("signUp", {
       edition: "hosted",
       inviteOnly: true,
-      betaFormUrl: "https://takewon.com/#early",
+      betaFormUrl: "https://takewon.com/beta",
     });
     answerQuery(api.access.signUpAllowed, null);
     fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Jo Park" } });
