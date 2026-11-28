@@ -50,8 +50,8 @@ export function HelpView() {
   const search = useSearchParams();
   const requests = useQuery(api.support.mine, {});
   const contact = useQuery(api.support.contact, {});
-  // Only a team's owners and admins file requests (convex/support.ts).
-  const canFile = useQuery(api.support.canFile, { organizationId: team.id });
+  // Anyone on the team asks questions; only its owners and admins report problems.
+  const canReport = useQuery(api.support.canReportProblem, { organizationId: team.id });
   const selected = search.get("ticket");
   const none = requests !== undefined && requests.length === 0;
   const problem = search.get("new") === "problem";
@@ -70,7 +70,7 @@ export function HelpView() {
 
   const showingDetail = Boolean(selected) || writing;
   const form =
-    canFile === false ? (
+    problem && canReport === false ? (
       <OwnersOnly />
     ) : (
       <NewRequest
@@ -93,12 +93,14 @@ export function HelpView() {
             Ask a question or tell us what went wrong. We answer here, and email you when we do.
           </p>
         </div>
-        {canFile && requests !== undefined && !(writing && !none) && (
+        {requests !== undefined && !(writing && !none) && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => go({ new: "problem", ticket: null })}>
-              <Bug />
-              Report a problem
-            </Button>
+            {canReport && (
+              <Button variant="outline" onClick={() => go({ new: "problem", ticket: null })}>
+                <Bug />
+                Report a problem
+              </Button>
+            )}
             {!none && (
               <Button onClick={() => go({ new: "1", ticket: null })}>
                 <Plus />
@@ -155,11 +157,11 @@ export function HelpView() {
   );
 }
 
-/** In place of the form for a team member: requests come from the team's owners and admins. */
+/** In place of Report a problem for a team member: problems come from owners and admins. */
 function OwnersOnly() {
   return (
     <p className="text-muted-foreground bg-surface rounded-xl px-5 py-8 text-sm" data-owners-only>
-      Only a team owner or admin can send a request. Ask one of them, or ask the assistant.
+      Only a team owner or admin can report a problem. Ask one of them, or ask a question.
     </p>
   );
 }
@@ -366,6 +368,7 @@ function NewRequest({
         body,
         ...(page ? { page } : {}),
         ...(browser ? { browser } : {}),
+        ...(problem ? { problem } : {}),
       });
       onSent(ticketId);
     } catch (caught) {

@@ -299,30 +299,45 @@ describe("support tickets in the app", () => {
 });
 
 describe("who can file, and what a report keeps", () => {
-  test("team owners and admins can file; a team member is forbidden", async () => {
+  test("only team owners and admins report a problem", async () => {
     const { t, teamId, ana, bo } = await setUp();
     const owner = await addPerson(t, "Cy Owner", [teamId], "owner");
-    expect(await ana.as.query(api.support.canFile, { organizationId: teamId })).toBe(true);
-    expect(await owner.as.query(api.support.canFile, { organizationId: teamId })).toBe(true);
-    expect(await bo.as.query(api.support.canFile, { organizationId: teamId })).toBe(false);
+    const may = { organizationId: teamId };
+    expect(await ana.as.query(api.support.canReportProblem, may)).toBe(true);
+    expect(await owner.as.query(api.support.canReportProblem, may)).toBe(true);
+    expect(await bo.as.query(api.support.canReportProblem, may)).toBe(false);
 
     await owner.as.mutation(api.support.open, {
       organizationId: teamId,
       subject: "Uploads stall",
       body: "Big files stop at 90%.",
+      problem: true,
     });
     await expect(
-      bo.as.mutation(api.support.open, { organizationId: teamId, subject: "S", body: "B" }),
-    ).rejects.toThrow(/owner or admin/);
-    await expect(
-      t.mutation(internal.support.openAs, {
+      bo.as.mutation(api.support.open, {
         organizationId: teamId,
-        userId: bo.id,
         subject: "S",
         body: "B",
+        problem: true,
       }),
     ).rejects.toThrow(/owner or admin/);
     expect(await emails(t)).toHaveLength(1);
+  });
+
+  test("a team member still asks ordinary questions, from Get Help and over MCP", async () => {
+    const { t, teamId, bo, staff } = await setUp();
+    await bo.as.mutation(api.support.open, {
+      organizationId: teamId,
+      subject: "Where are my clips?",
+      body: "Last week's clips are missing.",
+    });
+    await t.mutation(internal.support.openAs, {
+      organizationId: teamId,
+      userId: bo.id,
+      subject: "Captions",
+      body: "How do I change the caption font?",
+    });
+    expect((await staff.as.query(api.support.inbox, { status: "open" })).tickets).toHaveLength(2);
   });
 
   test("a report keeps category, page, team, description, the failed run id and its step log", async () => {
@@ -381,6 +396,7 @@ describe("who can file, and what a report keeps", () => {
       subject: "Clips fail",
       body: "Weekly Clips fails every time.",
       page: "/runs",
+      problem: true,
     });
     const full = await staff.as.query(api.support.staffConversation, { ticketId });
     expect(full?.ticket.category).toBe("automations");
@@ -395,6 +411,18 @@ describe("who can file, and what a report keeps", () => {
         "- Cut clips: failed: The toolkit timed out",
       ].join("\n"),
     });
+
+    // An ordinary question keeps no failed run id or step log.
+    const question = await ana.as.mutation(api.support.open, {
+      organizationId: teamId,
+      subject: "Fonts",
+      body: "Which caption fonts are there?",
+    });
+    const asked = await staff.as.query(api.support.staffConversation, {
+      ticketId: question.ticketId,
+    });
+    expect(asked?.context?.stepLog).toBeUndefined();
+    expect(asked?.context?.failedRunId).toBeUndefined();
   });
 });
 

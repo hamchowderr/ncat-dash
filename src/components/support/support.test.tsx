@@ -163,7 +163,7 @@ describe("Get Help", () => {
     place.pathname = "/help";
     place.search = "";
     answerQuery(api.support.mine, [request({ unread: false })]);
-    answerQuery(api.support.canFile, true);
+    answerQuery(api.support.canReportProblem, true);
     renderInApp(<HelpView />);
     fireEvent.click(screen.getByRole("button", { name: "Report a problem" }));
     expect(replaced).toHaveBeenCalledWith("/help?new=problem", { scroll: false });
@@ -173,7 +173,7 @@ describe("Get Help", () => {
     place.pathname = "/help";
     place.search = "new=problem";
     answerQuery(api.support.mine, [request({ unread: false })]);
-    answerQuery(api.support.canFile, true);
+    answerQuery(api.support.canReportProblem, true);
     renderInApp(<HelpView />);
     expect(screen.getByRole("form", { name: "Report a problem" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Report a problem" })).toBeTruthy();
@@ -183,15 +183,34 @@ describe("Get Help", () => {
     expect(screen.getByText(/steps of\s+your latest failed run/)).toBeTruthy();
   });
 
-  test("a team member is told to ask an owner or admin, with no form", () => {
+  test("a team member asks questions but gets no Report a problem button", () => {
+    place.pathname = "/help";
+    place.search = "";
+    answerQuery(api.support.mine, [request({ unread: false })]);
+    answerQuery(api.support.canReportProblem, false);
+    renderInApp(<HelpView />);
+    expect(screen.getByRole("button", { name: "New question" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Report a problem" })).toBeNull();
+  });
+
+  test("a team member with no requests yet sees the question form", () => {
     place.pathname = "/help";
     place.search = "";
     answerQuery(api.support.mine, []);
-    answerQuery(api.support.canFile, false);
+    answerQuery(api.support.canReportProblem, false);
     renderInApp(<HelpView />);
-    expect(screen.getByText(/Only a team owner or admin can send a request/)).toBeTruthy();
-    expect(screen.queryByLabelText("Subject")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Report a problem" })).toBeNull();
+    expect(screen.getByRole("form", { name: "Ask a new question" })).toBeTruthy();
+    expect(screen.queryByText(/Only a team owner or admin can report a problem/)).toBeNull();
+  });
+
+  test("a team member sent to Report a problem is told to ask an owner or admin", () => {
+    place.pathname = "/help";
+    place.search = "new=problem";
+    answerQuery(api.support.mine, [request({ unread: false })]);
+    answerQuery(api.support.canReportProblem, false);
+    renderInApp(<HelpView />);
+    expect(screen.getByText(/Only a team owner or admin can report a problem/)).toBeTruthy();
+    expect(screen.queryByRole("form", { name: "Report a problem" })).toBeNull();
   });
 
   test("a request the Factory fixed shows as Fixed to the customer", () => {

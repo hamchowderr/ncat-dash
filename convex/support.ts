@@ -189,6 +189,8 @@ async function openRequest(
     via?: SupportVia;
     page?: string;
     browser?: string;
+    /** A problem report: keeps the latest failed run's id and step log. */
+    problem?: boolean;
   },
 ) {
   await spend(ctx, asker._id);
@@ -218,8 +220,10 @@ async function openRequest(
   }
   if (failed) {
     context.latestFailedRun = `${failed.automationName} (${failed._id})${failed.error ? `: ${failed.error.slice(0, 300)}` : ""}`;
-    context.failedRunId = failed._id;
-    context.stepLog = await stepLogOf(ctx, failed);
+    if (args.problem) {
+      context.failedRunId = failed._id;
+      context.stepLog = await stepLogOf(ctx, failed);
+    }
   }
 
   const opened = await support.open(ctx, {
@@ -243,8 +247,11 @@ async function openRequest(
 
 const opened = v.object({ ticketId: v.string(), number: v.number(), address: v.string() });
 
-/** Whether the caller may file a request for this team: its owners and admins only. */
-export const canFile = query({
+/**
+ * Whether the caller may report a problem for this team: its owners and admins only.
+ * Anyone on the team may ask an ordinary question.
+ */
+export const canReportProblem = query({
   args: { organizationId: v.string() },
   returns: v.boolean(),
   handler: async (ctx, args) => {
@@ -271,11 +278,12 @@ export const open = mutation({
     via: v.optional(v.literal("assistant")),
     page: v.optional(v.string()),
     browser: v.optional(v.string()),
+    /** From Report a problem, which only a team's owners and admins may use. */
+    problem: v.optional(v.boolean()),
   },
   returns: opened,
   handler: async (ctx, args) => {
-    // Only a team's owners and admins file requests; a member asks one of them.
-    await requireMember(ctx, args.organizationId, MANAGER_ROLES);
+    await requireMember(ctx, args.organizationId, args.problem ? MANAGER_ROLES : undefined);
     const caller = await signedIn(ctx);
     return await openRequest(ctx, caller, args);
   },
@@ -301,12 +309,6 @@ export const openAs = internalMutation({
     ]);
     if (!role || !person) {
       throw new ConvexError({ code: "forbidden", message: "You are not on this team." });
-    }
-    if (!MANAGER_ROLES.includes(role as TeamRole)) {
-      throw new ConvexError({
-        code: "forbidden",
-        message: "Only a team owner or admin can do this.",
-      });
     }
     return await openRequest(ctx, { _id: userId, ...person }, { ...args, via: "mcp" });
   },

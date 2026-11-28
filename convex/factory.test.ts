@@ -38,6 +38,7 @@ async function setUp() {
         subject,
         body,
         page: "/runs",
+        problem: true,
       })
     ).ticketId;
   const send = (ticketId: string, summary: string) =>
