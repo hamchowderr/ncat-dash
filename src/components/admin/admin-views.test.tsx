@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test } from "vitest";
 
 import { actionOf, answerQuery, mutationOf } from "@/test/convex";
 
+import { PlatformAdminEyebrow } from "./operator-only";
 import { SendEmailView } from "./send-email-view";
 import { countsLine, SentEmailsView, SentEmailView } from "./sent-emails-view";
 import { SubscribersView } from "./subscribers-view";
@@ -42,12 +43,22 @@ beforeEach(() => {
   });
 });
 
-describe("the Admin pages", () => {
+describe("the Platform Admin pages", () => {
   test("tell anyone who isn't the operator that the page isn't for them", () => {
     answerQuery(api.operator.me, false);
     render(<SendEmailView />);
+    expect(screen.getByRole("heading", { name: "Platform Admin" })).toBeTruthy();
     expect(screen.getByText(/Only the people who run this copy/)).toBeTruthy();
     expect(screen.queryByLabelText("Subject")).toBeNull();
+  });
+
+  test("say Platform Admin above their heading, for the operator only", () => {
+    const { unmount } = render(<PlatformAdminEyebrow />);
+    expect(screen.getByText("Platform Admin")).toBeTruthy();
+    unmount();
+    answerQuery(api.operator.me, false);
+    render(<PlatformAdminEyebrow />);
+    expect(screen.queryByText("Platform Admin")).toBeNull();
   });
 });
 

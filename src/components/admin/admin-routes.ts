@@ -1,7 +1,7 @@
 import { FlaskConical, History, LifeBuoy, Send, Users, type LucideIcon } from "lucide-react";
 
 /**
- * The Admin pages in the side menu. Only the operator (whoever runs this copy, see
+ * The Platform Admin pages in the side menu. Only the operator (whoever runs this copy, see
  * convex/lib/operator.ts) sees them. Add a page by adding an entry here.
  */
 export type AdminRoute = { title: string; url: string; icon: LucideIcon };

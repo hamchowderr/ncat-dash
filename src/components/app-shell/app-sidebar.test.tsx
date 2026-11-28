@@ -75,7 +75,7 @@ describe("the Admin pages in the menu", () => {
     answerQuery(api.toolkitHealth.shown, true);
     answerQuery(api.operator.me, true);
     sidebar();
-    expect(screen.getByText("Admin")).toBeTruthy();
+    expect(screen.getByText("Platform Admin")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Send An Email" }).getAttribute("href")).toBe(
       "/admin/emails/new",
     );
@@ -87,7 +87,7 @@ describe("the Admin pages in the menu", () => {
     answerQuery(api.toolkitHealth.shown, true);
     answerQuery(api.operator.me, false);
     sidebar();
-    expect(screen.queryByText("Admin")).toBeNull();
+    expect(screen.queryByText("Platform Admin")).toBeNull();
     expect(screen.queryByRole("link", { name: "Sent Emails" })).toBeNull();
   });
 });

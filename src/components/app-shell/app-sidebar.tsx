@@ -257,7 +257,8 @@ export function AppSidebar({
   const toolkitShown = useQuery(api.toolkitHealth.shown, { organizationId: team.id });
   const builder =
     toolkitShown === false ? navBuilder.filter((item) => item.url !== "/toolkit") : navBuilder;
-  // Only whoever runs this copy sees the Admin pages.
+  // Only whoever runs this copy sees the Platform Admin pages. "Platform" keeps them apart
+  // from a team's own admin role; the code calls this person the operator.
   const operator = useQuery(api.operator.me, {}) === true;
   const activeUrl = adminRouteFor(pathname)?.url ?? navItemFor(pathname).url;
 
@@ -273,7 +274,7 @@ export function AppSidebar({
           {[
             { label: null, items: navEveryday },
             { label: "Builder", items: builder },
-            ...(operator ? [{ label: "Admin", items: adminRoutes }] : []),
+            ...(operator ? [{ label: "Platform Admin", items: adminRoutes }] : []),
           ].map((group) => (
             <SidebarGroup
               key={group.label ?? "everyday"}
