@@ -11,6 +11,7 @@ Takewon works with [the toolkit fork](https://github.com/hamchowderr/no-code-arc
 - **Running your own copy:** [docs/self-hosting.md](docs/self-hosting.md), with the whole stack in one file at [deploy/compose.yml](deploy/compose.yml).
 - **The desktop app (Mac, Windows, Linux):** [docs/desktop-app.md](docs/desktop-app.md).
 - **Starting an automation from another app (n8n, a script):** [docs/webhooks.md](docs/webhooks.md).
+- **Sending support requests to a coding Factory:** [docs/factory.md](docs/factory.md).
 - **An AI agent setting up or changing this project:** [AGENTS.md](AGENTS.md).
 - **Developing:** Run it locally, below, and Checks.
 

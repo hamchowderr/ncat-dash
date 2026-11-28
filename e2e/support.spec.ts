@@ -10,6 +10,9 @@ const PASSWORD = "support-e2e-1";
 const stamp = Date.now().toString(36);
 const emailOf = (name: string) => `${name}.${stamp}@example.test`;
 const OPERATOR = emailOf("operator");
+// The token a coding Factory sends to read requests a platform admin sent it (docs/factory.md).
+const FACTORY_TOKEN = `factory-e2e-${stamp}`;
+const CONVEX_SITE = "http://127.0.0.1:3211";
 // RECORD_VIDEO=dir keeps a recording of each window; SHOTS=dir saves screenshots.
 const RECORD = process.env.RECORD_VIDEO;
 const SHOTS = process.env.SHOTS;
@@ -56,6 +59,7 @@ test.beforeAll(async ({ browser }) => {
   operator = await signUp(browser, "Chris Park", OPERATOR, "Support Desk");
   // Whoever runs this copy, with a confirmed address.
   execSync(`npx convex env set OPERATOR_EMAILS ${OPERATOR}`, { stdio: "ignore" });
+  execSync(`npx convex env set FACTORY_INTAKE_TOKEN ${FACTORY_TOKEN}`, { stdio: "ignore" });
   run(
     "adapter:updateMany",
     {
@@ -72,6 +76,7 @@ test.beforeAll(async ({ browser }) => {
 
 test.afterAll(async () => {
   execSync("npx convex env remove OPERATOR_EMAILS", { stdio: "ignore" });
+  execSync("npx convex env remove FACTORY_INTAKE_TOKEN", { stdio: "ignore" });
   for (const page of [ana, operator]) await page?.context().close();
 });
 
@@ -169,6 +174,50 @@ test("the answer shows beside Get Help; the private note never reaches the custo
 
   await operator.goto("/admin/support?status=closed");
   await expect(operator.getByRole("button", { name: /Ana Reyes/ }).first()).toBeVisible();
+});
+
+test("the platform admin sends it to the Factory, which reads it and reports it fixed", async () => {
+  await operator.goto("/admin/support?status=closed");
+  await expect(operator.getByText("Platform Admin").first()).toBeVisible();
+  await operator
+    .getByRole("button", { name: /Ana Reyes/ })
+    .first()
+    .click();
+  const summary = operator.getByLabel("Summary for the Factory");
+  await expect(summary).toHaveValue("Captions are a second late");
+  // The repository is public: the customer's name can't go in the summary.
+  await summary.fill("Ana Reyes sees late captions");
+  await operator.getByRole("button", { name: "Send to Factory" }).click();
+  await expect(operator.getByRole("alert")).toContainText(/name/);
+  await summary.fill(`Captions show a second late, run ${stamp}`);
+  await operator.getByRole("button", { name: "Send to Factory" }).click();
+  await expect(operator.getByText(/Sent to Factory .* by Chris Park/)).toBeVisible();
+  await shot(operator, "Support Sent To Factory");
+
+  const bearer = { authorization: `Bearer ${FACTORY_TOKEN}` };
+  expect((await fetch(`${CONVEX_SITE}/factory/tickets`)).status).toBe(403);
+  const listed = (await (
+    await fetch(`${CONVEX_SITE}/factory/tickets`, { headers: bearer })
+  ).json()) as {
+    tickets: { id: string; title: string; description?: string }[];
+  };
+  const ticket = listed.tickets.find(
+    (each) => each.title === `Captions show a second late, run ${stamp}`,
+  );
+  expect(ticket).toBeTruthy();
+  expect(JSON.stringify(ticket)).not.toContain("Ana");
+  const fixed = await fetch(`${CONVEX_SITE}/factory/tickets/${ticket!.id}/fixed`, {
+    method: "POST",
+    headers: { ...bearer, "content-type": "application/json" },
+    body: JSON.stringify({ beadId: "dash-e2e", reason: "Caption timing fixed" }),
+  });
+  expect(fixed.status).toBe(200);
+
+  await expect(operator.getByText("Caption timing fixed")).toBeVisible();
+  await expect(operator.getByText(/dash-e2e/)).toBeVisible();
+  await ana.goto("/help");
+  await expect(ana.getByText("Fixed").first()).toBeVisible();
+  await shot(ana, "Get Help Fixed");
 });
 
 const sse = (events: object[]) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");

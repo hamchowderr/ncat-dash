@@ -230,8 +230,60 @@ describe("handing a ticket to an outside fixer", () => {
     expect(second.handoff?.sentAt).toBe(first.handoff?.sentAt);
     expect(second.handoff!.updatedAt).toBeGreaterThanOrEqual(first.handoff!.updatedAt);
 
-    await expect(t.mutation(api.tickets.handOff, { ticketId, summary: " ", ...by })).rejects.toThrow(
-      /summary/,
-    );
+    await expect(
+      t.mutation(api.tickets.handOff, { ticketId, summary: " ", ...by }),
+    ).rejects.toThrow(/summary/);
+  });
+});
+
+describe("the fixer's side", () => {
+  const by = { sentById: "staff_1", sentByName: "Sam" };
+
+  test("lists sent, unfixed tickets oldest first, a page at a time", async () => {
+    const t = backend();
+    const ids = [];
+    for (const subject of ["One", "Two", "Three"]) {
+      const { ticketId } = await t.mutation(api.tickets.open, { ...ana, subject, body: "B" });
+      await t.mutation(api.tickets.handOff, { ticketId, summary: subject, ...by });
+      ids.push(ticketId);
+    }
+    await t.mutation(api.tickets.open, { ...ana, subject: "Not sent", body: "B" });
+    const first = await t.query(api.tickets.listHandedOff, { limit: 2 });
+    expect(first.tickets.map((each) => each._id)).toEqual(ids.slice(0, 2));
+    expect(first.next).toEqual(expect.any(Number));
+    const second = await t.query(api.tickets.listHandedOff, { limit: 2, after: first.next! });
+    expect(second.tickets.map((each) => each._id)).toEqual([ids[2]]);
+    expect(second.next).toBeNull();
+  });
+
+  test("markFixed fixes once, says already after, and missing for unknown or unsent", async () => {
+    const t = backend();
+    const { ticketId } = await t.mutation(api.tickets.open, { ...ana, subject: "S", body: "B" });
+    const fix = { workId: "dash-1", reason: "Fixed it" };
+    expect(await t.mutation(api.tickets.markFixed, { ticketId, ...fix })).toBe("missing");
+    expect(await t.mutation(api.tickets.markFixed, { ticketId: "nope", ...fix })).toBe("missing");
+    await t.mutation(api.tickets.handOff, { ticketId, summary: "S", ...by });
+    expect(await t.mutation(api.tickets.markFixed, { ticketId, ...fix, fixedAt: 5 })).toBe("fixed");
+    expect(await t.mutation(api.tickets.markFixed, { ticketId, ...fix })).toBe("already");
+    const got = (await t.query(api.tickets.get, { ticketId }))!.ticket;
+    expect(got.handoffStatus).toBe("fixed");
+    expect(got.handoff).toMatchObject({ workId: "dash-1", reason: "Fixed it", fixedAt: 5 });
+    expect((await t.query(api.tickets.listHandedOff, {})).tickets).toEqual([]);
+  });
+
+  test("find takes any string and never returns private notes", async () => {
+    const t = backend();
+    const { ticketId } = await t.mutation(api.tickets.open, { ...ana, subject: "S", body: "B" });
+    await t.mutation(api.tickets.reply, {
+      ticketId,
+      from: "staff",
+      authorId: "staff_1",
+      authorName: "Sam",
+      body: "Note",
+      private: true,
+    });
+    expect(await t.query(api.tickets.find, { ticketId: "not-an-id" })).toBeNull();
+    const found = await t.query(api.tickets.find, { ticketId });
+    expect(found?.messages.map((m) => m.body)).toEqual(["B"]);
   });
 });

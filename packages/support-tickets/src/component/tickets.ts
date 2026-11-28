@@ -8,7 +8,13 @@ import { messageFields, side, status, ticketFields } from "./schema.js";
 // knows nothing about who is signed in. The app decides who may call what (a customer
 // sees only their own tickets, support staff see all) and passes plain ids and names in.
 
-export const LIMITS = { subject: 200, body: 10_000, preview: 160, label: 60 } as const;
+export const LIMITS = {
+  subject: 200,
+  body: 10_000,
+  preview: 160,
+  label: 60,
+  reason: 2_000,
+} as const;
 
 /** A category or channel name: short, or left out when empty. */
 function label(value: string | undefined): string | undefined {
@@ -210,6 +216,79 @@ export const handOff = mutation({
       },
     });
     return null;
+  },
+});
+
+/**
+ * The fixer reports a sent ticket fixed, with its own id for the work and how it ended.
+ * Saying it again changes nothing. "missing" when there is no such sent ticket.
+ */
+export const markFixed = mutation({
+  args: {
+    ticketId: v.string(),
+    workId: v.string(),
+    reason: v.string(),
+    fixedAt: v.optional(v.number()),
+  },
+  returns: v.union(v.literal("fixed"), v.literal("already"), v.literal("missing")),
+  handler: async (ctx, args) => {
+    const id = ctx.db.normalizeId("tickets", args.ticketId);
+    const found = id ? await ctx.db.get(id) : null;
+    if (!found?.handoff || !found.handoffStatus) return "missing";
+    if (found.handoffStatus === "fixed") return "already";
+    const now = Date.now();
+    await ctx.db.patch(found._id, {
+      handoffStatus: "fixed",
+      handoff: {
+        ...found.handoff,
+        workId: args.workId.trim().slice(0, LIMITS.label),
+        reason: args.reason.trim().slice(0, LIMITS.reason),
+        fixedAt: args.fixedAt ?? now,
+        updatedAt: now,
+      },
+    });
+    return "fixed";
+  },
+});
+
+/**
+ * Tickets sent to the fixer and not fixed yet, oldest first, a page at a time: pass the
+ * `next` of one page as `after` for the following one. `next` is null on the last page.
+ */
+export const listHandedOff = query({
+  args: { after: v.optional(v.number()), limit: v.optional(v.number()) },
+  returns: v.object({ tickets: v.array(ticket), next: v.union(v.null(), v.number()) }),
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(args.limit ?? 50, 200));
+    const page = await ctx.db
+      .query("tickets")
+      .withIndex("by_handoff", (q) =>
+        args.after === undefined
+          ? q.eq("handoffStatus", "sent")
+          : q.eq("handoffStatus", "sent").gt("_creationTime", args.after),
+      )
+      .take(limit + 1);
+    const tickets = page.slice(0, limit);
+    return {
+      tickets,
+      next: page.length > limit ? tickets[tickets.length - 1]!._creationTime : null,
+    };
+  },
+});
+
+/** A ticket by an id from outside, which may be malformed: null when there is none. */
+export const find = query({
+  args: { ticketId: v.string() },
+  returns: v.union(v.null(), v.object({ ticket, messages: v.array(message) })),
+  handler: async (ctx, args) => {
+    const id = ctx.db.normalizeId("tickets", args.ticketId);
+    const found = id ? await ctx.db.get(id) : null;
+    if (!found) return null;
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_ticket", (q) => q.eq("ticketId", found._id))
+      .collect();
+    return { ticket: found, messages: messages.filter((m) => !m.private) };
   },
 });
 

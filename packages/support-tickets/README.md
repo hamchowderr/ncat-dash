@@ -94,7 +94,8 @@ export const answer = mutation({
 
 The full API: `open`, `reply`, `close`, `reopen`, `markRead`, `get` (with
 `{ withPrivate: true }` for staff), `byNumber`, `listForRequester`, `listByStatus`,
-`staffCounts`, `customerUnread`, `handOff`, `removeForRequester` and `removeForScope`.
+`staffCounts`, `customerUnread`, `handOff`, `markFixed`, `listHandedOff`, `find`,
+`removeForRequester` and `removeForScope`.
 
 ## Testing with convex-test
 

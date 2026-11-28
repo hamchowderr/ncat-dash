@@ -69,6 +69,56 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         number,
         Name
       >;
+      find: FunctionReference<
+        "query",
+        "internal",
+        { ticketId: string },
+        null | {
+          messages: Array<{
+            _creationTime: number;
+            _id: string;
+            authorId: string;
+            authorName: string;
+            body: string;
+            from: "customer" | "staff";
+            private: boolean;
+            ticketId: string;
+          }>;
+          ticket: {
+            _creationTime: number;
+            _id: string;
+            category?: string;
+            closedAt?: number;
+            context?: Record<string, string>;
+            customerUnread: boolean;
+            handoff?: {
+              fixedAt?: number;
+              reason?: string;
+              sentAt: number;
+              sentById: string;
+              sentByName: string;
+              summary: string;
+              updatedAt: number;
+              workId?: string;
+            };
+            handoffStatus?: "sent" | "fixed";
+            lastMessageAt: number;
+            lastPublicFrom: "customer" | "staff";
+            messageCount: number;
+            number: number;
+            preview: string;
+            requesterEmail: string;
+            requesterId: string;
+            requesterName: string;
+            scope?: string;
+            staffUnread: boolean;
+            status: "open" | "closed";
+            subject: string;
+            via?: string;
+          };
+        },
+        Name
+      >;
       get: FunctionReference<
         "query",
         "internal",
@@ -205,6 +255,54 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           subject: string;
           via?: string;
         }>,
+        Name
+      >;
+      listHandedOff: FunctionReference<
+        "query",
+        "internal",
+        { after?: number; limit?: number },
+        {
+          next: null | number;
+          tickets: Array<{
+            _creationTime: number;
+            _id: string;
+            category?: string;
+            closedAt?: number;
+            context?: Record<string, string>;
+            customerUnread: boolean;
+            handoff?: {
+              fixedAt?: number;
+              reason?: string;
+              sentAt: number;
+              sentById: string;
+              sentByName: string;
+              summary: string;
+              updatedAt: number;
+              workId?: string;
+            };
+            handoffStatus?: "sent" | "fixed";
+            lastMessageAt: number;
+            lastPublicFrom: "customer" | "staff";
+            messageCount: number;
+            number: number;
+            preview: string;
+            requesterEmail: string;
+            requesterId: string;
+            requesterName: string;
+            scope?: string;
+            staffUnread: boolean;
+            status: "open" | "closed";
+            subject: string;
+            via?: string;
+          }>;
+        },
+        Name
+      >;
+      markFixed: FunctionReference<
+        "mutation",
+        "internal",
+        { fixedAt?: number; reason: string; ticketId: string; workId: string },
+        "fixed" | "already" | "missing",
         Name
       >;
       markRead: FunctionReference<
