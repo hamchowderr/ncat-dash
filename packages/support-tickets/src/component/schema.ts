@@ -5,6 +5,27 @@ import { v } from "convex/values";
 export const side = v.union(v.literal("customer"), v.literal("staff"));
 export const status = v.union(v.literal("open"), v.literal("closed"));
 
+/**
+ * Where a ticket stands with an outside fixer (such as a coding agent's work queue):
+ * "sent" once staff hand it over, "fixed" once the fixer reports it done.
+ */
+export const handoffStatus = v.union(v.literal("sent"), v.literal("fixed"));
+
+/** The handover: the public-safe summary staff wrote, who sent it, and the fixer's answer. */
+export const handoffFields = v.object({
+  /** A short summary safe to show in public (a pull request title): no names, no emails. */
+  summary: v.string(),
+  sentAt: v.number(),
+  sentById: v.string(),
+  sentByName: v.string(),
+  /** Changes whenever the handover does, so the fixer can tell an edited one. */
+  updatedAt: v.number(),
+  /** What the fixer filed it as (its own id) and how it ended, once fixed. */
+  workId: v.optional(v.string()),
+  reason: v.optional(v.string()),
+  fixedAt: v.optional(v.number()),
+});
+
 export const ticketFields = {
   /** A short number people can quote ("ticket 42"), counted up from 1. */
   number: v.number(),
@@ -37,6 +58,9 @@ export const ticketFields = {
   staffUnread: v.boolean(),
   messageCount: v.number(),
   closedAt: v.optional(v.number()),
+  /** Set once staff send the ticket to an outside fixer. */
+  handoffStatus: v.optional(handoffStatus),
+  handoff: v.optional(handoffFields),
 };
 
 export const messageFields = {
@@ -55,7 +79,9 @@ export default defineSchema({
     .index("by_status", ["status", "lastMessageAt"])
     .index("by_status_and_category", ["status", "category", "lastMessageAt"])
     .index("by_scope", ["scope"])
-    .index("by_number", ["number"]),
+    .index("by_number", ["number"])
+    // Sent tickets, oldest first, for the fixer to page through.
+    .index("by_handoff", ["handoffStatus"]),
   messages: defineTable(messageFields).index("by_ticket", ["ticketId"]),
   // The next ticket number, in one row.
   counters: defineTable({ name: v.string(), next: v.number() }).index("by_name", ["name"]),

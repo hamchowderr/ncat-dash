@@ -125,6 +125,22 @@ export class SupportTickets {
     });
   }
 
+  /**
+   * Hands a ticket to an outside fixer (a coding agent's queue, say) with a summary safe
+   * to show in public, or changes the summary of one already sent.
+   */
+  async handOff(
+    ctx: RunMutation,
+    args: { ticketId: string; summary: string; by: { id: string; name: string } },
+  ): Promise<void> {
+    await ctx.runMutation(this.component.tickets.handOff, {
+      ticketId: args.ticketId,
+      summary: args.summary,
+      sentById: args.by.id,
+      sentByName: args.by.name,
+    });
+  }
+
   async markRead(ctx: RunMutation, ticketId: string, by: Side): Promise<void> {
     await ctx.runMutation(this.component.tickets.markRead, { ticketId, by });
   }

@@ -35,6 +35,17 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           closedAt?: number;
           context?: Record<string, string>;
           customerUnread: boolean;
+          handoff?: {
+            fixedAt?: number;
+            reason?: string;
+            sentAt: number;
+            sentById: string;
+            sentByName: string;
+            summary: string;
+            updatedAt: number;
+            workId?: string;
+          };
+          handoffStatus?: "sent" | "fixed";
           lastMessageAt: number;
           lastPublicFrom: "customer" | "staff";
           messageCount: number;
@@ -80,6 +91,17 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             closedAt?: number;
             context?: Record<string, string>;
             customerUnread: boolean;
+            handoff?: {
+              fixedAt?: number;
+              reason?: string;
+              sentAt: number;
+              sentById: string;
+              sentByName: string;
+              summary: string;
+              updatedAt: number;
+              workId?: string;
+            };
+            handoffStatus?: "sent" | "fixed";
             lastMessageAt: number;
             lastPublicFrom: "customer" | "staff";
             messageCount: number;
@@ -97,6 +119,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         },
         Name
       >;
+      handOff: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          sentById: string;
+          sentByName: string;
+          summary: string;
+          ticketId: string;
+        },
+        null,
+        Name
+      >;
       listByRequester: FunctionReference<
         "query",
         "internal",
@@ -108,6 +142,17 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           closedAt?: number;
           context?: Record<string, string>;
           customerUnread: boolean;
+          handoff?: {
+            fixedAt?: number;
+            reason?: string;
+            sentAt: number;
+            sentById: string;
+            sentByName: string;
+            summary: string;
+            updatedAt: number;
+            workId?: string;
+          };
+          handoffStatus?: "sent" | "fixed";
           lastMessageAt: number;
           lastPublicFrom: "customer" | "staff";
           messageCount: number;
@@ -135,6 +180,17 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           closedAt?: number;
           context?: Record<string, string>;
           customerUnread: boolean;
+          handoff?: {
+            fixedAt?: number;
+            reason?: string;
+            sentAt: number;
+            sentById: string;
+            sentByName: string;
+            summary: string;
+            updatedAt: number;
+            workId?: string;
+          };
+          handoffStatus?: "sent" | "fixed";
           lastMessageAt: number;
           lastPublicFrom: "customer" | "staff";
           messageCount: number;

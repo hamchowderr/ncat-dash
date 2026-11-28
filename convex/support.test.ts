@@ -397,3 +397,60 @@ describe("who can file, and what a report keeps", () => {
     });
   });
 });
+
+describe("Send to Factory", () => {
+  async function filed() {
+    const setup = await setUp();
+    const { ticketId } = await setup.ana.as.mutation(api.support.open, {
+      organizationId: setup.teamId,
+      category: "automations",
+      subject: "Ana Lima's clips fail",
+      body: "Weekly Clips fails every time.",
+    });
+    return { ...setup, ticketId };
+  }
+
+  test("only a platform admin can send a request to the Factory", async () => {
+    const { ana, bo, ticketId } = await filed();
+    for (const who of [ana, bo]) {
+      await expect(
+        who.as.mutation(api.support.sendToFactory, { ticketId, summary: "Clips step fails" }),
+      ).rejects.toThrow(/operator/);
+    }
+  });
+
+  test("the summary the platform admin writes must be safe to show in public", async () => {
+    const { staff, ticketId } = await filed();
+    for (const [summary, why] of [
+      ["Ana Lima's clips fail", /name/],
+      ["Clips fail for Example Studio", /name/],
+      ["Mail ana.lima@example.test back", /email/],
+      ["See https://example.test/x", /link/],
+      ["   ", /summary/],
+    ] as const) {
+      await expect(
+        staff.as.mutation(api.support.sendToFactory, { ticketId, summary }),
+      ).rejects.toThrow(why);
+    }
+  });
+
+  test("a sent request shows as sent, with the checked summary, in the inbox", async () => {
+    const { ana, staff, ticketId } = await filed();
+    await staff.as.mutation(api.support.sendToFactory, {
+      ticketId,
+      summary: "Clips step fails on long videos",
+    });
+    const full = await staff.as.query(api.support.staffConversation, { ticketId });
+    expect(full?.ticket.factory).toMatchObject({
+      status: "sent",
+      summary: "Clips step fails on long videos",
+      sentByName: "Support Person",
+      beadId: null,
+      fixedAt: null,
+    });
+    const inbox = await staff.as.query(api.support.inbox, { status: "open" });
+    expect(inbox.tickets[0]?.factory?.status).toBe("sent");
+    // The customer sees nothing of it until it is fixed.
+    expect((await ana.as.query(api.support.mine, {}))[0]?.fixed).toBe(false);
+  });
+});

@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 
 import { CategoryLabel, ViaLabel } from "./categories";
 import { Composer, listTime, MessageList } from "./conversation";
+import { FactoryPanel } from "./factory-panel";
 
 type Row = FunctionReturnType<typeof api.support.inbox>["tickets"][number];
 type Status = "open" | "closed";
@@ -209,6 +210,11 @@ function InboxRow({ row, active, onOpen }: { row: Row; active: boolean; onOpen: 
           >
             {row.status === "closed" ? "Closed" : row.waitingOnUs ? "Needs an answer" : "Answered"}
           </span>
+          {row.factory && (
+            <span className="text-muted-foreground shrink-0">
+              {row.factory.status === "fixed" ? "Fixed" : "Sent to Factory"}
+            </span>
+          )}
           <CategoryLabel category={row.category} />
         </span>
       </button>
@@ -319,6 +325,7 @@ function StaffConversation({ ticketId, onBack }: { ticketId: string; onBack: () 
             options={SUPPORT_CATEGORIES.map((each) => ({ value: each.id, label: each.title }))}
           />
         </div>
+        <FactoryPanel key={ticket.id} ticket={ticket} />
         {facts.length > 0 && (
           <dl className="grid gap-3">
             {facts.map(([key, label]) => (

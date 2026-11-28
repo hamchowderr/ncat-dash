@@ -12,6 +12,8 @@ live. Built for [Takewon](https://takewon.com), its first user.
   string pairs you choose).
 - A customer writing on a closed ticket opens it again.
 - Removal by person or by scope (a team, a workspace), for account and team deletion.
+- Handing a ticket to an outside fixer, such as a coding agent's queue, with a short
+  summary staff wrote that is safe to show in public.
 
 The component knows nothing about who is signed in, because Convex components can't see
 `ctx.auth`. Your app decides who may do what, and passes plain ids and names in. It sends
@@ -92,7 +94,7 @@ export const answer = mutation({
 
 The full API: `open`, `reply`, `close`, `reopen`, `markRead`, `get` (with
 `{ withPrivate: true }` for staff), `byNumber`, `listForRequester`, `listByStatus`,
-`staffCounts`, `customerUnread`, `removeForRequester` and `removeForScope`.
+`staffCounts`, `customerUnread`, `handOff`, `removeForRequester` and `removeForScope`.
 
 ## Testing with convex-test
 

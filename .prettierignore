@@ -1,3 +1,4 @@
 pnpm-lock.yaml
 .next
 convex/_generated
+packages/*/src/component/_generated

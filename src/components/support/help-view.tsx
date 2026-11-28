@@ -242,13 +242,15 @@ function RequestRow({
               request.unread ? "text-foreground font-medium" : "text-muted-foreground",
             )}
           >
-            {request.status === "closed"
-              ? "Solved"
-              : request.answered
-                ? request.unread
-                  ? "New answer"
-                  : "Answered"
-                : "Waiting for an answer"}
+            {request.fixed
+              ? "Fixed"
+              : request.status === "closed"
+                ? "Solved"
+                : request.answered
+                  ? request.unread
+                    ? "New answer"
+                    : "Answered"
+                  : "Waiting for an answer"}
           </span>
           <CategoryLabel category={request.category} />
         </span>
@@ -296,7 +298,8 @@ function RequestConversation({ ticketId, onBack }: { ticketId: string; onBack: (
             </h2>
             <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
               <span>
-                #{ticket.number} · {ticket.status === "closed" ? "Solved" : "Open"}
+                #{ticket.number} ·{" "}
+                {ticket.fixed ? "Fixed" : ticket.status === "closed" ? "Solved" : "Open"}
               </span>
               <CategoryLabel category={ticket.category} />
               <ViaLabel via={ticket.via} />

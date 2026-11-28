@@ -180,6 +180,39 @@ export const setCategory = mutation({
   },
 });
 
+/**
+ * Hands a ticket to an outside fixer with a summary staff wrote or checked, or changes
+ * the summary of one already sent. A fixed ticket stays fixed: sending it again throws.
+ */
+export const handOff = mutation({
+  args: {
+    ticketId: v.id("tickets"),
+    summary: v.string(),
+    sentById: v.string(),
+    sentByName: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const found = await mustGet(ctx, args.ticketId);
+    if (found.handoffStatus === "fixed") {
+      throw new ConvexError({ code: "conflict", message: "That ticket is already fixed." });
+    }
+    const summary = clean(args.summary, LIMITS.subject, "summary");
+    const now = Date.now();
+    await ctx.db.patch(found._id, {
+      handoffStatus: "sent",
+      handoff: {
+        summary,
+        sentAt: found.handoff?.sentAt ?? now,
+        sentById: args.sentById,
+        sentByName: args.sentByName,
+        updatedAt: now,
+      },
+    });
+    return null;
+  },
+});
+
 /** Counts the ticket as seen by one side. */
 export const markRead = mutation({
   args: { ticketId: v.id("tickets"), by: side },

@@ -121,7 +121,11 @@ describe("support tickets", () => {
       body: "Still broken",
     });
     expect(reopened).toBe(true);
-    expect(await t.query(api.tickets.staffCounts, {})).toEqual({ open: 1, unread: 1, byCategory: [] });
+    expect(await t.query(api.tickets.staffCounts, {})).toEqual({
+      open: 1,
+      unread: 1,
+      byCategory: [],
+    });
     const got = await t.query(api.tickets.get, { ticketId });
     expect(got?.ticket.closedAt).toBeUndefined();
   });
@@ -207,5 +211,27 @@ describe("support tickets", () => {
       ...(await ctx.db.query("messages").collect()),
     ]);
     expect(left).toEqual([]);
+  });
+});
+
+describe("handing a ticket to an outside fixer", () => {
+  test("sends with a summary, keeps when it was first sent, and changes the summary", async () => {
+    const t = backend();
+    const { ticketId } = await t.mutation(api.tickets.open, { ...ana, subject: "S", body: "B" });
+    const by = { sentById: "staff_1", sentByName: "Sam" };
+    await t.mutation(api.tickets.handOff, { ticketId, summary: " Clips step fails ", ...by });
+    const first = (await t.query(api.tickets.get, { ticketId }))!.ticket;
+    expect(first.handoffStatus).toBe("sent");
+    expect(first.handoff).toMatchObject({ summary: "Clips step fails", sentByName: "Sam" });
+
+    await t.mutation(api.tickets.handOff, { ticketId, summary: "Clips step times out", ...by });
+    const second = (await t.query(api.tickets.get, { ticketId }))!.ticket;
+    expect(second.handoff?.summary).toBe("Clips step times out");
+    expect(second.handoff?.sentAt).toBe(first.handoff?.sentAt);
+    expect(second.handoff!.updatedAt).toBeGreaterThanOrEqual(first.handoff!.updatedAt);
+
+    await expect(t.mutation(api.tickets.handOff, { ticketId, summary: " ", ...by })).rejects.toThrow(
+      /summary/,
+    );
   });
 });

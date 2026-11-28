@@ -65,6 +65,8 @@ function customerView(ticket: Ticket) {
     unread: ticket.customerUnread,
     category: ticket.category ?? null,
     via: ticket.via ?? null,
+    // The Factory reported the problem fixed (see factory.ts).
+    fixed: ticket.handoffStatus === "fixed",
   };
 }
 
@@ -79,6 +81,7 @@ const customerTicket = v.object({
   unread: v.boolean(),
   category: v.union(v.null(), v.string()),
   via: v.union(v.null(), v.string()),
+  fixed: v.boolean(),
 });
 
 const shownMessage = v.object({
@@ -376,7 +379,33 @@ const staffTicket = v.object({
   unread: v.boolean(),
   category: v.union(v.null(), v.string()),
   via: v.union(v.null(), v.string()),
+  factory: v.union(
+    v.null(),
+    v.object({
+      status: v.union(v.literal("sent"), v.literal("fixed")),
+      summary: v.string(),
+      sentAt: v.number(),
+      sentByName: v.string(),
+      beadId: v.union(v.null(), v.string()),
+      reason: v.union(v.null(), v.string()),
+      fixedAt: v.union(v.null(), v.number()),
+    }),
+  ),
 });
+
+/** Where a request stands with the Factory, for the platform admin. */
+function factoryView(ticket: Ticket) {
+  if (!ticket.handoffStatus || !ticket.handoff) return null;
+  return {
+    status: ticket.handoffStatus,
+    summary: ticket.handoff.summary,
+    sentAt: ticket.handoff.sentAt,
+    sentByName: ticket.handoff.sentByName,
+    beadId: ticket.handoff.workId ?? null,
+    reason: ticket.handoff.reason ?? null,
+    fixedAt: ticket.handoff.fixedAt ?? null,
+  };
+}
 
 function staffView(ticket: Ticket) {
   return {
@@ -393,6 +422,7 @@ function staffView(ticket: Ticket) {
     unread: ticket.staffUnread,
     category: ticket.category ?? null,
     via: ticket.via ?? null,
+    factory: factoryView(ticket),
   };
 }
 
@@ -536,6 +566,62 @@ export const staffMarkRead = mutation({
   handler: async (ctx, args) => {
     await requireOperator(ctx);
     await support.markRead(ctx, args.ticketId, "staff");
+    return null;
+  },
+});
+
+// ---------------------------------------------------------------------------------------
+// Sending a request to the Factory, which files it as a bead, fixes it in a pull request
+// and reports back (factory.ts). Takewon's repository is public, so what the Factory
+// may show in a pull request is the summary below, which the platform admin writes or
+// checks: never the customer's name, email or team.
+
+/** Why a summary isn't safe to show in public, or null when it is. */
+export function unsafeSummary(
+  summary: string,
+  ticket: Pick<Ticket, "requesterName" | "requesterEmail" | "context">,
+): string | null {
+  const text = summary.toLowerCase();
+  if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(summary)) {
+    return "Take the email address out: the summary can end up in a public pull request.";
+  }
+  if (/https?:\/\//i.test(summary)) {
+    return "Take the link out: the summary can end up in a public pull request.";
+  }
+  const names = [
+    ticket.requesterName,
+    ...ticket.requesterName.split(/\s+/),
+    ticket.requesterEmail.split("@")[0],
+    ticket.context?.team,
+  ];
+  for (const name of names) {
+    const each = name?.trim().toLowerCase();
+    if (each && each.length >= 3 && text.includes(each)) {
+      return "Take the customer's or team's name out: the summary can end up in a public pull request.";
+    }
+  }
+  return null;
+}
+
+/**
+ * Sends a request to the Factory with a short public-safe summary the platform admin
+ * wrote or checked, or changes the summary of one already sent. Platform admins only.
+ */
+export const sendToFactory = mutation({
+  args: { ticketId: v.string(), summary: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const caller = await requireOperator(ctx);
+    const found = await support.get(ctx, args.ticketId).catch(() => null);
+    if (!found) throw new ConvexError({ code: "not_found", message: "That request is gone." });
+    const summary = args.summary.trim();
+    const problem = unsafeSummary(summary, found.ticket);
+    if (problem) throw new ConvexError({ code: "invalid", message: problem });
+    await support.handOff(ctx, {
+      ticketId: args.ticketId,
+      summary,
+      by: { id: caller._id, name: caller.name || "Platform admin" },
+    });
     return null;
   },
 });
