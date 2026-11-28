@@ -159,6 +159,41 @@ describe("Get Help", () => {
     );
   });
 
+  test("Report a problem opens its own form, starting on automations and runs", () => {
+    place.pathname = "/help";
+    place.search = "";
+    answerQuery(api.support.mine, [request({ unread: false })]);
+    answerQuery(api.support.canFile, true);
+    renderInApp(<HelpView />);
+    fireEvent.click(screen.getByRole("button", { name: "Report a problem" }));
+    expect(replaced).toHaveBeenCalledWith("/help?new=problem", { scroll: false });
+  });
+
+  test("the Report a problem form says what goes with it", () => {
+    place.pathname = "/help";
+    place.search = "new=problem";
+    answerQuery(api.support.mine, [request({ unread: false })]);
+    answerQuery(api.support.canFile, true);
+    renderInApp(<HelpView />);
+    expect(screen.getByRole("form", { name: "Report a problem" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Report a problem" })).toBeTruthy();
+    expect(
+      screen.getByRole("radio", { name: /Automations and runs/ }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(screen.getByText(/steps of\s+your latest failed run/)).toBeTruthy();
+  });
+
+  test("a team member is told to ask an owner or admin, with no form", () => {
+    place.pathname = "/help";
+    place.search = "";
+    answerQuery(api.support.mine, []);
+    answerQuery(api.support.canFile, false);
+    renderInApp(<HelpView />);
+    expect(screen.getByText(/Only a team owner or admin can send a request/)).toBeTruthy();
+    expect(screen.queryByLabelText("Subject")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Report a problem" })).toBeNull();
+  });
+
   test("reads the browser for support", () => {
     expect(
       describeBrowser(

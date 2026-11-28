@@ -27,7 +27,8 @@ async function emails(t: Backend): Promise<[string, string][]> {
 async function setUp() {
   const t = backend();
   const teamId = await addTeam(t, "Example Studio");
-  const ana = await addPerson(t, "Ana Lima", [teamId]);
+  // Ana is a team admin and can file requests; Bo is a plain member and can't.
+  const ana = await addPerson(t, "Ana Lima", [teamId], "admin");
   const bo = await addPerson(t, "Bo", [teamId]);
   const staff = await addPerson(t, "Support Person");
   return { t, teamId, ana, bo, staff };
@@ -294,5 +295,105 @@ describe("support tickets in the app", () => {
       reason: "team",
     });
     expect((await staff.as.query(api.support.inbox, { status: "open" })).tickets).toEqual([]);
+  });
+});
+
+describe("who can file, and what a report keeps", () => {
+  test("team owners and admins can file; a team member is forbidden", async () => {
+    const { t, teamId, ana, bo } = await setUp();
+    const owner = await addPerson(t, "Cy Owner", [teamId], "owner");
+    expect(await ana.as.query(api.support.canFile, { organizationId: teamId })).toBe(true);
+    expect(await owner.as.query(api.support.canFile, { organizationId: teamId })).toBe(true);
+    expect(await bo.as.query(api.support.canFile, { organizationId: teamId })).toBe(false);
+
+    await owner.as.mutation(api.support.open, {
+      organizationId: teamId,
+      subject: "Uploads stall",
+      body: "Big files stop at 90%.",
+    });
+    await expect(
+      bo.as.mutation(api.support.open, { organizationId: teamId, subject: "S", body: "B" }),
+    ).rejects.toThrow(/owner or admin/);
+    await expect(
+      t.mutation(internal.support.openAs, {
+        organizationId: teamId,
+        userId: bo.id,
+        subject: "S",
+        body: "B",
+      }),
+    ).rejects.toThrow(/owner or admin/);
+    expect(await emails(t)).toHaveLength(1);
+  });
+
+  test("a report keeps category, page, team, description, the failed run id and its step log", async () => {
+    const { t, teamId, ana, staff } = await setUp();
+    const runId = await t.run(async (ctx) => {
+      const automationId = await ctx.db.insert("automations", {
+        organizationId: teamId,
+        name: "Weekly Clips",
+        enabled: true,
+        trigger: { kind: "manual" },
+        nodes: [],
+        edges: [],
+        hookToken: "token",
+        nextRunAt: null,
+        createdBy: ana.id,
+        updatedAt: Date.now(),
+      });
+      const runId = await ctx.db.insert("runs", {
+        organizationId: teamId,
+        automationId,
+        automationName: "Weekly Clips",
+        status: "failed",
+        triggerKind: "manual",
+        trigger: {},
+        nodes: [
+          { id: "a", kind: "step", stepId: "transcribe", input: {}, position: { x: 0, y: 0 } },
+          { id: "b", kind: "clips", label: "Cut clips", input: {}, position: { x: 0, y: 0 } },
+        ],
+        edges: [],
+        error: "Cut clips failed",
+        startedBy: null,
+        finishedAt: Date.now(),
+      });
+      for (const [nodeId, status, error] of [
+        ["b", "failed", "The toolkit timed out"],
+        ["a", "done", null],
+      ] as const) {
+        await ctx.db.insert("runSteps", {
+          runId,
+          organizationId: teamId,
+          nodeId,
+          status,
+          jobIds: [],
+          outputs: [],
+          error,
+          startedAt: 0,
+          finishedAt: 0,
+        });
+      }
+      return runId;
+    });
+
+    const { ticketId } = await ana.as.mutation(api.support.open, {
+      organizationId: teamId,
+      category: "automations",
+      subject: "Clips fail",
+      body: "Weekly Clips fails every time.",
+      page: "/runs",
+    });
+    const full = await staff.as.query(api.support.staffConversation, { ticketId });
+    expect(full?.ticket.category).toBe("automations");
+    expect(full?.messages[0]?.body).toBe("Weekly Clips fails every time.");
+    expect(full?.context).toMatchObject({
+      team: "Example Studio",
+      page: "/runs",
+      failedRunId: runId,
+      stepLog: [
+        "Weekly Clips: failed: Cut clips failed",
+        "- transcribe: done",
+        "- Cut clips: failed: The toolkit timed out",
+      ].join("\n"),
+    });
   });
 });

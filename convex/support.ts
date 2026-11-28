@@ -4,11 +4,11 @@ import { ConvexError, v } from "convex/values";
 
 import { components, internal } from "./_generated/api";
 import { type MutationCtx, internalMutation, mutation, query } from "./_generated/server";
-import { requireMember } from "./lib/authz";
+import { MANAGER_ROLES, requireMember, type TeamRole } from "./lib/authz";
 import { type Caller, getCaller } from "./lib/caller";
 import { limiter, waitLabel } from "./lib/limits";
 import { callerIsOperator, operatorEmails, requireOperator } from "./lib/operator";
-import { support } from "./lib/support";
+import { stepLogOf, support } from "./lib/support";
 import { isSupportCategory, type SupportVia } from "./lib/supportCategories";
 
 // Support tickets. Customers ask for help from the Get help page (/help) and see the
@@ -215,6 +215,8 @@ async function openRequest(
   }
   if (failed) {
     context.latestFailedRun = `${failed.automationName} (${failed._id})${failed.error ? `: ${failed.error.slice(0, 300)}` : ""}`;
+    context.failedRunId = failed._id;
+    context.stepLog = await stepLogOf(ctx, failed);
   }
 
   const opened = await support.open(ctx, {
@@ -238,6 +240,21 @@ async function openRequest(
 
 const opened = v.object({ ticketId: v.string(), number: v.number(), address: v.string() });
 
+/** Whether the caller may file a request for this team: its owners and admins only. */
+export const canFile = query({
+  args: { organizationId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const caller = await getCaller(ctx);
+    if (!caller) return false;
+    const role = (await ctx.runQuery(components.betterAuth.members.roleFor, {
+      userId: caller._id,
+      organizationId: args.organizationId,
+    })) as TeamRole | null;
+    return role !== null && MANAGER_ROLES.includes(role);
+  },
+});
+
 /**
  * Asks for help, from the Get Help form or from the assistant in chat on the person's
  * behalf (`via: "assistant"`, after they said yes to it on the assistant's card).
@@ -254,7 +271,8 @@ export const open = mutation({
   },
   returns: opened,
   handler: async (ctx, args) => {
-    await requireMember(ctx, args.organizationId);
+    // Only a team's owners and admins file requests; a member asks one of them.
+    await requireMember(ctx, args.organizationId, MANAGER_ROLES);
     const caller = await signedIn(ctx);
     return await openRequest(ctx, caller, args);
   },
@@ -280,6 +298,12 @@ export const openAs = internalMutation({
     ]);
     if (!role || !person) {
       throw new ConvexError({ code: "forbidden", message: "You are not on this team." });
+    }
+    if (!MANAGER_ROLES.includes(role as TeamRole)) {
+      throw new ConvexError({
+        code: "forbidden",
+        message: "Only a team owner or admin can do this.",
+      });
     }
     return await openRequest(ctx, { _id: userId, ...person }, { ...args, via: "mcp" });
   },

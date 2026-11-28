@@ -32,6 +32,7 @@ const CONTEXT_LABELS: [key: string, label: string][] = [
   ["browser", "Browser"],
   ["latestRun", "Latest run"],
   ["latestFailedRun", "Latest failed run"],
+  ["failedRunId", "Failed run id"],
 ];
 
 /**
@@ -327,6 +328,17 @@ function StaffConversation({ ticketId, onBack }: { ticketId: string; onBack: () 
               </div>
             ))}
           </dl>
+        )}
+        {context.stepLog && (
+          <div className="grid gap-1">
+            <span className="text-muted-foreground text-xs">Step log</span>
+            <pre
+              aria-label="Step log"
+              className="bg-surface max-h-64 overflow-auto rounded-lg p-2 text-xs whitespace-pre-wrap break-words"
+            >
+              {context.stepLog}
+            </pre>
+          </div>
         )}
       </aside>
     </div>
