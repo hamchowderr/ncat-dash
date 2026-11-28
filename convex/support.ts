@@ -4,11 +4,11 @@ import { ConvexError, v } from "convex/values";
 
 import { components, internal } from "./_generated/api";
 import { type MutationCtx, internalMutation, mutation, query } from "./_generated/server";
-import { requireMember } from "./lib/authz";
+import { MANAGER_ROLES, requireMember, type TeamRole } from "./lib/authz";
 import { type Caller, getCaller } from "./lib/caller";
 import { limiter, waitLabel } from "./lib/limits";
 import { callerIsOperator, operatorEmails, requireOperator } from "./lib/operator";
-import { support } from "./lib/support";
+import { stepLogOf, support } from "./lib/support";
 import { isSupportCategory, type SupportVia } from "./lib/supportCategories";
 
 // Support tickets. Customers ask for help from the Get help page (/help) and see the
@@ -65,6 +65,8 @@ function customerView(ticket: Ticket) {
     unread: ticket.customerUnread,
     category: ticket.category ?? null,
     via: ticket.via ?? null,
+    // The Factory reported the problem fixed (see factory.ts).
+    fixed: ticket.handoffStatus === "fixed",
   };
 }
 
@@ -79,6 +81,7 @@ const customerTicket = v.object({
   unread: v.boolean(),
   category: v.union(v.null(), v.string()),
   via: v.union(v.null(), v.string()),
+  fixed: v.boolean(),
 });
 
 const shownMessage = v.object({
@@ -186,6 +189,8 @@ async function openRequest(
     via?: SupportVia;
     page?: string;
     browser?: string;
+    /** A problem report: keeps the latest failed run's id and step log. */
+    problem?: boolean;
   },
 ) {
   await spend(ctx, asker._id);
@@ -215,6 +220,10 @@ async function openRequest(
   }
   if (failed) {
     context.latestFailedRun = `${failed.automationName} (${failed._id})${failed.error ? `: ${failed.error.slice(0, 300)}` : ""}`;
+    if (args.problem) {
+      context.failedRunId = failed._id;
+      context.stepLog = await stepLogOf(ctx, failed);
+    }
   }
 
   const opened = await support.open(ctx, {
@@ -239,6 +248,24 @@ async function openRequest(
 const opened = v.object({ ticketId: v.string(), number: v.number(), address: v.string() });
 
 /**
+ * Whether the caller may report a problem for this team: its owners and admins only.
+ * Anyone on the team may ask an ordinary question.
+ */
+export const canReportProblem = query({
+  args: { organizationId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const caller = await getCaller(ctx);
+    if (!caller) return false;
+    const role = (await ctx.runQuery(components.betterAuth.members.roleFor, {
+      userId: caller._id,
+      organizationId: args.organizationId,
+    })) as TeamRole | null;
+    return role !== null && MANAGER_ROLES.includes(role);
+  },
+});
+
+/**
  * Asks for help, from the Get Help form or from the assistant in chat on the person's
  * behalf (`via: "assistant"`, after they said yes to it on the assistant's card).
  */
@@ -251,10 +278,12 @@ export const open = mutation({
     via: v.optional(v.literal("assistant")),
     page: v.optional(v.string()),
     browser: v.optional(v.string()),
+    /** From Report a problem, which only a team's owners and admins may use. */
+    problem: v.optional(v.boolean()),
   },
   returns: opened,
   handler: async (ctx, args) => {
-    await requireMember(ctx, args.organizationId);
+    await requireMember(ctx, args.organizationId, args.problem ? MANAGER_ROLES : undefined);
     const caller = await signedIn(ctx);
     return await openRequest(ctx, caller, args);
   },
@@ -352,7 +381,33 @@ const staffTicket = v.object({
   unread: v.boolean(),
   category: v.union(v.null(), v.string()),
   via: v.union(v.null(), v.string()),
+  factory: v.union(
+    v.null(),
+    v.object({
+      status: v.union(v.literal("sent"), v.literal("fixed")),
+      summary: v.string(),
+      sentAt: v.number(),
+      sentByName: v.string(),
+      beadId: v.union(v.null(), v.string()),
+      reason: v.union(v.null(), v.string()),
+      fixedAt: v.union(v.null(), v.number()),
+    }),
+  ),
 });
+
+/** Where a request stands with the Factory, for the platform admin. */
+function factoryView(ticket: Ticket) {
+  if (!ticket.handoffStatus || !ticket.handoff) return null;
+  return {
+    status: ticket.handoffStatus,
+    summary: ticket.handoff.summary,
+    sentAt: ticket.handoff.sentAt,
+    sentByName: ticket.handoff.sentByName,
+    beadId: ticket.handoff.workId ?? null,
+    reason: ticket.handoff.reason ?? null,
+    fixedAt: ticket.handoff.fixedAt ?? null,
+  };
+}
 
 function staffView(ticket: Ticket) {
   return {
@@ -369,6 +424,7 @@ function staffView(ticket: Ticket) {
     unread: ticket.staffUnread,
     category: ticket.category ?? null,
     via: ticket.via ?? null,
+    factory: factoryView(ticket),
   };
 }
 
@@ -512,6 +568,62 @@ export const staffMarkRead = mutation({
   handler: async (ctx, args) => {
     await requireOperator(ctx);
     await support.markRead(ctx, args.ticketId, "staff");
+    return null;
+  },
+});
+
+// ---------------------------------------------------------------------------------------
+// Sending a request to the Factory, which files it as a bead, fixes it in a pull request
+// and reports back (factory.ts). Takewon's repository is public, so what the Factory
+// may show in a pull request is the summary below, which the platform admin writes or
+// checks: never the customer's name, email or team.
+
+/** Why a summary isn't safe to show in public, or null when it is. */
+export function unsafeSummary(
+  summary: string,
+  ticket: Pick<Ticket, "requesterName" | "requesterEmail" | "context">,
+): string | null {
+  const text = summary.toLowerCase();
+  if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(summary)) {
+    return "Take the email address out: the summary can end up in a public pull request.";
+  }
+  if (/https?:\/\//i.test(summary)) {
+    return "Take the link out: the summary can end up in a public pull request.";
+  }
+  const names = [
+    ticket.requesterName,
+    ...ticket.requesterName.split(/\s+/),
+    ticket.requesterEmail.split("@")[0],
+    ticket.context?.team,
+  ];
+  for (const name of names) {
+    const each = name?.trim().toLowerCase();
+    if (each && each.length >= 3 && text.includes(each)) {
+      return "Take the customer's or team's name out: the summary can end up in a public pull request.";
+    }
+  }
+  return null;
+}
+
+/**
+ * Sends a request to the Factory with a short public-safe summary the platform admin
+ * wrote or checked, or changes the summary of one already sent. Platform admins only.
+ */
+export const sendToFactory = mutation({
+  args: { ticketId: v.string(), summary: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const caller = await requireOperator(ctx);
+    const found = await support.get(ctx, args.ticketId).catch(() => null);
+    if (!found) throw new ConvexError({ code: "not_found", message: "That request is gone." });
+    const summary = args.summary.trim();
+    const problem = unsafeSummary(summary, found.ticket);
+    if (problem) throw new ConvexError({ code: "invalid", message: problem });
+    await support.handOff(ctx, {
+      ticketId: args.ticketId,
+      summary,
+      by: { id: caller._id, name: caller.name || "Platform admin" },
+    });
     return null;
   },
 });

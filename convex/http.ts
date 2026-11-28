@@ -8,6 +8,7 @@ import { fromAgent } from "./lib/agentToken";
 import { decryptSecret } from "./lib/crypto";
 import { keepEnds, toolkitMessageText } from "./lib/toolkitMessage";
 import { hookTokenOf, MAX_HOOK_KEY } from "./lib/hooks";
+import { getTicket, listTickets, ticketFixed } from "./factoryHttp";
 import { noStream, openaiAppsChallenge, serverCard } from "./mcp";
 import { authorizationServer, serve } from "./mcpHttp";
 import { settingsUrl as googleMeetSettingsUrl } from "./googleMeet";
@@ -1125,5 +1126,11 @@ http.route({
     return new Response("OK", { status: 200 });
   }),
 });
+
+// The Factory reads support requests a platform admin sent it and reports them fixed
+// (convex/factoryHttp.ts, docs/factory.md).
+http.route({ path: "/factory/tickets", method: "GET", handler: listTickets });
+http.route({ pathPrefix: "/factory/tickets/", method: "GET", handler: getTicket });
+http.route({ pathPrefix: "/factory/tickets/", method: "POST", handler: ticketFixed });
 
 export default http;

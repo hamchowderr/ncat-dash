@@ -159,6 +159,68 @@ describe("Get Help", () => {
     );
   });
 
+  test("Report a problem opens its own form, starting on automations and runs", () => {
+    place.pathname = "/help";
+    place.search = "";
+    answerQuery(api.support.mine, [request({ unread: false })]);
+    answerQuery(api.support.canReportProblem, true);
+    renderInApp(<HelpView />);
+    fireEvent.click(screen.getByRole("button", { name: "Report a problem" }));
+    expect(replaced).toHaveBeenCalledWith("/help?new=problem", { scroll: false });
+  });
+
+  test("the Report a problem form says what goes with it", () => {
+    place.pathname = "/help";
+    place.search = "new=problem";
+    answerQuery(api.support.mine, [request({ unread: false })]);
+    answerQuery(api.support.canReportProblem, true);
+    renderInApp(<HelpView />);
+    expect(screen.getByRole("form", { name: "Report a problem" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Report a problem" })).toBeTruthy();
+    expect(
+      screen.getByRole("radio", { name: /Automations and runs/ }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(screen.getByText(/steps of\s+your latest failed run/)).toBeTruthy();
+  });
+
+  test("a team member asks questions but gets no Report a problem button", () => {
+    place.pathname = "/help";
+    place.search = "";
+    answerQuery(api.support.mine, [request({ unread: false })]);
+    answerQuery(api.support.canReportProblem, false);
+    renderInApp(<HelpView />);
+    expect(screen.getByRole("button", { name: "New question" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Report a problem" })).toBeNull();
+  });
+
+  test("a team member with no requests yet sees the question form", () => {
+    place.pathname = "/help";
+    place.search = "";
+    answerQuery(api.support.mine, []);
+    answerQuery(api.support.canReportProblem, false);
+    renderInApp(<HelpView />);
+    expect(screen.getByRole("form", { name: "Ask a new question" })).toBeTruthy();
+    expect(screen.queryByText(/Only a team owner or admin can report a problem/)).toBeNull();
+  });
+
+  test("a team member sent to Report a problem is told to ask an owner or admin", () => {
+    place.pathname = "/help";
+    place.search = "new=problem";
+    answerQuery(api.support.mine, [request({ unread: false })]);
+    answerQuery(api.support.canReportProblem, false);
+    renderInApp(<HelpView />);
+    expect(screen.getByText(/Only a team owner or admin can report a problem/)).toBeTruthy();
+    expect(screen.queryByRole("form", { name: "Report a problem" })).toBeNull();
+  });
+
+  test("a request the Factory fixed shows as Fixed to the customer", () => {
+    place.pathname = "/help";
+    place.search = "";
+    answerQuery(api.support.mine, [request({ fixed: true, unread: false })]);
+    renderInApp(<HelpView />);
+    expect(screen.getByText("Fixed")).toBeTruthy();
+  });
+
   test("reads the browser for support", () => {
     expect(
       describeBrowser(
@@ -184,7 +246,71 @@ describe("Support under Admin", () => {
     unread: true,
     category: "automations",
     via: "mcp",
+    factory: null as null | Record<string, unknown>,
   };
+
+  const inStaffView = (ticket: typeof row, context: Record<string, string> = {}) => {
+    place.pathname = "/admin/support";
+    place.search = "ticket=t1";
+    answerQuery(api.operator.me, true);
+    answerQuery(api.support.inbox, {
+      tickets: [ticket],
+      counts: { open: 1, unread: 0, byCategory: [] },
+    });
+    answerQuery(api.support.staffConversation, { ticket, context, messages });
+    renderInApp(<SupportInbox />);
+  };
+
+  test("sends a request to the Factory with the summary the platform admin checked", async () => {
+    inStaffView(row, { stepLog: "Weekly clips: failed\n- Cut clips: failed" });
+    expect(screen.getByLabelText("Step log").textContent).toContain("- Cut clips: failed");
+    const summary = screen.getByLabelText("Summary for the Factory") as HTMLInputElement;
+    // It starts from the subject, for the platform admin to check.
+    expect(summary.value).toBe("Captions are late");
+    fireEvent.change(summary, { target: { value: "Captions drift by a second" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Factory" }));
+    await waitFor(() =>
+      expect(mutationOf(api.support.sendToFactory)).toHaveBeenCalledWith({
+        ticketId: "t1",
+        summary: "Captions drift by a second",
+      }),
+    );
+  });
+
+  test("shows a sent request as sent, and a fixed one as Fixed", () => {
+    const sent = {
+      status: "sent",
+      summary: "Captions drift by a second",
+      sentAt: NOW,
+      sentByName: "Chris",
+      beadId: null,
+      reason: null,
+      fixedAt: null,
+    };
+    inStaffView({ ...row, factory: sent });
+    expect(screen.getAllByText("Sent to Factory").length).toBeGreaterThan(0);
+    expect(screen.getByText(/Sent to Factory .* by Chris/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Send to Factory" })).toBeNull();
+  });
+
+  test("a fixed request says Fixed with the bead it was filed as", () => {
+    inStaffView({
+      ...row,
+      factory: {
+        status: "fixed",
+        summary: "Captions drift by a second",
+        sentAt: NOW,
+        sentByName: "Chris",
+        beadId: "dash-abc",
+        reason: "Timing fixed in the caption step",
+        fixedAt: NOW,
+      },
+    });
+    expect(screen.getAllByText("Fixed").length).toBeGreaterThan(0);
+    expect(screen.getByText(/dash-abc/)).toBeTruthy();
+    expect(screen.getByText("Timing fixed in the caption step")).toBeTruthy();
+    expect(screen.queryByLabelText("Summary for the Factory")).toBeNull();
+  });
 
   test("is only for the operator", () => {
     place.pathname = "/admin/support";

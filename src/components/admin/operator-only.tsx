@@ -6,14 +6,14 @@ import type { ReactNode } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** An Admin page: shown to whoever runs this copy (OPERATOR_EMAILS), nobody else. */
+/** A Platform Admin page: shown to whoever runs this copy (OPERATOR_EMAILS), nobody else. */
 export function OperatorOnly({ children }: { children: ReactNode }) {
   const operator = useQuery(api.operator.me, {});
   if (operator === undefined) return <Skeleton className="h-48 rounded-xl" />;
   if (!operator) {
     return (
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Platform Admin</h1>
         <p className="text-muted-foreground text-sm">
           Only the people who run this copy of Takewon can see this page.
         </p>
@@ -21,6 +21,20 @@ export function OperatorOnly({ children }: { children: ReactNode }) {
     );
   }
   return <>{children}</>;
+}
+
+/**
+ * "Platform Admin" above the heading of every Platform Admin page, for its operator, so
+ * nobody takes it for their team's admin settings. Others see OperatorOnly's own heading.
+ */
+export function PlatformAdminEyebrow() {
+  const operator = useQuery(api.operator.me, {});
+  if (!operator) return null;
+  return (
+    <p className="text-muted-foreground -mb-1 text-xs font-medium tracking-wide uppercase">
+      Platform Admin
+    </p>
+  );
 }
 
 /** Who a broadcast goes to, in the words the pages use. */

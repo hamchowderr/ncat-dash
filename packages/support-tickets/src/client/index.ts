@@ -125,6 +125,54 @@ export class SupportTickets {
     });
   }
 
+  /**
+   * Hands a ticket to an outside fixer (a coding agent's queue, say) with a summary safe
+   * to show in public, or changes the summary of one already sent.
+   */
+  async handOff(
+    ctx: RunMutation,
+    args: { ticketId: string; summary: string; by: { id: string; name: string } },
+  ): Promise<void> {
+    await ctx.runMutation(this.component.tickets.handOff, {
+      ticketId: args.ticketId,
+      summary: args.summary,
+      sentById: args.by.id,
+      sentByName: args.by.name,
+    });
+  }
+
+  /**
+   * The fixer says a sent ticket is fixed. "already" when it said so before (nothing
+   * changes); "missing" when the id names no sent ticket.
+   */
+  async markFixed(
+    ctx: RunMutation,
+    args: { ticketId: string; workId: string; reason: string; fixedAt?: number },
+  ): Promise<"fixed" | "already" | "missing"> {
+    return await ctx.runMutation(this.component.tickets.markFixed, {
+      ticketId: args.ticketId,
+      workId: args.workId,
+      reason: args.reason,
+      ...(args.fixedAt !== undefined ? { fixedAt: args.fixedAt } : {}),
+    });
+  }
+
+  /** Sent, unfixed tickets, oldest first; pass `next` back as `after` for the next page. */
+  async listHandedOff(
+    ctx: RunAny,
+    opts: { after?: number; limit?: number } = {},
+  ): Promise<{ tickets: Ticket[]; next: number | null }> {
+    return await ctx.runQuery(this.component.tickets.listHandedOff, {
+      ...(opts.after !== undefined ? { after: opts.after } : {}),
+      ...(opts.limit ? { limit: opts.limit } : {}),
+    });
+  }
+
+  /** A ticket by an id from outside the app, which may be malformed. No private notes. */
+  async find(ctx: RunAny, ticketId: string): Promise<Conversation | null> {
+    return await ctx.runQuery(this.component.tickets.find, { ticketId });
+  }
+
   async markRead(ctx: RunMutation, ticketId: string, by: Side): Promise<void> {
     await ctx.runMutation(this.component.tickets.markRead, { ticketId, by });
   }

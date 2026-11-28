@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 
 import { CategoryLabel, ViaLabel } from "./categories";
 import { Composer, listTime, MessageList } from "./conversation";
+import { FactoryPanel } from "./factory-panel";
 
 type Row = FunctionReturnType<typeof api.support.inbox>["tickets"][number];
 type Status = "open" | "closed";
@@ -32,6 +33,7 @@ const CONTEXT_LABELS: [key: string, label: string][] = [
   ["browser", "Browser"],
   ["latestRun", "Latest run"],
   ["latestFailedRun", "Latest failed run"],
+  ["failedRunId", "Failed run id"],
 ];
 
 /**
@@ -208,6 +210,11 @@ function InboxRow({ row, active, onOpen }: { row: Row; active: boolean; onOpen: 
           >
             {row.status === "closed" ? "Closed" : row.waitingOnUs ? "Needs an answer" : "Answered"}
           </span>
+          {row.factory && (
+            <span className="text-muted-foreground shrink-0">
+              {row.factory.status === "fixed" ? "Fixed" : "Sent to Factory"}
+            </span>
+          )}
           <CategoryLabel category={row.category} />
         </span>
       </button>
@@ -318,6 +325,7 @@ function StaffConversation({ ticketId, onBack }: { ticketId: string; onBack: () 
             options={SUPPORT_CATEGORIES.map((each) => ({ value: each.id, label: each.title }))}
           />
         </div>
+        <FactoryPanel key={ticket.id} ticket={ticket} />
         {facts.length > 0 && (
           <dl className="grid gap-3">
             {facts.map(([key, label]) => (
@@ -327,6 +335,17 @@ function StaffConversation({ ticketId, onBack }: { ticketId: string; onBack: () 
               </div>
             ))}
           </dl>
+        )}
+        {context.stepLog && (
+          <div className="grid gap-1">
+            <span className="text-muted-foreground text-xs">Step log</span>
+            <pre
+              aria-label="Step log"
+              className="bg-surface max-h-64 overflow-auto rounded-lg p-2 text-xs whitespace-pre-wrap break-words"
+            >
+              {context.stepLog}
+            </pre>
+          </div>
         )}
       </aside>
     </div>

@@ -40,4 +40,26 @@ describe("people on the team", () => {
     expect(maya).toHaveTextContent("MO");
     expect(within(list).getByText("Olu Bello").closest("li")).not.toHaveTextContent("·");
   });
+
+  test("a team admin is still shown as Admin, not Platform Admin", () => {
+    answerQuery(api.teams.people, {
+      members: [
+        {
+          id: "m3",
+          userId: "u3",
+          role: "admin",
+          name: "Ada Admin",
+          email: "ada@example.test",
+          image: null,
+          title: null,
+        },
+      ],
+      invitations: [],
+    });
+    answerQuery(api.teams.mine, []);
+    renderInApp(<TeamCard canEdit={false} />);
+    const ada = screen.getByText("Ada Admin").closest("li")!;
+    expect(within(ada).getByText("Admin")).toBeTruthy();
+    expect(ada).not.toHaveTextContent("Platform");
+  });
 });

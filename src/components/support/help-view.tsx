@@ -5,7 +5,7 @@ import Bowser from "bowser";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { categoryForPage, type SupportCategory } from "@convex/lib/supportCategories";
-import { ArrowLeft, Bot, CheckCircle2, Mail, Plus, SendHorizontal } from "lucide-react";
+import { ArrowLeft, Bot, Bug, CheckCircle2, Mail, Plus, SendHorizontal } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -50,9 +50,12 @@ export function HelpView() {
   const search = useSearchParams();
   const requests = useQuery(api.support.mine, {});
   const contact = useQuery(api.support.contact, {});
+  // Anyone on the team asks questions; only its owners and admins report problems.
+  const canReport = useQuery(api.support.canReportProblem, { organizationId: team.id });
   const selected = search.get("ticket");
   const none = requests !== undefined && requests.length === 0;
-  const writing = search.get("new") === "1" || none;
+  const problem = search.get("new") === "problem";
+  const writing = search.get("new") === "1" || problem || none;
   const cameFrom = search.get("from") ?? undefined;
 
   const go = (params: Record<string, string | null>) => {
@@ -66,15 +69,20 @@ export function HelpView() {
   };
 
   const showingDetail = Boolean(selected) || writing;
-  const form = (
-    <NewRequest
-      organizationId={team.id}
-      page={cameFrom}
-      canGoBack={!none}
-      onBack={() => go({ new: null })}
-      onSent={(ticketId) => go({ ticket: ticketId, new: null })}
-    />
-  );
+  const form =
+    problem && canReport === false ? (
+      <OwnersOnly />
+    ) : (
+      <NewRequest
+        key={problem ? "problem" : "question"}
+        organizationId={team.id}
+        page={cameFrom}
+        problem={problem}
+        canGoBack={!none}
+        onBack={() => go({ new: null })}
+        onSent={(ticketId) => go({ ticket: ticketId, new: null })}
+      />
+    );
 
   return (
     <div className="flex w-full flex-col gap-8">
@@ -85,11 +93,21 @@ export function HelpView() {
             Ask a question or tell us what went wrong. We answer here, and email you when we do.
           </p>
         </div>
-        {!none && requests !== undefined && !writing && (
-          <Button onClick={() => go({ new: "1", ticket: null })}>
-            <Plus />
-            New question
-          </Button>
+        {requests !== undefined && !(writing && !none) && (
+          <div className="flex flex-wrap gap-2">
+            {canReport && (
+              <Button variant="outline" onClick={() => go({ new: "problem", ticket: null })}>
+                <Bug />
+                Report a problem
+              </Button>
+            )}
+            {!none && (
+              <Button onClick={() => go({ new: "1", ticket: null })}>
+                <Plus />
+                New question
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -136,6 +154,15 @@ export function HelpView() {
         </div>
       )}
     </div>
+  );
+}
+
+/** In place of Report a problem for a team member: problems come from owners and admins. */
+function OwnersOnly() {
+  return (
+    <p className="text-muted-foreground bg-surface rounded-xl px-5 py-8 text-sm" data-owners-only>
+      Only a team owner or admin can report a problem. Ask one of them, or ask a question.
+    </p>
   );
 }
 
@@ -217,13 +244,15 @@ function RequestRow({
               request.unread ? "text-foreground font-medium" : "text-muted-foreground",
             )}
           >
-            {request.status === "closed"
-              ? "Solved"
-              : request.answered
-                ? request.unread
-                  ? "New answer"
-                  : "Answered"
-                : "Waiting for an answer"}
+            {request.fixed
+              ? "Fixed"
+              : request.status === "closed"
+                ? "Solved"
+                : request.answered
+                  ? request.unread
+                    ? "New answer"
+                    : "Answered"
+                  : "Waiting for an answer"}
           </span>
           <CategoryLabel category={request.category} />
         </span>
@@ -271,7 +300,8 @@ function RequestConversation({ ticketId, onBack }: { ticketId: string; onBack: (
             </h2>
             <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
               <span>
-                #{ticket.number} · {ticket.status === "closed" ? "Solved" : "Open"}
+                #{ticket.number} ·{" "}
+                {ticket.fixed ? "Fixed" : ticket.status === "closed" ? "Solved" : "Open"}
               </span>
               <CategoryLabel category={ticket.category} />
               <ViaLabel via={ticket.via} />
@@ -301,19 +331,24 @@ function RequestConversation({ ticketId, onBack }: { ticketId: string; onBack: (
 function NewRequest({
   organizationId,
   page,
+  problem = false,
   canGoBack,
   onBack,
   onSent,
 }: {
   organizationId: string;
   page?: string;
+  /** "Report a problem": something broke, so it starts on automations and runs. */
+  problem?: boolean;
   canGoBack: boolean;
   onBack: () => void;
   onSent: (ticketId: string) => void;
 }) {
   const open = useMutation(api.support.open);
   // A first guess from the page they came from; one click picks another.
-  const [category, setCategory] = useState<SupportCategory | null>(() => categoryForPage(page));
+  const [category, setCategory] = useState<SupportCategory | null>(
+    () => categoryForPage(page) ?? (problem ? "automations" : null),
+  );
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
@@ -333,6 +368,7 @@ function NewRequest({
         body,
         ...(page ? { page } : {}),
         ...(browser ? { browser } : {}),
+        ...(problem ? { problem } : {}),
       });
       onSent(ticketId);
     } catch (caught) {
@@ -345,25 +381,29 @@ function NewRequest({
   return (
     <form
       className="grid gap-6"
-      aria-label="Ask a new question"
+      aria-label={problem ? "Report a problem" : "Ask a new question"}
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
       }}
     >
-      {canGoBack && (
+      {(canGoBack || problem) && (
         <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="-ml-2 size-8 lg:hidden"
-            onClick={onBack}
-          >
-            <ArrowLeft />
-            <span className="sr-only">All questions</span>
-          </Button>
-          <h2 className="text-lg font-semibold tracking-tight">New question</h2>
+          {canGoBack && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="-ml-2 size-8 lg:hidden"
+              onClick={onBack}
+            >
+              <ArrowLeft />
+              <span className="sr-only">All questions</span>
+            </Button>
+          )}
+          <h2 className="text-lg font-semibold tracking-tight">
+            {problem ? "Report a problem" : "New question"}
+          </h2>
         </div>
       )}
       <fieldset className="grid gap-2.5">
@@ -396,8 +436,8 @@ function NewRequest({
           className="min-h-36"
         />
         <p className="text-muted-foreground text-xs">
-          Your team, the page you came from and your latest runs go with it, so there&apos;s no need
-          to explain them.
+          Your team, the page you came from and your latest runs go with it, with the steps of your
+          latest failed run, so there&apos;s no need to explain them.
         </p>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-3">

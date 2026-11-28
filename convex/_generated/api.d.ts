@@ -35,6 +35,8 @@ import type * as discord from "../discord.js";
 import type * as discordReview from "../discordReview.js";
 import type * as dropbox from "../dropbox.js";
 import type * as email from "../email.js";
+import type * as factory from "../factory.js";
+import type * as factoryHttp from "../factoryHttp.js";
 import type * as files from "../files.js";
 import type * as footage from "../footage.js";
 import type * as googleMeet from "../googleMeet.js";
@@ -240,6 +242,8 @@ declare const fullApi: ApiFromModules<{
   discordReview: typeof discordReview;
   dropbox: typeof dropbox;
   email: typeof email;
+  factory: typeof factory;
+  factoryHttp: typeof factoryHttp;
   files: typeof files;
   footage: typeof footage;
   googleMeet: typeof googleMeet;
