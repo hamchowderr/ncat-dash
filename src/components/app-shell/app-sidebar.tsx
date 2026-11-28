@@ -22,6 +22,7 @@ import {
   Home,
   Inbox,
   Library,
+  LifeBuoy,
   ListChecks,
   MessagesSquare,
   Palette,
@@ -98,7 +99,11 @@ const navBuilder: NavItem[] = [
 export const navMain: NavItem[] = [...navEveryday, ...navBuilder];
 
 /** The nav entry a path belongs to: "/steps/video-trim" belongs to Steps. */
+/** Get Help sits at the bottom of the menu, apart from the pages above. */
+const HELP: NavItem = { title: "Get Help", url: "/help", icon: LifeBuoy };
+
 export function navItemFor(pathname: string) {
+  if (pathname === HELP.url || pathname.startsWith(`${HELP.url}/`)) return HELP;
   return navMain.find((item) => item.url !== "/" && pathname.startsWith(item.url)) ?? navMain[0];
 }
 
@@ -165,6 +170,51 @@ function InboxCount() {
       </span>
       <span className="sr-only">{`, ${unseen} new`}</span>
     </>
+  );
+}
+
+/** A red count beside a menu entry, hidden while the menu is folded to icons. */
+function MenuCount({ count, label }: { count: number; label: string }) {
+  if (count === 0) return null;
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className="bg-destructive ml-auto flex h-5 group-data-[collapsible=icon]:hidden min-w-5 items-center justify-center rounded-full px-1.5 text-xs leading-none font-medium text-white tabular-nums"
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+      <span className="sr-only">{`, ${count} ${label}`}</span>
+    </>
+  );
+}
+
+/** Questions support hasn't read yet, beside Support under Admin. */
+function SupportCount() {
+  return <MenuCount count={useQuery(api.support.staffUnread, {}) ?? 0} label="unread" />;
+}
+
+/**
+ * Get Help, at the bottom of the menu above the person, where Linear and Notion keep help.
+ * It remembers the page it was opened from, so a question carries it. A count shows
+ * answers the person hasn't read.
+ */
+function GetHelp({ pathname }: { pathname: string }) {
+  const unread = useQuery(api.support.unread, {}) ?? 0;
+  const here = pathname.startsWith("/help");
+  const href = here ? "/help" : `/help?from=${encodeURIComponent(pathname)}`;
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild tooltip="Get Help" isActive={here}>
+          <Link href={href} data-get-help>
+            <LifeBuoy />
+            <span>Get Help</span>
+            <MenuCount count={unread} label="new answers" />
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }
 
@@ -252,6 +302,7 @@ export function AppSidebar({
                           <item.icon />
                           <span>{item.title}</span>
                           {item.url === "/inbox" && <InboxCount />}
+                          {item.url === "/admin/support" && <SupportCount />}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -263,6 +314,7 @@ export function AppSidebar({
         </SidebarContent>
       )}
       <SidebarFooter>
+        <GetHelp pathname={pathname} />
         <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>

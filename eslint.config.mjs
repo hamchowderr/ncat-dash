@@ -15,6 +15,7 @@ const eslintConfig = defineConfig([
     // Generated code and installed agent skills.
     "convex/_generated/**",
     "convex/betterAuth/_generated/**",
+    "packages/support-tickets/src/component/_generated/**",
     ".agents/**",
     ".claude/**",
     // The desktop app's build output (Rust and the Connect screen's bundle).

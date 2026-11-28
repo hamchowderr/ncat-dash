@@ -6,6 +6,7 @@ import { STORYBOARD_INSTRUCTIONS, storyboardTools } from "./storyboard";
 import { triggerAsSent } from "./trigger-shape";
 import { rememberMade, workingAutomationOf } from "./session-store";
 import { TEAM_STEP_INSTRUCTIONS, teamStepTools } from "./team-steps";
+import { SUPPORT_INSTRUCTIONS, askForHelp } from "./support";
 
 /**
  * The agent's hands on the dashboard. Each tool calls the same Convex function the
@@ -835,6 +836,7 @@ export const ncatTools = {
   make_folder: makeFolder,
   move_files: moveFiles,
   rename_file: renameFile,
+  ask_for_help: askForHelp,
   ...teamStepTools,
   ...libraryTools,
   ...storyboardTools,
@@ -891,4 +893,5 @@ ${MOTION_INSTRUCTIONS}
 - Knowledge: when someone tells you how their team likes things done, or what a client wants or avoids, offer to keep it: a page in the team's scope (team:...) for the team, in the client's scope (client:...) when that client's work is on screen, with what the client wants on its "brief" page. Read those pages before working for that team or client, and follow them. A page in one client's scope is about that client only.
 ${LIBRARY_INSTRUCTIONS}
 ${STORYBOARD_INSTRUCTIONS}
+${SUPPORT_INSTRUCTIONS}
 - You do not post to social platforms, generate video from text, dub voices or make avatars. Say so if asked.`;

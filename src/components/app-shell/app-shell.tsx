@@ -30,9 +30,15 @@ import { cn } from "@/lib/utils";
 import { adminRouteFor } from "@/components/admin/admin-routes";
 
 import { AppSidebar, isSettingsPath, navItemFor } from "./app-sidebar";
+
 import { DashboardTour } from "./dashboard-tour";
 import { LocalFolders } from "./local-folders";
 import { WatchHowButton, WatchHowPanel } from "./watch-how";
+
+/** The page's name in the bar along the top: an Admin page or a menu entry. */
+export function barTitle(pathname: string): string {
+  return adminRouteFor(pathname)?.title ?? navItemFor(pathname).title;
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const state = useTeam();
@@ -245,9 +251,4 @@ function MenuButton() {
       {hidden && unseen > 0 && <span className="sr-only">{`${unseen} new in your Inbox`}</span>}
     </span>
   );
-}
-
-/** The page's name in the bar along the top: an Admin page's own, or its menu entry's. */
-export function barTitle(pathname: string): string {
-  return adminRouteFor(pathname)?.title ?? navItemFor(pathname).title;
 }

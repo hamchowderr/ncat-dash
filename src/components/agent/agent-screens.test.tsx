@@ -77,6 +77,7 @@ describe("the card that asks first", () => {
 
   test("covers every tool that changes something", () => {
     expect(Object.keys(APPROVAL_VIEWS).sort()).toEqual([
+      "ask_for_help",
       "change_automation",
       "create_automation",
       "make_folder",
@@ -93,6 +94,24 @@ describe("the card that asks first", () => {
       "try_team_step",
       "write_storyboard",
     ]);
+  });
+
+  test("shows a help request the way support will read it before it goes", () => {
+    const view = APPROVAL_VIEWS.ask_for_help?.({
+      toolCallId: "call_9",
+      toolName: "ask_for_help",
+      args: {
+        subject: "The Clips step keeps failing",
+        message: "Weekly clips failed twice.\nI tried it again with the assistant.",
+        category: "automations",
+      },
+    } as never);
+    expect(view?.title).toBe("Send this to support?");
+    const { container } = render(<>{view?.body}</>);
+    expect(container.textContent).toContain("The Clips step keeps failing");
+    expect(container.textContent).toContain("Automations and runs");
+    expect(container.textContent).toContain("I tried it again with the assistant.");
+    expect(container.textContent).not.toContain("automations,");
   });
 
   test("asks before trying an automation, in plain words", () => {

@@ -1,5 +1,7 @@
 import type { ApprovalViews } from "@/components/chat/approval-view";
 
+import { categoryTitle } from "@convex/lib/supportCategories";
+
 import { plainTitle, toolWords } from "./tool-words";
 
 /** What each card that asks first says: the change in plain words, never raw settings. */
@@ -38,6 +40,33 @@ const DASHBOARD_VIEWS: ApprovalViews = Object.fromEntries(
     },
   ]),
 );
+
+/**
+ * A help request goes out in the person's name, so its card shows it the way support
+ * will read it: the subject, what it's about and the whole message.
+ */
+DASHBOARD_VIEWS.ask_for_help = ({ args }) => {
+  const given = (args ?? {}) as Record<string, unknown>;
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  const about = categoryTitle(text(given.category));
+  return {
+    title: "Send this to support?",
+    body: (
+      <div className="grid gap-2 text-sm" data-help-request>
+        <div>
+          <p className="font-medium">{text(given.subject)}</p>
+          {about && <p className="text-muted-foreground text-xs">{about}</p>}
+        </div>
+        <p className="bg-surface max-h-48 overflow-y-auto rounded-xl px-3 py-2 leading-relaxed whitespace-pre-wrap">
+          {text(given.message)}
+        </p>
+        <p className="text-muted-foreground text-xs">
+          Your team and latest runs go with it. The answer comes to Get Help and by email.
+        </p>
+      </div>
+    ),
+  };
+};
 
 /**
  * Every other tool that asks first (the browser, schedules, files in the agent's

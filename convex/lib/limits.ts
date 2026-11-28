@@ -15,6 +15,7 @@ import { components } from "../_generated/api";
  * - Password sign-ins (every edition): per network and per account, so nobody can guess
  *   passwords quickly. The account's allowance is the larger one, so someone guessing
  *   from elsewhere slows the account down without locking its owner out for long.
+ * - Help requests and messages on them: per person, since each one emails support.
  * - Emails sent on request (password resets, confirmation links): per address and per
  *   network, so the dashboard can't be used to flood someone's inbox.
  * - Product news sign-ups from the website: a couple a day per address, so the box can't
@@ -34,6 +35,8 @@ export const limiter = new RateLimiter(components.rateLimiter, {
   signInToAccount: { kind: "token bucket", rate: 20, period: HOUR, capacity: 10 },
   authEmailToAddress: { kind: "token bucket", rate: 5, period: HOUR, capacity: 3 },
   authEmailFromNetwork: { kind: "token bucket", rate: 10, period: HOUR, capacity: 5 },
+  // Help requests and messages on them, per person: each one emails support.
+  supportMessage: { kind: "token bucket", rate: 30, period: HOUR, capacity: 10 },
   newsSignUpToAddress: { kind: "token bucket", rate: 3, period: DAY, capacity: 2 },
   newsSignUps: { kind: "token bucket", rate: 300, period: HOUR, capacity: 60 },
   betaSignUps: { kind: "token bucket", rate: 300, period: HOUR, capacity: 60 },

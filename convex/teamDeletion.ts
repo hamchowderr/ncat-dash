@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { components, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { support } from "./lib/support";
 import {
   bucketOf,
   DELETE_AT_ONCE,
@@ -59,6 +60,8 @@ export const begin = internalMutation({
     await ctx.runMutation(components.betterAuth.deletion.endTeamAgents, {
       organizationId: args.organizationId,
     });
+    // Help requests asked from the team, with the team's runs and page in them.
+    await support.removeForScope(ctx, args.organizationId);
     const deletionId = await ctx.db.insert("teamDeletions", {
       ...args,
       startedAt: Date.now(),

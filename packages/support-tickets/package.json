@@ -1,0 +1,33 @@
+{
+  "name": "convex-support-tickets",
+  "version": "0.1.0",
+  "description": "A Convex component for in-app support tickets: tickets, replies, private notes, open and closed, unread on both sides.",
+  "license": "AGPL-3.0-or-later",
+  "repository": "github:hamchowderr/takewon",
+  "keywords": ["convex", "component", "support", "helpdesk", "tickets"],
+  "type": "module",
+  "files": ["src", "README.md", "!src/**/*.test.*"],
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/client/index.ts",
+    "./convex.config": "./src/component/convex.config.ts",
+    "./convex.config.js": "./src/component/convex.config.ts",
+    "./_generated/component.js": "./src/component/_generated/component.ts",
+    "./test": "./src/test.ts"
+  },
+  "scripts": {
+    "codegen": "convex codegen --component-dir ./src/component",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "convex": "^1.50.0"
+  },
+  "devDependencies": {
+    "convex": "^1.50.0",
+    "convex-test": "^0.0.73",
+    "typescript": "^5",
+    "vitest": "^4.1.12",
+    "@edge-runtime/vm": "^5.0.0"
+  }
+}

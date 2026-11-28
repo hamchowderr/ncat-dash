@@ -1,3 +1,4 @@
+import { categoryTitle } from "@convex/lib/supportCategories";
 import { getNodeType } from "@takewon/automation-core";
 
 /**
@@ -209,6 +210,17 @@ export function toolWords(name: string | undefined, args: unknown): ToolWords {
         ],
       };
     }
+    case "ask_for_help":
+      return {
+        title: "Asking support",
+        question: "Send this to support?",
+        lines: [
+          ...(isText(given?.subject) ? [given.subject] : []),
+          ...(isText(given?.category) && categoryTitle(given.category)
+            ? [`About: ${categoryTitle(given.category)}`]
+            : []),
+        ],
+      };
     case "rename_file":
       return {
         title: "Renaming a file",
@@ -397,6 +409,9 @@ export function resultWords(name: string | undefined, result: unknown): string[]
   if (name === "make_folder") {
     const made = Array.isArray(value.made) ? value.made.filter(isText) : [];
     return made.length ? [`Made ${made.map(folderText).join(", ")}`] : ["It was already there."];
+  }
+  if (name === "ask_for_help" && typeof value.number === "number") {
+    return [`Sent as request #${value.number}`];
   }
   if (name === "move_files" && typeof value.moved === "number") {
     return [`Moved ${count(value.moved, "file", "files")}`];

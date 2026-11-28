@@ -6,6 +6,7 @@ import { getCaller } from "./lib/caller";
 import { forgetBetaTester } from "./beta";
 import { forgetNews } from "./lib/news";
 import { forgetProfile } from "./profiles";
+import { support } from "./lib/support";
 
 /**
  * Deleting your own account (Settings > Account > Password And Devices). Better Auth's
@@ -141,6 +142,8 @@ export const prepare = internalMutation({
     for (const row of tours) await ctx.db.delete(row._id);
     // Their time zone, what they do, and the stored file of their photo.
     await forgetProfile(ctx, args.userId);
+    // The help requests they asked, and the answers to them.
+    await support.removeForRequester(ctx, args.userId);
     return null;
   },
 });

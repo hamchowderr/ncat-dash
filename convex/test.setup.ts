@@ -2,6 +2,7 @@
 import presence from "@convex-dev/presence/test";
 import rateLimiter from "@convex-dev/rate-limiter/test";
 import workpool from "@convex-dev/workpool/test";
+import supportTickets from "convex-support-tickets/test";
 import { convexTest } from "convex-test";
 import { components } from "./_generated/api";
 import authSchema from "./betterAuth/schema";
@@ -11,7 +12,7 @@ import schema from "./schema";
 const modules = import.meta.glob(["./**/*.*s", "!./**/*.*.*s"]);
 const authModules = import.meta.glob(["./betterAuth/**/*.*s", "!./betterAuth/**/*.*.*s"]);
 
-/** A fresh in-memory backend with the auth, presence, rate limiter and workpool components. */
+/** A fresh in-memory backend with the auth, presence, rate limiter, support tickets and workpool components. */
 export function backend() {
   process.env.SITE_URL = "http://localhost:3000";
   process.env.BETTER_AUTH_SECRET = "test-secret-test-secret-test-secret";
@@ -21,6 +22,7 @@ export function backend() {
   t.registerComponent("betterAuth", authSchema, authModules);
   presence.register(t, "presence");
   rateLimiter.register(t, "rateLimiter");
+  supportTickets.register(t, "supportTickets");
   for (const name of ["outboundPool", "toolkitPool", "backgroundPool", "chatPool", "recordingPool"])
     workpool.register(t, name);
   return t;
